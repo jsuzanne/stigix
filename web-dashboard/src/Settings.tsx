@@ -3,7 +3,8 @@ import {
     RefreshCw, Download, AlertCircle, CheckCircle, Clock, Shield, Globe, Lock, Terminal,
     Network, Sliders, ChevronDown, ChevronRight, Server, CheckCircle2, Upload, Power,
     Settings as SettingsIcon, Database, Activity, Cpu, Plus, Edit2, Trash2, MapPin, Zap, Info, XCircle, ShieldAlert, Layers, X, Radio,
-    Clipboard, ExternalLink, BarChart3, AlertTriangle, Gauge, Bug, TrendingUp, Search, Users, Copy, History, ChevronUp, PhoneCall, Bot
+    Clipboard, ExternalLink, BarChart3, AlertTriangle, Gauge, Bug, TrendingUp, Search, Users, Copy, History, ChevronUp, PhoneCall, Bot,
+    Key, ShieldCheck, FileText
 } from 'lucide-react';
 import {
     LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as ReTooltip,
@@ -15,6 +16,8 @@ import { twMerge } from 'tailwind-merge';
 import { toast } from 'react-hot-toast';
 import { CustomTcpSettingsTab } from './components/custom-tcp/CustomTcpSettingsTab';
 import { ApiStudio } from './ApiStudio';
+import { usePeerContext } from './PeerContext';
+import { SettingsSkeleton } from './components/skeletons/SettingsSkeleton';
 
 function cn(...inputs: (string | undefined | null | false)[]) {
     return twMerge(clsx(inputs));
@@ -196,6 +199,8 @@ interface DebugPoint {
 }
 
 function IoTDebugMonitor({ token }: { token: string }) {
+    const { gFetch } = usePeerContext();
+    const apiFetch = gFetch;
     const [open, setOpen] = useState(false);
     const [timeWindow, setTimeWindow] = useState<'15m' | '1h' | '6h'>('1h');
     const historyRef = useRef<DebugPoint[]>([]);
@@ -207,7 +212,7 @@ function IoTDebugMonitor({ token }: { token: string }) {
 
     const collect = useCallback(async () => {
         try {
-            const res = await fetch('/api/system/iot-debug-history', { headers: authH() });
+            const res = await apiFetch('/api/system/iot-debug-history', { headers: authH() });
             if (res.ok) {
                 const data = await res.json();
                 historyRef.current = data;
@@ -415,6 +420,11 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
     onUpdateCopilotConfig?: () => void,
     initialTab?: 'probes' | 'distribution' | 'maintenance' | 'system' | 'targets' | 'convergence' | 'registry' | 'targetService' | 'mcp' | 'prisma-api' | 'strata' | 'custom-tcp' | 'api-studio'
 }) {
+    // Route all API calls through the peer gateway when in remote view
+    const { gFetch, activePeerId } = usePeerContext();
+    const isRemoteView = activePeerId !== null;
+    const apiFetch = gFetch;
+
     const [activeTab, setActiveTab] = useState<'probes' | 'distribution' | 'maintenance' | 'system' | 'targets' | 'convergence' | 'registry' | 'targetService' | 'mcp' | 'prisma-api' | 'strata' | 'custom-tcp' | 'api-studio'>(initialTab || 'distribution');
 
     // Shared State
@@ -446,7 +456,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
     // Fetch Target Service Status
     const fetchTargetServiceStatus = async () => {
         try {
-            const res = await fetch('/api/target-service/status', {
+            const res = await apiFetch('/api/target-service/status', {
                 headers: { 'Authorization': `Bearer ${token}` }
             });
             if (res.ok) {
@@ -464,9 +474,50 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
         fetchTargetServiceStatus();
         const interval = setInterval(fetchTargetServiceStatus, 5000);
         return () => clearInterval(interval);
-    }, []);
+    }, [activePeerId]);
     const [latestEgressResult, setLatestEgressResult] = useState<any>(null);
     const [containerStats, setContainerStats] = useState<any[]>([]);
+    const [isGeneratingTechSupport, setIsGeneratingTechSupport] = useState(false);
+
+    const handleDownloadTechSupport = async () => {
+        setIsGeneratingTechSupport(true);
+        const toastId = toast.loading('Generating and packaging Tech-Support bundle...');
+        try {
+            const res = await apiFetch('/api/system/tech-support', {
+                headers: {
+                    'Authorization': `Bearer ${token}`
+                }
+            });
+
+            if (!res.ok) {
+                const errData = await res.json().catch(() => ({}));
+                throw new Error(errData.details || errData.error || `HTTP ${res.status}`);
+            }
+
+            const blob = await res.blob();
+            const disposition = res.headers.get('content-disposition');
+            let filename = 'stigix-techsupport.tar.gz';
+            if (disposition && disposition.includes('filename=')) {
+                const match = disposition.match(/filename="?([^"]+)"?/);
+                if (match && match[1]) filename = match[1];
+            }
+
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            window.URL.revokeObjectURL(url);
+            document.body.removeChild(a);
+
+            toast.success('Tech-Support bundle downloaded successfully!', { id: toastId });
+        } catch (err: any) {
+            toast.error(`Failed to generate Tech-Support: ${err.message}`, { id: toastId });
+        } finally {
+            setIsGeneratingTechSupport(false);
+        }
+    };
 
     // Targets State
     const [targets, setTargets] = useState<TargetDefinition[]>([]);
@@ -478,7 +529,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
     const [registryStatus, setRegistryStatus] = useState<any>(null);
     const [staticLeaderUrl, setStaticLeaderUrl] = useState<string>('');
     const [isTestingConnectivity, setIsTestingConnectivity] = useState(false);
-    const [connectivityResult, setConnectivityResult] = useState<{ success?: boolean; error?: string } | null>(null);
+    const [connectivityResult, setConnectivityResult] = useState<{ success?: boolean; error?: string; leaderInfo?: string } | null>(null);
     // Peer installation card state
     // Starts empty — populated by useEffect once registryStatus.detected_ip is available
     const [peerInstallLeaderUrl, setPeerInstallLeaderUrl] = useState('');
@@ -492,6 +543,12 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
 
     const [targetReachability, setTargetReachability] = useState<Record<string, boolean | 'loading'>>({});
 
+    // Reset target reachability cache on peer switch so stale results from the
+    // previous peer don't show incorrect red dots while the new check runs.
+    useEffect(() => {
+        setTargetReachability({});
+    }, [activePeerId]);
+
     useEffect(() => {
         if (!targets.length) return;
         const checkReachability = async () => {
@@ -499,7 +556,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
             for (const t of targetsToPing) {
                 setTargetReachability(prev => ({ ...prev, [t.id]: 'loading' }));
                 try {
-                    const res = await fetch('/api/convergence/reachability', {
+                    const res = await apiFetch('/api/convergence/reachability', {
                         method: 'POST',
                         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
                         body: JSON.stringify({ target: t.host, port: t.port })
@@ -515,7 +572,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
         checkReachability();
         const interval = setInterval(checkReachability, 60000);
         return () => clearInterval(interval);
-    }, [targets, token]);
+    }, [targets, token, activePeerId]);
 
     const authHeaders = {
         'Authorization': `Bearer ${token}`,
@@ -529,7 +586,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
         setTestingTargetId(t.id);
         setTargetReachability(prev => ({ ...prev, [t.id]: 'loading' }));
         try {
-            const res = await fetch(`/api/targets/${encodeURIComponent(t.id)}/test`, {
+            const res = await apiFetch(`/api/targets/${encodeURIComponent(t.id)}/test`, {
                 method: 'POST',
                 headers: authHeaders,
                 body: JSON.stringify({ host: t.host })
@@ -592,6 +649,15 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
     const [isTestingPrisma, setIsTestingPrisma] = useState(false);
     const [prismaTestResult, setPrismaTestResult] = useState<{ success?: boolean; error?: string } | null>(null);
     const [prismaDirty, setPrismaDirty] = useState(false);
+
+    // SSL Decryption & Certificate Management States
+    const [certStatus, setCertStatus] = useState<any>(null);
+    const [isFetchingCerts, setIsFetchingCerts] = useState(false);
+    const [isUploadingCert, setIsUploadingCert] = useState(false);
+    const [showUploadModal, setShowUploadModal] = useState(false);
+    const [uploadPem, setUploadPem] = useState('');
+    const [uploadCertName, setUploadCertName] = useState('');
+    const [viewPemModal, setViewPemModal] = useState<{ open: boolean; name: string; pem: string }>({ open: false, name: '', pem: '' });
     const [probeFilterType, setProbeFilterType] = useState('ALL');
     const [probeSearchQuery, setProbeSearchQuery] = useState('');
     const [maxCaptures, setMaxCaptures] = useState(uiConfig?.maxCaptures || 10);
@@ -621,58 +687,91 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
 
     // Data Fetching
     useEffect(() => {
+        // ── Core config fetch — extracted so it can be polled every 30 s ──
+        // This ensures remote-view data stays fresh when BR5's config changes
+        // independently (e.g., edited directly on sdwanbr5) without requiring
+        // the user to navigate away and come back.
+        const fetchCoreConfig = () => {
+            Promise.all([
+                apiFetch('/api/config/apps', { headers: { 'Authorization': `Bearer ${token}` } }).then(r => r.json()),
+                apiFetch('/api/config/interfaces', { headers: { 'Authorization': `Bearer ${token}` } }).then(r => r.json()),
+                apiFetch('/api/connectivity/custom', { headers: { 'Authorization': `Bearer ${token}` } }).then(r => r.json()),
+            ]).then(([catsData, ifaceData, probesData]) => {
+                setCategories(catsData.map((c: any) => ({ ...c, expanded: true })));
+                setInterfaces(ifaceData);
+                setCustomProbes(probesData || []);
+
+                // Fetch Cloud Scenarios (secondary — runs once after initial load)
+                apiFetch('/api/target/scenarios', { headers: authHeaders })
+                    .then(r => r.json())
+                    .then(data => {
+                        // Filter out EICAR for performance probes as requested
+                        const filtered = (data || []).filter((s: any) => s.id !== 'security-eicar');
+                        setCloudScenarios(filtered);
+                    })
+                    .catch(() => { });
+
+                // Fetch Cloud Config
+                apiFetch('/api/config/cloud', { headers: authHeaders })
+                    .then(r => r.json())
+                    .then(setCloudConfig)
+                    .catch(() => { });
+
+                // Fetch ALL detected interfaces (secondary)
+                apiFetch('/api/config/interfaces?all=true', { headers: { 'Authorization': `Bearer ${token}` } })
+                    .then(r => r.json())
+                    .then(setAvailableInterfaces)
+                    .catch(() => { });
+
+                // Fetch Convergence Thresholds (failover parameters)
+                apiFetch('/api/config/convergence', { headers: { 'Authorization': `Bearer ${token}` } })
+                    .then(r => r.json())
+                    .then(data => {
+                        if (data && typeof data === 'object' && 'good' in data) {
+                            setConvergenceThresholds(data);
+                        }
+                    })
+                    .catch(() => { });
+
+                // Fetch Traffic SLA Thresholds
+                apiFetch('/api/config/traffic-thresholds', { headers: { 'Authorization': `Bearer ${token}` } })
+                    .then(r => r.json())
+                    .then(data => {
+                        if (data && typeof data === 'object' && 'good_latency_ms' in data) {
+                            setTrafficThresholds(data);
+                        }
+                    })
+                    .catch(() => { });
+
+                setLoading(false);
+            }).catch(() => setLoading(false));
+        };
+
+        const fetchTargets = () => {
+            apiFetch('/api/targets', { headers: authHeaders })
+                .then(r => r.json())
+                .then(data => setTargets(Array.isArray(data) ? data : []))
+                .catch(() => { });
+        };
+
         setLoading(true);
-        // Core Config data - Must load for initial page state
-        Promise.all([
-            fetch('/api/config/apps', { headers: { 'Authorization': `Bearer ${token}` } }).then(r => r.json()),
-            fetch('/api/config/interfaces', { headers: { 'Authorization': `Bearer ${token}` } }).then(r => r.json()),
-            fetch('/api/connectivity/custom', { headers: { 'Authorization': `Bearer ${token}` } }).then(r => r.json()),
-        ]).then(([catsData, ifaceData, probesData]) => {
-            setCategories(catsData.map((c: any) => ({ ...c, expanded: true })));
-            setInterfaces(ifaceData);
-            setCustomProbes(probesData || []);
-
-            // Fetch Cloud Scenarios
-            fetch('/api/target/scenarios', { headers: authHeaders })
-                .then(r => r.json())
-                .then(data => {
-                    // Filter out EICAR for performance probes as requested
-                    const filtered = (data || []).filter((s: any) => s.id !== 'security-eicar');
-                    setCloudScenarios(filtered);
-                })
-                .catch(() => { });
-
-            // Fetch Cloud Config
-            fetch('/api/config/cloud', { headers: authHeaders })
-                .then(r => r.json())
-                .then(setCloudConfig)
-                .catch(() => { });
-
-            // Fetch ALL detected interfaces (secondary)
-            fetch('/api/config/interfaces?all=true', { headers: { 'Authorization': `Bearer ${token}` } })
-                .then(r => r.json())
-                .then(setAvailableInterfaces)
-                .catch(() => { });
-
-            setLoading(false);
-        }).catch(() => setLoading(false));
-
-        // Targets
-        fetch('/api/targets', { headers: authHeaders })
-            .then(r => r.json())
-            .then(data => setTargets(Array.isArray(data) ? data : []))
-            .catch(() => { });
+        fetchCoreConfig();
+        fetchTargets();
+        // Poll config data every 30 s — keeps remote-view current when the
+        // active peer's config changes without triggering a full page reload.
+        const coreConfigInterval = setInterval(fetchCoreConfig, 30000);
+        const targetsInterval = setInterval(fetchTargets, 30000);
 
         // System/Maintenance data - Decoupled to avoid blocking initial load
         const fetchMaintenanceStatus = () => {
-            fetch('/api/admin/maintenance/version', { headers: { 'Authorization': `Bearer ${token}` } })
+            apiFetch('/api/admin/maintenance/version', { headers: { 'Authorization': `Bearer ${token}` } })
                 .then(r => r.json())
                 .then(maintenanceData => {
                     setStatus(maintenanceData);
                 })
                 .catch(() => { });
 
-            fetch('/api/admin/maintenance/status', { headers: { 'Authorization': `Bearer ${token}` } })
+            apiFetch('/api/admin/maintenance/status', { headers: { 'Authorization': `Bearer ${token}` } })
                 .then(r => r.json())
                 .then(upgradeData => {
                     setUpgradeStatus(upgradeData);
@@ -684,7 +783,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
 
         // Fetch System Info
         const fetchSystemInfo = () => {
-            fetch('/api/admin/system/info', { headers: { 'Authorization': `Bearer ${token}` } })
+            apiFetch('/api/admin/system/info', { headers: { 'Authorization': `Bearer ${token}` } })
                 .then(r => r.json())
                 .then(newInfo => {
                     setSystemInfo((prev: any) => {
@@ -707,7 +806,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
 
         // Fetch Live Container Stats
         const fetchContainerStats = () => {
-            fetch('/api/containers/stats', { headers: authHeaders })
+            apiFetch('/api/containers/stats', { headers: authHeaders })
                 .then(r => r.json())
                 .then(setContainerStats)
                 .catch(() => { });
@@ -717,7 +816,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
 
         // Fetch Latest Egress Info
         const fetchEgressInfo = () => {
-            fetch('/api/connectivity/results?limit=50', { headers: { 'Authorization': `Bearer ${token}` } })
+            apiFetch('/api/connectivity/results?limit=50', { headers: { 'Authorization': `Bearer ${token}` } })
                 .then(r => r.json())
                 .then(data => {
                     const results = data.results || [];
@@ -733,29 +832,12 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
         fetchEgressInfo();
         const egressInterval = setInterval(fetchEgressInfo, 30000);
 
-        // Fetch Convergence Thresholds
-        fetch('/api/config/convergence', { headers: { 'Authorization': `Bearer ${token}` } })
-            .then(r => r.json())
-            .then(data => {
-                if (data && typeof data === 'object' && 'good' in data) {
-                    setConvergenceThresholds(data);
-                }
-            })
-            .catch(() => { });
-
-        // Fetch Traffic SLA Thresholds
-        fetch('/api/config/traffic-thresholds', { headers: { 'Authorization': `Bearer ${token}` } })
-            .then(r => r.json())
-            .then(data => {
-                if (data && typeof data === 'object' && 'good_latency_ms' in data) {
-                    setTrafficThresholds(data);
-                }
-            })
-            .catch(() => { });
+        // Convergence thresholds and traffic thresholds are now fetched inside
+        // fetchCoreConfig() above and polled on a 30 s interval.
 
         // Fetch Registry Status
         const fetchRegistryStatus = () => {
-            fetch('/api/registry/status', { headers: authHeaders })
+            apiFetch('/api/registry/status', { headers: authHeaders })
                 .then(r => r.json())
                 .then(setRegistryStatus)
                 .catch(e => console.error("Failed to fetch registry status", e));
@@ -764,7 +846,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
 
         // Fetch Cloud Config
         const fetchCloudConfig = () => {
-            fetch('/api/config/cloud', { headers: authHeaders })
+            apiFetch('/api/config/cloud', { headers: authHeaders })
                 .then(r => r.json())
                 .then(setCloudConfig)
                 .catch(e => console.error("Failed to fetch cloud config", e));
@@ -772,7 +854,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
         fetchCloudConfig();
 
         // Fetch SLS Config
-        fetch('/api/security/config', { headers: authHeaders })
+        apiFetch('/api/security/config', { headers: authHeaders })
             .then(r => r.json())
             .then(data => {
                 if (data && data.sls_config) {
@@ -785,8 +867,21 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                 setSlsConfig({}); // Fix hang on error
             });
 
+        // Fetch Installed CA Certificates
+        const fetchCertificates = () => {
+            apiFetch('/api/security/certificates', { headers: authHeaders })
+                .then(r => r.json())
+                .then(data => {
+                    if (data && data.success) {
+                        setCertStatus(data);
+                    }
+                })
+                .catch(e => console.error("Failed to fetch certificates status", e));
+        };
+        fetchCertificates();
+
         const fetchMcpStatus = () => {
-            fetch('/api/admin/system/mcp-status', { headers: authHeaders })
+            apiFetch('/api/admin/system/mcp-status', { headers: authHeaders })
                 .then(r => r.json())
                 .then(setMcpStatus)
                 .catch(e => console.error("Failed to fetch MCP status", e));
@@ -795,7 +890,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
         const mcpInterval = setInterval(fetchMcpStatus, 15000);
 
         const fetchMcpHistory = () => {
-            fetch('/api/admin/mcp/history?limit=30', { headers: authHeaders })
+            apiFetch('/api/admin/mcp/history?limit=30', { headers: authHeaders })
                 .then(r => r.json())
                 .then(setMcpHistory)
                 .catch(() => {});
@@ -804,7 +899,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
         const mcpHistoryInterval = setInterval(fetchMcpHistory, 3000);
 
         const fetchCopilotConfig = () => {
-            fetch('/api/copilot/config', { headers: authHeaders })
+            apiFetch('/api/copilot/config', { headers: authHeaders })
                 .then(r => r.ok ? r.json() : null)
                 .then(data => { if (data) setCopilotConfig(data.config || data); })
                 .catch(() => {});
@@ -812,6 +907,8 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
         fetchCopilotConfig();
 
         return () => {
+            clearInterval(coreConfigInterval);
+            clearInterval(targetsInterval);
             clearInterval(sysInfoInterval);
             clearInterval(mcpInterval);
             clearInterval(mcpHistoryInterval);
@@ -819,12 +916,12 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
             clearInterval(containerStatsInterval);
         };
 
-    }, [token]);
+    }, [token, activePeerId]);
 
     // Fetch system settings (startup behaviour)
     useEffect(() => {
         // system-settings.json for probes/iot/voice
-        fetch('/api/config/system-settings', { headers: authHeaders })
+        apiFetch('/api/config/system-settings', { headers: authHeaders })
             .then(r => r.json())
             .then(data => setSystemSettings((prev: any) => ({
                 ...prev,
@@ -838,30 +935,30 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
             .catch(() => {});
 
         // traffic status comes from applications-config.json via /api/traffic/status
-        fetch('/api/traffic/status', { headers: authHeaders })
+        apiFetch('/api/traffic/status', { headers: authHeaders })
             .then(r => r.json())
             .then(data => setSystemSettings((prev: any) => ({ ...prev, auto_restart_traffic: !!data.running })))
             .catch(() => {});
 
         // Check if IoT has at least 1 enabled device
-        fetch('/api/iot/devices', { headers: authHeaders })
+        apiFetch('/api/iot/devices', { headers: authHeaders })
             .then(r => r.json())
             .then((devices: any[]) => setIotHasConfig(Array.isArray(devices) && devices.some(d => d.enabled !== false)))
             .catch(() => setIotHasConfig(false));
 
         // Check if Voice has at least 1 server configured
         // API returns servers as a raw pipe-delimited string (not an array)
-        fetch('/api/voice/config', { headers: authHeaders })
+        apiFetch('/api/voice/config', { headers: authHeaders })
             .then(r => r.json())
             .then((cfg: any) => setVoiceHasConfig(typeof cfg?.servers === 'string' && cfg.servers.trim().length > 0))
             .catch(() => setVoiceHasConfig(false));
-    }, [token]);
+    }, [token, activePeerId]);
 
     // Polling for upgrade status and registry status
     useEffect(() => {
         const fetchMaintenanceStatus = async () => {
             try {
-                const res = await fetch('/api/admin/maintenance/status', {
+                const res = await apiFetch('/api/admin/maintenance/status', {
                     headers: { 'Authorization': `Bearer ${token}` }
                 });
                 const data = await res.json();
@@ -884,7 +981,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
 
         const fetchRegistryStatus = async () => {
             try {
-                const res = await fetch('/api/registry/status', { headers: authHeaders });
+                const res = await apiFetch('/api/registry/status', { headers: authHeaders });
                 const data = await res.json();
                 if (res.ok) {
                     setRegistryStatus(data);
@@ -901,7 +998,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
             fetchRegistryStatus();
         }, 30000);
         return () => clearInterval(interval);
-    }, [token]);
+    }, [token, activePeerId]);
 
     useEffect(() => {
         if (registryStatus?.static_leader_url && !staticLeaderUrl) {
@@ -945,18 +1042,22 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
     };
 
     const handleTestConnectivity = async () => {
-        if (!staticLeaderUrl) return;
+        const isTunnelConnected = registryStatus?.mode !== 'leader' && !!registryStatus?.tunnel_active;
+        const urlToTest = staticLeaderUrl || (isTunnelConnected ? 'fleet-tunnel' : '');
+        if (!urlToTest) return;
         setIsTestingConnectivity(true);
         setConnectivityResult(null);
         try {
-            const res = await fetch('/api/registry/test-connectivity', {
+            const res = await apiFetch('/api/registry/test-connectivity', {
                 method: 'POST',
                 headers: authHeaders,
-                body: JSON.stringify({ url: staticLeaderUrl })
+                body: JSON.stringify({ url: urlToTest })
             });
             const data = await res.json();
             if (res.ok && data.status === 'ok') {
-                setConnectivityResult({ success: true });
+                const rttStr = data.data?.rtt !== undefined ? ` (${data.data.rtt}ms)` : '';
+                const leaderName = data.data?.site_name || data.data?.leaderId;
+                setConnectivityResult({ success: true, leaderInfo: leaderName ? `${leaderName}${rttStr}` : undefined });
             } else {
                 setConnectivityResult({ success: false, error: data.error || 'Connection failed' });
             }
@@ -970,7 +1071,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
     const handleSaveStaticLeader = async (url: string | null) => {
         setSaving(true);
         try {
-            const res = await fetch('/api/registry/static-leader', {
+            const res = await apiFetch('/api/registry/static-leader', {
                 method: 'POST',
                 headers: authHeaders,
                 body: JSON.stringify({ url })
@@ -978,7 +1079,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
             if (res.ok) {
                 showSuccess(url ? "Static Leader configured!" : "Reverted to auto-discovery");
                 // Refresh status
-                const sres = await fetch('/api/registry/status', { headers: authHeaders });
+                const sres = await apiFetch('/api/registry/status', { headers: authHeaders });
                 const sdata = await sres.json();
                 setRegistryStatus(sdata);
             } else {
@@ -1028,7 +1129,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
         setSiteNameError(null);
         setSiteNameSaved(false);
         try {
-            const res = await fetch('/api/registry/site-name', {
+            const res = await apiFetch('/api/registry/site-name', {
                 method: 'POST',
                 headers: { ...authHeaders, 'Content-Type': 'application/json' },
                 body: JSON.stringify({ siteName: siteNameEdit.trim() })
@@ -1037,7 +1138,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
             if (!res.ok) throw new Error(data.error || 'Failed to save');
             setSiteNameSaved(true);
             // Refresh registry status to sync the new name
-            const sres = await fetch('/api/registry/status', { headers: authHeaders });
+            const sres = await apiFetch('/api/registry/status', { headers: authHeaders });
             if (sres.ok) setRegistryStatus(await sres.json());
             setTimeout(() => setSiteNameSaved(false), 3000);
         } catch (e: any) {
@@ -1070,11 +1171,11 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
     const lastToastedRevs = useRef<{ [bundleType: string]: number }>({});
 
     const fetchProvisioningData = useCallback(() => {
-        fetch('/api/provisioning/config', { headers: { 'Authorization': `Bearer ${token}` } })
+        apiFetch('/api/provisioning/config', { headers: { 'Authorization': `Bearer ${token}` } })
             .then(res => res.json())
             .then(data => setProvisioningData(data))
             .catch(() => {});
-    }, [token]);
+    }, [token, activePeerId]);
 
     useEffect(() => {
         fetchProvisioningData();
@@ -1125,7 +1226,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
     const handlePublishBundle = async (type: string) => {
         setPublishingType(type);
         try {
-            const res = await fetch(`/api/provisioning/publish/${type}`, {
+            const res = await apiFetch(`/api/provisioning/publish/${type}`, {
                 method: 'POST',
                 headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' }
             });
@@ -1146,7 +1247,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
     const handleSyncNow = async () => {
         setIsSyncingPeer(true);
         try {
-            const res = await fetch('/api/provisioning/sync', {
+            const res = await apiFetch('/api/provisioning/sync', {
                 method: 'POST',
                 headers: { 'Authorization': `Bearer ${token}` }
             });
@@ -1167,7 +1268,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
     const handleToggleProvisioning = async (enabled: boolean) => {
         setProvisioningToggling(true);
         try {
-            const res = await fetch('/api/provisioning/config', {
+            const res = await apiFetch('/api/provisioning/config', {
                 method: 'POST',
                 headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
                 body: JSON.stringify({ enabled })
@@ -1258,7 +1359,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
         const updates: Record<string, number> = {};
         apps.forEach(a => updates[a.domain] = a.weight);
         try {
-            await fetch('/api/config/apps-bulk', {
+            await apiFetch('/api/config/apps-bulk', {
                 method: 'POST',
                 headers: authHeaders,
                 body: JSON.stringify({ updates })
@@ -1270,7 +1371,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
         const updates: Record<string, number> = {};
         allCats.forEach(c => c.apps.forEach(a => updates[a.domain] = a.weight));
         try {
-            await fetch('/api/config/apps-bulk', {
+            await apiFetch('/api/config/apps-bulk', {
                 method: 'POST',
                 headers: authHeaders,
                 body: JSON.stringify({ updates })
@@ -1288,7 +1389,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
 
     const saveInterfaces = async (newInterfaces: string[]) => {
         try {
-            await fetch('/api/config/interfaces', {
+            await apiFetch('/api/config/interfaces', {
                 method: 'POST',
                 headers: authHeaders,
                 body: JSON.stringify({ interfaces: newInterfaces })
@@ -1324,7 +1425,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
 
     const saveProbes = async (probes: CustomProbe[]) => {
         try {
-            await fetch('/api/connectivity/custom', {
+            await apiFetch('/api/connectivity/custom', {
                 method: 'POST',
                 headers: authHeaders,
                 body: JSON.stringify({ endpoints: probes })
@@ -1355,7 +1456,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
 
     const handleExportProbes = async () => {
         try {
-            const res = await fetch('/api/connectivity/custom/export', { headers: { 'Authorization': `Bearer ${token}` } });
+            const res = await apiFetch('/api/connectivity/custom/export', { headers: { 'Authorization': `Bearer ${token}` } });
             if (res.ok) {
                 const data = await res.json();
                 const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
@@ -1374,7 +1475,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
             const endpoints = Array.isArray(data) ? data : data.endpoints;
             if (!endpoints) throw new Error("Invalid format");
 
-            await fetch('/api/connectivity/custom', {
+            await apiFetch('/api/connectivity/custom', {
                 method: 'POST',
                 headers: authHeaders,
                 body: JSON.stringify({ endpoints })
@@ -1387,14 +1488,14 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
     const syncDiscovery = async () => {
         setIsSyncing(true);
         try {
-            const res = await fetch('/api/probes/discovery/sync', {
+            const res = await apiFetch('/api/probes/discovery/sync', {
                 method: 'POST',
                 headers: { 'Authorization': `Bearer ${token}` }
             });
             const data = await res.json();
             if (res.ok) {
                 toast.success(`Discovery Sync Complete: ${data.created || 0} created, ${data.updated || 0} updated, ${data.staleMarked || 0} stale.`);
-                const probesRes = await fetch('/api/connectivity/custom', {
+                const probesRes = await apiFetch('/api/connectivity/custom', {
                     headers: { 'Authorization': `Bearer ${token}` }
                 });
                 if (probesRes.ok) {
@@ -1436,7 +1537,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
             const targetsToImport = Array.isArray(data) ? data : data.targets;
             if (!targetsToImport) throw new Error("Invalid format");
 
-            await fetch('/api/targets/import', {
+            await apiFetch('/api/targets/import', {
                 method: 'POST',
                 headers: authHeaders,
                 body: JSON.stringify({ targets: targetsToImport })
@@ -1448,7 +1549,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
 
     const handleExportApps = async () => {
         try {
-            const res = await fetch('/api/config/applications/export?format=json', { headers: { 'Authorization': `Bearer ${token}` } });
+            const res = await apiFetch('/api/config/applications/export?format=json', { headers: { 'Authorization': `Bearer ${token}` } });
             if (res.ok) {
                 const data = await res.json();
                 const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
@@ -1463,7 +1564,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
 
     const handleImportApps = async (content: string) => {
         try {
-            const res = await fetch('/api/config/applications/import', {
+            const res = await apiFetch('/api/config/applications/import', {
                 method: 'POST',
                 headers: authHeaders,
                 body: JSON.stringify({ content })
@@ -1485,7 +1586,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
         setUpgrading(true);
         setErrorMsg(null);
         try {
-            const res = await fetch('/api/admin/maintenance/upgrade', {
+            const res = await apiFetch('/api/admin/maintenance/upgrade', {
                 method: 'POST',
                 headers: authHeaders,
                 body: JSON.stringify({ version: status.latest })
@@ -1510,7 +1611,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
         if (!confirm(msg)) return;
         setUpgrading(true);
         try {
-            await fetch('/api/admin/maintenance/restart', {
+            await apiFetch('/api/admin/maintenance/restart', {
                 method: 'POST',
                 headers: authHeaders,
                 body: JSON.stringify({ type })
@@ -1527,7 +1628,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                 critical: Math.max(1, Math.min(100, Number(convergenceThresholds.critical) || 10))
             };
             setConvergenceThresholds(sanitized);
-            const res = await fetch('/api/config/convergence', {
+            const res = await apiFetch('/api/config/convergence', {
                 method: 'POST',
                 headers: {
                     'Authorization': `Bearer ${token}`,
@@ -1558,7 +1659,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                 error_rate_warning_pct: Math.max(0.1, Number(trafficThresholds.error_rate_warning_pct) || 5)
             };
             setTrafficThresholds(sanitized);
-            const res = await fetch('/api/config/traffic-thresholds', {
+            const res = await apiFetch('/api/config/traffic-thresholds', {
                 method: 'POST',
                 headers: {
                     'Authorization': `Bearer ${token}`,
@@ -1580,7 +1681,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
     const saveUIConfig = async () => {
         setSaving(true);
         try {
-            const res = await fetch('/api/config/ui', {
+            const res = await apiFetch('/api/config/ui', {
                 method: 'POST',
                 headers: authHeaders,
                 body: JSON.stringify({ maxCaptures, globalScoreTypes })
@@ -1598,7 +1699,9 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
         }
     };
 
-    if (loading) return <div className="p-8 text-center text-text-muted animate-pulse font-bold tracking-widest text-xs">Loading Settings...</div>;
+    if (loading) {
+        return <SettingsSkeleton />;
+    }
 
     const saveSystemSetting = async (key: 'auto_restart_iot' | 'auto_restart_voice' | 'auto_restart_traffic' | 'auto_restart_probes' | 'auto_restart_custom_tcp' | 'registry_mode', value: any) => {
         const next = { ...systemSettings, [key]: value };
@@ -1607,9 +1710,9 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
         try {
             if (key === 'auto_restart_traffic') {
                 // Traffic is controlled directly via applications-config.json
-                await fetch(value ? '/api/traffic/start' : '/api/traffic/stop', { method: 'POST', headers: authHeaders });
+                await apiFetch(value ? '/api/traffic/start' : '/api/traffic/stop', { method: 'POST', headers: authHeaders });
             } else {
-                await fetch('/api/config/system-settings', {
+                await apiFetch('/api/config/system-settings', {
                     method: 'POST',
                     headers: authHeaders,
                     body: JSON.stringify({ [key]: value })
@@ -1625,7 +1728,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
     };
 
     // ─── Target CRUD Handlers ────────────────────────────────────────────────
-    const fetchTargets = () => fetch('/api/targets', { headers: authHeaders })
+    const fetchTargets = () => apiFetch('/api/targets', { headers: authHeaders })
         .then(r => r.json()).then(d => setTargets(Array.isArray(d) ? d : []));
 
     const saveTarget = async () => {
@@ -1637,11 +1740,11 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
         try {
             let res;
             if (editingTargetId) {
-                res = await fetch(`/api/targets/${editingTargetId}`, {
+                res = await apiFetch(`/api/targets/${editingTargetId}`, {
                     method: 'PUT', headers: authHeaders, body: JSON.stringify(newTarget)
                 });
             } else {
-                res = await fetch('/api/targets', {
+                res = await apiFetch('/api/targets', {
                     method: 'POST', headers: authHeaders, body: JSON.stringify(newTarget)
                 });
             }
@@ -1663,7 +1766,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
         setIsTestingCloud(true);
         setCloudTestResult(null);
         try {
-            const res = await fetch('/api/config/cloud/test', {
+            const res = await apiFetch('/api/config/cloud/test', {
                 method: 'POST',
                 headers: authHeaders,
                 body: JSON.stringify({ 
@@ -1688,7 +1791,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
         setIsTestingPrisma(true);
         setPrismaTestResult(null);
         try {
-            const res = await fetch('/api/security/config/test', {
+            const res = await apiFetch('/api/security/config/test', {
                 method: 'POST',
                 headers: authHeaders,
                 body: JSON.stringify({ sls_config: slsConfig })
@@ -1703,10 +1806,102 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
         }
     };
 
+    const handleFetchPrismaCerts = async () => {
+        setIsFetchingCerts(true);
+        try {
+            const res = await apiFetch('/api/security/certificates/fetch-prisma', {
+                method: 'POST',
+                headers: authHeaders,
+                body: JSON.stringify({ sls_config: slsConfig })
+            });
+            const data = await res.json();
+            if (data && data.success) {
+                showSuccess(`Successfully imported ${data.count} CA certificate(s) from Prisma SASE`);
+                const r = await apiFetch('/api/security/certificates', { headers: authHeaders });
+                const updated = await r.json();
+                if (updated && updated.success) setCertStatus(updated);
+            } else {
+                setErrorMsg(`Failed to import certificates: ${data?.error || 'Unknown error'}`);
+            }
+        } catch (err: any) {
+            setErrorMsg(`Network error: ${err.message}`);
+        } finally {
+            setIsFetchingCerts(false);
+        }
+    };
+
+    const handleUploadManualCert = async () => {
+        if (!uploadPem.trim()) {
+            setErrorMsg('Please paste or upload a valid PEM certificate');
+            return;
+        }
+        setIsUploadingCert(true);
+        try {
+            const res = await apiFetch('/api/security/certificates/upload', {
+                method: 'POST',
+                headers: authHeaders,
+                body: JSON.stringify({ pem: uploadPem, name: uploadCertName || undefined })
+            });
+            const data = await res.json();
+            if (data && data.success) {
+                showSuccess(`Certificate "${data.certificate?.name || 'CA'}" installed successfully`);
+                setUploadPem('');
+                setUploadCertName('');
+                setShowUploadModal(false);
+                const r = await apiFetch('/api/security/certificates', { headers: authHeaders });
+                const updated = await r.json();
+                if (updated && updated.success) setCertStatus(updated);
+            } else {
+                setErrorMsg(`Upload failed: ${data?.error || 'Unknown error'}`);
+            }
+        } catch (err: any) {
+            setErrorMsg(`Network error: ${err.message}`);
+        } finally {
+            setIsUploadingCert(false);
+        }
+    };
+
+    const handleDeleteCert = async (id?: string) => {
+        try {
+            const query = id ? `?id=${encodeURIComponent(id)}` : '';
+            const res = await apiFetch(`/api/security/certificates${query}`, {
+                method: 'DELETE',
+                headers: authHeaders
+            });
+            const data = await res.json();
+            if (data && data.success) {
+                showSuccess(id ? 'Certificate removed' : 'All CA certificates cleared');
+                const r = await apiFetch('/api/security/certificates', { headers: authHeaders });
+                const updated = await r.json();
+                if (updated && updated.success) setCertStatus(updated);
+            }
+        } catch (err: any) {
+            setErrorMsg(`Failed to delete: ${err.message}`);
+        }
+    };
+
+    const handleDownloadBundle = async () => {
+        try {
+            const res = await apiFetch('/api/security/certificates/bundle', { headers: authHeaders });
+            if (!res.ok) throw new Error('Failed to download bundle');
+            const blob = await res.blob();
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'stigix-ca-bundle.pem';
+            document.body.appendChild(a);
+            a.click();
+            window.URL.revokeObjectURL(url);
+            document.body.removeChild(a);
+        } catch (err: any) {
+            setErrorMsg('Download failed');
+        }
+    };
+
     const saveCloudConfig = async () => {
         setIsSavingCloud(true);
         try {
-            const res = await fetch('/api/config/cloud', {
+            const res = await apiFetch('/api/config/cloud', {
                 method: 'POST',
                 headers: authHeaders,
                 body: JSON.stringify({ 
@@ -1717,7 +1912,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
             if (res.ok) {
                 showSuccess('Cloud configuration saved');
                 setCloudMasterKey(''); // Clear sensitive field
-                const data = await fetch('/api/config/cloud', { headers: authHeaders }).then(r => r.json());
+                const data = await apiFetch('/api/config/cloud', { headers: authHeaders }).then(r => r.json());
                 setCloudConfig(data);
             } else {
                 setErrorMsg('Failed to save cloud configuration');
@@ -1752,12 +1947,12 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
 
     const deleteTarget = async (id: string) => {
         if (!confirm('Delete this target?')) return;
-        const res = await fetch(`/api/targets/${id}`, { method: 'DELETE', headers: authHeaders });
+        const res = await apiFetch(`/api/targets/${id}`, { method: 'DELETE', headers: authHeaders });
         if (res.ok) { showSuccess('Target deleted'); fetchTargets(); }
     };
 
     const toggleTargetEnabled = async (t: TargetDefinition) => {
-        await fetch(`/api/targets/${t.id}`, {
+        await apiFetch(`/api/targets/${t.id}`, {
             method: 'PUT', headers: authHeaders, body: JSON.stringify({ ...t, enabled: !t.enabled })
         });
         fetchTargets();
@@ -3459,7 +3654,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                                     <button
                                         onClick={async () => {
                                             try {
-                                                const res = await fetch('/api/admin/config/export', { headers: { 'Authorization': `Bearer ${token}` } });
+                                                const res = await apiFetch('/api/admin/config/export', { headers: { 'Authorization': `Bearer ${token}` } });
                                                 if (res.ok) {
                                                     const data = await res.json();
                                                     const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
@@ -3494,7 +3689,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                                                 reader.onload = async (ev) => {
                                                     try {
                                                         const bundle = JSON.parse(ev.target?.result as string);
-                                                        const res = await fetch('/api/admin/config/import', {
+                                                        const res = await apiFetch('/api/admin/config/import', {
                                                             method: 'POST',
                                                             headers: authHeaders,
                                                             body: JSON.stringify({ bundle })
@@ -3787,14 +3982,34 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                         )}
 
                         <div className="pt-8 border-t border-border/50">
-                            <div className="flex items-center gap-3 mb-8">
-                                <div className="p-2 bg-purple-600/10 rounded-lg text-purple-600 dark:text-purple-400 font-bold">
-                                    <Server size={24} />
+                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
+                                <div className="flex items-center gap-3">
+                                    <div className="p-2 bg-purple-600/10 rounded-lg text-purple-600 dark:text-purple-400 font-bold">
+                                        <Server size={24} />
+                                    </div>
+                                    <div>
+                                        <h2 className="text-lg font-black text-text-primary tracking-tight">System Information</h2>
+                                        <p className="text-[10px] font-bold text-text-muted tracking-widest mt-0.5 opacity-70">Hardware metrics, diagnostics, and execution context</p>
+                                    </div>
                                 </div>
-                                <div>
-                                    <h2 className="text-lg font-black text-text-primary tracking-tight">System Information</h2>
-                                    <p className="text-[10px] font-bold text-text-muted tracking-widest mt-0.5 opacity-70">Hardware metrics and execution context</p>
-                                </div>
+                                <button
+                                    onClick={handleDownloadTechSupport}
+                                    disabled={isGeneratingTechSupport}
+                                    className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold uppercase tracking-wider bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 hover:bg-emerald-500/20 active:scale-95 transition-all shadow-sm disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
+                                    title="Generate and download complete sanitized diagnostics and logs bundle"
+                                >
+                                    {isGeneratingTechSupport ? (
+                                        <>
+                                            <RefreshCw size={14} className="animate-spin" />
+                                            <span>Packaging Tech-Support...</span>
+                                        </>
+                                    ) : (
+                                        <>
+                                            <Download size={14} />
+                                            <span>Download Tech-Support Bundle</span>
+                                        </>
+                                    )}
+                                </button>
                             </div>
 
                             {!systemInfo ? (
@@ -3974,7 +4189,8 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
             {/* ─── Registry Tab ────────────────────────────────────────────── */}
             {activeTab === 'registry' && (() => {
                 const isLeader = registryStatus?.mode === 'leader';
-                const isPeerConnected = !isLeader && registryStatus?.registry_url && registryStatus?.registry_url !== registryStatus?.remote_url;
+                const isTunnelConnected = !isLeader && !!registryStatus?.tunnel_active;
+                const isPeerConnected = (!isLeader && registryStatus?.registry_url && registryStatus?.registry_url !== registryStatus?.remote_url) || isTunnelConnected;
                 const siteName = registryStatus?.site_name || 'This Instance';
                 const detectedIp = registryStatus?.detected_ip || '—';
 
@@ -4011,14 +4227,22 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                                 <p className="text-[10px] text-text-muted mt-1 opacity-70">
                                     {isLeader
                                         ? `Handling registration for ${registryStatus?.peer_count ?? 0} peer${(registryStatus?.peer_count ?? 0) !== 1 ? 's' : ''}. Peers connect directly to this node.`
-                                        : isPeerConnected
-                                            ? `Connected to leader ${registryStatus?.leader_info?.id || registryStatus?.leader_info?.ip || '—'}. Targets are synced automatically.`
-                                            : 'Not connected to a leader. Enter the leader URL below to join the mesh.'}
+                                        : isTunnelConnected
+                                            ? `Connected to Leader (${registryStatus?.leader_tunnel_info?.siteName || registryStatus?.leader_tunnel_info?.instanceId || 'Leader'}) via secure Fleet WebSocket Tunnel. Real-time telemetry and configuration syncing are active.`
+                                            : isPeerConnected
+                                                ? `Connected to leader ${registryStatus?.leader_info?.id || registryStatus?.leader_info?.ip || '—'}. Targets are synced automatically.`
+                                                : 'Not connected to a leader. Enter the leader URL below to join the mesh.'}
                                 </p>
                             </div>
                         </div>
                         <div className="flex items-center gap-2 shrink-0">
-                            {isPeerConnected && (
+                            {isTunnelConnected && (
+                                <span className="px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest bg-cyan-500/10 text-cyan-400 border border-cyan-500/30 shadow-sm flex items-center gap-1.5">
+                                    <Zap size={11} className="animate-pulse" />
+                                    WS Tunnel Synced
+                                </span>
+                            )}
+                            {!isTunnelConnected && isPeerConnected && (
                                 <span className="px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest bg-green-500/10 text-green-500 border border-green-500/30 shadow-sm flex items-center gap-1.5">
                                     <div className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
                                     Synced
@@ -4041,7 +4265,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                             </div>
                             <div>
                                 <div className="flex items-center gap-2">
-                                    <h4 className="text-xs font-black text-text-primary uppercase tracking-wider">Mesh Role Mode</h4>
+                                    <h4 className="text-xs font-black text-text-primary uppercase tracking-wider">Node Role</h4>
                                     <span className="text-[9px] font-mono font-bold text-text-muted opacity-60">
                                         (Active: {systemSettings.registry_mode === 'leader' ? 'Forced Leader' : systemSettings.registry_mode === 'peer' ? 'Forced Peer' : 'Auto-Detect'})
                                     </span>
@@ -4050,8 +4274,8 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                                     {(systemSettings.registry_mode || 'auto') === 'auto'
                                         ? 'Auto-Detect: Automatically elects this node as Leader on SD-WAN HUB / Branch Gateway, or Peer on spoke nodes.'
                                         : (systemSettings.registry_mode === 'leader'
-                                            ? 'Forced Leader: This instance hosts the central registry on :8080 and acts as master configuration publisher.'
-                                            : 'Forced Peer: This instance connects to an external Leader as a managed branch member.')}
+                                            ? 'Forced Leader: This node hosts the central registry on :8080 and acts as mesh configuration publisher.'
+                                            : 'Forced Peer: This node connects to an external Leader as a managed branch member.')}
                                 </p>
                             </div>
                         </div>
@@ -4093,7 +4317,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                     {/* ════════ LEADER VIEW ════════ */}
                     {isLeader && (
                         <>
-                            {/* Central Global Provisioning Publishing Card */}
+                            {/* Mesh Provisioning Publishing Card */}
                             <div className="bg-card border border-border rounded-2xl p-6 shadow-sm space-y-6">
                                 <div className="flex items-center justify-between">
                                     <div className="flex items-center gap-3">
@@ -4101,8 +4325,8 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                                             <Layers size={18} />
                                         </div>
                                         <div>
-                                            <h3 className="text-sm font-black text-text-primary tracking-tight">Central Global Provisioning</h3>
-                                            <p className="text-[10px] text-text-muted mt-0.5 opacity-70">Publish shared configuration bundles once to all connected remote branch peers</p>
+                                            <h3 className="text-sm font-black text-text-primary tracking-tight">Mesh Provisioning</h3>
+                                            <p className="text-[10px] text-text-muted mt-0.5 opacity-70">Publish shared configuration bundles to all registered targets</p>
                                         </div>
                                     </div>
                                     <button
@@ -4115,7 +4339,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                                         }`}
                                     >
                                         {provisioningToggling ? <RefreshCw size={10} className="animate-spin" /> : <Power size={10} />}
-                                        {provisioningData?.state?.enabled ? 'Master Publisher Active' : 'Master Publisher Disabled'}
+                                        {provisioningData?.state?.enabled ? 'Mesh Publisher Active' : 'Mesh Publisher Disabled'}
                                     </button>
                                 </div>
 
@@ -4281,8 +4505,8 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                                             <Users size={16} />
                                         </div>
                                         <div>
-                                            <h3 className="text-sm font-black text-text-primary tracking-tight">Connected Peers</h3>
-                                            <p className="text-[9px] text-text-muted mt-0.5 opacity-60">Instances that have registered with this leader</p>
+                                            <h3 className="text-sm font-black text-text-primary tracking-tight">Registered Targets</h3>
+                                            <p className="text-[9px] text-text-muted mt-0.5 opacity-60">Targets registered with this leader</p>
                                         </div>
                                     </div>
                                     <div className="flex items-center gap-2">
@@ -4290,7 +4514,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                                             {registryStatus?.local_instances?.length ?? 0} registered
                                         </span>
                                         <button
-                                            onClick={() => fetch('/api/registry/status', { headers: authHeaders }).then(r => r.json()).then(setRegistryStatus)}
+                                            onClick={() => apiFetch('/api/registry/status', { headers: authHeaders }).then(r => r.json()).then(setRegistryStatus)}
                                             className="p-2 hover:bg-card-hover rounded-xl text-text-muted transition-all"
                                             title="Refresh"
                                         >
@@ -4305,14 +4529,14 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                                             <div className="w-12 h-12 mx-auto mb-4 rounded-2xl bg-purple-600/10 text-purple-500 flex items-center justify-center">
                                                 <Users size={24} />
                                             </div>
-                                            <p className="text-[10px] font-bold text-text-muted tracking-widest opacity-50 uppercase">No peers registered yet</p>
-                                            <p className="text-[9px] text-text-muted opacity-40 mt-1">Use the onboard command below to add a remote instance</p>
+                                            <p className="text-[10px] font-bold text-text-muted tracking-widest opacity-50 uppercase">No targets registered yet</p>
+                                            <p className="text-[9px] text-text-muted opacity-40 mt-1">Use the onboard command below to add a remote target</p>
                                         </div>
                                     ) : (
                                         <table className="w-full text-left">
                                             <thead>
                                                 <tr className="border-b border-border/50">
-                                                    <th className="pb-3 pt-4 px-5 text-[9px] font-black text-text-muted uppercase tracking-[0.2em]">Instance</th>
+                                                    <th className="pb-3 pt-4 px-5 text-[9px] font-black text-text-muted uppercase tracking-[0.2em]">Target</th>
                                                     <th className="pb-3 pt-4 px-5 text-[9px] font-black text-text-muted uppercase tracking-[0.2em]">IP</th>
                                                     <th className="pb-3 pt-4 px-5 text-[9px] font-black text-text-muted uppercase tracking-[0.2em]">Capabilities</th>
                                                     <th className="pb-3 pt-4 px-5 text-[9px] font-black text-text-muted uppercase tracking-[0.2em]">Last Seen</th>
@@ -4428,7 +4652,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                                     <div className="relative group">
                                         <input
                                             type="text"
-                                            placeholder="e.g. 192.168.1.50 or stigix-leader.local"
+                                            placeholder={isTunnelConnected ? `⚡ Managed via Fleet Gateway Tunnel (Leader: ${registryStatus?.leader_tunnel_info?.siteName || 'Connected'})` : "e.g. 192.168.1.50 or stigix-leader.local"}
                                             value={staticLeaderUrl}
                                             onChange={(e) => setStaticLeaderUrl(e.target.value)}
                                             onKeyDown={(e) => e.key === 'Enter' && handleTestConnectivity()}
@@ -4440,7 +4664,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                                                     ? "bg-emerald-500/10 text-emerald-500 border-emerald-500/20"
                                                     : "bg-red-500/10 text-red-500 border-red-500/20"
                                             }`}>
-                                                {connectivityResult.success ? <><CheckCircle size={10} /> Reachable</> : <><XCircle size={10} /> {connectivityResult.error || 'Failed'}</>}
+                                                {connectivityResult.success ? <><CheckCircle size={10} /> {connectivityResult.leaderInfo ? `Reachable: ${connectivityResult.leaderInfo}` : 'Reachable'}</> : <><XCircle size={10} /> {connectivityResult.error || 'Failed'}</>}
                                             </div>
                                         )}
                                     </div>
@@ -4462,7 +4686,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                                     )}
                                     <button
                                         onClick={handleTestConnectivity}
-                                        disabled={isTestingConnectivity || !staticLeaderUrl}
+                                        disabled={isTestingConnectivity || (!staticLeaderUrl && !isTunnelConnected)}
                                         className="bg-card hover:bg-card-hover border border-border rounded-xl px-5 py-2 text-[10px] font-black uppercase tracking-widest transition-all hover:border-blue-500/30 disabled:opacity-50 flex items-center justify-center gap-2"
                                     >
                                         {isTestingConnectivity ? <RefreshCw className="animate-spin" size={12} /> : <Zap size={12} className="text-blue-500" />}
@@ -4499,7 +4723,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                                 </div>
                             )}
 
-                            {/* Global Provisioning Status & Opt-In Card */}
+                            {/* Mesh Provisioning Status & Opt-In Card */}
                             <div className="bg-card border border-border rounded-2xl p-6 shadow-sm space-y-4">
                                 <div className="flex items-center justify-between">
                                     <div className="flex items-center gap-3">
@@ -4507,7 +4731,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                                             <Layers size={18} />
                                         </div>
                                         <div>
-                                            <h3 className="text-sm font-black text-text-primary tracking-tight">Central Global Provisioning</h3>
+                                            <h3 className="text-sm font-black text-text-primary tracking-tight">Mesh Provisioning</h3>
                                             <p className="text-[10px] text-text-muted mt-0.5 opacity-70">Automatically pull shared application catalogues and probes published by your Leader</p>
                                         </div>
                                     </div>
@@ -4532,7 +4756,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                                             }`}
                                         >
                                             {provisioningToggling ? <RefreshCw size={12} className="animate-spin" /> : <Power size={12} />}
-                                            {provisioningData?.state?.enabled ? 'Global Provisioning: ON' : 'Global Provisioning: OFF'}
+                                            {provisioningData?.state?.enabled ? 'Mesh Provisioning: ON' : 'Mesh Provisioning: OFF'}
                                         </button>
                                     </div>
                                 </div>
@@ -4545,6 +4769,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                                                 { key: 'connectivity-probes', label: 'Probes Sync', icon: Zap, color: 'cyan' },
                                                 { key: 'convergence-sla', label: 'SLA Sync', icon: Activity, color: 'purple' },
                                                 { key: 'prisma-sase', label: 'Prisma SASE Sync', icon: Lock, color: 'blue' },
+                                                { key: 'ca-certificates', label: 'CA Certificates Sync', icon: ShieldCheck, color: 'emerald' },
                                                 { key: 'security-config', label: 'Security Sync', icon: Shield, color: 'red' },
                                                 { key: 'voice-config', label: 'Voice Sync', icon: PhoneCall, color: 'indigo' },
                                                 { key: 'iot-config', label: 'IoT Sync', icon: Radio, color: 'amber' },
@@ -4863,7 +5088,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                                 <div className="flex items-center gap-2">
                                     <Shield size={14} className="text-emerald-500" />
                                     <h3 className="text-xs font-black text-text-primary uppercase tracking-wider">
-                                        Local Appliance Target & Security Service
+                                        Local Node & Services
                                     </h3>
                                 </div>
                                 <div className="flex items-center gap-2">
@@ -4915,7 +5140,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                                             </button>
                                         </div>
                                     </div>
-                                    <p className="text-[8.5px] text-text-muted opacity-60">Identifies this appliance across the mesh and Target Controller Leader.</p>
+                                    <p className="text-[8.5px] text-text-muted opacity-60">Identifies this node across the mesh and Leader.</p>
                                 </div>
 
                                 {/* ── Right Column: EICAR Security Target Service ── */}
@@ -4994,10 +5219,10 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                         <div>
                             <h3 className="text-xs font-black text-text-primary uppercase tracking-wider flex items-center gap-2">
                                 <Radio size={14} className="text-blue-500" />
-                                Discovered & Remote Target Endpoints
+                                Discovered & Static Targets
                             </h3>
                             <p className="text-[10px] text-text-muted opacity-70 tracking-tight mt-0.5">
-                                Target nodes learned dynamically from the Target Controller Leader or created manually.
+                                Target nodes learned dynamically from the Leader or added as static entries.
                             </p>
                         </div>
                         <span className="text-[10px] font-mono font-bold text-text-muted bg-card-secondary px-2.5 py-1 rounded-lg border border-border shrink-0 self-start sm:self-auto">
@@ -5045,7 +5270,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
 
                                             {/* ── Single Unified Origin Badge ── */}
                                             {isSelf ? (
-                                                <span className="px-1.5 py-0.5 rounded text-[8px] font-black uppercase tracking-widest bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 flex items-center gap-1 shadow-sm" title="Local Stigix Appliance">
+                                                <span className="px-1.5 py-0.5 rounded text-[8px] font-black uppercase tracking-widest bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 flex items-center gap-1 shadow-sm" title="Local Stigix Node">
                                                     <Globe size={8} /> Local Node
                                                 </span>
                                             ) : t.meta?.registry ? (
@@ -5222,7 +5447,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                                                 if (!copilotApiKey.trim()) return;
                                                 setIsTestingCopilot(true);
                                                 try {
-                                                    const res = await fetch('/api/copilot/test-key', {
+                                                    const res = await apiFetch('/api/copilot/test-key', {
                                                         method: 'POST',
                                                         headers: authHeaders,
                                                         body: JSON.stringify({ apiKey: copilotApiKey.trim() })
@@ -5247,7 +5472,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                                                 if (!copilotApiKey.trim()) return;
                                                 setIsSavingCopilot(true);
                                                 try {
-                                                    const res = await fetch('/api/copilot/config', {
+                                                    const res = await apiFetch('/api/copilot/config', {
                                                         method: 'POST',
                                                         headers: authHeaders,
                                                         body: JSON.stringify({ apiKey: copilotApiKey.trim() })
@@ -5278,7 +5503,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                                                 onClick={async () => {
                                                     if (!confirm('Are you sure you want to remove your Anthropic API key?')) return;
                                                     try {
-                                                        const res = await fetch('/api/copilot/config', {
+                                                        const res = await apiFetch('/api/copilot/config', {
                                                             method: 'POST',
                                                             headers: authHeaders,
                                                             body: JSON.stringify({ apiKey: '' })
@@ -5312,7 +5537,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                                             onChange={async (e) => {
                                                 const model = e.target.value;
                                                 try {
-                                                    const res = await fetch('/api/copilot/config', {
+                                                    const res = await apiFetch('/api/copilot/config', {
                                                         method: 'POST',
                                                         headers: authHeaders,
                                                         body: JSON.stringify({ defaultModel: model })
@@ -5349,7 +5574,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                                             onChange={async (e) => {
                                                 const val = e.target.checked;
                                                 try {
-                                                    const res = await fetch('/api/copilot/config', {
+                                                    const res = await apiFetch('/api/copilot/config', {
                                                         method: 'POST',
                                                         headers: authHeaders,
                                                         body: JSON.stringify({ requireConfirmation: val })
@@ -5604,7 +5829,8 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                     {!slsConfig ? (
                         <div className="text-center text-text-muted text-xs font-bold tracking-widest animate-pulse py-12">Loading SLS Configuration...</div>
                     ) : (
-                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                        <div className="space-y-8">
+                            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
                             <div className="space-y-6">
                                 <div className="bg-card-secondary/30 border border-border rounded-2xl p-6 space-y-6">
 
@@ -5659,7 +5885,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                                             onClick={async () => {
                                                 setSaving(true);
                                                 try {
-                                                    const res = await fetch('/api/security/config', {
+                                                    const res = await apiFetch('/api/security/config', {
                                                         method: 'POST',
                                                         headers: authHeaders,
                                                         body: JSON.stringify({ sls_config: slsConfig })
@@ -5706,11 +5932,297 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                                         <li className="list-disc">Automatically detects the Site on which Stigix is running.</li>
                                         <li className="list-disc">Builds the network topology of Prisma SD-WAN devices.</li>
                                         <li className="list-disc">Checks flow paths for failover convergence tests.</li>
+                                        <li className="list-disc">Enables 1-Click extraction of Forward Trust CA for SSL Decryption testing.</li>
                                     </ul>
                                 </div>
                             </div>
                         </div>
-                    )}
+
+                        {/* ─── Forward Trust CA & SSL Decryption Section ───────── */}
+                        <div className="border-t border-border/60 pt-8 space-y-6">
+                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                                <div className="flex items-center gap-3">
+                                    <div className="p-2.5 bg-emerald-500/10 text-emerald-500 rounded-xl border border-emerald-500/20">
+                                        <Key size={22} />
+                                    </div>
+                                    <div>
+                                        <div className="flex items-center gap-2.5">
+                                            <h3 className="text-base font-black text-text-primary tracking-tight">SSL Decryption & Enterprise CA Certificates</h3>
+                                            {certStatus?.installed ? (
+                                                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-emerald-500/10 text-emerald-400 border border-emerald-500/30">
+                                                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                                                    Active & Decryption Ready ({certStatus.count})
+                                                </span>
+                                            ) : (
+                                                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-amber-500/10 text-amber-400 border border-amber-500/30">
+                                                    No CA Installed
+                                                </span>
+                                            )}
+                                        </div>
+                                        <p className="text-[11px] font-bold text-text-muted tracking-wide mt-0.5 opacity-80">
+                                            Trust store for Prisma Access Forward Trust CA, enabling security threat testing and synthetic probes through SSL decryption without TLS errors.
+                                        </p>
+                                    </div>
+                                </div>
+
+                                {/* Action Buttons */}
+                                <div className="flex items-center gap-2.5 flex-wrap">
+                                    <button
+                                        onClick={handleFetchPrismaCerts}
+                                        disabled={isFetchingCerts || !slsConfig?.client_id || !slsConfig?.tsg_id}
+                                        className="px-4 py-2.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white rounded-xl text-[10px] font-black uppercase tracking-widest transition-all shadow-md shadow-blue-500/20 disabled:opacity-50 flex items-center gap-2"
+                                        title={(!slsConfig?.client_id || !slsConfig?.tsg_id) ? "Configure Prisma SASE credentials first" : "1-Click auto-import Forward Trust CA directly from Prisma API"}
+                                    >
+                                        {isFetchingCerts ? <RefreshCw size={13} className="animate-spin" /> : <Zap size={13} className="text-yellow-300" />}
+                                        {certStatus?.installed ? 'Re-sync CA from Prisma' : 'Auto-Import from Prisma SASE'}
+                                    </button>
+
+                                    <button
+                                        onClick={() => setShowUploadModal(true)}
+                                        className="px-3.5 py-2.5 bg-card hover:bg-card-hover text-text-primary border border-border hover:border-text-muted/40 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-2"
+                                    >
+                                        <Upload size={13} className="text-blue-400" />
+                                        Upload / Paste .crt
+                                    </button>
+
+                                    {certStatus?.installed && (
+                                        <>
+                                            <button
+                                                onClick={handleDownloadBundle}
+                                                className="p-2.5 bg-card hover:bg-card-hover text-text-muted hover:text-text-primary border border-border rounded-xl transition-all"
+                                                title="Download CA Bundle (PEM)"
+                                            >
+                                                <Download size={14} />
+                                            </button>
+                                            <button
+                                                onClick={() => handleDeleteCert()}
+                                                className="p-2.5 bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/20 rounded-xl transition-all"
+                                                title="Remove all custom CA certificates"
+                                            >
+                                                <Trash2 size={14} />
+                                            </button>
+                                        </>
+                                    )}
+                                </div>
+                            </div>
+
+                            {/* Certificates List / Empty State */}
+                            {!certStatus?.installed || !certStatus?.certificates || certStatus.certificates.length === 0 ? (
+                                <div className="bg-card-secondary/20 border border-border/60 rounded-2xl p-6 text-center space-y-3">
+                                    <div className="w-10 h-10 rounded-full bg-blue-500/10 text-blue-400 mx-auto flex items-center justify-center">
+                                        <Shield size={20} />
+                                    </div>
+                                    <div>
+                                        <h4 className="text-xs font-black text-text-primary uppercase tracking-wider">No Custom CA Certificates Installed</h4>
+                                        <p className="text-[11px] text-text-muted max-w-xl mx-auto mt-1 leading-relaxed">
+                                            If your network uses Prisma Access SSL Decryption (Forward Proxy), import your tenant's Forward Trust CA. Stigix will automatically inject it into Node.js and Python engines to validate decrypted threats without TLS handshake errors.
+                                        </p>
+                                    </div>
+                                </div>
+                            ) : (
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    {certStatus.certificates.map((cert: any) => (
+                                        <div key={cert.id || cert.fingerprint256} className="bg-card-secondary/30 border border-border rounded-2xl p-5 space-y-3 relative group hover:border-blue-500/30 transition-all">
+                                            <div className="flex items-start justify-between gap-2">
+                                                <div className="flex items-center gap-2.5">
+                                                    <div className="p-2 bg-emerald-500/10 text-emerald-400 rounded-lg">
+                                                        <Lock size={16} />
+                                                    </div>
+                                                    <div>
+                                                        <h4 className="text-xs font-black text-text-primary tracking-tight truncate max-w-[220px]">
+                                                            {cert.name || cert.common_name}
+                                                        </h4>
+                                                        <div className="flex items-center gap-1.5 mt-0.5">
+                                                            <span className="px-1.5 py-0.5 rounded bg-blue-500/10 text-blue-400 border border-blue-500/20 font-mono text-[9px] font-bold uppercase">
+                                                                {cert.algorithm || 'RSA'}
+                                                            </span>
+                                                            <span className="px-1.5 py-0.5 rounded bg-purple-500/10 text-purple-400 border border-purple-500/20 font-mono text-[9px] font-bold">
+                                                                {cert.folder || cert.source}
+                                                            </span>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                                <button
+                                                    onClick={() => handleDeleteCert(cert.id)}
+                                                    className="opacity-0 group-hover:opacity-100 p-1.5 hover:bg-rose-500/20 text-text-muted hover:text-rose-400 rounded-lg transition-all"
+                                                    title="Delete this certificate"
+                                                >
+                                                    <Trash2 size={13} />
+                                                </button>
+                                            </div>
+
+                                            <div className="space-y-1.5 pt-1 text-[10px] font-bold">
+                                                <div className="flex items-center justify-between text-text-muted">
+                                                    <span>Common Name (CN):</span>
+                                                    <span className="font-mono text-text-primary truncate max-w-[180px]">{cert.common_name}</span>
+                                                </div>
+                                                <div className="flex items-center justify-between text-text-muted">
+                                                    <span>Issuer:</span>
+                                                    <span className="font-mono text-text-secondary truncate max-w-[180px]">{cert.issuer}</span>
+                                                </div>
+                                                <div className="flex items-center justify-between text-text-muted">
+                                                    <span>Valid Until:</span>
+                                                    <span className="font-mono text-emerald-400">{cert.valid_to ? new Date(cert.valid_to).toLocaleDateString() : 'N/A'}</span>
+                                                </div>
+                                            </div>
+
+                                            <div className="pt-2 border-t border-border/40 flex items-center justify-between">
+                                                <span className="font-mono text-[9px] text-text-muted truncate max-w-[200px]" title={cert.fingerprint256}>
+                                                    SHA256: {cert.fingerprint256?.substring(0, 17)}...
+                                                </span>
+                                                <button
+                                                    onClick={async () => {
+                                                        try {
+                                                            const res = await apiFetch(`/api/security/certificates/bundle`, { headers: authHeaders });
+                                                            const raw = await res.text();
+                                                            setViewPemModal({ open: true, name: cert.name || cert.common_name, pem: raw });
+                                                        } catch {}
+                                                    }}
+                                                    className="text-[9px] font-black text-blue-400 hover:text-blue-300 uppercase tracking-wider"
+                                                >
+                                                    View PEM
+                                                </button>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                )}
+                </div>
+            )}
+
+            {/* ─── Upload Manual Certificate Modal ─────────────────────────────── */}
+            {showUploadModal && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-in fade-in duration-200">
+                    <div className="bg-card border border-border rounded-2xl w-full max-w-xl p-6 space-y-6 shadow-2xl animate-in zoom-in-95 duration-200">
+                        <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-3">
+                                <div className="p-2 bg-blue-500/10 text-blue-400 rounded-xl">
+                                    <Upload size={20} />
+                                </div>
+                                <div>
+                                    <h3 className="text-sm font-black text-text-primary tracking-tight">Upload Enterprise CA Certificate</h3>
+                                    <p className="text-[10px] text-text-muted">Paste PEM certificate text or upload a .crt / .pem file</p>
+                                </div>
+                            </div>
+                            <button onClick={() => setShowUploadModal(false)} className="p-1.5 hover:bg-card-hover rounded-lg text-text-muted">
+                                <X size={16} />
+                            </button>
+                        </div>
+
+                        <div className="space-y-4">
+                            <div className="space-y-2">
+                                <label className="text-[10px] font-extrabold text-text-muted uppercase tracking-widest pl-1">Certificate Name (Optional)</label>
+                                <input
+                                    type="text"
+                                    placeholder="e.g. Prisma-Forward-Trust-CA"
+                                    value={uploadCertName}
+                                    onChange={e => setUploadCertName(e.target.value)}
+                                    className="w-full bg-card-secondary/50 border border-border rounded-xl px-4 py-2.5 text-xs font-mono outline-none focus:ring-1 focus:ring-blue-500"
+                                />
+                            </div>
+
+                            <div className="space-y-2">
+                                <div className="flex items-center justify-between pl-1">
+                                    <label className="text-[10px] font-extrabold text-text-muted uppercase tracking-widest">Certificate Content (PEM Format)</label>
+                                    <label className="text-[9px] font-black text-blue-400 hover:text-blue-300 uppercase tracking-wider cursor-pointer flex items-center gap-1">
+                                        <FileText size={12} />
+                                        Choose File (.crt, .pem)
+                                        <input
+                                            type="file"
+                                            accept=".crt,.pem,.cer"
+                                            className="hidden"
+                                            onChange={e => {
+                                                const file = e.target.files?.[0];
+                                                if (file) {
+                                                    const reader = new FileReader();
+                                                    reader.onload = (ev) => {
+                                                        const text = ev.target?.result as string;
+                                                        if (text) setUploadPem(text);
+                                                        if (!uploadCertName) setUploadCertName(file.name.replace(/\.[^/.]+$/, ''));
+                                                    };
+                                                    reader.readAsText(file);
+                                                }
+                                            }}
+                                        />
+                                    </label>
+                                </div>
+                                <textarea
+                                    rows={8}
+                                    placeholder="-----BEGIN CERTIFICATE-----&#10;MIIDAjCCAeqgAwIBAgIFAII3n3QwDQYJKoZIhvcNAQELBQAwLzEtMCsGA1UEAxMk...&#10;-----END CERTIFICATE-----"
+                                    value={uploadPem}
+                                    onChange={e => setUploadPem(e.target.value)}
+                                    className="w-full bg-card-secondary/50 border border-border rounded-xl p-4 text-xs font-mono outline-none focus:ring-1 focus:ring-blue-500 text-text-primary resize-none font-medium"
+                                />
+                            </div>
+                        </div>
+
+                        <div className="flex items-center justify-end gap-3 pt-2">
+                            <button
+                                onClick={() => setShowUploadModal(false)}
+                                className="px-4 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest text-text-muted hover:text-text-primary bg-card hover:bg-card-hover border border-border transition-all"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                onClick={handleUploadManualCert}
+                                disabled={isUploadingCert || !uploadPem.trim()}
+                                className="px-5 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest bg-blue-600 hover:bg-blue-500 text-white transition-all shadow-md shadow-blue-600/20 disabled:opacity-50 flex items-center gap-2"
+                            >
+                                {isUploadingCert ? <RefreshCw size={13} className="animate-spin" /> : <CheckCircle2 size={13} />}
+                                Install Certificate
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* ─── View PEM Certificate Modal ──────────────────────────────────── */}
+            {viewPemModal.open && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-in fade-in duration-200">
+                    <div className="bg-card border border-border rounded-2xl w-full max-w-xl p-6 space-y-6 shadow-2xl animate-in zoom-in-95 duration-200">
+                        <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-3">
+                                <div className="p-2 bg-emerald-500/10 text-emerald-400 rounded-xl">
+                                    <Key size={20} />
+                                </div>
+                                <div>
+                                    <h3 className="text-sm font-black text-text-primary tracking-tight">{viewPemModal.name}</h3>
+                                    <p className="text-[10px] text-text-muted font-mono">X.509 Certificate (PEM)</p>
+                                </div>
+                            </div>
+                            <button onClick={() => setViewPemModal({ open: false, name: '', pem: '' })} className="p-1.5 hover:bg-card-hover rounded-lg text-text-muted">
+                                <X size={16} />
+                            </button>
+                        </div>
+
+                        <div className="relative">
+                            <pre className="w-full bg-card-secondary/70 border border-border rounded-xl p-4 text-[11px] font-mono text-emerald-300 max-h-80 overflow-y-auto select-all whitespace-pre-wrap break-all">
+                                {viewPemModal.pem}
+                            </pre>
+                            <button
+                                onClick={() => {
+                                    navigator.clipboard.writeText(viewPemModal.pem);
+                                    showSuccess('Certificate PEM copied to clipboard');
+                                }}
+                                className="absolute top-3 right-3 p-2 bg-card/80 hover:bg-card text-text-muted hover:text-text-primary border border-border rounded-lg shadow transition-all flex items-center gap-1 text-[9px] font-bold uppercase"
+                            >
+                                <Copy size={12} />
+                                Copy
+                            </button>
+                        </div>
+
+                        <div className="flex justify-end">
+                            <button
+                                onClick={() => setViewPemModal({ open: false, name: '', pem: '' })}
+                                className="px-5 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest bg-card hover:bg-card-hover text-text-primary border border-border transition-all"
+                            >
+                                Close
+                            </button>
+                        </div>
+                    </div>
                 </div>
             )}
 

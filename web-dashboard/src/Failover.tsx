@@ -1,8 +1,10 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import { usePeerContext } from './PeerContext';
 import { AreaChart, Area, ResponsiveContainer, YAxis, XAxis, Tooltip } from 'recharts';
-import { Activity, Clock, Calendar, Shield, Search, ChevronRight, BarChart3, AlertCircle, Info, Play, Pause, Trash2, Zap, Server, Globe, Hash, Plus, Target, X, Square, ArrowRightLeft, RotateCw, ZoomIn, Rewind, Camera } from 'lucide-react';
+import { Activity, Clock, Calendar, Shield, Search, ChevronRight, BarChart3, AlertCircle, Info, Play, Pause, Trash2, Zap, Server, Globe, Hash, Plus, Target, X, Square, ArrowRightLeft, RotateCw, ZoomIn, Rewind, Camera, Eye, EyeOff } from 'lucide-react';
 import { toPng } from 'html-to-image';
 import { isValidIpOrFqdn } from './utils/validation';
+import { FailoverSkeleton } from './components/skeletons/FailoverSkeleton';
 
 interface FailoverProps {
     token: string;
@@ -21,6 +23,7 @@ export default function Failover(props: FailoverProps) {
     const [historySearch, setHistorySearch] = useState('');
     const [nowTs, setNowTs] = useState(Date.now());
     const [exportingPocId, setExportingPocId] = useState<string | null>(null);
+    const [showAllTargetsDuringTest, setShowAllTargetsDuringTest] = useState(false);
 
     const allTargets = useMemo(() => {
         const combined = [...endpoints];
@@ -71,15 +74,16 @@ export default function Failover(props: FailoverProps) {
         return () => clearInterval(intv);
     }, []);
 
+    const { gFetch, activePeerId } = usePeerContext();
     const authHeaders = () => ({ 'Authorization': `Bearer ${token}` });
 
     const fetchEndpoints = async () => {
         try {
-            const res = await fetch('/api/convergence/endpoints', { headers: authHeaders() });
+            const res = await gFetch('/api/convergence/endpoints', { headers: authHeaders() });
             const data = await res.json();
             setEndpoints(data);
 
-            const ifaceRes = await fetch('/api/config/interfaces', { headers: authHeaders() });
+            const ifaceRes = await gFetch('/api/config/interfaces', { headers: authHeaders() });
             const ifaceData = await ifaceRes.json();
             setActiveInterfaces(ifaceData);
         } catch (e) { }
@@ -87,7 +91,7 @@ export default function Failover(props: FailoverProps) {
 
     const fetchStatus = async () => {
         try {
-            const res = await fetch('/api/convergence/status', { headers: authHeaders() });
+            const res = await gFetch('/api/convergence/status', { headers: authHeaders() });
             const data = await res.json();
             setActiveTests(data.filter((t: any) => t.running !== false));
         } catch (e) { }
@@ -95,7 +99,7 @@ export default function Failover(props: FailoverProps) {
 
     const fetchHistory = async () => {
         try {
-            const res = await fetch('/api/convergence/history', { headers: authHeaders() });
+            const res = await gFetch('/api/convergence/history', { headers: authHeaders() });
             const data = await res.json();
             setHistory(data);
         } catch (e) { } finally {
@@ -162,7 +166,7 @@ export default function Failover(props: FailoverProps) {
         // Fetch Thresholds
         const fetchThresholds = async () => {
             try {
-                const res = await fetch('/api/config/convergence', {
+                const res = await gFetch('/api/config/convergence', {
                     headers: { 'Authorization': `Bearer ${token}` }
                 });
                 const data = await res.json();
@@ -178,7 +182,7 @@ export default function Failover(props: FailoverProps) {
         fetchThresholds();
 
         // Fetch shared targets with convergence capability
-        fetch('/api/targets', { headers: authHeaders() })
+        gFetch('/api/targets', { headers: authHeaders() })
             .then(r => r.json())
             .then(data => setConvergenceTargets((Array.isArray(data) ? data : []).filter((t: any) => t.enabled && t.capabilities?.convergence)))
             .catch(() => { });
@@ -189,9 +193,14 @@ export default function Failover(props: FailoverProps) {
             fetchThresholds();
         }, 5000);
         return () => clearInterval(interval);
-    }, []);
+    }, [activePeerId]);
 
     useEffect(() => {
+        // Reachability must be checked by the node itself — proxying via the
+        // gateway from the Leader makes no sense and causes a request storm.
+        // Skip entirely in remote view mode.
+        if (activePeerId) return;
+
         const checkReachability = async () => {
             if (allTargets.length === 0) return;
             await Promise.all(allTargets.map(async (target) => {
@@ -199,7 +208,7 @@ export default function Failover(props: FailoverProps) {
                 let isReachable = false;
                 for (let attempt = 0; attempt < 3; attempt++) {
                     try {
-                        const res = await fetch('/api/convergence/reachability', {
+                        const res = await gFetch('/api/convergence/reachability', {
                             method: 'POST',
                             headers: { ...authHeaders(), 'Content-Type': 'application/json' },
                             body: JSON.stringify({ target: target.target, port: target.port })
@@ -217,17 +226,17 @@ export default function Failover(props: FailoverProps) {
                 setReachability(prev => ({ ...prev, [target.id]: isReachable }));
             }));
         };
-        
+
         checkReachability();
         const intv = setInterval(checkReachability, 10000);
         return () => clearInterval(intv);
-    }, [allTargets]);
+    }, [allTargets, activePeerId]);
 
     const addEndpoint = async () => {
         if (!newTarget.label || !newTarget.target) return;
         if (!isValidIpOrFqdn(newTarget.target)) return alert("Invalid Target IP/FQDN format");
         try {
-            const res = await fetch('/api/convergence/endpoints', {
+            const res = await gFetch('/api/convergence/endpoints', {
                 method: 'POST',
                 headers: { ...authHeaders(), 'Content-Type': 'application/json' },
                 body: JSON.stringify(newTarget)
@@ -243,7 +252,7 @@ export default function Failover(props: FailoverProps) {
     const deleteEndpoint = async (id: string) => {
         if (!confirm('Are you sure you want to delete this target?')) return;
         try {
-            await fetch(`/api/convergence/endpoints/${id}`, { method: 'DELETE', headers: authHeaders() });
+            await gFetch(`/api/convergence/endpoints/${id}`, { method: 'DELETE', headers: authHeaders() });
             fetchEndpoints();
             // Fix selection counter: remove from selected if deleted
             setSelectedEndpoints(prev => prev.filter(eId => eId !== id));
@@ -255,7 +264,7 @@ export default function Failover(props: FailoverProps) {
         setIsStarting(true);
         try {
             await Promise.all(targets.map(endpoint =>
-                fetch('/api/convergence/start', {
+                gFetch('/api/convergence/start', {
                     method: 'POST',
                     headers: { ...authHeaders(), 'Content-Type': 'application/json' },
                     body: JSON.stringify({
@@ -303,7 +312,7 @@ export default function Failover(props: FailoverProps) {
         try {
             // Save metrics time series to server for historical curve rendering
             if (testId && liveMetricsSeries[testId]?.length > 0) {
-                fetch('/api/convergence/history/save-metrics', {
+                gFetch('/api/convergence/history/save-metrics', {
                     method: 'POST',
                     headers: { ...authHeaders(), 'Content-Type': 'application/json' },
                     body: JSON.stringify({
@@ -315,7 +324,7 @@ export default function Failover(props: FailoverProps) {
                 activeTests.forEach(t => {
                     const s = liveMetricsSeries[t.testId];
                     if (s && s.length > 0) {
-                        fetch('/api/convergence/history/save-metrics', {
+                        gFetch('/api/convergence/history/save-metrics', {
                             method: 'POST',
                             headers: { ...authHeaders(), 'Content-Type': 'application/json' },
                             body: JSON.stringify({
@@ -327,7 +336,7 @@ export default function Failover(props: FailoverProps) {
                 });
             }
 
-            await fetch('/api/convergence/stop', {
+            await gFetch('/api/convergence/stop', {
                 method: 'POST',
                 headers: { ...authHeaders(), 'Content-Type': 'application/json' },
                 body: JSON.stringify({ testId })
@@ -342,10 +351,50 @@ export default function Failover(props: FailoverProps) {
     const resetIds = async () => {
         if (!confirm('This will reset the CONV-XXXX counter to CONV-0000. Continue?')) return;
         try {
-            await fetch('/api/convergence/counter', {
+            await gFetch('/api/convergence/counter', {
                 method: 'DELETE',
                 headers: { ...authHeaders(), 'Content-Type': 'application/json' }
             });
+        } catch (e) { }
+    };
+
+    const purgeHistory = async () => {
+        if (!confirm('Are you sure you want to purge all failover test history? This action cannot be undone.')) return;
+        try {
+            const res = await gFetch('/api/convergence/history', {
+                method: 'DELETE',
+                headers: { ...authHeaders(), 'Content-Type': 'application/json' }
+            });
+            if (res.ok) {
+                setHistory([]);
+                setExpandedHistory(null);
+            }
+        } catch (e) { }
+    };
+
+    const handleDeleteTest = async (testItem: any) => {
+        const rawId = testItem.test_id || testItem.testId || '';
+        const label = testItem.label || rawId;
+        if (!confirm(`Delete failover test record "${label}"?`)) return;
+        try {
+            const testId = rawId.match(/(CONV-\d+)/)?.[1] || rawId;
+            const res = await gFetch(`/api/convergence/history/${encodeURIComponent(testId)}?timestamp=${encodeURIComponent(testItem.timestamp || testItem.start_time || '')}`, {
+                method: 'DELETE',
+                headers: { ...authHeaders(), 'Content-Type': 'application/json' }
+            });
+            if (res.ok) {
+                setHistory(prev => prev.filter(t => {
+                    const matchId = (t.test_id || t.testId) === rawId;
+                    const matchTs = testItem.timestamp && (t.timestamp || t.start_time) === (testItem.timestamp || testItem.start_time);
+                    if (testItem.timestamp) {
+                        return !(matchId && matchTs);
+                    }
+                    return !matchId;
+                }));
+                if (expandedHistory === (testItem.test_id + testItem.timestamp)) {
+                    setExpandedHistory(null);
+                }
+            }
         } catch (e) { }
     };
 
@@ -469,7 +518,7 @@ export default function Failover(props: FailoverProps) {
         }));
 
         try {
-            const res = await fetch('/api/convergence/live-path', {
+            const res = await gFetch('/api/convergence/live-path', {
                 method: 'POST',
                 headers: { ...authHeaders(), 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -529,7 +578,7 @@ export default function Failover(props: FailoverProps) {
             const rawPort = testItem.source_port || getSourcePort(rawId);
             const sourcePort = rawPort && rawPort !== '????' ? parseInt(rawPort, 10) : undefined;
             const dstIp = testItem.target || testItem.destination_ip || testItem.dest_ip;
-            const res = await fetch('/api/convergence/history/refresh-path', {
+            const res = await gFetch('/api/convergence/history/refresh-path', {
                 method: 'POST',
                 headers: { ...authHeaders(), 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -565,6 +614,10 @@ export default function Failover(props: FailoverProps) {
             setRefreshingPathId(null);
         }
     };
+
+    if (loadingHistory && endpoints.length === 0 && sortedHistory.length === 0) {
+        return <FailoverSkeleton />;
+    }
 
     return (
         <div className="space-y-6 animate-in fade-in duration-500 pb-12">
@@ -622,12 +675,41 @@ export default function Failover(props: FailoverProps) {
                         <div className="flex items-center gap-2">
                             <Server size={14} className="text-blue-500" />
                             <h3 className="text-xs font-bold uppercase tracking-wider text-text-secondary">Stigix Targets</h3>
-                            {allTargets.length > 0 && (
+                            {activeTests.length > 0 && !showAllTargetsDuringTest ? (
+                                <span className="text-[10px] font-bold text-blue-400 bg-blue-500/10 px-2 py-0.5 rounded-full border border-blue-500/20 flex items-center gap-1.5 shadow-sm">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-ping"></span>
+                                    {(() => {
+                                        const isTargetActive = (tItem: any) => activeTests.some(t => 
+                                            (t.target === tItem.target && String(t.port || 6100) === String(tItem.port || 6100)) ||
+                                            (t.label && t.label === tItem.label) ||
+                                            (t.test_id && (t.test_id.includes(tItem.label) || (tItem.target && t.test_id.includes(tItem.target))))
+                                        );
+                                        const count = allTargets.filter(isTargetActive).length;
+                                        return `${count} ACTIVE • ${allTargets.length - count} HIDDEN`;
+                                    })()}
+                                </span>
+                            ) : allTargets.length > 0 && (
                                 <span className="text-[10px] font-bold text-text-muted bg-card px-1.5 py-0.5 rounded border border-border">
                                     {allTargets.length}
                                 </span>
                             )}
                         </div>
+
+                        {activeTests.length > 0 && (
+                            <button
+                                onClick={() => setShowAllTargetsDuringTest(prev => !prev)}
+                                className={`flex items-center gap-1.5 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider rounded-lg border transition-all cursor-pointer shadow-sm ${
+                                    showAllTargetsDuringTest 
+                                        ? 'bg-card text-text-muted border-border hover:text-text-primary' 
+                                        : 'bg-blue-500/10 border-blue-500/30 text-blue-400 hover:bg-blue-500/20'
+                                }`}
+                                title={showAllTargetsDuringTest ? "Focus on active running target only" : "Show all idle targets"}
+                            >
+                                {showAllTargetsDuringTest ? <EyeOff size={12} /> : <Eye size={12} />}
+                                <span>{showAllTargetsDuringTest ? 'Focus Active' : `Show All (${allTargets.length})`}</span>
+                            </button>
+                        )}
+
                         <div className="relative">
                             <Search size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-text-muted" />
                             <input
@@ -679,10 +761,23 @@ export default function Failover(props: FailoverProps) {
                 </div>
                 <div className="flex flex-wrap gap-3 max-h-[360px] overflow-y-auto pr-2 scrollbar-thin scrollbar-thumb-border scrollbar-track-transparent">
                 {(() => {
-                    const filteredTargets = allTargets.filter(t => 
+                    const hasActiveTests = activeTests.length > 0;
+                    const isTargetActive = (tItem: any) => activeTests.some(t => 
+                        (t.target === tItem.target && String(t.port || 6100) === String(tItem.port || 6100)) ||
+                        (t.label && t.label === tItem.label) ||
+                        (t.test_id && (t.test_id.includes(tItem.label) || (tItem.target && t.test_id.includes(tItem.target))))
+                    );
+
+                    const baseFiltered = allTargets.filter(t => 
                         t.label.toLowerCase().includes(searchQuery.toLowerCase()) || 
                         t.target.toLowerCase().includes(searchQuery.toLowerCase())
                     );
+
+                    const activeFiltered = baseFiltered.filter(isTargetActive);
+                    const isFocusMode = hasActiveTests && !showAllTargetsDuringTest;
+                    const filteredTargets = (isFocusMode && activeFiltered.length > 0) 
+                        ? activeFiltered 
+                        : baseFiltered;
                     
                     if (filteredTargets.length === 0) {
                         return (
@@ -692,86 +787,104 @@ export default function Failover(props: FailoverProps) {
                         );
                     }
 
-                    return filteredTargets.map((e) => {
-                        const isSelected = selectedEndpoints.includes(e.id);
-                        const status = reachability[e.id];
-                        return (
-                            <div
-                                key={e.id}
-                                onClick={() => {
-                                    if (isSelected) setSelectedEndpoints(selectedEndpoints.filter(id => id !== e.id));
-                                    else setSelectedEndpoints([...selectedEndpoints, e.id]);
-                                }}
-                                className={`bg-card border px-3 py-2 rounded-xl group cursor-pointer transition-all flex items-center gap-3 shadow-sm hover:shadow-md ${isSelected ? 'border-blue-500 bg-blue-600/5 shadow-blue-500/10' : 'border-border'}`}
-                            >
-                                <div className={`w-3.5 h-3.5 rounded-sm border flex items-center justify-center transition-all shrink-0 ${isSelected ? 'bg-blue-600 border-blue-500' : 'bg-card-secondary border-border'}`}>
-                                    {isSelected && <Zap size={8} className="text-white" fill="currentColor" />}
-                                </div>
-
-                                {/* Reachability Dot */}
-                                <div className="shrink-0 flex items-center justify-center w-4">
-                                    {status === 'loading' || status === undefined ? (
-                                        <div className="w-1.5 h-1.5 rounded-full bg-border animate-pulse" title="Checking reachability..." />
-                                    ) : status ? (
-                                        <div className="relative flex h-2 w-2 items-center justify-center shrink-0" title="Reachable">
-                                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75" style={{ animationDuration: '3s' }}></span>
-                                            <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.6)]"></span>
+                    return (
+                        <>
+                            {filteredTargets.map((e) => {
+                                const isSelected = selectedEndpoints.includes(e.id);
+                                const status = reachability[e.id];
+                                return (
+                                    <div
+                                        key={e.id}
+                                        onClick={() => {
+                                            if (isSelected) setSelectedEndpoints(selectedEndpoints.filter(id => id !== e.id));
+                                            else setSelectedEndpoints([...selectedEndpoints, e.id]);
+                                        }}
+                                        className={`bg-card border px-3 py-2 rounded-xl group cursor-pointer transition-all flex items-center gap-3 shadow-sm hover:shadow-md ${isSelected ? 'border-blue-500 bg-blue-600/5 shadow-blue-500/10' : 'border-border'}`}
+                                    >
+                                        <div className={`w-3.5 h-3.5 rounded-sm border flex items-center justify-center transition-all shrink-0 ${isSelected ? 'bg-blue-600 border-blue-500' : 'bg-card-secondary border-border'}`}>
+                                            {isSelected && <Zap size={8} className="text-white" fill="currentColor" />}
                                         </div>
-                                    ) : (
-                                        <div className="w-1.5 h-1.5 rounded-full bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.6)]" title="Unreachable" />
-                                    )}
-                                </div>
 
-                                <div className="flex flex-col flex-1 min-w-0">
-                                    <h4 className={`text-xs font-bold transition-colors tracking-tight truncate ${isSelected ? 'text-blue-500' : 'text-text-primary'}`}>{e.label}</h4>
-                                    <p className="text-[9px] text-text-muted font-mono mt-0.5 truncate">{e.target}:{e.port}</p>
-                                </div>
-                                <div className="flex items-center gap-1.5 ml-2 border-l border-border/50 pl-3">
-                                    {!e.isRegistry && (
-                                        <button
-                                            onClick={(e_stop) => { e_stop.stopPropagation(); deleteEndpoint(e.id); }}
-                                            className="text-text-muted hover:text-red-500 p-1 opacity-0 group-hover:opacity-100 transition-opacity ml-1"
-                                        >
-                                            <Trash2 size={12} />
-                                        </button>
-                                    )}
-                                    {(() => {
-                                        const activeTestForTarget = activeTests.find(t => t.target === e.target && String(t.port || 6100) === String(e.port || 6100));
-                                        const isTesting = !!activeTestForTarget;
+                                        {/* Reachability Dot */}
+                                        <div className="shrink-0 flex items-center justify-center w-4">
+                                            {status === 'loading' || status === undefined ? (
+                                                <div className="w-1.5 h-1.5 rounded-full bg-border animate-pulse" title="Checking reachability..." />
+                                            ) : status ? (
+                                                <div className="relative flex h-2 w-2 items-center justify-center shrink-0" title="Reachable">
+                                                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75" style={{ animationDuration: '3s' }}></span>
+                                                    <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.6)]"></span>
+                                                </div>
+                                            ) : (
+                                                <div className="w-1.5 h-1.5 rounded-full bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.6)]" title="Unreachable" />
+                                            )}
+                                        </div>
 
-                                        return (
-                                            <>
+                                        <div className="flex flex-col flex-1 min-w-0">
+                                            <h4 className={`text-xs font-bold transition-colors tracking-tight truncate ${isSelected ? 'text-blue-500' : 'text-text-primary'}`}>{e.label}</h4>
+                                            <p className="text-[9px] text-text-muted font-mono mt-0.5 truncate">{e.target}:{e.port}</p>
+                                        </div>
+                                        <div className="flex items-center gap-1.5 ml-2 border-l border-border/50 pl-3">
+                                            {!e.isRegistry && (
                                                 <button
-                                                    onClick={(e_play) => { e_play.stopPropagation(); startTest([e.id]); }}
-                                                    disabled={isStarting || isTesting}
-                                                    className={`ml-2 p-1.5 rounded-md transition-colors border shadow-sm ${
-                                                        isTesting 
-                                                            ? 'bg-card-secondary text-text-muted border-transparent opacity-50 cursor-not-allowed' 
-                                                            : 'bg-blue-500/10 text-blue-500 hover:bg-blue-600 hover:text-white border-blue-500/20 hover:border-blue-600 disabled:opacity-50 disabled:cursor-not-allowed'
-                                                    }`}
-                                                    title={isTesting ? "Test already running" : "Launch Failover Test"}
+                                                    onClick={(e_stop) => { e_stop.stopPropagation(); deleteEndpoint(e.id); }}
+                                                    className="text-text-muted hover:text-red-500 p-1 opacity-0 group-hover:opacity-100 transition-opacity ml-1"
                                                 >
-                                                    <Play size={10} fill="currentColor" />
+                                                    <Trash2 size={12} />
                                                 </button>
-                                                <button
-                                                    onClick={(e_stop_test) => { e_stop_test.stopPropagation(); stopTest(activeTestForTarget?.testId); }}
-                                                    disabled={!isTesting}
-                                                    className={`p-1.5 rounded-md transition-all border shadow-sm ${
-                                                        isTesting
-                                                            ? 'bg-red-500 text-white hover:bg-red-600 border-red-500 shadow-red-500/40 cursor-pointer scale-110'
-                                                            : 'bg-card-secondary text-text-muted border-transparent opacity-30 cursor-not-allowed'
-                                                    }`}
-                                                    title={isTesting ? "Stop this test" : "No active test to stop"}
-                                                >
-                                                    <Square size={10} fill="currentColor" />
-                                                </button>
-                                            </>
-                                        );
-                                    })()}
+                                            )}
+                                            {(() => {
+                                                const activeTestForTarget = activeTests.find(t => t.target === e.target && String(t.port || 6100) === String(e.port || 6100));
+                                                const isTesting = !!activeTestForTarget;
+
+                                                return (
+                                                    <>
+                                                        <button
+                                                            onClick={(e_play) => { e_play.stopPropagation(); startTest([e.id]); }}
+                                                            disabled={isStarting || isTesting}
+                                                            className={`ml-2 p-1.5 rounded-md transition-colors border shadow-sm ${
+                                                                isTesting 
+                                                                    ? 'bg-card-secondary text-text-muted border-transparent opacity-50 cursor-not-allowed' 
+                                                                    : 'bg-blue-500/10 text-blue-500 hover:bg-blue-600 hover:text-white border-blue-500/20 hover:border-blue-600 disabled:opacity-50 disabled:cursor-not-allowed'
+                                                            }`}
+                                                            title={isTesting ? "Test already running" : "Launch Failover Test"}
+                                                        >
+                                                            <Play size={10} fill="currentColor" />
+                                                        </button>
+                                                        <button
+                                                            onClick={(e_stop_test) => { e_stop_test.stopPropagation(); stopTest(activeTestForTarget?.testId); }}
+                                                            disabled={!isTesting}
+                                                            className={`p-1.5 rounded-md transition-all border shadow-sm ${
+                                                                isTesting
+                                                                    ? 'bg-red-500 text-white hover:bg-red-600 border-red-500 shadow-red-500/40 cursor-pointer scale-110'
+                                                                    : 'bg-card-secondary text-text-muted border-transparent opacity-30 cursor-not-allowed'
+                                                            }`}
+                                                            title={isTesting ? "Stop this test" : "No active test to stop"}
+                                                        >
+                                                            <Square size={10} fill="currentColor" />
+                                                        </button>
+                                                    </>
+                                                );
+                                            })()}
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                            {isFocusMode && allTargets.length > filteredTargets.length && (
+                                <div className="w-full flex items-center justify-between px-3.5 py-2 bg-blue-500/5 border border-blue-500/20 rounded-xl text-xs mt-1 animate-in fade-in-50">
+                                    <span className="text-[11px] flex items-center gap-2 text-text-muted">
+                                        <Info size={13} className="text-blue-400 shrink-0" />
+                                        <span>Auto-focused on <b>{filteredTargets.length} active target{filteredTargets.length > 1 ? 's' : ''}</b> during live test.</span>
+                                    </span>
+                                    <button
+                                        onClick={() => setShowAllTargetsDuringTest(true)}
+                                        className="text-[11px] font-bold text-blue-400 hover:text-blue-300 transition-colors flex items-center gap-1.5 cursor-pointer shrink-0 ml-2"
+                                    >
+                                        <Eye size={12} /> Show all {allTargets.length} targets
+                                    </button>
                                 </div>
-                            </div>
-                        );
-                    });
+                            )}
+                        </>
+                    );
                 })()}
                 </div>
             </div>
@@ -1365,14 +1478,26 @@ export default function Failover(props: FailoverProps) {
                                 )}
                             </div>
                             {activeTests.length === 0 && (
-                                <button
-                                    onClick={resetIds}
-                                    className="flex items-center gap-1.5 px-2.5 py-1.5 text-[9px] font-bold uppercase tracking-widest text-orange-600 dark:text-orange-400 bg-orange-600/5 hover:bg-orange-600/10 border border-orange-500/20 rounded-lg transition-all shrink-0 cursor-pointer"
-                                    title="Reset test counter"
-                                >
-                                    <Hash size={12} />
-                                    RESET ID
-                                </button>
+                                <div className="flex items-center gap-1.5 shrink-0">
+                                    <button
+                                        onClick={resetIds}
+                                        className="flex items-center gap-1.5 px-2.5 py-1.5 text-[9px] font-bold uppercase tracking-widest text-orange-600 dark:text-orange-400 bg-orange-600/5 hover:bg-orange-600/10 border border-orange-500/20 rounded-lg transition-all shrink-0 cursor-pointer"
+                                        title="Reset test counter"
+                                    >
+                                        <Hash size={12} />
+                                        RESET ID
+                                    </button>
+                                    {history.length > 0 && (
+                                        <button
+                                            onClick={purgeHistory}
+                                            className="flex items-center gap-1.5 px-2.5 py-1.5 text-[9px] font-bold uppercase tracking-widest text-red-600 dark:text-red-400 bg-red-600/5 hover:bg-red-600/10 border border-red-500/20 rounded-lg transition-all shrink-0 cursor-pointer"
+                                            title="Purge all test history"
+                                        >
+                                            <Trash2 size={12} />
+                                            PURGE ALL
+                                        </button>
+                                    )}
+                                </div>
                             )}
                         </div>
                     </div>
@@ -1384,12 +1509,23 @@ export default function Failover(props: FailoverProps) {
                                     <th className="px-6 py-3 font-bold tracking-tight text-center">Verdict</th>
                                     <th className="px-6 py-3 font-bold tracking-tight text-center">Outcome / Duration</th>
                                     <th className="px-6 py-3 font-bold tracking-tight text-center">Packet Details</th>
+                                    <th className="px-4 py-3 font-bold tracking-tight text-right w-12"></th>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-border">
-                                {sortedHistory.length === 0 ? (
+                                {loadingHistory && sortedHistory.length === 0 ? (
                                     <tr>
-                                        <td colSpan={4} className="px-6 py-8 text-center text-text-muted">
+                                        <td colSpan={5} className="p-6">
+                                            <div className="space-y-2.5 shimmer">
+                                                {[1, 2, 3].map(i => (
+                                                    <div key={i} className="h-11 bg-card-secondary/30 rounded-xl border border-border/40" />
+                                                ))}
+                                            </div>
+                                        </td>
+                                    </tr>
+                                ) : sortedHistory.length === 0 ? (
+                                    <tr>
+                                        <td colSpan={5} className="px-6 py-8 text-center text-text-muted">
                                             {historySearch ? (
                                                 <div className="flex flex-col items-center gap-2">
                                                     <Search size={20} className="text-text-muted/40" />
@@ -1490,6 +1626,15 @@ export default function Failover(props: FailoverProps) {
                                                                 S: {test.sent} • Echo: {test.server_received ?? '-'} • R: {test.received}
                                                             </div>
                                                         </div>
+                                                    </td>
+                                                    <td className="px-4 py-4 text-right" onClick={(e) => e.stopPropagation()}>
+                                                        <button
+                                                            onClick={() => handleDeleteTest(test)}
+                                                            className="p-1.5 text-text-muted hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-colors cursor-pointer"
+                                                            title="Delete this test record"
+                                                        >
+                                                            <Trash2 size={14} />
+                                                        </button>
                                                     </td>
                                                 </tr>
                                                 {isExpanded && (

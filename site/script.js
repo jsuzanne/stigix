@@ -4,34 +4,26 @@
 
 document.addEventListener('DOMContentLoaded', () => {
 
-  /* ── Gallery tabs ── */
+  /* ── Gallery tabs & Carousel Autoplay Controller ── */
   const tabs = document.querySelectorAll('.gallery__tab');
   const panels = document.querySelectorAll('.gallery__panel');
+  const carouselControllers = new Map();
 
-  tabs.forEach(tab => {
-    tab.addEventListener('click', () => {
-      const target = tab.dataset.tab;
-
-      tabs.forEach(t => t.classList.remove('active'));
-      panels.forEach(p => p.classList.remove('active'));
-
-      tab.classList.add('active');
-      const panel = document.getElementById(`tab-${target}`);
-      if (panel) panel.classList.add('active');
-    });
-  });
-
-  /* ── Gallery Carousel Controllers ── */
   panels.forEach(panel => {
     const slides = panel.querySelectorAll('.gallery__slide');
     if (slides.length <= 1) return;
 
     let currentIndex = 0;
+    let autoPlayTimer = null;
+    let isHovered = false;
+    const AUTOPLAY_DELAY = 4500; // 4.5 seconds per slide
+
     const prevBtn = panel.querySelector('.gallery__nav-btn--prev');
     const nextBtn = panel.querySelector('.gallery__nav-btn--next');
     const dots = panel.querySelectorAll('.gallery__dot');
     const counter = panel.querySelector('.gallery__counter');
     const barLabel = panel.querySelector('.gallery__bar-label');
+    const frame = panel.querySelector('.gallery__frame');
 
     function showSlide(index) {
       if (index < 0) index = slides.length - 1;
@@ -57,10 +49,31 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     }
 
+    function startAutoPlay() {
+      stopAutoPlay();
+      if (!panel.classList.contains('active') || isHovered) return;
+      autoPlayTimer = setInterval(() => {
+        showSlide(currentIndex + 1);
+      }, AUTOPLAY_DELAY);
+    }
+
+    function stopAutoPlay() {
+      if (autoPlayTimer) {
+        clearInterval(autoPlayTimer);
+        autoPlayTimer = null;
+      }
+    }
+
+    function restartAutoPlay() {
+      stopAutoPlay();
+      startAutoPlay();
+    }
+
     if (prevBtn) {
       prevBtn.addEventListener('click', (e) => {
         e.stopPropagation();
         showSlide(currentIndex - 1);
+        restartAutoPlay();
       });
     }
 
@@ -68,6 +81,7 @@ document.addEventListener('DOMContentLoaded', () => {
       nextBtn.addEventListener('click', (e) => {
         e.stopPropagation();
         showSlide(currentIndex + 1);
+        restartAutoPlay();
       });
     }
 
@@ -75,8 +89,21 @@ document.addEventListener('DOMContentLoaded', () => {
       dot.addEventListener('click', (e) => {
         e.stopPropagation();
         showSlide(i);
+        restartAutoPlay();
       });
     });
+
+    // Pause on hover so the user can read detailed statistics or logs without rush
+    if (frame) {
+      frame.addEventListener('mouseenter', () => {
+        isHovered = true;
+        stopAutoPlay();
+      });
+      frame.addEventListener('mouseleave', () => {
+        isHovered = false;
+        startAutoPlay();
+      });
+    }
 
     // Touch swipe support
     const slider = panel.querySelector('.gallery__slider');
@@ -88,11 +115,50 @@ document.addEventListener('DOMContentLoaded', () => {
       }, { passive: true });
       slider.addEventListener('touchend', (e) => {
         touchEndX = e.changedTouches[0].screenX;
-        if (touchStartX - touchEndX > 50) showSlide(currentIndex + 1);
-        if (touchEndX - touchStartX > 50) showSlide(currentIndex - 1);
+        if (touchStartX - touchEndX > 50) {
+          showSlide(currentIndex + 1);
+          restartAutoPlay();
+        }
+        if (touchEndX - touchStartX > 50) {
+          showSlide(currentIndex - 1);
+          restartAutoPlay();
+        }
       }, { passive: true });
     }
+
+    carouselControllers.set(panel.id, { start: startAutoPlay, stop: stopAutoPlay, showSlide });
   });
+
+  // Tab switching logic + Autoplay orchestration
+  tabs.forEach(tab => {
+    tab.addEventListener('click', () => {
+      const target = tab.dataset.tab;
+
+      // Stop all running carousels
+      carouselControllers.forEach(ctrl => ctrl.stop());
+
+      tabs.forEach(t => t.classList.remove('active'));
+      panels.forEach(p => p.classList.remove('active'));
+
+      tab.classList.add('active');
+      const panel = document.getElementById(`tab-${target}`);
+      if (panel) {
+        panel.classList.add('active');
+        const ctrl = carouselControllers.get(panel.id);
+        if (ctrl) {
+          ctrl.showSlide(0);
+          ctrl.start();
+        }
+      }
+    });
+  });
+
+  // Start autoplay on initially active panel
+  const initialActivePanel = document.querySelector('.gallery__panel.active');
+  if (initialActivePanel) {
+    const ctrl = carouselControllers.get(initialActivePanel.id);
+    if (ctrl) ctrl.start();
+  }
 
   // Global Keyboard Arrow Navigation for active tab
   document.addEventListener('keydown', (e) => {

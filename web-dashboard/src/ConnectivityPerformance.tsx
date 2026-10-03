@@ -1,8 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Gauge, Activity, Clock, Filter, Download, Zap, Shield, Search, ChevronRight, BarChart3, AlertCircle, Info, ChevronUp, ChevronDown, Flame, Plus, XCircle, CheckCircle, RefreshCw, Globe, Play, Pause, TrendingUp, Pencil, Route } from 'lucide-react';
+import { usePeerContext } from './PeerContext';
+import { Gauge, Activity, Clock, Filter, Download, Zap, Shield, Search, ChevronRight, BarChart3, AlertCircle, Info, ChevronUp, ChevronDown, Flame, Plus, XCircle, CheckCircle, RefreshCw, Globe, Play, Pause, TrendingUp, Pencil, Route, Grid } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as ReTooltip, ResponsiveContainer, AreaChart, Area, ReferenceLine, ReferenceArea } from 'recharts';
 import { twMerge } from 'tailwind-merge';
 import { TracerouteModal } from './components/TracerouteModal';
+import { ReachabilityMatrix } from './components/ReachabilityMatrix';
+import { DEMSkeleton } from './components/skeletons/DEMSkeleton';
 
 // ── Inline SVG sparkline (no recharts dependency) ───────────────────────────
 const Sparkline = ({ data, color, width = 80, height = 20 }: { data: number[]; color: string; width?: number; height?: number }) => {
@@ -403,6 +406,7 @@ export default function ConnectivityPerformance({ token, uiConfig, onManage }: C
     const [isEditModalOpen, setIsEditModalOpen] = useState(false);
     const [isSavingProbe, setIsSavingProbe] = useState(false);
     const [tracerouteTarget, setTracerouteTarget] = useState<string | null>(null);
+    const [viewMode, setViewMode] = useState<'catalog' | 'matrix'>('catalog');
 
     const formatDisplayUrl = (endpoint: any) => {
         const target = endpoint.lastResult?.url || '';
@@ -446,6 +450,7 @@ export default function ConnectivityPerformance({ token, uiConfig, onManage }: C
         { x: 0, connTop: 0, connH: 0, visible: false }
     );
 
+    const { gFetch, activePeerId } = usePeerContext();
     const authHeaders = () => ({ 'Authorization': `Bearer ${token}` });
 
     const formatMs = (val: number | undefined | null) => {
@@ -457,9 +462,9 @@ export default function ConnectivityPerformance({ token, uiConfig, onManage }: C
     const fetchProbesConfig = async () => {
         try {
             const [activeRes, configsRes, scenariosRes] = await Promise.all([
-                fetch('/api/connectivity/active-probes', { headers: authHeaders() }),
-                fetch('/api/connectivity/custom', { headers: authHeaders() }),
-                fetch('/api/target/scenarios', { headers: authHeaders() })
+                gFetch('/api/connectivity/active-probes', { headers: authHeaders() }),
+                gFetch('/api/connectivity/custom', { headers: authHeaders() }),
+                gFetch('/api/target/scenarios', { headers: authHeaders() })
             ]);
             const [activeData, configsData, scenariosData] = await Promise.all([
                 activeRes.json(),
@@ -493,8 +498,8 @@ export default function ConnectivityPerformance({ token, uiConfig, onManage }: C
         try {
             const dynamicLimit = timeRange === '15m' ? 300 : timeRange === '1h' ? 1500 : timeRange === '6h' ? 5000 : timeRange === '24h' ? 12000 : 30000;
             const [statsRes, resultsRes] = await Promise.all([
-                fetch(`/api/connectivity/stats?range=${timeRange}`, { headers: authHeaders() }),
-                fetch(`/api/connectivity/results?timeRange=${timeRange}&limit=${dynamicLimit}`, { headers: authHeaders() })
+                gFetch(`/api/connectivity/stats?range=${timeRange}`, { headers: authHeaders() }),
+                gFetch(`/api/connectivity/results?timeRange=${timeRange}&limit=${dynamicLimit}`, { headers: authHeaders() })
             ]);
             const [statsData, resultsData] = await Promise.all([
                 statsRes.json(),
@@ -536,7 +541,7 @@ export default function ConnectivityPerformance({ token, uiConfig, onManage }: C
         if (!editingProbe || !editingProbe.name || !editingProbe.target) return;
         setIsSavingProbe(true);
         try {
-            const res = await fetch('/api/connectivity/custom', { headers: authHeaders() });
+            const res = await gFetch('/api/connectivity/custom', { headers: authHeaders() });
             const allEndpoints = await res.json();
             
             const origName = (editingProbe._originalName || editingProbe.name).toLowerCase();
@@ -564,7 +569,7 @@ export default function ConnectivityPerformance({ token, uiConfig, onManage }: C
                 updatedList.push(updatedProbe);
             }
 
-            await fetch('/api/connectivity/custom', {
+            await gFetch('/api/connectivity/custom', {
                 method: 'POST',
                 headers: {
                     ...authHeaders(),
@@ -587,7 +592,7 @@ export default function ConnectivityPerformance({ token, uiConfig, onManage }: C
     const toggleProbeStatus = async (endpoint: any, e: React.MouseEvent) => {
         e.stopPropagation();
         try {
-            const res = await fetch('/api/connectivity/custom', { headers: authHeaders() });
+            const res = await gFetch('/api/connectivity/custom', { headers: authHeaders() });
             const allEndpoints = await res.json();
 
             const updatedEndpoints = allEndpoints.map((p: any) => {
@@ -598,7 +603,7 @@ export default function ConnectivityPerformance({ token, uiConfig, onManage }: C
                 return p;
             });
 
-            await fetch('/api/connectivity/custom', {
+            await gFetch('/api/connectivity/custom', {
                 method: 'POST',
                 headers: { ...authHeaders(), 'Content-Type': 'application/json' },
                 body: JSON.stringify({ endpoints: updatedEndpoints })
@@ -616,7 +621,7 @@ export default function ConnectivityPerformance({ token, uiConfig, onManage }: C
         fetchStatsAndResults();         // Phase 2: async
         const interval = setInterval(fetchData, 60000); // Refresh both every 60s
         return () => clearInterval(interval);
-    }, [timeRange]);
+    }, [timeRange, activePeerId]);
 
     const getScoreColor = (score: number) => {
         if (score >= 80) return 'text-green-600 dark:text-green-400 bg-green-500/10 border-green-500/20';
@@ -805,6 +810,10 @@ export default function ConnectivityPerformance({ token, uiConfig, onManage }: C
             }));
     }, [selectedEndpointResults, probeChartRange]);
 
+    if ((loading || loadingStats) && !stats && endpoints.length === 0) {
+        return <DEMSkeleton />;
+    }
+
     return (
         <div className="space-y-6 animate-in fade-in duration-500">
             {/* Header Analytics */}
@@ -902,8 +911,8 @@ export default function ConnectivityPerformance({ token, uiConfig, onManage }: C
                                             className={cn(
                                                 "p-2.5 rounded-xl border transition-all cursor-pointer group flex flex-col gap-1.5 shadow-sm",
                                                 isOffline 
-                                                    ? "bg-red-500/5 border-red-500/20 hover:border-red-500/40 hover:bg-red-500/10" 
-                                                    : "bg-amber-500/5 border-amber-500/20 hover:border-amber-500/40 hover:bg-amber-500/10"
+                                                    ? "bg-card-secondary border-red-500/30 hover:border-red-500/50 hover:bg-red-500/8" 
+                                                    : "bg-card-secondary border-amber-500/25 hover:border-amber-500/45 hover:bg-amber-500/8"
                                             )}
                                         >
                                             <div className="flex items-center justify-between gap-2">
@@ -989,6 +998,46 @@ export default function ConnectivityPerformance({ token, uiConfig, onManage }: C
                 </div>
             </div>
 
+            {/* View Mode Switcher: Probes Catalog vs Full-Mesh Matrix */}
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 bg-card-secondary/30 p-2.5 rounded-xl border border-border mb-2">
+                <div className="flex items-center gap-2">
+                    <button
+                        onClick={() => setViewMode('catalog')}
+                        className={cn(
+                            "px-4 py-2 rounded-lg text-xs font-bold transition-all flex items-center gap-2",
+                            viewMode === 'catalog'
+                                ? "bg-blue-600 text-white shadow-md shadow-blue-500/20"
+                                : "text-text-muted hover:text-text-primary hover:bg-card-secondary"
+                        )}
+                    >
+                        <Activity size={15} /> Probes Catalog ({endpoints.length})
+                    </button>
+                    <button
+                        onClick={() => setViewMode('matrix')}
+                        className={cn(
+                            "px-4 py-2 rounded-lg text-xs font-bold transition-all flex items-center gap-2",
+                            viewMode === 'matrix'
+                                ? "bg-blue-600 text-white shadow-md shadow-blue-500/20"
+                                : "text-text-muted hover:text-text-primary hover:bg-card-secondary"
+                        )}
+                    >
+                        <Grid size={15} className="text-blue-500 dark:text-blue-400" />
+                        <span>Full-Mesh Reachability Matrix</span>
+                        <span className="text-[9px] font-black uppercase px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-800 dark:text-amber-300 border border-amber-500/30 tracking-wider">
+                            BETA
+                        </span>
+                    </button>
+                </div>
+                <div className="text-[11px] font-bold text-text-muted hidden md:flex items-center gap-2 pr-2">
+                    <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                    <span>Bidirectional Cross-Instance Telemetry</span>
+                </div>
+            </div>
+
+            {viewMode === 'matrix' ? (
+                <ReachabilityMatrix token={token} />
+            ) : (
+                <>
             {/* Filters & Export */}
             <div className="bg-blue-600/5 border border-blue-500/20 p-4 rounded-xl flex items-start gap-3 mb-2 shadow-sm">
                 <Info size={18} className="text-blue-500 dark:text-blue-400 flex-shrink-0 mt-0.5" />
@@ -1337,6 +1386,8 @@ export default function ConnectivityPerformance({ token, uiConfig, onManage }: C
                     </div>
                 )}
             </div>
+        </>
+    )}
 
             {/* Detailed Modal */}
             {showDetailModal && selectedEndpoint && (

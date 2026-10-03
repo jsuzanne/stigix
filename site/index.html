@@ -39,7 +39,7 @@
     "description": "Open-source SASE and SD-WAN validation platform for network engineers. Generates realistic SaaS and East-West custom TCP line-of-business traffic, orchestrates zero-touch multi-node mesh provisioning, runs active DEM performance probes, executes automated security tests, measures failover convergence, automates VyOS routers, simulates voice and IoT devices, and visualizes Prisma SD-WAN overlay topology — in labs, demos, and POC environments.",
     "url": "https://stigix.io/",
     "downloadUrl": "https://github.com/jsuzanne/stigix",
-    "softwareVersion": "2.0.7",
+    "softwareVersion": "2.0.82",
     "license": "https://github.com/jsuzanne/stigix/blob/main/LICENSE",
     "author": {
       "@type": "Person",
@@ -117,7 +117,7 @@
         <span class="hero__badge-dot" aria-hidden="true"></span>
         Open-source · MIT · Multi-Node Mesh &amp; V2 Engine
       </div>
-      <span class="hero__version">current: jsuzanne/stigix:v2 &nbsp;·&nbsp; <a href="https://github.com/jsuzanne/stigix/releases" target="_blank" rel="noopener noreferrer" style="color:var(--teal);text-decoration:none;">v2.0.7</a></span>
+      <span class="hero__version">current: jsuzanne/stigix:v2 &nbsp;·&nbsp; <a href="https://github.com/jsuzanne/stigix/releases" target="_blank" rel="noopener noreferrer" style="color:var(--teal);text-decoration:none;">v2.0.112</a></span>
     </div>
 
     <h1 class="hero__headline">
@@ -181,12 +181,6 @@
       <p class="arch__sub">Stigix deploys seamlessly across Datacenters, Branch sites, and Cloud instances. A Leader node orchestrates Central Global Provisioning, while every peer acts concurrently as a traffic sender, custom TCP host listener, and SLA responder.</p>
     </div>
     <div class="arch__frame">
-      <div class="arch__bar">
-        <span class="arch__bar-dot"></span>
-        <span class="arch__bar-dot"></span>
-        <span class="arch__bar-dot"></span>
-        <span class="arch__bar-label">Stigix — SASE & SD-WAN Validation Platform Architecture</span>
-      </div>
       <img src="assets/hero-banner.png" alt="Stigix SD-WAN / SASE Validation Platform Architecture — Branch Site, SD-WAN & SASE Fabric, Datacenter & Cloud Target" loading="lazy" />
     </div>
   </div>
@@ -511,21 +505,42 @@
       </div>
     </div>
 
-    <!-- 14. MCP Server -->
+    <!-- 14. MCP Server & Executive Reporting -->
     <div class="caps__row" role="row">
       <div class="caps__col" role="cell">
-        <div class="caps__col-name">MCP Server</div>
-        <div class="caps__col-category">operations · AI</div>
+        <div class="caps__col-name">MCP Server &amp; Reports</div>
+        <div class="caps__col-category">operations · AI · reporting</div>
       </div>
       <div class="caps__col" role="cell">
-        <div class="caps__col-desc">Model Context Protocol (MCP) server for distributed natural language orchestration. Pilot the entire SD-WAN validation mesh (traffic generation, custom TCP apps, security testing, VyOS impairments, diagnostics) using conversational prompts in Claude Desktop. Supports SSE transport on port 3100.</div>
+        <div class="caps__col-desc">Model Context Protocol (FastMCP) server exposing 79 automated network and security diagnostic tools to AI engines (Claude Desktop). Enables autonomous end-to-end SD-WAN failover analysis, DEM latency investigations, security posture diffs, and the <strong style="color:var(--white)">automated generation of executive whitepapers and technical audit reports</strong> (PDF / DOCX / Markdown) &mdash; <a href="reports.html" style="color:var(--teal);text-decoration:underline;font-weight:600;">Browse Sample Reports &rarr;</a></div>
       </div>
       <div class="caps__col" role="cell">
         <div class="caps__col-tags">
+          <span class="tag">FastMCP (79 tools)</span>
+          <a href="reports.html" class="tag" style="background:rgba(20,184,166,0.15);border-color:rgba(20,184,166,0.4);color:var(--teal);text-decoration:none;font-weight:700;">Sample Reports &rarr;</a>
+          <span class="tag">Whitepapers</span>
           <span class="tag">Claude Desktop</span>
           <span class="tag">SSE (3100)</span>
-          <span class="tag">Natural Language</span>
-          <span class="tag">Any-Node Mesh</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- 15. Fleet Remote View & Gateway Proxy -->
+    <div class="caps__row" role="row">
+      <div class="caps__col" role="cell">
+        <div class="caps__col-name">Fleet Gateway &amp; Remote View</div>
+        <div class="caps__col-category">multi-site · control plane</div>
+      </div>
+      <div class="caps__col" role="cell">
+        <div class="caps__col-desc">Centralized single-pane-of-glass observability and control across all distributed edge nodes directly from the Leader dashboard. Multiplexes API traffic over persistent WebSocket reverse tunnels (traversing NAT/CGNAT/firewalls with zero inbound ports) and Leader outbound dialing for external Cloud VMs (Hetzner, AWS, Home LAN) with instant bidirectional provisioning push/pull.</div>
+      </div>
+      <div class="caps__col" role="cell">
+        <div class="caps__col-tags">
+          <span class="tag">Single Pane of Glass</span>
+          <span class="tag">WebSocket Reverse Tunnel</span>
+          <span class="tag">Context Switcher</span>
+          <span class="tag">Zero-Inbound Multi-Cloud</span>
+          <span class="tag">Global Provisioning</span>
         </div>
       </div>
     </div>
@@ -612,6 +627,7 @@
   </div>
 </section>
 
+<hr class="rule">
 
 <!-- ══════════════════════════════════════════════════════════
      GALLERY
@@ -636,9 +652,9 @@
       <button class="gallery__tab" data-tab="customapps" role="tab" aria-selected="false" id="tab-btn-customapps">Custom Apps</button>
       <button class="gallery__tab" data-tab="apistudio" role="tab" aria-selected="false" id="tab-btn-apistudio">API Studio</button>
       <button class="gallery__tab" data-tab="mcpserver" role="tab" aria-selected="false" id="tab-btn-mcpserver">MCP Server</button>
+      <button class="gallery__tab" data-tab="remoteview" role="tab" aria-selected="false" id="tab-btn-remoteview">Remote View</button>
+      <button class="gallery__tab" data-tab="cli" role="tab" aria-selected="false" id="tab-btn-cli">CLI Console</button>
       <button class="gallery__tab" data-tab="statistics" role="tab" aria-selected="false" id="tab-btn-statistics">Live Events</button>
-      <button class="gallery__tab" data-tab="config" role="tab" aria-selected="false" id="tab-btn-config">Config</button>
-      <button class="gallery__tab" data-tab="dashboard2" role="tab" aria-selected="false" id="tab-btn-dashboard2">Dashboard 2</button>
     </div>
 
     <div class="gallery__panel active" id="tab-dashboard">
@@ -648,14 +664,17 @@
             <span class="gallery__bar-dot"></span>
             <span class="gallery__bar-dot"></span>
             <span class="gallery__bar-dot"></span>
-            <span class="gallery__bar-label">Dashboard — Traffic Volume &amp; Application Performance</span>
+            <span class="gallery__bar-label">Dashboard — Traffic Volume &amp; Global Configuration</span>
           </div>
           <div class="gallery__bar-right">
             <div class="gallery__dots">
               <button class="gallery__dot active" aria-label="Slide 1"></button>
               <button class="gallery__dot" aria-label="Slide 2"></button>
+              <button class="gallery__dot" aria-label="Slide 3"></button>
+              <button class="gallery__dot" aria-label="Slide 4"></button>
+              <button class="gallery__dot" aria-label="Slide 5"></button>
             </div>
-            <span class="gallery__counter">1 / 2</span>
+            <span class="gallery__counter">1 / 5</span>
           </div>
         </div>
         <div class="gallery__slider">
@@ -665,9 +684,21 @@
             <img src="assets/screenshots/dashboard.png" alt="Stigix Real-Time Traffic Volume and Application Performance" loading="lazy">
             <div class="gallery__caption"><strong>Traffic Volume &amp; Application Performance:</strong> Real-time traffic volume chart, per-application request metrics, average latency, TTFB, and success rates across enterprise SaaS targets.</div>
           </div>
-          <div class="gallery__slide" data-label="Dashboard — Traffic Generator Controls &amp; Density Settings">
-            <img src="assets/screenshots/dashboard-2.png" alt="Stigix Dashboard with density controls and live stream" loading="lazy">
-            <div class="gallery__caption"><strong>Traffic Generator Controls:</strong> Live traffic generation controls, active application matrix, and real-time WebSocket telemetry.</div>
+          <div class="gallery__slide" data-label="Dashboard — Traffic Distribution Weights &amp; Application Profiles">
+            <img src="assets/screenshots/configuration.png" alt="Configuration Traffic Distribution Weights" loading="lazy">
+            <div class="gallery__caption"><strong>Traffic Distribution Weights:</strong> Adjust application weights by category or individual enterprise application with instant runtime hot-reload.</div>
+          </div>
+          <div class="gallery__slide" data-label="Dashboard — Synthetic Monitoring Probes Catalog Settings">
+            <img src="assets/screenshots/config-probes.png" alt="Synthetic Monitoring Probes Settings" loading="lazy">
+            <div class="gallery__caption"><strong>Synthetic Probes Catalog:</strong> Configure HTTP/HTTPS, ICMP, DNS, TCP, and UDP monitoring endpoints with Prisma SD-WAN sync.</div>
+          </div>
+          <div class="gallery__slide" data-label="Dashboard — Central Global Provisioning (Leader / Peer Mesh)">
+            <img src="assets/screenshots/config-leader.png" alt="Central Global Provisioning Leader Peer Mesh" loading="lazy">
+            <div class="gallery__caption"><strong>Central Global Provisioning:</strong> Zero-touch multi-node cluster topology with automatic application catalogue &amp; probe sync across peers.</div>
+          </div>
+          <div class="gallery__slide" data-label="Dashboard — State Persistence Across Reboots">
+            <img src="assets/screenshots/config-persistence.png" alt="State Persistence Across Reboots" loading="lazy">
+            <div class="gallery__caption"><strong>System State Persistence:</strong> Preserves background traffic generators, DEM probes, and custom TCP app sessions across container reboots.</div>
           </div>
         </div>
       </div>
@@ -740,9 +771,8 @@
               <button class="gallery__dot" aria-label="Slide 2"></button>
               <button class="gallery__dot" aria-label="Slide 3"></button>
               <button class="gallery__dot" aria-label="Slide 4"></button>
-              <button class="gallery__dot" aria-label="Slide 5"></button>
             </div>
-            <span class="gallery__counter">1 / 5</span>
+            <span class="gallery__counter">1 / 4</span>
           </div>
         </div>
         <div class="gallery__slider">
@@ -751,10 +781,6 @@
           <div class="gallery__slide active" data-label="Performance — Digital Experience (DEM) Dashboard">
             <img src="assets/screenshots/performance.png" alt="Digital Experience DEM Overview" loading="lazy">
             <div class="gallery__caption"><strong>Digital Experience Overview:</strong> Global weighted path score (0-100), 15m/1h/6h/24h score trends, and flaky probe detection.</div>
-          </div>
-          <div class="gallery__slide" data-label="Performance — Score Calculation &amp; Protocol Breakdown">
-            <img src="assets/screenshots/performance-score.png" alt="DEM Score Calculation and Protocols" loading="lazy">
-            <div class="gallery__caption"><strong>Path Quality &amp; Scoring Logic:</strong> Sub-second calculations across HTTP, HTTPS, ICMP, TCP, UDP, DNS, and Stigix Cloud targets.</div>
           </div>
           <div class="gallery__slide" data-label="Performance — Synthetic Endpoint Probes List">
             <img src="assets/screenshots/performance-probes.png" alt="Synthetic Probes Endpoint List" loading="lazy">
@@ -976,8 +1002,9 @@
               <button class="gallery__dot active" aria-label="Slide 1"></button>
               <button class="gallery__dot" aria-label="Slide 2"></button>
               <button class="gallery__dot" aria-label="Slide 3"></button>
+              <button class="gallery__dot" aria-label="Slide 4"></button>
             </div>
-            <span class="gallery__counter">1 / 3</span>
+            <span class="gallery__counter">1 / 4</span>
           </div>
         </div>
         <div class="gallery__slider">
@@ -986,6 +1013,10 @@
           <div class="gallery__slide active" data-label="Topology — Physical Underlay Chassis &amp; Cabling">
             <img src="assets/screenshots/topology.png" alt="Underlay Topology with VyOS Router Chassis" loading="lazy">
             <div class="gallery__caption"><strong>Physical Underlay Canvas:</strong> Interactive topology with VyOS router chassis, DC/Hub uplinks, Branch downlinks, and direct port cable lines.</div>
+          </div>
+          <div class="gallery__slide" data-label="Topology — VyOS Underlay Transit &amp; Port Correlation">
+            <img src="assets/screenshots/topology-underlay-chassis.png" alt="VyOS Underlay Transit Hub and Spoke Circuits" loading="lazy">
+            <div class="gallery__caption"><strong>Underlay Transit Circuits:</strong> Real-time VyOS router port mappings correlating DC/Hub uplinks and Branch/Spoke downlinks with circuit IDs.</div>
           </div>
           <div class="gallery__slide" data-label="Topology — Logical SD-WAN Overlay Mesh View">
             <img src="assets/screenshots/topology-overlay.png" alt="Logical SD-WAN Overlay Mesh View" loading="lazy">
@@ -1078,7 +1109,7 @@
             <span class="gallery__bar-dot"></span>
             <span class="gallery__bar-dot"></span>
             <span class="gallery__bar-dot"></span>
-            <span class="gallery__bar-label">MCP Server — Natural Language AI Orchestration</span>
+            <span class="gallery__bar-label">MCP Server — FastMCP Tools &amp; Executive Report Generation</span>
           </div>
           <div class="gallery__bar-right">
             <div class="gallery__dots">
@@ -1091,13 +1122,92 @@
         <div class="gallery__slider">
           <button class="gallery__nav-btn gallery__nav-btn--prev" aria-label="Previous screenshot">&#8249;</button>
           <button class="gallery__nav-btn gallery__nav-btn--next" aria-label="Next screenshot">&#8250;</button>
-          <div class="gallery__slide active" data-label="MCP Server — Natural Language AI Orchestration">
-            <img src="assets/screenshots/mcp-server.png" alt="Model Context Protocol MCP Server Status" loading="lazy">
-            <div class="gallery__caption"><strong>Model Context Protocol (MCP) Service:</strong> Built-in SSE transport server exposing 35+ validation tools to Claude Desktop and AI orchestrators.</div>
+          <div class="gallery__slide active" data-label="MCP Server — FastMCP Tools &amp; Executive Report Generation">
+            <img src="assets/screenshots/mcp-server.png" alt="Model Context Protocol FastMCP Server Status" loading="lazy">
+            <div class="gallery__caption"><strong>Model Context Protocol (FastMCP) Service:</strong> Built-in SSE transport server exposing 79 validation and diagnostic tools to Claude Desktop for end-to-end testing and automated whitepaper/report generation.</div>
           </div>
           <div class="gallery__slide" data-label="MCP Server — Live Interaction Audit &amp; Tool History">
             <img src="assets/screenshots/mcp-history.png" alt="MCP Server Live Interactions History" loading="lazy">
             <div class="gallery__caption"><strong>Live Interaction Audit:</strong> Real-time log of AI tool executions, response durations, and parameter inspection.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="gallery__panel" id="tab-remoteview">
+      <div class="gallery__frame">
+        <div class="gallery__bar">
+          <div class="gallery__bar-left">
+            <span class="gallery__bar-dot"></span>
+            <span class="gallery__bar-dot"></span>
+            <span class="gallery__bar-dot"></span>
+            <span class="gallery__bar-label">Remote View — Fleet Context Switcher &amp; Gateway Proxy</span>
+          </div>
+          <div class="gallery__bar-right">
+            <div class="gallery__dots">
+              <button class="gallery__dot active" aria-label="Slide 1"></button>
+              <button class="gallery__dot" aria-label="Slide 2"></button>
+            </div>
+            <span class="gallery__counter">1 / 2</span>
+          </div>
+        </div>
+        <div class="gallery__slider">
+          <button class="gallery__nav-btn gallery__nav-btn--prev" aria-label="Previous screenshot">&#8249;</button>
+          <button class="gallery__nav-btn gallery__nav-btn--next" aria-label="Next screenshot">&#8250;</button>
+          <div class="gallery__slide active" data-label="Remote View — Target Peer Context Switcher">
+            <img src="assets/screenshots/remote-view-target-dropdown.png" alt="Remote View Peer Context Switcher Dropdown" loading="lazy">
+            <div class="gallery__caption"><strong>Peer Context Switcher:</strong> Instant 1-click dropdown in the Leader header to switch the entire dashboard context to any registered remote branch (BR1, BR2, BR5, BR8).</div>
+          </div>
+          <div class="gallery__slide" data-label="Remote View — Active Remote Mode with Amber Indicators">
+            <img src="assets/screenshots/remote-view-active-frame.png" alt="Remote View Active Mode with Amber Frame" loading="lazy">
+            <div class="gallery__caption"><strong>Remote View Active Mode:</strong> Unobtrusive amber indicators (header subtitle, navbar chip, and viewport perimeter frame) confirm active remote session while all API calls proxy seamlessly through the Leader.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="gallery__panel" id="tab-cli">
+      <div class="gallery__frame">
+        <div class="gallery__bar">
+          <div class="gallery__bar-left">
+            <span class="gallery__bar-dot"></span>
+            <span class="gallery__bar-dot"></span>
+            <span class="gallery__bar-dot"></span>
+            <span class="gallery__bar-label">CLI Console — Interactive Terminal &amp; Diagnostic Inspection</span>
+          </div>
+          <div class="gallery__bar-right">
+            <div class="gallery__dots">
+              <button class="gallery__dot active" aria-label="Slide 1"></button>
+              <button class="gallery__dot" aria-label="Slide 2"></button>
+              <button class="gallery__dot" aria-label="Slide 3"></button>
+              <button class="gallery__dot" aria-label="Slide 4"></button>
+              <button class="gallery__dot" aria-label="Slide 5"></button>
+            </div>
+            <span class="gallery__counter">1 / 5</span>
+          </div>
+        </div>
+        <div class="gallery__slider">
+          <button class="gallery__nav-btn gallery__nav-btn--prev" aria-label="Previous screenshot">&#8249;</button>
+          <button class="gallery__nav-btn gallery__nav-btn--next" aria-label="Next screenshot">&#8250;</button>
+          <div class="gallery__slide active" data-label="CLI — Interactive Console &amp; Tab-Completion">
+            <img src="assets/screenshots/cli-interactive.png" alt="Stigix Interactive CLI Console and Autocompletion" loading="lazy">
+            <div class="gallery__caption"><strong>Interactive Console &amp; Tab-Completion:</strong> Built-in container shell with session authentication, live footer status bar, and dynamic popup autocompletion for all operational commands.</div>
+          </div>
+          <div class="gallery__slide" data-label="CLI — Active SaaS Applications Traffic Statistics">
+            <img src="assets/screenshots/cli-traffic-stats.png" alt="CLI Active SaaS Applications Statistics" loading="lazy">
+            <div class="gallery__caption"><strong>Active Applications Traffic Matrix:</strong> Real-time request volume, error tracking, and 100% success rate breakdown across 67 active SaaS enterprise endpoints (Microsoft 365, Salesforce, Google Workspace, Zoom).</div>
+          </div>
+          <div class="gallery__slide" data-label="CLI — Synthetic DEM Probes &amp; Health Scoring">
+            <img src="assets/screenshots/cli-probes-dem.png" alt="CLI Synthetic Monitoring DEM Probes" loading="lazy">
+            <div class="gallery__caption"><strong>Synthetic DEM Probes &amp; Scoring:</strong> Active probe health table evaluating HTTPS, UDP, and ICMP endpoints with live score (0–100), latency benchmarks (ms), and Prisma SD-WAN catalog sync.</div>
+          </div>
+          <div class="gallery__slide" data-label="CLI — Prisma SD-WAN Flow Browser Path Correlation">
+            <img src="assets/screenshots/cli-flows-query.png" alt="CLI Prisma Flow Browser Query" loading="lazy">
+            <div class="gallery__caption"><strong>Prisma SD-WAN Flow Correlation:</strong> Live <code>flows query</code> command tracing end-to-end network sessions against the Prisma Flow Browser to verify active circuit path selection (<code>BR8-INET1 to DC1-INET</code>).</div>
+          </div>
+          <div class="gallery__slide" data-label="CLI — VoIP QoS Telemetry &amp; MOS Call History">
+            <img src="assets/screenshots/cli-voice-qos.png" alt="CLI Voice QoS and MOS Call History" loading="lazy">
+            <div class="gallery__caption"><strong>VoIP QoS &amp; MOS Call History:</strong> Real-time voice simulation telemetry with global MOS score (4.39 EXCELLENT), jitter, packet loss, per-target breakdowns (DC1, BR1, Hetzner), and active call event history.</div>
           </div>
         </div>
       </div>
@@ -1128,71 +1238,108 @@
       </div>
     </div>
 
-    <div class="gallery__panel" id="tab-config">
-      <div class="gallery__frame">
-        <div class="gallery__bar">
-          <div class="gallery__bar-left">
-            <span class="gallery__bar-dot"></span>
-            <span class="gallery__bar-dot"></span>
-            <span class="gallery__bar-dot"></span>
-            <span class="gallery__bar-label">Configuration — Traffic Distribution &amp; Profiles</span>
-          </div>
-          <div class="gallery__bar-right">
-            <div class="gallery__dots">
-              <button class="gallery__dot active" aria-label="Slide 1"></button>
-              <button class="gallery__dot" aria-label="Slide 2"></button>
-              <button class="gallery__dot" aria-label="Slide 3"></button>
-              <button class="gallery__dot" aria-label="Slide 4"></button>
-            </div>
-            <span class="gallery__counter">1 / 4</span>
-          </div>
-        </div>
-        <div class="gallery__slider">
-          <button class="gallery__nav-btn gallery__nav-btn--prev" aria-label="Previous screenshot">&#8249;</button>
-          <button class="gallery__nav-btn gallery__nav-btn--next" aria-label="Next screenshot">&#8250;</button>
-          <div class="gallery__slide active" data-label="Configuration — Traffic Distribution &amp; Profiles">
-            <img src="assets/screenshots/configuration.png" alt="Configuration Traffic Distribution Weights" loading="lazy">
-            <div class="gallery__caption"><strong>Traffic Distribution Weights:</strong> Adjust application weights by category or individual enterprise application.</div>
-          </div>
-          <div class="gallery__slide" data-label="Configuration — Synthetic Monitoring Probes Catalog">
-            <img src="assets/screenshots/config-probes.png" alt="Synthetic Monitoring Probes Settings" loading="lazy">
-            <div class="gallery__caption"><strong>Synthetic Probes Catalog:</strong> Configure HTTP/HTTPS, ICMP, DNS, TCP, and UDP monitoring endpoints with Prisma SD-WAN sync.</div>
-          </div>
-          <div class="gallery__slide" data-label="Configuration — Central Global Provisioning (Leader / Peer Mesh)">
-            <img src="assets/screenshots/config-leader.png" alt="Central Global Provisioning Leader Peer Mesh" loading="lazy">
-            <div class="gallery__caption"><strong>Central Global Provisioning:</strong> Zero-touch multi-node cluster topology with automatic application catalogue &amp; probe sync across peers.</div>
-          </div>
-          <div class="gallery__slide" data-label="Configuration — State Persistence Across Reboots">
-            <img src="assets/screenshots/config-persistence.png" alt="State Persistence Across Reboots" loading="lazy">
-            <div class="gallery__caption"><strong>System State Persistence:</strong> Preserves background traffic generators, DEM probes, and custom TCP app sessions across container reboots.</div>
-          </div>
-        </div>
+  </div>
+</section>
+
+<hr class="rule">
+
+
+<!-- ══════════════════════════════════════════════════════════
+     FEATURED WHITEPAPERS & LAB BENCHMARKS
+══════════════════════════════════════════════════════════ -->
+<section class="home-reports" id="reports">
+  <div class="wrap">
+    <div class="home-reports__header">
+      <div>
+        <span class="label">Research &amp; Engineering Benchmarks</span>
+        <h2 class="home-reports__title">Technical Whitepapers &amp; Lab Studies Powered by Stigix</h2>
+        <p style="font-size:0.92rem;color:var(--muted);margin-top:8px;max-width:680px;line-height:1.6;">Real-world SASE &amp; SD-WAN validation studies produced from live lab scenarios orchestrated by Stigix and analyzed with AI assistants via FastMCP.</p>
       </div>
+      <a href="reports.html" class="btn btn--outline" id="home-view-all-reports-btn" style="align-self:flex-start;">
+        Browse All Reports (9) &rarr;
+      </a>
     </div>
 
-    <div class="gallery__panel" id="tab-dashboard2">
-      <div class="gallery__frame">
-        <div class="gallery__bar">
-          <div class="gallery__bar-left">
-            <span class="gallery__bar-dot"></span>
-            <span class="gallery__bar-dot"></span>
-            <span class="gallery__bar-dot"></span>
-            <span class="gallery__bar-label">Dashboard — Alternate View</span>
-          </div>
-          <div class="gallery__bar-right">
-            <div class="gallery__dots">
-              <button class="gallery__dot active" aria-label="Slide 1"></button>
-            </div>
-            <span class="gallery__counter">1 / 1</span>
+    <div class="home-reports__grid">
+
+      <!-- Report 1 -->
+      <article class="home-report-card">
+        <div class="home-report-card__header">
+          <span class="home-report-badge home-report-badge--white-paper">White Paper</span>
+          <span class="home-report-card__date">2026-09-25</span>
+        </div>
+        <h3 class="home-report-card__title">When Routing Can't See the Failure</h3>
+        <p class="home-report-card__desc">
+          How Prisma SD-WAN and Stigix demonstrated automatic failover in ~3 minutes during a silent internet breakout failure where Layer 3 BFD keepalives remained completely blind.
+        </p>
+        <ul class="home-report-card__highlights">
+          <li>Automatic ~3 min failover during dead breakout behind active next-hop</li>
+          <li>End-to-end TCP session tracking vs blind Layer 3 tunnel keepalives</li>
+          <li>Continuous probe-driven failback once primary DC breakout is repaired</li>
+        </ul>
+        <div class="home-report-card__footer">
+          <a href="reports.html?id=prisma-sdwan-grey-failure" style="font-size:0.84rem;font-weight:600;color:var(--teal);text-decoration:none;">Read Abstract &rarr;</a>
+          <div class="home-report-card__actions">
+            <a href="reports/When_Routing_Cant_See_the_Failure_Prisma_SD-WAN.pdf" target="_blank" rel="noopener noreferrer" class="btn btn--primary" style="padding:6px 14px;font-size:0.78rem;">Download PDF (575 KB)</a>
           </div>
         </div>
-        <div class="gallery__slider">
-          <div class="gallery__slide active" data-label="Dashboard — Alternate View">
-            <img src="assets/screenshots/dashboard-2.png" alt="Stigix dashboard alternate view" loading="lazy">
-            <div class="gallery__caption"><strong>High-Density Traffic Monitoring:</strong> Alternate layout showing traffic density controls, per-application breakdown, and live WebSocket log stream.</div>
+      </article>
+
+      <!-- Report 2 -->
+      <article class="home-report-card">
+        <div class="home-report-card__header">
+          <span class="home-report-badge home-report-badge--white-paper">White Paper</span>
+          <span class="home-report-card__date">2026-09-26</span>
+        </div>
+        <h3 class="home-report-card__title">Beyond Ping: App vs Network Latency</h3>
+        <p class="home-report-card__desc">
+          Architectural deep-dive decomposing end-to-end user latency into Network RTT and Server Response Time (SRT) without agents or SSL decryption using dual synchronized telemetry.
+        </p>
+        <ul class="home-report-card__highlights">
+          <li>5.8 ms Network RTT vs 800 ms Server Response Time (SRT) clear isolation</li>
+          <li>Eliminates the "Is it the network?" blame game in minutes</li>
+          <li>Non-intrusive dual measurement with Stigix and Prisma SD-WAN SCM</li>
+        </ul>
+        <div class="home-report-card__footer">
+          <a href="reports.html?id=whitepaper-app-vs-network" style="font-size:0.84rem;font-weight:600;color:var(--teal);text-decoration:none;">Read Abstract &rarr;</a>
+          <div class="home-report-card__actions">
+            <a href="reports/Whitepaper_AppVsNetwork_PrismaSDWAN.pdf" target="_blank" rel="noopener noreferrer" class="btn btn--primary" style="padding:6px 14px;font-size:0.78rem;">Download PDF (1.98 MB)</a>
           </div>
         </div>
+      </article>
+
+      <!-- Report 3 -->
+      <article class="home-report-card">
+        <div class="home-report-card__header">
+          <span class="home-report-badge home-report-badge--lab-benchmark">Lab Benchmark</span>
+          <span class="home-report-card__date">2026-09-24</span>
+        </div>
+        <h3 class="home-report-card__title">SD-WAN Multi-Circuit Failover Audit</h3>
+        <p class="home-report-card__desc">
+          Live failover benchmark between branch office BR8 and datacenter DC1 measuring sub-second packet loss and active path evolution during induced WAN circuit impairments.
+        </p>
+        <ul class="home-report-card__highlights">
+          <li>Sub-second packet loss measurement during active link disruption</li>
+          <li>Path evolution telemetry: BR8-INET2 &rarr; DC1-INET &rarr; BR8-INET1</li>
+          <li>Full flow session continuity audit with 79 MCP diagnostic tools</li>
+        </ul>
+        <div class="home-report-card__footer">
+          <a href="reports.html?id=sdwan-resilience-br8-dc1" style="font-size:0.84rem;font-weight:600;color:var(--teal);text-decoration:none;">Read Abstract &rarr;</a>
+          <div class="home-report-card__actions">
+            <a href="reports/SDWAN_Resilience_Report_BR8_DC1.pdf" target="_blank" rel="noopener noreferrer" class="btn btn--primary" style="padding:6px 14px;font-size:0.78rem;">Download PDF (79 KB)</a>
+          </div>
+        </div>
+      </article>
+
+    </div>
+
+    <!-- Bottom CTA banner -->
+    <div class="home-reports__cta">
+      <div>
+        <strong style="color:var(--white);font-size:0.95rem;display:block;margin-bottom:4px;">AI-Assisted Lab Orchestration &amp; Reporting</strong>
+        <span style="color:var(--muted);font-size:0.82rem;line-height:1.5;display:block;">Stigix exposes 79 network diagnostic and chaos impairment tools over FastMCP &mdash; enabling AI engines (like Claude Desktop) to autonomously execute test plans, analyze convergence curves, and draft executive-ready reports.</span>
       </div>
+      <a href="reports.html" class="btn btn--outline" style="white-space:nowrap;">View All Sample Reports &rarr;</a>
     </div>
 
   </div>
@@ -1302,7 +1449,7 @@
     <div class="quickstart__header">
       <span class="label">Operations &amp; Automation</span>
       <h2 class="quickstart__title">Control and verify with the built-in CLI</h2>
-      <p class="quickstart__sub">Stigix ships a fully interactive terminal console inside the container with support for Custom Apps, Global Provisioning, and Controller mesh management.</p>
+      <p class="quickstart__sub">Stigix ships a fully interactive terminal console inside the container with support for Custom Apps, Global Provisioning, DEM probes, and Controller mesh management.</p>
     </div>
 
     <div class="terminal" role="region" aria-label="Stigix CLI demo">
@@ -1466,6 +1613,12 @@
         <span class="doc-link__arr">→</span>
       </a>
 
+      <a href="https://github.com/jsuzanne/stigix/blob/main/docs/PRIVATE_DEPLOYMENT_TOPOLOGIES.md" target="_blank" rel="noopener noreferrer" class="doc-link" id="docs-topologies-link">
+        <span class="doc-link__ico">🛡️</span>
+        <div class="doc-link__text"><strong>Deployment Topologies</strong><span>LAN, NAT, Multi-Cloud Reverse Tunnels</span></div>
+        <span class="doc-link__arr">→</span>
+      </a>
+
       <a href="https://github.com/jsuzanne/stigix/blob/main/CHANGELOG.md" target="_blank" rel="noopener noreferrer" class="doc-link" id="docs-changelog-link">
         <span class="doc-link__ico">📋</span>
         <div class="doc-link__text"><strong>Changelog</strong><span>Full release history</span></div>
@@ -1496,7 +1649,7 @@
       </ul>
     </div>
     <p class="footer__note" id="footer-last-updated" style="margin-top:12px;padding-top:12px;border-top:1px solid var(--stroke);font-family:var(--mono);font-size:0.72rem;color:var(--muted);">
-      Site last updated: <strong id="footer-date" style="color:var(--mid)">2026-09-05</strong> &nbsp;&middot;&nbsp; Covers release <a href="https://github.com/jsuzanne/stigix/releases" target="_blank" rel="noopener noreferrer" style="color:var(--teal);">v2.0.7</a> &nbsp;&middot;&nbsp; <a href="https://github.com/jsuzanne/stigix/blob/main/CHANGELOG_V2.md" target="_blank" rel="noopener noreferrer" style="color:var(--teal);">View V2 changelog &rarr;</a>
+      Site last updated: <strong id="footer-date" style="color:var(--mid)">2026-09-30</strong> &nbsp;&middot;&nbsp; Covers release <a href="https://github.com/jsuzanne/stigix/releases" target="_blank" rel="noopener noreferrer" style="color:var(--teal);">v2.0.112</a> &nbsp;&middot;&nbsp; <a href="https://github.com/jsuzanne/stigix/blob/main/CHANGELOG_V2.md" target="_blank" rel="noopener noreferrer" style="color:var(--teal);">View V2 changelog &rarr;</a>
     </p>
     <script>var d=new Date(document.lastModified);if(d.getFullYear()>2000){document.getElementById('footer-date').textContent=d.toISOString().slice(0,10);}</script>
     <p class="footer__note" id="footer-disclaimer">

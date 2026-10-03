@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { usePeerContext } from './PeerContext';
 import { BarChart3, Search, Activity, Zap, Check, Plus, Clock, Server, Shield, Globe, Info } from 'lucide-react';
 import { Favicon } from './components/Favicon';
 
@@ -42,10 +43,11 @@ export default function Statistics({ stats, appConfig, onReset, token }: StatsPr
     });
 
     const authToken = token || localStorage.getItem('token');
+    const { gFetch, activePeerId } = usePeerContext();
 
     useEffect(() => {
         const fetchThresholds = () => {
-            fetch('/api/config/traffic-thresholds', {
+            gFetch('/api/config/traffic-thresholds', {
                 headers: authToken ? { 'Authorization': `Bearer ${authToken}` } : {}
             })
                 .then(r => r.json())
@@ -60,7 +62,7 @@ export default function Statistics({ stats, appConfig, onReset, token }: StatsPr
         fetchThresholds();
         const interval = setInterval(fetchThresholds, 5000);
         return () => clearInterval(interval);
-    }, [authToken]);
+    }, [authToken, activePeerId]);
 
     if (!stats) {
         return (
@@ -147,7 +149,7 @@ export default function Statistics({ stats, appConfig, onReset, token }: StatsPr
     const handlePromoteToDem = async (appName: string) => {
         setPromotingApp(appName);
         try {
-            const res = await fetch('/api/probes/promote-app', {
+            const res = await gFetch('/api/probes/promote-app', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',

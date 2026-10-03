@@ -1,307 +1,181 @@
-> **Last Updated:** 2026-04-16 | **Created:** 2026-01-19 (v1.1.0)
+> **Last Updated:** 2026-10-01 | **Created:** 2026-01-19 (v1.1.0)
 
-# Quick Start Guide
+# 🚀 Stigix Quick Start & Deployment Guide
 
-Get your SD-WAN Traffic Generator up and running in 5 minutes!
+Deploy a complete, distributed Stigix SD-WAN & SASE validation mesh in **under 2 minutes**. 
+This guide covers **both modern 1-line copy-paste methods (Magic Join)** and **classic manual Docker Compose deployments**.
 
-## Prerequisites
+---
 
-- Docker and Docker Compose installed
-- Linux, macOS, or Windows with WSL2
-- At least 2GB free RAM
-- Network connectivity
+## 📋 Prerequisites
 
-## Installation Methods
+* Linux (Ubuntu 20.04+, Debian 11+, CentOS, Raspberry Pi OS, Cloud VPS), macOS, or Windows with WSL2.
+* Internet access.
+* Root or `sudo` privileges.
 
-### Method 1: Docker Compose (Recommended)
+---
 
-**Step 1: Create project directory**
+## ⚡ Section 1: Modern 1-Click / Copy-Paste Deployment (Recommended)
 
+### 👑 1. Deploy the Leader (Central Dashboard & Hub)
+
+The **Leader** acts as your central dashboard, orchestrator, and telemetry aggregator.
+
+#### Option A: 1-Line Installer (Docker already installed)
 ```bash
-mkdir sdwan-traffic-gen
-cd sdwan-traffic-gen
+curl -fsSL https://raw.githubusercontent.com/jsuzanne/stigix/v2/install.sh | sudo bash
 ```
 
-**Step 2: Download docker-compose.yml**
-
+#### Option B: Auto-Docker Installer (Installs Docker + Docker Compose + Stigix automatically)
 ```bash
-curl -O https://raw.githubusercontent.com/jsuzanne/stigix/main/docker-compose.yml
+curl -fsSL https://raw.githubusercontent.com/jsuzanne/stigix/v2/install-autodocker.sh | sudo bash
 ```
 
-Or create it manually:
+Once installed, open your browser:
+* **URL:** `http://<LEADER_IP>:8080`
+* **Default Login:** `admin` / `admin`
 
+---
+
+### 🏢 2. Add Remote Branch Nodes (Magic Join in 1 Click)
+
+Stigix v2 automates cluster enrollment through **Magic Join Tokens** and Cloudflare Rendezvous:
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor Admin as 👨‍💻 Administrator
+    participant Leader as 👑 Stigix Leader
+    participant Spoke as 🏢 Remote Spoke (Branch / Cloud)
+    participant Relay as 🛰️ Cloudflare Relay
+
+    Admin->>Leader: Click "+ Add Node" & copy 1-line command
+    Admin->>Spoke: Paste 1-line command in terminal
+    Spoke->>Relay: Register with Magic Join Token
+    Relay-->>Leader: Instant event push with Spoke endpoints
+    Leader->>Spoke: Outbound WebSocket Reverse Tunnel (Port 8080/8081)
+    Leader-->>Spoke: Synchronize Probes, Targets & Configuration
+    Leader-->>Admin: 🟢 Node appears "Online [ ⚡ WS TUNNEL ]" in Dashboard
+```
+
+1. **On your Leader Web Dashboard:**
+   * Go to the **Mesh** tab or click the **`+ Add Node`** button in the top navigation bar.
+   * Enter a site name (e.g. `Branch-Paris`, `HetznerCloud`, `NUC-Lab`).
+   * Click **Generate Token** and copy the 1-line command.
+2. **On your Remote Machine / Cloud VPS / Branch PC:**
+   * Paste the copied command:
+     ```bash
+     curl -fsSL https://raw.githubusercontent.com/jsuzanne/stigix/v2/install.sh | sudo bash -s -- STX-eyJhbGciOi...
+     ```
+3. **Done!** The node connects to the Leader, mounts a reverse WebSocket tunnel, synchronizes configuration, and appears **🟢 Online [ ⚡ WS TUNNEL ]** in your Leader dashboard.
+
+---
+
+### 🔀 3. Access Any Remote Node (Remote View)
+
+Manage and inspect any remote branch node directly through your Leader web dashboard without SSH, VPNs, or exposing public management ports:
+
+1. In the Leader dashboard, go to the **Mesh** tab.
+2. Click on the remote node.
+3. Click **`⚡ Connect via Remote View`**.
+4. The interface displays an amber frame, proxying all live charts, traffic controls, and probe settings directly to the remote node over the WebSocket tunnel.
+
+---
+
+## 🐳 Section 2: Classic Manual Docker Compose Deployment
+
+If you prefer to manage containers manually via `docker-compose.yml`:
+
+### Step 1: Create Project Directory
+```bash
+mkdir -p ~/stigix/config ~/stigix/logs
+cd ~/stigix
+```
+
+### Step 2: Create `docker-compose.yml`
 ```yaml
 version: '3.8'
 
 services:
   stigix:
-    image: jsuzanne/stigix:stable
+    image: jsuzanne/stigix:v2
     container_name: stigix
-    ports:
-      - "8080:8080"
+    network_mode: host
+    restart: unless-stopped
     environment:
+      - PORT=8080
+      - STIGIX_ROLE=both
       - JWT_SECRET=change-this-secret-in-production
-      - LOG_RETENTION_DAYS=7
-      - LOG_MAX_SIZE_MB=100
     volumes:
-      - ./config:/opt/sdwan-traffic-gen/config
-      - ./logs:/var/log/sdwan-traffic-gen
-    restart: unless-stopped
-    networks:
-      - sdwan-network
-
-  sdwan-traffic-gen:
-    image: jsuzanne/sdwan-traffic-gen:stable
-    container_name: sdwan-traffic-gen
-    environment:
-      - SLEEP_BETWEEN_REQUESTS=1
-    volumes:
-      - ./config:/opt/sdwan-traffic-gen/config
-      - ./logs:/var/log/sdwan-traffic-gen
-    restart: unless-stopped
-    networks:
-      - sdwan-network
-    depends_on:
-      - stigix
-
-networks:
-  sdwan-network:
-    driver: bridge
+      - ./config:/app/config
+      - ./logs:/app/logs
 ```
 
-**Step 3: Create configuration directory**
+> [!NOTE]
+> On macOS or Windows (Docker Desktop), use `ports` mapping instead of `network_mode: host`:
+> ```yaml
+>     ports:
+>       - "8080:8080"
+>       - "9000:9000"
+>       - "5201:5201"
+>       - "6100:6100/udp"
+>       - "6200:6200"
+> ```
 
-```bash
-mkdir -p config logs
-```
-
-**Step 4: Configure Applications**
-
-The system automatically generates a default `config/applications-config.json` on first start. You can also create it manually with your desired applications and categories:
-
-```bash
-cat > config/applications-config.json << 'EOF'
-{
-  "control": { "enabled": true, "sleep_interval": 1.0 },
-  "applications": [
-    { "domain": "outlook.office365.com", "weight": 68, "endpoint": "/", "category": "Microsoft 365" },
-    { "domain": "teams.microsoft.com", "weight": 68, "endpoint": "/api/mt/emea/beta/users/", "category": "Microsoft 365" },
-    { "domain": "mail.google.com", "weight": 100, "endpoint": "/mail/", "category": "Google Workspace" }
-  ]
-}
-EOF
-```
-
-**Step 5: Start the services**
-
+### Step 3: Start the Container
 ```bash
 docker compose up -d
 ```
 
-**Step 6: Access the dashboard**
-
-Open your browser to: **http://localhost:8080**
-
-**Default credentials:** `admin` / `admin`
-
-**⚠️ Change the password immediately after first login!**
-
 ---
 
-## 📡 Network Mode: Host vs Bridge
+## 🎯 Section 3: Target-Only Mode (Lightweight Probe Endpoint)
 
-The installer automatically selects the best network mode for your platform:
-
-### Host Mode (Linux only - Native)
-- ✅ **Enabled on:** Native Linux (Ubuntu, Debian, CentOS, etc.)
-- ✅ **Benefits:** 
-  - Full IoT simulation support (DHCP, ARP, Layer 2 protocols)
-  - Better Voice/RTP performance with real network stack access
-  - Real MAC address spoofing for device simulation
-  - Direct access to network interfaces
-- ⚙️ **Uses:** `docker-compose.host.yml`
-
-### Bridge Mode (macOS, Windows, WSL2)
-- ✅ **Enabled on:** macOS, Windows (Docker Desktop), WSL2
-- ⚠️ **Limitations:**
-  - IoT simulation features limited (no DHCP/ARP/Layer 2)
-  - Voice/RTP works but without advanced network features
-  - Network interface binding may have restrictions
-- ℹ️ **Why:** Docker's Host Mode is not supported on macOS/Windows
-- ⚙️ **Uses:** `docker-compose.example.yml`
-
-### Platform Detection
-The install script automatically detects your platform and selects the appropriate mode:
-- **Native Linux** → Host Mode (full features)
-- **WSL2** → Bridge Mode (Host Mode not recommended on WSL2)
-- **macOS** → Bridge Mode (Host Mode not available)
-- **Windows** → Bridge Mode (via WSL2)
-
-**Note:** If you're on Linux and want to force Bridge Mode, you can manually download `docker-compose.example.yml` instead of using the install script.
-
----
-
-## First-Time Configuration
-
-### 1. Login to Dashboard
-
-Navigate to `http://localhost:8080` and login with `admin/admin`.
-
-### 2. Configure Network Interface
-
-Go to **Configuration** tab:
-- Click "Add Interface"
-- Enter your network interface (e.g., `eth0`, `enp0s3`, `wlan0`)
-- Click "Add"
-
-**How to find your interface:**
-```bash
-# Linux
-ip addr show
-
-# macOS
-ifconfig
-
-# Look for your active network interface (usually eth0, enp0s3, or wlan0)
-```
-
-### 3. Start Traffic Generation
-
-Go to **Dashboard** tab:
-- Click the toggle button to start traffic generation
-- Status should change to "Active" (green)
-- Watch the request counter increase
-
-### 4. Monitor Traffic
-
-- **Dashboard Tab**: Real-time statistics and charts
-- **Logs Tab**: Live traffic logs
-- **Configuration Tab**: Adjust application weights and categories
-
-### 5. Test Security Features
-
-Go to **Security** tab:
-- Run URL Filtering tests
-- Run DNS Security tests
-- Run Threat Prevention tests
-- View test results history
-
----
-
-## Common Tasks
-
-### View Logs
+To deploy Stigix purely as a traffic/probe target (XFR 9000, Voice RTP 6100, Probes 6200, iPerf 5201) without running the web dashboard:
 
 ```bash
-# All logs
-docker compose logs -f
-
-# Web UI only
-docker compose logs -f stigix
-
-# Traffic generator only
-docker compose logs -f sdwan-traffic-gen
-```
-
-### Restart Services
-
-```bash
-docker compose restart
-```
-
-### Stop Services
-
-```bash
-docker compose down
-```
-
-### Update to Latest Version
-
-```bash
-docker compose pull
-docker compose up -d
-```
-
-### Change Port
-
-If port 8080 is already in use:
-
-```bash
-# Edit docker-compose.yml
-# Change: "8080:8080" to "8081:8080"
-
-docker compose up -d
-```
-
-Or use environment variable:
-
-```bash
-echo "WEB_UI_PORT=8081" > .env
-docker compose up -d
+curl -fsSL https://raw.githubusercontent.com/jsuzanne/stigix/v2/install.sh | sudo bash -s -- --target
 ```
 
 ---
 
-## Troubleshooting
+## 🔄 Section 4: Fleet Upgrade
 
-### Port Already in Use
-
-```bash
-# Find what's using port 8080
-sudo lsof -i :8080
-
-# Change port in docker-compose.yml
-# Change: "8080:8080" to "8081:8080"
-```
-
-### Container Won't Start
+To upgrade any Stigix node (Leader or Spoke) to the latest release:
 
 ```bash
-# Check logs
-docker compose logs stigix
-docker compose logs sdwan-traffic-gen
-
-# Rebuild
-docker compose down
-docker compose up -d --build
+cd ~/stigix && docker compose pull && docker compose up -d
 ```
 
-### No Traffic Being Generated
+---
 
-1. Check network interface is configured
-2. Verify traffic generation is started (green status)
-3. Check logs: `docker compose logs -f sdwan-traffic-gen`
-4. Verify `applications-config.json` exists and has valid entries
+## 🛠️ Section 5: Handy Management Commands
 
-### Can't Access Dashboard
-
-1. Check container is running: `docker ps`
-2. Check port mapping: `docker compose ps`
-3. Try `http://127.0.0.1:8080` instead of `localhost`
-4. Check firewall rules
+| Action | Command (Copy & Paste) |
+| :--- | :--- |
+| **View Live Logs** | `docker logs -f stigix` |
+| **Check Container Status** | `docker ps \| grep stigix` |
+| **Restart Stigix** | `cd ~/stigix && docker compose restart` |
+| **Open Built-in Console CLI** | `docker exec -it stigix stigix-cli` |
+| **Stop Stigix** | `cd ~/stigix && docker compose down` |
 
 ---
 
-## Next Steps
+## 🌐 Section 6: Network & Firewall Port Reference
 
-- **[Traffic Generator Guide](TRAFFIC_GENERATOR.md)** - Learn about `applications-config.json` and categories.
-- **[Security Testing](SECURITY_TESTING.md)** - Comprehensive security testing guide
-- **[Configuration Guide](CONFIGURATION.md)** - Advanced configuration options
-- **[Troubleshooting](TROUBLESHOOTING.md)** - Detailed troubleshooting guide
-
----
-
-## Production Deployment
-
-For production use:
-
-1. **Change JWT_SECRET** in docker-compose.yml
-2. **Change default password** after first login
-3. **Use HTTPS** with reverse proxy (nginx, traefik)
-4. **Restrict access** with firewall rules
-5. **Enable log rotation** (already configured)
-6. **Monitor disk space** for logs directory
+| Port | Protocol | Purpose | Direction |
+| :--- | :--- | :--- | :--- |
+| **`8080`** (or `8081`) | TCP | Web Dashboard & WebSocket Reverse Tunnel | Inbound to Node |
+| **`9000`** / **`5201`** | TCP/UDP | Speedtest / XFR & iPerf3 Bandwidth Validation | Inbound to Target |
+| **`6100`** | UDP | VoIP SIP/RTP Jitter & MOS Simulation | Inbound to Target |
+| **`6200`** | TCP/UDP | SD-WAN SLA Convergence Probes | Inbound to Target |
+| **`443`** | TCP | Outbound Cloudflare Rendezvous Signaling | Outbound from All Nodes |
 
 ---
 
-**Need help?** Check the [Troubleshooting Guide](TROUBLESHOOTING.md) or open an issue on GitHub.
+## 📜 Revision History
+
+| Date | Stigix Version | Author / Trigger | Summary of Changes |
+|---|---|---|---|
+| 2026-10-01 | `v2.0.136` | Stigix Core Team | Added 1-line copy-paste Magic Join & Auto-Docker methods alongside classic Docker Compose and Target-only options |
+| 2026-04-16 | `v1.1.0` | Stigix Core Team | Initial legacy guide creation |

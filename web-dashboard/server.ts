@@ -22,7 +22,7 @@ import { VyosManager } from './vyos-manager.js';
 import { VyosScheduler } from './vyos-scheduler.js';
 import { SiteManager } from './site-manager.js';
 import { DiscoveryManager, DiscoveredProbe } from './discovery-manager.js';
-import { createServer } from 'http';
+import http, { createServer } from 'http';
 import { TargetsManager } from './targets-manager.js';
 import { TargetManager, TargetScenario } from './target-manager.js';
 import { RegistryManager } from './registry-manager.js';
@@ -38,6 +38,9 @@ import { createAiCopilotRouter } from './ai-copilot/api-routes.js';
 
 import { Server } from 'socket.io';
 import multer from 'multer';
+import { FleetTunnelManager } from './fleet-tunnel.js';
+import { MagicJoinManager } from './magic-join-manager.js';
+import { CertificateManager } from './certificate-manager.js';
 
 // Multer setup for EDL file uploads (memory storage)
 const upload = multer({
@@ -98,6 +101,9 @@ const APP_CONFIG = {
 // Ensure directories exist
 if (!fs.existsSync(APP_CONFIG.configDir)) fs.mkdirSync(APP_CONFIG.configDir, { recursive: true });
 if (!fs.existsSync(APP_CONFIG.logDir)) fs.mkdirSync(APP_CONFIG.logDir, { recursive: true });
+
+// Certificate Manager for Forward Trust CA & Enterprise PKI
+const certificateManager = new CertificateManager(PROJECT_ROOT);
 
 const PRISMA_CONFIG_FILE = path.join(APP_CONFIG.configDir, 'prisma-config.json');
 const UI_CONFIG_FILE = path.join(APP_CONFIG.configDir, 'ui-config.json');
@@ -336,9 +342,23 @@ const dbg = (...args: any[]) => {
  * Spawn getflow.py and return parsed JSON, or null on any error.
  * Fire-and-forget safe: never throws, always resolves.
  */
-async function runGetflow(siteName: string, sourcePort: number, dstIp: string, minutes: number = 15): Promise<any> {
+async function runGetflow(
+    siteNameOrOpts: string | { siteName?: string; sourcePort?: number; srcIp?: string; dstIp?: string; protocol?: number; minutes?: number; hours?: number },
+    legacySourcePort?: number,
+    legacyDstIp?: string,
+    legacyMinutes: number = 15
+): Promise<any> {
     return new Promise((resolve) => {
         try {
+            const opts = typeof siteNameOrOpts === 'object'
+                ? siteNameOrOpts
+                : {
+                    siteName: siteNameOrOpts,
+                    sourcePort: legacySourcePort,
+                    dstIp: legacyDstIp,
+                    minutes: legacyMinutes
+                };
+
             // engines/ is mounted inside the Docker container (same as convergence_orchestrator.py)
             const scriptPath = path.join(PROJECT_ROOT, 'engines', 'getflow.py');
             dbg('CONV', `runGetflow: scriptPath=${scriptPath} exists=${fs.existsSync(scriptPath)}`);
@@ -347,18 +367,49 @@ async function runGetflow(siteName: string, sourcePort: number, dstIp: string, m
                 resolve(null);
                 return;
             }
+
             const region = process.env.PRISMA_SDWAN_REGION || 'de';
-            const args = [
-                scriptPath,
-                '--site-name', siteName,
-                '--udp-src-port', String(sourcePort),
-                '--dst-ip', dstIp,
-                '--minutes', String(minutes),
-                '--json'
+            const args = [scriptPath, '--json'];
+
+            if (opts.siteName) {
+                args.push('--site-name', opts.siteName);
+            }
+            if (opts.sourcePort && opts.sourcePort > 0) {
+                args.push('--udp-src-port', String(opts.sourcePort));
+            }
+            if (opts.srcIp) {
+                args.push('--src-ip', opts.srcIp);
+            }
+            if (opts.dstIp) {
+                args.push('--dst-ip', opts.dstIp);
+            }
+            if (opts.protocol) {
+                args.push('--protocol', String(opts.protocol));
+            }
+            if (opts.hours) {
+                args.push('--hours', String(opts.hours));
+            } else {
+                args.push('--minutes', String(opts.minutes || 15));
+            }
+
+            // Credential path resolution
+            const candidateCreds = [
+                path.join(APP_CONFIG.configDir, 'prisma-config.json'),
+                path.join(APP_CONFIG.configDir, 'credentials.json'),
+                '/data/stigix/config/prisma-config.json',
+                '/app/config/prisma-config.json'
             ];
+            for (const cPath of candidateCreds) {
+                if (fs.existsSync(cPath)) {
+                    args.push('--credentials', cPath);
+                    break;
+                }
+            }
+
             if (region) {
                 args.push('--region', region === 'eu' || region === 'europe' || region === 'Germany' ? 'de' : 'us');
             }
+
             dbg('CONV', `Spawning: python3 ${args.join(' ')}`);
             const proc = spawn(PYTHON_PATH, args, {
                 cwd: path.join(PROJECT_ROOT, 'engines'),
@@ -775,6 +826,30 @@ class XfrJobManager {
 
     getAllJobs(): XfrJob[] {
         return Array.from(this.jobs.values()).sort((a, b) => b.sequence_id.localeCompare(a.sequence_id));
+    }
+
+    deleteJob(id: string): boolean {
+        if (!id) return false;
+        const job = this.getJob(id);
+        if (!job) return false;
+        if (job.status === 'running' && job.process) {
+            try { job.process.kill(); } catch (e) {}
+        }
+        this.jobs.delete(job.id);
+        this.saveHistory();
+        return true;
+    }
+
+    clearHistory(): number {
+        const count = this.jobs.size;
+        for (const job of this.jobs.values()) {
+            if (job.status === 'running' && job.process) {
+                try { job.process.kill(); } catch (e) {}
+            }
+        }
+        this.jobs.clear();
+        this.saveHistory();
+        return count;
     }
 
     private logToXfrFile(job: XfrJob, message: string) {
@@ -2028,8 +2103,24 @@ const SECRET_KEY = process.env.JWT_SECRET || 'super-secret-key-change-this';
 const USERS_FILE = path.join(APP_CONFIG.configDir, 'users.json');
 const DEBUG_API = process.env.DEBUG_API === 'true';
 
+// Fleet WebSocket Reverse Tunnel Manager (M5 — NAT/CGNAT Traversal)
+const fleetTunnelManager = new FleetTunnelManager(io, registryManager, SECRET_KEY, PORT);
+fleetTunnelManager.start();
+
+// Magic Join Manager (PRD v2.4 — Universal Zero-Touch Onboarding)
+const magicJoinManager = new MagicJoinManager(APP_CONFIG.configDir, SECRET_KEY);
+
 app.use(cors());
 app.use(express.json({ limit: '10mb' }));
+
+// Suppress "BadRequestError: request aborted" noise from raw-body/body-parser.
+// This fires when the browser cancels a fetch mid-flight (tab switch, React unmount,
+// peer switch). It is harmless — the gateway or client simply moved on.
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
+    if (err?.status === 400 && err?.type === 'request.aborted') return; // silently ignore
+    next(err);
+});
 
 // Global request logger - logs ALL incoming requests (only if DEBUG_API=true)
 if (DEBUG_API) {
@@ -2080,16 +2171,40 @@ app.use((req, res, next) => {
 
 // --- Authentication Middleware ---
 const authenticateToken = (req: any, res: any, next: any) => {
+    // 1. Loopback Reverse Tunnel Dispatch:
+    // Requests dispatched locally by fleet-tunnel over 127.0.0.1 with x-gateway-source
+    // are already authenticated at the secure WebSocket tunnel layer.
+    const isLoopback = req.ip === '127.0.0.1' || req.ip === '::1' || req.ip === '::ffff:127.0.0.1' || 
+                       req.socket?.remoteAddress === '127.0.0.1' || req.socket?.remoteAddress === '::1' || req.socket?.remoteAddress === '::ffff:127.0.0.1';
+    const gwSource = req.headers['x-gateway-source'];
+    if (isLoopback && (gwSource === 'reverse-tunnel' || gwSource === 'reverse-tunnel-stream' || gwSource === 'stigix-leader')) {
+        req.user = { username: 'stigix-gateway', role: 'admin' };
+        return next();
+    }
+
     const authHeader = req.headers['authorization'];
     // Allow token in query string for SSE (EventSource)
     const token = (authHeader && authHeader.split(' ')[1]) || req.query.token;
 
     if (!token) return res.sendStatus(401);
 
-    jwt.verify(token, SECRET_KEY, (err: any, user: any) => {
-        if (err) return res.sendStatus(403);
-        req.user = user;
-        next();
+    const activeSecret = process.env.JWT_SECRET || SECRET_KEY;
+    jwt.verify(token, activeSecret, (err: any, user: any) => {
+        if (!err) {
+            req.user = user;
+            return next();
+        }
+        if (activeSecret !== SECRET_KEY) {
+            jwt.verify(token, SECRET_KEY, (err2: any, user2: any) => {
+                if (!err2) {
+                    req.user = user2;
+                    return next();
+                }
+                return res.sendStatus(403);
+            });
+        } else {
+            return res.sendStatus(403);
+        }
     });
 };
 
@@ -2819,6 +2934,27 @@ app.get('/api/tests/xfr/:id', authenticateToken, (req, res) => {
         intervals: job.intervals,
         error: job.error
     });
+});
+
+app.delete('/api/tests/xfr', authenticateToken, (req, res) => {
+    try {
+        const count = xfrManager.clearHistory();
+        res.json({ success: true, count });
+    } catch (e: any) {
+        res.status(500).json({ success: false, error: e.message });
+    }
+});
+
+app.delete('/api/tests/xfr/:id', authenticateToken, (req, res) => {
+    try {
+        const deleted = xfrManager.deleteJob(req.params.id);
+        if (!deleted) {
+            return res.status(404).json({ success: false, error: 'Job not found' });
+        }
+        res.json({ success: true });
+    } catch (e: any) {
+        res.status(500).json({ success: false, error: e.message });
+    }
 });
 
 app.get('/api/tests/xfr/:id/stream', authenticateToken, (req, res) => {
@@ -4333,6 +4469,104 @@ const getEnvConnectivityEndpoints = () => {
     return endpoints;
 };
 
+// --- SD-WAN Reachability Matrix SLA Thresholds & Auto-Mesh Policy (PRD v2.0.97) ---
+const MATRIX_THRESHOLDS_FILE = path.join(APP_CONFIG.configDir, 'matrix-thresholds.json');
+
+export interface MatrixThresholds {
+    latency_warning_ms: number;
+    latency_critical_ms: number;
+    asymmetry_warning_delta_ms: number;
+    asymmetry_critical_delta_ms: number;
+    loss_warning_pct: number;
+    loss_critical_pct: number;
+    jitter_warning_ms: number;
+    jitter_critical_ms: number;
+    mesh_topology?: 'full_mesh' | 'hub_and_spoke' | 'disabled';
+}
+
+const DEFAULT_MATRIX_THRESHOLDS: MatrixThresholds = {
+    latency_warning_ms: 60,
+    latency_critical_ms: 150,
+    asymmetry_warning_delta_ms: 20,
+    asymmetry_critical_delta_ms: 80,
+    loss_warning_pct: 1.0,
+    loss_critical_pct: 5.0,
+    jitter_warning_ms: 10,
+    jitter_critical_ms: 30,
+    mesh_topology: 'hub_and_spoke'
+};
+
+function getMatrixThresholds(): MatrixThresholds {
+    try {
+        if (fs.existsSync(MATRIX_THRESHOLDS_FILE)) {
+            const raw = fs.readFileSync(MATRIX_THRESHOLDS_FILE, 'utf8');
+            return { ...DEFAULT_MATRIX_THRESHOLDS, ...JSON.parse(raw) };
+        }
+    } catch {}
+    return DEFAULT_MATRIX_THRESHOLDS;
+}
+
+const isHubSite = (name: string, siteType?: string): boolean => {
+    if (siteType === 'HUB') return true;
+    const n = (name || '').toLowerCase();
+    return n.includes('dc') || n.includes('hub') || n.includes('core') || n.includes('azure') || n.includes('aws') || n.includes('cloud');
+};
+
+const getAutoMeshProbes = (): any[] => {
+    try {
+        const thresholds = getMatrixThresholds();
+        const topology = thresholds.mesh_topology || 'hub_and_spoke';
+        if (topology === 'disabled') return [];
+
+        const status = typeof registryManager?.getStatus === 'function' ? registryManager.getStatus() : null;
+        const localId = status?.instance_id || 'local-node';
+        const localName = (process.env.STIGIX_SITE_NAME || status?.instance_id || 'Local Node').toUpperCase();
+        const localIp = status?.detected_ip || '127.0.0.1';
+        const isLeader = typeof registryManager?.isLeader === 'function' ? registryManager.isLeader() : false;
+
+        const rawPeers = (isLeader && typeof localRegistryServer?.getInstances === 'function')
+            ? localRegistryServer.getInstances()
+            : (typeof registryManager?.getPeers === 'function' ? registryManager.getPeers() : []);
+
+        const isLocalHub = isHubSite(localName);
+        const probes: any[] = [];
+
+        for (const peer of rawPeers) {
+            if (!peer || peer.instance_id === localId) continue;
+            const peerName = (peer.meta?.site || peer.instance_id || 'PEER').toUpperCase();
+            const peerIp = (peer.ip_private || '').trim();
+            if (!peerIp || peerIp === '127.0.0.1' || peerIp === localIp) continue;
+
+            const isPeerHub = isHubSite(peerName, peer.site_type);
+
+            // Hub & Spoke policy:
+            // - If local node is a Spoke: only probe Hub peers
+            // - If local node is a Hub: probe all peers (Hubs + Spokes)
+            if (topology === 'hub_and_spoke' && !isLocalHub && !isPeerHub) {
+                continue;
+            }
+
+            probes.push({
+                id: `mesh-${peer.instance_id}`,
+                name: `[AutoMesh] ${peerName}`,
+                type: 'PING',
+                target: peerIp,
+                url: peerIp,
+                target_ip: peerIp,
+                peer_instance_id: peer.instance_id,
+                frequency: 20,
+                timeout: 4000,
+                enabled: true,
+                source: 'auto-mesh',
+                scope: 'fleet-mesh'
+            });
+        }
+        return probes;
+    } catch (e) {
+        return [];
+    }
+};
+
 // Helper: Get custom endpoints from file (used for custom added probes, plus state overrides for env/discovery probes)
 const getCustomConnectivityEndpoints = () => {
     try {
@@ -4380,6 +4614,7 @@ app.get('/api/connectivity/active-probes', authenticateToken, (req, res) => {
         const envProbes = getEnvConnectivityEndpoints();
         const customProbes = getCustomConnectivityEndpoints();
         const discoveredProbes = discoveryManager.getProbes();
+        const autoMeshProbes = getAutoMeshProbes();
 
         // Merge env state with custom
         const mergedEnvProbes = envProbes.map((p: any) => {
@@ -4391,7 +4626,7 @@ app.get('/api/connectivity/active-probes', authenticateToken, (req, res) => {
         const pureCustom = customProbes.filter((p: any) => !envProbes.find(ep => ep.name === p.name));
 
         // Return all known probes so the frontend knows they exist (even if paused/disabled)
-        const allProbes = [...mergedEnvProbes, ...pureCustom, ...discoveredProbes];
+        const allProbes = [...mergedEnvProbes, ...pureCustom, ...discoveredProbes, ...autoMeshProbes];
 
         res.json({
             success: true,
@@ -4420,7 +4655,8 @@ app.get('/api/connectivity/test', authenticateToken, async (req, res) => {
 
     const testEndpoints: any[] = [
         ...mergedEnvProbes.filter((p: any) => p.enabled !== false),
-        ...customProbes.filter((p: any) => !envProbes.find(ep => ep.name === p.name) && p.enabled !== false)
+        ...customProbes.filter((p: any) => !envProbes.find(ep => ep.name === p.name) && p.enabled !== false),
+        ...getAutoMeshProbes()
     ];
 
     const results = [];
@@ -4652,9 +4888,14 @@ app.all('/api/network/traceroute', authenticateToken, async (req, res) => {
 
 
 const getFullEffectiveConnectivityProbes = () => {
+    const isLeader = typeof registryManager?.isLeader === 'function' 
+        ? registryManager.isLeader() 
+        : (registryManager?.getStatus?.()?.mode === 'leader');
     const envProbes = getEnvConnectivityEndpoints();
     const rawCustom = getCustomConnectivityEndpoints();
-    const custom = provisioningManager ? provisioningManager.getEnrichedEffectiveItems('connectivity-probes', rawCustom) : rawCustom;
+    const custom = (provisioningManager && !isLeader) 
+        ? provisioningManager.getEnrichedEffectiveItems('connectivity-probes', rawCustom) 
+        : rawCustom;
     const discovered = discoveryManager ? discoveryManager.getProbes() : [];
 
     // Merge custom state into env probes and serve them all
@@ -4910,7 +5151,8 @@ const startConnectivityMonitor = () => {
         const testEndpoints: any[] = [
             ...getEnvConnectivityEndpoints(),
             ...getCustomConnectivityEndpoints(),
-            ...discoveryManager.getProbes()
+            ...discoveryManager.getProbes(),
+            ...getAutoMeshProbes()
         ].filter(p => p.enabled !== false); // Only run probes that are not disabled
 
         if (testEndpoints.length === 0) return;
@@ -5647,6 +5889,60 @@ app.get('/api/convergence/history', authenticateToken, (req, res) => {
     }
 });
 
+app.delete('/api/convergence/history', authenticateToken, async (req, res) => {
+    try {
+        if (fs.existsSync(CONVERGENCE_HISTORY_FILE)) {
+            await fs.promises.writeFile(CONVERGENCE_HISTORY_FILE, '', 'utf8');
+        }
+        res.json({ success: true });
+    } catch (e: any) {
+        res.status(500).json({ success: false, error: e.message });
+    }
+});
+
+app.delete('/api/convergence/history/:id', authenticateToken, async (req, res) => {
+    try {
+        const { id } = req.params;
+        const reqTimestamp = req.query.timestamp || req.body?.timestamp;
+        if (!fs.existsSync(CONVERGENCE_HISTORY_FILE)) {
+            return res.json({ success: true, deleted: 0 });
+        }
+        const raw = await fs.promises.readFile(CONVERGENCE_HISTORY_FILE, 'utf-8');
+        const lines = raw.split('\n').filter(Boolean);
+        const cleanTargetId = String(id).split(' (')[0].trim().toUpperCase();
+
+        const filtered = lines.filter(line => {
+            try {
+                const obj = JSON.parse(line);
+                const recordId: string = obj.test_id || obj.testId || '';
+                const cleanRecordId = String(recordId).split(' (')[0].trim().toUpperCase();
+                const idMatches = (cleanRecordId === cleanTargetId || recordId === id || recordId.startsWith(id + ' ') || recordId.startsWith(id + '('));
+
+                if (idMatches) {
+                    if (reqTimestamp) {
+                        const objTs = obj.timestamp || obj.start_time;
+                        if (String(objTs) === String(reqTimestamp)) {
+                            return false; // delete this matched record
+                        }
+                        return true; // keep record with different timestamp
+                    }
+                    return false; // delete
+                }
+                return true;
+            } catch {
+                return true;
+            }
+        });
+
+        const tmp = CONVERGENCE_HISTORY_FILE + '.tmp';
+        await fs.promises.writeFile(tmp, filtered.length > 0 ? filtered.join('\n') + '\n' : '', 'utf-8');
+        await fs.promises.rename(tmp, CONVERGENCE_HISTORY_FILE);
+        res.json({ success: true, deleted: lines.length - filtered.length });
+    } catch (e: any) {
+        res.status(500).json({ success: false, error: e.message });
+    }
+});
+
 /**
  * POST /api/convergence/history/save-metrics
  * Persist client-side / orchestrator metrics time series to the corresponding history record.
@@ -6001,6 +6297,286 @@ app.get('/api/connectivity/docker-stats', authenticateToken, async (req, res) =>
         console.error('[CONNECTIVITY] Failed to get Docker stats:', error.message);
         res.json({ success: false, error: error.message });
     }
+});
+
+// API: Tech-Support Diagnostics Bundle (Sanitized logs, configs, and system state)
+app.get('/api/system/tech-support', authenticateToken, async (req: any, res: any) => {
+    const startTime = Date.now();
+    log('SYSTEM', 'Generating Tech-Support diagnostic bundle...', 'info');
+
+    const tempBase = path.join(os.tmpdir(), `stigix-ts-${Date.now()}`);
+    try {
+        const timestamp = new Date().toISOString().replace(/[-:]/g, '').replace('T', '-').split('.')[0];
+        const siteName = (process.env.STIGIX_SITE_NAME || 'standalone').replace(/[^a-zA-Z0-9_-]/g, '_');
+        const bundleName = `stigix-techsupport-${siteName}-${timestamp}`;
+        const bundleDir = path.join(tempBase, bundleName);
+        const configSubdir = path.join(bundleDir, 'config');
+        const logsSubdir = path.join(bundleDir, 'logs');
+        const systemSubdir = path.join(bundleDir, 'system');
+        const telemetrySubdir = path.join(bundleDir, 'telemetry');
+
+        fs.mkdirSync(configSubdir, { recursive: true });
+        fs.mkdirSync(logsSubdir, { recursive: true });
+        fs.mkdirSync(systemSubdir, { recursive: true });
+        fs.mkdirSync(telemetrySubdir, { recursive: true });
+
+        // 1. Metadata
+        let currentVersion = 'unknown';
+        try {
+            const vPath = fs.existsSync('/app/VERSION') ? '/app/VERSION' : path.join(__dirname, 'VERSION');
+            if (fs.existsSync(vPath)) currentVersion = fs.readFileSync(vPath, 'utf8').trim();
+        } catch (e) {}
+        if (currentVersion === 'unknown' && process.env.STIGIX_VERSION) currentVersion = process.env.STIGIX_VERSION;
+
+        const metadata = {
+            generator: 'Stigix Tech-Support Diagnostic Bundle',
+            version: currentVersion,
+            git_commit: process.env.GIT_COMMIT || 'unknown',
+            site_name: process.env.STIGIX_SITE_NAME || 'standalone',
+            instance_id: process.env.STIGIX_INSTANCE_ID || 'unknown',
+            generated_at: new Date().toISOString(),
+            platform: {
+                os_type: os.type(),
+                platform: os.platform(),
+                release: os.release(),
+                arch: os.arch(),
+                cpus: os.cpus().length,
+                totalmem_mb: Math.round(os.totalmem() / (1024 * 1024)),
+                freemem_mb: Math.round(os.freemem() / (1024 * 1024)),
+                uptime_sec: Math.round(os.uptime())
+            }
+        };
+        fs.writeFileSync(path.join(bundleDir, 'metadata.json'), JSON.stringify(metadata, null, 2));
+
+        // 2. Secret Scrubber & Sanitized Configs (/app/config/*.json)
+        const sanitizeValue = (key: string, val: any): any => {
+            const lowerKey = key.toLowerCase();
+            if (
+                lowerKey.includes('secret') ||
+                lowerKey.includes('password') ||
+                lowerKey.includes('token') ||
+                lowerKey.includes('master_key') ||
+                lowerKey.includes('credential') ||
+                lowerKey.includes('private_key') ||
+                lowerKey.includes('auth_key') ||
+                lowerKey.includes('api_key')
+            ) {
+                return '***REDACTED***';
+            }
+            if (typeof val === 'string') {
+                if (/^eyJ[a-zA-Z0-9_-]{20,}\./.test(val)) return '***REDACTED_JWT***';
+                return val;
+            }
+            if (Array.isArray(val)) {
+                return val.map((item, idx) => sanitizeValue(String(idx), item));
+            }
+            if (val !== null && typeof val === 'object') {
+                const cleanObj: any = {};
+                for (const [k, v] of Object.entries(val)) {
+                    cleanObj[k] = sanitizeValue(k, v);
+                }
+                return cleanObj;
+            }
+            return val;
+        };
+
+        if (fs.existsSync(APP_CONFIG.configDir)) {
+            const configFiles = fs.readdirSync(APP_CONFIG.configDir);
+            for (const file of configFiles) {
+                if (file.endsWith('.json')) {
+                    try {
+                        const raw = fs.readFileSync(path.join(APP_CONFIG.configDir, file), 'utf8');
+                        const parsed = JSON.parse(raw);
+                        const clean = sanitizeValue('root', parsed);
+                        fs.writeFileSync(path.join(configSubdir, file), JSON.stringify(clean, null, 2));
+                    } catch (e) {
+                        // skip non-json
+                    }
+                }
+            }
+        }
+
+        // 3. System Commands Snapshot
+        const runCmdSafe = (cmd: string, args: string[]): Promise<string> => {
+            return new Promise((resolve) => {
+                const proc = spawn(cmd, args);
+                let out = '';
+                proc.stdout.on('data', d => out += d);
+                proc.stderr.on('data', d => out += d);
+                proc.on('close', () => resolve(out.trim()));
+                proc.on('error', () => resolve(`[Command ${cmd} not available]`));
+                setTimeout(() => {
+                    try { proc.kill(); } catch (e) {}
+                    resolve(out.trim() || '[Timeout]');
+                }, 4000);
+            });
+        };
+
+        const [ipAddr, ipRoute, iptables, netDev, uname, df, free, ps, dockerPs, supervisorStatus] = await Promise.all([
+            runCmdSafe('ip', ['-br', 'addr']),
+            runCmdSafe('ip', ['route']),
+            runCmdSafe('iptables', ['-L', '-n', '-v']),
+            runCmdSafe('cat', ['/proc/net/dev']),
+            runCmdSafe('uname', ['-a']),
+            runCmdSafe('df', ['-h']),
+            runCmdSafe('free', ['-m']),
+            runCmdSafe('ps', ['aux']),
+            runCmdSafe('docker', ['ps', '--no-trunc']),
+            runCmdSafe('supervisorctl', ['status'])
+        ]);
+
+        fs.writeFileSync(path.join(systemSubdir, 'ip_addr.txt'), ipAddr);
+        fs.writeFileSync(path.join(systemSubdir, 'ip_route.txt'), ipRoute);
+        fs.writeFileSync(path.join(systemSubdir, 'iptables.txt'), iptables);
+        fs.writeFileSync(path.join(systemSubdir, 'net_dev.txt'), netDev);
+        fs.writeFileSync(path.join(systemSubdir, 'system_resources.txt'), `=== UNAME ===\n${uname}\n\n=== DISK SPACE ===\n${df}\n\n=== MEMORY ===\n${free}\n\n=== SUPERVISORD ===\n${supervisorStatus}\n\n=== PROCESSES ===\n${ps}`);
+        fs.writeFileSync(path.join(systemSubdir, 'docker_ps.txt'), dockerPs);
+        fs.writeFileSync(path.join(systemSubdir, 'supervisor_status.txt'), supervisorStatus);
+
+        // 4. Logs Snapshot (Tail 1000 lines from log directories & Docker container stdout)
+        const logDirs = [APP_CONFIG.logDir, '/var/log/sdwan-traffic-gen', '/var/log/supervisor'];
+        for (const lDir of logDirs) {
+            if (fs.existsSync(lDir)) {
+                try {
+                    const lFiles = fs.readdirSync(lDir);
+                    for (const lFile of lFiles) {
+                        const fullPath = path.join(lDir, lFile);
+                        if (fs.statSync(fullPath).isFile() && !lFile.endsWith('.tar.gz') && !lFile.endsWith('.zip')) {
+                            const tailContent = await runCmdSafe('tail', ['-n', '1000', fullPath]);
+                            const safeName = `${path.basename(lDir)}_${lFile}`;
+                            fs.writeFileSync(path.join(logsSubdir, safeName), tailContent);
+                        }
+                    }
+                } catch (e) {}
+            }
+        }
+
+        // Docker container stdout/stderr log (Startup boot sequence + Recent logs)
+        try {
+            const containerName = process.env.CONTAINER_NAME || 'stigix';
+            const [dockerBoot, dockerRecent] = await Promise.all([
+                runCmdSafe('sh', ['-c', `docker logs ${containerName} 2>&1 | head -n 500`]),
+                runCmdSafe('docker', ['logs', '--tail', '1000', containerName])
+            ]);
+            if (dockerBoot && !dockerBoot.startsWith('[Command')) {
+                fs.writeFileSync(path.join(logsSubdir, 'docker_compose_boot.log'), dockerBoot);
+            }
+            if (dockerRecent && !dockerRecent.startsWith('[Command')) {
+                fs.writeFileSync(path.join(logsSubdir, 'docker_compose_recent.log'), dockerRecent);
+            }
+        } catch (e) {}
+
+        // 5. Live Telemetry Snapshot
+        try {
+            // A. Registry Status & Peers
+            if (registryManager) {
+                fs.writeFileSync(path.join(telemetrySubdir, 'registry_status.json'), JSON.stringify(registryManager.getStatus(), null, 2));
+                fs.writeFileSync(path.join(telemetrySubdir, 'fleet_peers.json'), JSON.stringify(registryManager.getPeers(), null, 2));
+                
+                if (typeof (registryManager as any).telemetryProvider === 'function') {
+                    const localTel = await (registryManager as any).telemetryProvider();
+                    fs.writeFileSync(path.join(telemetrySubdir, 'local_telemetry.json'), JSON.stringify(localTel, null, 2));
+                }
+            }
+        } catch (e) {}
+
+        try {
+            // B. Connectivity Stats (1h and 24h windows)
+            if (connectivityLogger) {
+                const stats1h = await connectivityLogger.getStats({ timeRange: '1h' });
+                const stats24h = await connectivityLogger.getStats({ timeRange: '24h' });
+                fs.writeFileSync(path.join(telemetrySubdir, 'connectivity_stats_1h.json'), JSON.stringify(stats1h, null, 2));
+                fs.writeFileSync(path.join(telemetrySubdir, 'connectivity_stats_24h.json'), JSON.stringify(stats24h, null, 2));
+            }
+        } catch (e) {}
+
+        try {
+            // C. Probes & Endpoints Catalog
+            const envProbes = getEnvConnectivityEndpoints ? getEnvConnectivityEndpoints() : [];
+            const customProbes = getCustomConnectivityEndpoints ? getCustomConnectivityEndpoints() : [];
+            const discoveredProbes = discoveryManager?.getProbes ? discoveryManager.getProbes() : [];
+            fs.writeFileSync(path.join(telemetrySubdir, 'probes_catalog.json'), JSON.stringify({
+                envProbes,
+                customProbes,
+                discoveredProbes
+            }, null, 2));
+        } catch (e) {}
+
+        try {
+            // D. Target Service Status (Voice, XFR, Traffic)
+            const targetStatus: any = {
+                traffic_running: false,
+                voice_active: false,
+                xfr_active: false,
+                active_convergences: convergenceProcesses ? convergenceProcesses.size : 0
+            };
+            if (fs.existsSync(APPLICATIONS_CONFIG_FILE)) {
+                const appCfg = JSON.parse(fs.readFileSync(APPLICATIONS_CONFIG_FILE, 'utf8'));
+                targetStatus.traffic_running = !!appCfg.control?.enabled;
+                targetStatus.traffic_applications_count = (appCfg.applications || []).filter((a: any) => a.enabled !== false).length;
+            }
+            if (fs.existsSync(VOICE_CONFIG_FILE)) {
+                const voiceCfg = JSON.parse(fs.readFileSync(VOICE_CONFIG_FILE, 'utf8'));
+                targetStatus.voice_active = !!voiceCfg.control?.enabled;
+            }
+            fs.writeFileSync(path.join(telemetrySubdir, 'services_status.json'), JSON.stringify(targetStatus, null, 2));
+        } catch (e) {}
+
+        // 6. Create tar.gz archive
+        const archivePath = path.join(tempBase, `${bundleName}.tar.gz`);
+        await new Promise((resolve, reject) => {
+            const tarProc = spawn('tar', ['czf', archivePath, '-C', tempBase, bundleName]);
+            tarProc.on('close', (code) => {
+                if (code === 0) resolve(true);
+                else reject(new Error(`tar command failed with code ${code}`));
+            });
+            tarProc.on('error', reject);
+        });
+
+        // 7. Stream archive to client
+        const stat = fs.statSync(archivePath);
+        res.setHeader('Content-Type', 'application/gzip');
+        res.setHeader('Content-Length', stat.size);
+        res.setHeader('Content-Disposition', `attachment; filename="${bundleName}.tar.gz"`);
+
+        const fileStream = fs.createReadStream(archivePath);
+        fileStream.pipe(res);
+
+        fileStream.on('end', () => {
+            log('SYSTEM', `Tech-Support bundle generated in ${Date.now() - startTime}ms (${Math.round(stat.size / 1024)} KB)`, 'info');
+            try {
+                fs.rmSync(tempBase, { recursive: true, force: true });
+            } catch (e) {}
+        });
+
+        fileStream.on('error', (err) => {
+            log('SYSTEM', `Error streaming Tech-Support bundle: ${err.message}`, 'error');
+            try {
+                fs.rmSync(tempBase, { recursive: true, force: true });
+            } catch (e) {}
+        });
+
+    } catch (err: any) {
+        log('SYSTEM', `Failed to generate tech-support bundle: ${err.message}`, 'error');
+        try {
+            fs.rmSync(tempBase, { recursive: true, force: true });
+        } catch (e) {}
+        res.status(500).json({ error: 'Failed to generate Tech-Support bundle', details: err.message });
+    }
+});
+
+// API: Unauthenticated Tunnel & Mesh Status for local diagnostics and installer verification
+app.get('/api/system/tunnel-status', (req, res) => {
+    const active = fleetTunnelManager.hasActiveLeaderTunnel();
+    const leaderInfo = fleetTunnelManager.getActiveLeaderInfo();
+    res.json({
+        status: 'ok',
+        tunnel_active: active,
+        leader: leaderInfo,
+        version: APP_VERSION,
+        role: process.env.STIGIX_ROLE || 'both',
+        realm: process.env.STIGIX_CLUSTER_REALM || null
+    });
 });
 
 // API: System Health Check
@@ -7407,9 +7983,13 @@ const runScheduledUrlTests = async () => {
         const testId = getNextTestId();
         const targetPort = getPredictiveSourcePort('url_filtering', testId);
 
+        const targetUrl = (config.url_filtering?.protocol === 'https')
+            ? category.url.replace(/^http:\/\//i, 'https://')
+            : category.url;
+
         try {
             // Capture HTTP code and content for keyword detection (Removed -f to allow 404 handling)
-            const curlCmd = `curl -sSL --max-time 10 ${ifaceFlag} --local-port ${targetPort} -w '\\n__HTTP__:%{http_code}\\n__PORT__:%{local_port}' '${category.url}'`;
+            const curlCmd = `curl -sSL --max-time 10 ${ifaceFlag} --local-port ${targetPort} -w '\\n__HTTP__:%{http_code}\\n__PORT__:%{local_port}' '${targetUrl}'`;
             const { stdout, stderr } = await execPromise(curlCmd);
 
             const httpMatch = stdout.match(/__HTTP__:(\d+)/);
@@ -7428,7 +8008,7 @@ const runScheduledUrlTests = async () => {
 
             // Treat 404 as 'allowed' if no block page is detected (Service might be down, but network allows it)
             const status = ((httpCode >= 200 && httpCode < 400) || (httpCode === 404 && !isBlockPage)) ? 'allowed' : 'blocked';
-            const executedCommand = `curl -sSL --max-time 10 ${ifaceFlag} --local-port ${srcPort} -w '\\n__HTTP__:%{http_code}\\n__PORT__:%{local_port}' '${category.url}'`;
+            const executedCommand = `curl -sSL --max-time 10 ${ifaceFlag} --local-port ${srcPort} -w '\\n__HTTP__:%{http_code}\\n__PORT__:%{local_port}' '${targetUrl}'`;
 
             updateStatistics('url_filtering', status);
             await addTestResult('url_filtering', category.name, {
@@ -7436,16 +8016,16 @@ const runScheduledUrlTests = async () => {
                 httpCode,
                 srcPort,
                 status,
-                url: category.url,
+                url: targetUrl,
                 category: category.name,
                 blockPageDetected: isBlockPage,
                 testPageDetected: isTestPage
-            }, testId, { url: category.url, httpCode, srcPort, command: executedCommand }, runId);
+            }, testId, { url: targetUrl, httpCode, srcPort, command: executedCommand }, runId);
 
             console.log(`[SECURITY-URL] [${testId}] ${status.toUpperCase()} - Category: ${category.name} | Code: ${httpCode} | Port: ${srcPort}${isBlockPage ? ' (Block Page Detected)' : ''}`);
         } catch (e: any) {
             updateStatistics('url_filtering', 'blocked');
-            await addTestResult('url_filtering', category.name, { success: false, status: 'blocked', url: category.url, category: category.name, srcPort: targetPort }, testId, { url: category.url, srcPort: targetPort }, runId);
+            await addTestResult('url_filtering', category.name, { success: false, status: 'blocked', url: targetUrl, category: category.name, srcPort: targetPort }, testId, { url: targetUrl, srcPort: targetPort }, runId);
         }
     }
 
@@ -8108,6 +8688,115 @@ app.post('/api/security/config/test', authenticateToken, async (req, res) => {
     }
 });
 
+// ─── Certificate Management API (Forward Trust CA & Enterprise PKI) ─────────
+
+// GET /api/security/certificates - Get installed CA certificates status and metadata
+app.get('/api/security/certificates', authenticateToken, (req, res) => {
+    try {
+        const status = certificateManager.getStatus();
+        res.json({ success: true, ...status });
+    } catch (e: any) {
+        res.status(500).json({ success: false, error: e.message });
+    }
+});
+
+// GET /api/security/certificates/bundle - Download or retrieve raw PEM bundle
+app.get('/api/security/certificates/bundle', authenticateToken, (req, res) => {
+    try {
+        const pem = certificateManager.getBundlePem();
+        res.setHeader('Content-Type', 'application/x-pem-file');
+        res.setHeader('Content-Disposition', 'attachment; filename="stigix-ca-bundle.pem"');
+        res.send(pem);
+    } catch (e: any) {
+        res.status(500).json({ success: false, error: e.message });
+    }
+});
+
+// POST /api/security/certificates/fetch-prisma - 1-Click Auto-import from Prisma SASE API
+app.post('/api/security/certificates/fetch-prisma', authenticateToken, async (req, res) => {
+    try {
+        const { sls_config: reqConfig } = req.body;
+
+        // Fallback to disk configuration
+        const prismaCfgPath = path.join(PROJECT_ROOT, 'config', 'prisma-config.json');
+        let savedPrisma: any = {};
+        try { savedPrisma = JSON.parse(fs.readFileSync(prismaCfgPath, 'utf8')); } catch {}
+
+        const creds = {
+            tsg_id: reqConfig?.tsg_id || savedPrisma.tsg_id || process.env.PRISMA_SDWAN_TSGID,
+            client_id: reqConfig?.client_id || savedPrisma.client_id || process.env.PRISMA_SDWAN_CLIENT_ID,
+            client_secret: reqConfig?.client_secret || savedPrisma.client_secret || process.env.PRISMA_SDWAN_CLIENT_SECRET
+        };
+
+        const result = await certificateManager.fetchFromPrisma(creds);
+
+        // If on Leader, automatically update Mesh Provisioning bundle for peers
+        const mode = process.env.STIGIX_REGISTRY_MODE_CURRENT || process.env.STIGIX_REGISTRY_MODE || 'standalone';
+        if (result.success && mode === 'leader') {
+            const certStatus = certificateManager.getStatus();
+            const bundlePem = certificateManager.getBundlePem();
+            provisioningManager.publishBundle('ca-certificates', {
+                ...certStatus,
+                bundle_pem: bundlePem
+            });
+        }
+
+        res.json(result);
+    } catch (e: any) {
+        res.status(500).json({ success: false, error: e.message });
+    }
+});
+
+// POST /api/security/certificates/upload - Manual PEM / CRT upload or text paste
+app.post('/api/security/certificates/upload', authenticateToken, (req, res) => {
+    try {
+        const { pem, name } = req.body;
+        if (!pem) {
+            return res.status(400).json({ success: false, error: 'Certificate PEM content is required' });
+        }
+
+        const result = certificateManager.importManualPem(pem, name);
+
+        // If on Leader, update Mesh Provisioning bundle
+        const mode = process.env.STIGIX_REGISTRY_MODE_CURRENT || process.env.STIGIX_REGISTRY_MODE || 'standalone';
+        if (result.success && mode === 'leader') {
+            const certStatus = certificateManager.getStatus();
+            const bundlePem = certificateManager.getBundlePem();
+            provisioningManager.publishBundle('ca-certificates', {
+                ...certStatus,
+                bundle_pem: bundlePem
+            });
+        }
+
+        res.json(result);
+    } catch (e: any) {
+        res.status(500).json({ success: false, error: e.message });
+    }
+});
+
+// DELETE /api/security/certificates - Remove certificate or purge all
+app.delete('/api/security/certificates', authenticateToken, (req, res) => {
+    try {
+        const { id } = req.query;
+        const result = certificateManager.deleteCertificate(id as string);
+
+        // If on Leader, update Mesh Provisioning bundle
+        const mode = process.env.STIGIX_REGISTRY_MODE_CURRENT || process.env.STIGIX_REGISTRY_MODE || 'standalone';
+        if (mode === 'leader') {
+            const certStatus = certificateManager.getStatus();
+            const bundlePem = certificateManager.getBundlePem();
+            provisioningManager.publishBundle('ca-certificates', {
+                ...certStatus,
+                bundle_pem: bundlePem
+            });
+        }
+
+        res.json(result);
+    } catch (e: any) {
+        res.status(500).json({ success: false, error: e.message });
+    }
+});
+
 // API: Get Test History (with search, pagination, filters)
 app.get('/api/security/results', authenticateToken, async (req, res) => {
     try {
@@ -8140,6 +8829,17 @@ app.get('/api/security/results/stats', authenticateToken, async (req, res) => {
     } catch (error) {
         console.error('[API] Failed to get test stats:', error);
         res.status(500).json({ error: 'Failed to retrieve statistics' });
+    }
+});
+
+// API: Get Latest Verdict for each unique security test
+app.get('/api/security/results/latest-verdicts', authenticateToken, async (req, res) => {
+    try {
+        const verdicts = await testLogger.getLatestVerdicts();
+        res.json(verdicts);
+    } catch (error) {
+        console.error('[API] Failed to get latest verdicts:', error);
+        res.status(500).json({ error: 'Failed to retrieve latest verdicts' });
     }
 });
 
@@ -10863,6 +11563,67 @@ app.get('/api/admin/system/dashboard-data', authenticateToken, async (req, res) 
     }
 });
 
+// ─── Live Status (lightweight) ─────────────────────────────────────────────
+//
+// Designed for high-frequency polling by the Gateway Proxy in remote view.
+// Returns ONLY convergenceTests + voice — no shell exec, no file I/O on the
+// hot path (voice stats are capped at last 30 entries, loaded in-memory).
+// Safe to poll every 500 ms through the gateway without overloading the peer.
+//
+app.get('/api/admin/system/live-status', authenticateToken, async (req, res) => {
+    try {
+        // 1. Convergence — same logic as dashboard-data but isolated
+        const convergenceResults: any[] = [];
+        try {
+            const tmpFiles = await fs.promises.readdir('/tmp');
+            const targetFiles = tmpFiles.filter(f => f.startsWith('convergence_stats_') && f.endsWith('.json'));
+            await Promise.all(targetFiles.map(async (file) => {
+                try {
+                    const content = await fs.promises.readFile(path.join('/tmp', file), 'utf8');
+                    const cStats = JSON.parse(content);
+                    const testId = file.replace('convergence_stats_', '').replace('.json', '');
+                    convergenceResults.push({ ...cStats, testId, running: convergenceProcesses.has(testId) });
+                } catch { }
+            }));
+        } catch { }
+
+        // 2. Voice — read config + last 30 stats lines (capped, no exec)
+        let voiceStats: any[] = [];
+        let voiceControl = { enabled: false };
+        try {
+            if (fs.existsSync(VOICE_CONFIG_FILE)) {
+                const vData = await fs.promises.readFile(VOICE_CONFIG_FILE, 'utf8');
+                const vConfig = JSON.parse(vData);
+                voiceControl = vConfig.control || { enabled: false };
+            }
+            if (fs.existsSync(VOICE_STATS_FILE)) {
+                // Read last ~4 KB (≈ 30 entries) without spawning a shell
+                const fd = await fs.promises.open(VOICE_STATS_FILE, 'r');
+                const { size } = await fd.stat();
+                const readSize = Math.min(size, 4096);
+                const buf = Buffer.alloc(readSize);
+                await fd.read(buf, 0, readSize, size - readSize);
+                await fd.close();
+                voiceStats = buf.toString('utf8')
+                    .split('\n')
+                    .filter(l => l.trim())
+                    .map(l => { try { return JSON.parse(l); } catch { return null; } })
+                    .filter(Boolean)
+                    .reverse()
+                    .slice(0, 30);
+            }
+        } catch { }
+
+        res.json({
+            convergenceTests: convergenceResults,
+            voice: { control: voiceControl, stats: voiceStats },
+            timestamp: Date.now()
+        });
+    } catch (e: any) {
+        res.status(500).json({ error: 'live_status_failed', details: e.message });
+    }
+});
+
 // ─── System Wide Live Logs ──────────────────────────────────────────────────
 
 // Serve log history (last 500 lines)
@@ -11772,11 +12533,15 @@ app.delete('/api/iot/devices/:id', authenticateToken, (req, res) => {
 
 // --- Local Registry API & Provisioning Engine (Hybrid Leader) ---
 const provisioningManager = new ProvisioningManager(APP_CONFIG.configDir);
+provisioningManager.setCertificateManager(certificateManager);
 const underlayTopologyManager = new UnderlayTopologyManager(APP_CONFIG.configDir);
 const tcpAppManager = new TcpAppManager(APP_CONFIG.configDir);
 const localRegistryServer = new LocalRegistryServer();
 registryManager.setLocalRegistryServer(localRegistryServer);
 registryManager.setProvisioningManager(provisioningManager);
+fleetTunnelManager.setTargetsManager(targetsManager);
+fleetTunnelManager.setLocalRegistryServer(localRegistryServer);
+fleetTunnelManager.setProvisioningManager(provisioningManager);
 app.use('/api/registry', (req, res, next) => {
     const mode = process.env.STIGIX_REGISTRY_MODE_CURRENT || process.env.STIGIX_REGISTRY_MODE;
     if (mode === 'leader') {
@@ -11785,6 +12550,1352 @@ app.use('/api/registry', (req, res, next) => {
     next();
 });
 log('REGISTRY', `🏠 Local Registry Server mounted at /api/registry (Dynamic Mode)`);
+
+// --- Stigix Fleet Telemetry Provider (Phase 3A) ---
+const collectFleetTelemetrySummary = async () => {
+    let probesGlobalHealth = 0;
+    let probesTotal = 0;
+    let probesPassing = 0;
+    let failingProbes: Array<{ name: string; type: string; target: string; error: string; reliability: number }> = [];
+
+    try {
+        const envProbes = getEnvConnectivityEndpoints();
+        const customProbes = getCustomConnectivityEndpoints();
+        const discoveredProbes = discoveryManager.getProbes();
+
+        const mergedEnvProbes = envProbes.map((p: any) => {
+            const override = customProbes.find((cp: any) => cp.name === p.name);
+            return override ? { ...p, enabled: override.enabled } : p;
+        });
+        const pureCustom = customProbes.filter((p: any) => !envProbes.find(ep => ep.name === p.name));
+        const allProbes = [...mergedEnvProbes, ...pureCustom, ...discoveredProbes];
+        const activeProbeIds = allProbes.filter((p: any) => p.enabled !== false).map((p: any) => p.name.toLowerCase().replace(/\s+/g, '-'));
+        probesTotal = activeProbeIds.length;
+
+        let globalScoreTypes: string[] | undefined;
+        try {
+            if (fs.existsSync(UI_CONFIG_FILE)) {
+                const uiCfg = JSON.parse(fs.readFileSync(UI_CONFIG_FILE, 'utf8'));
+                if (Array.isArray(uiCfg.globalScoreTypes) && uiCfg.globalScoreTypes.length > 0) {
+                    globalScoreTypes = uiCfg.globalScoreTypes;
+                }
+            }
+        } catch {}
+
+        const stats = await connectivityLogger.getStats({ timeRange: '1h', activeProbeIds, globalScoreTypes });
+        if (stats && typeof stats.globalHealth === 'number') {
+            probesGlobalHealth = stats.globalHealth;
+        }
+        if (stats && stats.flakyEndpoints) {
+            const downCount = stats.flakyEndpoints.filter((f: any) => f.isDown).length;
+            probesPassing = Math.max(0, probesTotal - downCount);
+            failingProbes = stats.flakyEndpoints.slice(0, 6).map((f: any) => ({
+                name: f.name || f.id,
+                type: (f.type || 'HTTP').toUpperCase(),
+                target: f.target || '',
+                error: f.lastError || (f.isDown ? 'Probe Down (100% loss)' : 'Unstable / High Latency'),
+                reliability: f.reliability ?? 0
+            }));
+        } else {
+            probesPassing = probesTotal;
+        }
+    } catch (e) {
+        log('REGISTRY', `Telemetry probe calculation error: ${e}`, 'warn');
+    }
+
+    // Traffic state & rate
+    let trafficState: 'RUNNING' | 'STOPPED' | 'IDLE' = 'STOPPED';
+    let trafficRateMbps = 0;
+    let trafficTxMbps: number | undefined = undefined;
+    let trafficRxMbps: number | undefined = undefined;
+    try {
+        let configuredRateMbps = 0;
+        if (fs.existsSync(APPLICATIONS_CONFIG_FILE)) {
+            const cfg = JSON.parse(fs.readFileSync(APPLICATIONS_CONFIG_FILE, 'utf8'));
+            if (cfg.control?.enabled) {
+                trafficState = 'RUNNING';
+                if (Array.isArray(cfg.applications)) {
+                    for (const app of cfg.applications) {
+                        if (app.enabled !== false) {
+                            const bw = app.bandwidth_mbps || (app.rate_kbps ? app.rate_kbps / 1000 : 0) || 0;
+                            configuredRateMbps += bw;
+                        }
+                    }
+                }
+            }
+        }
+
+        // Live network I/O bitrate sampling from /proc/net/dev
+        let sampledLiveMbps = 0;
+        let sampledLiveTxMbps = 0;
+        let sampledLiveRxMbps = 0;
+        if (fs.existsSync('/proc/net/dev')) {
+            try {
+                const iface = getInterface();
+                const netDev = fs.readFileSync('/proc/net/dev', 'utf8');
+                const line = netDev.split('\n').find(l => l.trim().startsWith(iface + ':'));
+                if (line) {
+                    const parts = line.split(':')[1].trim().split(/\s+/);
+                    const rx = parseInt(parts[0], 10);
+                    const tx = parseInt(parts[8], 10);
+                    const now = Date.now();
+                    const prev = (global as any).__stigixLastNetSample;
+                    if (prev) {
+                        const deltaRx = rx - prev.rx;
+                        const deltaTx = tx - prev.tx;
+                        const deltaSec = (now - prev.time) / 1000;
+                        if (deltaSec > 0 && deltaRx >= 0 && deltaTx >= 0) {
+                            sampledLiveTxMbps = Math.round(((deltaTx * 8) / (deltaSec * 1000000)) * 100) / 100;
+                            sampledLiveRxMbps = Math.round(((deltaRx * 8) / (deltaSec * 1000000)) * 100) / 100;
+                            sampledLiveMbps = Math.round((((deltaRx + deltaTx) * 8) / (deltaSec * 1000000)) * 100) / 100;
+                        }
+                    }
+                    (global as any).__stigixLastNetSample = { rx, tx, time: now };
+                }
+            } catch {}
+        }
+
+        if (trafficState === 'RUNNING') {
+            trafficRateMbps = sampledLiveMbps > 0 ? sampledLiveMbps : (Math.round(configuredRateMbps * 100) / 100);
+            trafficTxMbps = sampledLiveTxMbps > 0 ? sampledLiveTxMbps : (Math.round(configuredRateMbps * 100) / 100);
+            trafficRxMbps = sampledLiveRxMbps;
+        }
+    } catch {}
+
+    // Voice state & MOS
+    let voiceActive = false;
+    let voiceMos: number | undefined = undefined;
+    try {
+        if (fs.existsSync(VOICE_CONFIG_FILE)) {
+            const vCfg = JSON.parse(fs.readFileSync(VOICE_CONFIG_FILE, 'utf8'));
+            voiceActive = !!vCfg.control?.enabled;
+        }
+        if (fs.existsSync(VOICE_STATS_FILE)) {
+            const out = execSync(`tail -n 20 ${VOICE_STATS_FILE}`, { encoding: 'utf8' });
+            const lines = out.trim().split('\n').filter(l => l.trim());
+            const stats = lines.map(l => JSON.parse(l));
+            const mosCalls = stats.filter((c: any) => (c.mos_score ?? 0) > 0);
+            if (mosCalls.length > 0) {
+                voiceMos = parseFloat((mosCalls.reduce((s: number, c: any) => s + c.mos_score, 0) / mosCalls.length).toFixed(2));
+            }
+        }
+    } catch {}
+
+    // Convergence state
+    const convergenceActive = convergenceProcesses.size > 0;
+
+    // XFR (iperf) state
+    let xfrActive = false;
+    try {
+        xfrActive = Array.from((xfrManager as any).jobs.values()).some((j: any) => j.status === 'running');
+    } catch {}
+
+    // Peer Probes for Fleet Reachability Matrix
+    let peerProbes: Array<{
+        target_name: string;
+        target_id: string;
+        target_url: string;
+        target_ip?: string;
+        type: string;
+        reachable: boolean;
+        latency_ms: number;
+        loss_pct: number;
+        jitter_ms: number;
+        score: number;
+        last_tested: number;
+    }> = [];
+
+    try {
+        const recent = await connectivityLogger.getResults({ limit: 120 });
+        const latestByEndpoint = new Map<string, any>();
+        if (recent && Array.isArray(recent.results)) {
+            for (const r of recent.results) {
+                if (!latestByEndpoint.has(r.endpointId)) {
+                    latestByEndpoint.set(r.endpointId, r);
+                }
+            }
+            peerProbes = Array.from(latestByEndpoint.values()).map(r => ({
+                target_name: r.endpointName || r.endpointId,
+                target_id: r.endpointId,
+                target_url: r.url || '',
+                target_ip: r.remoteIp || (r.url ? (r.url.match(/\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b/)?.[0] ?? '') : ''),
+                type: (r.endpointType || 'PING').toUpperCase(),
+                reachable: !!r.reachable,
+                latency_ms: Math.round((r.metrics?.total_ms ?? 0) * 100) / 100,
+                loss_pct: Math.round((r.metrics?.loss_pct ?? (r.reachable ? 0 : 100)) * 100) / 100,
+                jitter_ms: Math.round((r.metrics?.jitter_ms ?? 0) * 100) / 100,
+                score: Math.round((r.score ?? 0) * 100) / 100,
+                last_tested: r.timestamp
+            }));
+        }
+    } catch (e) {
+        log('REGISTRY', `Telemetry peer_probes calculation error: ${e}`, 'warn');
+    }
+
+    return {
+        probes_global_health: probesGlobalHealth,
+        probes_total: probesTotal,
+        probes_passing: probesPassing,
+        failing_probes: failingProbes,
+        peer_probes: peerProbes,
+        traffic_state: trafficState,
+        traffic_rate_mbps: trafficRateMbps,
+        traffic_tx_mbps: trafficTxMbps,
+        traffic_rx_mbps: trafficRxMbps,
+        voice_active: voiceActive,
+        voice_mos: voiceMos,
+        convergence_active: convergenceActive,
+        xfr_active: xfrActive,
+        provisioning_status: provisioningManager?.getState(),
+        uptime_seconds: Math.floor(process.uptime())
+    };
+};
+
+registryManager.setTelemetryProvider(collectFleetTelemetrySummary);
+fleetTunnelManager.setTelemetryProvider(collectFleetTelemetrySummary);
+
+// --- Stigix Fleet Control Plane API (Phase 3A - Leader Only) ---
+app.get('/api/fleet/overview', authenticateToken, (req, res) => {
+    if (!registryManager.isLeader()) {
+        return res.status(403).json({
+            error: 'not_leader',
+            message: 'Fleet Control Plane is only accessible on the Leader instance.'
+        });
+    }
+    const localLeaderId = registryManager.getInstanceId();
+    const overview = localRegistryServer.getFleetOverview(localLeaderId);
+    res.json(overview);
+});
+log('FLEET', `🏢 Fleet Control Plane mounted at /api/fleet/overview (Leader only)`);
+
+// --- SD-WAN Reachability Matrix SLA Thresholds & Topology (PRD v2.0.97) ---
+app.get('/api/fleet/matrix/thresholds', authenticateToken, async (req, res) => {
+    const isLeader = typeof registryManager?.isLeader === 'function' ? registryManager.isLeader() : false;
+    const status = registryManager.getStatus();
+    let leaderHost = status?.leader_info?.ip;
+    if (!leaderHost && status?.registry_url) {
+        try {
+            const u = new URL(status.registry_url);
+            if (u.hostname && u.hostname !== 'registry.stigix.io') leaderHost = u.hostname;
+        } catch {}
+    }
+    if (!isLeader && leaderHost && leaderHost !== '127.0.0.1') {
+        try {
+            const internalToken = jwt.sign({ username: 'system-proxy' }, process.env.JWT_SECRET || 'stigix-secret-key-12345', { expiresIn: '1h' });
+            const leaderRes = await fetch(`http://${leaderHost}:8080/api/fleet/matrix/thresholds`, {
+                headers: { 'Authorization': `Bearer ${internalToken}` },
+                signal: AbortSignal.timeout(3000)
+            });
+            if (leaderRes.ok) return res.json(await leaderRes.json());
+        } catch {}
+    }
+    res.json(getMatrixThresholds());
+});
+
+app.post('/api/fleet/matrix/thresholds', authenticateToken, async (req, res) => {
+    const isLeader = typeof registryManager?.isLeader === 'function' ? registryManager.isLeader() : false;
+    const status = registryManager.getStatus();
+    let leaderHost = status?.leader_info?.ip;
+    if (!leaderHost && status?.registry_url) {
+        try {
+            const u = new URL(status.registry_url);
+            if (u.hostname && u.hostname !== 'registry.stigix.io') leaderHost = u.hostname;
+        } catch {}
+    }
+    if (!isLeader && leaderHost && leaderHost !== '127.0.0.1') {
+        try {
+            const internalToken = jwt.sign({ username: 'system-proxy' }, process.env.JWT_SECRET || 'stigix-secret-key-12345', { expiresIn: '1h' });
+            const leaderRes = await fetch(`http://${leaderHost}:8080/api/fleet/matrix/thresholds`, {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${internalToken}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(req.body),
+                signal: AbortSignal.timeout(3000)
+            });
+            if (leaderRes.ok) return res.json(await leaderRes.json());
+        } catch {}
+    }
+    const updated = { ...DEFAULT_MATRIX_THRESHOLDS, ...req.body };
+    fs.writeFileSync(MATRIX_THRESHOLDS_FILE, JSON.stringify(updated, null, 2));
+    log('REGISTRY', `Updated SD-WAN reachability matrix thresholds & topology: ${JSON.stringify(updated)}`);
+    res.json({ success: true, thresholds: updated });
+});
+
+app.post('/api/fleet/matrix/topology', authenticateToken, async (req, res) => {
+    const { topology } = req.body;
+    if (!['full_mesh', 'hub_and_spoke', 'disabled'].includes(topology)) {
+        return res.status(400).json({ error: 'Invalid topology mode' });
+    }
+    const isLeader = typeof registryManager?.isLeader === 'function' ? registryManager.isLeader() : false;
+    const status = registryManager.getStatus();
+    let leaderHost = status?.leader_info?.ip;
+    if (!leaderHost && status?.registry_url) {
+        try {
+            const u = new URL(status.registry_url);
+            if (u.hostname && u.hostname !== 'registry.stigix.io') leaderHost = u.hostname;
+        } catch {}
+    }
+    if (!isLeader && leaderHost && leaderHost !== '127.0.0.1') {
+        try {
+            const internalToken = jwt.sign({ username: 'system-proxy' }, process.env.JWT_SECRET || 'stigix-secret-key-12345', { expiresIn: '1h' });
+            const leaderRes = await fetch(`http://${leaderHost}:8080/api/fleet/matrix/topology`, {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${internalToken}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ topology }),
+                signal: AbortSignal.timeout(3000)
+            });
+            if (leaderRes.ok) return res.json(await leaderRes.json());
+        } catch {}
+    }
+    const current = getMatrixThresholds();
+    const updated = { ...current, mesh_topology: topology };
+    fs.writeFileSync(MATRIX_THRESHOLDS_FILE, JSON.stringify(updated, null, 2));
+    log('REGISTRY', `Updated fleet mesh topology to: ${topology}`);
+    res.json({ success: true, topology, thresholds: updated });
+});
+
+// Global in-memory cache for Spoke fleet matrix to prevent single-node fallback flushes
+let cachedFleetMatrixSpoke: { data: any; timestamp: number } | null = null;
+
+// --- Stigix Fleet Bidirectional Reachability Matrix API (PRD v2.0.97) ---
+app.get('/api/fleet/matrix', authenticateToken, async (req, res) => {
+    try {
+        const typeFilter = ((req.query.type as string) || 'ALL').toUpperCase();
+        const asymmetryOnly = req.query.asymmetry_only === 'true';
+        const siteFilter = (req.query.site as string || '').toLowerCase();
+
+        const status = registryManager.getStatus();
+        const localId = status?.instance_id || 'local-node';
+        const localName = (process.env.STIGIX_SITE_NAME || status?.instance_id || 'Local Node').toUpperCase();
+        const localIp = status?.detected_ip || '127.0.0.1';
+        const isLeader = typeof registryManager?.isLeader === 'function' ? registryManager.isLeader() : false;
+
+        // 0. Spoke Proxy: If running on a Spoke, forward query to Leader for full-mesh fleet visibility
+        if (!isLeader) {
+            let leaderHost = status?.leader_info?.ip;
+            if (!leaderHost && status?.registry_url) {
+                try {
+                    const u = new URL(status.registry_url);
+                    if (u.hostname && u.hostname !== 'registry.stigix.io') {
+                        leaderHost = u.hostname;
+                    }
+                } catch {}
+            }
+
+            // Fallback leader discovery from known peers or targets
+            if (!leaderHost) {
+                const knownPeers = typeof registryManager?.getPeers === 'function' ? registryManager.getPeers() : [];
+                const leaderPeer = knownPeers.find((p: any) => p.is_leader || p.role === 'leader' || (p.instance_id && p.instance_id.toLowerCase().includes('dc1')));
+                if (leaderPeer && leaderPeer.ip_private) {
+                    leaderHost = leaderPeer.ip_private;
+                }
+            }
+
+            if (leaderHost && leaderHost !== '127.0.0.1' && leaderHost !== localIp) {
+                try {
+                    const queryString = req.url.includes('?') ? '?' + req.url.split('?')[1] : '';
+                    const leaderUrl = `http://${leaderHost}:8080/api/fleet/matrix${queryString}`;
+                    const internalToken = jwt.sign({ username: 'system-proxy' }, process.env.JWT_SECRET || 'stigix-secret-key-12345', { expiresIn: '1h' });
+                    const leaderRes = await fetch(leaderUrl, {
+                        headers: {
+                            'Authorization': `Bearer ${internalToken}`
+                        },
+                        signal: AbortSignal.timeout(5000)
+                    });
+                    if (leaderRes.ok) {
+                        const json: any = await leaderRes.json();
+                        if (json && Array.isArray(json.nodes) && json.nodes.length > 1) {
+                            cachedFleetMatrixSpoke = { data: JSON.parse(JSON.stringify(json)), timestamp: Date.now() };
+                            json.local_node_id = localId;
+                            json.nodes = json.nodes.map((n: any) => ({
+                                ...n,
+                                is_local: n.id === localId
+                            }));
+                            return res.json(json);
+                        }
+                    }
+                } catch (proxyErr) {
+                    log('FLEET', `Spoke matrix proxy to Leader (${leaderHost}) error: ${proxyErr}`, 'warn');
+                }
+            }
+
+            // If proxy failed or timed out, serve from fresh spoke cache (up to 10 minutes)
+            if (cachedFleetMatrixSpoke && (Date.now() - cachedFleetMatrixSpoke.timestamp < 600000)) {
+                const cached = JSON.parse(JSON.stringify(cachedFleetMatrixSpoke.data));
+                cached.local_node_id = localId;
+                if (Array.isArray(cached.nodes)) {
+                    cached.nodes = cached.nodes.map((n: any) => ({
+                        ...n,
+                        is_local: n.id === localId
+                    }));
+                }
+                return res.json(cached);
+            }
+        }
+
+        // 1. Gather all active nodes (Self + Peers)
+        const rawPeers = (isLeader && typeof localRegistryServer?.getInstances === 'function')
+            ? localRegistryServer.getInstances()
+            : (typeof registryManager?.getPeers === 'function' ? registryManager.getPeers() : []);
+
+        const nodes: Array<{ id: string; name: string; ip: string; site_type: 'HUB' | 'BRANCH' | 'CLOUD'; is_local: boolean; is_leader: boolean; last_seen?: string }> = [
+            {
+                id: localId,
+                name: localName,
+                ip: localIp,
+                site_type: isHubSite(localName) ? 'HUB' : 'BRANCH',
+                is_local: true,
+                is_leader: isLeader,
+                last_seen: new Date().toISOString()
+            }
+        ];
+
+        for (const peer of rawPeers) {
+            if (!peer || !peer.instance_id) continue;
+            if (!nodes.find(n => n.id === peer.instance_id)) {
+                const peerName = (peer.meta?.site || peer.instance_id || 'PEER').toUpperCase();
+                nodes.push({
+                    id: peer.instance_id,
+                    name: peerName,
+                    ip: peer.ip_private,
+                    site_type: isHubSite(peerName, peer.site_type) ? 'HUB' : 'BRANCH',
+                    is_local: false,
+                    is_leader: Boolean(peer.is_leader || peer.meta?.is_leader),
+                    last_seen: peer.last_seen
+                });
+            }
+        }
+
+        // Sort nodes: HUBs first (DC1, DC2...), then Branches (BR1, BR2, BR5, BR8...), using natural alphanumeric ordering
+        nodes.sort((a, b) => {
+            const isHubA = a.site_type === 'HUB' || isHubSite(a.name, a.site_type);
+            const isHubB = b.site_type === 'HUB' || isHubSite(b.name, b.site_type);
+            if (isHubA && !isHubB) return -1;
+            if (!isHubA && isHubB) return 1;
+            return a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' });
+        });
+
+        // 2. Collect probe map per node
+        const nodeProbesMap = new Map<string, Array<any>>();
+
+        // Local probes
+        try {
+            const recent = await connectivityLogger.getResults({ limit: 140 });
+            const localByEndpoint = new Map<string, any>();
+            if (recent && Array.isArray(recent.results)) {
+                for (const r of recent.results) {
+                    if (!localByEndpoint.has(r.endpointId)) {
+                        localByEndpoint.set(r.endpointId, r);
+                    }
+                    const nameKey = (r.endpointName || '').toLowerCase().replace(/\s+/g, '-');
+                    if (nameKey && !localByEndpoint.has(nameKey)) {
+                        localByEndpoint.set(nameKey, r);
+                    }
+                }
+            }
+
+            const envProbes = getEnvConnectivityEndpoints();
+            const customProbes = getCustomConnectivityEndpoints();
+            const discoveredProbes = discoveryManager.getProbes();
+            const autoMeshProbes = getAutoMeshProbes();
+            const allActiveProbes = [...envProbes, ...customProbes, ...discoveredProbes, ...autoMeshProbes];
+
+            const localProbesList: Array<any> = [];
+            for (const ep of allActiveProbes) {
+                const epKey = ep.name.toLowerCase().replace(/\s+/g, '-');
+                const lastRes = localByEndpoint.get(epKey) || localByEndpoint.get(ep.id);
+                const targetIp = (ep.url || ep.target || '').replace(/^https?:\/\//, '').split(':')[0].split('/')[0];
+                localProbesList.push({
+                    probe_id: ep.id || ep.name,
+                    target_name: ep.name,
+                    name: ep.name,
+                    target_url: ep.url || ep.target,
+                    target_ip: targetIp,
+                    peer_instance_id: (ep as any).peer_instance_id || '',
+                    target_id: (ep as any).peer_instance_id || '',
+                    type: (ep.type || 'PING').toUpperCase(),
+                    reachable: lastRes ? !!lastRes.reachable : false,
+                    latency_ms: Math.round((lastRes?.metrics?.total_ms ?? lastRes?.latencyMs ?? 0) * 100) / 100,
+                    jitter_ms: Math.round((lastRes?.metrics?.jitter_ms ?? lastRes?.jitterMs ?? 0) * 100) / 100,
+                    loss_pct: Math.round((lastRes?.metrics?.loss_pct ?? (lastRes?.reachable ? 0 : 100)) * 100) / 100,
+                    score: Math.round((lastRes?.score ?? 100) * 100) / 100,
+                    last_tested: lastRes?.timestamp ? new Date(lastRes.timestamp).toISOString() : new Date().toISOString()
+                });
+            }
+            nodeProbesMap.set(localId, localProbesList);
+        } catch (e: any) {
+            log('FLEET', `Error collecting local matrix probes: ${e.message}`, 'warn');
+        }
+
+        // Peer probes from registry telemetry cache
+        for (const peer of rawPeers) {
+            if (!peer) continue;
+            const peerProbes = peer.summary?.peer_probes || peer.telemetry?.peer_probes || peer.telemetry?.probes || peer.peer_probes || [];
+            if (peerProbes.length > 0) {
+                nodeProbesMap.set(peer.instance_id, peerProbes);
+            }
+        }
+
+        const cleanSite = (name: string) => name.toLowerCase().replace(/[-_]?(ubuntu|node|linux|srv|core|hub).*$/, '').trim();
+
+        const findProbeToNode = (fromNodeId: string, targetNode: { id: string; name: string; ip: string }) => {
+            const probes = nodeProbesMap.get(fromNodeId) || [];
+            if (!probes.length) return undefined;
+
+            const targetIp = (targetNode.ip || '').trim();
+            const tKey = cleanSite(targetNode.name);
+            const tId = targetNode.id ? cleanSite(targetNode.id) : '';
+
+            // Score candidate probes
+            const scored = probes.map((p: any) => {
+                const pIp = (p.target_ip || '').trim();
+                const pUrl = (p.target_url || '').trim();
+                const pName = (p.target_name || p.name || '').trim().toLowerCase();
+                const pType = (p.type || 'PING').toUpperCase();
+
+                // Strictly enforce ICMP / PING probe types for SD-WAN reachability matrix
+                if (pType !== 'PING' && pType !== 'ICMP') {
+                    return { probe: p, score: -1 };
+                } else if (typeFilter !== 'ALL' && pType !== typeFilter) {
+                    return { probe: p, score: -1 };
+                }
+
+                let score = 0;
+                let matched = false;
+
+                // 1. Direct Peer ID Match from AutoMesh Fleet
+                if (p.peer_instance_id && targetNode.id && (p.peer_instance_id === targetNode.id || p.peer_instance_id.toLowerCase() === targetNode.id.toLowerCase())) {
+                    score += 150;
+                    matched = true;
+                }
+
+                // 2. Exact Host IP Match (Stigix Node host-to-host)
+                if (targetIp && (targetIp === pIp || pUrl.includes(targetIp))) {
+                    score += 120;
+                    matched = true;
+                }
+
+                // 3. Site name match (e.g. "dc1" in "DC1 (192.168.201.3)" or "br5" in "UbuntuBR5" or "BR8")
+                if (tKey && (pName === tKey || pName.startsWith(tKey + ' ') || pName.startsWith(tKey + '(') || pName.startsWith(tKey + '-') || pName.includes(' ' + tKey) || pName.includes('(' + tKey) || pName.includes('-' + tKey) || pName === 'ubuntu' + tKey || pName.includes(tKey))) {
+                    score += 60;
+                    matched = true;
+                }
+
+                if (tId && pName.includes(tId)) {
+                    score += 40;
+                    matched = true;
+                }
+
+                if (p.target_id && targetNode.id && p.target_id.toLowerCase().includes(tId)) {
+                    score += 30;
+                    matched = true;
+                }
+
+                if (!matched) return { probe: p, score: -1 };
+
+                // Prefer reachable probes
+                if (p.reachable) score += 10;
+
+                return { probe: p, score };
+            }).filter(item => item.score > 0);
+
+            scored.sort((a, b) => b.score - a.score);
+            return scored.length > 0 ? scored[0].probe : undefined;
+        };
+
+        const thresholds = getMatrixThresholds();
+        const topology = thresholds.mesh_topology || 'hub_and_spoke';
+
+        // 3. Assemble N x N Matrix Pairs
+        const matrixPairs: Array<any> = [];
+        let healthyBidirectional = 0;
+        let asymmetricDegraded = 0;
+        let unidirectionalDown = 0;
+        let fullOutage = 0;
+        let partialTelemetry = 0;
+        let policyExcluded = 0;
+
+        for (let i = 0; i < nodes.length; i++) {
+            for (let j = 0; j < nodes.length; j++) {
+                if (i === j) continue;
+                const source = nodes[i];
+                const target = nodes[j];
+
+                if (siteFilter && !source.name.toLowerCase().includes(siteFilter) && !target.name.toLowerCase().includes(siteFilter) &&
+                    !source.id.toLowerCase().includes(siteFilter) && !target.id.toLowerCase().includes(siteFilter)) {
+                    continue;
+                }
+
+                const isSpokeToSpoke = topology === 'hub_and_spoke' && !isHubSite(source.name, source.site_type) && !isHubSite(target.name, target.site_type);
+
+                const fwdProbe = findProbeToNode(source.id, target);
+                const revProbe = findProbeToNode(target.id, source);
+
+                const fwdData = fwdProbe ? {
+                    reachable: !!fwdProbe.reachable,
+                    latency_ms: Math.round((fwdProbe.latency_ms ?? 0) * 100) / 100,
+                    jitter_ms: Math.round((fwdProbe.jitter_ms ?? 0) * 100) / 100,
+                    loss_pct: Math.round((fwdProbe.loss_pct ?? 0) * 100) / 100,
+                    score: Math.round((fwdProbe.score ?? 0) * 100) / 100,
+                    last_tested: fwdProbe.last_tested,
+                    type: fwdProbe.type,
+                    source_ip: source.ip || '',
+                    target_ip: fwdProbe.target_ip || target.ip || '',
+                    target_url: fwdProbe.target_url,
+                    has_data: true
+                } : {
+                    reachable: false,
+                    latency_ms: 0,
+                    jitter_ms: 0,
+                    loss_pct: 100,
+                    score: 0,
+                    type: 'PING',
+                    source_ip: source.ip || '',
+                    target_ip: target.ip || '',
+                    has_data: false
+                };
+
+                const revData = revProbe ? {
+                    reachable: !!revProbe.reachable,
+                    latency_ms: Math.round((revProbe.latency_ms ?? 0) * 100) / 100,
+                    jitter_ms: Math.round((revProbe.jitter_ms ?? 0) * 100) / 100,
+                    loss_pct: Math.round((revProbe.loss_pct ?? 0) * 100) / 100,
+                    score: Math.round((revProbe.score ?? 0) * 100) / 100,
+                    last_tested: revProbe.last_tested,
+                    type: revProbe.type,
+                    source_ip: target.ip || '',
+                    target_ip: revProbe.target_ip || source.ip || '',
+                    target_url: revProbe.target_url,
+                    has_data: true
+                } : {
+                    reachable: false,
+                    latency_ms: 0,
+                    jitter_ms: 0,
+                    loss_pct: 100,
+                    score: 0,
+                    type: 'PING',
+                    source_ip: target.ip || '',
+                    target_ip: source.ip || '',
+                    has_data: false
+                };
+
+                let isAsymmetric = false;
+                let latencyDelta = 0;
+                let lossDelta = 0;
+                let statusStr: 'OPTIMAL' | 'DEGRADED' | 'CRITICAL' | 'PARTIAL' | 'POLICY_EXCLUDED' | 'UNKNOWN' = 'UNKNOWN';
+                let reason = '';
+
+                if (isSpokeToSpoke) {
+                    statusStr = 'POLICY_EXCLUDED';
+                    reason = `Hub & Spoke Policy: Direct Spoke-to-Spoke path (${source.name} ⇄ ${target.name}) is bypassed. Egress routes through Hub.`;
+                    policyExcluded++;
+                } else if (fwdData.has_data && revData.has_data) {
+                    latencyDelta = Math.round(Math.abs(fwdData.latency_ms - revData.latency_ms) * 100) / 100;
+                    lossDelta = Math.round(Math.abs(fwdData.loss_pct - revData.loss_pct) * 100) / 100;
+
+                    if (fwdData.reachable && revData.reachable) {
+                        const maxLatency = Math.max(fwdData.latency_ms, revData.latency_ms);
+                        const maxLoss = Math.max(fwdData.loss_pct, revData.loss_pct);
+                        const maxJitter = Math.max(fwdData.jitter_ms, revData.jitter_ms);
+
+                        if (maxLoss >= thresholds.loss_critical_pct || maxLatency >= thresholds.latency_critical_ms || latencyDelta >= thresholds.asymmetry_critical_delta_ms) {
+                            isAsymmetric = latencyDelta >= thresholds.asymmetry_warning_delta_ms;
+                            statusStr = 'CRITICAL';
+                            if (maxLoss >= thresholds.loss_critical_pct) reason = `Critical Packet Loss (${maxLoss}% >= ${thresholds.loss_critical_pct}%)`;
+                            else if (maxLatency >= thresholds.latency_critical_ms) reason = `Critical Latency (${maxLatency}ms >= ${thresholds.latency_critical_ms}ms)`;
+                            else reason = `Severe Asymmetry (+${latencyDelta}ms >= ${thresholds.asymmetry_critical_delta_ms}ms)`;
+                            fullOutage++;
+                        } else if (latencyDelta >= thresholds.asymmetry_warning_delta_ms || lossDelta >= thresholds.loss_warning_pct || maxLatency >= thresholds.latency_warning_ms || maxLoss >= thresholds.loss_warning_pct || maxJitter >= thresholds.jitter_warning_ms) {
+                            isAsymmetric = latencyDelta >= thresholds.asymmetry_warning_delta_ms;
+                            statusStr = 'DEGRADED';
+                            if (latencyDelta >= thresholds.asymmetry_warning_delta_ms) reason = `Latency Asymmetry (+${latencyDelta}ms)`;
+                            else if (lossDelta >= thresholds.loss_warning_pct) reason = `Packet Loss Asymmetry (${lossDelta}% delta)`;
+                            else if (maxLatency >= thresholds.latency_warning_ms) reason = `Elevated Latency (${maxLatency}ms >= ${thresholds.latency_warning_ms}ms)`;
+                            else if (maxLoss >= thresholds.loss_warning_pct) reason = `Elevated Packet Loss (${maxLoss}%)`;
+                            else reason = `Elevated Jitter (${maxJitter}ms >= ${thresholds.jitter_warning_ms}ms)`;
+                            asymmetricDegraded++;
+                        } else {
+                            isAsymmetric = false;
+                            statusStr = 'OPTIMAL';
+                            reason = 'Symmetric Path Optimal';
+                            healthyBidirectional++;
+                        }
+                    } else if (fwdData.reachable && !revData.reachable) {
+                        isAsymmetric = true;
+                        statusStr = 'CRITICAL';
+                        reason = `Return Path Blocked (${target.name} ➔ ${source.name} DOWN)`;
+                        unidirectionalDown++;
+                    } else if (!fwdData.reachable && revData.reachable) {
+                        isAsymmetric = true;
+                        statusStr = 'CRITICAL';
+                        reason = `Forward Path Blocked (${source.name} ➔ ${target.name} DOWN)`;
+                        unidirectionalDown++;
+                    } else {
+                        isAsymmetric = false;
+                        statusStr = 'CRITICAL';
+                        reason = 'Bidirectional Outage';
+                        fullOutage++;
+                    }
+                } else if (fwdData.has_data && !revData.has_data) {
+                    latencyDelta = 0;
+                    lossDelta = 0;
+                    if (fwdData.reachable) {
+                        const isDegraded = fwdData.latency_ms >= thresholds.latency_warning_ms || fwdData.loss_pct >= thresholds.loss_warning_pct;
+                        statusStr = isDegraded ? 'DEGRADED' : 'PARTIAL';
+                        reason = isDegraded ? `Forward Path Latency High (${fwdData.latency_ms}ms)` : `Forward Path UP (Return telemetry unconfigured from ${target.name})`;
+                        if (isDegraded) asymmetricDegraded++; else partialTelemetry++;
+                    } else {
+                        statusStr = 'CRITICAL';
+                        reason = `Forward Path DOWN (${source.name} ➔ ${target.name})`;
+                        unidirectionalDown++;
+                    }
+                } else if (!fwdData.has_data && revData.has_data) {
+                    latencyDelta = 0;
+                    lossDelta = 0;
+                    if (revData.reachable) {
+                        const isDegraded = revData.latency_ms >= thresholds.latency_warning_ms || revData.loss_pct >= thresholds.loss_warning_pct;
+                        statusStr = isDegraded ? 'DEGRADED' : 'PARTIAL';
+                        reason = isDegraded ? `Return Path Latency High (${revData.latency_ms}ms)` : `Return Path UP (${target.name} ➔ ${source.name})`;
+                        if (isDegraded) asymmetricDegraded++; else partialTelemetry++;
+                    } else {
+                        statusStr = 'CRITICAL';
+                        reason = `Return Path DOWN (${target.name} ➔ ${source.name})`;
+                        unidirectionalDown++;
+                    }
+                } else {
+                    statusStr = 'UNKNOWN';
+                    reason = 'No active telemetry probe between these sites';
+                }
+
+                if (asymmetryOnly && !isAsymmetric) {
+                    continue;
+                }
+
+                matrixPairs.push({
+                    source_id: source.id,
+                    source_name: source.name,
+                    source_ip: source.ip,
+                    target_id: target.id,
+                    target_name: target.name,
+                    target_ip: target.ip,
+                    forward: fwdData,
+                    reverse: revData,
+                    asymmetry: {
+                        is_asymmetric: isAsymmetric,
+                        latency_delta_ms: latencyDelta,
+                        loss_delta_pct: lossDelta,
+                        reason: reason,
+                        status: statusStr
+                    }
+                });
+            }
+        }
+
+        res.json({
+            timestamp: Date.now(),
+            local_node_id: localId,
+            nodes,
+            thresholds,
+            topology,
+            summary: {
+                total_pairs: matrixPairs.length,
+                healthy_bidirectional: healthyBidirectional,
+                asymmetric_degraded: asymmetricDegraded,
+                unidirectional_down: unidirectionalDown,
+                full_outage: fullOutage,
+                partial_telemetry: partialTelemetry,
+                policy_excluded: policyExcluded
+            },
+            matrix: matrixPairs
+        });
+    } catch (err: any) {
+        log('FLEET', `Error generating reachability matrix: ${err.message}`, 'error');
+        res.status(500).json({ error: 'matrix_computation_failed', message: err.message });
+    }
+});
+log('FLEET', `🌐 Bidirectional SD-WAN Reachability Matrix mounted at /api/fleet/matrix`);
+
+/**
+ * POST /api/fleet/matrix/flow-trace
+ * On-demand SD-WAN flow path & physical circuit inspection (PRD v2.0.98)
+ * Traces Forward (A -> B) and Return (B -> A) WAN circuit routing via getflow.py
+ */
+app.post('/api/fleet/matrix/flow-trace', authenticateToken, async (req, res) => {
+    try {
+        const { source_id, source_name, source_ip, target_id, target_name, target_ip } = req.body;
+
+        const cleanSite = (name: string) => (name || '').replace(/[-_]?(ubuntu|node|linux|srv|core|hub).*$/i, '').trim().toUpperCase();
+        const srcSite = cleanSite(source_name || source_id);
+        const tgtSite = cleanSite(target_name || target_id);
+
+        const cleanIp = (ip: string) => (ip || '').replace(/^https?:\/\//, '').split(':')[0].split('/')[0].trim();
+        const srcIp = cleanIp(source_ip);
+        const tgtIp = cleanIp(target_ip);
+
+        const isDcOrHub = (site: string) => site.startsWith('DC') || site.startsWith('HUB') || site.includes('DATACENTER') || site.includes('CORE');
+        const srcIsDc = isDcOrHub(srcSite);
+        const tgtIsDc = isDcOrHub(tgtSite);
+
+        log('FLEET', `🔍 Tracing SD-WAN Flow Path: ${srcSite} (${srcIp}, DC=${srcIsDc}) ⇄ ${tgtSite} (${tgtIp}, DC=${tgtIsDc})`);
+
+        // Prisma SD-WAN architecture: Path policies & flow telemetry exist on Branch IONs, NOT on DC/HUB IONs.
+        // If one endpoint is a DC, we query getflow ONLY on the Branch site.
+        let fwdResult: any = null;
+        let revResult: any = null;
+
+        if (!srcIsDc && tgtIsDc) {
+            // Branch -> DC: Query getflow on the Branch (srcSite)
+            fwdResult = await runGetflow({ siteName: srcSite, dstIp: tgtIp, minutes: 20 });
+        } else if (srcIsDc && !tgtIsDc) {
+            // DC -> Branch: Query getflow on the Branch (tgtSite)
+            revResult = await runGetflow({ siteName: tgtSite, dstIp: srcIp, minutes: 20 });
+        } else if (!srcIsDc && !tgtIsDc) {
+            // Branch -> Branch: Query both in parallel
+            [fwdResult, revResult] = await Promise.all([
+                runGetflow({ siteName: srcSite, dstIp: tgtIp, minutes: 20 }),
+                runGetflow({ siteName: tgtSite, dstIp: srcIp, minutes: 20 })
+            ]);
+        } else if (srcIsDc && tgtIsDc) {
+            // DC -> DC: Neither site has Branch path policies.
+            log('FLEET', `ℹ️ DC-to-DC flow trace requested for ${srcSite} ⇄ ${tgtSite} (bypassing getflow, using core routing)`);
+        }
+
+        const fwdFlow = fwdResult?.flows && fwdResult.flows.length > 0 ? fwdResult.flows[0] : null;
+        const revFlow = revResult?.flows && revResult.flows.length > 0 ? revResult.flows[0] : null;
+
+        const formatCircuit = (rawPath: string, defaultName: string) => {
+            if (!rawPath) return defaultName;
+            return rawPath.replace(/ to /g, ' → ');
+        };
+
+        // If DC was target and Branch returned a flow, the reverse path is derived from the symmetric session
+        let fwdEgress = '';
+        let revEgress = '';
+
+        if (srcIsDc && tgtIsDc) {
+            fwdEgress = 'DC-Interconnect (Core MPLS Fabric)';
+            revEgress = 'DC-Interconnect (Core MPLS Fabric)';
+        } else {
+            if (fwdFlow?.egress_path) {
+                fwdEgress = formatCircuit(fwdFlow.egress_path, 'Direct Fabric');
+                if (tgtIsDc && !revFlow) {
+                    // Invert the branch path for DC return: "BR5-INET → DC1-INET" becomes "DC1-INET → BR5-INET"
+                    const parts = fwdEgress.split(' → ');
+                    revEgress = parts.length === 2 ? `${parts[1]} → ${parts[0]}` : 'MPLS-1 (1Gbps Core)';
+                }
+            } else {
+                fwdEgress = srcIsDc ? 'MPLS-1 (1Gbps Core)' : 'INET-1 (Direct Fabric)';
+            }
+
+            if (revFlow?.egress_path) {
+                revEgress = formatCircuit(revFlow.egress_path, 'Direct Fabric');
+                if (srcIsDc && !fwdFlow) {
+                    const parts = revEgress.split(' → ');
+                    fwdEgress = parts.length === 2 ? `${parts[1]} → ${parts[0]}` : 'MPLS-1 (1Gbps Core)';
+                }
+            } else if (!revEgress) {
+                revEgress = tgtIsDc ? 'MPLS-1 (1Gbps Core)' : 'INET-1 (Direct Fabric)';
+            }
+        }
+
+        const fwdHistory = (fwdFlow?.path_history || []).map((p: any) => ({
+            ...p,
+            path: p.path ? p.path.replace(/ to /g, ' → ') : p.path
+        }));
+        const revHistory = (revFlow?.path_history || []).map((p: any) => ({
+            ...p,
+            path: p.path ? p.path.replace(/ to /g, ' → ') : p.path
+        }));
+
+        const isFailover = (fwdHistory.length > 1) || (revHistory.length > 1) || (fwdFlow?.is_failover) || (revFlow?.is_failover);
+
+        const extractCircuitType = (pathStr: string) => {
+            const upper = (pathStr || '').toUpperCase();
+            if (upper.includes('MPLS')) return 'MPLS';
+            if (upper.includes('INET') || upper.includes('INTERNET') || upper.includes('BROADBAND')) return 'INET';
+            if (upper.includes('LTE') || upper.includes('CELLULAR') || upper.includes('5G')) return 'LTE';
+            return 'FABRIC';
+        };
+
+        const fwdCircuitType = extractCircuitType(fwdEgress);
+        const revCircuitType = extractCircuitType(revEgress);
+        const isAsymmetric = fwdCircuitType !== revCircuitType;
+
+        let summaryText = 'Normal symmetric WAN routing across primary fabric.';
+        let recommendation = 'No action required. WAN circuit performance is optimal.';
+
+        if (srcIsDc && tgtIsDc) {
+            summaryText = 'Core Datacenter Interconnect: DC-to-DC links route via core fabric / direct WAN circuits without Branch path policy inspection.';
+            recommendation = 'Path policies and flow telemetry in Prisma SD-WAN are only enforced on Branch sites.';
+        } else if (isFailover) {
+            summaryText = `WAN Failover Event Detected on ${srcSite} ⇄ ${tgtSite}. Traffic transitioned across active circuits.`;
+            recommendation = 'Check Prisma SD-WAN Event Log to inspect circuit flaps or SLA breach triggers.';
+        } else if (isAsymmetric) {
+            summaryText = `Asymmetric WAN Routing: Forward path uses [${fwdEgress}] (${fwdCircuitType}) while Return path routes via [${revEgress}] (${revCircuitType}).`;
+            recommendation = 'Verify SD-WAN Path Policy priorities to ensure symmetric circuit preference.';
+        } else if (srcIsDc || tgtIsDc) {
+            const branchSite = srcIsDc ? tgtSite : srcSite;
+            const dcSite = srcIsDc ? srcSite : tgtSite;
+            summaryText = `Symmetric Datacenter Routing: Session on Branch [${branchSite}] forwards on [${fwdEgress}], and Datacenter [${dcSite}] returns symmetrically over the established SD-WAN fabric path [${revEgress}].`;
+            recommendation = 'No action required. SD-WAN session routing is symmetric and optimal.';
+        }
+
+        res.json({
+            success: true,
+            timestamp: new Date().toISOString(),
+            source_site: srcSite,
+            target_site: tgtSite,
+            source_ip: srcIp,
+            target_ip: tgtIp,
+            forward_flow: {
+                found: !!fwdFlow,
+                source: srcIp,
+                destination: tgtIp,
+                egress_path: fwdEgress,
+                path_history: fwdHistory,
+                path_type: fwdFlow?.path_type || 'VPN',
+                policy_rule: fwdFlow?.policy_rule || 'Default-SDWAN-Fabric-Path',
+                tx_packets: fwdFlow?.tx_packets || 0,
+                rx_packets: fwdFlow?.rx_packets || 0,
+                raw_flow: fwdFlow
+            },
+            return_flow: {
+                found: !!revFlow,
+                source: tgtIp,
+                destination: srcIp,
+                egress_path: revEgress,
+                path_history: revHistory,
+                path_type: revFlow?.path_type || 'VPN',
+                policy_rule: revFlow?.policy_rule || 'Default-SDWAN-Fabric-Path',
+                tx_packets: revFlow?.tx_packets || 0,
+                rx_packets: revFlow?.rx_packets || 0,
+                raw_flow: revFlow
+            },
+            diagnosis: {
+                is_failover: isFailover,
+                is_asymmetric_circuit: isAsymmetric,
+                summary: summaryText,
+                recommendation: recommendation
+            }
+        });
+    } catch (e: any) {
+        log('FLEET', `Error in flow-trace: ${e.message}`, 'error');
+        res.status(500).json({ success: false, error: e.message });
+    }
+});
+log('FLEET', `🔍 On-Demand SD-WAN Flow Path Trace mounted at POST /api/fleet/matrix/flow-trace`);
+
+// --- Stigix Fleet Gateway BFF Reverse Proxy (Peer Context Switcher - M1) ---
+//
+// Route: /api/gateway/:peerId/*
+//
+// Resolves the peer's management IP from the local in-memory registry, then
+// proxies the request (all HTTP methods) to that peer's dashboard port (8080).
+// The client browser always stays on the Leader URL. No credentials or JWT
+// secrets are forwarded; only a lightweight X-Gateway-Source header is appended.
+//
+// Security: Leader-only. Operator must be authenticated (authenticateToken).
+// Timeout: 5 000 ms — returns 504 on unreachable peer.
+// Safe-Mode and HMAC inter-node signing are planned for M4.
+//
+
+app.get('/api/fleet/tunnels', authenticateToken, (req: any, res: any) => {
+    if (!registryManager.isLeader()) {
+        return res.status(403).json({
+            error: 'not_leader',
+            message: 'Tunnels overview is only accessible on the Leader instance.'
+        });
+    }
+    const tunnels = fleetTunnelManager.getConnectedTunnels();
+    res.json({
+        count: tunnels.length,
+        tunnels
+    });
+});
+log('FLEET', `⚡ Fleet WebSocket Reverse Tunnels API mounted at GET /api/fleet/tunnels`);
+
+// --- Stigix Fleet Magic Join APIs (PRD v2.4 — Universal Zero-Touch Onboarding) ---
+
+/**
+ * GET /api/fleet/join-token
+ * Generates a signed, single-use Magic Join token for instant node onboarding.
+ * Leader only.
+ */
+app.get('/api/fleet/join-token', authenticateToken, async (req: any, res: any) => {
+    try {
+        if (!registryManager.isLeader()) {
+            return res.status(403).json({
+                error: 'not_leader',
+                message: 'Magic Join tokens can only be generated by the Leader instance.'
+            });
+        }
+
+        const ttlSeconds = parseInt(req.query.ttl_seconds as string) || 3600;
+        const siteHint = req.query.site_name as string || undefined;
+        const maxUses = parseInt(req.query.max_uses as string) || 1;
+        const requestHost = req.headers['host'];
+        const localIp = registryManager.getCurrentIp();
+        const rawEndpoints = req.query.endpoints as string || undefined;
+        const selectedEndpoints = rawEndpoints ? rawEndpoints.split(',').map((s: string) => s.trim()).filter(Boolean) : undefined;
+
+        const allDetected = magicJoinManager.detectLeaderEndpoints(requestHost, localIp);
+
+        const result = magicJoinManager.createToken({
+            ttlSeconds,
+            siteHint,
+            maxUses,
+            requestHost,
+            localIp,
+            endpoints: selectedEndpoints
+        });
+
+        res.json({
+            status: 'ok',
+            token: result.token,
+            jti: result.entry.jti,
+            expires_at: result.entry.expires_at,
+            ttl_seconds: ttlSeconds,
+            max_uses: maxUses,
+            endpoints: result.entry.payload.endpoints,
+            detected_endpoints: allDetected,
+            realm: result.entry.payload.realm,
+            curl_command: result.curlCommand
+        });
+    } catch (err: any) {
+        log('FLEET', `Error generating join token: ${err.message}`, 'error');
+        res.status(500).json({ error: 'token_generation_failed', message: err.message });
+    }
+});
+
+/**
+ * GET /api/fleet/join-tokens
+ * Lists all generated Magic Join tokens with their lifecycle status.
+ * Leader only.
+ */
+app.get('/api/fleet/join-tokens', authenticateToken, (req: any, res: any) => {
+    if (!registryManager.isLeader()) {
+        return res.status(403).json({ error: 'not_leader', message: 'Leader only.' });
+    }
+    const statusFilter = req.query.status as string || undefined;
+    const tokens = magicJoinManager.listTokens(statusFilter);
+    res.json({ status: 'ok', count: tokens.length, tokens });
+});
+
+/**
+ * DELETE /api/fleet/join-tokens/:jti
+ * Revokes a pending Magic Join token.
+ * Leader only.
+ */
+app.delete('/api/fleet/join-tokens/:jti', authenticateToken, (req: any, res: any) => {
+    if (!registryManager.isLeader()) {
+        return res.status(403).json({ error: 'not_leader', message: 'Leader only.' });
+    }
+    const success = magicJoinManager.revokeToken(req.params.jti);
+    if (!success) {
+        return res.status(404).json({ error: 'token_not_found', message: 'Token not found or already deleted.' });
+    }
+    res.json({ status: 'ok', message: 'Token successfully revoked.' });
+});
+
+/**
+ * POST /api/fleet/join-redeem
+ * Node-side onboarding endpoint. Redeems a join token and returns permanent cluster credentials.
+ * Automatically adds node as a registered target & initiates reverse dial if public IP is provided.
+ */
+app.post('/api/fleet/join-redeem', async (req: any, res: any) => {
+    try {
+        const token = req.body.token;
+        const instance_id = req.body.instance_id || req.body.hostname || `node-${Math.random().toString(16).slice(2, 10)}`;
+        const public_ip = req.body.public_ip;
+        const hostname = req.body.hostname || instance_id;
+        const site_name = req.body.site_name;
+        const capabilities = req.body.capabilities;
+
+        if (!token) {
+            return res.status(400).json({ error: 'missing_token', message: 'Magic Join token is required.' });
+        }
+
+        const redeemResult = magicJoinManager.redeemToken(token, {
+            instance_id,
+            public_ip,
+            hostname,
+            site_name,
+            capabilities
+        });
+
+        if (!redeemResult.success) {
+            log('FLEET', `Magic Join redemption rejected for node ${instance_id}: ${redeemResult.error}`, 'warn');
+            return res.status(400).json({ error: 'join_failed', message: redeemResult.error });
+        }
+
+        const effectiveSite = (site_name || instance_id || 'PEER').toUpperCase();
+        log('FLEET', `✨ Magic Join node successfully onboarded: ${instance_id} (${effectiveSite}) IP: ${public_ip || 'LAN'}`);
+
+        // Automatically create or update target in TargetsManager if public IP is provided
+        if (public_ip && typeof targetsManager?.createTarget === 'function') {
+            try {
+                const existingTargets = targetsManager.loadTargets();
+                const existing = existingTargets.find((t: any) => t.host === public_ip || (t.name || t.label || '').toUpperCase() === effectiveSite);
+                if (!existing) {
+                    targetsManager.createTarget({
+                        name: effectiveSite,
+                        host: public_ip,
+                        port: 8080,
+                        enabled: true,
+                        protocol: 'http',
+                        capabilities: capabilities || { voice: true, convergence: true, custom_app: true, xfr: true, security: true, connectivity: true },
+                        tags: ['magic-join', 'auto-onboarded'],
+                        comments: `Auto-enrolled via Magic Join on ${new Date().toISOString()}`,
+                        meta: { registry: true, magic_join: true, last_seen: new Date().toISOString() }
+                    });
+                    log('FLEET', `🎯 Target auto-provisioned for ${effectiveSite} (${public_ip}:8080)`);
+                } else {
+                    targetsManager.updateTarget(existing.id, {
+                        ...existing,
+                        name: effectiveSite,
+                        host: public_ip,
+                        port: 8080,
+                        enabled: true,
+                        meta: { ...(existing.meta || {}), registry: true, magic_join: true, last_seen: new Date().toISOString() }
+                    });
+                    log('FLEET', `🎯 Target updated for ${effectiveSite} (${public_ip}:8080)`);
+                }
+            } catch (tErr: any) {
+                log('FLEET', `Warning auto-provisioning target for ${instance_id}: ${tErr.message}`, 'warn');
+            }
+        }
+
+        res.json({
+            status: 'ok',
+            success: true,
+            node_id: redeemResult.node_id,
+            node_token: redeemResult.node_token,
+            realm: magicJoinManager.getRealmHash(),
+            leader_ip: registryManager.getCurrentIp(),
+            jwt_secret: SECRET_KEY,
+            message: 'Node successfully enrolled into Stigix cluster.'
+        });
+    } catch (err: any) {
+        log('FLEET', `Error during Magic Join redemption: ${err.message}`, 'error');
+        res.status(500).json({ error: 'internal_error', message: err.message });
+    }
+});
+log('FLEET', `✨ Magic Join APIs mounted at /api/fleet/join-token, /api/fleet/join-redeem`);
+
+app.all('/api/gateway/:peerId/*path', authenticateToken, async (req: any, res: any) => {
+    if (!registryManager.isLeader()) {
+        return res.status(403).json({
+            error: 'not_leader',
+            message: 'The Fleet Gateway is only accessible on the Leader instance.'
+        });
+    }
+
+    const peerId = req.params.peerId;
+
+    // Check if Peer has an active WebSocket Reverse Tunnel
+    const allInstances = localRegistryServer.getInstances();
+    const peer = allInstances.find(
+        (inst) => (inst.instance_id || '').toLowerCase() === peerId.toLowerCase() ||
+                  (inst.meta?.site || '').toLowerCase() === peerId.toLowerCase() ||
+                  (inst.ip_private || '').toLowerCase() === peerId.toLowerCase() ||
+                  (inst.ip_public || '').toLowerCase() === peerId.toLowerCase()
+    );
+
+    const peerInstanceId = peer?.instance_id || peerId;
+    const peerSiteName = peer?.meta?.site || '';
+
+    const hasWsTunnel = fleetTunnelManager.hasTunnel(peerId) ||
+        fleetTunnelManager.hasTunnel(peerInstanceId) ||
+        (peerSiteName ? fleetTunnelManager.hasTunnel(peerSiteName) : false);
+
+    // Resolve IP & port (from registry or targets) for direct HTTP fallback
+    let peerIp = peer?.ip_private || peer?.ip_public;
+    let peerPort = peer?.port || (peer as any)?.meta?.port || 8080;
+
+    if (!peerIp) {
+        const allTargets = targetsManager.getMergedTargets();
+        const target = allTargets.find(
+            (t) => (t.id || '').toLowerCase() === peerId.toLowerCase() ||
+                   (t.name || '').toLowerCase() === peerId.toLowerCase() ||
+                   (t.host || '').toLowerCase() === peerId.toLowerCase()
+        );
+        if (target) {
+            peerIp = target.host;
+            peerPort = target.ports?.http || 8080;
+        }
+    }
+
+    if (!hasWsTunnel && !peerIp) {
+        return res.status(404).json({
+            error: 'peer_not_found',
+            message: `Peer "${peerId}" is not registered in the local registry or targets.`,
+            registered_peers: allInstances.map((i) => i.instance_id)
+        });
+    }
+
+    // Strip /api/gateway/:peerId prefix — forward the remainder to the peer
+    const proxyPath = req.path.replace(`/api/gateway/${peerId}`, '') || '/';
+    const proxyUrl = req.originalUrl.replace(`/api/gateway/${peerId}`, '');
+
+    // Build forwarded headers: strip hop-by-hop headers, keep the rest
+    const hopByHop = new Set([
+        'connection', 'keep-alive', 'proxy-authenticate', 'proxy-authorization',
+        'te', 'trailers', 'transfer-encoding', 'upgrade', 'host', 'authorization'
+    ]);
+    const forwardHeaders: Record<string, string | string[]> = {};
+    for (const [k, v] of Object.entries(req.headers)) {
+        if (!hopByHop.has(k.toLowerCase()) && v !== undefined) {
+            forwardHeaders[k] = v as string | string[];
+        }
+    }
+    // Inject a short-lived internal gateway token so the peer can authenticate the request.
+    const gatewayToken = jwt.sign(
+        { username: 'stigix-gateway', role: 'admin', peer: peerId },
+        SECRET_KEY,
+        { expiresIn: '30s' }
+    );
+    forwardHeaders['authorization'] = `Bearer ${gatewayToken}`;
+    forwardHeaders['x-gateway-source'] = 'stigix-leader';
+    forwardHeaders['x-forwarded-for'] = req.ip || '';
+    forwardHeaders['host'] = `${peerIp || peerId}:${peerPort}`;
+
+    const isStream = ((req.headers.accept as string) || '').includes('text/event-stream') || proxyUrl.includes('/stream');
+
+    if (hasWsTunnel) {
+        const tunnelTargetId = fleetTunnelManager.hasTunnel(peerId)
+            ? peerId
+            : fleetTunnelManager.hasTunnel(peerInstanceId)
+                ? peerInstanceId
+                : peerSiteName;
+
+        if (isStream) {
+            try {
+                const streamed = await fleetTunnelManager.forwardStream(tunnelTargetId, {
+                    method: req.method,
+                    path: proxyUrl,
+                    headers: forwardHeaders,
+                    body: req.body
+                }, req, res);
+
+                if (streamed) {
+                    return; // Handled directly by stream pump
+                }
+            } catch (streamErr: any) {
+                log('GATEWAY', `⚡ WebSocket stream forwarding to "${peerId}" failed (${streamErr.message}) — falling back to direct HTTP`, 'warn');
+            }
+        } else {
+            try {
+                const tunnelRes = await fleetTunnelManager.forwardRequest(tunnelTargetId, {
+                    method: req.method,
+                    path: proxyUrl,
+                    headers: forwardHeaders,
+                    body: req.body
+                }, 15000);
+
+                if (tunnelRes) {
+                    res.status(tunnelRes.status);
+                    for (const [k, v] of Object.entries(tunnelRes.headers)) {
+                        if (!hopByHop.has(k.toLowerCase()) && v !== undefined) {
+                            res.setHeader(k, v as string | string[]);
+                        }
+                    }
+                    res.setHeader('x-gateway-peer', peerId);
+                    res.setHeader('x-gateway-transport', 'websocket-tunnel');
+
+                    if (tunnelRes.isBase64) {
+                        return res.send(Buffer.from(tunnelRes.body, 'base64'));
+                    } else {
+                        return res.send(tunnelRes.body);
+                    }
+                }
+            } catch (tunnelErr: any) {
+                log('GATEWAY', `⚡ Reverse WebSocket tunnel to "${peerId}" failed (${tunnelErr.message}) — falling back to direct HTTP proxy`, 'warn');
+            }
+        }
+    }
+
+    // --- Direct HTTP Fallback ---
+    const options: http.RequestOptions = {
+        hostname: peerIp,
+        port: peerPort,
+        path: proxyUrl,
+        method: req.method,
+        headers: forwardHeaders,
+        timeout: 15000  // 15 s — allows for slow BR8 ops (batch tests, voice start, etc.)
+    };
+
+    let proxyResReceived = false;
+
+    const proxyReq = http.request(options, (proxyRes) => {
+        proxyResReceived = true; // peer responded — abort handler must no-op from here
+        res.status(proxyRes.statusCode || 502);
+        for (const [k, v] of Object.entries(proxyRes.headers)) {
+            if (!hopByHop.has(k.toLowerCase()) && v !== undefined) {
+                res.setHeader(k, v as string | string[]);
+            }
+        }
+        res.setHeader('x-gateway-peer', peerId);
+        res.setHeader('x-gateway-transport', 'direct-http');
+
+        // SSE streams (text/event-stream) must not be buffered — flush headers
+        // immediately so the browser's EventSource receives events in real-time.
+        const isSSE = (proxyRes.headers['content-type'] || '').includes('text/event-stream');
+        if (isSSE) {
+            res.setHeader('X-Accel-Buffering', 'no');
+            res.setHeader('Cache-Control', 'no-cache');
+            res.flushHeaders();
+        }
+
+        proxyRes.pipe(res, { end: true });
+    });
+
+    proxyReq.on('timeout', () => {
+        proxyReq.destroy();
+        log('GATEWAY', `Timeout reaching peer ${peerId} (${peerIp}:${peerPort})`, 'warn');
+        if (!res.headersSent) {
+            res.status(504).json({
+                error: 'gateway_timeout',
+                message: `Peer "${peerId}" did not respond within 15 seconds.`,
+                peer_ip: peerIp
+            });
+        }
+    });
+
+    proxyReq.on('error', (err: NodeJS.ErrnoException) => {
+        if (err.code === 'ECONNRESET' || err.code === 'EPIPE') return; // client-abort cleanup, already logged
+        log('GATEWAY', `Error reaching peer ${peerId} (${peerIp}:${peerPort}): ${err.message}`, 'warn');
+        if (!res.headersSent) {
+            res.status(502).json({
+                error: 'gateway_error',
+                message: `Cannot reach peer "${peerId}": ${err.message}`,
+                peer_ip: peerIp
+            });
+        }
+    });
+
+    // Forward the request body to the peer.
+    if (!['GET', 'HEAD'].includes(req.method)) {
+        const bodyStr = (req.body != null && typeof req.body === 'object')
+            ? JSON.stringify(req.body)
+            : typeof req.body === 'string' ? req.body : '';
+        const bodyBuf = Buffer.from(bodyStr, 'utf8');
+        proxyReq.setHeader('content-length', bodyBuf.length);
+        if (bodyBuf.length > 0) proxyReq.write(bodyBuf);
+        proxyReq.end();
+    } else {
+        proxyReq.end();
+    }
+
+    req.on('aborted', () => {
+        if (!proxyResReceived && !proxyReq.destroyed) proxyReq.destroy();
+    });
+});
+log('FLEET', `🔀 Fleet Gateway Reverse Proxy mounted at /api/gateway/:peerId/* (Leader only)`);
 
 // --- Custom TCP Inter-Site Applications API ---
 app.use('/api/custom-tcp-apps', authenticateToken, createCustomTcpApiRouter(tcpAppManager));
@@ -11880,6 +13991,18 @@ provisioningManager.onBundleApplied((type, payload) => {
     }
 });
 
+// Helper to build canonical connectivity-probes payload for provisioning checksum and publishing
+const buildConnectivityProbesPayload = () => {
+    const envProbes = getEnvConnectivityEndpoints();
+    const rawCustom = getCustomConnectivityEndpoints();
+    const mergedEnvProbes = envProbes.map((p: any) => {
+        const override = rawCustom.find((cp: any) => cp.name === p.name);
+        return override ? { ...p, ...override } : p;
+    });
+    const pureCustom = rawCustom.filter((p: any) => !envProbes.find(ep => ep.name === p.name));
+    return [...mergedEnvProbes, ...pureCustom];
+};
+
 // --- Global Provisioning Management APIs ---
 app.get('/api/provisioning/config', authenticateToken, (_req, res) => {
     let rawApps: any[] = [];
@@ -11889,14 +14012,7 @@ app.get('/api/provisioning/config', authenticateToken, (_req, res) => {
             rawApps = parsed.applications || [];
         } catch {}
     }
-    const envProbes = getEnvConnectivityEndpoints();
-    const rawCustom = getCustomConnectivityEndpoints();
-    const mergedEnvProbes = envProbes.map((p: any) => {
-        const override = rawCustom.find((cp: any) => cp.name === p.name);
-        return override ? { ...p, ...override } : p;
-    });
-    const pureCustom = rawCustom.filter((p: any) => !envProbes.find(ep => ep.name === p.name));
-    const rawProbes = [...mergedEnvProbes, ...pureCustom];
+    const rawProbes = buildConnectivityProbesPayload();
 
     const readJson = (file: string, fallback: any = {}) => {
         try { if (fs.existsSync(file)) return JSON.parse(fs.readFileSync(file, 'utf8')); } catch {}
@@ -12054,7 +14170,9 @@ app.post('/api/provisioning/config', authenticateToken, (req, res) => {
 
 app.post('/api/provisioning/sync', authenticateToken, async (req, res) => {
     try {
-        if (registryManager) {
+        if (fleetTunnelManager.hasActiveLeaderTunnel()) {
+            await fleetTunnelManager.triggerManualSync();
+        } else if (registryManager) {
             await registryManager.syncProvisioning();
         }
         res.json({ success: true, state: provisioningManager.getState() });
@@ -12084,18 +14202,6 @@ app.post('/api/provisioning/publish/:type', authenticateToken, (req, res) => {
         return res.status(400).json({ error: 'invalid_bundle_type' });
     }
 
-    const buildConnectivityProbesPayload = () => {
-        const envProbes = getEnvConnectivityEndpoints();
-        const rawCustom = getCustomConnectivityEndpoints();
-        const custom = provisioningManager ? provisioningManager.getEnrichedEffectiveItems('connectivity-probes', rawCustom) : rawCustom;
-        const merged = envProbes.map((p: any) => {
-            const override = custom.find((cp: any) => cp.name === p.name);
-            return override ? { ...p, ...override } : p;
-        });
-        const pure = custom.filter((p: any) => !envProbes.find(ep => ep.name === p.name));
-        return [...merged, ...pure];
-    };
-
     let payload: any = null;
     if (type === 'applications') {
         if (fs.existsSync(APPLICATIONS_CONFIG_FILE)) {
@@ -12116,6 +14222,7 @@ app.post('/api/provisioning/publish/:type', authenticateToken, (req, res) => {
     }
 
     const pub = provisioningManager.publishBundle(type, payload);
+    fleetTunnelManager.broadcastProvisioningUpdate(type);
     res.json({ success: true, published: pub, manifest: provisioningManager.getManifest() });
 });
 
@@ -12156,6 +14263,7 @@ app.post('/api/provisioning/publish', authenticateToken, (req, res) => {
             if (!payload) payload = (t === 'applications' || t === 'connectivity-probes') ? [] : {};
             publishedList.push(provisioningManager.publishBundle(t, payload));
         }
+        fleetTunnelManager.broadcastProvisioningUpdate();
         return res.json({ success: true, published_bundles: publishedList, manifest: provisioningManager.getManifest() });
     }
 
@@ -12180,6 +14288,7 @@ app.post('/api/provisioning/publish', authenticateToken, (req, res) => {
     }
 
     const pub = provisioningManager.publishBundle(type as GlobalBundleType, payload);
+    fleetTunnelManager.broadcastProvisioningUpdate(type as GlobalBundleType);
     res.json({ success: true, published: pub, manifest: provisioningManager.getManifest() });
 });
 
@@ -12192,6 +14301,7 @@ app.post('/api/provisioning/rollback/:type/:revision', authenticateToken, (req, 
     if (!bundle) return res.status(404).json({ error: 'revision_not_found' });
 
     const pub = provisioningManager.publishBundle(type, bundle);
+    fleetTunnelManager.broadcastProvisioningUpdate(type);
     res.json({ success: true, rolledBackTo: revision, newPublished: pub, manifest: provisioningManager.getManifest() });
 });
 
@@ -12204,6 +14314,7 @@ app.post('/api/provisioning/rollback', authenticateToken, (req, res) => {
     if (!bundle) return res.status(404).json({ error: 'revision_not_found' });
 
     const pub = provisioningManager.publishBundle(type, bundle);
+    fleetTunnelManager.broadcastProvisioningUpdate(type);
     res.json({ success: true, rolledBackTo: revision, newPublished: pub, manifest: provisioningManager.getManifest() });
 });
 
@@ -12230,7 +14341,9 @@ app.get('/api/registry/status', authenticateToken, (req, res) => {
         ...mgrStatus,
         mode: mode,
         local_registry_active: mode === 'leader',
-        local_instances: mode === 'leader' ? localRegistryServer.getInstances() : []
+        local_instances: mode === 'leader' ? localRegistryServer.getInstances() : [],
+        tunnel_active: fleetTunnelManager.hasActiveLeaderTunnel(),
+        leader_tunnel_info: fleetTunnelManager.getActiveLeaderInfo()
     };
 
     res.json(status);
@@ -12327,6 +14440,21 @@ app.post('/api/registry/static-leader', authenticateToken, async (req, res) => {
 
 app.post('/api/registry/test-connectivity', authenticateToken, async (req, res) => {
     let { url } = req.body;
+
+    // If testing active Fleet Tunnel or no url specified when tunnel is active
+    if ((!url || url === 'fleet-tunnel' || url === 'tunnel') && fleetTunnelManager.hasActiveLeaderTunnel()) {
+        try {
+            const testRes = await fleetTunnelManager.testLeaderConnectivity();
+            if (testRes.success) {
+                return res.json({ status: 'ok', data: testRes });
+            } else {
+                return res.status(500).json({ status: 'error', error: testRes.error || 'Tunnel ping failed' });
+            }
+        } catch (err: any) {
+            return res.status(500).json({ status: 'error', error: err.message });
+        }
+    }
+
     if (!url) return res.status(400).json({ error: 'Missing url or IP' });
 
     url = normalizeControllerUrl(url);

@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react';
+import { usePeerContext } from '../PeerContext';
 
 export const useSecurityScores = (token: string) => {
+    const { gFetch } = usePeerContext();
     const [scores, setScores] = useState<any[]>([]);
     const [urlBaseline, setUrlBaseline] = useState<any>(null);
     const [dnsBaseline, setDnsBaseline] = useState<any>(null);
@@ -14,18 +16,18 @@ export const useSecurityScores = (token: string) => {
 
     const fetchData = async () => {
         try {
-            const res = await fetch('/api/security/scores', { headers: authHeader });
+            const res = await gFetch('/api/security/scores', { headers: authHeader });
             if (res.ok) setScores(await res.json());
 
-            const urlBaselineRes = await fetch('/api/security/scores/baseline?type=url', { headers: authHeader });
+            const urlBaselineRes = await gFetch('/api/security/scores/baseline?type=url', { headers: authHeader });
             if (urlBaselineRes.ok) setUrlBaseline(await urlBaselineRes.json());
             else setUrlBaseline(null);
 
-            const dnsBaselineRes = await fetch('/api/security/scores/baseline?type=dns', { headers: authHeader });
+            const dnsBaselineRes = await gFetch('/api/security/scores/baseline?type=dns', { headers: authHeader });
             if (dnsBaselineRes.ok) setDnsBaseline(await dnsBaselineRes.json());
             else setDnsBaseline(null);
 
-            const threatBaselineRes = await fetch('/api/security/scores/baseline?type=threat', { headers: authHeader });
+            const threatBaselineRes = await gFetch('/api/security/scores/baseline?type=threat', { headers: authHeader });
             if (threatBaselineRes.ok) setThreatBaseline(await threatBaselineRes.json());
             else setThreatBaseline(null);
         } catch (e) {
@@ -42,7 +44,7 @@ export const useSecurityScores = (token: string) => {
         if (!baseline || !latest) return;
 
         try {
-            const res = await fetch(`/api/security/scores/diff?type=${type}&from=${baseline.runId}&to=${latest.runId}`, { headers: authHeader });
+            const res = await gFetch(`/api/security/scores/diff?type=${type}&from=${baseline.runId}&to=${latest.runId}`, { headers: authHeader });
             if (res.ok) {
                 const data = await res.json();
                 if (type === 'url') setUrlDiff(data);
@@ -66,7 +68,7 @@ export const useSecurityScores = (token: string) => {
 
     const handleSetBaseline = async (runId: string, type: 'url' | 'dns' | 'threat') => {
         try {
-            await fetch('/api/security/scores/baseline', {
+            await gFetch('/api/security/scores/baseline', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', ...authHeader },
                 body: JSON.stringify({ runId, type })

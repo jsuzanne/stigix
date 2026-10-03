@@ -1,5 +1,7 @@
 @import "tailwindcss";
 
+@custom-variant dark (&:where(.dark, [data-theme="dark"], .dark *, [data-theme="dark"] *));
+
 :root {
   /* Default Dark Mode (Legacy Aesthetics) */
   --background: #020617;
@@ -37,16 +39,20 @@
 }
 
 :root[data-theme='light'] {
-  --background: #f8fafc;
+  /* Cool blue-gray background — cards (#fff) pop clearly against it */
+  --background: #eef2f7;
   --foreground: #0f172a;
-  --border: #e2e8f0;
+  /* Crisp border — slate-300 shade for clear card edges */
+  --border: #c5d2de;
 
-  /* Cartes */
+  /* Cards */
   --card: #ffffff;
-  --card-secondary: #f1f5f9;
-  --card-hover: #e2e8f0;
+  /* Subtle off-white secondary — clearly distinct from white cards */
+  --card-secondary: #f5f8fb;
+  /* Stronger hover than background */
+  --card-hover: #dce7f0;
 
-  /* Text — light mode: keep original Slate-500 (no contrast issue reported in light) */
+  /* Text */
   --text-primary: #0f172a;
   --text-secondary: #334155;
   --text-muted: #64748b;
@@ -92,6 +98,57 @@ body {
   animation: blink-slow 2s ease-in-out infinite;
 }
 
+/* ─── Shimmer & Laser Loading Effects ─────────────────────────────────────── */
+@keyframes shimmer {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
+}
+
+.shimmer {
+  position: relative;
+  overflow: hidden;
+}
+
+.shimmer::after {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  transform: translateX(-100%);
+  background-image: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0) 0,
+    rgba(255, 255, 255, 0.03) 20%,
+    rgba(255, 255, 255, 0.09) 50%,
+    rgba(255, 255, 255, 0.03) 80%,
+    rgba(255, 255, 255, 0) 100%
+  );
+  animation: shimmer 1.6s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+  content: '';
+}
+
+:root[data-theme='light'] .shimmer::after {
+  background-image: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0) 0,
+    rgba(255, 255, 255, 0.45) 20%,
+    rgba(255, 255, 255, 0.85) 50%,
+    rgba(255, 255, 255, 0.45) 80%,
+    rgba(255, 255, 255, 0) 100%
+  );
+}
+
+@keyframes laser-sweep {
+  0% { transform: translateX(-100%); }
+  50% { transform: translateX(100%); }
+  100% { transform: translateX(300%); }
+}
+
+.animate-laser {
+  animation: laser-sweep 1.4s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+
 /* ─── Proportional tiny-text floor ─────────────────────────────────────────
    Tailwind's arbitrary pixel sizes don't scale with the rem base.
    These overrides keep them proportional with the 16→17px base bump (~6%).
@@ -125,4 +182,13 @@ body {
 .scrollbar-thin {
   scrollbar-width: thin;
   scrollbar-color: var(--border) transparent;
+}
+
+/* ─── Topology: ReactFlow background dots — light mode override ──────────────
+   The <Background color="#1e293b"> prop is dark-only. In light mode we override
+   the SVG pattern fill via CSS using the [data-theme="light"] selector set by App.tsx.
+────────────────────────────────────────────────────────────────────────────── */
+[data-theme="light"] .topology-bg pattern circle,
+[data-theme="light"] .topology-bg pattern rect {
+  fill: #b0c4d8 !important;
 }

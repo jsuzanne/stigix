@@ -1,8 +1,8 @@
-> **Last Updated:** 2026-09-08 | **Created:** 2026-02-08 (v1.2.1-patch.4)
+> **Last Updated:** 2026-09-27 | **Created:** 2026-02-08 (v1.2.1-patch.4)
 
 # Target Site Capabilities
 
-In Stigix, **every instance is both a Source and a Target.** By default, when you deploy a Stigix node (All-in-One), it automatically starts a suite of responsive services. This means any node can act as a destination for traffic generation, SLA monitoring, and performance validation from any other peer in the network.
+In Stigix, **every node is both a Source and a Target.** By default, when you deploy a Stigix node (All-in-One), it automatically starts a suite of responsive services. This means any node can act as a destination for traffic generation, SLA monitoring, and performance validation from any other peer in the network.
 
 ---
 
@@ -29,8 +29,8 @@ The local HTTP service on port 8082 provides a lightweight, dedicated endpoint s
 - **Dashboard Landing Card**: `GET /` -> Dark-mode status card with direct links and endpoint verification.
 
 ### 2. Dashboard Integration
-In **Settings > Targets**, the **Local Appliance Target & Security Service** card displays:
-- **Local Site Name Editor**: Edit and save the appliance site name with instant heartbeat broadcast.
+In **Settings > Targets**, the **Local Node & Services** card displays:
+- **Local Site Name Editor**: Edit and save the node site name with instant heartbeat broadcast.
 - **EICAR Test Service (AV / IPS Target)**: Direct URL (`http://<inband_ip>:8082/eicar.com.txt`), 1-click clipboard copy button, and direct browser test link.
 
 > 💡 **Note on Latency & Brownout Simulation**:  
@@ -38,14 +38,14 @@ In **Settings > Targets**, the **Local Appliance Target & Security Service** car
 
 ---
 
-## 🎯 Discovered & Remote Targets Repository
+## 🎯 Discovered & Static Targets
 
 Stigix automatically discovers and aggregates all available targets across your SD-WAN mesh in the **Settings > Targets** tab:
 
 ### 1. Unified Target Origin Badges
 Each target card displays exactly one clear origin badge:
-- **`🟢 LOCAL NODE`**: The local Stigix appliance.
-- **`⚡ Learned · <time>`**: Targets discovered dynamically via the Target Controller Leader and mesh heartbeats.
+- **`🟢 LOCAL NODE`**: The local Stigix node.
+- **`⚡ Learned · <time>`**: Targets discovered dynamically via the Leader and mesh heartbeats.
 - **`📌 Static`**: Targets configured statically in local configuration files or added manually.
 
 ### 2. Supported Capabilities Indicator
@@ -70,3 +70,12 @@ curl -v http://<target-ip>:8082/eicar.com.txt
 # 2. Check Security Target Health
 curl -s http://<target-ip>:8082/api/status
 ```
+
+---
+
+## 📜 Revision History
+
+| Date | Stigix Version | Author / Trigger | Summary of Changes |
+|---|---|---|---|
+| 2026-09-27 | `v2.0.66` | Stigix Core Team | Updated terminology: Local Node & Services, Discovered & Static Targets. |
+| 2026-02-08 | `v1.2.1-patch.4` | Stigix Core Team | Initial document creation |

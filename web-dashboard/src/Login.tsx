@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { Lock } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Lock, User, Eye, EyeOff, ShieldCheck, Activity, ArrowRight, Zap } from 'lucide-react';
 
 interface LoginProps {
     onLogin: (token: string, username: string) => void;
@@ -8,8 +8,19 @@ interface LoginProps {
 export default function Login({ onLogin }: LoginProps) {
     const [username, setUsername] = useState('');
     const [password, setPassword] = useState('');
+    const [showPassword, setShowPassword] = useState(false);
     const [error, setError] = useState('');
     const [loading, setLoading] = useState(false);
+    const [version, setVersion] = useState('2.0.143');
+
+    useEffect(() => {
+        fetch('/api/version')
+            .then(res => res.json())
+            .then(data => {
+                if (data?.version) setVersion(data.version);
+            })
+            .catch(() => {});
+    }, []);
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -27,83 +38,154 @@ export default function Login({ onLogin }: LoginProps) {
             if (res.ok) {
                 onLogin(data.token, data.username);
             } else {
-                setError(data.error || 'Login failed');
+                setError(data.error || 'Invalid credentials. Please check username and password.');
             }
         } catch (err) {
-            setError('Connection failed');
+            setError('Unable to reach Stigix node. Check network connection.');
         } finally {
             setLoading(false);
         }
     };
 
     return (
-        <div className="min-h-screen bg-background flex items-center justify-center p-4 relative overflow-hidden">
-            {/* Background Decorative Elements */}
-            <div className="absolute top-0 left-0 w-full h-full overflow-hidden pointer-events-none">
-                <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-blue-500/10 blur-[120px] rounded-full" />
-                <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-purple-500/10 blur-[120px] rounded-full" />
+        <div className="min-h-screen bg-[#060913] text-slate-100 flex items-center justify-center p-4 relative overflow-hidden font-sans selection:bg-blue-500/30 selection:text-blue-200">
+            {/* High-Tech Background Mesh & Radial Gradients */}
+            <div className="absolute inset-0 pointer-events-none">
+                {/* Cyber Grid */}
+                <div 
+                    className="absolute inset-0 opacity-[0.07]" 
+                    style={{ 
+                        backgroundImage: `radial-gradient(circle at 1px 1px, #3b82f6 1px, transparent 0)`,
+                        backgroundSize: '32px 32px' 
+                    }} 
+                />
+                
+                {/* Glowing Ambient Lights */}
+                <div className="absolute -top-32 -left-32 w-96 h-96 bg-blue-600/15 rounded-full blur-[140px] animate-pulse" />
+                <div className="absolute -bottom-32 -right-32 w-96 h-96 bg-indigo-600/15 rounded-full blur-[140px] animate-pulse" style={{ animationDelay: '2s' }} />
+                <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[36rem] h-[36rem] bg-purple-600/5 rounded-full blur-[180px]" />
             </div>
 
-            <div className="bg-card/50 backdrop-blur-xl border border-border/50 p-10 rounded-[2.5rem] w-full max-w-md shadow-2xl relative z-10">
-                <div className="flex justify-center mb-8">
-                    <div className="p-4 bg-blue-600/10 rounded-2xl text-blue-600 dark:text-blue-400 border border-blue-500/20 shadow-inner">
-                        <Lock size={32} />
-                    </div>
-                </div>
+            {/* Login Card Container */}
+            <div className="w-full max-w-md relative z-10">
+                <div className="bg-[#0b101e]/85 backdrop-blur-2xl border border-blue-500/20 p-8 sm:p-10 rounded-3xl shadow-[0_0_60px_rgba(15,23,42,0.8),0_0_30px_rgba(59,130,246,0.12)] relative overflow-hidden transition-all">
+                    
+                    {/* Top Accent Light Bar */}
+                    <div className="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-transparent via-blue-500 to-transparent" />
 
-                <div className="text-center mb-10">
-                    <h1 className="text-3xl font-black text-text-primary tracking-tighter mb-2">Console Access</h1>
-                    <div className="h-1 w-12 bg-blue-600 mx-auto rounded-full mb-4" />
-                    <p className="text-[10px] font-black text-text-muted tracking-[0.2em] opacity-60">Network Traffic Generator</p>
-                </div>
+                    {/* Logo & Header */}
+                    <div className="flex flex-col items-center text-center mb-8">
+                        {/* Glowing Logo Icon */}
+                        <div className="relative mb-4 group cursor-default">
+                            <div className="absolute -inset-1 bg-gradient-to-r from-blue-600 to-indigo-600 rounded-2xl blur opacity-40 group-hover:opacity-75 transition duration-500" />
+                            <div className="relative p-3.5 bg-[#0e1628] rounded-2xl border border-blue-500/30 text-blue-400 shadow-inner flex items-center justify-center">
+                                <Activity size={28} className="animate-pulse text-blue-400" />
+                            </div>
+                            <div className="absolute -bottom-1 -right-1 p-1 bg-emerald-500/20 border border-emerald-500/40 rounded-full text-emerald-400">
+                                <Zap size={10} fill="currentColor" />
+                            </div>
+                        </div>
 
-                {error && (
-                    <div className="bg-red-500/10 border border-red-500/20 text-red-600 dark:text-red-400 px-5 py-3.5 rounded-2xl mb-8 text-[11px] font-black tracking-widest flex items-center gap-3 animate-in fade-in slide-in-from-top-2">
-                        <div className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />
-                        {error}
-                    </div>
-                )}
+                        {/* Title & Badge */}
+                        <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-blue-500/10 border border-blue-500/25 text-blue-400 text-[9px] font-black tracking-widest uppercase mb-2 shadow-sm">
+                            <span className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-ping" />
+                            Secure Node Console
+                        </div>
 
-                <form onSubmit={handleSubmit} className="space-y-6">
-                    <div className="space-y-2">
-                        <label className="text-[9px] font-black text-text-muted tracking-[0.2em] ml-1">Username</label>
-                        <input
-                            type="text"
-                            value={username}
-                            onChange={e => setUsername(e.target.value)}
-                            className="w-full bg-card-secondary/30 border border-border text-text-primary rounded-2xl px-5 py-3.5 text-[11px] font-black tracking-widest focus:outline-none focus:ring-1 focus:ring-blue-500 transition-all shadow-inner placeholder:opacity-30"
-                            placeholder="username..."
-                            required
-                        />
-                    </div>
-                    <div className="space-y-2">
-                        <label className="text-[9px] font-black text-text-muted tracking-[0.2em] ml-1">Password</label>
-                        <input
-                            type="password"
-                            value={password}
-                            onChange={e => setPassword(e.target.value)}
-                            className="w-full bg-card-secondary/30 border border-border text-text-primary rounded-2xl px-5 py-3.5 text-[11px] font-black tracking-widest focus:outline-none focus:ring-1 focus:ring-blue-500 transition-all shadow-inner placeholder:opacity-30"
-                            placeholder="••••••••"
-                            required
-                        />
+                        <h1 className="text-2xl sm:text-3xl font-black tracking-tight bg-gradient-to-r from-white via-slate-100 to-blue-200 bg-clip-text text-transparent">
+                            STIGIX
+                        </h1>
+                        <p className="text-[11px] font-bold text-slate-400 tracking-wider uppercase mt-1.5 opacity-85">
+                            The Engine for SASE Validation
+                        </p>
                     </div>
 
-                    <button
-                        type="submit"
-                        disabled={loading}
-                        className="w-full bg-blue-600 hover:bg-blue-500 text-white text-[10px] font-black tracking-[0.25em] py-4 rounded-2xl transition-all mt-4 disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-blue-900/20 flex items-center justify-center gap-2"
-                    >
-                        {loading ? (
-                            <>
-                                <div className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                                Authenticating...
-                            </>
-                        ) : 'Sign In'}
-                    </button>
-                </form>
+                    {/* Error Banner */}
+                    {error && (
+                        <div className="bg-red-500/10 border border-red-500/30 text-red-300 px-4 py-3 rounded-xl mb-6 text-xs font-semibold flex items-center gap-3 animate-in fade-in slide-in-from-top-2 shadow-sm">
+                            <div className="w-2 h-2 rounded-full bg-red-400 shrink-0 animate-pulse" />
+                            <span className="leading-tight">{error}</span>
+                        </div>
+                    )}
 
-                <div className="mt-10 pt-8 border-t border-border/50 text-center">
-                    <p className="text-[9px] font-bold text-text-muted tracking-widest opacity-40">Version 1.1.2</p>
+                    {/* Form */}
+                    <form onSubmit={handleSubmit} className="space-y-4">
+                        {/* Username */}
+                        <div className="space-y-1.5">
+                            <label className="text-[10px] font-black text-slate-300 uppercase tracking-wider flex items-center gap-1.5 ml-1">
+                                <User size={12} className="text-blue-400" />
+                                Username
+                            </label>
+                            <div className="relative group">
+                                <input
+                                    type="text"
+                                    value={username}
+                                    onChange={e => setUsername(e.target.value)}
+                                    className="w-full bg-[#121a2d]/80 border border-slate-700/70 text-slate-100 placeholder:text-slate-500 rounded-xl px-4 py-3 text-xs font-medium focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all shadow-inner hover:border-slate-600"
+                                    placeholder="Enter node username"
+                                    required
+                                    autoComplete="username"
+                                    autoCapitalize="none"
+                                />
+                            </div>
+                        </div>
+
+                        {/* Password */}
+                        <div className="space-y-1.5">
+                            <label className="text-[10px] font-black text-slate-300 uppercase tracking-wider flex items-center gap-1.5 ml-1">
+                                <Lock size={12} className="text-blue-400" />
+                                Password
+                            </label>
+                            <div className="relative group">
+                                <input
+                                    type={showPassword ? 'text' : 'password'}
+                                    value={password}
+                                    onChange={e => setPassword(e.target.value)}
+                                    className="w-full bg-[#121a2d]/80 border border-slate-700/70 text-slate-100 placeholder:text-slate-500 rounded-xl pl-4 pr-11 py-3 text-xs font-medium focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all shadow-inner hover:border-slate-600 font-mono"
+                                    placeholder="••••••••••••"
+                                    required
+                                    autoComplete="current-password"
+                                />
+                                <button
+                                    type="button"
+                                    onClick={() => setShowPassword(!showPassword)}
+                                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-200 transition-colors p-1"
+                                    title={showPassword ? "Hide password" : "Show password"}
+                                >
+                                    {showPassword ? <EyeOff size={15} /> : <Eye size={15} />}
+                                </button>
+                            </div>
+                        </div>
+
+                        {/* Submit Button */}
+                        <button
+                            type="submit"
+                            disabled={loading}
+                            className="w-full bg-gradient-to-r from-blue-600 via-indigo-600 to-blue-600 hover:from-blue-500 hover:via-indigo-500 hover:to-blue-500 text-white text-[11px] font-black tracking-widest uppercase py-3.5 rounded-xl transition-all duration-300 mt-6 disabled:opacity-50 disabled:cursor-not-allowed shadow-[0_0_25px_rgba(59,130,246,0.35)] hover:shadow-[0_0_35px_rgba(59,130,246,0.55)] flex items-center justify-center gap-2 hover:scale-[1.01] active:scale-[0.99] border border-blue-400/30"
+                        >
+                            {loading ? (
+                                <>
+                                    <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                                    Authenticating...
+                                </>
+                            ) : (
+                                <>
+                                    Sign In <ArrowRight size={14} className="group-hover:translate-x-1 transition-transform" />
+                                </>
+                            )}
+                        </button>
+                    </form>
+
+                    {/* Footer Info */}
+                    <div className="mt-8 pt-6 border-t border-slate-800/80 flex flex-col items-center justify-center gap-2">
+                        <div className="flex items-center gap-1.5 text-[9px] font-bold text-slate-400 uppercase tracking-widest opacity-80">
+                            <ShieldCheck size={12} className="text-emerald-400" />
+                            Zero-Trust Mesh Authentication
+                        </div>
+                        <p className="text-[9.5px] font-mono text-slate-400 tracking-wider">
+                            Stigix Platform <span className="text-blue-400 font-bold">v{version}</span>
+                        </p>
+                    </div>
                 </div>
             </div>
         </div>

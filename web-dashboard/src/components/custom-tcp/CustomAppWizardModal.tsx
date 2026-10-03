@@ -2,6 +2,7 @@
  * Stigix Custom TCP Inter-Site Applications — 4-Step Creation & Edition Wizard Modal
  */
 
+import { usePeerContext } from '../../PeerContext';
 import React, { useState, useEffect, Component, type ErrorInfo, type ReactNode } from 'react';
 import {
     X, Server, Play, Shield, Globe, Plus, Trash2, CheckCircle2,
@@ -194,7 +195,8 @@ export function normalizeCustomTcpApp(app?: Partial<CustomTcpApplicationConfig> 
             errorProbability: Number(rawServerBehavior.errorProbability) || 0,
             errorCode: rawServerBehavior.errorCode || 'SIMULATED_DB_ERROR',
             closeAfterRequests: rawServerBehavior.closeAfterRequests ? Number(rawServerBehavior.closeAfterRequests) : undefined,
-            closeAfterDurationSec: rawServerBehavior.closeAfterDurationSec ? Number(rawServerBehavior.closeAfterDurationSec) : undefined
+            closeAfterDurationSec: rawServerBehavior.closeAfterDurationSec ? Number(rawServerBehavior.closeAfterDurationSec) : undefined,
+            eicarPeriodMs: rawServerBehavior.eicarPeriodMs ? Number(rawServerBehavior.eicarPeriodMs) : 300_000,
         },
         clientDefaults: {
             mode: (rawClientDefaults.mode || 'persistent_request_reply') as ClientWorkloadMode,
@@ -243,6 +245,7 @@ export const CustomAppWizardModal: React.FC<CustomAppWizardModalProps> = ({
     editingApp,
     token
 }) => {
+    const { gFetch } = usePeerContext();
     const [step, setStep] = useState<1 | 2 | 3 | 4>(1);
     const [isSaving, setIsSaving] = useState(false);
     const [isValidating, setIsValidating] = useState(false);
@@ -273,7 +276,7 @@ export const CustomAppWizardModal: React.FC<CustomAppWizardModalProps> = ({
 
     useEffect(() => {
         if (isOpen) {
-            fetch('/api/targets', { headers: token ? { 'Authorization': `Bearer ${token}` } : {} })
+            gFetch('/api/targets', { headers: token ? { 'Authorization': `Bearer ${token}` } : {} })
                 .then(r => r.json())
                 .then(data => {
                     const list = Array.isArray(data) ? data : (data.targets || []);
@@ -371,7 +374,7 @@ export const CustomAppWizardModal: React.FC<CustomAppWizardModalProps> = ({
         setValidationErrors([]);
         setValidationWarnings([]);
         try {
-            const res = await fetch('/api/custom-tcp-apps/validate', {
+            const res = await gFetch('/api/custom-tcp-apps/validate', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -797,6 +800,68 @@ export const CustomAppWizardModal: React.FC<CustomAppWizardModalProps> = ({
                                         </div>
                                     </div>
                                 )}
+
+                                {formData.serverBehavior.mode === 'eicar_response' && (() => {
+                                    const EICAR_PRESETS = [
+                                        { label: '1 min',  ms: 60_000 },
+                                        { label: '2 min',  ms: 120_000 },
+                                        { label: '5 min',  ms: 300_000 },
+                                        { label: '10 min', ms: 600_000 },
+                                        { label: '30 min', ms: 1_800_000 },
+                                    ];
+                                    const currentMs = formData.serverBehavior.eicarPeriodMs ?? 300_000;
+                                    return (
+                                        <div className="space-y-3">
+                                            <label className="block text-xs font-semibold text-text-secondary">
+                                                EICAR Probe Frequency
+                                                <span className="ml-2 text-[10px] font-normal text-text-muted">(min. 1 min — normal ACK sent between probes)</span>
+                                            </label>
+                                            <div className="flex flex-wrap gap-2">
+                                                {EICAR_PRESETS.map(p => (
+                                                    <button
+                                                        key={p.ms}
+                                                        type="button"
+                                                        onClick={() => setFormData((prev: CustomTcpApplicationConfig) => ({
+                                                            ...prev,
+                                                            serverBehavior: { ...prev.serverBehavior, eicarPeriodMs: p.ms }
+                                                        }))}
+                                                        className={cn(
+                                                            'px-3.5 py-1.5 rounded-xl text-xs font-bold border transition-all',
+                                                            currentMs === p.ms
+                                                                ? 'bg-amber-500/20 border-amber-500/50 text-amber-400 shadow-sm shadow-amber-500/10'
+                                                                : 'bg-card border-border text-text-secondary hover:border-amber-500/40 hover:text-amber-400'
+                                                        )}
+                                                    >
+                                                        {p.label}
+                                                    </button>
+                                                ))}
+                                            </div>
+                                            <p className="text-[11px] text-text-muted leading-relaxed">
+                                                Server sends EICAR every <span className="font-bold text-amber-400">{currentMs / 60_000} min</span>.
+                                                Between probes, normal ACK responses keep the session alive without flooding SASE logs.
+                                            </p>
+                                            {formData.protocol === 'http_1_1' ? (
+                                                <div className="mt-2 p-2.5 bg-zinc-900/60 border border-zinc-700/50 rounded-lg space-y-1">
+                                                    <p className="text-[10px] text-text-muted font-semibold uppercase tracking-widest">External curl test (HTTP mode)</p>
+                                                    <code className="block text-[11px] font-mono text-emerald-400 select-all break-all">
+                                                        curl -v http://&lt;server-ip&gt;:{formData.listener?.port || 8443}/
+                                                    </code>
+                                                    <p className="text-[10px] text-text-muted">
+                                                        Replace <span className="font-mono text-zinc-300">&lt;server-ip&gt;</span> with the listener node IP.
+                                                        Ensure the source IP is included in the listener <span className="font-mono text-zinc-300">allowCidrs</span>.
+                                                    </p>
+                                                </div>
+                                            ) : (
+                                                <div className="mt-2 p-2.5 bg-zinc-900/40 border border-zinc-700/30 rounded-lg">
+                                                    <p className="text-[10px] text-text-muted">
+                                                        <span className="font-bold text-zinc-400">stigix_tcp mode</span> — raw <span className="font-mono">curl</span> won't work (requires Stigix binary handshake).
+                                                        Switch to <span className="font-mono text-sky-400">http_1_1</span> protocol to enable external curl tests.
+                                                    </p>
+                                                </div>
+                                            )}
+                                        </div>
+                                    );
+                                })()}
 
                                 {/* Contextual Mode Helper / Real-World Scenario */}
                                 {SERVER_BEHAVIOR_INFO[formData.serverBehavior.mode] && (

@@ -348,3 +348,19 @@ tools:
     category: write
     size_budget_kb: 20
     timeout_class: medium
+  generate_magic_join_token:
+    category: write
+    size_budget_kb: 20
+    timeout_class: fast
+  list_magic_join_tokens:
+    category: read
+    size_budget_kb: 30
+    timeout_class: fast
+  revoke_magic_join_token:
+    category: write
+    size_budget_kb: 20
+    timeout_class: fast
+  join_cluster_via_token:
+    category: write
+    size_budget_kb: 20
+    timeout_class: medium

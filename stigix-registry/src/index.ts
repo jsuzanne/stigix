@@ -1,33 +1,40 @@
-const TTL_SECONDS = 300;
+/**
+ * Stigix Cloudflare Rendezvous Relay (v2.0 - Universal Magic Join Relay)
+ * 
+ * Provides:
+ * 1. GET /realms/:realmHash/stream    - Real-time Server-Sent Events (SSE) push channel for Private Leaders (0 CPU, 0 polling).
+ * 2. POST /realms/:realmHash/register - Instant single-shot announcement for joining Cloud VMs (broadcasts to Leader in <10ms).
+ * 3. GET /realms/:realmHash/peers     - Ephemeral peer listing fallback (180s TTL in KV).
+ * 4. GET /health                      - Service status check.
+ */
 
 export interface Env {
     STIGIX_REGISTRY: KVNamespace;
     REGISTRY_API_KEY?: string;
 }
 
-interface RegisterPayload {
-    poc_id: string;
+interface PeerAnnouncementPayload {
     instance_id: string;
-    type: string;
-    ip_private: string;
-    capabilities: Record<string, any>;
-    meta: Record<string, any>;
+    site_name?: string;
+    ip?: string;
+    port?: number;
+    capabilities?: Record<string, any>;
+    tags?: Record<string, any>;
+    timestamp?: number;
 }
 
-interface StoredInstance extends RegisterPayload {
-    ip_public: string;
-    location: {
-        country: string;
-        city: string;
-    };
-    last_seen: string;
-}
+// In-memory active stream subscribers per realm
+const realmStreams = new Map<string, Set<ReadableStreamDefaultController>>();
 
-// --- Helper: JSON Response ---
 const jsonResponse = (data: any, status = 200) => {
     return new Response(JSON.stringify(data), {
         status,
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+            'Content-Type': 'application/json',
+            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Allow-Methods': 'GET, POST, DELETE, OPTIONS',
+            'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Api-Key, X-Realm-Key'
+        }
     });
 };
 
@@ -36,284 +43,208 @@ export default {
         const url = new URL(request.url);
         const method = request.method;
 
-        // --- Router ---
-        try {
-            if (url.pathname === '/register' && method === 'POST') {
-                return await handleRegister(request, env);
-            } else if (url.pathname === '/instances' && method === 'GET') {
-                return await handleInstances(request, env);
-            } else if (url.pathname === '/leader' && method === 'POST') {
-                return await handleSetLeader(request, env);
-            } else if (url.pathname === '/leader' && method === 'GET') {
-                return await handleGetLeader(request, env);
-            } else {
-                return jsonResponse({ status: 'error', error: 'not_found' }, 404);
-            }
-        } catch (err: any) {
-            console.error(`[ERROR] Global handler: ${err.message}`);
-            return jsonResponse({ status: 'error', error: 'internal_error' }, 500);
-        }
-    },
-};
-
-// --- GET /leader (Peer Discovery) ---
-async function handleGetLeader(request: Request, env: Env): Promise<Response> {
-    const url = new URL(request.url);
-    const poc_id = url.searchParams.get('poc_id');
-
-    if (!poc_id) {
-        return jsonResponse({ status: 'error', error: 'invalid_payload', details: 'Missing poc_id' }, 400);
-    }
-
-    // Auth Check
-    const storedPocKey = await env.STIGIX_REGISTRY.get(`auth:poc:${poc_id}`);
-    const providedPocKey = request.headers.get('X-PoC-Key');
-    if (!storedPocKey || (providedPocKey !== storedPocKey)) {
-        return jsonResponse({ status: 'error', error: 'forbidden' }, 403);
-    }
-
-    const leaderVal = await env.STIGIX_REGISTRY.get(`leader:${poc_id}`);
-    if (!leaderVal) {
-        return jsonResponse({ status: 'error', error: 'not_found', details: 'No leader announced for this PoC' }, 404);
-    }
-
-    try {
-        const leader = JSON.parse(leaderVal);
-        return jsonResponse({
-            status: 'ok',
-            poc_id,
-            leader_ip: leader.ip,
-            leader_id: leader.id,
-            last_announced: leader.last_announced
-        });
-    } catch (e) {
-        // Fallback for legacy IP-only storage
-        return jsonResponse({ status: 'ok', poc_id, leader_ip: leaderVal });
-    }
-}
-
-// --- POST /leader (Leader Announcement / Election) ---
-async function handleSetLeader(request: Request, env: Env): Promise<Response> {
-    let payload: { poc_id: string; leader_ip: string; leader_id?: string };
-    try {
-        payload = await request.json();
-    } catch (e) {
-        return jsonResponse({ status: 'error', error: 'invalid_payload' }, 400);
-    }
-
-    if (!payload.poc_id || !payload.leader_ip) {
-        return jsonResponse({ status: 'error', error: 'invalid_payload', details: 'Missing poc_id or leader_ip' }, 400);
-    }
-
-    // Auth Check
-    const authKey = `auth:poc:${payload.poc_id}`;
-    let storedPocKey = await env.STIGIX_REGISTRY.get(authKey);
-    const providedPocKey = request.headers.get('X-PoC-Key');
-
-    // First registration of a PoC via /leader is also allowed (auto-enrollment)
-    if (!storedPocKey) {
-        storedPocKey = providedPocKey || crypto.randomUUID();
-        await env.STIGIX_REGISTRY.put(authKey, storedPocKey);
-        console.log(`[AUTH] Enrolled PoC via /leader: ${payload.poc_id}`);
-    } else if (providedPocKey !== storedPocKey) {
-        return jsonResponse({ status: 'error', error: 'forbidden' }, 403);
-    }
-
-    // Save leader info with a long TTL (86400s = 24 hours)
-    // Failover is handled by checking last_announced timestamp in the value itself.
-    const leaderKey = `leader:${payload.poc_id}`;
-    const existingLeaderVal = await env.STIGIX_REGISTRY.get(leaderKey);
-    const requesterId = payload.leader_id || 'unknown';
-
-    if (existingLeaderVal) {
-        try {
-            const existing = JSON.parse(existingLeaderVal);
-            // FAILOVER LOGIC: If another leader is already active
-            if (existing.id && existing.id !== requesterId) {
-                const lastAnnounced = new Date(existing.last_announced).getTime();
-                const now = Date.now();
-                const silenceThreshold = 15 * 60 * 1000; // 15 minutes
-
-                // If the existing leader has been silent for less than 15 mins, block takeover
-                if (now - lastAnnounced < silenceThreshold) {
-                    console.warn(`[ELECTION] Blocked hijack attempt by ${requesterId}. Active leader ${existing.id} was seen ${Math.round((now - lastAnnounced) / 1000)}s ago.`);
-                    return jsonResponse({
-                        status: 'error',
-                        error: 'conflict',
-                        details: 'A valid leader lease already exists and is active',
-                        active_leader: existing.id,
-                        last_seen_seconds_ago: Math.round((now - lastAnnounced) / 1000)
-                    }, 409);
+        // Handle CORS preflight
+        if (method === 'OPTIONS') {
+            return new Response(null, {
+                status: 204,
+                headers: {
+                    'Access-Control-Allow-Origin': '*',
+                    'Access-Control-Allow-Methods': 'GET, POST, DELETE, OPTIONS',
+                    'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Api-Key, X-Realm-Key'
                 }
-                
-                console.log(`[ELECTION] Leader failover: ${requesterId} is taking over from silent leader ${existing.id} (last seen ${Math.round((now - lastAnnounced) / 60000)}m ago)`);
-            }
-        } catch (e) {
-            // If parse fails (legacy data), we allow overwrite
-        }
-    }
-
-    const leaderInfo = {
-        ip: payload.leader_ip,
-        id: requesterId,
-        last_announced: new Date().toISOString()
-    };
-
-    // 24 Hour TTL ensures peers always have a bootstrap target, even if the leader doesn't re-announce frequently.
-    await env.STIGIX_REGISTRY.put(leaderKey, JSON.stringify(leaderInfo), {
-        expirationTtl: 86400
-    });
-
-    console.log(`[BOOTSTRAP] Leader lease granted/refreshed for PoC ${payload.poc_id}: ${payload.leader_ip} (ID: ${requesterId})`);
-    return jsonResponse({ status: 'ok', lease_expiration: 86400 });
-}
-
-// --- POST /register ---
-async function handleRegister(request: Request, env: Env): Promise<Response> {
-    const ip_public = request.headers.get('CF-Connecting-IP') || '0.0.0.0';
-
-    // 1. Global Auth Check (Gateway)
-    if (env.REGISTRY_API_KEY) {
-        const apiKey = request.headers.get('X-Api-Key');
-        if (apiKey !== env.REGISTRY_API_KEY) {
-            console.warn(`[AUTH] Refused registration from ${ip_public}: Invalid Global Key`);
-            return new Response(JSON.stringify({ status: 'error', error: 'forbidden', details: 'Invalid Global Key' }), {
-                status: 403,
-                headers: { 'Content-Type': 'application/json' },
             });
         }
-    }
 
-    let payload: RegisterPayload;
-    try {
-        payload = await request.json();
-    } catch (e) {
-        return new Response(JSON.stringify({ status: 'error', error: 'invalid_payload', details: 'Invalid JSON' }), {
-            status: 400,
-            headers: { 'Content-Type': 'application/json' },
-        });
-    }
+        try {
+            // Healthcheck
+            if (url.pathname === '/' || url.pathname === '/health') {
+                return jsonResponse({
+                    status: 'ok',
+                    service: 'stigix-rendezvous-relay',
+                    version: '2.0.0',
+                    features: ['sse-push-channel', 'instant-rendezvous', 'multi-tenant-realms']
+                });
+            }
 
-    // 2. Validation
-    const required: (keyof RegisterPayload)[] = ['poc_id', 'instance_id', 'type', 'ip_private'];
-    for (const field of required) {
-        if (!payload[field] || typeof payload[field] !== 'string') {
-            return new Response(
-                JSON.stringify({ status: 'error', error: 'invalid_payload', details: `Missing or invalid field: ${field}` }),
-                { status: 400, headers: { 'Content-Type': 'application/json' } }
-            );
+            // Match /realms/:realmHash/stream
+            const streamMatch = url.pathname.match(/^\/realms\/([a-zA-Z0-9_-]+)\/stream$/);
+            if (streamMatch && method === 'GET') {
+                const realmHash = streamMatch[1];
+                return handleRealmStream(realmHash, request, env, ctx);
+            }
+
+            // Match /realms/:realmHash/register
+            const registerMatch = url.pathname.match(/^\/realms\/([a-zA-Z0-9_-]+)\/register$/);
+            if (registerMatch && method === 'POST') {
+                const realmHash = registerMatch[1];
+                return await handleRealmRegister(realmHash, request, env);
+            }
+
+            // Match /realms/:realmHash/peers
+            const peersMatch = url.pathname.match(/^\/realms\/([a-zA-Z0-9_-]+)\/peers$/);
+            if (peersMatch && method === 'GET') {
+                const realmHash = peersMatch[1];
+                return await handleRealmPeers(realmHash, env);
+            }
+
+            return jsonResponse({ status: 'error', error: 'not_found', message: `Route ${url.pathname} not found` }, 404);
+        } catch (err: any) {
+            console.error(`[ERROR] Global handler exception: ${err.message}`);
+            return jsonResponse({ status: 'error', error: 'internal_error', message: err.message }, 500);
         }
     }
+};
 
-    // 3. PoC Key Management (Stateless / Auto-Join)
-    const authKey = `auth:poc:${payload.poc_id}`;
-    let storedPocKey = await env.STIGIX_REGISTRY.get(authKey);
-    const providedPocKey = request.headers.get('X-PoC-Key');
+/**
+ * GET /realms/:realmHash/stream — Long-lived SSE stream for Private Leaders
+ */
+function handleRealmStream(realmHash: string, request: Request, env: Env, ctx: ExecutionContext): Response {
+    let keepAliveInterval: any = null;
+    let streamController: ReadableStreamDefaultController | null = null;
 
-    if (!storedPocKey) {
-        // First instance for this PoC. Enroll with the provided key (or generate one)
-        storedPocKey = providedPocKey || crypto.randomUUID();
-        await env.STIGIX_REGISTRY.put(authKey, storedPocKey);
-        console.log(`[AUTH] Enrolled PoC: ${payload.poc_id} (Type: ${providedPocKey ? 'Stateless' : 'Legacy'})`);
-    } else {
-        // Verify subsequent registrations
-        if (providedPocKey && providedPocKey !== storedPocKey) {
-            console.warn(`[AUTH] Refused heartbeat for PoC: ${payload.poc_id} (IP: ${ip_public}) - Invalid PoC Key`);
-            return jsonResponse({ status: 'error', error: 'forbidden', details: 'Invalid PoC Key' }, 403);
+    const stream = new ReadableStream({
+        start(controller) {
+            streamController = controller;
+
+            if (!realmStreams.has(realmHash)) {
+                realmStreams.set(realmHash, new Set());
+            }
+            realmStreams.get(realmHash)!.add(controller);
+
+            // Send initial connected handshake event
+            const initEvent = `event: connected\ndata: ${JSON.stringify({ realm: realmHash, timestamp: Date.now() })}\n\n`;
+            controller.enqueue(new TextEncoder().encode(initEvent));
+
+            // Periodic keep-alive ping comment every 15s to keep proxy connections alive
+            keepAliveInterval = setInterval(() => {
+                try {
+                    controller.enqueue(new TextEncoder().encode(`: ping\n\n`));
+                } catch {
+                    cleanup();
+                }
+            }, 15000);
+        },
+        cancel() {
+            cleanup();
         }
-    }
-
-    // 4. Enrichment
-    const country = request.cf?.country?.toString() || 'Unknown';
-    const city = request.cf?.city?.toString() || 'Unknown';
-
-    const instance: StoredInstance = {
-        ...payload,
-        ip_public,
-        location: { country, city },
-        last_seen: new Date().toISOString(),
-    };
-
-    // 5. Storage
-    const key = `poc:${payload.poc_id}:inst:${payload.instance_id}`;
-    await env.STIGIX_REGISTRY.put(key, JSON.stringify(instance), {
-        expirationTtl: TTL_SECONDS,
     });
 
-    console.log(`[REG] Instance heartbeat: ${key} (IP: ${ip_public})`);
+    const cleanup = () => {
+        if (keepAliveInterval) {
+            clearInterval(keepAliveInterval);
+            keepAliveInterval = null;
+        }
+        if (streamController && realmStreams.has(realmHash)) {
+            const set = realmStreams.get(realmHash);
+            if (set) {
+                set.delete(streamController);
+                if (set.size === 0) realmStreams.delete(realmHash);
+            }
+        }
+    };
+
+    return new Response(stream, {
+        headers: {
+            'Content-Type': 'text/event-stream',
+            'Cache-Control': 'no-cache, no-transform',
+            'Connection': 'keep-alive',
+            'Access-Control-Allow-Origin': '*',
+            'X-Accel-Buffering': 'no'
+        }
+    });
+}
+
+/**
+ * POST /realms/:realmHash/register — Instant single-shot announcement from joining Cloud VMs
+ */
+async function handleRealmRegister(realmHash: string, request: Request, env: Env): Promise<Response> {
+    const clientIp = request.headers.get('CF-Connecting-IP') || '127.0.0.1';
+
+    let payload: PeerAnnouncementPayload;
+    try {
+        payload = await request.json();
+    } catch {
+        return jsonResponse({ status: 'error', error: 'invalid_json', message: 'Request body must be valid JSON' }, 400);
+    }
+
+    const instanceId = payload.instance_id || `node-${Math.random().toString(16).slice(2, 10)}`;
+    const effectiveIp = payload.ip || clientIp;
+    const port = payload.port || 8080;
+    const siteName = payload.site_name || instanceId;
+
+    const eventData = {
+        event: 'peer_registered',
+        realm: realmHash,
+        instance_id: instanceId,
+        site_name: siteName,
+        ip: effectiveIp,
+        ips: Array.isArray(payload.ips) ? payload.ips : [effectiveIp],
+        port,
+        capabilities: payload.capabilities || {},
+        tags: payload.tags || {},
+        timestamp: Date.now()
+    };
+
+    // 1. Instant Fan-out to all active Leader SSE streams in memory
+    const subscribers = realmStreams.get(realmHash);
+    let subscriberCount = 0;
+
+    if (subscribers && subscribers.size > 0) {
+        const sseMessage = `event: peer_registered\ndata: ${JSON.stringify(eventData)}\n\n`;
+        const encoded = new TextEncoder().encode(sseMessage);
+
+        for (const controller of Array.from(subscribers)) {
+            try {
+                controller.enqueue(encoded);
+                subscriberCount++;
+            } catch {
+                subscribers.delete(controller);
+            }
+        }
+    }
+
+    // 2. Ephemeral storage in KV (180s TTL) for disconnect fallback
+    if (env.STIGIX_REGISTRY) {
+        try {
+            const kvKey = `realm:${realmHash}:peer:${instanceId}`;
+            await env.STIGIX_REGISTRY.put(kvKey, JSON.stringify(eventData), {
+                expirationTtl: 180
+            });
+        } catch (kvErr: any) {
+            console.warn(`[KV] Ephemeral storage warning: ${kvErr.message}`);
+        }
+    }
+
+    console.log(`[RENDEZVOUS] Registered peer ${siteName} (${effectiveIp}:${port}) in realm ${realmHash.slice(0, 8)}... — pushed to ${subscriberCount} active listeners`);
 
     return jsonResponse({
         status: 'ok',
-        poc_id: payload.poc_id,
-        instance_id: payload.instance_id,
-        poc_key: storedPocKey,
-        detected: {
-            ip_public,
-            location: { country, city },
-        },
+        pushed_to_listeners: subscriberCount,
+        peer: eventData,
+        message: 'Rendezvous announcement broadcasted successfully'
     });
 }
 
-// --- GET /instances ---
-async function handleInstances(request: Request, env: Env): Promise<Response> {
-    const url = new URL(request.url);
-    const poc_id = url.searchParams.get('poc_id');
-    const scope = url.searchParams.get('scope') || 'all';
-    const self_instance_id = url.searchParams.get('self_instance_id');
-
-    // 1. Multi-level Auth Check
-    const globalKey = request.headers.get('X-Api-Key');
-    const pocKeyHeader = request.headers.get('X-PoC-Key');
-    let isAuthorized = false;
-
-    // Check Global Key (Admin/Global Listing)
-    if (env.REGISTRY_API_KEY && globalKey === env.REGISTRY_API_KEY) {
-        isAuthorized = true;
-        console.log(`[AUTH] Admin access to /instances via Global Key`);
-    }
-    // Check PoC Key (Discovery)
-    else if (poc_id) {
-        const storedPocKey = await env.STIGIX_REGISTRY.get(`auth:poc:${poc_id}`);
-        if (storedPocKey && pocKeyHeader === storedPocKey) {
-            isAuthorized = true;
-            console.log(`[AUTH] PoC access to /instances for PoC: ${poc_id}`);
-        }
+/**
+ * GET /realms/:realmHash/peers — Fallback listing of active ephemeral peers
+ */
+async function handleRealmPeers(realmHash: string, env: Env): Promise<Response> {
+    if (!env.STIGIX_REGISTRY) {
+        return jsonResponse({ status: 'ok', peers: [] });
     }
 
-    if (!isAuthorized) {
-        console.warn(`[AUTH] Forbidden access to /instances (PoC: ${poc_id || 'all'})`);
-        return new Response(JSON.stringify({ status: 'error', error: 'forbidden' }), {
-            status: 403,
-            headers: { 'Content-Type': 'application/json' },
-        });
-    }
-
-    // 2. Listing
-    const prefix = poc_id ? `poc:${poc_id}:inst:` : `poc:`;
+    const prefix = `realm:${realmHash}:peer:`;
     const list = await env.STIGIX_REGISTRY.list({ prefix });
-
-    const instances: StoredInstance[] = [];
+    const peers: any[] = [];
 
     for (const key of list.keys) {
-        // Skip auth keys if listing globally
-        if (key.name.startsWith('auth:')) continue;
-
         const val = await env.STIGIX_REGISTRY.get(key.name);
         if (val) {
             try {
-                const inst: StoredInstance = JSON.parse(val);
-                if (scope === 'others' && inst.instance_id === self_instance_id) {
-                    continue;
-                }
-                instances.push(inst);
-            } catch (e) {
-                console.error(`[ERROR] Failed to parse instance data: ${key.name}`);
-            }
+                peers.push(JSON.parse(val));
+            } catch {}
         }
     }
 
-    return new Response(JSON.stringify({ poc_id: poc_id || 'all', instances }), {
-        status: 200,
-        headers: { 'Content-Type': 'application/json' },
-    });
+    return jsonResponse({ status: 'ok', realm: realmHash, peers });
 }

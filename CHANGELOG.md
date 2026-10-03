@@ -5,6 +5,410 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.144] - 2026-10-03
+
+### Added
+- **Stigix V2 Login Console Redesign (`Login.tsx`)**:
+  - Replaced legacy v1.1.2 console with a modern Stigix V2 dark glassmorphism aesthetic (`backdrop-blur-2xl`, cyber mesh grid background, neon ambient glow).
+  - Added official Stigix glowing Activity logo, `⚡ SECURE NODE CONSOLE` badge, and tagline `The Engine for SASE Validation`.
+  - Added input icons (User/Lock), password show/hide eye toggle, dark autofill styling, and dynamic platform version retrieval. ✨
+- **URL Filtering HTTP / HTTPS Protocol Switcher (`Security.tsx`, `server.ts`)**:
+  - Added `[ 🌐 HTTP | 🔒 HTTPS ]` toggle to dynamically switch PAN-DB test URLs between HTTP (port 80) and HTTPS (port 443) for live SSL Decryption policy validation. 🔄
+
+### Fixed / Improved
+- **Installer Magic Join Token & Site Name Persistence (`install.sh`, `install-autodocker.sh`)**:
+  - Added multi-tier decoding with POSIX grep/sed fallbacks for extracting `site_hint` and endpoints without external runtime dependencies.
+  - Unconditionally initialized `config/site-name.json` with the selected site name hint so `Local Site Name` is instantly configured on the node without manual post-install typing. 🚀
+
+## [2.0.143] - 2026-10-03
+
+### Added
+- **Prisma Access SSL Decryption & 1-Click CA Certificate Import (`certificate-manager.ts`, `server.ts`, `Settings.tsx`)**:
+  - Native support for Palo Alto Prisma Access Forward Trust CA and custom Root CAs in `certificate-manager.ts`.
+  - 1-Click auto-import from Prisma SASE API (`/sse/config/v1/certificates`), extracting Forward Trust CAs into `config/certs/ca-bundle.pem`.
+  - Automatic injection into Node.js (`NODE_EXTRA_CA_CERTS`) and Python engines (`REQUESTS_CA_BUNDLE`, `SSL_CERT_FILE`) to validate decrypted HTTPS traffic without TLS handshake failures. 🛡️
+  - Added `ca-certificates` bundle to Mesh Provisioning: importing the CA on the Leader automatically distributes it across all remote mesh spoke nodes (DC1, BR1, BR2, BR5, BR8). 🌐
+
+## [2.0.142] - 2026-10-02
+
+### Added
+- **VyOS Topology Action Real-Time Progress Bar & Spinners (`Topology.tsx`)**:
+  - Added execution spinners, progress bars, and operation states for interface shut/no-shut, latency/loss injection, and QoS clearing. 🚀
+
+### Fixed / Improved
+- **Security Dashboard Card Verdict Persistence (`Security.tsx`, `test-logger.ts`, `server.ts`)**:
+  - Decoupled security category cards (URL Filtering, DNS Security, Threat/EICAR, C2, AI Security) from the paginated test log table by introducing `latestVerdicts` state.
+  - Added `GET /api/security/results/latest-verdicts` and `TestLogger.getLatestVerdicts()` to retain the true latest verdict for each category.
+  - Category cards now consistently display their latest test result badge (Allowed, Blocked, Sinkholed) regardless of log table searches or batch test volume. 🛡️
+- **Deployment Guide (`docs/DEPLOYMENT_GUIDE.md`)**:
+  - Streamlined guide to focus 100% on zero-touch 1-line curl onboarding without exposing unnecessary raw `docker-compose.yml` boilerplate. 📚
+
+## [2.0.137] - 2026-10-01
+
+### Fixed / Improved
+- **Reverse Tunnel Internal Authentication (`server.ts`)**:
+  - Added loopback authentication bypass for requests dispatched locally over `127.0.0.1` by `fleet-tunnel` (`x-gateway-source: reverse-tunnel`).
+  - Resolves `403 Forbidden` errors during Remote View on dynamically enrolled spoke nodes that possess distinct `JWT_SECRET` keys from the Leader. ⚡
+- **Remote View Network Status Synchronization (`App.tsx`)**:
+  - Enhanced `PeerStatusSync` to dynamically sync Gateway IP, Public IP, Country flag, and Probe counts from the remote peer. 🚀
+- **Quick Start Guide (`docs/QUICK_START.md`)**:
+  - Restructured into modern 1-line copy-paste join and classic manual Docker Compose methods. 📚
+
+## [2.0.136] - 2026-10-01
+
+### Fixed / Improved
+- **Remote View Gateway Resolution & WebSocket Precedence (`server.ts`, `fleet-tunnel.ts`)**:
+  - Enhanced `/api/gateway/:peerId/*` proxy route on Leader with case-insensitive peer resolution across instance ID, site name, private IP, and public IP.
+  - Added robust target fallback so peers with active WebSocket reverse tunnels (like HetznerCloud) forward instantly without requiring an immediate local registry roundtrip. ⚡
+- **Remote View Network Status Synchronization (`App.tsx`)**:
+  - Extended `PeerStatusSync` to dynamically synchronize Gateway IP, Public IP, Country flag, Site Info, and Connectivity test results from the active remote peer.
+  - Automatically resets to local Leader network status upon exiting Remote View mode. 🚀
+
+## [2.0.135] - 2026-10-01
+
+### Fixed / Improved
+- **Multi-Port Support & Outbound Redial Fix for Custom Ports (`fleet-tunnel.ts`, `targets-manager.ts`, `server.ts`)**:
+  - Fixed an issue where nodes installed on alternative ports (e.g. `8081` due to host port `8080` collisions) were periodically redialed on `8080` by the Leader's periodic sync loop.
+  - Normalized and strictly preserved `ports.http` across `TargetsManager.loadTargets()`, `createTarget()`, `updateTarget()`, and `synthesizeFromRegistry()`.
+  - Updated `fleet-tunnel.ts` target auto-provisioning to persist custom ports directly and use them in outbound dial routines. ⚡
+- **Dynamic Target Upsert & Learned Badge (`fleet-tunnel.ts`, `server.ts`, `Settings.tsx`)**:
+  - Re-enrolled nodes automatically update existing targets in-place without producing duplicate stale entries.
+  - Set `meta: { registry: true, magic_join: true, last_seen: ... }` on auto-provisioned targets so they carry the dynamic `🔵 LEARNED` badge.
+- **Installer Clarifications (`install.sh`)**:
+  - Extended verification timeout to 50s and refined post-install status messages to reassure users during background reverse tunnel negotiation. 🚀
+
+## [2.0.134] - 2026-10-01
+
+### Added / Improved
+- **Active Targets by Default & Mesh Link Column in Fleet Overview (`Fleet.tsx`, `targets-manager.ts`, `fleet-tunnel.ts`)**:
+  - Split the `Status` column in Mesh Overview into two dedicated columns: `Status` (Online/Offline) and `Mesh Link` (WS Tunnel / Direct HTTP / Local Leader).
+  - Ensured auto-provisioned targets from Magic Join and reverse dial are enabled (`enabled: true`) by default so they are immediately available for test suites. 🚀
+
+## [2.0.133] - 2026-10-01
+
+### Improved
+- **Crystal-Clear Onboarding Success Box & Extended Verification Window (`install.sh`, `install-autodocker.sh`)**:
+  - Increased Leader reverse dial verification window to 20 attempts (40s) to reliably capture the Leader's 10-20s dial cycle before script termination.
+  - Added a prominent, formatted success banner upon connection displaying live node status, Leader name, security realm sync, and active catalogues.
+  - Formulated actionable troubleshooting instructions if the inbound firewall port is blocked. 🚀
+
+## [2.0.132] - 2026-10-01
+
+### Improved
+- **Virtual Bridge Filtering & Smooth Rendezvous Progress UX (`install.sh`, `install-autodocker.sh`)**:
+  - Automatically filtered out Docker (`docker0`, `br-*`), KVM/libvirt (`virbr0-6`), and virtual tap interfaces (`veth*`, `vnet*`) from network interface detection so multi-bridge / virtualization hosts (like Hetzner) cleanly present only real physical and Cloud IPs (e.g. `142.132.193.157`).
+  - Increased tunnel verification timeout to 15 attempts (30s) and smoothed the progress bar messaging with explicit mention of the Leader's ~10s dial cycle, preventing premature panic during handshake. 🚀
+
+## [2.0.131] - 2026-10-01
+
+### Added / Improved
+- **Public & Cloud IP Support for Magic Join and Rendezvous (`install.sh`, `install-autodocker.sh`, `docker-compose.yml`, `docker-compose.bridge.yml`)**:
+  - Integrated external public IP probing (via `ipify`, `ifconfig.me`, `checkip.amazonaws.com`) into Magic Join candidate collection.
+  - Automatically initializes primary IP for single-IP Cloud VPS hosts (e.g. Hetzner, AWS, GCP, Oracle Cloud).
+  - Added interactive IP labels distinguishing `(Private LAN)` from `(Public / Cloud IP)` in the interface selection menu.
+  - Added default route egress interface fallback in `interfaces.txt` when bound behind 1:1 NAT.
+  - Exposed `- STIGIX_PUBLIC_URL=${STIGIX_PUBLIC_URL:-}` in `docker-compose.yml` and `docker-compose.bridge.yml`. 🚀
+
+## [2.0.130] - 2026-10-01
+
+### Fixed
+- **Persistent Network Interface & Site Name Override in Magic Join (`install.sh`, `install-autodocker.sh`, `docker-compose.yml`, `docker-compose.bridge.yml`)**:
+  - Saved chosen advertised IP (`CHOSEN_PRIMARY_IP`) directly to `.env` as `STIGIX_PRIVATE_IP` and mapped the corresponding physical interface into `config/interfaces.txt`.
+  - Added `- STIGIX_PRIVATE_IP=${STIGIX_PRIVATE_IP:-}` to `docker-compose.yml` and `docker-compose.bridge.yml` so containers bind to the user's selected IP rather than arbitrary local bridge IPs (e.g. `br50`).
+  - Saved custom Site Name (`SITE_NAME_OVERRIDE` from magic token `site_hint`) to both `config/site-name.json` and `.env` (`STIGIX_SITE_NAME`), preventing fallback to local hostnames. 🚀
+
+## [2.0.129] - 2026-10-01
+
+### Added / Improved
+- **Real-Time Fleet Tunnel Verification in Install Scripts (`install.sh`, `install-autodocker.sh`, `server.ts`)**:
+  - Added lightweight `/api/system/tunnel-status` endpoint for installer and diagnostic health checks.
+  - Added live post-installation verification step in `install.sh` and `install-autodocker.sh` that actively waits for and confirms the WebSocket Fleet Tunnel with the Leader.
+  - Displays instant progress feedback, Leader name, security realm sync status, and provisioning readiness right in the terminal upon installation. 🚀
+
+## [2.0.128] - 2026-10-01
+
+### Fixed
+- **Cluster Realm Environment Forwarding & Zero-Touch Adoption Fix (`docker-compose.yml`, `docker-compose.bridge.yml`, `install.sh`, `install-autodocker.sh`, `fleet-tunnel.ts`)**:
+  - Added `- STIGIX_CLUSTER_REALM=${STIGIX_CLUSTER_REALM:-}` to the `environment:` block of all `docker-compose` templates so Docker actually forwards the token realm to the runtime container.
+  - Updated `install.sh` and `install-autodocker.sh` to download `docker-compose.yml` from the `v2` branch instead of `main`.
+  - Added case-insensitive and fallback realm validation with verbose authentication logging in `fleet-tunnel` auth middleware.
+  - Resolves `invalid_token` during Leader reverse dials (`M6`). 🚀
+
+## [2.0.127] - 2026-10-01
+
+### Fixed
+- **Leader Reverse Dial Premature Disconnect Bug (`fleet-tunnel.ts`)**:
+  - Fixed race condition where background target reconciliation loop closed active dial attempts to Rendezvous peers before the WebSocket handshake finished.
+  - Added a 60s dial grace period (`rendezvousDialTimestamps`) to allow Leader reverse dials to complete smoothly without interruption.
+  - Added descriptive `connect_error` logging for outbound dials to assist real-time debugging. 🚀
+
+## [2.0.126] - 2026-10-01
+
+### Added / Improved
+- **Interactive Multi-Interface IP Selection & CLI Flag (`install.sh`, `install-autodocker.sh`)**:
+  - Added interactive prompt with 15s countdown for hosts with multiple network interfaces (physical LANs, Tailscale, Docker bridges).
+  - Allows selecting a specific IP, all IPs (recommended multi-homed mesh), or entering a custom IP/FQDN.
+  - Added `--ip` / `-i <IP>` CLI argument to explicitly specify the advertised IP during scripted or unattended deployments. 🚀
+
+### Fixed
+- **Null Safety in Targets Merging (`targets-manager.ts`)**:
+  - Fixed `TypeError: Cannot read properties of undefined (reading 'trim')` when reconciling targets with undefined/missing `name` properties.
+  - Prevents `web-ui` process crashes during background tunnel reconciliation and DEM reachability checks. 🚀
+
+## [2.0.125] - 2026-10-01
+
+### Added / Fixed
+- **Cryptographic Realm Handshake & Zero-Touch Cluster Secret Adoption (`fleet-tunnel.ts`, `install.sh`, `install-autodocker.sh`)**:
+  - Saved `STIGIX_CLUSTER_REALM` automatically to Spoke `.env` from the decoded Magic Join Token during rendezvous installation.
+  - Implemented automatic cryptographic cluster secret adoption during Leader reverse WebSocket dials: Spoke verifies Leader's realm against token realm and adopts cluster `JWT_SECRET` in memory.
+  - Eliminates authentication failures when Spokes are installed in NAT/Rendezvous mode without direct access to the Leader's redemption endpoint. 🚀
+
+## [2.0.124] - 2026-10-01
+
+### Fixed
+- **Multi-Candidate Dial Persistence & Socket Reconciliation (`fleet-tunnel.ts`)**:
+  - Prioritized private local candidate IPs before public IP during multi-IP reverse dialing.
+  - Automatically persisted the winning candidate host into `targetsManager` upon successful WebSocket handshake.
+  - Prevented background reconciliation loop (`syncLeaderOutboundDials`) from prematurely closing active or pending rendezvous reverse dials on multi-homed spoke hosts. 🚀
+
+## [2.0.123] - 2026-10-01
+
+### Added / Fixed
+- **Comprehensive Multi-Interface IP Discovery & Continuous Leader Rendezvous Polling (`install.sh`, `install-autodocker.sh`, `fleet-tunnel.ts`)**:
+  - Upgraded installer IP candidate discovery to inspect all network interfaces (`hostname -I`, `ip -4 addr`, `ifconfig`) instead of relying solely on default gateway route.
+  - Ensures multi-homed hosts (e.g. `nucvillers` with both `192.168.1.163` and `192.168.50.232`) announce all physical candidate subnets to Cloudflare Rendezvous.
+  - Added continuous 10s background KV polling loop in Leader `FleetTunnelManager` for instant reverse dials regardless of Anycast edge routing. 🚀
+
+## [2.0.122] - 2026-10-01
+
+### Added / Improved
+- **Automatic Ephemeral Peer KV Synchronization on Leader SSE Connect (`fleet-tunnel.ts`)**:
+  - Automatically queries `GET /realms/:realmHash/peers` upon SSE push channel connection and reconnection to ingest any ephemeral rendezvous announcements stored in Cloudflare KV (180s TTL).
+  - Eliminates potential anycast isolate routing race conditions when the joining node announces to an edge isolate distinct from the Leader's active SSE listener isolate. 🚀
+
+## [2.0.121] - 2026-10-01
+
+### Added / Improved
+- **Multi-IP Candidate Probing & Free Port Detection in Cloudflare Rendezvous (`fleet-tunnel.ts`, `install.sh`, `install-autodocker.sh`, `stigix-registry/src/index.ts`)**:
+  - `install.sh` and `install-autodocker.sh` automatically detect all local IPv4 interface candidates and dynamic free port allocation (`8080..8090`) before announcing to Cloudflare Rendezvous.
+  - Cloudflare Worker and Leader `FleetTunnelManager` handle multi-IP candidate arrays, dialing across all candidate interfaces to establish reverse WebSocket tunnels (`⚡ WS TUNNEL`). 🚀
+
+## [2.0.120] - 2026-10-01
+
+### Added / Improved
+- **Stateless Cloudflare SSE Rendezvous Relay (PRD Magic Join Milestones 2 & 4)**:
+  - Completely refactored Cloudflare Worker (`stigix-registry/src/index.ts`) into a stateless rendezvous relay:
+    - `GET /realms/:realmHash/stream`: Real-time Server-Sent Events (SSE) push channel for Private Leaders (0% CPU, 0 continuous polling, 0 recurring KV writes).
+    - `POST /realms/:realmHash/register`: Single-shot instant announcement for joining Cloud VMs (broadcasts to Leader in <10ms).
+    - Removed obsolete KV-polling endpoints (`/instances`, `/leader` lease election).
+  - Integrated `startCloudflareRendezvousListener()` in `web-dashboard/fleet-tunnel.ts`: Private Leader automatically listens to realm push events and triggers instant outbound reverse dials to new Cloud VMs.
+  - Updated client installers (`install.sh`, `install-autodocker.sh`) with automatic fallback announcement to Cloudflare Rendezvous Relay when LAN probes fail. 🚀
+
+## [2.0.119] - 2026-10-01
+
+### Added / Improved
+- **Zero-Touch Cluster Security Realm Synchronization in Magic Join (`server.ts`, `install.sh`, `install-autodocker.sh`, `stigix-cli.py`, `orchestrator.py`)**:
+  - Automatically securely returns and synchronizes cluster `JWT_SECRET` during Magic Join token redemption (`/api/fleet/join-redeem`).
+  - Eliminates any manual `.env` editing: new nodes joining the fleet immediately share the cluster security realm.
+  - Ensures persistent `⚡ WS TUNNEL` WebSocket reverse tunnels and remote gateway proxy queries (`/api/gateway/:peerId/*`) connect and authenticate seamlessly out-of-the-box. 🚀
+
+## [2.0.112] - 2026-09-30
+
+### Added / Improved
+- **Real-Time SSE & Chunked Stream Forwarding over WebSocket Reverse Tunnels (`fleet-tunnel.ts`, `server.ts`)**:
+  - Implemented bidirectional chunked stream pump (`gateway:stream:start`, `gateway:stream:headers`, `gateway:stream:chunk`, `gateway:stream:end`, `gateway:stream:abort`) over persistent WebSocket reverse tunnels (M5 & M6).
+  - Enables real-time Server-Sent Events (SSE) streaming for Bandwidth Tests (`/api/tests/xfr/:id/stream`) and Live Logs over WebSocket reverse tunnels & Leader outbound dialed connections (e.g. Hetzner, AWS, Home LAN, NAT branch spokes).
+  - Graph updates animate continuously second-by-second during active tests in Remote View instead of buffering until test completion.
+  - Added clean client-disconnect abort propagation terminating background processes on remote peers when users cancel or navigate away. 🚀
+- **Public Documentation & Stigix FAQ**:
+  - Added dedicated **Deployment Topologies & Private Architectures** section in `site/faq.html` covering LAN/MPLS, NAT Spokes, Zero-Inbound Private Leader + Multi-Cloud, port direction matrices, and tunnel self-healing.
+
+## [2.0.111] - 2026-09-30
+
+### Added / Improved
+- **Bidirectional Global Provisioning & Target Sync over Fleet WebSocket Tunnels (`fleet-tunnel.ts`, `server.ts`, `Settings.tsx`)**:
+  - Implemented automated bidirectional configuration syncing over persistent WebSocket tunnels (M5 & M6): remote Cloud and NAT peers automatically pull published configuration bundles (`custom-tcp-apps`, `applications`, `connectivity-probes`, `convergence-sla`, `security-config`, `voice-config`, `iot-config`, `cloud-config`) directly through the existing tunnel without requiring inbound IP routing to the private Leader.
+  - Added real-time bundle update broadcast (`peer:bundle_updated` push) triggering instant hot-reloading on connected peers when bundles are published or saved on the Leader.
+  - Enhanced **Target Controller** UI in Settings:
+    - Dedicated **`⚡ WS Tunnel Synced`** status badge with live link details and auto-managed indicator.
+    - Added tunnel-aware connectivity test (`/api/registry/test-connectivity`) measuring round-trip WebSocket ping/pong latency (RTT in ms).
+    - Enabled seamless manual pull sync via `SYNC NOW` over active WebSocket tunnels.
+  - Fixed remote Cloud Peer capabilities indicator dots and `⚡ WS Tunnel` badge matching by resolving peer IP and remote instance IDs across tunnel session maps. 🚀
+- **Documentation**:
+  - Added [`docs/PRIVATE_DEPLOYMENT_TOPOLOGIES.md`](file:///Users/jsuzanne/Github/stigix/docs/PRIVATE_DEPLOYMENT_TOPOLOGIES.md) detailing all 4 deployment topologies (LAN/MPLS, NAT Spokes, Zero-Inbound Private Leader + Multi-Cloud Peers, and Public SaaS Leader).
+
+## [2.0.110] - 2026-09-30
+
+### Fixed
+- **Leader Outbound Reverse Dialing Persistent Retention (`fleet-tunnel.ts`)**:
+  - Fixed a race condition where dialed cloud peers (e.g. Hetzner) were mistakenly classified as candidates to close because `knownPeerKeys` was checking `localRegistryServer.getInstances()` instead of only inbound M5 spokes.
+  - Ensures persistent, uninterrupted connection to external Cloud and Home LAN peers with continuous telemetry streaming. 🚀
+
+## [2.0.109] - 2026-09-30
+
+### Fixed / Improved
+- **Fleet Gateway & Local Registry Peer Deduplication & Telemetry Keepalive (`fleet-tunnel.ts`, `local-registry-server.ts`, `server.ts`)**:
+  - Fixed duplicate peer entries in Fleet Overview and target switcher by indexing `LocalRegistryServer` uniquely by `instance_id` and safely merging partial telemetry payloads.
+  - Excluded known active spoke peers (already registered or connected inbound via M5) from Leader outbound reverse dialing candidates (M6) to prevent dual-tunnel redundant connections.
+  - Implemented periodic 15s telemetry polling on Leader dialed outbound connections and continuous streaming on inbound leader dials to prevent remote Cloud Peers (e.g. Hetzner) from going stale/offline.
+  - Wired full rich telemetry provider (`summary` with health scores, probes, rates, version) into WebSocket tunnel payloads for consistent remote view rendering. 🚀
+
+## [2.0.108] - 2026-09-30
+
+### Added
+- **Fleet Gateway Leader Outbound Reverse Dialing for Manual/Cloud Peers (Milestone 6) (`fleet-tunnel.ts`, `server.ts`, `local-registry-server.ts`)**:
+  - Implemented Leader-initiated outbound WebSocket reverse dialing to manual/cloud targets (e.g. Hetzner, AWS, Home LAN).
+  - Eliminates the need to publish or expose the Leader on the public Internet: the private Leader initiates the outbound session to the Cloud Peer's `/fleet-tunnel` endpoint.
+  - Automatic bidirectional synchronization: remote Cloud Peers push their live telemetry & heartbeats over the dialed tunnel, seamlessly registering into the Leader's in-memory local registry.
+  - Operators on the Leader can switch context to any external Cloud Peer via the Fleet Gateway (`/api/gateway/:peerId/*`) through the persistent dialed tunnel. 🚀
+
+## [2.0.107] - 2026-09-30
+
+### Added
+- **Fleet Gateway WebSocket Reverse Tunnel for NAT/CGNAT Traversal (Milestone 5) (`fleet-tunnel.ts`, `server.ts`, `PeerContext.tsx`)**:
+  - Implemented bidirectional Socket.IO reverse tunnel namespace (`/fleet-tunnel`) allowing Spoke nodes behind NAT/CGNAT/firewalls to connect outbound to the Leader node.
+  - Zero `.env` configuration required on Spokes: nodes automatically discover the Leader URL from the local Stigix Registry (`leader_info?.ip` / `static_leader_url`) and establish persistent reverse WebSocket connections.
+  - Gateway reverse proxy (`/api/gateway/:peerId/*`) transparently routes API calls over active WebSocket tunnels with graceful fallback to direct HTTP on LAN.
+  - Added `/api/fleet/tunnels` endpoint exposing connected reverse tunnel sessions in real time.
+  - Added `⚡ WS TUNNEL` and `🌐 DIRECT HTTP` transport badges in the Gateway context switcher dropdown and navbar remote view chip. 🚀
+
+## [2.0.106] - 2026-09-30
+
+### Performance / Changed
+- **Reachability Matrix Instant 0ms Render & Spoke Caching (`server.ts`, `ReachabilityMatrix.tsx`)**:
+  - Implemented Stale-While-Revalidate in-memory cache for `/api/fleet/matrix` proxy on Spoke nodes to completely eliminate transient `1x1` grid collapses during leader polling or micro-latencies.
+  - Added multi-node matrix guard in `ReachabilityMatrix.tsx` preventing single-node local fallback overwrite when multi-node telemetry is already present.
+  - Optimized 10s auto-refresh polling into a silent background cycle, avoiding UI flickers and unnecessary loading states.
+  - Added instant session storage hydration for immediate 0ms matrix display upon tab navigation. 🚀
+
+## [2.0.105] - 2026-09-30
+
+### Added
+- **Failover Monitoring Target Auto-Focus (`Failover.tsx`)**:
+  - Automatically filters and focuses on active target endpoints during a running failover test, collapsing unused targets to reduce visual noise during live testing.
+  - Added an interactive focus banner with an on-demand **`Show all targets`** button to view all targets at any time.
+  - Preserves full target list in non-testing mode and restores all endpoints automatically when tests conclude. 🚀
+
+## [2.0.98] - 2026-09-29
+
+### Added
+- **On-Demand SD-WAN Flow Path & Circuit Attribution (`server.ts`, `ReachabilityMatrix.tsx`, `getflow.py`)**:
+  - Integrated live Prisma SD-WAN flow table correlation (`POST /api/fleet/matrix/flow-trace`) inside the Reachability Matrix modal.
+  - Operators can click **`Trace Live Flow Path`** on any matrix pair to instantly reveal active physical WAN circuits (MPLS vs Internet vs LTE), VPN tunnels, policy rules, and failover history.
+  - Automated Root Cause Analysis (RCA) diagnostic engine detects circuit asymmetry (e.g. Forward on Internet Backup while Return is on MPLS Primary) and explains latency deltas in real-time. 🚀
+
+## [2.0.97] - 2026-09-29
+
+### Added
+- **SD-WAN Topology Policy Support (`server.ts`, `ReachabilityMatrix.tsx`)**:
+  - Added topology toggle (`Hub & Spoke` vs `Full-Mesh` vs `Manual`).
+  - In **Hub & Spoke** mode (default for SD-WAN architecture), direct Spoke-to-Spoke pairs (e.g. `BR5 ⇄ BR8`, `BR1 ⇄ BR2`) are recognized as intentional SD-WAN routing bypasses and labeled as **`🏛️ Hub & Spoke (Bypassed)`** instead of false critical outages.
+  - Added `/api/fleet/matrix/topology` endpoint to dynamically switch topology across the fleet with automatic Leader synchronization.
+
+### Changed
+- **AutoMesh Fleet Telemetry Engine (`server.ts`)**:
+  - Automatically synthesizes active host-to-host ICMP reachability probes to all registered fleet peers in `startConnectivityMonitor()` and `GET /api/connectivity/test`.
+  - Prioritizes direct peer instance ID and node host IP matching in `/api/fleet/matrix` aggregation.
+- **Node Host vs SD-WAN Target Clarification (`ReachabilityMatrix.tsx`)**:
+  - Matrix table headers and modal inspection cards clearly distinguish between the **Stigix Host Container** (`source_name` / `source_ip`) and the **SD-WAN Target** (`target_ip` / probed interface). 🚀
+
+## [2.0.96] - 2026-09-29
+
+### Fixed
+- **Connectivity Probes Deletion & Mesh Loop (`server.ts`, `provisioning-manager.ts`)**:
+  - Prevented Leader from resurrecting deleted probes from old global bundles.
+  - Unified payload formatting across config and publish routes to resolve false pending checksum loops.
+- **Prisma SD-WAN LAN Interface Discovery (`discovery-manager.ts`)**:
+  - Prioritized physical Ethernet LAN gateway interfaces over loopback `/32` interfaces. 🚀
+
+
+### Changed
+- **DEM Reachability Matrix Polish (`ReachabilityMatrix.tsx`, `server.ts`)**:
+  - Formatted all metrics (latency, jitter, deltas, scores) to at most 2 decimal digits for clean readability.
+  - Removed redundant `Probe Type` filter strip since all inter-site SD-WAN probes are dedicated fabric reachability pings.
+  - Streamlined action strip with live status indicator and `Asymmetric Only` toggle. 🚀
+
+## [2.0.86] - 2026-09-29
+
+### Added
+- **Spoke-to-Leader Matrix Proxying (`server.ts`)**: Spoke instances (BR8, BR1, BR2, BR5) automatically proxy `GET /api/fleet/matrix` queries to the Leader (DC1). Operators viewing the matrix on any branch now see the full-mesh $N \times N$ reachability matrix with local node dynamic contextualization ("YOU"). 🚀
+
+## [2.0.85] - 2026-09-29
+
+### Changed
+- **DEM Reachability Matrix Scope (`server.ts`)**: Strictly restricted the N×N reachability matrix to registered SD-WAN fleet instances (DC1, BR1, BR2, BR5, BR8, etc.) and inter-site SD-WAN probes. Removed automatic inclusion of general Internet/SaaS synthetic targets. 🚀
+
+## [2.0.84] - 2026-09-29
+
+### Fixed
+- **DEM Reachability Matrix Authorization (`ReachabilityMatrix.tsx`)**: Passed `Authorization: Bearer <token>` in `gFetch` calls to prevent HTTP 401 Unauthorized errors when fetching `/api/fleet/matrix`. Fixed raw LaTeX header markup.
+- **Custom TCP Apps FrameParser Listener Leak (`tcp-client-runtime.ts`)**: Cleared event listeners on `session.parser` prior to reconnecting, eliminating Node.js `MaxListenersExceededWarning` on `FrameParser`.
+
+## [2.0.83] - 2026-09-29
+
+### Added
+- **Bidirectional SD-WAN Reachability Matrix (`DEM.tsx`, `server.ts`)**: Cross-instance N×N mesh matrix displaying bidirectional probe telemetry (latency, jitter, packet loss) and SLA statuses between all registered fleet nodes. 🚀
+
+### Fixed
+- **DEM Telemetry Catch Block (`server.ts`)**: Resolved indentation error on `catch` block in `peer_probes` telemetry block that caused tsx/esbuild parse errors.
+- **AI Copilot Convergence Stop Tool (`ai-tools.ts`)**: Removed duplicate `headers` property in fetch call.
+
+## [2.0.82] - 2026-09-28
+
+### Changed
+- **Bandwidth Test Target Cards (`Speedtest.tsx`)**: Removed redundant checkbox icons on target cards to eliminate multi-selection ambiguity and provide clean alignment with the reachability status dot.
+
+## [2.0.81] - 2026-09-28
+
+### Added
+- **Fleet View Direct Context Switcher (`Fleet.tsx`)**: Replaced generic `Open UI` links in Mesh Overview table with interactive `[ ⚡ Connect ]` context switcher buttons that immediately transport the operator into the branch's Remote View via the Leader gateway. Added `[ ⚡ Connect via Remote View ]` in the Peer Detail modal.
+
+## [2.0.80] - 2026-09-28
+
+### Added
+- **Remote Peer Name in Navigation Header (`App.tsx`)**: Top-left subtitle dynamically displays the remote peer site name in amber during Remote View mode.
+- **Peer Switcher Dropdown (`PeerContext.tsx`)**: Removed redundant `ACTIVE` badge to eliminate visual clutter and avoid horizontal layout shifts.
+
+## [2.0.74] - 2026-09-28
+
+### Fixed
+- **Custom TCP Apps — EICAR mode (HTTP path)**: `EICAR_TEST_STRING` constant was referenced but never defined, causing the HTTP response to send `"undefined\n"` as the body instead of the real EICAR string. Security inspection layers would therefore never detect it. Fixed by defining the constant at module level and removing the duplicate inline definition in the binary protocol path.
+
+## [2.0.73] - 2026-09-28
+
+### Changed
+- **Remote-view indicator**: Replaced the old yellow banner (caused layout shift) with a subtle `position:fixed` amber inset border (2px, `rgba(251,191,36,0.40)`) drawn over the entire viewport. Uses `pointer-events:none` — zero layout impact, zero vertical/horizontal shift. Complements the existing amber chip in the navbar.
+
+## [2.0.72] - 2026-09-28
+
+### Fixed
+- **Speedtest — remote-view mode (DC1→BR8)**: `runTest`, `purgeHistory`, and `deleteJob` used bare `fetch()` (direct to DC1) instead of `gFetch()` (gateway-routed). In remote-view, this launched tests on DC1 while `fetchHistory` read from BR8 via gateway — causing visible progress but no results in history. All Speedtest write operations now use `gFetch`.
+- **Speedtest — SSE stream in remote-view**: `subscribeToStream` used a hardcoded `EventSource('/api/tests/xfr/${id}/stream')` URL pointing to DC1. In remote-view, the stream is now built dynamically with the gateway prefix (`/api/gateway/${activePeerId}/api/tests/xfr/${id}/stream?token=...`) so BR8 streams the events.
+- **Gateway proxy — SSE buffering**: Added `X-Accel-Buffering: no` and `res.flushHeaders()` when the proxied response is `text/event-stream`, ensuring SSE events are forwarded in real-time through the gateway instead of being held in a buffer.
+
+## [2.0.68] - 2026-09-28
+
+### Fixed
+- **Gateway Proxy — critical body-forwarding bug**: `express.json()` middleware (global, app-level) consumed the raw `IncomingMessage` stream before the `/api/gateway/:peerId/*` handler ran. As a result, `req.pipe(proxyReq)` forwarded an **empty body** to the peer. The peer's body-parser declared a non-zero `Content-Length` but received zero bytes, causing it to hang until DC1's gateway timeout fired (504). All write operations in remote-view mode (Voice start/stop, Traffic start/stop, IoT bad-behavior, Security batch tests, VyOS actions) were silently failing. Fix: re-serialize `req.body` (already parsed by middleware) and set the correct `Content-Length` before forwarding to the peer.
+- **Gateway Proxy — timeout raised**: Bumped gateway proxy timeout from 5 s → 15 s to accommodate slower BR8 operations (batch security tests, voice simulation init, IoT batch).
+- **Playwright test suite** (`remote-view-routing.spec.ts`): Added 9 new WRITE validation tests; fixed timing for Security scores (wait for score dashboard), Bandwidth (use `waitForResponse`), Traffic (90 s budget), IoT (use `#bad-behavior-toggle` ID).
+
+## [2.0.67] - 2026-09-27
+
+### Added
+- **Gateway Proxy — Leader Remote View** 🌐:
+  - Leader node can now browse any peer's dashboard data transparently via `/api/gateway/:peerId/*` without leaving the Leader UI.
+  - `gFetch()` helper in `PeerContext.tsx` automatically rewrites all read API calls through the gateway when a remote peer is selected; local mode (`activePeerId = null`) is completely unaffected.
+  - JWT auth injected server-side in `server.ts` so the Leader's token is forwarded to the target peer transparently.
+  - All read-only modules migrated to `gFetch`: `Failover`, `Speedtest`, `Voice`, `SRTAnalytics`, `ConnectivityPerformance`, `IoT`, `Security`, `Topology`, `Statistics`, `LiveEvents`.
+  - Write operations (POST/DELETE mutations) intentionally kept on direct `fetch` — only reads proxy through the gateway.
+
+### Changed
+- **RemoteViewBanner → RemoteViewChip** 🔧:
+  - Replaced full-width amber banner (which caused vertical layout shift) with a compact inline pill in the navbar showing peer IP + ✕ exit button.
+  - Zero additional vertical space; no content shift when switching remote peer.
+  - Label "Remote View:" removed — peer IP alone is the relevant info at a glance.
+
 ## [2.0.66] - 2026-09-25
 
 ### Added / Improved
@@ -3349,3 +3753,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 _For versions 1.1.2-patch.33.75 and earlier, please refer to the existing CHANGELOG.md file._
 
 _Full version history continues with entries for v1.1.2-patch.33.75, v1.1.2-patch.33.71-74, v1.1.2-patch.33.65-70, and all earlier releases down to v1.0.0._
+
+## [2.0.76] - 2026-09-28
+
+### Added
+- **Custom TCP Apps — EICAR curl URL**: Wizard now shows a copyable `curl -v http://<node-ip>:{port}/` command when `eicar_response` + `http_1_1` are selected. Explains that `stigix_tcp` mode requires binary handshake and won't work with raw curl. Live Incoming Sessions card also shows the curl URL when the listener is running in EICAR HTTP mode.
+
+## [2.0.75] - 2026-09-28
+
+### Added
+- **Custom TCP Apps — EICAR probe frequency control**: `eicar_response` server mode now sends the EICAR string only periodically (default every **5 minutes**) instead of on every request. Between probes, the server returns a normal ACK to keep the session alive without flooding SASE/NGFW security logs. Minimum period: 1 minute.
+- **Custom TCP Apps Wizard**: New **EICAR Probe Frequency** preset buttons (1 min / 2 min / 5 min / 10 min / 30 min) shown only when `eicar_response` mode is selected. Active preset highlighted in amber. Inline summary shows configured interval and explains the fallback ACK behavior.

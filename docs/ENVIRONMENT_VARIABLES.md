@@ -1,4 +1,4 @@
-> **Last Updated:** 2026-04-23 | **Created:** 2026-03-17 (v1.2.1-patch.236)
+> **Last Updated:** 2026-10-03 | **Created:** 2026-03-17 (v1.2.1-patch.236) | **Initial Stigix Version:** v1.2.1
 
 # Stigix Environment Variables Reference
 
@@ -21,6 +21,16 @@ Required for site auto-detection, flow status, and SaaS data enrichment.
 | `JWT_SECRET` | Secret key for signing dashboard session tokens | `your-secure-secret` |
 | `PORT` | Dashboard listening port inside the container | `8080` |
 | `DEBUG` | Enable verbose logging for the backend | `false` |
+
+## 🔐 Enterprise PKI & CA Certificates (SSL Decryption)
+Variables automatically configured and inherited when a custom Forward Trust CA bundle is installed in Stigix.
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `NODE_EXTRA_CA_CERTS` | Path to custom CA certificate bundle for Node.js runtime | `/app/config/certs/ca-bundle.pem` |
+| `REQUESTS_CA_BUNDLE` | Path to custom CA certificate bundle for Python `requests` | `/app/config/certs/ca-bundle.pem` |
+| `SSL_CERT_FILE` | Path to custom CA certificate bundle for OpenSSL / Python | `/app/config/certs/ca-bundle.pem` |
+| `CURL_CA_BUNDLE` | Path to custom CA certificate bundle for `curl` and shell subprocesses | `/app/config/certs/ca-bundle.pem` |
 
 ## 🌐 Stigix Cloud & Registry
 | Variable | Description | Default |
@@ -46,5 +56,11 @@ Required for site auto-detection, flow status, and SaaS data enrichment.
 | `LOG_MAX_SIZE_MB` | Maximum size of `test-results.jsonl` before rotation | `100` |
 
 ---
-> [!TIP]
-> Use `.env` file to manage these variables easily without cluttering your `docker-compose.yml`.
+
+## 📜 Revision History
+
+| Date | Author | Description |
+|---|---|---|
+| 2026-10-03 | Stigix Engineering Team | Added Enterprise PKI & CA Certificates environment variables (`NODE_EXTRA_CA_CERTS`, `REQUESTS_CA_BUNDLE`, `SSL_CERT_FILE`, `CURL_CA_BUNDLE`) in v2.0.143. |
+| 2026-04-23 | Stigix Engineering Team | Added Stigix Target Cloud authentication variables. |
+| 2026-03-17 | Stigix Engineering Team | Initial reference document for Stigix environment variables (v1.2.1). |

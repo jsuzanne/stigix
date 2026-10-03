@@ -1,290 +1,165 @@
-> **Last Updated:** 2026-06-02 | **Created:** 2026-06-02 (v1.4.0-patch.145)
+> **Last Updated:** 2026-10-01 | **Created:** 2026-06-02 (v1.4.0-patch.145)
 
-# Stigix Network & System Deployment Guide
+# Stigix Deployment Guide
 
-This guide provides network and system engineers with a step-by-step blueprint for deploying **Stigix** across diverse infrastructure environments. Stigix is designed to test and validate SD-WAN path selection, security efficacy, application experience (DEM), and failover convergence.
+Stigix is built for **100% zero-touch, 1-line installation**. You never need to write or manage `docker-compose.yml` files manually. 
 
-### 🗺️ Stigix High-Level Secure Network Architecture
+A single command automatically detects your environment, resolves port conflicts, configures networking, pulls the unified container, and connects your node to the Stigix Fleet Mesh.
 
-Below is the conceptual Global Secure Network Architecture for a Stigix deployment:
+---
 
-![Stigix Global Secure Network Architecture](assets/stigix_hld_detailed.png)
+## 🗺️ Deployment Topology Overview
 
-### Stigix Functional Component & Traffic Flow Diagram
-
-The following diagram illustrates how user interfaces (Web UI, CLI, Claude Desktop via MCP) interact with Stigix instances, how those instances are deployed on physical hosts or virtual machines separate from the SD-WAN routers, and the detailed traffic paths they generate:
+Every Stigix node runs the same **unified container image** (`jsuzanne/stigix:stable`) that operates simultaneously as a traffic generator, probe responder, security audit engine, and AI Copilot.
 
 ```mermaid
 graph TD
-    %% User Interfaces / Tools
-    subgraph UI ["Management & Orchestration"]
-        WebUI["Stigix Web UI (Port 8080)"]
-        CLI["Stigix CLI (docker exec)"]
-        Claude["Claude Desktop (MCP SSE Port 3100)"]
+    subgraph Mesh ["Stigix Fleet Mesh"]
+        Cloudflare["Cloudflare Rendezvous Relay<br/>(Zero-Config NAT Traversal)"]
     end
 
-    %% Distributed Sites
-    subgraph Mesh ["Stigix Deployment Mesh & Flows"]
-        
-        %% Branch Site
-        subgraph Branch ["Branch Site (e.g. BR8)"]
-            subgraph BranchHost ["Branch Host System"]
-                StigixBR8["Stigix Container (Unified Mode)<br/>Running on: Raspberry Pi 5 / Intel NUC / PC"]
-            end
-            RouterION1200["Prisma SD-WAN ION 1200 / 1200-S"]
-            StigixBR8 -- "Local LAN Segment" --> RouterION1200
-        end
-
-        %% Data Center Site
-        subgraph DC ["Data Center / Hub (DC1)"]
-            subgraph DCHost ["DC Virtualization Host"]
-                StigixDC1["Stigix Container (Unified Mode)<br/>Running on: VMware ESXi / Proxmox VM"]
-            end
-            RouterION9200["Prisma SD-WAN ION 9200"]
-            StigixDC1 -- "Core LAN Segment" --> RouterION9200
-        end
-
-        %% Public Cloud Site
-        subgraph Cloud ["Public Cloud (AWS/Azure)"]
-            subgraph CloudHost ["Cloud VM Instance"]
-                StigixCloud["Stigix Container (Unified Mode)<br/>Running on: EC2 / Azure VM"]
-            end
-            RouterION7108["Prisma SD-WAN ION 7108 (vCPE)"]
-            StigixCloud -- "VPC/VNet Subnet" --> RouterION7108
-        end
+    subgraph DC ["1. Primary Leader (Hub / Data Center)"]
+        Leader["Stigix Leader (DC1-Ubuntu)<br/>• Central Management Dashboard<br/>• Fleet Control & Remote View Gateway"]
     end
 
-    %% Network & WAN Tunnels
-    RouterION1200 -- "SD-WAN VPN Tunnel (VPN Path)" --> RouterION9200
-    RouterION1200 -- "Direct Internet Access (DIA)" --> Internet["Public Internet / SaaS"]
-    RouterION1200 -- "Security Egress Tunnel" --> PrismaAccess["Prisma Access (SSE Gateway)"]
-    RouterION7108 -- "SD-WAN Tunnel" --> RouterION9200
-
-    %% Traffic Generation & Probes Flows (Stigix Outputs)
-    StigixBR8 -. "1. iPerf3 / XFR Speedtest (Port 9000/5201)" .-> StigixDC1
-    StigixBR8 -. "2. VoIP RTP Simulation (Port 6100-6101)" .-> StigixDC1
-    StigixBR8 -. "3. SLA Convergence Probes (Port 6200)" .-> StigixDC1
-    
-    StigixBR8 -. "4. Active DEM Probes (HTTP/HTTPS/Ping)" .-> Internet
-    StigixBR8 -. "5. SaaS Simulation (Office365, Zoom, GWorkspace)" .-> Internet
-    StigixBR8 -. "6. Security Efficacy (DNS Security & URLs)" .-> PrismaAccess
-    StigixBR8 -. "7. IoT Device Simulation (DHCP/ARP MAC Spoofing)" .-> RouterION1200
-    
-    StigixCloud -. "Cloud Probes & Echo Responding" .-> StigixBR8
-
-    %% VyOS Integration (Lab Impairments)
-    subgraph LabImpair ["Lab Environment Network Chaos (Optional)"]
-        RouterVyOS["VyOS Router (Simulating WAN links)"]
-        RouterION1200 -- "Physical WAN Link (MPLS/INET)" --> RouterVyOS
-        RouterVyOS -- "WAN links" --> RouterION9200
+    subgraph Branch ["2. Branch Spoke (On-Prem / Edge)"]
+        NUC["Stigix Spoke (NucVillers / BR1)<br/>• Intel NUC / Mini PC / VM<br/>• Auto-selected port (e.g. 8080 or 8081)"]
     end
-    WebUI -- "SSH/API Chaos Injection" --> RouterVyOS
 
-    %% Styling
-    classDef uiStyle fill:#e1f5fe,stroke:#0288d1,stroke-width:2px;
-    classDef hostStyle fill:#ffffff,stroke:#78909c,stroke-width:2px;
-    classDef stigixStyle fill:#f1f8e9,stroke:#558b2f,stroke-width:2px;
-    classDef routerStyle fill:#fff3e0,stroke:#ef6c00,stroke-width:2px;
-    classDef netStyle fill:#fafafa,stroke:#37474f,stroke-width:2px;
-    
-    class WebUI,CLI,Claude uiStyle;
-    class BranchHost,DCHost,CloudHost hostStyle;
-    class StigixBR8,StigixDC1,StigixCloud stigixStyle;
-    class RouterION1200,RouterION9200,RouterION7108,RouterVyOS routerStyle;
-    class Internet,PrismaAccess,LabImpair netStyle;
+    subgraph Cloud ["3. Cloud Target (Hetzner / AWS / Azure)"]
+        CloudNode["Stigix Spoke (HetznerCloud / EC2)<br/>• Public VPS behind Cloud Firewall<br/>• Outbound Reverse Tunnel"]
+    end
+
+    %% Mesh Links
+    NUC -. "1-Line Magic Join (STX Token)" .-> Cloudflare
+    NUC == "Outbound WebSocket Reverse Tunnel (⚡ WS TUNNEL)" ==> Leader
+    CloudNode == "Outbound WebSocket Reverse Tunnel (⚡ WS TUNNEL)" ==> Leader
+    Leader -. "Continuous Fleet Telemetry" .-> Cloudflare
+
+    classDef leaderStyle fill:#1e1b4b,stroke:#6366f1,stroke-width:2px,color:#fff;
+    classDef spokeStyle fill:#0f291e,stroke:#10b981,stroke-width:2px,color:#fff;
+    classDef cloudStyle fill:#1e293b,stroke:#38bdf8,stroke-width:2px,color:#fff;
+
+    class Leader leaderStyle;
+    class NUC,CloudNode spokeStyle;
+    class Cloudflare cloudStyle;
 ```
 
 ---
 
-## 🎯 1. Overview & Capabilities
+## 🎯 The 3 Real-World Deployment Scenarios
 
-Every Stigix instance is deployed in **unified mode**, meaning it acts as both a **traffic source (generator/controller)** and a **traffic target (echo responder/server)**. This eliminates the complexity of managing separate agent roles and enables bidirectional testing out-of-the-box.
-
-### Core Capabilities:
-*   **Traffic Generation**: Simulates common SaaS applications (Microsoft 365, Google Workspace, Salesforce, Zoom, etc.) using realistic HTTP patterns.
-*   **Security Posture Probes**: Performs DNS security queries, URL filtering validation, and threat prevention audits (such as EICAR) to test next-generation firewalls.
-*   **Experience & Latency Probes (DEM)**: Actively measures reachability, latency, jitter, and HTTP response times.
-*   **High-Speed Bandwidth Testing (XFR)**: Orchestrates bandwidth throughput tests using iPerf3 / XFR protocols.
-*   **Failover & Convergence Testing**: Emits high-rate UDP probes to calculate sub-second blackout times during link failovers.
-*   **VoIP Simulation**: Emits periodic RTP streams to calculate Mean Opinion Score (MOS), jitter, and packet loss.
-
----
-
-## 🌐 2. Deployment Typologies & Use Cases
-
-To validate SD-WAN path steering and policy enforcement, Stigix nodes should be deployed in a distributed mesh to perform **Stigix-to-Stigix** testing.
-
-```text
-               ┌──────────────────────────────────────────┐
-               │         Public Cloud (AWS/Azure)         │
-               │            Stigix Node (Hub)             │
-               └────────────────────┬─────────────────────┘
-                                    │
-                  SD-WAN VPN Path 1 │ SD-WAN VPN Path 2
-                                    │
-       ┌────────────────────────────┴────────────────────────────┐
-       ▼                                                         ▼
-┌──────────────┐          SD-WAN Hub Router              ┌──────────────┐
-│  Branch A    ├─────────────────────────────────────────┤  Branch B    │
-│ Stigix Node  │            Direct VPN Path              │ Stigix Node  │
-└──────────────┘                                         └──────────────┘
-```
-
-### Key Use Cases:
-
-#### 1. Branch-to-Hub (Data Center)
-*   **Objective**: Validate traffic path selection (e.g., MPLS vs. Internet broadband) for business-critical applications heading to the corporate data center.
-*   **Setup**: Deploy one Stigix node in the branch LAN segment and another in the core DC LAN segment behind the SD-WAN gateways. Run speedtests, VoIP simulation, and convergence tests between them.
-
-#### 2. Branch-to-Public Cloud (AWS, Azure, GCP)
-*   **Objective**: Measure Direct Internet Access (DIA) performance and Cloud Security Gateway latency (e.g., Prisma Access) for cloud workloads.
-*   **Setup**: Deploy a Stigix node inside your public cloud VPC/VNet. Direct traffic from branch sites to the cloud node to audit WAN exit paths and cloud firewall policies.
-
-#### 3. Branch-to-Branch
-*   **Objective**: Validate direct peer-to-peer tunnels (Dynamic Mesh VPNs) dynamically established between remote sites by the SD-WAN fabric.
-*   **Setup**: Deploy Stigix nodes at remote sites A and B, and run latency, voice, and speedtest probes directly between them.
-
----
-
-## 💻 3. OS & System Requirements
-
-Stigix runs as a containerized stack. For optimal network fidelity, your choice of Operating System and host environment is critical.
-
-### Host Platform Options:
-
-| Platform | Network Mode | Pro/Con | Best Suited For |
+| Scenario | Location / Hardware | How to Deploy | Key Capabilities |
 |---|---|---|---|
-| **Native Linux** (Ubuntu / Debian) | **Host Mode** (`network_mode: host`) | **Pro**: Direct L2/L3 access, supports full IoT MAC spoofing and DHCP/ARP emulation, optimal UDP performance.<br>**Con**: Requires dedicated OS/VM. | **Production Branches, Hub VMs, and Cloud instances** (Recommended). |
-| **Windows / macOS** (Docker Desktop) | **Bridge Mode** (NAT/Port-Mapped) | **Pro**: Easy development setup.<br>**Con**: IoT device emulation is disabled (no L2 features), ports must be manually mapped. | **Local Development, Testing, and Demos**. |
-
-### Resource Recommendations:
-
-*   **Small Branch (up to 20 clients simulated)**: 2 vCPUs, 2 GB RAM, 20 GB Storage (e.g., Raspberry Pi 4/5, Intel NUC, or light VM).
-*   **Data Center / Hub (high-speed responder)**: 4 vCPUs, 4 GB - 8 GB RAM, 40 GB Storage (VM on ESXi, Proxmox, Hyper-V, or Cloud).
+| **Scenario 1: Primary Leader** | Central Data Center, Primary Lab, or HQ VM | Standard 1-Line Installer | Central Web Dashboard, Fleet Overview, Remote View Gateway, Target Management |
+| **Scenario 2: Branch Spoke (On-Prem)** | Intel NUC, Mini PC, Raspberry Pi 5, Branch VM | **1-Line Magic Join** (`STX-...` Token) | LAN/WAN Path Testing, VoIP RTP MOS, Convergence SLA, IoT Device Emulation |
+| **Scenario 3: Cloud Target / VPS** | Hetzner, AWS EC2, Azure VM, Scaleway | **1-Line Magic Join** (`STX-...` Token) | Direct Internet Access (DIA) audits, SASE/SSE inspection, Cloud Mesh Benchmarking |
 
 ---
 
-## 🚦 4. Network & Firewall Port Matrix
+## 🚀 Step-by-Step Installation Procedures
 
-If Stigix is deployed behind firewalls or in different security zones, you must permit the following ports in your Access Control Lists (ACLs) and Security Groups.
+### 🔹 Scenario 1: Deploying the Primary Leader (Central Hub)
 
-### Port Matrix Table:
+Deploy this node first on your main hub, data center VM, or primary lab machine.
 
-| Port | Protocol | Flow Direction | Service / Feature | Description |
-|---|---|---|---|---|
-| **8080** | TCP | Inbound (to Stigix) | Web Dashboard | Connects to the graphical administration dashboard. |
-| **8082** | TCP | Inbound (to Stigix) | Echo Responder Web Server | Used by other Stigix nodes for HTTP/HTTPS probes and EICAR file retrieval. |
-| **3100** | TCP | Inbound (to Stigix) | MCP Server (SSE) | Model Context Protocol SSE port, enabling Claude Desktop orchestration. |
-| **9000** | TCP | Inbound (to Stigix) | XFR Speedtest | Dedicated port for high-speed network performance tests. |
-| **5201** | TCP & UDP | Inbound (to Stigix) | iPerf3 Responder | Used for standard bandwidth and path validation tests. |
-| **6100 - 6101** | UDP | Inbound (to Stigix) | VoIP RTP Echo | Used to receive and echo back voice simulation RTP streams. |
-| **6200** | UDP | Inbound (to Stigix) | SLA Probes | Target port for convergence and failover packet loss monitoring. |
-
----
-
-## 🚀 5. Installation & Bootstrap
-
-Follow these steps to deploy Stigix on a clean Linux host (Ubuntu 22.04 LTS or 24.04 LTS recommended).
-
-### Step 1: Install Docker and Docker Compose
+#### Step 1: Run the 1-Line Installer
 ```bash
-sudo apt-get update
-sudo apt-get install -y docker.io docker-compose-v2
-sudo usermod -aG docker $USER
-newgrp docker
+curl -fsSL https://raw.githubusercontent.com/jsuzanne/stigix/v2/install.sh | sudo bash
 ```
 
-### Step 2: Run the Install Script
-Download and run the official bootstrap script:
+#### Step 2: Access the Dashboard
+Once the installation completes (~30 seconds), open your browser:
+* **URL**: `http://<YOUR_LEADER_IP>:8080`
+* **Default Login**: `admin` / `admin`
+
+---
+
+### 🔹 Scenario 2: Deploying a Branch Spoke (Zero-Touch « Magic Join »)
+
+This is the fastest, recommended way to onboard branch appliances, Intel NUCs, or remote edge hosts without typing IP addresses or editing configs.
+
+#### Step 1: Generate the Token on the Leader
+1. In the Leader Web UI, click the **`[ 🔗 Add Node ]`** button in the top navigation bar.
+2. Enter a **Site Name / Hint** (e.g. `NucVillers OnPrem` or `BR2-Branch`).
+3. Click **Copy** to grab the one-line command.
+
+> **📸 Figure 1 — Magic Join Token Dialog**
+> The Leader generates a **cryptographic single-use token** (burn-on-redeem, 1 use max, configurable TTL). The complete `curl` command is ready to copy. Discovered Leader endpoints (LAN + public relay) are listed automatically — no IP configuration needed on the spoke side.
+
+![Figure 1 – Magic Join: single-use token with auto-discovered Leader endpoints](assets/magic_join.png)
+
+#### Step 2: Paste the Command on the Target Host
+Run the copied command directly on the remote Linux / Docker host:
 ```bash
-curl -sfL https://raw.githubusercontent.com/jsuzanne/stigix/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/jsuzanne/stigix/v2/install.sh | sudo bash -s -- STX-eyJhbGciOi...
 ```
-The script will auto-detect your platform, download `docker-compose.yml`, generate a random JWT secret, and configure default `.env` variables.
 
-### Step 3: Configure the Local Site Name
-Open `stigix/.env` and verify the `STIGIX_SITE_NAME` variable matches your physical branch name (e.g., `BR8` or `DC-HETZNER`):
-```ini
-STIGIX_SITE_NAME=BR8
+#### Step 3: What the Installer Does Automatically
+1. **Leader Connectivity Probe**: Probes candidate Leader endpoints. If the Leader is behind NAT, it automatically registers via the Cloudflare Rendezvous Relay.
+2. **Network Interface Selection**: Prompts you to pick which IP to advertise (or automatically selects the default after 15s).
+3. **Port Conflict Protection**: Checks if port `8080` is in use. If busy, it **automatically selects an alternative port** (e.g. `8081`).
+4. **Instant Tunneling**: Launches the container and establishes an outbound reverse tunnel (`⚡ WS TUNNEL`).
+5. **Dashboard Sync**: Within 5 seconds, the node appears on the Leader's Fleet Overview with status `🟢 Online` and `🔵 LEARNED`.
+
+> **📸 Figure 2 — Stigix Fleet Mesh Overview (after onboarding)**
+> The Mesh dashboard shows all connected nodes in real time: DC1 (Leader), branch spokes (BR1, BR2, BR5, BR8), a second data center (DC2), and a cloud peer (Hetzner). Each node displays its IP, `⚡ WS TUNNEL` status badge, Global Experience Score, live traffic rate, config sync revision, and last heartbeat timestamp.
+
+![Figure 2 – Fleet Mesh Overview: all nodes online with WS Tunnel badges after Magic Join](assets/mesh_overview.png)
+
+---
+
+### 🔹 Scenario 3: Deploying a Cloud Target / VPS (Hetzner, AWS, Azure)
+
+Deploying a Stigix node in a public cloud provides an authoritative endpoint for SaaS Direct Internet Access (DIA) benchmarking and SASE/SSE inspection.
+
+#### Step 1: Cloud Firewall / Security Group Rules
+Ensure the following ports are open inbound in your Cloud Provider Firewall:
+* **`8080` TCP** (or custom port): Web Dashboard & WebSocket Reverse Tunnel
+* **`9000` TCP / UDP**: XFR Bandwidth Speedtest Generator
+* **`5201` TCP / UDP**: iPerf3 Server
+* **`6100-6101` UDP**: VoIP RTP Simulation
+* **`6200` UDP**: SLA Convergence Probes
+
+#### Step 2: Run the 1-Line Magic Join Command
+Generate a token on the Leader and paste it on the Cloud VPS:
+```bash
+curl -fsSL https://raw.githubusercontent.com/jsuzanne/stigix/v2/install.sh | sudo bash -s -- STX-eyJhbGciOi...
 ```
 
 ---
 
-## 🔐 6. Multi-Node Setup & JWT Secret Sync
+## ⚡ Post-Deployment Operations
 
-In a distributed Stigix fabric, you can use Claude (via MCP) to orchestrate cross-node tests. For example, you can tell Claude: *"Run a speedtest from BR8 to DC1"*.
+### 1. Seamless Remote Node Control (Remote View)
+From the Leader's **Fleet Overview**, click the **`⚡ Connect`** button next to any remote node:
+* The full dashboard of the remote node opens seamlessly inside the Leader UI.
+* All requests route over the encrypted reverse WebSocket tunnel (`/api/gateway/:peerId/*`) — **no public IP or inbound port forwarding needed on the spoke!**
+* The top status bar dynamically displays the remote peer's public IP, gateway IP, country flag, and probe health.
 
-To allow this, the MCP server on `BR8` must authenticate its API call against `DC1` using a shared JSON Web Token. **This requires all Stigix nodes to share the exact same `JWT_SECRET`**.
+> **📸 Figure 3 — Remote Node Card (Cloud Peer Detail)**
+> Clicking a node in the Fleet Overview expands its full detail card: Traffic IP, live throughput (↑18 / ↓13 Mbps), all enabled capabilities (Voice, Failover, Custom Apps, Speedtest, Security, Connectivity), connectivity probe results (56 total / 51 passing), and every config bundle revision synced (`All Synced – Matches Leader`). The **Connect via Remote View** button opens the full remote dashboard — no SSH, no VPN, no port forwarding.
 
-```text
-┌─────────────────┐             1. Signed HTTP API call             ┌─────────────────┐
-│   Node A (BR8)  │ ──────────────────────────────────────────────> │   Node B (DC1)  │
-│  JWT_SECRET:    │                                                 │  JWT_SECRET:    │
-│  "MySharedKey"  │ <────────────────────────────────────────────── │  "MySharedKey"  │
-└─────────────────┘             2. Signature verified (200 OK)      └─────────────────┘
+![Figure 3 – Cloud node detail card: capabilities, probes, config sync, and Remote View access](assets/hetzner_target.png)
+
+### 2. Upgrading Fleet Nodes
+To upgrade any Stigix node to the latest released image:
+```bash
+cd ~/stigix && docker compose pull && docker compose up -d
 ```
 
-> [!WARNING]
-> The default install script generates a unique random `JWT_SECRET` for each node. If the secrets do not match, cross-node orchestrations will fail silently or return `status: "error"`.
-
-### How to Synchronize the Secret:
-1. Choose one node as the reference and extract its secret:
-   ```bash
-   cat ~/stigix/.env | grep JWT_SECRET
-   ```
-2. Copy this value and apply it in the `~/stigix/.env` file of all other Stigix nodes:
-   ```ini
-   JWT_SECRET=your-shared-secret-key-here
-   ```
-3. Restart the Stigix containers on each node to apply the new secret:
-   ```bash
-   cd ~/stigix
-   docker compose restart
-   ```
+### 3. Terminal CLI Access
+Every container includes the complete `stigix-cli` utility:
+```bash
+docker exec -it stigix stigix-cli
+```
 
 ---
 
-## 🛠️ 7. VyOS Router Integration
+## 📜 Revision History
 
-Stigix includes native integration to inject network impairments (delay, jitter, packet loss, or link flaps) on VyOS routers to test SD-WAN convergence behavior.
-
-```text
-┌──────────────┐      Impairment API Commands (SSH/HTTP)      ┌───────────────┐
-│ Stigix Node  │ ───────────────────────────────────────────> │  VyOS Router  │
-│ (Controller) │                                              │ (Path Impair) │
-└──────────────┘                                              └───────────────┘
-```
-
-### Setup Prerequisites on VyOS:
-1. Ensure the Stigix node has SSH and API access enabled to the VyOS router.
-2. Configure **Interface Descriptions** on your VyOS interfaces. Stigix uses natural language matching to resolve links (e.g., *"MPLS"* or *"Internet"*):
-   ```vyos
-   set interfaces ethernet eth1 description "MPLS-Link-DC1"
-   set interfaces ethernet eth2 description "WAN-Internet-Primary"
-   ```
-   *Note: Any interface without a description is treated as a management interface and is excluded from Stigix actions to prevent lockouts.*
-
----
-
-## 🔍 8. Troubleshooting Deployment Issues
-
-### Issue 1: "API login_secret returned False"
-*   **Cause**: Incorrect SASE client ID, secret, or TSG ID in `.env` or `config/prisma-config.json`.
-*   **Fix**: Verify your Palo Alto IAM service account credentials. If using environment variables, ensure they match:
-    ```ini
-    PRISMA_SDWAN_CLIENT_ID="your-client-id@tsgid.iam.panserviceaccount.com"
-    PRISMA_SDWAN_CLIENT_SECRET="your-client-secret"
-    PRISMA_SDWAN_TSGID="your-10-digit-tsg-id"
-    ```
-
-### Issue 2: IoT emulation or Layer 2 features not appearing
-*   **Cause**: Docker is running in Bridge mode (default on macOS and Windows).
-*   **Fix**: Deploy Stigix on a native Linux server (Ubuntu/Debian) to run in Host Network Mode.
-
-### Issue 3: Cross-node speedtests returning errors
-*   **Cause**: Outbound firewall blocks, or mismatched `JWT_SECRET` values.
-*   **Fix**: 
-    1. Ensure TCP port 9000 and UDP port 5201 are allowed inbound on the target node.
-    2. Confirm both nodes print the exact same JWT secret when running:
-       ```bash
-       docker exec stigix printenv JWT_SECRET
-       ```
+| Date | Stigix Version | Author / Trigger | Summary of Changes |
+|---|---|---|---|
+| 2026-10-01 | `v2.0.138` | Stigix Core Team | Added annotated UI screenshots (Figures 1–3): Magic Join dialog, Fleet Mesh Overview, and Remote Node detail card. |
+| 2026-10-01 | `v2.0.137` | Stigix Core Team | Rewrote deployment guide to focus on 100% zero-touch 1-line installation, Magic Join token onboarding, port auto-selection, and Remote View fleet workflows. |
+| 2026-06-02 | `v1.4.0-patch.145` | Stigix Core Team | Initial document creation. |

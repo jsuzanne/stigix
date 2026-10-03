@@ -4,7 +4,7 @@ import fs from 'fs';
 import net from 'net';
 import { spawn } from 'child_process';
 import { log } from './utils/logger.js';
-import { StigixRegistryClient, RegistryInstance } from './stigix-registry-client.js';
+import { StigixRegistryClient, RegistryInstance, RegistryInstanceSummary } from './stigix-registry-client.js';
 import type { LocalRegistryServer } from './local-registry-server.js';
 
 /**
@@ -15,6 +15,7 @@ export class RegistryManager {
     private client: StigixRegistryClient;
     private localRegistryServer: LocalRegistryServer | null = null;
     private targetsManager: any = null;
+    private telemetryProvider: (() => Promise<RegistryInstanceSummary> | RegistryInstanceSummary) | null = null;
     private heartbeatInterval: NodeJS.Timeout | null = null;
     private discoveryInterval: NodeJS.Timeout | null = null;
     private peerCache: Map<string, { instance: RegistryInstance, lastSeen: number }> = new Map();
@@ -36,6 +37,10 @@ export class RegistryManager {
 
     public setTargetsManager(mgr: any) {
         this.targetsManager = mgr;
+    }
+
+    public setTelemetryProvider(provider: () => Promise<RegistryInstanceSummary> | RegistryInstanceSummary) {
+        this.telemetryProvider = provider;
     }
 
     /**
@@ -460,6 +465,10 @@ export class RegistryManager {
         this.setupIntervals();
     }
 
+    public getInstanceId(): string {
+        return this.client.getConfig().instanceId;
+    }
+
     private setupIntervals() {
         const config = this.client.getConfig();
         const mode = process.env.STIGIX_REGISTRY_MODE_CURRENT || 'peer';
@@ -472,16 +481,15 @@ export class RegistryManager {
         const discoveryMs = (config.discoveryIntervalSec || 30) * 1000;
         this.discoveryInterval = setInterval(() => this.performDiscovery(), discoveryMs);
 
-        // Heartbeat is adaptive
-        let heartbeatMs = (config.heartbeatIntervalSec || 300) * 1000;
-
-        // If we are a Peer using a LOCAL Leader, we can go faster (no Cloudflare quota impact)
-        // If we are the Leader, we still heartbeat slow to Cloudflare to save quota
-        if (mode === 'peer' && config.registryUrl !== config.remoteUrl) {
-            heartbeatMs = 60000; // 1 minute
-            log('REGISTRY', `Local mode detected. Heartbeat increased to 60s.`);
+        // Heartbeat interval:
+        // - Local mode (Leader or Peer talking to local Leader): 30 seconds
+        // - Cloudflare remote fallback: configured interval (default 60s)
+        let heartbeatMs = 30000;
+        if (config.registryUrl === config.remoteUrl) {
+            heartbeatMs = (config.heartbeatIntervalSec || 60) * 1000;
         }
 
+        log('REGISTRY', `Heartbeat interval set to ${heartbeatMs / 1000}s (mode: ${mode}, target: ${config.registryUrl})`);
         this.heartbeatInterval = setInterval(() => this.performHeartbeat(), heartbeatMs);
     }
 
@@ -554,14 +562,22 @@ export class RegistryManager {
         // Build capabilities based on configured node capabilities
         const capabilities = this.getNodeCapabilities();
 
-        const result = await this.client.register(this.currentIp, capabilities);
+        let summary: RegistryInstanceSummary | undefined;
+        if (this.telemetryProvider) {
+            try {
+                summary = await this.telemetryProvider();
+            } catch (err) {
+                log('REGISTRY', `Error collecting telemetry summary: ${err}`, 'warn');
+            }
+        }
+
+        const result = await this.client.register(this.currentIp, capabilities, summary);
         if (result && result.status === 'ok') {
             // Heartbeat successful
-        } else if (mode === 'peer' && config.registryUrl !== config.remoteUrl && !this.directMode) {
-            // FAILURE RECOVERY (Hybrid/Cloudflare mode only):
-            // If local registration fails, it means the Leader is likely dead.
-            // We MUST reset our registry URL to the Remote (Cloudflare) so that 
-            // the next heartbeat will trigger a new findLeader() lookup.
+        } else if (mode === 'peer' && config.registryUrl !== config.remoteUrl && !this.directMode && !this.staticLeaderUrl) {
+            // FAILURE RECOVERY (Auto-Discovery / Dynamic Leader mode only):
+            // If local registration fails and no static leader is configured,
+            // reset our registry URL to Remote (Cloudflare) to find a new leader.
             log('REGISTRY', `Local Leader heartbeat failed. Reverting to remote discovery via ${config.remoteUrl}`);
             this.client.resetToRemote();
             this.leaderInfo = null;
@@ -607,14 +623,22 @@ export class RegistryManager {
         const instances = await this.client.fetchInstances();
         if (instances && Array.isArray(instances)) {
             const now = Date.now();
-            const freshCache = new Map<string, { instance: RegistryInstance, lastSeen: number }>();
+            // Merge newly discovered instances and update their lastSeen timestamp
             for (const inst of instances) {
-                freshCache.set(inst.instance_id, {
+                if (!inst || !inst.instance_id) continue;
+                this.peerCache.set(inst.instance_id, {
                     instance: inst,
                     lastSeen: now
                 });
             }
-            this.peerCache = freshCache;
+            // Evict instances that haven't responded within GRACE_PERIOD_MS (15 min)
+            const GRACE_PERIOD_MS = 15 * 60 * 1000;
+            for (const [id, entry] of this.peerCache.entries()) {
+                const entryLastSeen = entry.lastSeen || (entry.instance?.last_seen ? new Date(entry.instance.last_seen).getTime() : 0);
+                if (now - entryLastSeen > GRACE_PERIOD_MS) {
+                    this.peerCache.delete(id);
+                }
+            }
         }
 
         // Fetch shared targets from Leader if we are a Peer connected to Local Leader

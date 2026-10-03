@@ -57,7 +57,19 @@ export class TargetsManager {
     loadTargets(): TargetDefinition[] {
         try {
             if (!fs.existsSync(this.configFile)) return [];
-            return JSON.parse(fs.readFileSync(this.configFile, 'utf-8')) as TargetDefinition[];
+            const list = JSON.parse(fs.readFileSync(this.configFile, 'utf-8')) as TargetDefinition[];
+            return list.map(t => {
+                const httpPort = t.ports?.http || (t as any).port || 8080;
+                return {
+                    ...t,
+                    name: t.name || (t as any).label || t.host,
+                    enabled: t.enabled !== false,
+                    ports: {
+                        ...(t.ports || {}),
+                        http: httpPort
+                    }
+                };
+            });
         } catch (e: any) {
             log('TARGETS', `Failed to load targets.json: ${e.message}`, 'warn');
             return [];
@@ -79,13 +91,24 @@ export class TargetsManager {
     createTarget(data: Omit<TargetDefinition, 'id' | 'source'>): TargetDefinition {
         const targets = this.loadTargets();
         const now = new Date().toISOString();
+        const rawName = (data as any).name || (data as any).label || (data as any).host || 'Target';
+        const httpPort = data.ports?.http || (data as any).port || 8080;
         const newTarget: TargetDefinition = {
+            enabled: data.enabled !== undefined ? data.enabled : true,
             ...data,
+            name: rawName,
+            ports: {
+                ...(data.ports || {}),
+                http: httpPort
+            },
             id: makeId(),
             source: 'managed',
             created_at: now,
             updated_at: now,
         };
+        if (newTarget.enabled === undefined || (newTarget as any).enabled === null) {
+            newTarget.enabled = true;
+        }
         targets.push(newTarget);
         this.saveTargets(targets);
         return newTarget;
@@ -96,15 +119,36 @@ export class TargetsManager {
         const idx = targets.findIndex(t => t.id === id);
         const now = new Date().toISOString();
         
-        const updatedTarget = idx !== -1 ? (targets[idx] = { ...targets[idx], ...data, id, source: 'managed', updated_at: now }) : null;
+        let portsUpdate = data.ports;
+        if ((data as any).port || data.ports?.http) {
+            portsUpdate = {
+                ...(data.ports || {}),
+                http: data.ports?.http || (data as any).port
+            };
+        }
+        
+        const updatedTarget = idx !== -1 ? (targets[idx] = { 
+            ...targets[idx], 
+            ...data, 
+            ...(portsUpdate ? { ports: { ...(targets[idx].ports || {}), ...portsUpdate } } : {}),
+            id, 
+            source: 'managed', 
+            updated_at: now 
+        }) : null;
         let result = updatedTarget;
 
         if (!result) {
             const synthTarget = this.getMergedTargets().find(t => t.id === id);
             if (synthTarget) {
+                const httpPort = data.ports?.http || (data as any).port || synthTarget.ports?.http || 8080;
                 const promoted: TargetDefinition = {
                     ...synthTarget,
                     ...data,
+                    ports: {
+                        ...(synthTarget.ports || {}),
+                        ...(portsUpdate || {}),
+                        http: httpPort
+                    },
                     id: makeId(), // Assign a new managed ID
                     source: 'managed',
                     created_at: synthTarget.created_at || now,
@@ -387,6 +431,9 @@ export class TargetsManager {
                 security: !!p.capabilities?.security,
                 connectivity: !!p.capabilities?.connectivity,
             },
+            ports: {
+                http: p.port || p.meta?.port || (p as any).ports?.http || 8080
+            },
             source: 'synthesized' as const, // Use synthesized to make it read-only in UI
             meta: {
                 registry: true,
@@ -516,10 +563,12 @@ export class TargetsManager {
                 }
                 
                 // Prefer authoritative registry names or friendly site names over raw IP address names
-                const isExistingIpName = /^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(existing.name.trim());
-                const isNewFriendlyName = t.name && !/^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(t.name.trim());
+                const existingName = (existing.name || '').trim();
+                const newName = (t.name || '').trim();
+                const isExistingIpName = !existingName || /^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(existingName);
+                const isNewFriendlyName = newName && !/^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(newName);
                 if ((t.meta?.registry || isNewFriendlyName) && (existing.source === 'synthesized' || isExistingIpName)) {
-                    existing.name = t.name;
+                    if (t.name) existing.name = t.name;
                 }
             }
         }

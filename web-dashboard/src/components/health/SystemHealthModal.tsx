@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { usePeerContext } from '../../PeerContext';
 import {
     Activity, ShieldCheck, AlertTriangle, AlertCircle, RefreshCw,
     X, Server, Cloud, Cpu, HardDrive, Database, Gauge, Zap,
@@ -30,6 +31,7 @@ export const SystemHealthModal: React.FC<SystemHealthModalProps> = ({
     onRefresh,
     onOpenSettings
 }) => {
+    const { gFetch } = usePeerContext();
     const [localData, setLocalData] = useState<any | null>(null);
     const [isLoading, setIsLoading] = useState(false);
     const [isRunningDiagnostics, setIsRunningDiagnostics] = useState(false);
@@ -41,7 +43,7 @@ export const SystemHealthModal: React.FC<SystemHealthModalProps> = ({
 
         try {
             // 1. Try unified health-matrix endpoint
-            const res = await fetch('/api/system/health-matrix', {
+            const res = await gFetch('/api/system/health-matrix', {
                 headers: { 'Authorization': `Bearer ${token}` }
             });
             if (res.ok) {
@@ -59,13 +61,13 @@ export const SystemHealthModal: React.FC<SystemHealthModalProps> = ({
         // 2. Resilient parallel query of individual established endpoints
         try {
             const [sysRes, vyosRes, appsRes, targetsRes, siteRes, probesRes, regRes] = await Promise.allSettled([
-                fetch('/api/admin/system/info', { headers: { 'Authorization': `Bearer ${token}` } }),
-                fetch('/api/vyos/routers', { headers: { 'Authorization': `Bearer ${token}` } }),
-                fetch('/api/custom-tcp-apps', { headers: { 'Authorization': `Bearer ${token}` } }),
-                fetch('/api/targets', { headers: { 'Authorization': `Bearer ${token}` } }),
-                fetch('/api/siteinfo', { headers: { 'Authorization': `Bearer ${token}` } }),
-                fetch('/api/connectivity/active-probes', { headers: { 'Authorization': `Bearer ${token}` } }),
-                fetch('/api/registry/status', { headers: { 'Authorization': `Bearer ${token}` } })
+                gFetch('/api/admin/system/info', { headers: { 'Authorization': `Bearer ${token}` } }),
+                gFetch('/api/vyos/routers', { headers: { 'Authorization': `Bearer ${token}` } }),
+                gFetch('/api/custom-tcp-apps', { headers: { 'Authorization': `Bearer ${token}` } }),
+                gFetch('/api/targets', { headers: { 'Authorization': `Bearer ${token}` } }),
+                gFetch('/api/siteinfo', { headers: { 'Authorization': `Bearer ${token}` } }),
+                gFetch('/api/connectivity/active-probes', { headers: { 'Authorization': `Bearer ${token}` } }),
+                gFetch('/api/registry/status', { headers: { 'Authorization': `Bearer ${token}` } })
             ]);
 
             const sysData = sysRes.status === 'fulfilled' && sysRes.value.ok ? await sysRes.value.json() : null;
@@ -253,7 +255,7 @@ export const SystemHealthModal: React.FC<SystemHealthModalProps> = ({
         if (!token) return;
         setIsRunningDiagnostics(true);
         try {
-            const res = await fetch('/api/system/health-matrix/diagnostics', {
+            const res = await gFetch('/api/system/health-matrix/diagnostics', {
                 method: 'POST',
                 headers: {
                     'Authorization': `Bearer ${token}`,

@@ -1,4 +1,4 @@
-> **Last Updated:** 2026-03-12 | **Created:** 2026-03-11 (v1.2.1-patch.158)
+> **Last Updated:** 2026-09-27 | **Created:** 2026-03-11 (v1.2.1-patch.158)
 
 # Stigix Autodiscovery & Registry Guide
 
@@ -62,10 +62,19 @@ To ensure robustness during leader transitions, Stigix uses a **Bootstrap Snapsh
 ### Status Check
 Verify the local status via:
 ```bash
-curl http://localhost:5000/api/registry/status
+curl http://localhost:8080/api/registry/status
 ```
 
 ### Common Issues
 - **403 Forbidden**: Invalid PoC Key (Check Prisma Credentials in `.env`).
 - **Isolation/No Leader**: Ensure at least one Hub is set to `STIGIX_REGISTRY_MODE=leader`.
 - **Sync Lag**: Total convergence across all sites typically takes **60 to 90 seconds**.
+
+---
+
+## 📜 Revision History
+
+| Date | Stigix Version | Author / Trigger | Summary of Changes |
+|---|---|---|---|
+| 2026-09-27 | `v2.0.66` | Stigix Core Team | Updated API port references and terminology. |
+| 2026-03-11 | `v1.2.1-patch.158` | Stigix Core Team | Initial document creation |

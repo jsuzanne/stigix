@@ -14,7 +14,8 @@ Use this skill whenever you make **code changes** to the stigix project that sho
 - **Skip** for doc-only changes (`docs/`, `README.md`, `CHANGELOG.md`, `*.md`) — those don't need a tag/rebuild
 
 > [!IMPORTANT]
-> **Dockerfile Audit**: If you added a NEW `.ts` file or a new directory in `web-dashboard/`, you MUST ensure it is explicitly copied in the `Runtime Stage` of the `web-dashboard/Dockerfile`. Otherwise, the container will fail with `ERR_MODULE_NOT_FOUND`.
+> **Dockerfile Audit (see `stigix-docker-audit` skill)**: If you added a NEW `.ts` file or a new directory in `web-dashboard/`, you MUST ensure it is explicitly copied in the `Runtime Stage` of **BOTH** `stigix-all-in-one/Dockerfile` (the primary CI image!) AND `web-dashboard/Dockerfile`. Otherwise, the container will crash on start with `ERR_MODULE_NOT_FOUND`.
+> Run verification: `for f in web-dashboard/*.ts; do b=$(basename "$f"); [ "$b" != "vite.config.ts" ] && grep -q "COPY web-dashboard/$b" stigix-all-in-one/Dockerfile || echo "MISSING in stigix-all-in-one: $b"; done`
 
 ---
 

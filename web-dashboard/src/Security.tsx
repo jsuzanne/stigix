@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Shield, Play, AlertTriangle, Check, CheckCircle, XCircle, Clock, Download, Trash2, ChevronDown, ChevronUp, Copy, Filter, Link, Upload, RefreshCcw, ShieldAlert, Globe, ListTree, RefreshCw, MoreVertical, Settings, Database, Server, Info, Search, History as HistoryIcon, Zap, ChevronRight, Activity, FileJson } from 'lucide-react';
+import { usePeerContext } from './PeerContext';
+import { Shield, Play, AlertTriangle, Check, CheckCircle, XCircle, Clock, Download, Trash2, ChevronDown, ChevronUp, Copy, Filter, Link, Upload, RefreshCcw, ShieldAlert, Globe, Lock, ListTree, RefreshCw, MoreVertical, Settings, Database, Server, Info, Search, History as HistoryIcon, Zap, ChevronRight, Activity, FileJson } from 'lucide-react';
 import { twMerge } from 'tailwind-merge';
 import { clsx, type ClassValue } from 'clsx';
 // Types only — runtime data is loaded from /api/security/profile (config/security-profile.json)
@@ -8,6 +9,7 @@ import { URL_CATEGORIES, DNS_TEST_DOMAINS, C2_SCENARIOS, AI_SECURITY_SCENARIOS, 
 import { ScoreDashboard } from './components/ScoreDashboard';
 import { useSecurityScores } from './hooks/useSecurityScores';
 import { ScoreGapAnalysis, ScoreLatestChanges } from './components/ScoreDetails';
+import { SecuritySkeleton } from './components/skeletons/SecuritySkeleton';
 
 function cn(...inputs: ClassValue[]) {
     return twMerge(clsx(inputs));
@@ -138,6 +140,7 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
 
     const [config, setConfig] = useState<SecurityConfig | null>(null);
     const [testResults, setTestResults] = useState<TestResult[]>([]);
+    const [latestVerdicts, setLatestVerdicts] = useState<{ [key: string]: any }>({});
     const [loading, setLoading] = useState(false);
     const [batchProcessingUrl, setBatchProcessingUrl] = useState(false);
     const [batchProcessingDns, setBatchProcessingDns] = useState(false);
@@ -377,6 +380,8 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
     const [runningEicarTarget, setRunningEicarTarget] = useState<string | null>(null);
 
 
+    const { gFetch, activePeerId } = usePeerContext();
+
     const authHeaders = () => ({ 'Authorization': `Bearer ${token}` });
 
     const showToast = (message: string, type: 'success' | 'error' | 'info' = 'info') => {
@@ -423,14 +428,31 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
         document.body.removeChild(textArea);
     };
 
+
     // Load configuration and start polling
     useEffect(() => {
+        // Reset stale state from previous peer so UI clears immediately on switch
+        setConfig(null);
+        setTestResults([]);
+        setLatestVerdicts({});
+        setSecurityProfile({
+            url_filtering: { items: URL_CATEGORIES },
+            dns_security: { items: DNS_TEST_DOMAINS },
+            threat_prevention: { default_eicar_endpoints: ['https://secure.eicar.org/eicar.com.txt'] },
+            c2_scenarios: C2_SCENARIOS,
+            ai_security_scenarios: AI_SECURITY_SCENARIOS
+        });
+        setSecurityTargets([]);
+        setCloudEicarUrl('');
+        eicarInitialized.current = false;
+
         fetchConfig();
         fetchResults();
+        fetchLatestVerdicts();
         fetchHealth();
 
         // Load security profile (catalogue: URL/DNS/EICAR/C2/AI)
-        fetch('/api/security/profile', { headers: authHeaders() })
+        gFetch('/api/security/profile', { headers: authHeaders() })
             .then(r => r.ok ? r.json() : null)
             .then(profile => {
                 if (profile?.url_filtering?.items?.length) {
@@ -443,13 +465,13 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
             .catch(() => { /* keep TS fallback */ });
 
         // Fetch shared targets with security capability
-        fetch('/api/targets', { headers: authHeaders() })
+        gFetch('/api/targets', { headers: authHeaders() })
             .then(r => r.json())
             .then(data => setSecurityTargets((Array.isArray(data) ? data : []).filter((t: any) => t.enabled && t.capabilities?.security)))
             .catch(() => { });
 
         // Fetch cloud eicar url
-        fetch('/api/security/cloud-eicar-url', { headers: authHeaders() })
+        gFetch('/api/security/cloud-eicar-url', { headers: authHeaders() })
             .then(r => r.json())
             .then(data => {
                 if (data.url) {
@@ -468,10 +490,11 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
             fetchConfig();
             fetchHealth();
             fetchResults(); // Refresh results so MCP/scheduled tests appear automatically
+            fetchLatestVerdicts();
         }, 30000); // 30 seconds
 
         return () => clearInterval(pollInterval);
-    }, []);
+    }, [activePeerId]);
 
     // Initialize eicar targets from config only once
     const eicarInitialized = React.useRef(false);
@@ -513,7 +536,7 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
             for (const t of targetsToPing) {
                 setTargetReachability(prev => ({ ...prev, [t.host]: 'loading' }));
                 try {
-                    const res = await fetch('/api/convergence/reachability', {
+                    const res = await gFetch('/api/convergence/reachability', {
                         method: 'POST',
                         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
                         body: JSON.stringify({ target: t.host, port: t.port })
@@ -535,7 +558,7 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
 
     const fetchHealth = async () => {
         try {
-            const res = await fetch('/api/system/health', { headers: authHeaders() });
+            const res = await gFetch('/api/system/health', { headers: authHeaders() });
             const data = await res.json();
             setSystemHealth(data);
         } catch (e) {
@@ -546,7 +569,7 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
 
     const fetchConfig = async () => {
         try {
-            const res = await fetch('/api/security/config', { headers: authHeaders() });
+            const res = await gFetch('/api/security/config', { headers: authHeaders() });
             if (!res.ok) {
                 console.error(`Failed to fetch security config: ${res.status} ${res.statusText}`);
                 return;
@@ -598,7 +621,7 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
         (newConfig.scheduled_execution as any)[type] = { enabled, interval_minutes: minutes };
 
         try {
-            const res = await fetch('/api/security/config', {
+            const res = await gFetch('/api/security/config', {
                 method: 'POST',
                 headers: { ...authHeaders(), 'Content-Type': 'application/json' },
                 body: JSON.stringify(newConfig)
@@ -623,7 +646,7 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
                 ...(testTypeFilter !== 'all' && { type: testTypeFilter === 'c2_scenario' ? 'c2' : testTypeFilter === 'ai_security' ? 'ai' : testTypeFilter })
             });
 
-            const res = await fetch(`/api/security/results?${params}`, { headers: authHeaders() });
+            const res = await gFetch(`/api/security/results?${params}`, { headers: authHeaders() });
             const data = await res.json();
 
             // Map id to testId for frontend compatibility
@@ -668,6 +691,48 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
         }
     };
 
+    const fetchLatestVerdicts = async () => {
+        try {
+            const res = await gFetch('/api/security/results/latest-verdicts', { headers: authHeaders() });
+            if (res.ok) {
+                const data = await res.json();
+                if (data && typeof data === 'object') {
+                    setLatestVerdicts(data);
+                }
+            }
+        } catch (e) {
+            // silently ignore
+        }
+    };
+
+    const getCardResult = (type: string, name: string, fallbackProperty?: string) => {
+        const normType = type === 'c2' ? 'c2_scenario' : type === 'ai' ? 'ai_security' : type;
+        const normName = (name || '').toLowerCase().trim();
+
+        // 1. Check latestVerdicts primary key: type::name
+        if (latestVerdicts[`${normType}::${normName}`]) {
+            return latestVerdicts[`${normType}::${normName}`];
+        }
+        // 2. Check latestVerdicts fallback aliases
+        if (type === 'url' && latestVerdicts[`url_filtering::${normName}`]) {
+            return latestVerdicts[`url_filtering::${normName}`];
+        }
+        if (type === 'dns' && latestVerdicts[`dns_security::${normName}`]) {
+            return latestVerdicts[`dns_security::${normName}`];
+        }
+        if (fallbackProperty) {
+            const propKey = fallbackProperty.toLowerCase().trim();
+            if (latestVerdicts[`${normType}::url::${propKey}`]) return latestVerdicts[`${normType}::url::${propKey}`];
+            if (latestVerdicts[`${normType}::domain::${propKey}`]) return latestVerdicts[`${normType}::domain::${propKey}`];
+            if (latestVerdicts[`${normType}::endpoint::${propKey}`]) return latestVerdicts[`${normType}::endpoint::${propKey}`];
+        }
+        // 3. Fallback to testResults in memory
+        return testResults.find((r: any) =>
+            (r.testType === type || r.testType === normType || (type === 'url' && r.testType === 'url_filtering') || (type === 'dns' && r.testType === 'dns_security')) &&
+            (r.testName === name || r.name === name || (fallbackProperty && (r.details?.url === fallbackProperty || r.details?.domain === fallbackProperty || r.details?.endpoint === fallbackProperty || r.result?.url === fallbackProperty || r.result?.domain === fallbackProperty || r.result?.endpoint === fallbackProperty)))
+        );
+    };
+
     const loadMore = async () => {
         if (loadingMore || !hasMore) return;
         setLoadingMore(true);
@@ -695,7 +760,7 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
             setShowDetailModal(true);
         }
         try {
-            const response = await fetch(`/api/security/results/${testId}`, {
+            const response = await gFetch(`/api/security/results/${testId}`, {
                 headers: authHeaders()
             });
             const data = await response.json();
@@ -713,7 +778,7 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
 
     const saveConfig = async (newConfig: Partial<SecurityConfig>) => {
         try {
-            const res = await fetch('/api/security/config', {
+            const res = await gFetch('/api/security/config', {
                 method: 'POST',
                 headers: { ...authHeaders(), 'Content-Type': 'application/json' },
                 body: JSON.stringify(newConfig)
@@ -822,13 +887,22 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
         }
     };
 
+    const getTargetUrl = (rawUrl: string, protoOverride?: 'http' | 'https') => {
+        const proto = protoOverride || config?.url_filtering?.protocol || 'http';
+        if (proto === 'https') {
+            return rawUrl.replace(/^http:\/\//i, 'https://');
+        }
+        return rawUrl.replace(/^https:\/\//i, 'http://');
+    };
+
     const runURLTest = async (category: URLCategory) => {
         setTesting({ ...testing, [`url-${category.id}`]: true });
         try {
-            const res = await fetch('/api/security/url-test', {
+            const targetUrl = getTargetUrl(category.url);
+            const res = await gFetch('/api/security/url-test', {
                 method: 'POST',
                 headers: { ...authHeaders(), 'Content-Type': 'application/json' },
-                body: JSON.stringify({ url: category.url, category: category.name })
+                body: JSON.stringify({ url: targetUrl, category: category.name })
             });
             const result = await res.json();
             if (result.status) {
@@ -846,22 +920,23 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
     const runURLBatchTest = async () => {
         if (!config || batchProcessingUrl) return;
         setBatchProcessingUrl(true);
-        showToast(`Running ${config.url_filtering.enabled_categories.length} URL filtering tests...`, 'info');
+        const activeProtocol = (config.url_filtering?.protocol || 'http').toUpperCase();
+        showToast(`Running ${config.url_filtering.enabled_categories.length} URL filtering tests (${activeProtocol})...`, 'info');
         try {
             const enabledCategories = securityProfile.url_filtering.items.filter(cat =>
                 config.url_filtering.enabled_categories.includes(cat.id)
             );
 
-            const tests = enabledCategories.map(cat => ({ url: cat.url, category: cat.name }));
+            const tests = enabledCategories.map(cat => ({ url: getTargetUrl(cat.url), category: cat.name }));
 
-            await fetch('/api/security/url-test-batch', {
+            await gFetch('/api/security/url-test-batch', {
                 method: 'POST',
                 headers: { ...authHeaders(), 'Content-Type': 'application/json' },
                 body: JSON.stringify({ tests })
             });
             await fetchResults();
             await fetchConfig();
-            showToast('URL filtering tests completed!', 'success');
+            showToast(`URL filtering tests completed (${activeProtocol})!`, 'success');
         } catch (e) {
             console.error('Batch URL test failed:', e);
             showToast('URL filtering tests failed', 'error');
@@ -873,7 +948,7 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
     const runDNSTest = async (test: DNSTestDomain) => {
         setTesting({ ...testing, [`dns-${test.id}`]: true });
         try {
-            const res = await fetch('/api/security/dns-test', {
+            const res = await gFetch('/api/security/dns-test', {
                 method: 'POST',
                 headers: { ...authHeaders(), 'Content-Type': 'application/json' },
                 body: JSON.stringify({ domain: test.domain, testName: test.name })
@@ -902,7 +977,7 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
 
             const tests = enabledTests.map(test => ({ domain: test.domain, testName: test.name }));
 
-            await fetch('/api/security/dns-test-batch', {
+            await gFetch('/api/security/dns-test-batch', {
                 method: 'POST',
                 headers: { ...authHeaders(), 'Content-Type': 'application/json' },
                 body: JSON.stringify({ tests })
@@ -927,7 +1002,7 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
     const runC2Test = async (scenario: C2Scenario) => {
         setTesting(prev => ({ ...prev, [`c2-${scenario.id}`]: true }));
         try {
-            const res = await fetch('/api/security/c2-test', {
+            const res = await gFetch('/api/security/c2-test', {
                 method: 'POST',
                 headers: { ...authHeaders(), 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -959,7 +1034,7 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
             const selectedScenarios = securityProfile.c2_scenarios
                 .filter(s => c2SelectedScenarios.includes(s.id))
                 .map(s => ({ scenarioId: s.id, scenarioName: s.name, attackType: s.attack_type, target: s.target }));
-            await fetch('/api/security/c2-test-batch', {
+            await gFetch('/api/security/c2-test-batch', {
                 method: 'POST',
                 headers: { ...authHeaders(), 'Content-Type': 'application/json' },
                 body: JSON.stringify({ scenarios: selectedScenarios })
@@ -996,7 +1071,7 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
     const runAITest = async (scenario: AISecurityScenario) => {
         setTesting(prev => ({ ...prev, [`ai-${scenario.id}`]: true }));
         try {
-            const res = await fetch('/api/security/ai-test', {
+            const res = await gFetch('/api/security/ai-test', {
                 method: 'POST',
                 headers: { ...authHeaders(), 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -1029,7 +1104,7 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
             const selectedScenarios = securityProfile.ai_security_scenarios
                 .filter(s => aiSelectedScenarios.includes(s.id))
                 .map(s => ({ scenarioId: s.id, scenarioName: s.name, attackType: s.attack_type, targets: s.targets }));
-            await fetch('/api/security/ai-test-batch', {
+            await gFetch('/api/security/ai-test-batch', {
                 method: 'POST',
                 headers: { ...authHeaders(), 'Content-Type': 'application/json' },
                 body: JSON.stringify({ scenarios: selectedScenarios })
@@ -1076,7 +1151,7 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
         setLoading(true);
         showToast(`Running EICAR threat test to ${endpointsToTest.length} targets...`, 'info');
         try {
-            const res = await fetch('/api/security/threat-test', {
+            const res = await gFetch('/api/security/threat-test', {
                 method: 'POST',
                 headers: { ...authHeaders(), 'Content-Type': 'application/json' },
                 body: JSON.stringify({ endpoint: endpointsToTest })
@@ -1101,17 +1176,7 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
 
     const getEicarResult = (url: string) => {
         if (!url) return null;
-        return testResults.find((r: any) =>
-            (r.testType === 'threat_prevention' || r.testType === 'threat') &&
-            (
-                r.result?.endpoint === url ||
-                r.result?.url === url ||
-                r.details?.endpoint === url ||
-                r.details?.url === url ||
-                (r.testName && r.testName.includes(url)) ||
-                (r.name && r.name.includes(url))
-            )
-        );
+        return getCardResult('threat', url, url);
     };
 
     const runSingleEicarTest = async (endpoint: string, e: React.MouseEvent) => {
@@ -1120,7 +1185,7 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
         setRunningEicarTarget(endpoint);
         showToast(`Running EICAR test on ${endpoint}...`, 'info');
         try {
-            await fetch('/api/security/threat-test', {
+            await gFetch('/api/security/threat-test', {
                 method: 'POST',
                 headers: { ...authHeaders(), 'Content-Type': 'application/json' },
                 body: JSON.stringify({ endpoint: [endpoint] })
@@ -1140,7 +1205,7 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
 
         setEdlSyncing(prev => ({ ...prev, [type]: true }));
         try {
-            const res = await fetch('/api/security/edl-sync', {
+            const res = await gFetch('/api/security/edl-sync', {
                 method: 'POST',
                 headers: { ...authHeaders(), 'Content-Type': 'application/json' },
                 body: JSON.stringify({ type })
@@ -1166,7 +1231,7 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
 
         setEdlSyncing(prev => ({ ...prev, [type]: true }));
         try {
-            const res = await fetch('/api/security/edl-upload', {
+            const res = await gFetch('/api/security/edl-upload', {
                 method: 'POST',
                 headers: { 'Authorization': `Bearer ${token}` }, // No content-type for FormData
                 body: formData
@@ -1187,7 +1252,7 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
 
     const updateEdlConfig = async (updates: any) => {
         try {
-            const res = await fetch('/api/security/edl-config', {
+            const res = await gFetch('/api/security/edl-config', {
                 method: 'POST',
                 headers: { ...authHeaders(), 'Content-Type': 'application/json' },
                 body: JSON.stringify(updates)
@@ -1205,7 +1270,7 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
     const runEdlTest = async (type: 'ip' | 'url' | 'dns') => {
         setEdlTestingState(prev => ({ ...prev, [type]: true }));
         try {
-            const res = await fetch('/api/security/edl-test', {
+            const res = await gFetch('/api/security/edl-test', {
                 method: 'POST',
                 headers: { ...authHeaders(), 'Content-Type': 'application/json' },
                 body: JSON.stringify({ type })
@@ -1241,7 +1306,7 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
     const clearHistory = async () => {
         if (!confirm('Clear all test history?')) return;
         try {
-            await fetch('/api/security/results', {
+            await gFetch('/api/security/results', {
                 method: 'DELETE',
                 headers: authHeaders()
             });
@@ -1255,7 +1320,7 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
         if (!confirm('Are you sure you want to reset all security statistics, clear the entire test history, and reset the test counter to #1? This action cannot be undone.')) return;
         setLoading(true);
         try {
-            const res = await fetch('/api/security/statistics', {
+            const res = await gFetch('/api/security/statistics', {
                 method: 'DELETE',
                 headers: authHeaders()
             });
@@ -1312,7 +1377,7 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
 
     const exportProfile = async () => {
         try {
-            const res = await fetch('/api/security/profile', { headers: authHeaders() });
+            const res = await gFetch('/api/security/profile', { headers: authHeaders() });
             const profile = await res.json();
             const blob = new Blob([JSON.stringify(profile, null, 2)], { type: 'application/json' });
             const url = URL.createObjectURL(blob);
@@ -1332,7 +1397,7 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
         try {
             const text = await file.text();
             const profile = JSON.parse(text);
-            const res = await fetch('/api/security/profile', {
+            const res = await gFetch('/api/security/profile', {
                 method: 'POST',
                 headers: { ...authHeaders(), 'Content-Type': 'application/json' },
                 body: JSON.stringify(profile)
@@ -1355,7 +1420,7 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
     };
 
     if (!config) {
-        return <div className="p-8 text-center text-text-muted animate-pulse font-black tracking-widest text-xs">Loading security configuration...</div>;
+        return <SecuritySkeleton />;
     }
 
     const basicDNSTests = securityProfile.dns_security.items.filter(t => t.category === 'basic');
@@ -1738,6 +1803,54 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
                                         <span className="text-[10px] font-black uppercase tracking-widest text-text-muted group-hover:text-text-primary transition-colors">Select All</span>
                                     </label>
 
+                                    {/* HTTP / HTTPS Protocol Toggle */}
+                                    <div className="flex items-center bg-card-secondary/80 p-0.5 rounded-lg border border-border">
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                const nextProto = 'http';
+                                                saveConfig({
+                                                    ...config,
+                                                    url_filtering: {
+                                                        ...config.url_filtering,
+                                                        protocol: nextProto
+                                                    }
+                                                });
+                                            }}
+                                            className={cn(
+                                                "px-2.5 py-1 rounded-md text-[10px] font-black tracking-wider uppercase transition-all flex items-center gap-1.5",
+                                                (config.url_filtering?.protocol || 'http') === 'http'
+                                                    ? "bg-red-600 text-white shadow-sm"
+                                                    : "text-text-muted hover:text-text-primary"
+                                            )}
+                                            title="Send URL Filtering tests over plain HTTP (port 80)"
+                                        >
+                                            <Globe size={11} /> HTTP
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                const nextProto = 'https';
+                                                saveConfig({
+                                                    ...config,
+                                                    url_filtering: {
+                                                        ...config.url_filtering,
+                                                        protocol: nextProto
+                                                    }
+                                                });
+                                            }}
+                                            className={cn(
+                                                "px-2.5 py-1 rounded-md text-[10px] font-black tracking-wider uppercase transition-all flex items-center gap-1.5",
+                                                config.url_filtering?.protocol === 'https'
+                                                    ? "bg-emerald-600 text-white shadow-sm shadow-emerald-900/30"
+                                                    : "text-text-muted hover:text-text-primary"
+                                            )}
+                                            title="Send URL Filtering tests over HTTPS (port 443) — dynamically replaces http:// with https:// to test SSL Decryption & Forward Trust CA"
+                                        >
+                                            <Lock size={11} /> HTTPS
+                                        </button>
+                                    </div>
+
                                     <SchedulerSettings type="url" title="URL" config={config} onUpdate={updateSchedule} />
                                 </div>
                                 <button
@@ -1769,9 +1882,9 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
                                     {visibleCats.map(category => {
                                         const isEnabled = config.url_filtering.enabled_categories.includes(category.id);
                                         const isTesting = testing[`url-${category.id}`];
-                                        const lastResult = testResults.find(r =>
-                                            (r.testType === 'url_filtering' || r.testType === 'url') && r.testName === category.name
-                                        );
+                                        const targetUrl = getTargetUrl(category.url);
+                                        const lastResult = getCardResult('url', category.name, targetUrl) || getCardResult('url', category.name, category.url);
+                                        const isHttps = (config.url_filtering?.protocol === 'https');
 
                                         return (
                                             <div
@@ -1793,8 +1906,11 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
                                                         <div className={cn("text-xs font-black tracking-tight truncate", isEnabled ? "text-text-primary" : "text-text-muted")}>
                                                             {category.name}
                                                         </div>
-                                                        <div className="text-[9px] text-text-muted font-mono truncate opacity-60 group-hover:opacity-100 transition-opacity">
-                                                            {category.url.replace('http://', '')}
+                                                        <div className="text-[9px] text-text-muted font-mono truncate opacity-60 group-hover:opacity-100 transition-opacity flex items-center gap-1">
+                                                            <span className={cn("text-[8px] font-bold uppercase px-1 py-0.2 rounded leading-tight", isHttps ? "bg-emerald-500/15 text-emerald-500 border border-emerald-500/20" : "bg-card-secondary text-text-muted border border-border/50")}>
+                                                                {isHttps ? 'https' : 'http'}
+                                                            </span>
+                                                            <span className="truncate">{targetUrl.replace(/^https?:\/\//i, '')}</span>
                                                         </div>
                                                     </div>
                                                 </div>
@@ -1802,9 +1918,9 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
                                                     {lastResult && getStatusBadge(lastResult.result)}
                                                     <div className="flex gap-1.5 ml-2 p-1 bg-card-secondary/50 rounded-lg border border-border/50">
                                                         <button
-                                                            onClick={() => copyToClipboard(`curl -fsS --max-time 10 -o /dev/null -w '%{http_code}' '${category.url}'`)}
+                                                            onClick={() => copyToClipboard(`curl -fsS --max-time 10 -o /dev/null -w '%{http_code}' '${targetUrl}'`)}
                                                             className="p-1.5 hover:bg-card border border-transparent hover:border-border rounded-lg text-text-muted hover:text-blue-600 transition-all"
-                                                            title="Copy CLI command"
+                                                            title={`Copy CLI command (${isHttps ? 'HTTPS' : 'HTTP'})`}
                                                         >
                                                             <Copy size={13} />
                                                         </button>
@@ -1953,9 +2069,7 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
                                                 {visibleBasicDNS.map(test => {
                                                     const isEnabled = config.dns_security.enabled_tests.includes(test.id);
                                                     const isTesting = testing[`dns-${test.id}`];
-                                                    const lastResult = testResults.find(r =>
-                                                        (r.testType === 'dns_security' || r.testType === 'dns') && r.testName === test.name
-                                                    );
+                                                    const lastResult = getCardResult('dns', test.name, test.domain);
 
                                                     return (
                                                         <div
@@ -2017,9 +2131,7 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
                                                 {visibleAdvancedDNS.map(test => {
                                                     const isEnabled = config.dns_security.enabled_tests.includes(test.id);
                                                     const isTesting = testing[`dns-${test.id}`];
-                                                    const lastResult = testResults.find(r =>
-                                                        (r.testType === 'dns_security' || r.testType === 'dns') && r.testName === test.name
-                                                    );
+                                                    const lastResult = getCardResult('dns', test.name, test.domain);
 
                                                     return (
                                                         <div
@@ -2444,9 +2556,7 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
                                         {visibleScenarios.map(scenario => {
                                             const isEnabled = c2SelectedScenarios.includes(scenario.id);
                                             const isTesting = testing[`c2-${scenario.id}`];
-                                            const lastResult = testResults.find(r =>
-                                                r.testType === 'c2_scenario' && r.testName === scenario.name
-                                            );
+                                            const lastResult = getCardResult('c2_scenario', scenario.name, scenario.target);
 
                                             return (
                                                 <div
@@ -2614,9 +2724,7 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
                                         {visibleScenarios.map(scenario => {
                                             const isEnabled = aiSelectedScenarios.includes(scenario.id);
                                             const isTesting = testing[`ai-${scenario.id}`];
-                                            const lastResult = testResults.find(r =>
-                                                r.testType === 'ai_security' && r.testName === scenario.name
-                                            );
+                                            const lastResult = getCardResult('ai_security', scenario.name);
                                             const isVolumeTest = scenario.attack_type === 'ai_volume_traffic';
 
                                             return (

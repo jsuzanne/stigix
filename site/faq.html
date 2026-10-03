@@ -143,6 +143,7 @@
       <button class="faq-tab-btn"           data-tab="mcp"      role="tab" aria-selected="false" aria-controls="panel-mcp">Claude &amp; MCP <span class="faq-badge faq-badge--new">AI</span></button>
       <button class="faq-tab-btn"           data-tab="custom-tcp"   role="tab" aria-selected="false" aria-controls="panel-custom-tcp">Custom TCP Apps <span class="faq-badge faq-badge--new">V2</span></button>
       <button class="faq-tab-btn"           data-tab="provisioning" role="tab" aria-selected="false" aria-controls="panel-provisioning">Global Provisioning <span class="faq-badge faq-badge--new">V2</span></button>
+      <button class="faq-tab-btn"           data-tab="topologies"   role="tab" aria-selected="false" aria-controls="panel-topologies">Deployment Topologies <span class="faq-badge faq-badge--new">V2</span></button>
       <button class="faq-tab-btn"           data-tab="registry"     role="tab" aria-selected="false" aria-controls="panel-registry">Targets &amp; Registry</button>
     </div>
 
@@ -654,6 +655,21 @@ content_match_ok       true | false</pre>
               <li><strong>DNS Security</strong> — Resolves malicious test domains via <code>dig</code>. NXDOMAIN or a sinkhole IP = policy working. Live resolution = bypassed.</li>
               <li><strong>Threat Prevention / EICAR</strong> — Attempts to download the EICAR test file from configurable targets. Download blocked = IPS working.</li>
               <li><strong>C2 / AI Security</strong> — Advanced scenarios testing C2 beaconing patterns and AI application policy enforcement.</li>
+            </ul>
+          </div></div></div>
+        </div>
+
+        <div class="faq-item">
+          <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">How does Stigix handle Prisma Access SSL Decryption and Forward Trust CA certificates?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
+          <div class="faq-item__body"><div class="faq-item__inner"><div class="faq-item__answer">
+            <p>When SSL Forward Proxy Decryption is active on Prisma Access or a Next-Gen Firewall, the firewall intercepts HTTPS connections and re-encrypts the session using its own <strong>Forward Trust CA</strong>. Without this CA certificate, HTTPS threat tests (EICAR, URL Filtering, DLP) and synthetic SaaS probes will abort with TLS handshake errors before reaching the security inspection engine.</p>
+            <p><strong>Stigix provides native, automated certificate management:</strong></p>
+            <ul>
+              <li><strong>⚡ 1-Click Auto-Import</strong> — In <em>Settings ➔ Prisma SASE API</em>, click <em>Auto-Import from Prisma SASE</em>. Stigix connects to your tenant's SSE API, extracts <code>Forward-Trust-CA</code> (RSA/ECDSA) and <code>Root CA</code>, and builds the trusted bundle.</li>
+              <li><strong>📁 Manual Upload</strong> — You can upload custom <code>.crt</code>/<code>.pem</code> files or paste PEM text for custom enterprise PKIs (e.g. Active Directory CS).</li>
+              <li><strong>🌐 Zero-Touch Mesh Sync</strong> — Importing the CA on the Leader automatically distributes it across all remote mesh spoke nodes (DC1, BR1, BR2, BR5, BR8) via Mesh Provisioning.</li>
+              <li><strong>Runtime Injection</strong> — The CA bundle is automatically injected into Node.js (<code>NODE_EXTRA_CA_CERTS</code>), Python (<code>REQUESTS_CA_BUNDLE</code>, <code>SSL_CERT_FILE</code>), and subprocesses (<code>CURL_CA_BUNDLE</code>).</li>
+              <li><strong>🔄 URL Filtering HTTP / HTTPS Toggle</strong> — In <em>Security Testing</em>, the URL Filtering toolbar features an instant <code>[ 🌐 HTTP | 🔒 HTTPS ]</code> switch. In HTTPS mode, Stigix automatically converts <code>http://</code> URLs to <code>https://</code>, demonstrating that the firewall decrypts TLS sessions and enforces category-based URL filtering on encrypted traffic.</li>
             </ul>
           </div></div></div>
         </div>
@@ -1807,9 +1823,23 @@ voice start --target all</pre>
   }
 }</pre>
             <p>Config file locations: <strong>macOS</strong> &rarr; <code>~/Library/Application Support/Claude/claude_desktop_config.json</code> &nbsp; <strong>Windows</strong> &rarr; <code>%APPDATA%\Claude\claude_desktop_config.json</code></p>
-            <p>After saving, <strong>fully restart Claude Desktop</strong> (Cmd+Q, reopen). Click the hammer icon &mdash; you should see Stigix with a green status and 53 tools available.</p>
+            <p>After saving, <strong>fully restart Claude Desktop</strong> (Cmd+Q, reopen). Click the hammer icon &mdash; you should see Stigix with a green status and 79 tools available.</p>
             <p>No Node.js? Use the Python bridge instead: clone the repo, run <code>./mcp-server/setup-bridge.sh</code>, then point the config to the local Python bridge script. See <a href="https://github.com/jsuzanne/stigix/blob/main/docs/MCP_SERVER.md" target="_blank" rel="noopener noreferrer">MCP_SERVER.md</a> for the full setup.</p>
             <p><strong>&#128276; Claude Pro recommended:</strong> Stigix MCP sessions are tool-heavy &mdash; a single fabric-wide report or full security audit can invoke 10&ndash;20 tools and return thousands of tokens of data. The Claude <strong>free tier</strong> hits its usage limit very quickly under this load and will stop mid-session asking you to wait until the next usage window. A <strong>Claude Pro</strong> (or Teams / Enterprise) subscription is strongly recommended for a smooth, uninterrupted experience.</p>
+          </div></div></div>
+        </div>
+
+        <div class="faq-item">
+          <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">Can Claude generate executive engineering reports and whitepapers from Stigix MCP?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
+          <div class="faq-item__body"><div class="faq-item__inner"><div class="faq-item__answer">
+            <p><strong>Yes, absolutely.</strong> This is one of the most powerful workflows enabled by the 79 FastMCP tools. Instead of manual data exports and spreadsheet charting, Claude can autonomously investigate live fabric metrics, correlate multi-site SD-WAN failover curves, analyze application-layer vs network-layer impairments, and synthesize comprehensive executive reports.</p>
+            <p><strong>Available output formats &amp; topics:</strong></p>
+            <ul>
+              <li><strong>Technical Whitepapers &amp; PoC Validation Reports</strong> (PDF / Markdown / DOCX) with executive summaries, topology diagrams, failover latency curves, and SLA compliance tables.</li>
+              <li><strong>Resilience &amp; Failover Audits</strong> (e.g. comparing BR8 to DC1 under simulated packet loss or link down conditions).</li>
+              <li><strong>DEM Path &amp; Microsoft 365 Synthetic Analysis</strong> evaluating multi-hop DNS, TLS handshakes, and TTFB degradation.</li>
+            </ul>
+            <p>Check out real examples generated via Stigix MCP in our public <a href="reports.html">Reports &amp; Whitepapers Gallery</a>.</p>
           </div></div></div>
         </div>
 
@@ -2007,6 +2037,63 @@ docker compose restart</pre>
           </div></div></div>
         </div>
 
+        <div class="faq-item">
+          <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">What is Remote View and how does the Gateway proxy work?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
+          <div class="faq-item__body"><div class="faq-item__inner"><div class="faq-item__answer">
+            <p><strong>Remote View</strong> allows an operator connected to a <strong>Leader node</strong> (e.g. DC1) to observe, monitor, and control any remote <strong>peer node</strong> (e.g. BR1, BR2, BR5, BR8) directly within the Leader's dashboard &mdash; without opening separate browser tabs or authenticating to each node individually.</p>
+            <p><strong>How it works under the hood:</strong></p>
+            <ul>
+              <li>The Leader acts as an API Gateway proxy (<code>/api/gateway/:peerId/*</code>).</li>
+              <li>All dashboard API calls (reads and writes) are transparently rewritten by the client-side interceptor (<code>gFetch</code>) and routed through the Leader to the target peer over the existing SD-WAN underlay/overlay.</li>
+              <li>The operator's browser stays permanently on the Leader URL &mdash; no direct IP routing from your laptop to the branch subnets is required.</li>
+              <li>Live SSE streams (Speedtest throughput graphs, log streams) are piped in real-time through the gateway.</li>
+              <li>Clear visual indicators confirm active remote mode: amber site name in the header, amber navbar chip, and an amber perimeter frame with zero layout shift.</li>
+            </ul>
+          </div></div></div>
+        </div>
+
+        <div class="faq-item">
+          <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">How does Remote View work across firewalls and NAT/CGNAT? (WebSocket Reverse Tunneling)</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
+          <div class="faq-item__body"><div class="faq-item__inner"><div class="faq-item__answer">
+            <p>In real-world enterprise deployments, branch sites and edge nodes are often positioned behind strict egress-only firewalls, NAT, or Carrier-Grade NAT (CGNAT) without public IP addresses or inbound port forwarding.</p>
+            <p>Stigix solves this via <strong>persistent WebSocket Reverse Tunnels</strong>:</p>
+            <ul>
+              <li><strong>Outbound-Only Initiation:</strong> Spoke nodes automatically discover the Leader and establish an outbound WebSocket connection to the Leader's <code>/fleet-tunnel</code> namespace.</li>
+              <li><strong>Zero Inbound Ports on Spokes:</strong> No ports need to be opened on branch routers or perimeter firewalls.</li>
+              <li><strong>Full-Duplex Multiplexing:</strong> When the operator interacts with the remote peer in the dashboard, API requests and responses are seamlessly multiplexed through the existing persistent WebSocket tunnel.</li>
+              <li><strong>Ultra-Low Bandwidth Overhead:</strong> When idle, the tunnel generates less than <strong>0.5 kbps</strong> per node (~50 bytes/s) for keepalive and telemetry heartbeats.</li>
+              <li><strong>Seamless Fallback:</strong> Direct peer-to-peer HTTP is automatically used if a direct LAN path is available.</li>
+            </ul>
+          </div></div></div>
+        </div>
+
+        <div class="faq-item">
+          <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">How does Leader Outbound Reverse Dialing work for Cloud &amp; External Peers (Hetzner, AWS, Home LAN)?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
+          <div class="faq-item__body"><div class="faq-item__inner"><div class="faq-item__answer">
+            <p>In hybrid architectures, the <strong>Leader node often resides in a protected private LAN/Datacenter</strong> that cannot be exposed directly to the public Internet, while some Stigix peers run on <strong>public Cloud VMs (e.g. Hetzner, AWS, Azure)</strong> or remote Home LANs.</p>
+            <p>With <strong>Leader Outbound Reverse Dialing</strong>:</p>
+            <ul>
+              <li><strong>Inverted Dialing:</strong> The private Leader dials outbound to the configured Cloud Peer's <code>/fleet-tunnel</code> endpoint (e.g. <code>http://&lt;CLOUD_IP&gt;:8080/fleet-tunnel</code>).</li>
+              <li><strong>Zero Public Inbound on Leader:</strong> The Leader remains completely private with zero inbound ports open to the Internet.</li>
+              <li><strong>Automatic Bi-directional Telemetry:</strong> Once the connection is established, the Cloud Peer automatically pushes its live telemetry (DEM scores, probes, traffic metrics) into the Leader's local registry.</li>
+              <li><strong>Complete Remote Control:</strong> Operators on the private Leader can switch context to any external Cloud Peer with full read/write management through the dialed reverse tunnel.</li>
+            </ul>
+          </div></div></div>
+        </div>
+
+        <div class="faq-item">
+          <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">How does Global Provisioning sync configuration bundles over WebSocket Reverse Tunnels?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
+          <div class="faq-item__body"><div class="faq-item__inner"><div class="faq-item__answer">
+            <p>Stigix provides end-to-end <strong>Bidirectional Global Provisioning</strong> that functions transparently over persistent WebSocket reverse tunnels (both inbound NAT spokes and outbound dialed Cloud peers):</p>
+            <ul>
+              <li><strong>Instant Change Broadcast:</strong> Whenever an operator edits or publishes configuration bundles (Custom TCP Apps, synthetic probes, VoIP simulation, security policies, IoT devices) on the Leader, the Leader broadcasts a <code>peer:bundle_updated</code> push notification over active WebSocket tunnels.</li>
+              <li><strong>Tunnel Pull Sync:</strong> Remote peers immediately request the latest bundle revisions directly through the existing multiplexed tunnel &mdash; requiring zero direct IP routing back to the private Leader.</li>
+              <li><strong>Zero-Downtime Hot Reload:</strong> Spoke daemons and workload generators update their in-memory configurations dynamically without container restarts.</li>
+              <li><strong>Visual State Tracking:</strong> In <strong>Settings &rarr; Target Controller</strong>, remote nodes display a <strong><code>⚡ WS Tunnel Synced</code></strong> status badge confirming automated synchronization from the controlling Leader.</li>
+            </ul>
+          </div></div></div>
+        </div>
+
       </div><!-- /panel-registry -->
 
 
@@ -2152,6 +2239,18 @@ docker compose restart</pre>
           </div></div></div>
         </div>
 
+        <div class="faq-item">
+          <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">How does Threat Prevention and EICAR validation work in Custom TCP Apps?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
+          <div class="faq-item__body"><div class="faq-item__inner"><div class="faq-item__answer">
+            <p>In addition to latency and throughput benchmarking, Stigix Custom TCP Apps support <strong>in-band Threat Prevention validation</strong> across custom business protocols (HL7, DICOM, FIX, Modbus, custom HTTP/TCP):</p>
+            <ul>
+              <li>When the <code>eicar_response</code> impairment mode or security profile is enabled, the server injects the standardized EICAR anti-virus test signature inside the application payload stream.</li>
+              <li>The client runtime inspects received bytes in real time. If the Next-Generation Firewall or SASE security policy (e.g. Palo Alto Networks Antivirus / WildFire) is functioning correctly, the session is reset or blocked inline.</li>
+              <li>If the payload reaches the client, the client explicitly tags the session as <strong>EICAR Detected (Security Bypass)</strong>, providing irrefutable proof for security audits.</li>
+            </ul>
+          </div></div></div>
+        </div>
+
       </div><!-- /panel-custom-tcp -->
 
 
@@ -2265,7 +2364,7 @@ stigix-cli provision sync
 # Publish a new bundle revision from the Leader
 stigix-cli provision publish custom-tcp-apps
 
-# Roll back a bundle to a specific revision across the entire fleet
+# Roll back a bundle to a specific revision across the entire mesh
 stigix-cli provision rollback custom-tcp-apps 2
 
 # List all connected branch nodes, last seen timestamps, and sync latency
@@ -2276,7 +2375,7 @@ stigix-cli provision peers</pre>
         <div class="faq-item">
           <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">How does the Leader monitor peer health and identify out-of-sync branch instances?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
           <div class="faq-item__body"><div class="faq-item__inner"><div class="faq-item__answer">
-            <p>Every branch node transmits a telemetry heartbeat at regular intervals. The Leader aggregates these heartbeats in real-time under <strong>Settings &rarr; Central Global Provisioning</strong>, displaying a live Fleet Matrix showing:</p>
+            <p>Every branch node transmits a telemetry heartbeat at regular intervals. The Leader aggregates these heartbeats in real-time under <strong>Settings &rarr; Mesh Provisioning</strong>, displaying a live Mesh Matrix showing:</p>
             <ul>
               <li><strong>Connectivity Status:</strong> Live online / offline indicators with last-seen timestamps.</li>
               <li><strong>Revision Alignment:</strong> Per-bundle revision tracking (e.g. <code>rev-4</code> vs <code>rev-3</code>) highlighting synchronized nodes.</li>
@@ -2292,7 +2391,7 @@ stigix-cli provision peers</pre>
             <p>Stigix supports safe, staged validation workflows:</p>
             <ul>
               <li><strong>Draft Mode:</strong> You can configure and test new security test profiles or custom application traffic locally on the Leader or a single testbed instance without publishing.</li>
-              <li><strong>Publish Revision:</strong> When validation succeeds, clicking <strong>PUBLISH REVISION</strong> (or running <code>stigix-cli provision publish</code>) broadcasts the bundle to the entire fleet.</li>
+              <li><strong>Publish Revision:</strong> When validation succeeds, clicking <strong>PUBLISH REVISION</strong> (or running <code>stigix-cli provision publish</code>) broadcasts the bundle to the entire mesh.</li>
               <li><strong>Instant Rollback (&lt; 30s):</strong> If an issue arises in the field, clicking <strong>ROLLBACK</strong> immediately reverts all branch instances to the previous known-good revision in under 30 seconds.</li>
             </ul>
           </div></div></div>
@@ -2304,7 +2403,7 @@ stigix-cli provision peers</pre>
             <p><strong>Local Overrides &amp; Orphan Protection:</strong></p>
             <p>Branch nodes can locally enable or disable specific items without breaking central synchronization. If a centrally provisioned item is modified locally, Stigix marks it with an override badge to preserve local operational choices.</p>
             <p><strong>Instant Rollback:</strong></p>
-            <p>In <strong>Settings &rarr; Global Provisioning</strong> (or via CLI <code>stigix-cli --exec "provision rollback custom-tcp-apps 2"</code>), the Leader can roll back any bundle to a previous revision. All branch peers immediately pull and apply the restored revision within 30 seconds.</p>
+            <p>In <strong>Settings &rarr; Mesh Provisioning</strong> (or via CLI <code>stigix-cli --exec "provision rollback custom-tcp-apps 2"</code>), the Leader can roll back any bundle to a previous revision. All branch peers immediately pull and apply the restored revision within 30 seconds.</p>
           </div></div></div>
         </div>
 
@@ -2329,6 +2428,115 @@ stigix-cli provision peers</pre>
 
       </div><!-- /panel-provisioning -->
 
+
+      <!-- ═══════════════════════════════════════════════════
+           DEPLOYMENT TOPOLOGIES & PRIVATE ARCHITECTURES (V2)
+      ═══════════════════════════════════════════════════ -->
+      <div class="faq-panel" id="panel-topologies" role="tabpanel">
+
+        <div class="faq-item is-open">
+          <button class="faq-item__btn" aria-expanded="true"><span class="faq-item__question">Stigix Terminology: What do Leader, Peer, Spoke, Fleet Gateway, and Target mean?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
+          <div class="faq-item__body"><div class="faq-item__inner"><div class="faq-item__answer">
+            <p>To easily navigate multi-site deployments, Stigix defines a clear set of architectural concepts:</p>
+            <ul>
+              <li><strong>Leader (Controller Node):</strong> In Stigix terminology, the <em>Leader</em> is the central controller instance that hosts the local registry server, coordinates global configuration publishing, and serves the single-pane-of-glass Fleet Gateway. <em>"Leader" is an application role</em> &mdash; not a hardware or physical datacenter requirement. Any Stigix instance (on-premise server, cloud VM, or lab workstation) can be designated as the Leader with one click.</li>
+              <li><strong>Peer / Instance:</strong> Any individual running Stigix node (e.g. running on branch servers, cloud VMs like Hetzner/AWS, or physical lab hosts).</li>
+              <li><strong>Spoke (Branch Node):</strong> A remote Stigix peer that connects back to the Leader to pull configuration bundles, stream telemetry, and participate in mesh performance tests.</li>
+              <li><strong>Fleet Gateway &amp; Remote View:</strong> The built-in reverse proxy (<code>/api/gateway/:peerId/*</code>) on the Leader allowing operators to observe and manage any remote peer directly in the Leader dashboard without opening separate browser tabs.</li>
+              <li><strong>WebSocket Reverse Tunnel:</strong> The persistent, multiplexed full-duplex session established between a Spoke (or Cloud VM) and the Leader, allowing API calls and telemetry to traverse firewalls, NAT, and CGNAT with zero inbound ports required on the branch.</li>
+              <li><strong>Target Site / Synthetic Target:</strong> Any endpoint (another Stigix node or third-party host) that receives synthetic probes, Voice Echo streams, or XFR bandwidth tests.</li>
+              <li><strong>Global Provisioning Bundles:</strong> Centralized configuration packages (Custom TCP apps, synthetic probes, VoIP settings, IoT profiles, security policies) maintained on the Leader and hot-reloaded fleet-wide.</li>
+            </ul>
+          </div></div></div>
+        </div>
+
+        <div class="faq-item">
+          <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">What are the 4 standard deployment topologies supported in Stigix?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
+          <div class="faq-item__body"><div class="faq-item__inner"><div class="faq-item__answer">
+            <p>Stigix is built for real-world enterprise architectures, where network security rules and NAT boundaries dictate connectivity. Stigix supports 4 primary deployment topologies:</p>
+            <ul>
+              <li><strong>Topology 1 &mdash; Pure Corporate WAN / SD-WAN / MPLS (Direct Mesh):</strong> Full bidirectional IP reachability between all sites. Direct HTTP REST API calls and peer-to-peer data traffic with sub-second synchronization.</li>
+              <li><strong>Topology 2 &mdash; NAT / CGNAT Branch Spokes to Private Leader:</strong> Branch sites located behind egress-only NAT, 4G/5G routers, or corporate firewalls initiate persistent outbound WebSocket reverse tunnels to the private Leader. Zero ports open on the branch.</li>
+              <li><strong>Topology 3 &mdash; Zero-Inbound Private Leader + External Cloud Peers:</strong> Private Leader resides entirely inside a protected corporate LAN without public IP or port forwarding. The Leader dials outbound reverse connections to public cloud VMs (Hetzner, AWS, Azure) or home labs, establishing a persistent bidirectional control plane without exposing the private Leader to the Internet.</li>
+              <li><strong>Topology 4 &mdash; Public Cloud SaaS Leader + Distributed Private Spokes:</strong> Central cloud-hosted Stigix controller with private enterprise branches connecting in over reverse tunnels.</li>
+            </ul>
+            <p>For architectural diagrams, step-by-step setup, and downloadable PDF guide, see <a href="https://github.com/jsuzanne/stigix/blob/main/docs/PRIVATE_DEPLOYMENT_TOPOLOGIES.md" target="_blank" rel="noopener noreferrer">docs/PRIVATE_DEPLOYMENT_TOPOLOGIES.md</a>.</p>
+          </div></div></div>
+        </div>
+
+        <div class="faq-item">
+          <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">How does Leader Outbound Reverse Dialing connect Cloud VMs without opening ports on the Leader?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
+          <div class="faq-item__body"><div class="faq-item__inner"><div class="faq-item__answer">
+            <p>In many enterprise labs, the private Leader cannot be assigned a public IP or exposed to the Internet. Yet operators need to benchmark traffic against public cloud providers (such as Hetzner or AWS) to test SASE egress.</p>
+            <p><strong>With Leader Outbound Reverse Dialing:</strong></p>
+            <ol>
+              <li>The operator adds the Cloud VM target in <strong>Settings &rarr; Targets</strong> on the Leader.</li>
+              <li>The private Leader initiates an <strong>outbound HTTP/WebSocket session</strong> to the Cloud VM's <code>/fleet-tunnel</code> endpoint.</li>
+              <li>The Cloud VM authenticates the connection and begins pushing its live telemetry and pulling configuration bundles back over the persistent WebSocket session.</li>
+              <li>The Leader remains completely hidden behind corporate firewalls with <strong>zero inbound ports open to the public Internet</strong>.</li>
+            </ol>
+          </div></div></div>
+        </div>
+
+        <div class="faq-item">
+          <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">How do Spokes behind NAT/CGNAT/Firewalls connect without port forwarding?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
+          <div class="faq-item__body"><div class="faq-item__inner"><div class="faq-item__answer">
+            <p>Branch nodes (e.g. BR1, BR2, BR5, BR8) behind egress-only firewalls or cellular 4G/5G CGNAT establish outbound WebSocket sessions to the Leader's <code>/fleet-tunnel</code> namespace:</p>
+            <ul>
+              <li><strong>Zero Inbound Ports on Spokes:</strong> No firewall rules or port forwarding required on branch routers.</li>
+              <li><strong>Multiplexed Control &amp; Provisioning:</strong> The Leader uses the existing outbound socket to proxy API calls, trigger tests, and push global provisioning updates.</li>
+              <li><strong>Ultra-Low Overhead:</strong> When idle, heartbeat and telemetry polling generate less than <strong>0.5 kbps</strong> per node (~50 bytes/second).</li>
+              <li><strong>Automatic Fallback:</strong> Direct HTTP is automatically selected whenever nodes share a direct LAN / MPLS route.</li>
+            </ul>
+          </div></div></div>
+        </div>
+
+        <div class="faq-item">
+          <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">What ports and protocols must be open for each deployment topology?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
+          <div class="faq-item__body"><div class="faq-item__inner"><div class="faq-item__answer">
+            <p>Stigix uses minimal standard ports across all communication channels:</p>
+            <ul>
+              <li><strong>Port 8080 (TCP):</strong> Control plane (Web Dashboard, REST API, Fleet Gateway, and WebSocket Reverse Tunnel <code>/fleet-tunnel</code>).</li>
+              <li><strong>Port 9000 (TCP / UDP):</strong> Data plane (XFR high-speed bandwidth testing &amp; Voice Echo RTP simulation).</li>
+              <li><strong>Port 9100 (TCP):</strong> Optional Custom TCP inter-site application listener.</li>
+            </ul>
+            <p><strong>Port direction summary by topology:</strong></p>
+            <ul>
+              <li><strong>Topology 1 (LAN):</strong> Bidirectional ports 8080 &amp; 9000 between all nodes.</li>
+              <li><strong>Topology 2 (NAT Spokes):</strong> Leader requires inbound port 8080 &amp; 9000 from Spokes. Spokes require <em>outbound only</em>.</li>
+              <li><strong>Topology 3 (Zero-Inbound Leader):</strong> Cloud Peer requires inbound port 8080 &amp; 9000. DC Leader requires <em>outbound only</em> (zero inbound ports on Leader).</li>
+              <li><strong>Topology 4 (Cloud SaaS Leader):</strong> Cloud Leader requires inbound 8080 &amp; 9000. All branch spokes require <em>outbound only</em>.</li>
+            </ul>
+          </div></div></div>
+        </div>
+
+        <div class="faq-item">
+          <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">Can I stream live Speedtest graphs and logs in real-time across WebSocket reverse tunnels?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
+          <div class="faq-item__body"><div class="faq-item__inner"><div class="faq-item__answer">
+            <p><strong>Yes!</strong> Starting in <strong>v2.0.112</strong>, the Stigix Fleet Gateway features native <strong>WebSocket Chunked Stream Forwarding</strong> (<code>gateway:stream:*</code>):</p>
+            <ul>
+              <li><strong>Real-Time SSE Streaming:</strong> Server-Sent Events (SSE) from remote peers &mdash; such as 1-second Speedtest throughput updates, active latency tracking, and live API logs &mdash; are streamed chunk-by-chunk through the persistent reverse tunnel.</li>
+              <li><strong>Sub-Second Graph Animation:</strong> The dashboard graph animates smoothly in real time exactly as if connected directly via LAN HTTP.</li>
+              <li><strong>Zero-Downtime Abort:</strong> Closing the tab or stopping the test sends an immediate abort event (<code>gateway:stream:abort</code>) across the tunnel to terminate local processes on the spoke.</li>
+            </ul>
+          </div></div></div>
+        </div>
+
+        <div class="faq-item">
+          <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">How does Stigix handle link cuts and self-healing across WebSocket tunnels?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
+          <div class="faq-item__body"><div class="faq-item__inner"><div class="faq-item__answer">
+            <p>Stigix incorporates multi-tier resiliency and self-healing mechanisms:</p>
+            <ul>
+              <li><strong>Persistent Reconnect with Exponential Backoff:</strong> If a WAN link or Internet connection drops, the Socket.IO client automatically retries connection every 5&ndash;20 seconds.</li>
+              <li><strong>15-Second Heartbeats:</strong> Continuous liveness pings detect stale sockets and clean up half-open TCP sessions within 30 seconds.</li>
+              <li><strong>Local State Retention:</strong> In-flight test suites and promoted targets remain cached in local memory, surviving temporary controller link cuts without service interruption.</li>
+              <li><strong>Automatic Cloudflare Fallback:</strong> If the private Leader becomes unreachable, peers automatically fall back to the global Cloudflare registry within 60 seconds.</li>
+            </ul>
+          </div></div></div>
+        </div>
+
+      </div><!-- /panel-topologies -->
+
     </div><!-- /faq-panels -->
   </div><!-- /wrap -->
 </section>
@@ -2348,7 +2556,7 @@ stigix-cli provision peers</pre>
       </ul>
     </div>
     <p class="footer__note" style="margin-top:12px;padding-top:12px;border-top:1px solid var(--stroke);font-family:var(--mono);font-size:0.72rem;color:var(--muted);">
-      Site last updated: <strong id="faq-footer-date" style="color:var(--mid)">2026-09-05</strong> &nbsp;&middot;&nbsp; Covers release <a href="https://github.com/jsuzanne/stigix/releases" target="_blank" rel="noopener noreferrer" style="color:var(--teal);">v2.0.7</a> &nbsp;&middot;&nbsp; <a href="https://github.com/jsuzanne/stigix/blob/main/CHANGELOG_V2.md" target="_blank" rel="noopener noreferrer" style="color:var(--teal);">View V2 changelog &rarr;</a>
+      Site last updated: <strong id="faq-footer-date" style="color:var(--mid)">2026-09-30</strong> &nbsp;&middot;&nbsp; Covers release <a href="https://github.com/jsuzanne/stigix/releases" target="_blank" rel="noopener noreferrer" style="color:var(--teal);">v2.0.112</a> &nbsp;&middot;&nbsp; <a href="https://github.com/jsuzanne/stigix/blob/main/CHANGELOG_V2.md" target="_blank" rel="noopener noreferrer" style="color:var(--teal);">View V2 changelog &rarr;</a>
     </p>
     <script>var fd=new Date(document.lastModified);if(fd.getFullYear()>2000){document.getElementById('faq-footer-date').textContent=fd.toISOString().slice(0,10);}</script>
     <p class="footer__note" style="margin-top:8px;font-family:var(--mono);font-size:0.72rem;color:var(--muted);">

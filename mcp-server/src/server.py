@@ -2110,6 +2110,90 @@ async def get_provisioning_history(
     )
 
 
+@mcp.tool()
+async def generate_magic_join_token(
+    agent_id: str,
+    site_name: Optional[str] = None,
+    ttl_seconds: Optional[int] = 3600,
+    max_uses: Optional[int] = 1
+) -> dict:
+    """
+    Generate a cryptographic single-use Stigix « Magic Join » token to onboard a new remote node in seconds.
+    Returns the signed token and ready-to-run curl 1-liner onboarding command.
+
+    Args:
+        agent_id: ID of the Leader Stigix node (e.g. 'DC1' or local instance ID).
+        site_name: Optional human-readable site name or hint for the new node (e.g. 'Paris-Branch-01').
+        ttl_seconds: Token lifetime in seconds (default: 3600 / 1 hour).
+        max_uses: Maximum redemptions before token burn (default: 1 for single-use).
+    """
+    return await orchestrator.generate_magic_join_token(
+        agent_id=agent_id,
+        site_name=site_name,
+        ttl_seconds=3600 if ttl_seconds is None else ttl_seconds,
+        max_uses=1 if max_uses is None else max_uses
+    )
+
+
+@mcp.tool()
+async def list_magic_join_tokens(
+    agent_id: str,
+    status_filter: Optional[str] = None
+) -> dict:
+    """
+    List active, redeemed, expired, and revoked Magic Join tokens on the Leader node.
+
+    Args:
+        agent_id: ID of the Leader Stigix node.
+        status_filter: Optional status filter ('ACTIVE', 'REDEEMED', 'EXPIRED', 'REVOKED').
+    """
+    return await orchestrator.list_magic_join_tokens(
+        agent_id=agent_id,
+        status_filter=status_filter
+    )
+
+
+@mcp.tool()
+async def revoke_magic_join_token(
+    agent_id: str,
+    token_id: str
+) -> dict:
+    """
+    Instantly revoke an active Magic Join token on the Leader node to prevent unauthorized onboarding.
+
+    Args:
+        agent_id: ID of the Leader Stigix node.
+        token_id: The token JTI or identifier to revoke (e.g. 'stx_tok_9b027e44a1').
+    """
+    return await orchestrator.revoke_magic_join_token(
+        agent_id=agent_id,
+        token_id=token_id
+    )
+
+
+@mcp.tool()
+async def join_cluster_via_token(
+    agent_id: str,
+    token: str,
+    site_name: Optional[str] = None
+) -> dict:
+    """
+    Onboard a remote node into a Stigix cluster using a signed Magic Join token.
+    Decodes the token, contacts the Leader, redeems the token, and connects the WebSocket tunnel.
+
+    Args:
+        agent_id: ID of the remote node to onboard (e.g. 'BR8').
+        token: The signed Magic Join token string (e.g. 'STX-...').
+        site_name: Optional site name override (e.g. 'Branch-Lyon').
+    """
+    return await orchestrator.join_cluster_via_token(
+        agent_id=agent_id,
+        token=token,
+        site_name=site_name
+    )
+
+
+
 
 # -----------------------------------------------------------------------------
 # Main Entry Point

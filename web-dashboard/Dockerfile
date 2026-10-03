@@ -56,23 +56,7 @@ RUN npm ci --omit=dev --prefer-offline --no-audit
 RUN npm install tsx --no-save
 
 COPY --from=builder /app/dist ./dist
-COPY web-dashboard/server.ts ./
-COPY web-dashboard/api-logger.ts ./
-COPY web-dashboard/api-studio-routes.ts ./
-COPY web-dashboard/targets-manager.ts ./
-COPY web-dashboard/target-manager.ts ./
-COPY web-dashboard/test-logger.ts ./
-COPY web-dashboard/connectivity-logger.ts ./
-COPY web-dashboard/iot-manager.ts ./
-COPY web-dashboard/vyos-manager.ts ./
-COPY web-dashboard/vyos-scheduler.ts ./
-COPY web-dashboard/site-manager.ts ./
-COPY web-dashboard/discovery-manager.ts ./
-COPY web-dashboard/registry-manager.ts ./
-COPY web-dashboard/stigix-registry-client.ts ./
-COPY web-dashboard/local-registry-server.ts ./
-COPY web-dashboard/provisioning-manager.ts ./
-COPY web-dashboard/underlay-topology-manager.ts ./
+COPY web-dashboard/*.ts ./
 COPY web-dashboard/custom-tcp-apps ./custom-tcp-apps
 COPY web-dashboard/ai-copilot ./ai-copilot
 COPY web-dashboard/shared ./shared

@@ -10,6 +10,9 @@ import {
     Layers, Cloud, Search, X, Info, ChevronDown, Upload, Download, FileJson
 } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { usePeerContext } from './PeerContext';
+import { CustomAppsSkeleton } from './components/skeletons/CustomAppsSkeleton';
+
 
 function cn(...inputs: (string | undefined | null | false)[]) {
     return inputs.filter(Boolean).join(' ');
@@ -81,6 +84,10 @@ interface CustomAppsProps {
 }
 
 export const CustomApps: React.FC<CustomAppsProps> = ({ token }) => {
+    // Route all API calls through the peer gateway when in remote view
+    const { gFetch, activePeerId } = usePeerContext();
+    const isRemoteView = activePeerId !== null;
+
     const [applications, setApplications] = useState<CustomTcpApplicationConfig[]>([]);
     const [allAppSummaries, setAllAppSummaries] = useState<Record<string, any>>({});
     const [instanceInfo, setInstanceInfo] = useState<{ instanceId: string; siteName: string; hostname: string } | null>(null);
@@ -123,7 +130,7 @@ export const CustomApps: React.FC<CustomAppsProps> = ({ token }) => {
     const loadConfig = async () => {
         setIsLoading(true);
         try {
-            const res = await fetch('/api/custom-tcp-apps', {
+            const res = await gFetch('/api/custom-tcp-apps', {
                 headers: { 'Authorization': `Bearer ${token}` }
             });
             if (res.ok) {
@@ -144,7 +151,7 @@ export const CustomApps: React.FC<CustomAppsProps> = ({ token }) => {
 
     const loadAllSummaries = async () => {
         try {
-            const res = await fetch('/api/custom-tcp-apps/summary/all', { headers: { 'Authorization': `Bearer ${token}` } });
+            const res = await gFetch('/api/custom-tcp-apps/summary/all', { headers: { 'Authorization': `Bearer ${token}` } });
             if (res.ok) {
                 const data = await res.json();
                 const map: Record<string, any> = {};
@@ -159,10 +166,10 @@ export const CustomApps: React.FC<CustomAppsProps> = ({ token }) => {
     };
 
     const handleGlobalAction = async (action: 'start-all' | 'stop-all' | 'start-clients' | 'stop-clients' | 'start-listeners' | 'stop-listeners') => {
-        if (isActionLoading || !token) return;
+        if (isActionLoading || !token || isRemoteView) return; // disabled in remote view
         setIsActionLoading(true);
         try {
-            const res = await fetch(`/api/custom-tcp-apps/actions/${action}`, {
+            const res = await gFetch(`/api/custom-tcp-apps/actions/${action}`, {
                 method: 'POST',
                 headers: { 'Authorization': `Bearer ${token}` }
             });
@@ -202,9 +209,9 @@ export const CustomApps: React.FC<CustomAppsProps> = ({ token }) => {
     const loadAppStatus = async (appId: string) => {
         try {
             const [statusRes, inRes, outRes] = await Promise.all([
-                fetch(`/api/custom-tcp-apps/${appId}/status`, { headers: { 'Authorization': `Bearer ${token}` } }),
-                fetch(`/api/custom-tcp-apps/${appId}/sessions/incoming`, { headers: { 'Authorization': `Bearer ${token}` } }),
-                fetch(`/api/custom-tcp-apps/${appId}/sessions/outgoing`, { headers: { 'Authorization': `Bearer ${token}` } })
+                gFetch(`/api/custom-tcp-apps/${appId}/status`, { headers: { 'Authorization': `Bearer ${token}` } }),
+                gFetch(`/api/custom-tcp-apps/${appId}/sessions/incoming`, { headers: { 'Authorization': `Bearer ${token}` } }),
+                gFetch(`/api/custom-tcp-apps/${appId}/sessions/outgoing`, { headers: { 'Authorization': `Bearer ${token}` } })
             ]);
 
             if (statusRes.ok) {
@@ -326,7 +333,7 @@ export const CustomApps: React.FC<CustomAppsProps> = ({ token }) => {
         const action = isListening ? 'stop' : 'start';
 
         try {
-            const res = await fetch(`/api/custom-tcp-apps/${selectedAppId}/listener/${action}`, {
+            const res = await gFetch(`/api/custom-tcp-apps/${selectedAppId}/listener/${action}`, {
                 method: 'POST',
                 headers: { 'Authorization': `Bearer ${token}` }
             });
@@ -360,7 +367,7 @@ export const CustomApps: React.FC<CustomAppsProps> = ({ token }) => {
         const action = isRunning ? 'stop' : 'start';
 
         try {
-            const res = await fetch(`/api/custom-tcp-apps/${selectedAppId}/client/${action}`, {
+            const res = await gFetch(`/api/custom-tcp-apps/${selectedAppId}/client/${action}`, {
                 method: 'POST',
                 headers: { 'Authorization': `Bearer ${token}` }
             });
@@ -383,7 +390,7 @@ export const CustomApps: React.FC<CustomAppsProps> = ({ token }) => {
         const method = isEdit ? 'PUT' : 'POST';
         const url = isEdit ? `/api/custom-tcp-apps/${app.id}` : '/api/custom-tcp-apps';
 
-        const res = await fetch(url, {
+        const res = await gFetch(url, {
             method,
             headers: {
                 'Content-Type': 'application/json',
@@ -406,7 +413,7 @@ export const CustomApps: React.FC<CustomAppsProps> = ({ token }) => {
         if (!selectedAppId) return;
         setPeerTestResult({ loading: true });
         try {
-            const res = await fetch(`/api/custom-tcp-apps/${selectedAppId}/peers/${peerId}/test`, {
+            const res = await gFetch(`/api/custom-tcp-apps/${selectedAppId}/peers/${peerId}/test`, {
                 method: 'POST',
                 headers: { 'Authorization': `Bearer ${token}` }
             });
@@ -434,7 +441,7 @@ export const CustomApps: React.FC<CustomAppsProps> = ({ token }) => {
 
     const handleExportAll = async () => {
         try {
-            const res = await fetch('/api/custom-tcp-apps/export', {
+            const res = await gFetch('/api/custom-tcp-apps/export', {
                 headers: { 'Authorization': `Bearer ${token}` }
             });
             if (!res.ok) throw new Error('Export request failed');
@@ -442,7 +449,7 @@ export const CustomApps: React.FC<CustomAppsProps> = ({ token }) => {
             const url = window.URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;
-            a.download = `stigix-custom-apps-${instanceInfo?.siteName || 'fleet'}-${new Date().toISOString().slice(0, 10)}.json`;
+            a.download = `stigix-custom-apps-${instanceInfo?.siteName || 'mesh'}-${new Date().toISOString().slice(0, 10)}.json`;
             document.body.appendChild(a);
             a.click();
             document.body.removeChild(a);
@@ -456,7 +463,7 @@ export const CustomApps: React.FC<CustomAppsProps> = ({ token }) => {
     const handleExportCurrent = async () => {
         if (!selectedAppId) return;
         try {
-            const res = await fetch(`/api/custom-tcp-apps/${selectedAppId}/export`, {
+            const res = await gFetch(`/api/custom-tcp-apps/${selectedAppId}/export`, {
                 headers: { 'Authorization': `Bearer ${token}` }
             });
             if (!res.ok) throw new Error('Export request failed');
@@ -531,6 +538,10 @@ const secs = seconds % 60;
         );
     });
 
+    if (isLoading && applications.length === 0) {
+        return <CustomAppsSkeleton />;
+    }
+
     return (
         <div className="p-6 max-w-[1700px] w-full mx-auto space-y-6 text-text-primary animate-fadeIn">
             {/* Top Node Identity Bar */}
@@ -593,7 +604,7 @@ const secs = seconds % 60;
                                     onMouseLeave={() => setStartMenuOpen(false)}
                                 >
                                     <div className="px-3 py-1 text-[10px] font-black uppercase tracking-wider text-text-muted">
-                                        Appliance Start Options
+                                        Node Start Options
                                     </div>
                                     <button
                                         onClick={() => { setStartMenuOpen(false); handleGlobalAction('start-all'); }}
@@ -636,7 +647,7 @@ const secs = seconds % 60;
                                     disabled={isActionLoading}
                                     onClick={() => handleGlobalAction('stop-all')}
                                     className="h-[32px] px-3 bg-rose-500/10 hover:bg-rose-500/20 text-rose-600 dark:text-rose-400 text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer disabled:opacity-50"
-                                    title="Stop all running clients and listeners on this appliance"
+                                    title="Stop all running clients and listeners on this node"
                                 >
                                     <Square size={12} fill="currentColor" />
                                     <span>Stop All</span>
@@ -658,7 +669,7 @@ const secs = seconds % 60;
                                     onMouseLeave={() => setStopMenuOpen(false)}
                                 >
                                     <div className="px-3 py-1 text-[10px] font-black uppercase tracking-wider text-text-muted">
-                                        Appliance Stop Options
+                                        Node Stop Options
                                     </div>
                                     <button
                                         onClick={() => { setStopMenuOpen(false); handleGlobalAction('stop-all'); }}
@@ -811,7 +822,7 @@ const secs = seconds % 60;
                                     <FileJson size={14} className="text-indigo-500" />
                                     <div>
                                         <div className="font-bold">Export All Applications</div>
-                                        <div className="text-[10px] text-text-muted">Download full fleet bundle ({applications.length} apps)</div>
+                                        <div className="text-[10px] text-text-muted">Download full mesh bundle ({applications.length} apps)</div>
                                     </div>
                                 </button>
                                 {currentApp && (
@@ -1050,6 +1061,14 @@ const secs = seconds % 60;
                                 <span>Mode: <strong className="text-text-secondary capitalize">{currentApp?.serverBehavior?.mode ? currentApp.serverBehavior.mode.replace(/_/g, ' ') : 'echo'}</strong></span>
                                 <span>Handled: <strong className="text-text-secondary">{serverHandled}</strong> {liveServerTps > 0 && incomingSessions.length > 0 && <span className="text-indigo-500 font-mono text-[10px]">({liveServerTps} tps)</span>}</span>
                             </div>
+                            {currentApp?.serverBehavior?.mode === 'eicar_response' && currentApp?.protocol === 'http_1_1' && (
+                                <div className="mt-2 p-2 bg-zinc-900/50 border border-zinc-700/40 rounded-lg">
+                                    <p className="text-[9px] font-bold text-text-muted uppercase tracking-widest mb-1">External curl test</p>
+                                    <code className="block text-[10px] font-mono text-emerald-400 select-all break-all">
+                                        curl -v http://&lt;node-ip&gt;:{currentApp.listener?.port}/
+                                    </code>
+                                </div>
+                            )}
                         </div>
 
                         {/* 2. Outgoing Sessions Card */}
@@ -1083,6 +1102,20 @@ const secs = seconds % 60;
                                     {liveClientTps > 0 && <span className="text-emerald-500 font-mono text-[10px] font-bold">({liveClientTps} tps)</span>}
                                 </span>
                             </div>
+                            {(() => {
+                                const totalEicarReceived = outgoingSessions.reduce((acc, s) => acc + (s.eicarReceivedCount || 0), 0);
+                                if (totalEicarReceived === 0) return null;
+                                return (
+                                    <div className="mt-2 p-2 bg-rose-500/10 border border-rose-500/30 rounded-lg flex items-center gap-2">
+                                        <span className="text-rose-400 text-sm flex-shrink-0">🛡️</span>
+                                        <div>
+                                            <span className="text-[10px] font-bold text-rose-400 uppercase tracking-wider">EICAR not blocked</span>
+                                            <span className="text-[10px] text-rose-300 ml-1.5">× {totalEicarReceived}</span>
+                                            <p className="text-[9px] text-rose-400/70 leading-tight mt-0.5">SASE/NGFW did not intercept the EICAR payload</p>
+                                        </div>
+                                    </div>
+                                );
+                            })()}
                         </div>
 
                         {/* 3. Latency & Jitter Card */}

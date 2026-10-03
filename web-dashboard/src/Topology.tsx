@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { usePeerContext } from './PeerContext';
 import {
     ReactFlow,
     Controls,
@@ -57,7 +58,8 @@ import {
     RotateCcw,
     Sliders,
     Gauge,
-    Route
+    Route,
+    Loader2
 } from 'lucide-react';
 import { toPng } from 'html-to-image';
 import { clsx } from 'clsx';
@@ -204,7 +206,17 @@ const SiteEdge = ({
 };
 
 // --- Custom Port Marker component ---
-const Port = ({ num, label, status = 'unknown' }: { num: string, label?: string, status?: 'up' | 'down' | 'unknown' }) => {
+const Port = ({
+    num,
+    label,
+    status = 'unknown',
+    labelPosition = 'bottom',
+}: {
+    num: string;
+    label?: string;
+    status?: 'up' | 'down' | 'unknown';
+    labelPosition?: 'top' | 'bottom';
+}) => {
     let bgClass = "bg-card border-border text-text-muted";
 
     // Status color coding for port badges
@@ -213,20 +225,64 @@ const Port = ({ num, label, status = 'unknown' }: { num: string, label?: string,
 
     return (
         <div className="flex flex-col items-center gap-1 relative z-20 group">
+            {label && labelPosition === 'top' && (
+                <div className="absolute -top-[20px] whitespace-nowrap bg-card/90 backdrop-blur-sm px-1.5 py-0.5 rounded text-[8px] font-mono font-bold text-text-muted uppercase tracking-tighter shadow-sm border border-border/50 text-center pointer-events-none">
+                    {label}
+                </div>
+            )}
             <div className={cn(
                 "w-5 h-5 rounded-md border flex items-center justify-center text-[9px] font-black shadow-sm",
                 bgClass
             )}>
                 {num}
             </div>
-            {label && (
-                <div className="absolute top-[26px] whitespace-nowrap bg-card/80 backdrop-blur-sm px-1.5 py-0.5 rounded text-[8px] font-mono font-bold text-text-muted uppercase tracking-tighter shadow-sm border border-border/50 text-center">
+            {label && labelPosition === 'bottom' && (
+                <div className="absolute top-[22px] whitespace-nowrap bg-card/90 backdrop-blur-sm px-1.5 py-0.5 rounded text-[8px] font-mono font-bold text-text-muted uppercase tracking-tighter shadow-sm border border-border/50 text-center pointer-events-none">
                     {label}
                 </div>
             )}
         </div>
     );
 };
+
+// Helper to check if an IP is inside a CIDR subnet (e.g. 192.168.207.10 in 192.168.207.0/24)
+function isIpInSubnet(ip?: string | null, subnet?: string | null): boolean {
+    if (!ip || !subnet) return false;
+    const cleanIp = ip.split('/')[0].trim();
+    const [subIp, maskStr] = subnet.trim().split('/');
+    if (!subIp) return false;
+    const mask = maskStr ? parseInt(maskStr, 10) : 24;
+
+    const ipToLong = (v: string) => {
+        const parts = v.split('.').map(Number);
+        if (parts.length !== 4 || parts.some(isNaN)) return null;
+        return ((parts[0] << 24) >>> 0) + ((parts[1] << 16) >>> 0) + ((parts[2] << 8) >>> 0) + (parts[3] >>> 0);
+    };
+
+    const ipNum = ipToLong(cleanIp);
+    const subNum = ipToLong(subIp);
+    if (ipNum === null || subNum === null) return false;
+
+    if (mask === 0) return true;
+    const netmask = mask === 32 ? 0xFFFFFFFF : (((0xFFFFFFFF << (32 - mask)) >>> 0));
+    return (ipNum & netmask) === (subNum & netmask);
+}
+
+function normalizeSiteName(name?: string | null): string {
+    if (!name) return '';
+    return name
+        .replace(/[-_]?(ubuntu|node|linux|srv|core|hub).*$/i, '')
+        .replace(/[^A-Z0-9]/gi, '')
+        .toUpperCase();
+}
+
+function isExactSiteMatch(siteName?: string | null, nodeName?: string | null): boolean {
+    if (!siteName || !nodeName) return false;
+    const s1 = normalizeSiteName(siteName);
+    const s2 = normalizeSiteName(nodeName);
+    if (!s1 || !s2) return false;
+    return s1 === s2;
+}
 
 // --- Custom Site Node Component (The "Physical" Schematic) ---
 const SiteNode = ({ data }: any) => {
@@ -268,6 +324,9 @@ const SiteNode = ({ data }: any) => {
     };
     const shortIp = (ip?: string) => ip ? ip.split('/')[0] : '';
 
+    // Stigix Fleet Node matching
+    const fleetNodes = (data.fleetNodes as any[]) || [];
+
     // Underlay badge helpers
     const underlayMode = data.underlayMode as ('off' | 'badges') | undefined;
     const underlayResolutionMap = data.underlayResolutionMap as Map<string, any> | undefined;
@@ -288,22 +347,63 @@ const SiteNode = ({ data }: any) => {
         return { r, c };
     };
 
+    // Subnet Pill Renderer: highlights the subnet hosting a Stigix node in high-tech Blue with Stigix symbol
+    const renderSubnetPill = (subnet: string, sIdx: number) => {
+        const stigixNode = fleetNodes.find((n: any) => {
+            if (isIpInSubnet(n.ip, subnet) || isIpInSubnet(n.ip_private, subnet)) return true;
+            if (isExactSiteMatch(data.name, n.name || n.id || n.site)) {
+                const hasDirectIpMatch = uniqueSubeNets.some(s => isIpInSubnet(n.ip, s) || isIpInSubnet(n.ip_private, s));
+                if (!hasDirectIpMatch && sIdx === 0) return true;
+            }
+            return false;
+        });
+
+        if (stigixNode) {
+            const isLeader = Boolean(stigixNode.is_leader || stigixNode.role === 'LEADER' || (stigixNode.id && stigixNode.id.toLowerCase().includes('dc1') && !stigixNode.id.toLowerCase().includes('dc2')));
+            return (
+                <div
+                    key={sIdx}
+                    className="bg-blue-600/20 px-3.5 py-1 rounded-xl border-2 border-blue-400 text-[11px] font-mono font-bold text-blue-200 shadow-lg shadow-blue-500/25 relative z-10 group transition-all hover:scale-105 hover:bg-blue-500/30 hover:border-blue-300 flex items-center gap-2 cursor-pointer h-[32px]"
+                    title={`⚡ Stigix SASE Agent: ${stigixNode.name || stigixNode.id} (${stigixNode.ip || stigixNode.ip_private}) • ${isLeader ? 'LEADER' : 'PEER'}`}
+                >
+                    <span className="relative flex h-2 w-2">
+                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
+                        <span className="relative inline-flex rounded-full h-2 w-2 bg-blue-500"></span>
+                    </span>
+                    <Zap size={13} className="text-blue-300" />
+                    <span>{subnet}</span>
+                    <span className="text-[8px] px-1.5 py-0.5 rounded bg-blue-400/25 border border-blue-300/40 text-blue-100 uppercase font-black tracking-wider ml-0.5">
+                        {isLeader ? 'LEADER' : 'PEER'}
+                    </span>
+                </div>
+            );
+        }
+
+        return (
+            <div
+                key={sIdx}
+                className="bg-green-500/10 px-3 py-1 rounded-xl border border-green-500/30 text-[11px] font-mono font-bold text-green-400 shadow-md shadow-green-500/10 relative z-10 group transition-all hover:scale-105 hover:bg-green-500/20 hover:border-green-500 h-[30px] flex items-center cursor-default"
+            >
+                {subnet}
+            </div>
+        );
+    };
 
     return (
         <div className={cn(
-            "flex flex-col items-center min-w-[400px] gap-6",
+            "flex flex-col items-center w-full gap-5",
             isHub ? "flex-col-reverse" : "flex-col"
         )}>
 
             {/* Circuit Blocks Section */}
-            <div className="flex gap-6 z-10 relative">
+            <div className="flex gap-4 z-10 relative">
                 {wanCircuits.map((w: any, idx: number) => {
                     const badge = getUnderlayBadge(w);
                     return (
                         <div key={idx} className="relative flex flex-col items-center">
                             <div
                                 className={cn(
-                                    "px-4 py-2 rounded-xl border shadow-2xl backdrop-blur-md flex flex-col items-center justify-center gap-1 min-w-[130px] h-[52px] transition-all hover:scale-105 hover:border-white/40 group",
+                                    "px-3.5 py-1.5 rounded-xl border shadow-2xl backdrop-blur-md flex flex-col items-center justify-center gap-0.5 min-w-[120px] h-[48px] transition-all hover:scale-105 hover:border-white/40 group",
                                     w.wan_network?.toLowerCase().includes('mpls')
                                         ? "bg-purple-500/10 border-purple-500/30 text-purple-400"
                                         : "bg-blue-500/10 border-blue-500/30 text-blue-400",
@@ -311,7 +411,7 @@ const SiteNode = ({ data }: any) => {
                                 )}
                                 onClick={badge && onInspectUnderlayCircuit ? (e) => { e.stopPropagation(); onInspectUnderlayCircuit(badge.r); } : undefined}
                             >
-                                <div className="text-[11px] font-black uppercase tracking-tight overflow-hidden text-ellipsis whitespace-nowrap max-w-[110px]">
+                                <div className="text-[10px] font-black uppercase tracking-tight overflow-hidden text-ellipsis whitespace-nowrap max-w-[105px]">
                                     {w.circuit_label || w.name}
                                 </div>
                                 <div className="text-[9px] font-mono text-text-muted opacity-60">
@@ -348,7 +448,7 @@ const SiteNode = ({ data }: any) => {
 
             {/* Site Rectangle (Physical Box) */}
             <div className={cn(
-                "p-12 rounded-[52px] border-2 transition-all shadow-2xl backdrop-blur-3xl bg-card/40 flex flex-col relative",
+                "px-8 py-7 rounded-[36px] border-2 transition-all shadow-2xl backdrop-blur-3xl bg-card/40 flex flex-col relative w-full",
                 isHub ? "border-blue-500/30 shadow-blue-500/5 shadow-[0_0_50px_-12px_rgba(59,130,246,0.15)]" : "border-border shadow-black/40 shadow-[0_40px_100px_-20px_rgba(0,0,0,0.5)]"
             )}>
 
@@ -367,18 +467,18 @@ const SiteNode = ({ data }: any) => {
                                     if (globalIdx === -1) return null;
 
                                     const circuitCount = wanCircuits.length;
-                                    const blockX = (globalIdx - (circuitCount - 1) / 2) * 154; // 130 (min-w) + 24 (gap-6)
+                                    const blockX = (globalIdx - (circuitCount - 1) / 2) * 136; // 120 (min-w) + 16 (gap-4)
                                     const portX = devX + (wIdx - (dev.wan_interfaces.length - 1) / 2) * 36; // 20 (w-5) + 16 (gap-4)
 
                                     return (
                                         <path
                                             key={wan.name}
                                             d={isHub
-                                                ? `M ${portX} 444 L ${blockX} 548` // Hub: Bottom Port (444) down to Circuit (548)
-                                                : `M ${portX} 48 L ${blockX} -24`  // Spoke: Top Port (48) up to Circuit (-24)
+                                                ? `M ${portX} 350 L ${blockX} 420` // Hub: Bottom Port down to Circuit Block
+                                                : `M ${portX} 18 L ${blockX} -20`  // Spoke: Top Port up to Circuit Block
                                             }
                                             stroke={isMpls ? "rgba(168, 85, 247, 0.4)" : "rgba(59, 130, 246, 0.4)"}
-                                            strokeWidth="3"
+                                            strokeWidth="2.5"
                                             fill="none"
                                             strokeDasharray="6 4"
                                             className="animate-in fade-in duration-1000"
@@ -388,22 +488,28 @@ const SiteNode = ({ data }: any) => {
 
                                 {/* LAN Wiring */}
                                 {isHub ? (
-                                    // Hub: Shared LAN Block (bottom Y=192) down to LAN Port (Y=224)
+                                    // Hub: Shared LAN Block (top Y=95) down to LAN Port 3 (Y=110)
                                     <path
-                                        d={`M 0 192 L ${devX} 224`}
-                                        stroke="rgba(34, 197, 94, 0.5)"
-                                        strokeWidth="3"
+                                        d={deviceCount === 1
+                                            ? `M 0 95 L 0 110`
+                                            : `M 0 95 L 0 102 M 0 102 L ${devX} 102 L ${devX} 110`
+                                        }
+                                        stroke="rgba(34, 197, 94, 0.45)"
+                                        strokeWidth="2"
                                         fill="none"
                                         strokeLinejoin="round"
                                         strokeLinecap="round"
                                         strokeDasharray="4 4"
                                     />
                                 ) : (
-                                    // Spoke: LAN Port (Y=268) down to Shared LAN Box (Y=300)
+                                    // Spoke: LAN Port 3 (Y=248) down to Shared LAN Box (Y=274)
                                     <path
-                                        d={`M ${devX} 268 L 0 300`}
-                                        stroke="rgba(34, 197, 94, 0.5)"
-                                        strokeWidth="3"
+                                        d={deviceCount === 1
+                                            ? `M 0 248 L 0 274`
+                                            : `M ${devX} 248 L ${devX} 262 L 0 262 M 0 262 L 0 274`
+                                        }
+                                        stroke="rgba(34, 197, 94, 0.45)"
+                                        strokeWidth="2"
                                         fill="none"
                                         strokeLinejoin="round"
                                         strokeLinecap="round"
@@ -417,17 +523,13 @@ const SiteNode = ({ data }: any) => {
 
                 {/* Hub-Specific: Shared LAN Block at the Top */}
                 {isHub && (
-                    <div className="flex flex-col items-center justify-end mb-8 relative z-10 h-[144px]">
-                        <div className="absolute inset-x-0 -top-8 flex justify-center w-full z-0 overflow-visible">
-                            <div className="text-[140px] font-black text-white/[0.015] select-none pointer-events-none uppercase tracking-[0.2em] whitespace-nowrap px-10">{data.name}</div>
+                    <div className="flex flex-col items-center justify-end mb-6 relative z-10">
+                        <div className="absolute inset-x-0 -top-6 flex justify-center w-full z-0 overflow-hidden pointer-events-none">
+                            <div className="text-[72px] font-black text-white/[0.02] select-none uppercase tracking-[0.2em] whitespace-nowrap px-6">{data.name}</div>
                         </div>
-                        <div className="text-[24px] font-black text-text-primary uppercase tracking-[0.5em] opacity-80 mb-4 drop-shadow-2xl relative z-10">{data.name}</div>
-                        <div className="flex gap-4">
-                            {uniqueSubeNets.map((subnet, sIdx) => (
-                                <div key={sIdx} className="bg-green-500/10 px-6 py-3 rounded-[20px] border-2 border-green-500/40 text-[14px] font-black text-green-400 shadow-2xl shadow-green-500/20 relative z-10 group transition-all hover:scale-105 hover:bg-green-500/20 hover:border-green-500 h-[44px] flex items-center cursor-default">
-                                    {subnet}
-                                </div>
-                            ))}
+                        <div className="text-[20px] font-black text-text-primary uppercase tracking-[0.4em] opacity-85 mb-3 drop-shadow-lg relative z-10">{data.name}</div>
+                        <div className="flex gap-2.5 items-center justify-center flex-wrap max-w-full">
+                            {uniqueSubeNets.map((subnet, sIdx) => renderSubnetPill(subnet, sIdx))}
                         </div>
                     </div>
                 )}
@@ -439,14 +541,14 @@ const SiteNode = ({ data }: any) => {
 
                             {/* Router Block (Fixed Height h-[220px]) */}
                             <div className={cn(
-                                "w-52 h-[220px] rounded-[44px] border-2 flex flex-col items-center justify-center gap-5 transition-all group-hover:scale-105 group-hover:border-blue-500/50 group-hover:shadow-[0_20px_50px_-10px_rgba(59,130,246,0.3)] relative z-10",
+                                "w-52 h-[220px] rounded-[40px] border-2 flex flex-col items-center justify-center gap-4 transition-all group-hover:scale-105 group-hover:border-blue-500/50 group-hover:shadow-[0_20px_50px_-10px_rgba(59,130,246,0.3)] relative z-10",
                                 isHub ? "bg-blue-600/10 border-blue-500/30 shadow-blue-500/10" : "bg-card-secondary/40 border-border/80"
                             )}>
 
                                 {/* HUB: LAN Port Top */}
                                 {isHub && (
                                     <div className="absolute -top-[10px] w-full flex justify-center z-20">
-                                        <Port num="3" label={shortIp(dev.lan_interfaces?.[0]?.ip)} status={getStatus(dev.lan_interfaces?.[0])} />
+                                        <Port num="3" label={shortIp(dev.lan_interfaces?.[0]?.ip)} status={getStatus(dev.lan_interfaces?.[0])} labelPosition="bottom" />
                                     </div>
                                 )}
 
@@ -454,30 +556,30 @@ const SiteNode = ({ data }: any) => {
                                 {!isHub && (
                                     <div className="absolute -top-[10px] w-full flex justify-center gap-4 z-20">
                                         {dev.wan_interfaces?.map((wan: any, wIdx: number) => (
-                                            <Port key={wIdx} num={(wIdx + 1).toString()} status={getStatus(wan)} />
+                                            <Port key={wIdx} num={(wIdx + 1).toString()} status={getStatus(wan)} labelPosition="bottom" />
                                         ))}
                                     </div>
                                 )}
 
                                 {/* Icon */}
                                 <div className={cn(
-                                    "p-5 rounded-3xl shadow-2xl transition-transform group-hover:rotate-12",
+                                    "p-4 rounded-2xl shadow-xl transition-transform group-hover:rotate-12",
                                     isHub ? "bg-blue-500 text-white shadow-blue-500/40" : "bg-card text-blue-500 shadow-black/20"
-                                )}>
-                                    {isHub ? <Server size={32} /> : <Home size={32} />}
+                                    )}>
+                                    {isHub ? <Server size={28} /> : <Home size={28} />}
                                 </div>
 
                                 {/* Text */}
-                                <div className="text-center px-6">
-                                    <div className="text-[16px] font-black text-text-primary tracking-tight leading-none uppercase">{dev.device_name}</div>
-                                    <div className="text-[11px] text-text-muted font-bold opacity-40 mt-2 uppercase tracking-widest">{dev.model}</div>
+                                <div className="text-center px-4">
+                                    <div className="text-[15px] font-black text-text-primary tracking-tight leading-none uppercase">{dev.device_name}</div>
+                                    <div className="text-[10px] text-text-muted font-bold opacity-40 mt-1.5 uppercase tracking-widest">{dev.model}</div>
                                 </div>
 
                                 {/* HUB: WAN Ports Bottom */}
                                 {isHub && (
                                     <div className="absolute -bottom-[10px] w-full flex justify-center gap-4 z-20">
                                         {dev.wan_interfaces?.map((wan: any, wIdx: number) => (
-                                            <Port key={wIdx} num={(wIdx + 1).toString()} status={getStatus(wan)} />
+                                            <Port key={wIdx} num={(wIdx + 1).toString()} status={getStatus(wan)} labelPosition="top" />
                                         ))}
                                     </div>
                                 )}
@@ -485,7 +587,7 @@ const SiteNode = ({ data }: any) => {
                                 {/* SPOKE: LAN Port Bottom */}
                                 {!isHub && (
                                     <div className="absolute -bottom-[10px] w-full flex justify-center z-20">
-                                        <Port num="3" label={shortIp(dev.lan_interfaces?.[0]?.ip)} status={getStatus(dev.lan_interfaces?.[0])} />
+                                        <Port num="3" label={shortIp(dev.lan_interfaces?.[0]?.ip)} status={getStatus(dev.lan_interfaces?.[0])} labelPosition="top" />
                                     </div>
                                 )}
                             </div>
@@ -495,18 +597,14 @@ const SiteNode = ({ data }: any) => {
 
                 {/* Spoke-Specific: Shared LAN Block at the Bottom */}
                 {!isHub && (
-                    <div className="flex flex-col items-center relative z-10 w-full mb-4">
-                        <div className="flex gap-4">
-                            {uniqueSubeNets.map((subnet, sIdx) => (
-                                <div key={sIdx} className="bg-green-500/10 px-6 py-3 rounded-[20px] border-2 border-green-500/40 text-[14px] font-black text-green-400 shadow-2xl shadow-green-500/20 relative z-10 group transition-all hover:scale-105 hover:bg-green-500/20 hover:border-green-500 h-[44px] flex items-center cursor-default">
-                                    {subnet}
-                                </div>
-                            ))}
+                    <div className="flex flex-col items-center relative z-20 w-full mb-2">
+                        <div className="flex gap-2.5 items-center justify-center flex-wrap max-w-full">
+                            {uniqueSubeNets.map((subnet, sIdx) => renderSubnetPill(subnet, sIdx))}
                         </div>
-                        <div className="absolute inset-x-0 -bottom-8 flex justify-center w-full z-0 overflow-visible">
-                            <div className="text-[120px] font-black text-white/[0.015] select-none pointer-events-none uppercase tracking-[0.2em] whitespace-nowrap px-10">{data.name}</div>
+                        <div className="absolute inset-x-0 -bottom-6 flex justify-center w-full z-0 overflow-hidden pointer-events-none">
+                            <div className="text-[72px] font-black text-white/[0.02] select-none uppercase tracking-[0.2em] whitespace-nowrap px-6">{data.name}</div>
                         </div>
-                        <div className="text-[28px] font-black text-text-primary uppercase tracking-[0.5em] opacity-80 mt-6 drop-shadow-2xl relative z-10">{data.name}</div>
+                        <div className="text-[20px] font-black text-text-primary uppercase tracking-[0.4em] opacity-85 mt-4 drop-shadow-lg relative z-10">{data.name}</div>
                     </div>
                 )}
             </div>
@@ -818,6 +916,7 @@ export default function Topology(props: TopologyProps) {
 
 function TopologyContent({ token }: TopologyProps) {
     const [topology, setTopology] = useState<any>(null);
+    const { gFetch, activePeerId } = usePeerContext();
     const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
@@ -843,6 +942,9 @@ function TopologyContent({ token }: TopologyProps) {
     const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
     const { fitView, getViewport, setViewport } = useReactFlow();
 
+    // Stigix Fleet Nodes State
+    const [fleetNodes, setFleetNodes] = useState<any[]>([]);
+
     // View & Underlay state
     const [topologyViewMode, setTopologyViewMode] = useState<'overlay' | 'underlay'>('overlay');
     const [underlayData, setUnderlayData] = useState<UnderlayPayload | null>(null);
@@ -858,6 +960,7 @@ function TopologyContent({ token }: TopologyProps) {
 
     // VyOS Direct Action State (Interactive Topology Controls)
     const [isVyosExecuting, setIsVyosExecuting] = useState(false);
+    const [vyosExecutingAction, setVyosExecutingAction] = useState<string | null>(null);
     const [vyosActionResult, setVyosActionResult] = useState<{ success: boolean; message: string; durationMs?: number } | null>(null);
     const [showNetemModal, setShowNetemModal] = useState(false);
     const [netemLatency, setNetemLatency] = useState(100);
@@ -926,7 +1029,7 @@ function TopologyContent({ token }: TopologyProps) {
     useEffect(() => {
         if (!token) return;
         const interval = setInterval(() => {
-            fetch('/api/topology/underlay-debug', {
+            gFetch('/api/topology/underlay-debug', {
                 headers: { 'Authorization': `Bearer ${token}` }
             })
             .then(r => r.json())
@@ -938,7 +1041,7 @@ function TopologyContent({ token }: TopologyProps) {
             .catch(() => {});
         }, 6000);
         return () => clearInterval(interval);
-    }, [token]);
+    }, [token, activePeerId]);
 
     const handleVyosDirectAction = async (
         routerName: string,
@@ -948,9 +1051,10 @@ function TopologyContent({ token }: TopologyProps) {
         siteName?: string
     ) => {
         setIsVyosExecuting(true);
+        setVyosExecutingAction(command);
         setVyosActionResult(null);
         try {
-            const res = await fetch('/api/vyos/direct-action', {
+            const res = await gFetch('/api/vyos/direct-action', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -985,7 +1089,7 @@ function TopologyContent({ token }: TopologyProps) {
             }
 
             // Immediately poll /api/topology/underlay-debug to refresh underlay routers and interface statuses
-            fetch('/api/topology/underlay-debug', {
+            gFetch('/api/topology/underlay-debug', {
                 headers: { 'Authorization': `Bearer ${token}` }
             })
             .then(r => r.json())
@@ -1017,6 +1121,7 @@ function TopologyContent({ token }: TopologyProps) {
             });
         } finally {
             setIsVyosExecuting(false);
+            setVyosExecutingAction(null);
         }
     };
 
@@ -1027,6 +1132,10 @@ function TopologyContent({ token }: TopologyProps) {
         const isShut = getVyosInterfaceStatus(routerName, iface) === 'down';
         const activeQos = getVyosInterfaceQos(routerName, iface);
         const hasActiveQos = !!activeQos;
+
+        const isShutting = isVyosExecuting && (vyosExecutingAction === 'shut' || vyosExecutingAction === 'no-shut');
+        const isInjecting = isVyosExecuting && vyosExecutingAction === 'set-qos';
+        const isClearing = isVyosExecuting && vyosExecutingAction === 'clear-qos';
 
         return (
             <div className="bg-card-secondary/80 border border-amber-500/30 rounded-2xl p-3.5 space-y-3 shadow-inner">
@@ -1052,6 +1161,28 @@ function TopologyContent({ token }: TopologyProps) {
                     </div>
                 </div>
 
+                {/* Real-time Progress Bar while VyOS SSH script executes */}
+                {isVyosExecuting && (
+                    <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl p-2.5 space-y-1.5 animate-fadeIn">
+                        <div className="flex items-center justify-between text-[11px] font-mono">
+                            <span className="flex items-center gap-1.5 font-bold text-amber-700 dark:text-amber-300">
+                                <Loader2 size={13} className="animate-spin text-amber-500" />
+                                {vyosExecutingAction === 'shut'
+                                    ? `Disabling ${iface} via VyOS SSH...`
+                                    : vyosExecutingAction === 'no-shut'
+                                    ? `Re-enabling ${iface} via VyOS SSH...`
+                                    : vyosExecutingAction === 'clear-qos'
+                                    ? `Clearing QoS on ${iface} via VyOS SSH...`
+                                    : `Applying Netem QoS to ${iface} via VyOS SSH...`}
+                            </span>
+                            <span className="text-[9.5px] text-amber-600 dark:text-amber-400 font-mono font-bold">~3-4s</span>
+                        </div>
+                        <div className="h-1.5 w-full bg-amber-500/20 rounded-full overflow-hidden relative">
+                            <div className="h-full bg-amber-500 rounded-full animate-laser w-2/3" />
+                        </div>
+                    </div>
+                )}
+
                 {/* 3 Action Buttons */}
                 <div className="grid grid-cols-3 gap-2">
                     {/* 1. Shut / No-Shut Toggle */}
@@ -1066,15 +1197,27 @@ function TopologyContent({ token }: TopologyProps) {
                         )}
                         disabled={isVyosExecuting}
                         className={cn(
-                            "h-[54px] rounded-xl font-bold flex flex-col items-center justify-center gap-1 transition-all border shadow-sm cursor-pointer",
+                            "h-[54px] rounded-xl font-bold flex flex-col items-center justify-center gap-1 transition-all border shadow-sm cursor-pointer disabled:opacity-60 disabled:cursor-wait relative overflow-hidden",
                             isShut
                                 ? "bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-600 dark:text-emerald-400 border-emerald-500/30 ring-1 ring-emerald-500/40"
-                                : "bg-rose-500/15 hover:bg-rose-500/25 text-rose-600 dark:text-rose-400 border-rose-500/30"
+                                : "bg-rose-500/15 hover:bg-rose-500/25 text-rose-600 dark:text-rose-400 border-rose-500/30",
+                            isShutting && "ring-2 ring-amber-500/60 bg-amber-500/15"
                         )}
                         title={isShut ? "Restore link (no-shut)" : "Simulate link cut (shut interface)"}
                     >
-                        <Power size={14} className={isVyosExecuting ? 'animate-pulse' : ''} />
-                        <span className="text-[10px] tracking-wide">{isShut ? 'NO SHUT' : 'SHUT PORT'}</span>
+                        {isShutting ? (
+                            <Loader2 size={15} className="animate-spin text-amber-500" />
+                        ) : (
+                            <Power size={14} />
+                        )}
+                        <span className="text-[10px] tracking-wide font-black">
+                            {isShutting ? (isShut ? 'RESTORING...' : 'SHUTTING...') : (isShut ? 'NO SHUT' : 'SHUT PORT')}
+                        </span>
+                        {isShutting && (
+                            <div className="absolute bottom-0 left-0 right-0 h-1 bg-amber-500/20 overflow-hidden">
+                                <div className="h-full bg-amber-500 animate-laser w-full" />
+                            </div>
+                        )}
                     </button>
 
                     {/* 2. Inject Netem */}
@@ -1092,15 +1235,27 @@ function TopologyContent({ token }: TopologyProps) {
                         }}
                         disabled={isVyosExecuting}
                         className={cn(
-                            "h-[54px] rounded-xl font-bold border flex flex-col items-center justify-center gap-1 transition-all shadow-sm cursor-pointer",
+                            "h-[54px] rounded-xl font-bold border flex flex-col items-center justify-center gap-1 transition-all shadow-sm cursor-pointer disabled:opacity-60 disabled:cursor-wait relative overflow-hidden",
                             hasActiveQos
                                 ? "bg-amber-500/25 text-amber-300 border-amber-500/60 ring-1 ring-amber-500/40"
-                                : "bg-amber-500/15 hover:bg-amber-500/25 text-amber-600 dark:text-amber-400 border-amber-500/30"
+                                : "bg-amber-500/15 hover:bg-amber-500/25 text-amber-600 dark:text-amber-400 border-amber-500/30",
+                            isInjecting && "ring-2 ring-amber-500/60 bg-amber-500/15"
                         )}
                         title="Inject latency, jitter, or packet loss via netem"
                     >
-                        <Sliders size={14} />
-                        <span className="text-[10px] tracking-wide">INJECT QOS</span>
+                        {isInjecting ? (
+                            <Loader2 size={15} className="animate-spin text-amber-500" />
+                        ) : (
+                            <Sliders size={14} />
+                        )}
+                        <span className="text-[10px] tracking-wide font-black">
+                            {isInjecting ? 'INJECTING...' : 'INJECT QOS'}
+                        </span>
+                        {isInjecting && (
+                            <div className="absolute bottom-0 left-0 right-0 h-1 bg-amber-500/20 overflow-hidden">
+                                <div className="h-full bg-amber-500 animate-laser w-full" />
+                            </div>
+                        )}
                     </button>
 
                     {/* 3. Clear QoS */}
@@ -1115,15 +1270,27 @@ function TopologyContent({ token }: TopologyProps) {
                         )}
                         disabled={isVyosExecuting || !hasActiveQos}
                         className={cn(
-                            "h-[54px] rounded-xl font-bold flex flex-col items-center justify-center gap-1 transition-all shadow-sm border",
+                            "h-[54px] rounded-xl font-bold flex flex-col items-center justify-center gap-1 transition-all shadow-sm border relative overflow-hidden",
                             hasActiveQos
-                                ? "bg-rose-500/15 hover:bg-rose-500/25 text-rose-400 border-rose-500/40 cursor-pointer"
-                                : "bg-card/40 border-border/40 text-text-muted/40 cursor-not-allowed"
+                                ? "bg-rose-500/15 hover:bg-rose-500/25 text-rose-400 border-rose-500/40 cursor-pointer disabled:opacity-60 disabled:cursor-wait"
+                                : "bg-card/40 border-border/40 text-text-muted/40 cursor-not-allowed",
+                            isClearing && "ring-2 ring-amber-500/60 bg-amber-500/15"
                         )}
                         title="Remove netem latency/loss rules"
                     >
-                        <RotateCcw size={14} />
-                        <span className="text-[10px] tracking-wide">CLEAR QOS</span>
+                        {isClearing ? (
+                            <Loader2 size={15} className="animate-spin text-amber-500" />
+                        ) : (
+                            <RotateCcw size={14} />
+                        )}
+                        <span className="text-[10px] tracking-wide font-black">
+                            {isClearing ? 'CLEARING...' : 'CLEAR QOS'}
+                        </span>
+                        {isClearing && (
+                            <div className="absolute bottom-0 left-0 right-0 h-1 bg-amber-500/20 overflow-hidden">
+                                <div className="h-full bg-amber-500 animate-laser w-full" />
+                            </div>
+                        )}
                     </button>
                 </div>
 
@@ -1215,7 +1382,29 @@ function TopologyContent({ token }: TopologyProps) {
         const getSiteWidth = (site: any) => {
             const numDevices = site.devices?.length || 1;
             const devicesWidth = numDevices * 208 + Math.max(0, numDevices - 1) * 64;
-            return Math.max(400, devicesWidth + 96);
+
+            // Calculate total WAN circuits width across all devices in this site
+            const numCircuits = (site.devices || []).reduce(
+                (acc: number, d: any) => acc + (d.wan_interfaces?.length || 0),
+                0
+            ) || 1;
+            const circuitsWidth = numCircuits * 120 + Math.max(0, numCircuits - 1) * 16;
+
+            // Calculate Subnets required width (pills with integrated Stigix badge)
+            const allSubnets = new Set<string>();
+            (site.devices || []).forEach((d: any) => {
+                d.lan_interfaces?.forEach((l: any) => {
+                    if (l.ip) {
+                        const subnet = l.ip.includes('/') ? l.ip : l.ip.replace(/\.\d+$/, '.0/24');
+                        allSubnets.add(subnet);
+                    }
+                });
+            });
+            const subnetsCount = Math.max(1, allSubnets.size);
+            const subnetsWidth = subnetsCount * 145 + Math.max(0, subnetsCount - 1) * 12;
+
+            const contentWidth = Math.max(devicesWidth, circuitsWidth, subnetsWidth);
+            return Math.max(340, contentWidth + 96);
         };
 
         const sitePositions = new Map<string, number>();
@@ -1237,7 +1426,7 @@ function TopologyContent({ token }: TopologyProps) {
                     type: 'site',
                     position: { x, y: yPos },
                     origin: [0.5, 0.5],
-                    data: { ...site, name: site.site_name, role },
+                    data: { ...site, name: site.site_name, role, fleetNodes },
                 });
             });
         };
@@ -1519,23 +1708,37 @@ function TopologyContent({ token }: TopologyProps) {
 
         setNodes(newNodes);
         setEdges(newEdges);
-    }, [logicalViewSiteId, setNodes, setEdges, visibleSiteIds, isHubLike, siteHubStatus, topologyViewMode, underlayData]);
+    }, [logicalViewSiteId, setNodes, setEdges, visibleSiteIds, isHubLike, siteHubStatus, topologyViewMode, underlayData, fleetNodes, pathFilter, bgAsHub, getVyosInterfaceStatus]);
 
     const fetchTopology = useCallback(async () => {
         setLoading(true);
         setError(null);
         try {
-            const res = await fetch('/api/topology', {
+            const res = await gFetch('/api/topology', {
                 headers: { 'Authorization': `Bearer ${token}` }
             });
             const data = await res.json();
             if (data.error) throw new Error(data.error);
             setTopology(data);
             setLastRefresh(new Date());
+
+            // Fetch fleet nodes for Stigix mesh overlay
+            gFetch('/api/fleet/matrix', {
+                headers: { 'Authorization': `Bearer ${token}` }
+            })
+                .then(r => r.json())
+                .then(d => {
+                    const nodesList = d?.nodes || d?.data?.nodes;
+                    if (Array.isArray(nodesList)) {
+                        setFleetNodes(nodesList);
+                    }
+                })
+                .catch(() => {});
+
             if (data.underlay) {
                 setUnderlayData(data.underlay);
             } else {
-                fetch('/api/topology/underlay-debug', {
+                gFetch('/api/topology/underlay-debug', {
                     headers: { 'Authorization': `Bearer ${token}` }
                 })
                 .then(r => r.json())
@@ -1548,7 +1751,7 @@ function TopologyContent({ token }: TopologyProps) {
         } finally {
             setLoading(false);
         }
-    }, [token, processTopology]);
+    }, [token, processTopology, gFetch]);
 
     useEffect(() => {
         if (!topology) {
@@ -1556,7 +1759,7 @@ function TopologyContent({ token }: TopologyProps) {
         } else {
             processTopology(topology);
         }
-    }, [topology, logicalViewSiteId, fetchTopology, processTopology, visibleSiteIds, topologyViewMode, underlayData]);
+    }, [topology, logicalViewSiteId, fetchTopology, processTopology, visibleSiteIds, topologyViewMode, underlayData, fleetNodes]);
 
     const onNodeClick = useCallback((_: any, node: Node) => {
         setSelectedObject({ type: 'node', ...node.data });
@@ -1581,7 +1784,7 @@ function TopologyContent({ token }: TopologyProps) {
         setLoading(true);
         setError(null);
         try {
-            const res = await fetch('/api/topology?force=true', {
+            const res = await gFetch('/api/topology?force=true', {
                 headers: { 'Authorization': `Bearer ${token}` }
             });
             const data = await res.json();
@@ -1591,7 +1794,7 @@ function TopologyContent({ token }: TopologyProps) {
             if (data.underlay) {
                 setUnderlayData(data.underlay);
             } else {
-                fetch('/api/topology/underlay-debug', {
+                gFetch('/api/topology/underlay-debug', {
                     headers: { 'Authorization': `Bearer ${token}` }
                 })
                 .then(r => r.json())
@@ -1711,7 +1914,7 @@ function TopologyContent({ token }: TopologyProps) {
     }, [filteredNodes.length, logicalViewSiteId, fitView]);
 
     return (
-        <div className="h-[calc(100vh-140px)] w-full relative bg-black/20 rounded-3xl border border-border overflow-hidden animate-in fade-in zoom-in-95 duration-500">
+        <div className="h-[calc(100vh-140px)] w-full relative dark:bg-black/20 bg-card-secondary/30 rounded-3xl border border-border overflow-hidden animate-in fade-in zoom-in-95 duration-500">
             {loading ? (
                 <div className="absolute inset-0 z-50 flex flex-col items-center justify-center bg-background/80 backdrop-blur-md">
                     <div className="relative w-24 h-24 mb-6">
@@ -1890,9 +2093,9 @@ function TopologyContent({ token }: TopologyProps) {
                         onEdgeClick={onEdgeClick}
                         nodeTypes={nodeTypes}
                         edgeTypes={edgeTypes}
-                        className="bg-slate-950/40"
+                        className="dark:bg-slate-950/40 bg-card-secondary/20"
                     >
-                        <Background color="#1e293b" gap={20} size={1} />
+                        <Background color="#1e293b" gap={20} size={1} className="topology-bg" />
                         <Controls className="!bg-card !border-border !rounded-xl !shadow-xl" />
 
                         {/* Upper Toolbar */}
@@ -3197,12 +3400,29 @@ function TopologyContent({ token }: TopologyProps) {
                             </div>
                         </div>
 
+                        {/* Interactive Progress Indicator while applying */}
+                        {isVyosExecuting && (
+                            <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl p-3 space-y-1.5 animate-fadeIn">
+                                <div className="flex items-center justify-between text-xs font-mono">
+                                    <span className="flex items-center gap-2 font-bold text-amber-700 dark:text-amber-300">
+                                        <Loader2 size={14} className="animate-spin text-amber-500" />
+                                        Running VyOS tc/netem SSH script...
+                                    </span>
+                                    <span className="text-[10px] text-amber-600 dark:text-amber-400 font-bold">~3-4s</span>
+                                </div>
+                                <div className="h-1.5 w-full bg-amber-500/20 rounded-full overflow-hidden relative">
+                                    <div className="h-full bg-amber-500 rounded-full animate-laser w-2/3" />
+                                </div>
+                            </div>
+                        )}
+
                         {/* Modal Action Buttons */}
                         <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-border">
                             <button
                                 type="button"
+                                disabled={isVyosExecuting}
                                 onClick={() => setShowNetemModal(false)}
-                                className="px-4 py-2 bg-card-secondary hover:bg-card-hover text-text-muted hover:text-text-primary rounded-xl text-xs font-semibold transition-colors cursor-pointer"
+                                className="px-4 py-2 bg-card-secondary hover:bg-card-hover text-text-muted hover:text-text-primary rounded-xl text-xs font-semibold transition-colors cursor-pointer disabled:opacity-50"
                             >
                                 Cancel
                             </button>
@@ -3216,10 +3436,19 @@ function TopologyContent({ token }: TopologyProps) {
                                     netemTarget.siteName
                                 )}
                                 disabled={isVyosExecuting}
-                                className="px-4 py-2 bg-amber-500 hover:bg-amber-600 text-slate-950 font-black rounded-xl text-xs flex items-center gap-1.5 transition-all shadow-md shadow-amber-900/20 cursor-pointer"
+                                className="px-4 py-2 bg-amber-500 hover:bg-amber-600 disabled:opacity-60 text-slate-950 font-black rounded-xl text-xs flex items-center gap-2 transition-all shadow-md shadow-amber-900/20 cursor-pointer disabled:cursor-wait"
                             >
-                                <Zap size={14} className={isVyosExecuting ? 'animate-spin' : 'fill-slate-950'} />
-                                <span>{isVyosExecuting ? 'Applying...' : `Apply to ${netemTarget.interfaceName}`}</span>
+                                {isVyosExecuting ? (
+                                    <>
+                                        <Loader2 size={14} className="animate-spin text-slate-950" />
+                                        <span>Applying Impairment (~3s)...</span>
+                                    </>
+                                ) : (
+                                    <>
+                                        <Zap size={14} className="fill-slate-950" />
+                                        <span>Apply to {netemTarget.interfaceName}</span>
+                                    </>
+                                )}
                             </button>
                         </div>
                     </div>

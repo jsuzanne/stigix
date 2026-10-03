@@ -1,9 +1,9 @@
-> **Last Updated:** 2026-09-25 | **Created:** 2026-01-25 (v1.0.0)
+> **Last Updated:** 2026-10-03 | **Created:** 2026-01-25 (v1.0.0)
 
 # 🕸️ Stigix — Advanced Networking & Security Simulation Environment
 
-[![Version](https://img.shields.io/badge/Version-2.0.66-blue.svg)](https://github.com/jsuzanne/stigix/releases)
-[![Last Updated](https://img.shields.io/badge/Updated-2026--09--25-brightgreen.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/Version-2.0.144-blue.svg)](https://github.com/jsuzanne/stigix/releases)
+[![Last Updated](https://img.shields.io/badge/Updated-2026--10--03-brightgreen.svg)](CHANGELOG.md)
 [![Docker Pulls](https://img.shields.io/docker/pulls/jlsuzanne/stigix)](https://hub.docker.com/r/jlsuzanne/stigix)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
@@ -77,16 +77,19 @@ This project is my way to turn all that lab and demo experience into an open-sou
 - **Prisma SD-WAN Integration** - Automatic discovery of sites and LAN interfaces via API for "Zero-Config" connectivity probes and path validation. [Read more](docs/PRISMA-SDWAN_INTEGRATION.md)
 - **Convergence Lab (Performance)** - High-precision UDP failover monitoring (up to 1000 PPS) to measure SD-WAN tunnel transition times. [Read more](docs/CONVERGENCE_LAB.md)
 - **Smart Networking** - Auto-detection of default gateways and interfaces (enp2s0, eth0) for a "Zero-Config" experience on physical Linux boxes. [Read more](docs/SMART_NETWORKING.md)
-- **VyOS Control** - Orchestrate network events and perturbations (latency, loss, rate-limiting, ip blocking) on VyOS routers via Vyos API. [Read more](docs/VYOS_CONTROL.md)
+- **VyOS Control** - Orchestrate network events and perturbations (latency, loss, rate-limiting, ip blocking) on VyOS routers via Vyos API. The VyOS Control page refreshes automatically when switching between remote peers. [Read more](docs/VYOS_CONTROL.md)
 - **Autodiscovery & Registry** - Automatic peer-to-peer discovery using Cloudflare Workers. "Zero-Config" multi-node setup with stateless authentication. [Read more](docs/AUTODISCOVERY_GUIDE.md) 📡✨
-- **Central Global Provisioning** - Publish 9 core configuration bundles (`Applications Catalogue`, `Connectivity Probes`, `Convergence SLA`, `Prisma SASE`, `Security Policy`, `Voice Settings`, `IoT Simulation`, `Custom TCP Apps`, and `Cloud Probes Credentials`) centrally from the Leader to connected branch peers with pull-mode distribution (`30s` cycle), revisioning, field-level local site overrides, auto-save broadcast, and zero-touch hot reload. [Read more](docs/GLOBAL_PROVISIONING_AND_PEER_ONBOARDING.md) 🌐
+- **Central Global Provisioning** - Publish 10 core configuration bundles (`Applications Catalogue`, `Connectivity Probes`, `Convergence SLA`, `Prisma SASE`, `CA Certificates & Enterprise PKI`, `Security Policy`, `Voice Settings`, `IoT Simulation`, `Custom TCP Apps`, and `Cloud Probes Credentials`) centrally from the Leader to connected branch peers with pull-mode distribution (`30s` cycle), revisioning, field-level local site overrides, auto-save broadcast, and zero-touch hot reload. [Read more](docs/GLOBAL_PROVISIONING_AND_PEER_ONBOARDING.md) 🌐
 - **Direct Controller Peer Onboarding** - Single-command onboarding (`curl -sSL http://<LEADER_IP>:8080/onboard.sh | bash`) to instantly join remote Linux nodes to a Stigix Leader with zero-touch configuration. [Read more](docs/GLOBAL_PROVISIONING_AND_PEER_ONBOARDING.md) 🚀
 - **Smart Identity** - Automatic instance identification using system hostname. Simplifies deployment by reducing environment variables. 🆔
+- **Fleet Remote View & WebSocket Reverse Gateway (M5 & M6)** ⚡ - Centralized observability and remote node management directly from the Leader dashboard. Transparently proxies all read and write API calls over persistent multiplexed WebSocket reverse tunnels (`/fleet-tunnel`) with automatic fallback to direct HTTP. Traverses firewalls, NAT, and CGNAT with zero inbound ports required on spokes. Supports Leader-initiated outbound reverse dialing to external Cloud / Manual Peers (Hetzner, AWS, Home LAN) without exposing the private Leader to the public Internet. [Read more](docs/REMOTE_VIEW_USER_GUIDE.md) 🌐
+- **Peer Context Switcher** - Dropdown in the top navbar allows switching the entire dashboard to any registered remote peer in one click. Active peer highlighted in amber with instant context awareness and non-blocking background telemetry sync.
 
 ### 🛡️ Security
-- **URL Filtering Tests** - Validate 66 different URL categories (malware, phishing, gambling, adult content, etc.)
+- **Prisma Access SSL Decryption & 1-Click Forward Trust CA Import** 🔐 — Native trust store management for Palo Alto Prisma Access SSL forward proxy decryption. 1-Click extraction of `Forward-Trust-CA` (RSA/ECDSA) and `Root CA` directly from the Prisma SASE API (`/sse/config/v1/certificates`) into `config/certs/ca-bundle.pem`. Automatically injected across Node.js (`NODE_EXTRA_CA_CERTS`), Python engines (`REQUESTS_CA_BUNDLE`, `SSL_CERT_FILE`), and subprocesses (`CURL_CA_BUNDLE`), enabling seamless HTTPS threat testing (EICAR, URL Filtering, DLP) and SaaS probes through SSL decryption without TLS errors. Automatically propagated from Leader to spoke nodes via Mesh Provisioning (`ca-certificates` bundle). [Read more](docs/SECURITY_TESTING.md)
+- **URL Filtering Tests & HTTP/HTTPS Protocol Toggle** - Validate 70 different URL categories (malware, phishing, gambling, adult content, C2, etc.) with instant `[ 🌐 HTTP | 🔒 HTTPS ]` toggle to test plaintext inspection vs. SSL Decryption policy enforcement. [Read more](docs/SECURITY_TESTING.md)
 - **DNS Security Tests** - Test DNS security policies with 24 domains (malware, phishing, DGA, etc.)
-- **Threat Prevention** - EICAR file download testing for IPS validation
+- **Threat Prevention** - EICAR file download testing for IPS/Threat Prevention validation. The Custom TCP Apps **EICAR Response** server mode periodically injects the EICAR test string into live TCP sessions. The client runtime detects whether the EICAR payload was actually received (SASE failed to block it) and surfaces a **🛡️ EICAR not blocked × N** warning badge in the Outgoing Sessions dashboard — invisible when the SASE is working correctly.
 - **C2 Attack Scenarios** - 7 real-traffic attack simulations (SQL Injection, DNS C2, Greyware DNS, Compromised DNS, Sliver C2, EICAR over HTTPS, DNS Tunneling) with Enforced / Bypass / Inconclusive verdicts. [Read more](docs/SECURITY_TESTING.md)
 - **AI Security Tests (AISA)** - 5 Palo Alto AI Security simulation scenarios targeting live AI apps (ChatGPT, Grok, Gemini, Perplexity): DLP, Prompt Injection, CVE-2014-9222, EICAR Upload, and AI Volume Traffic (24 apps). [Read more](docs/SECURITY_TESTING.md)
 - **Security Score Dashboard** - Per-module security scoring (URL, DNS, Threat, C2) with trend charts, baseline pinning, gap analysis, and Latest Changes diff view. 📊
@@ -132,6 +135,12 @@ This project is my way to turn all that lab and demo experience into an open-sou
 ## 🆕 What's New
 
 The project is evolving rapidly with major features, engines, and UX refinements in every release.
+
+### 🔐 Prisma Access SSL Decryption & URL Filtering HTTPS Toggle *(v2.0.143)*
+- **1-Click Forward Trust CA Auto-Import** 🔐 — Direct extraction of `Forward-Trust-CA` (RSA/ECDSA) and custom Root CAs from Prisma SASE API (`/sse/config/v1/certificates`) into `config/certs/ca-bundle.pem`.
+- **Runtime Environment Injection** ⚡ — Zero-touch propagation into Node.js (`NODE_EXTRA_CA_CERTS`), Python engines (`REQUESTS_CA_BUNDLE`, `SSL_CERT_FILE`), and subprocesses (`CURL_CA_BUNDLE`).
+- **Mesh CA Sync Bundle** 🌐 — Automatic synchronization of CA certificates from Leader to all connected branch peers (DC1, BR1, BR2, BR5, BR8) via Central Global Provisioning (`ca-certificates` bundle).
+- **URL Filtering HTTP / HTTPS Protocol Switcher** 🔄 — Instant toggle in the URL Filtering header dynamically swapping test targets between `http://` (port 80) and `https://` (port 443) for live SSL Decryption policy validation.
 
 ### 📦 Custom TCP Applications Export/Import Lifecycle & Resilience *(v2.0.66)*
 - **Full Bundle & Single-Profile JSON Export/Import** 🔄 — Export individual profiles or entire multi-application meshes directly from the UI header and Settings tab.
@@ -891,6 +900,7 @@ Comprehensive guides organized by your journey with the Stigix.
 - **[Digital Experience Testing](docs/DIGITAL_EXPERIENCE_TESTING.md)** - System health monitoring and synthetic probes
 
 ### 🔬 Advanced Features
+- **[Private Deployment Topologies & Reverse Tunnels](docs/PRIVATE_DEPLOYMENT_TOPOLOGIES.md)** - Architectural guide for LAN/MPLS, NAT Spokes, and Zero-Inbound Leader + Multi-Cloud Peers (Hetzner, AWS) via WebSocket reverse dialing.
 - **[Custom TCP Applications Guide](docs/CUSTOM_TCP_APPS.md)** - East-West TCP workload simulation, wire protocol, and p50/p95 latency
 - **[Custom TCP User Guide & Recipes](docs/CUSTOM_TCP_APPS_USER_GUIDE.md)** - Step-by-step creation wizard, chaos injection, 7 real-world recipes
 - **[Custom TCP Network Impairments](docs/CUSTOM_TCP_NETWORK_IMPAIRMENTS.md)** - SD-WAN VyOS netem impairments, packet loss, and L7 failover validation

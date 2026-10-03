@@ -48,6 +48,11 @@ roadmap/
 .DS_Store
 */.DS_Store
 **/.DS_Store
+
+# Tech Support Diagnostics Bundles
+*.tar.gz
+Tech Support Sample/
+techsupport/
 Thumbs.db
 
 # Vim swap files

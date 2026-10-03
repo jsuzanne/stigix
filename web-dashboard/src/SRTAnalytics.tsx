@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { usePeerContext } from './PeerContext';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, AreaChart, Area } from 'recharts';
 import { Gauge, Activity, Server, LayoutDashboard, Settings, Play, StopCircle, RefreshCw, AlertCircle } from 'lucide-react';
 import { clsx } from 'clsx';
@@ -19,9 +20,11 @@ export default function SRTAnalytics({ token }: SRTAnalyticsProps) {
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
+    const { gFetch } = usePeerContext();
+
     const fetchSRTData = async () => {
         try {
-            const res = await fetch('/api/srt/stats', {
+            const res = await gFetch('/api/srt/stats', {
                 headers: { 'Authorization': `Bearer ${token}` }
             });
             if (res.ok) {

@@ -1,4 +1,4 @@
-> **Last Updated:** 2026-09-02 | **Created:** 2026-05-28 (v1.4.0-patch.41)
+> **Last Updated:** 2026-09-26 | **Created:** 2026-05-28 (v1.4.0-patch.41)
 
 # Stigix CLI Reference Guide
 
@@ -256,12 +256,13 @@ Run iPerf3/XFR speedtests to evaluate path bandwidth, latency, and packet loss.
 
 ---
 
-### 11. System Administration (`system`)
+### 11. System Administration (`system`, `tech-support`)
 *   `system info` — Show backend CPU, memory, disk utilization, and uptime.
 *   `system interfaces` — List network interfaces on the Stigix host.
 *   `system logs` — Print the last 30 lines of general backend logs.
 *   `system restart` — Restart the Stigix containers.
 *   `system upgrade` — Pull the latest Docker images and upgrade Stigix.
+*   `tech-support [--output <path>]` — Generate and download a sanitized `.tar.gz` diagnostic bundle containing logs, configs (secrets scrubbed), system snapshots, and live telemetry.
 
 ---
 
@@ -400,3 +401,13 @@ docker exec -it stigix stigix-cli --exec "flows query --site BR8 --protocol tcp 
   ───────────────────  ─────────────────  ────────────────────  ─────  ───────────────  ─────────────────  ──────────────────────  ───────────────────
   2026-06-01 13:38:44  192.168.219.1:527  192.168.203.100:8082  TCP    409 / 455        5 / 5              BR8-INET1 to DC1-INET   1776351610017000045
 ```
+
+---
+
+## 📜 Revision History
+
+| Date | Stigix Version | Author / Trigger | Summary of Changes |
+|---|---|---|---|
+| 2026-09-26 | `v2.0.66` | Stigix Core Team | Added `tech-support` diagnostic bundle command documentation |
+| 2026-09-02 | `v1.4.0-patch.41` | Stigix Core Team | Initial Stigix CLI documentation |
+

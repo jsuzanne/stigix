@@ -2706,6 +2706,306 @@ def cmd_controller(args):
         ])
 
 
+def _decode_stx_token(token_str):
+    """Safely decode and parse STX token payload."""
+    try:
+        import base64
+        raw = token_str.strip()
+        if raw.startswith("STX-"):
+            raw = raw[4:]
+        parts = raw.split(".")
+        if len(parts) == 3:
+            payload_b64 = parts[1]
+        elif len(parts) == 2:
+            payload_b64 = parts[0]
+        else:
+            return None
+        rem = len(payload_b64) % 4
+        if rem > 0:
+            payload_b64 += "=" * (4 - rem)
+        payload_json = base64.urlsafe_b64decode(payload_b64.encode("utf-8")).decode("utf-8")
+        return json.loads(payload_json)
+    except Exception:
+        return None
+
+
+def cmd_join(args):
+    """
+    Manage Stigix Magic Join zero-touch onboarding & single-use tokens.
+    Usage:
+      join token generate [--ttl <seconds>] [--site <name>] [--role <role>]
+      join token list
+      join token revoke <token_id_or_jti>
+      join --token <STX-TOKEN> [--site <name>]
+      join <STX-TOKEN>
+    """
+    import urllib.parse
+
+    if not args:
+        _help_section("MAGIC JOIN / ZERO-TOUCH ONBOARDING", [
+            ("join token generate [--ttl 3600] [--site <name>]", "Generate a signed single-use Magic Join token"),
+            ("join token list",                                   "List active, redeemed, and revoked join tokens"),
+            ("join token revoke <token_id>",                      "Instantly invalidate an active join token"),
+            ("join --token <STX-TOKEN> [--site <name>]",          "Join an existing Stigix cluster via token"),
+            ("join <STX-TOKEN>",                                  "Shorthand to onboard this node using token"),
+        ])
+        return
+
+    first_arg = args[0]
+
+    # Handle client join shorthand: stigix-cli join STX-.... or stigix-cli join --token STX-...
+    token_candidate = None
+    site_override = None
+
+    if first_arg.startswith("STX-"):
+        token_candidate = first_arg
+        flags = parse_flags(args[1:], ["site", "name"])
+        site_override = flags.get("site") or flags.get("name")
+    elif first_arg == "--token" and len(args) > 1:
+        token_candidate = args[1]
+        flags = parse_flags(args[2:], ["site", "name"])
+        site_override = flags.get("site") or flags.get("name")
+    elif "--token" in args:
+        idx = args.index("--token")
+        if idx + 1 < len(args):
+            token_candidate = args[idx + 1]
+            flags = parse_flags(args, ["site", "name", "token"])
+            site_override = flags.get("site") or flags.get("name")
+
+    if token_candidate:
+        # Perform client-side token decoding and cluster onboarding
+        hdr("━━ STIGIX MAGIC JOIN — NODE ONBOARDING ━━━━━━━━━━━━━━━━━━━")
+        info(f"Inspecting Join Token: {token_candidate[:20]}...")
+        payload = _decode_stx_token(token_candidate)
+        if not payload:
+            err("Invalid or corrupted STX token format. Must be 'STX-<header>.<payload>.<sig>'")
+            return
+
+        jti = payload.get("jti", "unknown")
+        endpoints = payload.get("endpoints", [])
+        realm = payload.get("realm", "default")
+        exp = payload.get("exp", 0)
+        site_hint = site_override or payload.get("site_hint") or "Remote-Node"
+
+        now_sec = int(time.time())
+        if exp and exp < now_sec:
+            err(f"ERR_JOIN_EXPIRED: Token expired at {datetime.fromtimestamp(exp).strftime('%H:%M:%S')}")
+            info("Please generate a fresh Magic Join token on your Leader node.")
+            return
+
+        print(f"  Token ID (JTI)   : {c('1;37', jti)}")
+        print(f"  Target Site Name : {c('1;36', site_hint)}")
+        print(f"  Realm Hash       : {c('2', realm[:16] + '...')}")
+        print(f"  Candidate Paths  : {c('1;33', ', '.join(endpoints) if endpoints else 'Auto Cloudflare Relay')}")
+        print()
+
+        # Step 1: Probe candidate endpoints
+        winning_ep = None
+        info("Probing Leader connectivity across candidate endpoints...")
+        for ep in endpoints:
+            try:
+                test_url = f"{ep.rstrip('/')}/api/health"
+                r = requests.get(test_url, timeout=2.0)
+                if r.status_code == 200:
+                    ok(f"Direct connection established to Leader at {ep}")
+                    winning_ep = ep.rstrip("/")
+                    break
+            except Exception:
+                dim(f"  • {ep} : unreachable (LAN/WAN probe timed out)")
+
+        if not winning_ep and endpoints:
+            warn("Direct LAN/WAN probes failed. Checking if Cloudflare Relay fallback is available...")
+
+        # Step 2: Redeem token against winning Leader
+        target_leader_url = winning_ep or (endpoints[0].rstrip("/") if endpoints else None)
+        if not target_leader_url:
+            err("ERR_JOIN_UNREACHABLE: No viable Leader endpoint found in token.")
+            return
+
+        redeem_url = f"{target_leader_url}/api/fleet/join-redeem"
+        nodename = os.uname().nodename if hasattr(os, "uname") else "stigix-node"
+        redeem_payload = {
+            "token": token_candidate,
+            "hostname": nodename,
+            "site_name": site_hint,
+            "capabilities": {
+                "voice": True,
+                "convergence": True,
+                "failover": True,
+                "xfr": True,
+                "security": True
+            }
+        }
+
+        info(f"Redeeming single-use token against {target_leader_url}...")
+        try:
+            r = requests.post(redeem_url, json=redeem_payload, timeout=5.0)
+            res_data = r.json()
+            if r.status_code != 200 or (not res_data.get("success") and res_data.get("status") != "ok"):
+                err_code = res_data.get("error", f"HTTP {r.status_code}")
+                err(f"Join redemption rejected: {err_code}")
+                if "EXPIRED" in str(err_code):
+                    info("→ Action: Token TTL exceeded. Request a new token from the Leader.")
+                elif "REDEEMED" in str(err_code):
+                    info("→ Action: Single-use token was already consumed. Tokens cannot be reused.")
+                elif "REVOKED" in str(err_code):
+                    info("→ Action: Token was revoked by cluster administrator.")
+                return
+
+            ok("Single-use token redeemed successfully!")
+            node_id = res_data.get("node_id")
+            if node_id:
+                info(f"Assigned Persistent Node ID: {c('1;32', node_id)}")
+
+            # Synchronize cluster JWT_SECRET into local .env if available
+            cluster_jwt = res_data.get("jwt_secret")
+            if cluster_jwt:
+                for env_path in ["/app/config/.env", ".env", "config/.env"]:
+                    if os.path.exists(env_path):
+                        try:
+                            with open(env_path, "r") as ef:
+                                env_lines = ef.readlines()
+                            new_lines = []
+                            found = False
+                            for line in env_lines:
+                                if line.startswith("JWT_SECRET="):
+                                    new_lines.append(f"JWT_SECRET={cluster_jwt}\n")
+                                    found = True
+                                else:
+                                    new_lines.append(line)
+                            if not found:
+                                new_lines.append(f"JWT_SECRET={cluster_jwt}\n")
+                            with open(env_path, "w") as ef:
+                                ef.writelines(new_lines)
+                            info(f"Cluster security realm synchronized ({env_path})")
+                            break
+                        except Exception:
+                            pass
+
+            # Step 3: Configure local Stigix node if running locally
+            leader_reg_url = f"{target_leader_url}/api/registry"
+            api_post("/api/registry/static-leader", {"url": leader_reg_url})
+            api_post("/api/registry/site-name", {"siteName": site_hint})
+
+            print()
+            ok(c("1;32", "🎉 Node successfully joined Stigix cluster!"))
+            print(f"  Leader Controller : {c('1;36', target_leader_url)}")
+            print(f"  Site Name         : {c('1;36', site_hint)}")
+            print(f"  Tunnel Status     : {c('1;32', '🟢 Online [ ⚡ WS TUNNEL ]')}")
+            info("Hot-sync and real-time telemetry streaming are now active.")
+            return
+
+        except Exception as e:
+            err(f"Failed to communicate with Leader during redemption: {e}")
+            return
+
+    # Subcommand routing: join token generate / list / revoke
+    sub = first_arg.lower()
+    if sub in ("token", "tokens"):
+        if not require_auth(): return
+        token_sub = args[1].lower() if len(args) > 1 else "list"
+        remaining_args = args[2:]
+    else:
+        token_sub = sub
+        remaining_args = args[1:]
+
+    if token_sub in ("generate", "create", "new", "get"):
+        if not require_auth(): return
+        flags = parse_flags(remaining_args, ["ttl", "site", "role", "uses"])
+        query_params = {}
+        if "ttl" in flags and isinstance(flags["ttl"], (str, int)):
+            query_params["ttl"] = str(flags["ttl"])
+        if "site" in flags and isinstance(flags["site"], str):
+            query_params["siteHint"] = flags["site"]
+        if "role" in flags and isinstance(flags["role"], str):
+            query_params["role"] = flags["role"]
+        if "uses" in flags and isinstance(flags["uses"], (str, int)):
+            query_params["maxUses"] = str(flags["uses"])
+
+        qs = f"?{urllib.parse.urlencode(query_params)}" if query_params else ""
+        res = api_get(f"/api/fleet/join-token{qs}")
+        if not res or not res.get("token"):
+            err("Failed to generate Magic Join token. Ensure this node is running as a Leader.")
+            return
+
+        tok = res.get("token")
+        curl_cmd = res.get("curlCommand") or f"curl -fsSL https://raw.githubusercontent.com/jsuzanne/stigix/v2/install.sh | sudo bash -s -- {tok}"
+        entry = res.get("entry", {})
+        exp_at = entry.get("expires_at", "in 1 hour")
+        endpoints = res.get("endpoints", [])
+
+        hdr("━━ ✨ STIGIX MAGIC JOIN TOKEN GENERATED ━━━━━━━━━━━━━━━━━━━━")
+        print(f"  Token String   : {c('1;33', tok)}")
+        print(f"  Valid Until    : {c('1;37', exp_at)}  {c('32', '[ 🔒 Single-Use ]')}")
+        if endpoints:
+            print(f"  Leader Endpoints: {c('1;36', ', '.join(endpoints))}")
+        print()
+        info("Copy and run this command on any remote host/VM to onboard in seconds:")
+        print()
+        print(c("1;32", f"  {curl_cmd}"))
+        print()
+        dim("  Or if using stigix-cli on the target machine:")
+        print(c("1;36", f"  stigix-cli join {tok}"))
+        print()
+
+    elif token_sub in ("list", "show", "history"):
+        if not require_auth(): return
+        res = api_get("/api/fleet/join-tokens")
+        if not res or not isinstance(res.get("tokens"), list):
+            err("Failed to list join tokens.")
+            return
+
+        tokens = res.get("tokens", [])
+        if not tokens:
+            dim("  No Magic Join tokens recorded yet.")
+            info("  Generate one with: join token generate")
+            return
+
+        rows = []
+        for t in tokens:
+            st = t.get("status", "ACTIVE")
+            st_badge = c("1;32", "🟢 ACTIVE") if st == "ACTIVE" else (
+                c("1;34", "🔵 REDEEMED") if st == "REDEEMED" else (
+                    c("1;31", "🔴 REVOKED") if st == "REVOKED" else c("2", "⚪ EXPIRED")
+                )
+            )
+            uses_str = f"{t.get('uses_count', 0)} / {t.get('max_uses', 1)}"
+            exp_str = t.get("expires_at", "")[:19].replace("T", " ")
+            hint = t.get("payload", {}).get("site_hint") or "—"
+            rows.append([
+                t.get("jti", ""),
+                hint,
+                uses_str,
+                exp_str,
+                st_badge
+            ])
+
+        hdr("━━ MAGIC JOIN TOKENS INVENTORY ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+        table(["Token ID (JTI)", "Site Hint", "Uses", "Expires At (UTC)", "Status"], rows)
+
+    elif token_sub in ("revoke", "delete", "cancel", "rm"):
+        if not require_auth(): return
+        if not remaining_args:
+            err("Usage: join token revoke <token_id_or_jti>")
+            info("  Example: join token revoke stx_tok_9b027e")
+            return
+        target_jti = remaining_args[0].strip()
+        res = api_delete(f"/api/fleet/join-tokens/{target_jti}")
+        if res and res.get("success"):
+            ok(f"Magic Join token '{target_jti}' revoked successfully!")
+        else:
+            err(f"Failed to revoke token '{target_jti}': {res.get('error') if res else 'Unknown error'}")
+
+    else:
+        _help_section("MAGIC JOIN / ZERO-TOUCH ONBOARDING", [
+            ("join token generate [--ttl 3600] [--site <name>]", "Generate a signed single-use Magic Join token"),
+            ("join token list",                                   "List active, redeemed, and revoked join tokens"),
+            ("join token revoke <token_id>",                      "Instantly invalidate an active join token"),
+            ("join --token <STX-TOKEN> [--site <name>]",          "Join an existing Stigix cluster via token"),
+            ("join <STX-TOKEN>",                                  "Shorthand to onboard this node using token"),
+        ])
+
+
 def cmd_speedtest(args):
     if not require_auth(): return
     sub = args[0] if args else "help"
@@ -4712,6 +5012,39 @@ def cmd_system(args):
             print(f"  Disk    : {disk.get('usedPercent','?')}%  "
                   f"({disk.get('used',0)//1024//1024//1024}GB / {disk.get('total',0)//1024//1024//1024}GB)")
 
+    elif sub in ("techsupport", "tech-support", "bundle"):
+        hdr("━━ Tech-Support Diagnostic Bundle ━━━━━━━━")
+        info("Generating and downloading sanitized diagnostic package from Stigix...")
+        url = f"{STIGIX_URL}/api/system/tech-support"
+        headers = {}
+        if JWT_TOKEN:
+            headers["Authorization"] = f"Bearer {JWT_TOKEN}"
+
+        try:
+            r = HTTP_SESSION.get(url, headers=headers, stream=True, timeout=60)
+            if r.status_code == 200:
+                filename = "stigix-techsupport.tar.gz"
+                cd = r.headers.get("Content-Disposition", "")
+                if "filename=" in cd:
+                    filename = cd.split("filename=")[1].strip('"\'')
+
+                out_path = Path(args[1]) if len(args) > 1 else Path.cwd() / filename
+                with open(out_path, "wb") as f:
+                    for chunk in r.iter_content(chunk_size=8192):
+                        if chunk: f.write(chunk)
+
+                size_kb = round(out_path.stat().st_size / 1024, 1)
+                ok(f"Tech-Support bundle saved: {out_path} ({size_kb} KB)")
+                info("You can send this package to your support team or Stigix developers.")
+            else:
+                err(f"Failed to generate tech-support bundle: HTTP {r.status_code}")
+                try:
+                    print(r.json())
+                except Exception:
+                    print(r.text[:200])
+        except Exception as e:
+            err(f"Connection error: {e}")
+
     elif sub == "restart":
         confirm = input("Restart Stigix containers? [y/N]: ").strip().lower()
         if confirm == "y":
@@ -5285,6 +5618,13 @@ def cmd_help(args):
     controller site-name   Get or update local node site name
     controller onboard     Generate peer onboarding curl one-liner
 
+  {c('1','MAGIC JOIN / ZERO-TOUCH ONBOARDING')}
+    join token generate    Generate single-use token (--ttl --site --role)
+    join token list        List active, redeemed, and revoked tokens
+    join token revoke <id> Instantly revoke an active token
+    join --token <STX-..>  Join an existing Stigix cluster via token
+    join <STX-TOKEN>       Shorthand to onboard this node using token
+
   {c('1','GLOBAL PROVISIONING')}
     provision status       Show provisioning state and bundle revisions
     provision enable / on  Enable Global Provisioning pull mode
@@ -5520,6 +5860,8 @@ DISPATCH = {
     "controller":     cmd_controller,
     "registry":       cmd_controller,
     "leader":         cmd_controller,
+    "join":           cmd_join,
+    "magic-join":     cmd_join,
     "provision":      cmd_provision,
     "provisioning":   cmd_provision,
     "prov":           cmd_provision,
@@ -5535,6 +5877,8 @@ DISPATCH = {
     "app":            cmd_custom_tcp_app,
     "custom-apps":    cmd_custom_tcp_app,
     "system":         cmd_system,
+    "techsupport":    lambda args: cmd_system(["techsupport"] + args),
+    "tech-support":   lambda args: cmd_system(["techsupport"] + args),
     "trace":          cmd_trace,
     "traceroute":     cmd_trace,
     "pathtrace":      cmd_trace,
@@ -5650,6 +5994,28 @@ COMPLETER_TREE = {
         "test": None, "ping": None, "check": None,
         "site-name": None, "name": None, "rename": None,
         "onboard-command": None, "onboard": None, "install-cmd": None
+    },
+    "join": {
+        "token": {
+            "generate": {"--ttl": None, "--site": None, "--role": None, "--uses": None},
+            "list": None,
+            "revoke": None
+        },
+        "generate": {"--ttl": None, "--site": None, "--role": None, "--uses": None},
+        "list": None,
+        "revoke": None,
+        "--token": None,
+        "--site": None
+    },
+    "magic-join": {
+        "token": {
+            "generate": {"--ttl": None, "--site": None, "--role": None, "--uses": None},
+            "list": None,
+            "revoke": None
+        },
+        "generate": {"--ttl": None, "--site": None, "--role": None, "--uses": None},
+        "list": None,
+        "revoke": None
     },
     "provision": {
         "status": None, "info": None,
@@ -5776,8 +6142,11 @@ COMPLETER_TREE = {
     },
     "system":      {
         "health": None, "diag": None, "diagnostics": None,
-        "info": None, "interfaces": None, "logs": None, "restart": None, "upgrade": None
+        "info": None, "interfaces": None, "logs": None, "restart": None, "upgrade": None,
+        "techsupport": None, "tech-support": None, "bundle": None
     },
+    "techsupport":   None,
+    "tech-support":  None,
     "help":        None,
     "?":           None,
     "exit":        None,

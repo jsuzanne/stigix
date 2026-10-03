@@ -2,6 +2,346 @@
 
 All notable changes made specifically on the `v2` branch are documented in this file.
 
+## [v2.0.145] - 2026-10-03 — Fix: Multi-Platform Docker Builds for Release Tags (AMD64 + ARM64)
+
+- **fix(ci/cd)**: Enabled multi-platform Docker builds (`linux/amd64,linux/arm64`) on all Git release tags (`refs/tags/*`) in `.github/workflows/build-stigix-allinone.yml`. Previously, only direct pushes to `main` triggered multi-arch builds, leaving tags on `linux/amd64` only. Now Apple Silicon (M1/M2/M3/M4) and ARM64 hosts pull native arm64 containers without emulation warnings.
+
+## [v2.0.144] - 2026-10-03 — Feature: Stigix V2 Login Console Redesign & URL Filtering HTTPS Toggle
+
+- **feat(ui)**: Redesigned the entire Login screen (`Login.tsx`) with a state-of-the-art Stigix V2 dark glassmorphism aesthetic, cyber grid radial background, ambient neon orbs, animated Activity logo, and updated tagline `"The Engine for SASE Validation"`.
+- **feat(security)**: Added instant `[ 🌐 HTTP | 🔒 HTTPS ]` toggle to URL Filtering with dynamic URL transformation to easily demonstrate and validate SSL Forward Proxy Decryption with Prisma Access.
+- **fix(install)**: Enhanced `install.sh` and `install-autodocker.sh` with multi-tier Magic Join token decoding (Python3 / Node / POSIX grep+sed) and unconditional `config/site-name.json` persistence, ensuring `Local Site Name` is instantly and automatically configured on newly deployed nodes.
+
+## [v2.0.143] - 2026-10-03 — Feature: Prisma Access SSL Decryption & 1-Click CA Certificate Import
+
+- **feat(security)**: Added native support for Palo Alto Prisma Access **Forward Trust CA** and custom enterprise Root CA certificates in `certificate-manager.ts`.
+- **feat(security)**: Implemented **1-Click Auto-Import** from Prisma SASE / SSE API (`/sse/config/v1/certificates`), automatically extracting `Forward-Trust-CA` (RSA & ECDSA) and `Root CA` into `config/certs/ca-bundle.pem`.
+- **feat(security)**: Automated runtime injection across Node.js (`NODE_EXTRA_CA_CERTS`, `https.globalAgent`) and Python engines (`REQUESTS_CA_BUNDLE`, `SSL_CERT_FILE`), enabling seamless HTTPS threat testing (EICAR, URL Filtering, DLP) through Prisma Access SSL decryption without TLS errors.
+- **feat(provisioning)**: Added `ca-certificates` to Stigix Mesh Provisioning. Importing the CA certificate on the Leader automatically propagates and activates the certificate bundle across all remote spoke nodes (DC1, BR1, BR2, BR5, BR8).
+- **feat(ui)**: Added SSL Decryption & Enterprise CA Certificates management card in **Settings ➔ Prisma SASE API**, featuring 1-Click import, manual file upload/PEM paste modal, certificate metadata cards (Common Name, Issuer, Validity, SHA-256), bundle download, and raw PEM viewer.
+
+## [v2.0.142] - 2026-10-02 — Feature: Real-Time Progress Bar & Spinners for VyOS Topology Actions
+
+- **feat(topology)**: Added animated spinners (`Loader2`), laser sweep progress bars, and execution state labels across all 3 VyOS underlay buttons (`SHUT PORT` / `NO SHUT`, `INJECT QOS`, `CLEAR QOS`).
+- **feat(topology)**: Added live execution progress indicator with estimated duration (~3-4s) in both the underlay link details drawer and the Netem Impairment modal while VyOS SSH scripts run.
+- **feat(topology)**: Prevented redundant clicks and provided immediate visual feedback with loading states during interface shut, no-shut, latency/loss injection, and QoS clearing.
+
+- **fix(theme)**: Added `@custom-variant dark (&:where(.dark, [data-theme="dark"], .dark *, [data-theme="dark"] *));` to `index.css`. Resolves a critical bug where Tailwind v4 defaulted to `@media (prefers-color-scheme: dark)`, causing `dark:*` styles to always override light-mode styles on macOS/browsers configured with system dark mode.
+
+- **fix(ui)**: Replaced harsh dark-grey diagonal cells (`—`) with soft neutral backgrounds (`bg-slate-50/70`) and subtle text (`text-slate-400`) in light mode.
+- **fix(ui)**: Enforced deep saturated foreground text across light-mode grid cells: `text-emerald-950` (Optimal), `text-amber-950` (Degraded), `text-sky-950` (One-Way), and `text-red-950` (Critical) with bold weight (`font-black`).
+- **fix(ui)**: Refined status badges inside cells with solid pastel containers (`bg-emerald-100`, `bg-amber-100`, `bg-red-100`, `bg-sky-100`) and crisp dark typography.
+- **fix(ui)**: Strengthened `Fwd:` and `Rev:` prefix labels to `text-slate-600` with high-contrast icons (`text-blue-700` and `text-purple-700`).
+
+## [v2.0.118] - 2026-10-01 — Refactor: Neutral Dynamic Endpoint Selector in Magic Join
+
+- **refactor(magic-join)**: Removed any hardcoded subnet assumptions from `MagicJoinModal.tsx`. The operator has full control to select or deselect any detected IP address with 1 click before generating the token.
+
+## [v2.0.117] - 2026-10-01 — Feature: Interactive Leader Endpoint Selector & OOB Mgmt Isolation
+
+- **feat(magic-join)**: Added interactive toggle pills in `MagicJoinModal.tsx` allowing operators to selectively include/exclude candidate IPs (e.g. exclude `192.168.122.x` OOB management and retain only `192.168.203.x` SD-WAN data plane).
+- **feat(api)**: Updated `GET /api/fleet/join-token` in `server.ts` to accept selective `endpoints` parameter and return all `detected_endpoints`.
+- **fix(ui)**: Disabled browser password autofill overlays on modal inputs (`autoComplete="off"`).
+
+## [v2.0.116] - 2026-10-01 — Refactor: Wildcard Dockerfile Source Sync (`COPY *.ts`)
+
+- **refactor(docker)**: Replaced static listing of 19 individual TypeScript service files with `COPY web-dashboard/*.ts ./` across both `stigix-all-in-one/Dockerfile` and `web-dashboard/Dockerfile`. Automatically includes all future root `.ts` modules without risk of manual omission.
+
+## [v2.0.115] - 2026-10-01 — Fix: Dockerfile Source Sync for Magic Join Manager
+
+- **fix(docker)**: Added `COPY web-dashboard/magic-join-manager.ts ./` to both `stigix-all-in-one/Dockerfile` and `web-dashboard/Dockerfile` to fix runtime `ERR_MODULE_NOT_FOUND` during container startup.
+
+## [v2.0.114] - 2026-10-01 — Feature: Stigix « Magic Join » Universal Zero-Touch Onboarding
+
+- **feat(magic-join)**: Implemented cryptographic single-use token architecture (`STX-...` HMAC-SHA256) with automatic endpoint detection, 1-hour TTL, and persistent token inventory in `magic-join-manager.ts`.
+- **feat(api)**: Mounted `/api/fleet/join-token`, `/api/fleet/join-tokens`, and `/api/fleet/join-redeem` endpoints on the Leader backend in `server.ts`.
+- **feat(ui)**: Added top-navbar `[ 🔗 Add Node ]` action button and `MagicJoinModal.tsx` on Leader nodes with 1-click copy onboarding command, TTL selector, token history table, and instant token revocation.
+- **feat(cli)**: Added `stigix-cli join` command suite in `Scripts/stigix-cli.py` (`join token generate`, `join token list`, `join token revoke`, and client-side `join --token <STX-...>` cluster attachment).
+- **feat(mcp)**: Added FastMCP AI Copilot tools `generate_magic_join_token`, `list_magic_join_tokens`, `revoke_magic_join_token`, and `join_cluster_via_token` in `mcp-server/src/server.py` and `orchestrator.py`.
+- **feat(installer)**: Updated `install.sh` and `install-autodocker.sh` with seamless Magic Join token decoding, parallel LAN/WAN endpoint probing, and automatic redemption.
+- **docs(prd)**: Updated PRD v2.4 in `PRD_MAGIC_JOIN_UNIVERSAL_ONBOARDING.md` covering single-use token lifecycle, inventory hygiene, actionable error taxonomy, CLI commands, and FastMCP integration.
+
+## [v2.0.113] - 2026-10-01 — Fix: Peer Cache Grace Period & Reachability Matrix Stability
+
+- **fix(registry)**: `performDiscovery()` in `registry-manager.ts` now gracefully merges newly discovered peers into `peerCache` instead of destructively replacing the map on transient poll gaps. Expired instances are evicted only after a 15-minute grace period.
+- **fix(registry)**: Prevented peer instances with `staticLeaderUrl` from resetting to remote Cloudflare bootstrap (`resetToRemote()`) on transient heartbeat hiccups, eliminating the rapid connection flapping loop (`fetch failed`).
+- **fix(matrix)**: Decoupled `fetchMatrix` from direct `data` state dependency using `dataRef` in `ReachabilityMatrix.tsx` to ensure stable 10s intervals and prevent transient 1-node fallback responses from wiping active multi-node grid views.
+- **fix(matrix)**: `ReachabilityMatrix.tsx` now preserves and displays existing matrix data during temporary background fetch errors instead of replacing the entire UI with an intrusive error screen.
+- **fix(matrix)**: Extended Spoke-to-Leader matrix proxy cache TTL in `server.ts` to 10 minutes to eliminate transient `1x1` grid collapses during leader reconnection periods.
+- **fix(perf)**: Configured `NODE_OPTIONS="--max-old-space-size=384"` for `web-ui` in `supervisord.conf` to cap V8 heap growth and protect low-memory (1GB/2GB) VM instances from Linux OOM killer invocations.
+
+## [v2.0.112] - 2026-09-30 — UX: Light Mode Full Pass, Skeleton Shimmer & SSE Tunnel Stream
+
+### Fixed
+- **Light Mode (index.css)**: Replaced quasi-white `#f8fafc` background with cool blue-gray `#eef2f7`; strengthened border token `#c5d2de` for better card separation.
+- **Light Mode (Fleet.tsx)**: Bulk refactor of hardcoded `bg-neutral-800/900` → `bg-card-secondary`; `text-neutral-300/400` → `text-text-secondary/muted`; amber text colors now use `dark:` variants (`text-amber-600 dark:text-amber-400`) for proper contrast on light backgrounds.
+- **Light Mode (ConnectivityPerformance.tsx)**: Flaky/down probe cards changed from `bg-red-500/5` (pink on white) to `bg-card-secondary` neutral base with colored border.
+- **Light Mode (App.tsx)**: Remote View inset frame now uses `3px / 75% amber-600` in light mode vs `2px / 40%` in dark — clearly visible on the new light background.
+- **Light Mode (Topology.tsx)**: Canvas wrapper and ReactFlow background use `dark:` prefix; dots overridden via CSS to `#b0c4d8` in light mode.
+
+### Added
+- **feat(tunnel)**: Real-time chunked SSE stream pump over Fleet WebSocket tunnels — enables streaming endpoints through NAT/CGNAT.
+- **feat(ui)**: Unified `PageLoader` skeleton component across DEM, Security, Settings, VyOS, Voice, Failover, Fleet, CustomApps.
+- **feat(ui)**: Replaced all full-page spinners with Skeleton Shimmer + Top Laser loading bar.
+
+## [v2.0.111] - 2026-09-30 — Fleet: Bidirectional Provisioning Sync over Tunnels
+
+### Added
+- **feat(fleet)**: Bidirectional provisioning sync over fleet WebSocket tunnels; Settings test mode; topology guide updates.
+
+## [v2.0.110] - 2026-09-29 — Fix: Leader Reverse Dial Persistent Connection Retention
+
+### Fixed
+- **fix(fleet)**: Leader reverse dial now retains persistent connections for cloud peers across reconnects.
+- **docs**: Updated README, Remote View operator guide, and stigix.io FAQ with M5/M6 WebSocket Reverse Tunnel and Leader Reverse Dialing details.
+
+## [v2.0.109] - 2026-09-29 — Fix: Peer Dedup, Spoke Dial Exclusion & Tunnel Keepalive
+
+### Fixed
+- **fix(fleet)**: Peer deduplication on reconnect; spoke nodes excluded from leader outbound dialing; dialed tunnel keepalive telemetry.
+
+## [v2.0.108] - 2026-09-29 — Fleet: Leader Outbound Reverse Dialing (M6)
+
+### Added
+- **feat(fleet)**: Leader Outbound Reverse Dialing for Cloud/Manual Peers (Milestone 6) — leader initiates outbound WS tunnel to reach NAT-isolated cloud instances.
+- **docs**: Updated Remote View Gateway roadmap with M4, M5, M6 milestones.
+
+## [v2.0.107] - 2026-09-29 — Fleet: WebSocket Reverse Tunnel for NAT/CGNAT Traversal (M5)
+
+### Added
+- **feat(fleet)**: WebSocket reverse tunnel for NAT/CGNAT traversal — branch nodes connect outbound to the leader.
+- **feat(ui)**: WS Tunnel indicator moved to Fleet table status column; dropdown cleaned up.
+- **fix(docker)**: Include `fleet-tunnel.ts` in stigix-all-in-one Dockerfile.
+- **ci**: Restrict multi-arch builds to `main` branch; `v2` builds AMD64 only.
+
+## [v2.0.106] - 2026-09-29 — Perf: SD-WAN Matrix Instant Render & Spoke Caching
+
+### Performance
+- **perf(matrix)**: Instant 0ms render with spoke caching; silent background refresh on interval.
+
+## [v2.0.105] - 2026-09-29 — Failover: Auto-Hide Unused Targets During Test
+
+### Added
+- **feat(failover)**: Targets not selected for a test are automatically hidden from the test view to reduce visual noise.
+
+## [v2.0.104] - 2026-09-29 — UX: Precision Hub Wiring & DC1 Leader Badge Fix
+
+### Fixed
+- **Hub WAN Circuit & LAN Wiring Geometry (`Topology.tsx`)**:
+  - Calibrated Hub WAN bottom wiring paths to land directly on the top edge of Circuit Blocks (`Y=350 -> Y=420`).
+  - Aligned Hub LAN top distribution bus from router Port 3 up into the shared LAN subnets (`Y=95 -> Y=110`).
+  - Enabled primary LAN subnet matching on multi-subnet Hubs so `DC1` displays the high-tech Blue `⚡ 192.168.201.0/24 [LEADER]` badge.
+
+## [v2.0.103] - 2026-09-29 — UX: Hub WAN & LAN SVG Math Alignment
+
+### Fixed
+- **Hub WAN Circuit & LAN Wiring Coordinates (`Topology.tsx`)**:
+  - Corrected SVG path geometry for Hub nodes where WAN ports at the bottom of the router card (`Y=338`) connect directly to Circuit Blocks (`Y=380`) below the Hub container.
+  - Aligned Hub LAN top wiring from the shared LAN subnets (`Y=70`) to router Port 3 (`Y=98`).
+
+## [v2.0.102] - 2026-09-29 — UX: Refined LAN Wiring Bus & Port Label Layout
+
+### Fixed
+- **LAN Interface Label & Pill Overlap (`Topology.tsx`)**:
+  - Inverted bottom LAN port IP labels (`labelPosition="top"`) so they sit cleanly tucked inside the router block, eliminating overlap with the top border of LAN subnet pills.
+  - Re-engineered dual-router Spoke and Hub internal SVG LAN wiring with an elevated horizontal bus bar (`strokeDasharray="4 4"`, `z-0`) and single central drop, preventing green dashed lines from slicing through the middle of the LAN subnet pills.
+  - Increased router-to-LAN vertical margin to `mb-8` and elevated the subnet pill container to `z-20` for crisp visual hierarchy.
+
+## [v2.0.101] - 2026-09-29 — UX: Direct Stigix Subnet Integration & Exact Site Matching
+
+### Added
+- **Integrated Stigix LAN Subnet Highlight (`Topology.tsx`)**:
+  - Eliminated standalone Stigix badge box next to LAN subnets; now directly highlights the specific LAN subnet hosting the Stigix node in high-tech Blue/Cyan (`bg-blue-600/20 border-2 border-blue-400 text-blue-200`) with an active status beacon, `Zap` icon, and role chip (`[LEADER]` / `[PEER]`).
+  - Standard LAN subnets not hosting a Stigix agent remain clean in traditional green pills.
+  - Subnet matching powered by precise IPv4 CIDR bitwise calculation (`isIpInSubnet`).
+
+### Fixed
+- **DC2 False Leader Status Resolution (`Topology.tsx` & `server.ts`)**:
+  - Replaced loose substring normalization with strict site token normalization (`isExactSiteMatch`) preventing `DC 2` from erroneously matching `DC1-Ubuntu`.
+  - Enforced Leader status validation via matrix payload `is_leader` flags and explicit DC1 leader checks.
+
+## [v2.0.100] - 2026-09-29 — UX: Dynamic Site Autoscale, Compact Stigix Badges & Clean Overlay Layout
+
+### Fixed
+- **Site Block Overlapping on Topology Canvas (`Topology.tsx`)**:
+  - Replaced rigid width estimations in `getSiteWidth` with dynamic multi-factor autoscale calculating required dimensions across devices, WAN circuits, LAN subnets, and Stigix anchor badges.
+  - Enforced strict bounding-box horizontal gap spacing (`HORIZONTAL_GAP_PX = 100`) preventing any overlap between Branch or Data Center blocks regardless of subnet count.
+
+### Changed
+- **Sleek & Compact Site Elements (`Topology.tsx`)**:
+  - Redesigned LAN subnets into compact, modern pills (`h-[30px]`, `px-3 py-1`) with refined typography.
+  - Streamlined the Stigix anchor badge into a sleek status pill (`⚡ Stigix: <IP> [ROLE]`) embedded directly in site LAN sections without layout expansion.
+  - Removed cluttered cross-canvas Stigix mesh overlay lines, keeping the focus cleanly on SD-WAN overlay and VyOS underlay paths.
+
+### Fixed
+- **Probe Deletion & Mesh Provisioning Pending Loop (`server.ts` & `provisioning-manager.ts`)**:
+  - Prevented Leader from resurrecting deleted local probes from old global bundles in `getFullEffectiveConnectivityProbes()`.
+  - Unified `buildConnectivityProbesPayload()` across `GET /api/provisioning/config` and `POST /api/provisioning/publish`, eliminating the perpetual `⚠️ PENDING` provisioning loop.
+  - Sanitized non-array types in `hasUnpublishedChanges` ensuring identical checksum calculation before and after publishing.
+- **Prisma SD-WAN Interface Discovery Prioritization (`discovery-manager.ts`)**:
+  - Implemented scoring heuristics prioritizing physical Ethernet LAN interfaces (`1/1`, `eth*`, `vlan*`, `lan`, gateway descriptions) and heavily penalizing loopback /32 interfaces so the primary SD-WAN gateway is selected.
+
+### Changed
+- **Reachability Matrix Status Precision (`ReachabilityMatrix.tsx` & `server.ts`)**:
+  - Reclassified unidirectional active paths where return telemetry is pending/unconfigured as **`PARTIAL` / `One-Way`** (neutral sky-blue badge) instead of false `OPTIMAL` green, preserving `OPTIMAL` strictly for validated bidirectional symmetry.
+  - Added `One-Way` status filter chip showing pairs with partial telemetry.
+  - Clarified grid headers and detail modal with explicit labels: `Node: <IP>` (Stigix management container IP) vs. `SD-WAN Target: <IP>` (actual probed destination target).
+
+## [v2-dev] - 2026-09-29 — Feature: Bidirectional Cross-Instance SD-WAN Reachability Matrix
+
+### Added
+- **Fleet Bidirectional Reachability Matrix (`ReachabilityMatrix.tsx` & `ConnectivityPerformance.tsx`)**:
+  - Implemented full-mesh $N \times N$ cross-instance reachability matrix correlating forward egress path ($A \to B$) with return ingress telemetry ($B \to A$).
+  - Added dedicated view mode switcher in Digital Experience (DEM) / Performance: `[ Probes Catalog | Full-Mesh Reachability Matrix ]`.
+  - Color-coded cell matrix: Green (Symmetric & Healthy), Amber (Asymmetric latency delta $\ge 15\text{ms}$ or packet loss skew), Red (One-way blocked / Half-open outage).
+  - Interactive cell inspection modal displaying side-by-side Forward vs. Return latency, jitter, loss, and DEM scores with automated root-cause explanations.
+- **Backend Matrix Aggregator & Telemetry Extension (`server.ts` & `stigix-registry-client.ts`)**:
+  - Extended `registryManager.setTelemetryProvider` with `peer_probes` array to bundle latest probe results into node heartbeats.
+  - Implemented `GET /api/fleet/matrix` endpoint supporting filtering by probe type (`ALL`, `PRISMA SDWAN`, `PING`, `HTTP`, `TCP`), site filter, and `asymmetry_only=true`.
+  - Auto-discovery of remote target sites from synthetic probes when running in standalone mode.
+- **PRD Documentation (`PRD/PRD_BIDIRECTIONAL_SDWAN_MATRIX.md`)**:
+  - Full architectural specifications, data model, and roadmap for bidirectional cross-instance SD-WAN reachability validation.
+
+---
+
+## [v2.0.82] - 2026-09-28 — UX: Clean target selection cards in Speedtest
+
+### Changed
+- **Bandwidth Test Target Cards (`Speedtest.tsx`)**:
+  - Removed redundant checkbox icons on the left side of target cards (both Quick Targets and Shared Targets).
+  - Eliminates multi-selection ambiguity (Speedtest is strictly 1-to-1 point-to-point) and provides clean visual alignment directly with the pulsing reachability status dot.
+
+---
+
+## [v2.0.81] - 2026-09-28 — Feature: Fleet Mesh context switcher direct connect
+
+### Added
+- **Fleet View Direct Context Switcher (`Fleet.tsx`)**:
+  - Replaced the generic `Open UI` external link in the Mesh Overview table with an interactive **`[ ⚡ Connect ]`** context switcher button for each remote peer (BR1, BR2, BR5, BR8).
+  - Clicking **`[ ⚡ Connect ]`** immediately sets `activePeerId` and navigates the operator to the active view in Remote View mode without opening a separate browser window or needing direct reachability to the branch IP.
+  - For the Leader node (DC1-Ubuntu), displays `Local Leader` (or a `[ ⚡ Return Local ]` button if currently in a remote peer context).
+  - Added a **`[ ⚡ Connect via Remote View ]`** button inside the Peer Details Drawer / Modal alongside the direct URL button.
+
+---
+
+## [v2.0.80] - 2026-09-28 — UX: Remote peer name in navbar + peer switcher cleanup
+
+### Added
+- **Remote Peer Name in Navigation Header** (`App.tsx`):
+  - When in remote view mode, the top-left subtitle now shows the active remote peer's
+    site name (or `instance_id` as fallback) in **amber** instead of the local
+    `detected_site_name`. Returns to blue local name when switching back to the Leader.
+  - Zero additional API calls — the label is read directly from the in-memory peer list
+    via an extended `onActivePeerChange(peerId, peerLabel)` callback.
+
+### Changed
+- **Peer Switcher Dropdown** (`PeerContext.tsx`):
+  - Removed the redundant `ACTIVE` text badge from both the Local Controller row and
+    Remote Sites rows. Active state is already communicated by highlighted background
+    (amber/blue) and bold typography — the badge was visual noise and was shifting IP
+    addresses off-screen.
+  - `setActivePeerId` useCallback now includes `peers` in its dependency array to
+    prevent a stale closure when resolving the peer label on switch.
+
+### Technical
+- `onActivePeerChange` callback signature extended: `(peerId, peerLabel)` — backwards-
+  compatible addition (second arg ignored by callers that don't need it).
+
+---
+
+## [v2.0.79] - 2026-09-28 — Hotfix: TypeScript build error in Security.tsx
+
+### Fixed
+- **TS2345 Build Failure**: `setSecurityProfile(null)` rejected by TypeScript compiler — the
+  state type does not include `null`. Replaced with an explicit reset to the local catalogue
+  defaults (`URL_CATEGORIES`, `DNS_TEST_DOMAINS`, `C2_SCENARIOS`, `AI_SECURITY_SCENARIOS`).
+  Functionally equivalent: the Security page now shows the default catalogue between peer
+  switches while the new peer's data is being fetched.
+
+---
+
+## [v2.0.78] - 2026-09-28 — Fix: Security & VyOS pages don't refresh on peer switch
+
+### Fixed
+- **VyOS Control Page (Vyos.tsx)**:
+  - Main `useEffect` had an empty `[]` dependency array — the page was mount-only and never
+    re-fetched when switching remote peers via the peer selector.
+  - Added `activePeerId` to deps so `fetchData()` fires on every peer switch.
+  - State (`routers`, `sequences`, `history`) is now cleared before re-fetching to avoid
+    showing the previous peer's data during the network round-trip.
+- **Security Page (Security.tsx)**:
+  - Main `useEffect` already included `activePeerId` in deps, but stale state remained
+    visible during the re-fetch interval.
+  - Added explicit resets for `config`, `testResults`, `securityProfile`, `securityTargets`,
+    `cloudEicarUrl`, and the `eicarInitialized` ref at the top of the effect so the UI
+    clears immediately on peer switch before new data arrives.
+
+---
+
+## [v2.0.77] - 2026-09-28 — EICAR Client-Side Detection
+
+### Added
+- **EICAR Not-Blocked Indicator** (Custom TCP Apps — Outgoing Sessions card):
+  - The `tcp-client-runtime` now inspects every HTTP response for the
+    `X-Stigix-Security-Test: EICAR` header injected by the server in EICAR Response mode.
+  - If the EICAR payload reaches the client (meaning the SASE/NGFW did **not** block it),
+    `eicarReceivedCount` is incremented in `OutgoingSessionState`.
+  - A **🛡️ EICAR not blocked × N** warning badge (red/rose) appears in the Outgoing
+    Sessions card — visible only when a security gap is detected, completely hidden
+    otherwise (zero noise in normal/blocked conditions).
+- **`OutgoingSessionState`**: New `eicarReceivedCount: number` field added to `types.ts`.
+
+---
+
+## [v2-dev] - 2026-09-26 — Tech-Support Diagnostics Bundle, Reports & Telemetry Enrichment
+
+### Added
+- **Tech-Support Diagnostic Bundle Generator** 📦:
+  - **1-Click Web UI Download**: Added « Download Tech-Support Bundle » in Settings → System Information.
+  - **CLI Automation**: Added `tech-support [--output <path>]` command in `stigix-cli.py` with autocomplete.
+  - **REST API Endpoint**: Protected route `GET /api/system/tech-support` generating structured `.tar.gz` archive.
+  - **Zero-Leak Sanitization**: Recursive secret scrubber replacing tokens, passwords, private keys, client secrets, and JWTs with `***REDACTED***`.
+  - **Comprehensive Diagnostics**:
+    - `metadata.json`: Node version, git commit, platform hardware specs, and timestamp.
+    - `config/`: All active `.json` configurations (sanitized).
+    - `system/`: Live network and OS state (`ip addr`, `ip route`, `iptables`, `/proc/net/dev`, `df`, `free`, `ps aux`, `docker ps`, `supervisorctl status`).
+    - `telemetry/`: Mesh status, fleet peers, 1h/24h connectivity SLA stats, probes catalog, and services health.
+    - `logs/`: Tail of last 1,000 lines from all core engine and supervisor logs.
+  - **Documentation**: Created [`docs/TECH_SUPPORT_DIAGNOSTICS.md`](file:///Users/jsuzanne/Github/stigix/docs/TECH_SUPPORT_DIAGNOSTICS.md) and updated [`docs/STIGIX_CLI.md`](file:///Users/jsuzanne/Github/stigix/docs/STIGIX_CLI.md).
+- **Research Papers & Whitepapers Published**:
+  - Published Application vs Network white paper and BR8/DC1 technical report to `site/reports/` and `stigix.io/reports.html`.
+
+### Fixed
+- **Fleet Telemetry Scope Bug**: Fixed a `ReferenceError: failingProbes is not defined` in `registryManager.setTelemetryProvider` where `failingProbes` was scoped inside the `try` block, preventing heartbeat telemetry summaries from being generated on upgraded nodes (`DC1`, `BR2`, `BR5`, `BR8`).
+- **Fleet Traffic Direction Display**: Cleaned up double arrow display in Fleet peer table (`▲ TX · ▼ RX`).
+- **Fleet Detail View Traffic Wrapping**: Prevented awkward multi-line break of `▶ Active (X Mbps)` in the peer detail modal by setting `whitespace-nowrap`, allocating proportional column widths, and expanding the modal to `max-w-3xl`.
+
+
+## [v2-dev] - 2026-09-25 — Fleet Control Plane: Telemetry Enriched Heartbeat & Fleet Observability (Phase 3A)
+
+### Added
+- **Fleet Control Plane Observability (Phase 3A)** 🏢:
+  - **Enriched Heartbeat Telemetry**: Extended peer heartbeats (30s) to include an aggregated `summary` object:
+    - `probes_global_health`: Real-time Global Experience score (0–100) computed from synthetic probes.
+    - `probes_total` & `probes_passing`: Count of active vs healthy DEM probes.
+    - `traffic_state` & `traffic_rate_mbps`: Live SaaS traffic generation state and combined throughput.
+    - `voice_active` & `voice_mos`: Active voice simulation status and average MOS quality.
+    - `convergence_active` & `xfr_active`: Millisecond failover testing and high-bandwidth validation activity flags.
+    - `uptime_seconds`: Node container uptime.
+  - **Leader Fleet Aggregator API (`/api/fleet/overview`)**:
+    - Clean separation between node connectivity status (strictly 🟢 `online` / 🔴 `offline`) and network performance (Global Experience score).
+    - Leader pinned at the top with `👑 Leader (This Node)` badge and 30s local heartbeat interval.
+    - Stale heartbeat detection (>90s) and fleet-wide average Global Experience score.
+    - Protected route accessible exclusively when the current node is acting as Leader.
+  - **Refined Fleet UI Dashboard (`Fleet.tsx`)**:
+    - **Pure Node Status**: Clear distinction between node liveness (🟢 Online / 🔴 Offline) and DEM quality badges (Optimal ≥80, Good 65–79, Degraded 50–64, Critical <50).
+    - **Dual Timestamps**: Displays both relative duration (e.g. `30s ago`) and exact time of last update (`22:50:02`).
+    - **1-Click IP Copy & Management URL**: Fast clipboard copy for traffic IPs (`📋`) and support for dedicated management URLs (`STIGIX_MANAGEMENT_URL` / `STIGIX_MANAGEMENT_IP`).
+    - **Provisioning Revision Fix**: Corrected number parsing to eliminate `rNaN` badges.
+    - **Legacy Node Support**: Displays `— N/A` for online legacy peers without telemetry instead of confusing `— Stale`.
+    - **Conditional Leader-Only Menu**: The "Fleet" navigation button is strictly rendered on the Leader instance; invisible on peers/spokes.
+    - **Auto-Refresh**: 15-second background polling with pause toggle and instant manual refresh.
+
 ## [v2-dev] - 2026-09-23 — MCP Automated Test Harness (Phase 2)
 
 ### Added

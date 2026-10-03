@@ -14,12 +14,177 @@ import Topology from './Topology';
 import LiveEvents from './LiveEvents';
 import { CustomApps } from './CustomApps';
 import Copilot from './Copilot';
+import Fleet from './Fleet';
+import { PeerContextProvider, GatewayDropdown, RemoteViewBanner, RemoteViewChip, usePeerContext } from './PeerContext';
 import { SystemHealthBadge } from './components/health/SystemHealthBadge';
 import { SystemHealthModal } from './components/health/SystemHealthModal';
-import { Activity, Server, AlertCircle, LayoutDashboard, Settings, LogOut, Key, UserPlus, BarChart3, Wifi, Shield, ChevronDown, ChevronUp, Clock, CheckCircle, XCircle, Play, Pause, Phone, Gauge, Network, Plus, Zap, Monitor, Cpu, Sun, Moon, Globe, Terminal, Sliders, Layers, Code, Bot } from 'lucide-react';
+import { TopLoadingBar } from './components/common/TopLoadingBar';
+import { MagicJoinModal } from './components/MagicJoinModal';
+import { Activity, Server, AlertCircle, LayoutDashboard, Settings, LogOut, Key, UserPlus, BarChart3, Wifi, Shield, ChevronDown, ChevronUp, Clock, CheckCircle, XCircle, Play, Pause, Phone, Gauge, Network, Plus, Zap, Monitor, Cpu, Sun, Moon, Globe, Terminal, Sliders, Layers, Code, Bot, Sparkles } from 'lucide-react';
 import { clsx } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 import { Toaster } from 'react-hot-toast';
+
+/**
+ * PeerStatusSync — lives INSIDE PeerContextProvider so it can call usePeerContext().
+ * When a remote peer is selected:
+ *  - fast loop (500ms failover / 3s otherwise): polls live-status (voice + convergence)
+ *    + traffic/status (running, rate, client_count) from remote peer.
+ *  - slow loop (10s): polls dashboard-data for stats + status so the Traffic Generator
+ *    panel shows BR5's real metrics instead of DC1 zeros.
+ * All state patches go via callbacks; DC1 fetch functions skip those state updates when
+ * isRemoteViewRef.current is set (to prevent flapping).
+ */
+function PeerStatusSync({
+  token,
+  view,
+  onConvStatus,
+  onVoiceStatus,
+  onStats,
+  onStatus,
+  onTrafficStatus,
+  onHistory,
+  onGatewayIp,
+  onPublicIp,
+  onSiteInfo,
+  onConnectivity,
+  onIperfServer,
+}: {
+  token: string | null;
+  view: string;
+  onConvStatus: (v: any[]) => void;
+  onVoiceStatus: (v: any) => void;
+  onStats?: (v: any) => void;
+  onStatus?: (v: 'running' | 'stopped' | 'unknown') => void;
+  onTrafficStatus?: (running: boolean, rate?: number, count?: number) => void;
+  onHistory?: (history: any[]) => void;
+  onGatewayIp?: (gw: string | null) => void;
+  onPublicIp?: (ip: string | null, country?: string | null) => void;
+  onSiteInfo?: (info: any) => void;
+  onConnectivity?: (conn: any) => void;
+  onIperfServer?: (info: any) => void;
+}) {
+  const { gFetch, activePeerId } = usePeerContext();
+
+  // ── Network loop: gateway, public ip, siteinfo, connectivity (30s & immediate on peer change) ──
+  useEffect(() => {
+    if (!token || !activePeerId) return;
+
+    const pollNetwork = async () => {
+      try {
+        const [gwRes, ipRes, siteRes, connRes, iperfRes] = await Promise.allSettled([
+          gFetch('/api/system/gateway-ip', { headers: { 'Authorization': `Bearer ${token}` } }),
+          gFetch('/api/connectivity/public-ip', { headers: { 'Authorization': `Bearer ${token}` } }),
+          gFetch('/api/siteinfo', { headers: { 'Authorization': `Bearer ${token}` } }),
+          gFetch('/api/connectivity/test', { headers: { 'Authorization': `Bearer ${token}` } }),
+          gFetch('/api/connectivity/iperf/server', { headers: { 'Authorization': `Bearer ${token}` } })
+        ]);
+        if (gwRes.status === 'fulfilled' && gwRes.value.ok) {
+          const data = await gwRes.value.json();
+          onGatewayIp?.(data.ip || null);
+        }
+        if (ipRes.status === 'fulfilled' && ipRes.value.ok) {
+          const data = await ipRes.value.json();
+          onPublicIp?.(data.ip || null, data.countryCode || null);
+        }
+        if (siteRes.status === 'fulfilled' && siteRes.value.ok) {
+          const data = await siteRes.value.json();
+          onSiteInfo?.(data);
+        }
+        if (connRes.status === 'fulfilled' && connRes.value.ok) {
+          const data = await connRes.value.json();
+          onConnectivity?.(data);
+        }
+        if (iperfRes.status === 'fulfilled' && iperfRes.value.ok) {
+          const data = await iperfRes.value.json();
+          onIperfServer?.(data);
+        }
+      } catch { }
+    };
+
+    pollNetwork();
+    const interval = setInterval(pollNetwork, 30_000);
+    return () => clearInterval(interval);
+  }, [token, activePeerId]);
+
+  // ── Fast loop: live-status (voice/conv) + traffic/status ──────────────────
+  useEffect(() => {
+    if (!token || !activePeerId) return;
+
+    const poll = async () => {
+      try {
+        const [liveRes, trafficRes] = await Promise.allSettled([
+          gFetch('/api/admin/system/live-status', { headers: { 'Authorization': `Bearer ${token}` } }),
+          gFetch('/api/traffic/status', { headers: { 'Authorization': `Bearer ${token}` } }),
+        ]);
+        if (liveRes.status === 'fulfilled' && liveRes.value.ok) {
+          const data = await liveRes.value.json();
+          if (data.convergenceTests) onConvStatus(data.convergenceTests);
+          if (data.voice) onVoiceStatus(data.voice);
+        }
+        if (trafficRes.status === 'fulfilled' && trafficRes.value.ok) {
+          const td = await trafficRes.value.json();
+          onTrafficStatus?.(td.running ?? false, td.sleep_interval, td.client_count);
+        }
+      } catch { }
+    };
+
+    poll();
+    const ms = view === 'failover' ? 500 : 3000;
+    const interval = setInterval(poll, ms);
+    return () => clearInterval(interval);
+  }, [token, activePeerId, view]);
+
+  // ── Slow loop: dashboard-data for stats + status (Traffic Generator) ───────
+  useEffect(() => {
+    if (!token || !activePeerId) return;
+
+    const pollDash = async () => {
+      try {
+        const res = await gFetch('/api/admin/system/dashboard-data', {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (!res.ok) return;
+        const data = await res.json();
+        if (data.stats) onStats?.(data.stats);
+        if (data.status) onStatus?.(data.status);
+      } catch { }
+    };
+
+    pollDash();
+    const interval = setInterval(pollDash, 10_000);
+    return () => clearInterval(interval);
+  }, [token, activePeerId]);
+
+  // ── History loop: traffic history for Traffic Volume chart (60s) ───────────
+  useEffect(() => {
+    if (!token || !activePeerId || !onHistory) return;
+
+    const pollHistory = async () => {
+      try {
+        const res = await gFetch('/api/traffic/history?range=1h', {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (!res.ok) return;
+        const data = await res.json();
+        const formatted = data.map((item: any) => ({
+          time: new Date(item.timestamp * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          rawTimestamp: item.timestamp,
+          requests: item.rpm,
+          total: item.total_requests,
+          ...item.requests_by_app
+        }));
+        onHistory(formatted);
+      } catch { }
+    };
+
+    pollHistory();
+    const interval = setInterval(pollHistory, 60_000);
+    return () => clearInterval(interval);
+  }, [token, activePeerId]);
+
+  return null;
+}
 
 function formatBitrate(mbpsStr: string) {
   const mbps = parseFloat(mbpsStr);
@@ -59,7 +224,7 @@ interface SiteInfo {
 export default function App() {
   const [token, setToken] = useState<string | null>(localStorage.getItem('token'));
   const [username, setUsername] = useState<string | null>(localStorage.getItem('username'));
-  const [view, setView] = useState<'dashboard' | 'settings' | 'statistics' | 'security' | 'voice' | 'performance' | 'failover' | 'srt' | 'iot' | 'vyos' | 'speedtest' | 'topology' | 'convergence' | 'events' | 'custom_apps' | 'api_studio' | 'copilot'>(
+  const [view, setView] = useState<'dashboard' | 'settings' | 'statistics' | 'security' | 'voice' | 'performance' | 'failover' | 'srt' | 'iot' | 'vyos' | 'speedtest' | 'topology' | 'convergence' | 'events' | 'custom_apps' | 'api_studio' | 'copilot' | 'fleet'>(
     (localStorage.getItem('activeView') as any) || 'performance'
   );
 
@@ -67,6 +232,45 @@ export default function App() {
   const [initialSettingsTab, setInitialSettingsTab] = useState<any>(null);
   const [copilotDrawerOpen, setCopilotDrawerOpen] = useState(false);
   const [copilotConfig, setCopilotConfig] = useState<{ enabled: boolean; featureEnabled?: boolean; hasKey: boolean } | null>(null);
+  const [isLeader, setIsLeader] = useState<boolean>(false);
+  // Tracks whether a remote peer is active (set via PeerContextProvider callback).
+  // isRemoteViewRef: used in async fetchDashboardData (avoids stale closure).
+  // isRemoteView state: used for reactive UI (disable buttons, hide live sections).
+  const isRemoteViewRef = React.useRef<boolean>(false);
+  // activePeerIdRef: the current peer ID for gateway routing in action handlers.
+  // App is rendered OUTSIDE PeerContextProvider so it cannot call usePeerContext().
+  // This ref is populated via the onActivePeerChange callback and is the only way
+  // for App-level handlers (handleTrafficToggle, etc.) to route to the active peer.
+  const activePeerIdRef = React.useRef<string | null>(null);
+  const [isRemoteView, setIsRemoteView] = React.useState<boolean>(false);
+  const [activePeerLabel, setActivePeerLabel] = React.useState<string | null>(null);
+  const [isNavigating, setIsNavigating] = useState(false);
+
+  useEffect(() => {
+    setIsNavigating(true);
+    const t = setTimeout(() => setIsNavigating(false), 600);
+    return () => clearTimeout(t);
+  }, [view, activePeerLabel]);
+
+  // apiFetch — App-level gateway-aware fetch. Routes to /api/gateway/:peerId/* when
+  // a remote peer is active, otherwise falls back to a direct local fetch.
+  // Must stay in sync with gFetch logic in PeerContext.tsx.
+  const apiFetch = React.useCallback((url: string, options?: RequestInit): Promise<Response> => {
+    const peerId = activePeerIdRef.current;
+    if (!peerId || !url.startsWith('/')) return fetch(url, options);
+    return fetch(`/api/gateway/${peerId}${url}`, options);
+  }, []);
+
+  const fetchRegistryLeaderStatus = async () => {
+    if (!token) return;
+    try {
+      const res = await fetch('/api/registry/status', { headers: { 'Authorization': `Bearer ${token}` } });
+      if (res.ok) {
+        const data = await res.json();
+        setIsLeader(data.mode === 'leader' || data.current_mode === 'leader' || data.local_registry_active === true);
+      }
+    } catch (e) { }
+  };
 
   const fetchCopilotConfig = async () => {
     if (!token) return;
@@ -174,6 +378,7 @@ export default function App() {
   const [healthData, setHealthData] = useState<any | null>(null);
   const [isHealthLoading, setIsHealthLoading] = useState(false);
   const [showHealthModal, setShowHealthModal] = useState(false);
+  const [showMagicJoinModal, setShowMagicJoinModal] = useState(false);
 
 
   // Rate Calculation State - Use Refs to avoid stale closures in setInterval
@@ -281,7 +486,7 @@ export default function App() {
     if (!token) return;
     if (!confirm('Are you sure you want to reset all traffic statistics?')) return;
     try {
-      const res = await fetch('/api/stats', {
+      const res = await apiFetch('/api/stats', {
         method: 'DELETE',
         headers: authHeaders()
       });
@@ -354,7 +559,7 @@ export default function App() {
   };
 
    const fetchHistory = async (silent = false) => {
-    if (!token) return;
+    if (!token || isRemoteViewRef.current) return; // owned by PeerStatusSync in remote view
     if (!silent) setIsHistoryLoading(true);
     try {
       const res = await fetch(`/api/traffic/history?range=${timeRange}`, { headers: authHeaders() });
@@ -385,12 +590,15 @@ export default function App() {
       if (res.status === 403 || res.status === 401) logout();
       const data = await res.json();
 
-      if (data.stats) processStats(data.stats);
-      if (data.status) setStatus(data.status);
+      if (data.stats && !isRemoteViewRef.current) processStats(data.stats);
+      if (data.status && !isRemoteViewRef.current) setStatus(data.status);
       if (data.logs) setLogs(data.logs);
       if (data.dockerStats) setDockerStats(data.dockerStats);
-      if (data.convergenceTests) setGlobalConvStatus(data.convergenceTests);
-      if (data.voice) setGlobalVoiceStatus(data.voice);
+      // In remote view, voice/conv/stats/status are owned by PeerStatusSync.
+      if (!isRemoteViewRef.current) {
+        if (data.convergenceTests) setGlobalConvStatus(data.convergenceTests);
+        if (data.voice) setGlobalVoiceStatus(data.voice);
+      }
       if (data.registry) setRegistryStatus(data.registry);
     } catch (e) {
       console.error('Consolidated fetch failed');
@@ -398,7 +606,7 @@ export default function App() {
   };
 
   const fetchStats = async () => {
-    if (!token) return;
+    if (!token || isRemoteViewRef.current) return; // owned by PeerStatusSync in remote view
     try {
       const res = await fetch('/api/stats', { headers: authHeaders() });
       if (res.status === 403 || res.status === 401) logout();
@@ -408,7 +616,7 @@ export default function App() {
   };
 
   const fetchStatus = async () => {
-    if (!token) return;
+    if (!token || isRemoteViewRef.current) return; // owned by PeerStatusSync in remote view
     try {
       const res = await fetch('/api/status', { headers: authHeaders() });
       const data = await res.json();
@@ -419,7 +627,7 @@ export default function App() {
   };
 
   const fetchTrafficStatus = async () => {
-    if (!token) return;
+    if (!token || isRemoteViewRef.current) return; // owned by PeerStatusSync in remote view
     try {
       const res = await fetch('/api/traffic/status', { headers: authHeaders() });
       const data = await res.json();
@@ -434,7 +642,7 @@ export default function App() {
   const checkConfigValid = async () => {
     if (!token) return;
     try {
-      const res = await fetch('/api/config/interfaces', { headers: authHeaders() });
+      const res = await apiFetch('/api/config/interfaces', { headers: authHeaders() });
       const interfaces = await res.json();
       setConfigValid(interfaces && interfaces.length > 0);
     } catch (e) {
@@ -446,7 +654,7 @@ export default function App() {
     if (!token) return;
     const endpoint = trafficRunning ? '/api/traffic/stop' : '/api/traffic/start';
     try {
-      const res = await fetch(endpoint, {
+      const res = await apiFetch(endpoint, {
         method: 'POST',
         headers: { ...authHeaders(), 'Content-Type': 'application/json' }
       });
@@ -465,7 +673,7 @@ export default function App() {
     if (!token) return;
     setUpdatingRate(true);
     try {
-      const res = await fetch('/api/traffic/rate', {
+      const res = await apiFetch('/api/traffic/rate', {
         method: 'POST',
         headers: { ...authHeaders(), 'Content-Type': 'application/json' },
         body: JSON.stringify({ rate, client_count: clients })
@@ -652,7 +860,7 @@ export default function App() {
   const fetchHealthMatrix = async () => {
     if (!token) return;
     try {
-      const res = await fetch('/api/system/health-matrix', { headers: authHeaders() });
+      const res = await apiFetch('/api/system/health-matrix', { headers: authHeaders() });
       if (res.ok) {
         const data = await res.json();
         if (data.success) {
@@ -680,6 +888,7 @@ export default function App() {
     fetchFeatures();
     fetchHealthMatrix();
     fetchCopilotConfig();
+    fetchRegistryLeaderStatus();
 
     // Core 3s polling — always on, not restarted on tab changes
     const interval = setInterval(() => {
@@ -690,6 +899,7 @@ export default function App() {
     // Health Matrix polling every 10s
     const healthInterval = setInterval(() => {
       fetchHealthMatrix();
+      fetchRegistryLeaderStatus();
     }, 10000);
 
     // History refresh every 60s silently (no spinner, no chart flash)
@@ -747,8 +957,68 @@ export default function App() {
   }
 
   return (
+    <PeerContextProvider
+      token={token}
+      isLeader={isLeader}
+      onActivePeerChange={(peerId, peerLabel) => {
+        activePeerIdRef.current = peerId;
+        isRemoteViewRef.current = peerId !== null;
+        setIsRemoteView(peerId !== null);
+        setActivePeerLabel(peerLabel);
+        if (peerId === null) {
+          fetchPublicIp();
+          fetchGatewayIp();
+          fetchSiteInfo();
+          fetchConnectivity();
+          fetchIperfStatus();
+          fetchDashboardData();
+          fetchTrafficStatus();
+        }
+      }}
+    >
+      {/* Peer-aware live status sync — patches globalConvStatus/globalVoiceStatus/Network Status from remote peer */}
+      <PeerStatusSync
+        token={token}
+        view={view}
+        onConvStatus={setGlobalConvStatus}
+        onVoiceStatus={setGlobalVoiceStatus}
+        onStats={processStats}
+        onStatus={setStatus}
+        onTrafficStatus={(running, rate, count) => {
+          setTrafficRunning(running);
+          if (rate !== undefined) setTrafficRate(rate);
+          if (count !== undefined) setTrafficClientCount(count);
+        }}
+        onHistory={setHistory}
+        onGatewayIp={setGatewayIp}
+        onPublicIp={(ip, country) => {
+          setPublicIp(ip);
+          if (country !== undefined) setPublicIpCountry(country);
+        }}
+        onSiteInfo={setSiteInfo}
+        onConnectivity={setConnectivity}
+        onIperfServer={setIperfServerInfo}
+      />
     <div className="min-h-screen bg-background text-foreground pt-4 pb-8 px-8">
+      <TopLoadingBar isLoading={isNavigating} />
       <Toaster position="top-right" />
+
+      {/* Remote-view inset frame — amber border on all 4 edges.
+          Light mode: stronger opacity + thicker border because contrast is lower on light backgrounds.
+          position:fixed + pointer-events:none = zero layout impact, never shifts content. */}
+      {isRemoteView && (
+        <div
+          className="fixed inset-0 z-[9998] pointer-events-none"
+          style={{
+            boxShadow: theme === 'light'
+              ? 'inset 0 0 0 3px rgba(217,119,6,0.75)'   /* amber-600 at 75% — clearly visible on #eef2f7 */
+              : 'inset 0 0 0 2px rgba(251,191,36,0.40)'   /* amber-300 at 40% — subtle on dark */
+          }}
+          aria-hidden="true"
+        />
+      )}
+
+
       <header className="mb-8 flex justify-between items-center">
         <div>
           <div className="flex flex-col gap-0.5">
@@ -773,8 +1043,12 @@ export default function App() {
             </h1>
             <p className="text-text-muted text-lg tracking-tight font-medium">
               The Engine for SASE Validation
-              {siteInfo?.success && siteInfo.detected_site_name && (
-                <span className="text-text-muted/60"> • <span className="text-blue-400 font-bold">{siteInfo.detected_site_name}</span></span>
+              {isRemoteView && activePeerLabel ? (
+                <span className="text-text-muted/60"> • <span className="text-amber-400 font-bold">{activePeerLabel}</span></span>
+              ) : (
+                siteInfo?.success && siteInfo.detected_site_name && (
+                  <span className="text-text-muted/60"> • <span className="text-blue-400 font-bold">{siteInfo.detected_site_name}</span></span>
+                )
               )}
               {version && <span className="text-text-muted/60"> • {version}</span>}
               {registryStatus?.is_registered && (
@@ -785,7 +1059,7 @@ export default function App() {
                     : "bg-blue-600/10 text-blue-500 border-blue-500/30"
                 )}>
                   <div className={cn("w-1.5 h-1.5 rounded-full", registryStatus.mode === 'leader' ? "bg-purple-500 animate-pulse" : "bg-blue-500")} />
-                  {registryStatus.mode === 'leader' ? 'Registry Leader' : 'Peer Node'}
+                  {registryStatus.mode === 'leader' ? 'Leader' : 'Peer'}
                 </span>
               )}
             </p>
@@ -796,6 +1070,24 @@ export default function App() {
 
 
         <div className="flex gap-3 items-center">
+          {/* Remote peer indicator — inline chip, no layout shift */}
+          {isLeader && <RemoteViewChip />}
+          {/* Gateway Context Switcher (Leader only) */}
+          {isLeader && <GatewayDropdown isLeader={isLeader} />}
+
+          {/* Magic Join Quick Onboarding Button (Leader only) */}
+          {isLeader && (
+            <button
+              id="magic-join-btn"
+              onClick={() => setShowMagicJoinModal(true)}
+              title="Add Node via Magic Join (Zero-Touch Onboarding)"
+              className="px-3 py-1.5 rounded-xl border border-blue-500/40 bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 flex items-center gap-1.5 text-xs font-bold transition-all shadow-sm select-none"
+            >
+              <Sparkles size={14} className="text-blue-400 animate-pulse" />
+              <span className="hidden sm:inline">Add Node</span>
+            </button>
+          )}
+
           {/* Quick Copilot Trigger Button (only visible if feature enabled and Anthropic API key is configured) */}
           {copilotConfig?.featureEnabled && copilotConfig?.hasKey && (
             <button
@@ -971,6 +1263,9 @@ export default function App() {
 
 
 
+      {/* Remote Peer View Banner — shown when a remote peer context is active */}
+      <RemoteViewBanner />
+
       {/* Navigation Tabs */}
       <div className="flex flex-wrap gap-2 mb-8 border-b border-border">
         <button
@@ -1096,6 +1391,18 @@ export default function App() {
           >
             <Bot size={18} /> AI Copilot <span className="px-1 py-0.5 rounded text-[8px] font-black uppercase tracking-tighter bg-blue-600/10 text-blue-600 dark:text-blue-400 border border-blue-500/20 ml-1">AI</span>
             <span className="absolute top-full left-1/2 -translate-x-1/2 mt-1 px-3 py-1.5 bg-[#0f172a] text-[#f8fafc] text-[10px] font-bold rounded shadow-2xl opacity-0 scale-95 group-hover:opacity-100 group-hover:scale-100 transition-all pointer-events-none z-[100] border border-[#1e293b] whitespace-nowrap">Interactive Conversational Assistant (BYOK Claude) with multi-tool orchestration</span>
+          </button>
+        )}
+        {isLeader && (
+          <button
+            onClick={() => setView('fleet')}
+            className={cn(
+              "group relative px-4 py-3 flex items-center gap-2 font-bold tracking-wider text-sm border-b-2 transition-all",
+              view === 'fleet' ? "border-blue-600 text-blue-600 dark:text-blue-300" : "border-transparent text-text-muted hover:text-text-primary"
+            )}
+          >
+            <Globe size={18} /> Mesh <span className="px-1 py-0.5 rounded text-[8px] font-black uppercase tracking-tighter bg-emerald-600/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 ml-1">Leader</span>
+            <span className="absolute top-full left-1/2 -translate-x-1/2 mt-1 px-3 py-1.5 bg-[#0f172a] text-[#f8fafc] text-[10px] font-bold rounded shadow-2xl opacity-0 scale-95 group-hover:opacity-100 group-hover:scale-100 transition-all pointer-events-none z-[100] border border-[#1e293b] whitespace-nowrap">Centralized multi-instance mesh observability & peer metrics</span>
           </button>
         )}
         {/* SRT Tab hidden in v1.1.2-patch.28 */}
@@ -1265,11 +1572,12 @@ export default function App() {
                 <div className="flex items-center gap-2.5">
                   <button
                     onClick={runSpeedtest}
-                    disabled={runningSpeedtest}
+                    disabled={runningSpeedtest || isRemoteView}
+                    title={isRemoteView ? "Cannot run speedtest on a remote peer — view only" : undefined}
                     className={cn(
                       "flex items-center gap-2 px-3 py-1.5 rounded-lg text-[10px] font-black tracking-widest transition-all shadow-sm border",
-                      runningSpeedtest
-                        ? "bg-blue-500/10 text-blue-400 border-blue-500/30 cursor-not-allowed"
+                      (runningSpeedtest || isRemoteView)
+                        ? "bg-blue-500/10 text-blue-400/40 border-blue-500/20 cursor-not-allowed opacity-50"
                         : "bg-card-secondary hover:bg-card-hover hover:border-blue-500/30 text-text-muted hover:text-text-primary border-border"
                     )}
                   >
@@ -1279,7 +1587,14 @@ export default function App() {
 
                   <button
                     onClick={() => setShowIperfModal(true)}
-                    className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-[10px] font-black tracking-widest bg-card-secondary hover:bg-card-hover hover:border-purple-500/30 text-text-muted hover:text-text-primary border border-border transition-all shadow-sm"
+                    disabled={isRemoteView}
+                    title={isRemoteView ? "Cannot run iperf on a remote peer — view only" : undefined}
+                    className={cn(
+                      "flex items-center gap-2 px-3 py-1.5 rounded-lg text-[10px] font-black tracking-widest border transition-all shadow-sm",
+                      isRemoteView
+                        ? "bg-card-secondary text-text-muted/40 border-border opacity-50 cursor-not-allowed"
+                        : "bg-card-secondary hover:bg-card-hover hover:border-purple-500/30 text-text-muted hover:text-text-primary border-border"
+                    )}
                   >
                     <Activity size={13} className="text-purple-400" />
                     Iperf Client
@@ -1727,6 +2042,7 @@ export default function App() {
       {view === 'speedtest' && features.xfr_enabled && <Speedtest token={token!} />}
       {view === 'events' && <LiveEvents token={token!} />}
       {copilotConfig?.featureEnabled && copilotConfig?.hasKey && view === 'copilot' && <Copilot token={token!} onOpenSettings={() => { setInitialSettingsTab('mcp'); setView('settings'); }} />}
+      {view === 'fleet' && isLeader && <Fleet token={token!} onNavigate={setView} />}
 
       {/* ── Global Floating Copilot Trigger Button (Visible on all tabs only when feature enabled & API key configured) ── */}
       {copilotConfig?.featureEnabled && copilotConfig?.hasKey && view !== 'copilot' && !copilotDrawerOpen && (
@@ -1786,7 +2102,14 @@ export default function App() {
           setInitialSettingsTab('system');
         }}
       />
+
+      <MagicJoinModal
+        isOpen={showMagicJoinModal}
+        onClose={() => setShowMagicJoinModal(false)}
+        token={token}
+      />
     </div>
+    </PeerContextProvider>
   );
 }
 

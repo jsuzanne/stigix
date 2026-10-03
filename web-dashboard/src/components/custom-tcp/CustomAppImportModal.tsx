@@ -1,3 +1,4 @@
+import { usePeerContext } from '../../PeerContext';
 import React, { useState, useRef } from 'react';
 import {
     Upload, FileJson, CheckCircle2, AlertTriangle, X,
@@ -21,6 +22,7 @@ export const CustomAppImportModal: React.FC<CustomAppImportModalProps> = ({
     onSuccess,
     existingApps
 }) => {
+    const { gFetch } = usePeerContext();
     const [importMode, setImportMode] = useState<'merge' | 'replace'>('merge');
     const [rawJsonText, setRawJsonText] = useState<string>('');
     const [parsedApps, setParsedApps] = useState<any[]>([]);
@@ -111,7 +113,7 @@ export const CustomAppImportModal: React.FC<CustomAppImportModalProps> = ({
 
         setIsSubmitting(true);
         try {
-            const res = await fetch('/api/custom-tcp-apps/import', {
+            const res = await gFetch('/api/custom-tcp-apps/import', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',

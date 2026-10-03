@@ -3,6 +3,8 @@ import { Activity, Plus, Trash2, RefreshCw, Shield, Server, Wifi, Layout, CheckC
 import { io } from 'socket.io-client';
 import toast from 'react-hot-toast';
 import { isValidIpOrFqdn } from './utils/validation';
+import { usePeerContext } from './PeerContext';
+import { VyosSkeleton } from './components/skeletons/VyosSkeleton';
 import { twMerge } from 'tailwind-merge';
 import { clsx, type ClassValue } from 'clsx';
 
@@ -142,6 +144,7 @@ function ActionSelector({ value, onChange }: { value: string, onChange: (val: st
 
 export default function Vyos(props: VyosProps) {
     const { token } = props;
+    const { gFetch, activePeerId } = usePeerContext();
     const [routers, setRouters] = useState<VyosRouter[]>([]);
     const [sequences, setSequences] = useState<VyosSequence[]>([]);
     const [history, setHistory] = useState<any[]>([]);
@@ -270,6 +273,7 @@ export default function Vyos(props: VyosProps) {
     const [routerStates, setRouterStates] = useState<Record<string, any>>({});
     const [loadingStateId, setLoadingStateId] = useState<string | null>(null);
     const [expandedStateId, setExpandedStateId] = useState<string | null>(null);
+    const [initialLoading, setInitialLoading] = useState(true);
     // RAZ Modal
     const [razModal, setRazModal] = useState<{ id: string; name: string; state: any } | null>(null);
     const [razLoading, setRazLoading] = useState(false);
@@ -327,9 +331,9 @@ export default function Vyos(props: VyosProps) {
     const fetchData = async () => {
         try {
             const [rRes, sRes, hRes] = await Promise.all([
-                fetch('/api/vyos/routers', { headers: { 'Authorization': `Bearer ${token}` } }),
-                fetch('/api/vyos/sequences', { headers: { 'Authorization': `Bearer ${token}` } }),
-                fetch('/api/vyos/history', { headers: { 'Authorization': `Bearer ${token}` } })
+                gFetch('/api/vyos/routers', { headers: { 'Authorization': `Bearer ${token}` } }),
+                gFetch('/api/vyos/sequences', { headers: { 'Authorization': `Bearer ${token}` } }),
+                gFetch('/api/vyos/history', { headers: { 'Authorization': `Bearer ${token}` } })
             ]);
 
             const rData = await rRes.json();
@@ -341,10 +345,18 @@ export default function Vyos(props: VyosProps) {
             setHistory(Array.isArray(hData) ? hData : []);
         } catch (e) {
             console.error('Failed to fetch VyOS data');
+        } finally {
+            setInitialLoading(false);
         }
     };
 
     useEffect(() => {
+        // Reset stale data immediately so the UI doesn't show the previous peer's info
+        setInitialLoading(true);
+        setRouters([]);
+        setSequences([]);
+        setHistory([]);
+
         fetchData();
 
         socket.on('vyos:sequence_step', (data) => {
@@ -369,7 +381,7 @@ export default function Vyos(props: VyosProps) {
             socket.off('vyos:sequence_completed');
             clearInterval(interval);
         };
-    }, []);
+    }, [activePeerId]);
 
     const startDiscovery = async () => {
         if (!discoveryHost || !discoveryKey) return;
@@ -378,7 +390,7 @@ export default function Vyos(props: VyosProps) {
         setDiscoveryResult(null);
         setError(null);
         try {
-            const res = await fetch('/api/vyos/routers/discover', {
+            const res = await gFetch('/api/vyos/routers/discover', {
                 method: 'POST',
                 headers: authHeaders(),
                 body: JSON.stringify({ host: discoveryHost, apiKey: discoveryKey, location: discoveryLocation })
@@ -418,7 +430,7 @@ export default function Vyos(props: VyosProps) {
         if (!editingRouter) return;
         const toastId = toast.loading('Syncing node parameters...');
         try {
-            const res = await fetch(`/api/vyos/routers/${editingRouter.id}`, {
+            const res = await gFetch(`/api/vyos/routers/${editingRouter.id}`, {
                 method: 'POST', // Repurposing POST for update
                 headers: authHeaders(),
                 body: JSON.stringify(editingRouter)
@@ -440,7 +452,7 @@ export default function Vyos(props: VyosProps) {
 
         const performDeleteRouter = async (routerId: string) => {
             try {
-                const res = await fetch(`/api/vyos/routers/${routerId}`, {
+                const res = await gFetch(`/api/vyos/routers/${routerId}`, {
                     method: 'DELETE',
                     headers: { 'Authorization': `Bearer ${token}` }
                 });
@@ -470,7 +482,7 @@ export default function Vyos(props: VyosProps) {
     const testRouter = async (id: string) => {
         const toastId = toast.loading('Testing connection...');
         try {
-            const res = await fetch(`/api/vyos/routers/test/${id}`, { method: 'POST', headers: { 'Authorization': `Bearer ${token}` } });
+            const res = await gFetch(`/api/vyos/routers/test/${id}`, { method: 'POST', headers: { 'Authorization': `Bearer ${token}` } });
             const data = await res.json();
             if (data.success) {
                 toast.success('✓ Connection successful!', { id: toastId });
@@ -486,7 +498,7 @@ export default function Vyos(props: VyosProps) {
     const refreshRouterInfo = async (id: string) => {
         const toastId = toast.loading('Refreshing node info...');
         try {
-            const res = await fetch(`/api/vyos/routers/refresh/${id}`, { method: 'POST', headers: { 'Authorization': `Bearer ${token}` } });
+            const res = await gFetch(`/api/vyos/routers/refresh/${id}`, { method: 'POST', headers: { 'Authorization': `Bearer ${token}` } });
             const data = await res.json();
             if (data.success) {
                 toast.success('✓ Node information updated (interfaces, version, hostname)', { id: toastId });
@@ -506,7 +518,7 @@ export default function Vyos(props: VyosProps) {
         const actionKey = `${log.timestamp}-${log.action_id || log.command}-${log.interface || ''}`;
         setReplayingId(actionKey);
         try {
-            const res = await fetch('/api/vyos/direct-action', {
+            const res = await gFetch('/api/vyos/direct-action', {
                 method: 'POST',
                 headers: authHeaders(),
                 body: JSON.stringify({
@@ -539,7 +551,7 @@ export default function Vyos(props: VyosProps) {
         if (!sequenceId) return;
         setReplayingId(groupKey);
         try {
-            const res = await fetch(`/api/vyos/sequences/run/${sequenceId}`, {
+            const res = await gFetch(`/api/vyos/sequences/run/${sequenceId}`, {
                 method: 'POST',
                 headers: { 'Authorization': `Bearer ${token}` }
             });
@@ -561,7 +573,7 @@ export default function Vyos(props: VyosProps) {
         if (loadingStateId === routerId) return;
         setLoadingStateId(routerId);
         try {
-            const res = await fetch(`/api/vyos/routers/${routerId}/state`, {
+            const res = await gFetch(`/api/vyos/routers/${routerId}/state`, {
                 headers: { 'Authorization': `Bearer ${token}` }
             });
             const data = await res.json();
@@ -578,7 +590,7 @@ export default function Vyos(props: VyosProps) {
         setRazLoading(true);
         setRazResult(null);
         try {
-            const res = await fetch(`/api/vyos/routers/${routerId}/state`, {
+            const res = await gFetch(`/api/vyos/routers/${routerId}/state`, {
                 headers: { 'Authorization': `Bearer ${token}` }
             });
             const state = await res.json();
@@ -594,7 +606,7 @@ export default function Vyos(props: VyosProps) {
         if (!razModal) return;
         setRazLoading(true);
         try {
-            const res = await fetch(`/api/vyos/routers/${razModal.id}/reset`, {
+            const res = await gFetch(`/api/vyos/routers/${razModal.id}/reset`, {
                 method: 'POST',
                 headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
                 body: JSON.stringify({ scope })
@@ -602,7 +614,7 @@ export default function Vyos(props: VyosProps) {
             const data = await res.json();
             setRazResult(data);
             // Refresh state in panel
-            const stateRes = await fetch(`/api/vyos/routers/${razModal.id}/state`, {
+            const stateRes = await gFetch(`/api/vyos/routers/${razModal.id}/state`, {
                 headers: { 'Authorization': `Bearer ${token}` }
             });
             const newState = await stateRes.json();
@@ -629,7 +641,7 @@ export default function Vyos(props: VyosProps) {
 
         const toastId = toast.loading('Starting sequence...');
         try {
-            const res = await fetch(`/api/vyos/sequences/run/${id}`, { method: 'POST', headers: { 'Authorization': `Bearer ${token}` } });
+            const res = await gFetch(`/api/vyos/sequences/run/${id}`, { method: 'POST', headers: { 'Authorization': `Bearer ${token}` } });
             if (res.ok) {
                 toast.success('✓ Mission sequence initiated', { id: toastId });
             } else {
@@ -651,7 +663,7 @@ export default function Vyos(props: VyosProps) {
             confirmText: 'Delete Sequence',
             onConfirm: async () => {
                 try {
-                    await fetch(`/api/vyos/sequences/${id}`, {
+                    await gFetch(`/api/vyos/sequences/${id}`, {
                         method: 'DELETE',
                         headers: { 'Authorization': `Bearer ${token}` }
                     });
@@ -731,7 +743,7 @@ export default function Vyos(props: VyosProps) {
 
         const toastId = toast.loading('Saving mission ...');
         try {
-            const res = await fetch('/api/vyos/sequences', {
+            const res = await gFetch('/api/vyos/sequences', {
                 method: 'POST',
                 headers: authHeaders(),
                 body: JSON.stringify(editingSeq)
@@ -813,7 +825,7 @@ export default function Vyos(props: VyosProps) {
                     actions: seq.actions || []
                 };
 
-                const res = await fetch('/api/vyos/sequences', {
+                const res = await gFetch('/api/vyos/sequences', {
                     method: 'POST',
                     headers: authHeaders(),
                     body: JSON.stringify(newSeq)
@@ -835,7 +847,7 @@ export default function Vyos(props: VyosProps) {
     const exportUnifiedConfig = async () => {
         const toastId = toast.loading('Exporting VyOS configuration...');
         try {
-            const res = await fetch('/api/vyos/config/export', {
+            const res = await gFetch('/api/vyos/config/export', {
                 headers: {
                     'Authorization': `Bearer ${token}`
                 }
@@ -865,7 +877,7 @@ export default function Vyos(props: VyosProps) {
             const text = await file.text();
             const data = JSON.parse(text);
 
-            const res = await fetch('/api/vyos/config/import', {
+            const res = await gFetch('/api/vyos/config/import', {
                 method: 'POST',
                 headers: {
                     'Authorization': `Bearer ${token}`,
@@ -899,7 +911,7 @@ export default function Vyos(props: VyosProps) {
             onConfirm: async () => {
                 const toastId = toast.loading('Resetting configuration...');
                 try {
-                    const res = await fetch('/api/vyos/config/reset', {
+                    const res = await gFetch('/api/vyos/config/reset', {
                         method: 'POST',
                         headers: {
                             'Authorization': `Bearer ${token}`
@@ -922,7 +934,7 @@ export default function Vyos(props: VyosProps) {
         const toastId = toast.loading(seq.enabled ? 'Disabling sequence...' : 'Enabling sequence...');
         try {
             const updatedSeq = { ...seq, enabled: !seq.enabled };
-            const res = await fetch('/api/vyos/sequences', {
+            const res = await gFetch('/api/vyos/sequences', {
                 method: 'POST',
                 headers: authHeaders(),
                 body: JSON.stringify(updatedSeq)
@@ -964,7 +976,7 @@ export default function Vyos(props: VyosProps) {
 
         const toastId = toast.loading('Cloning reverse sequence...');
         try {
-            const res = await fetch('/api/vyos/sequences', {
+            const res = await gFetch('/api/vyos/sequences', {
                 method: 'POST',
                 headers: authHeaders(),
                 body: JSON.stringify(newSeq)
@@ -1017,6 +1029,10 @@ export default function Vyos(props: VyosProps) {
             }
             return sequenceSortDir === 'asc' ? res : -res;
         });
+
+    if (initialLoading && routers.length === 0 && sequences.length === 0) {
+        return <VyosSkeleton />;
+    }
 
     return (
         <div className="space-y-6 animate-in fade-in duration-500 pb-20">
@@ -2634,6 +2650,7 @@ function ExecutionTimeline({
     routers: VyosRouter[];
     onRefresh: () => Promise<void>;
 }) {
+    const { gFetch } = usePeerContext();
     const [countdown, setCountdown] = useState('');
     const [currentOffset, setCurrentOffset] = useState(-1);
     const [isStepRunning, setIsStepRunning] = useState(false);
@@ -2704,7 +2721,7 @@ function ExecutionTimeline({
     const handlePause = async () => {
         const toastId = toast.loading('Pausing sequence...');
         try {
-            const res = await fetch(`/api/vyos/sequences/pause/${sequence.id}`, {
+            const res = await gFetch(`/api/vyos/sequences/pause/${sequence.id}`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('token')}` }
             });
@@ -2723,7 +2740,7 @@ function ExecutionTimeline({
     const handleResume = async () => {
         const toastId = toast.loading('Resuming sequence...');
         try {
-            const res = await fetch(`/api/vyos/sequences/resume/${sequence.id}`, {
+            const res = await gFetch(`/api/vyos/sequences/resume/${sequence.id}`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('token')}` }
             });
@@ -2742,7 +2759,7 @@ function ExecutionTimeline({
     const handleStop = async () => {
         const toastId = toast.loading('Stopping sequence...');
         try {
-            const res = await fetch(`/api/vyos/sequences/stop/${sequence.id}`, {
+            const res = await gFetch(`/api/vyos/sequences/stop/${sequence.id}`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('token')}` }
             });
@@ -2766,7 +2783,7 @@ function ExecutionTimeline({
         if (currentStep >= sequence.actions.length) {
             try {
                 const updatedSeq = { ...sequence, currentStep: 0 };
-                await fetch('/api/vyos/sequences', {
+                await gFetch('/api/vyos/sequences', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('token')}` },
                     body: JSON.stringify(updatedSeq)
@@ -2782,7 +2799,7 @@ function ExecutionTimeline({
         setIsStepRunning(true);
         const toastId = toast.loading(`Executing step ${currentStep + 1}...`);
         try {
-            const res = await fetch(`/api/vyos/sequences/step/${sequence.id}`, {
+            const res = await gFetch(`/api/vyos/sequences/step/${sequence.id}`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('token')}` },
                 body: JSON.stringify({ stepIndex: currentStep })
@@ -2810,7 +2827,7 @@ function ExecutionTimeline({
         // This matches our design for "Rewind" in POCs
         try {
             const updatedSeq = { ...sequence, currentStep: currentStep - 1 };
-            const res = await fetch('/api/vyos/sequences', {
+            const res = await gFetch('/api/vyos/sequences', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('token')}` },
                 body: JSON.stringify(updatedSeq)
@@ -2826,7 +2843,7 @@ function ExecutionTimeline({
     const handleRestartStep = async () => {
         try {
             const updatedSeq = { ...sequence, currentStep: 0 };
-            const res = await fetch('/api/vyos/sequences', {
+            const res = await gFetch('/api/vyos/sequences', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('token')}` },
                 body: JSON.stringify(updatedSeq)

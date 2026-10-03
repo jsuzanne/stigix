@@ -1,10 +1,12 @@
 import React, { useState, useEffect } from 'react';
+import { usePeerContext } from './PeerContext';
 import { Phone, PhoneIncoming, PhoneOutgoing, Play, Pause, BarChart2, Save, Plus, Trash2, Clock, Activity, Wifi, Search, CheckSquare, AlertCircle, Hash, Download, Upload, X } from 'lucide-react';
 import { RadarChart, Radar, PolarGrid, PolarAngleAxis, ResponsiveContainer } from 'recharts';
 import { clsx } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 import toast from 'react-hot-toast';
 import { isValidIpOrFqdn } from './utils/validation';
+import { VoiceSkeleton } from './components/skeletons/VoiceSkeleton';
 
 function cn(...inputs: (string | undefined | null | false)[]) {
     return twMerge(clsx(inputs));
@@ -102,6 +104,7 @@ const qualityTextClass = (q: string) =>
 
 export default function Voice(props: VoiceProps) {
     const { token, externalStatus } = props;
+    const { gFetch, activePeerId } = usePeerContext();
 
     // ── Core state ──
     const [enabled, setEnabled] = useState(false);
@@ -142,16 +145,20 @@ export default function Voice(props: VoiceProps) {
     const [reachability, setReachability] = useState<Record<string, boolean | 'loading'>>({});
 
     useEffect(() => {
+        // Reachability must be checked by the node itself — proxying via the
+        // gateway from the Leader makes no sense and causes a request storm.
+        // Skip entirely in remote view mode.
+        if (activePeerId) return;
         if (!targetRows.length) return;
         const checkTargets = async () => {
             const targetsToPing = targetRows.map(r => ({ host: r.host, port: r.port, id: r.id }));
-            
+
             await Promise.all(targetsToPing.map(async (t) => {
                 setReachability(prev => ({ ...prev, [t.id]: 'loading' }));
                 let isReachable = false;
                 for (let attempt = 0; attempt < 3; attempt++) {
                     try {
-                        const res = await fetch('/api/convergence/reachability', {
+                        const res = await gFetch('/api/convergence/reachability', {
                             method: 'POST',
                             headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
                             body: JSON.stringify({ target: t.host, port: parseInt(t.port, 10) })
@@ -169,11 +176,11 @@ export default function Voice(props: VoiceProps) {
                 setReachability(prev => ({ ...prev, [t.id]: isReachable }));
             }));
         };
-        
+
         checkTargets();
         const interval = setInterval(checkTargets, 60000);
         return () => clearInterval(interval);
-    }, [targetRows, token]);
+    }, [targetRows, token, activePeerId]);
 
     // ════════════════════════════════════════════════
     // External status feed (WebSocket / poll from parent)
@@ -196,6 +203,20 @@ export default function Voice(props: VoiceProps) {
     }, [externalStatus, isDirty]);
 
     // ════════════════════════════════════════════════
+    // Reset stale target/config state on peer switch
+    // Prevents DC1's registryVoiceTargets from being used to build
+    // targetRows for a remote peer before the new fetch completes.
+    // ════════════════════════════════════════════════
+    useEffect(() => {
+        setVoiceTargetsLoaded(false);
+        setConfigLoaded(false);
+        setRegistryVoiceTargets([]);
+        setAllRegistryTargets([]);
+        setRawServers('');
+        setTargetRows([]);
+    }, [activePeerId]);
+
+    // ════════════════════════════════════════════════
     // Initial load
     // ════════════════════════════════════════════════
     useEffect(() => {
@@ -206,7 +227,7 @@ export default function Voice(props: VoiceProps) {
             fetchIngress();
         }, 3000);
 
-        fetch('/api/targets', { headers: { Authorization: `Bearer ${token}` } })
+        gFetch('/api/targets', { headers: { Authorization: `Bearer ${token}` } })
             .then(r => r.json())
             .then((data: any[]) => {
                 const all = Array.isArray(data) ? data : [];
@@ -220,7 +241,7 @@ export default function Voice(props: VoiceProps) {
             .catch(() => setVoiceTargetsLoaded(true));
 
         return () => clearInterval(interval);
-    }, [token]);
+    }, [token, activePeerId]);
 
     // ════════════════════════════════════════════════
     // Build targetRows when both data sources are ready
@@ -285,7 +306,7 @@ export default function Voice(props: VoiceProps) {
     // ════════════════════════════════════════════════
     const fetchIngress = async () => {
         try {
-            const r = await fetch('/api/voice/ingress', { headers: { Authorization: `Bearer ${token}` } });
+            const r = await gFetch('/api/voice/ingress', { headers: { Authorization: `Bearer ${token}` } });
             const data = await r.json();
             if (data.success && Array.isArray(data.sessions)) {
                 setIngressSessions(data.sessions);
@@ -295,7 +316,7 @@ export default function Voice(props: VoiceProps) {
 
     const fetchConfig = async () => {
         try {
-            const r = await fetch('/api/voice/config', { headers: { Authorization: `Bearer ${token}` } });
+            const r = await gFetch('/api/voice/config', { headers: { Authorization: `Bearer ${token}` } });
             const data = await r.json();
             if (data.success) {
                 if (!isDirty) setRawServers(data.servers);
@@ -311,7 +332,7 @@ export default function Voice(props: VoiceProps) {
 
     const handleExport = async () => {
         try {
-            const r = await fetch('/api/voice/config/export', { headers: { Authorization: `Bearer ${token}` } });
+            const r = await gFetch('/api/voice/config/export', { headers: { Authorization: `Bearer ${token}` } });
             const blob = await r.blob();
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
@@ -325,7 +346,7 @@ export default function Voice(props: VoiceProps) {
         if (!file) return;
         try {
             const cfg = JSON.parse(await file.text());
-            const r = await fetch('/api/voice/config/import', {
+            const r = await gFetch('/api/voice/config/import', {
                 method: 'POST',
                 headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
                 body: JSON.stringify({ config: cfg }),
@@ -340,7 +361,7 @@ export default function Voice(props: VoiceProps) {
         const target = !enabled;
         if (target) setIsStartingV(true); else setIsStoppingV(true);
         try {
-            const r = await fetch('/api/voice/control', {
+            const r = await gFetch('/api/voice/control', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
                 body: JSON.stringify({ enabled: target }),
@@ -352,12 +373,12 @@ export default function Voice(props: VoiceProps) {
 
     const resetIds = async () => {
         if (!confirm('Reset CALL-XXXX counter to CALL-0000?')) return;
-        try { await fetch('/api/voice/counter', { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } }); } catch { }
+        try { await gFetch('/api/voice/counter', { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } }); } catch { }
     };
 
     const resetLogs = async () => {
         if (!confirm('Reset all voice call history?')) return;
-        try { await fetch('/api/voice/stats', { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } }); } catch { }
+        try { await gFetch('/api/voice/stats', { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } }); } catch { }
     };
 
     const buildRawServers = (rows: TargetRow[]) =>
@@ -368,7 +389,7 @@ export default function Voice(props: VoiceProps) {
         setSaveStatus('saving');
         const servers = buildRawServers(rows);
         try {
-            const r = await fetch('/api/voice/config', {
+            const r = await gFetch('/api/voice/config', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
                 body: JSON.stringify({ servers, control: ctrl }),
@@ -551,6 +572,10 @@ export default function Voice(props: VoiceProps) {
     // ════════════════════════════════════════════════
     // Render
     // ════════════════════════════════════════════════
+    if (loading && !config && targetRows.length === 0) {
+        return <VoiceSkeleton />;
+    }
+
     return (
         <div className="space-y-6">
 

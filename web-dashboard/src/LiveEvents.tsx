@@ -1,8 +1,10 @@
 import React, { useEffect, useState, useRef } from 'react';
+import { usePeerContext } from './PeerContext';
 import { Terminal, Search, Trash2, Pause, Play, Download, Wifi, WifiOff } from 'lucide-react';
 import { io } from 'socket.io-client';
 
 export default function LiveEvents({ token }: { token: string | null }) {
+  const { gFetch, activePeerId } = usePeerContext();
   const [logs, setLogs] = useState<string[]>([]);
   const [filter, setFilter] = useState('');
   const [isPaused, setIsPaused] = useState(false);
@@ -12,7 +14,7 @@ export default function LiveEvents({ token }: { token: string | null }) {
 
   useEffect(() => {
     // Fetch History
-    fetch('/api/admin/system/logs', {
+    gFetch('/api/admin/system/logs', {
       headers: { 'Authorization': `Bearer ${token}` }
     })
     .then(res => res.json())
@@ -38,7 +40,7 @@ export default function LiveEvents({ token }: { token: string | null }) {
         socketRef.current.disconnect();
       }
     };
-  }, [token]);
+  }, [token, activePeerId]);
 
   // Handle Pause/Resume - We don't want to re-init socket on pause
   useEffect(() => {

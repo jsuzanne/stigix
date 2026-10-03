@@ -8,7 +8,7 @@ set -e
 INSTALL_MODE="both"
 DRY_RUN=false
 CONTROLLER_URL=""
-REPO_URL="https://raw.githubusercontent.com/jsuzanne/stigix/main"
+REPO_URL="https://raw.githubusercontent.com/jsuzanne/stigix/v2"
 COMPOSE_URL="$REPO_URL/docker-compose.yml"
 
 show_help() {
@@ -18,6 +18,8 @@ show_help() {
     echo "Options:"
     echo "  --mode <target|source|both>  Set the deployment mode (Default: both)"
     echo "  --controller <URL>           Join a remote Stigix leader as a peer (direct mode)"
+    echo "  --ip, -i <IP>                Explicitly select IP to advertise to Leader (bypasses prompt)"
+    echo "  --site, -s <Name>            Override site name for this node"
     echo "  --dry-run, -d                Download files and show what would happen without starting Docker"
     echo "  --help, -h                   Show this help message"
     echo ""
@@ -124,15 +126,241 @@ dump_process_on_port() {
 }
 
 # Parse command line arguments
+JOIN_TOKEN=""
+SITE_NAME_OVERRIDE=""
+ADVERTISED_IP_OVERRIDE=""
+
 while [[ "$#" -gt 0 ]]; do
     case $1 in
         --mode|-m) INSTALL_MODE="$2"; shift 2 ;;
         --controller|-c) CONTROLLER_URL="$2"; shift 2 ;;
+        --token|-t) JOIN_TOKEN="$2"; shift 2 ;;
+        --site|--site-name|--site_name|-s) SITE_NAME_OVERRIDE="$2"; shift 2 ;;
+        --ip|-i) ADVERTISED_IP_OVERRIDE="$2"; shift 2 ;;
         --dry-run|-d) DRY_RUN=true; shift ;;
         --help|-h) show_help ;;
+        STX-*) JOIN_TOKEN="$1"; shift ;;
         *) echo "Unknown parameter passed: $1"; show_help ;;
     esac
 done
+
+# Magic Join Token Resolution
+if [ -n "$JOIN_TOKEN" ]; then
+    echo "✨ Magic Join Token detected: ${JOIN_TOKEN:0:20}..."
+    RAW_TOKEN="${JOIN_TOKEN#STX-}"
+    IFS='.' read -r HDR_B64 PAYLOAD_B64 SIG_B64 <<< "$RAW_TOKEN"
+    
+    B64_CLEAN=$(echo "$PAYLOAD_B64" | tr '_-' '/+')
+    case $(( ${#B64_CLEAN} % 4 )) in
+        2) B64_CLEAN="${B64_CLEAN}==" ;;
+        3) B64_CLEAN="${B64_CLEAN}=" ;;
+    esac
+    
+    DECODED_JSON=$(echo "$B64_CLEAN" | base64 -d 2>/dev/null || echo "$B64_CLEAN" | base64 -D 2>/dev/null || echo "$B64_CLEAN" | openssl base64 -d 2>/dev/null || echo "{}")
+    
+    CANDIDATES=()
+    TOKEN_SITE=""
+    TOKEN_REALM=""
+    if command -v python3 &>/dev/null; then
+        PY_EXTRACT=$(python3 -c "import sys, json; d=json.loads(sys.argv[1]); print('\n'.join(d.get('endpoints', []))); print('SITE_HINT=' + (d.get('site_hint') or '')); print('REALM=' + (d.get('realm') or ''))" "$DECODED_JSON" 2>/dev/null)
+        while IFS= read -r line; do
+            if [[ "$line" =~ ^SITE_HINT=(.*) ]]; then
+                TOKEN_SITE="${BASH_REMATCH[1]}"
+            elif [[ "$line" =~ ^REALM=(.*) ]]; then
+                TOKEN_REALM="${BASH_REMATCH[1]}"
+            elif [ -n "$line" ]; then
+                CANDIDATES+=("$line")
+            fi
+        done <<< "$PY_EXTRACT"
+    elif command -v node &>/dev/null; then
+        NODE_EXTRACT=$(node -e "try { const d=JSON.parse(process.argv[1]); (d.endpoints||[]).forEach(e=>console.log(e)); if (d.site_hint) console.log('SITE_HINT=' + d.site_hint); if (d.realm) console.log('REALM=' + d.realm); } catch(e){}" "$DECODED_JSON" 2>/dev/null)
+        while IFS= read -r line; do
+            if [[ "$line" =~ ^SITE_HINT=(.*) ]]; then
+                TOKEN_SITE="${BASH_REMATCH[1]}"
+            elif [[ "$line" =~ ^REALM=(.*) ]]; then
+                TOKEN_REALM="${BASH_REMATCH[1]}"
+            elif [ -n "$line" ]; then
+                CANDIDATES+=("$line")
+            fi
+        done <<< "$NODE_EXTRACT"
+    fi
+
+    # Fallback to POSIX grep / sed if python/node was not available or output was empty
+    if [ -z "$TOKEN_SITE" ]; then
+        TOKEN_SITE=$(echo "$DECODED_JSON" | grep -o '"site_hint"[[:space:]]*:[[:space:]]*"[^"]*"' | sed -E 's/.*:[[:space:]]*"([^"]+)".*/\1/')
+    fi
+    if [ -z "$TOKEN_REALM" ]; then
+        TOKEN_REALM=$(echo "$DECODED_JSON" | grep -o '"realm"[[:space:]]*:[[:space:]]*"[^"]*"' | sed -E 's/.*:[[:space:]]*"([^"]+)".*/\1/')
+    fi
+    if [ ${#CANDIDATES[@]} -eq 0 ]; then
+        while IFS= read -r ep; do
+            [ -n "$ep" ] && CANDIDATES+=("$ep")
+        done < <(echo "$DECODED_JSON" | grep -o '"https\?://[^"]*"' | tr -d '"')
+    fi
+    
+    [ -n "$TOKEN_SITE" ] && [ -z "$SITE_NAME_OVERRIDE" ] && SITE_NAME_OVERRIDE="$TOKEN_SITE"
+    
+    echo "🔍 Probing Leader connectivity across candidate endpoints..."
+    WINNING_LEADER=""
+    for ep in "${CANDIDATES[@]}"; do
+        ep="${ep%/}"
+        echo "   • Testing $ep..."
+        if curl -s -k -o /dev/null -w "%{http_code}" --connect-timeout 2 -m 3 "$ep/api/health" 2>/dev/null | grep -q "200"; then
+            echo "   ✅ Connected to Leader at $ep"
+            WINNING_LEADER="$ep"
+            break
+        fi
+    done
+    
+    if [ -n "$WINNING_LEADER" ]; then
+        CONTROLLER_URL="$WINNING_LEADER"
+        echo "🔑 Redeeming single-use Magic Join token with Leader..."
+        NODE_HOSTNAME=$(hostname | cut -d'.' -f1)
+        CHOSEN_SITE="${SITE_NAME_OVERRIDE:-$NODE_HOSTNAME}"
+        REDEEM_BODY="{\"token\":\"$JOIN_TOKEN\",\"instance_id\":\"$NODE_HOSTNAME\",\"hostname\":\"$NODE_HOSTNAME\",\"site_name\":\"$CHOSEN_SITE\"}"
+        REDEEM_RES=$(curl -s -k -X POST -H "Content-Type: application/json" -d "$REDEEM_BODY" --connect-timeout 4 -m 6 "$WINNING_LEADER/api/fleet/join-redeem" 2>/dev/null || echo "{}")
+        if echo "$REDEEM_RES" | grep -q -E '"success":true|"status":"ok"'; then
+            echo "   ✅ Token redeemed successfully!"
+            CLUSTER_JWT=$(echo "$REDEEM_RES" | grep -o '"jwt_secret":"[^"]*' | cut -d'"' -f4)
+            if [ -n "$CLUSTER_JWT" ]; then
+                JOINED_JWT_SECRET="$CLUSTER_JWT"
+                echo "   🔒 Cluster security realm synchronized."
+            fi
+        else
+            echo "   ⚠️  Redemption notice: $REDEEM_RES"
+        fi
+    elif [ ${#CANDIDATES[@]} -gt 0 ]; then
+        CONTROLLER_URL="${CANDIDATES[0]}"
+        echo "⚠️ Direct LAN probes timed out. Announcing to Cloudflare Rendezvous Relay..."
+        REGISTRY_URL="https://registry.stigix.io"
+        NODE_HOSTNAME=$(hostname | cut -d'.' -f1)
+        CHOSEN_SITE="${SITE_NAME_OVERRIDE:-$NODE_HOSTNAME}"
+        ANNOUNCE_PORT=8080
+        if command -v find_free_port &>/dev/null; then
+            FP=$(find_free_port 8080 8090)
+            [ -n "$FP" ] && ANNOUNCE_PORT="$FP"
+        fi
+        LOCAL_IPS=()
+        # 1. Inspect interfaces with 'ip' command, filtering out docker/libvirt/veth virtual bridges
+        if command -v ip &>/dev/null; then
+            while read -r iface ip; do
+                if [[ ! "$iface" =~ ^(lo|docker|virbr|veth|vnet|br-) ]]; then
+                    [[ "$ip" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]] && [[ ! "$ip" =~ ^127\. ]] && [[ ! "$ip" =~ ^172\.(1[6-9]|2[0-9]|3[0-1])\. ]] && [[ ! "$ip" =~ ^169\.254\. ]] && LOCAL_IPS+=("$ip")
+                fi
+            done < <(ip -4 -o addr show 2>/dev/null | awk '{print $2, $4}' | sed 's/\/.*//')
+        fi
+        # 2. Fallback to ifconfig if no interface IP found
+        if [ ${#LOCAL_IPS[@]} -eq 0 ] && command -v ifconfig &>/dev/null; then
+            for ip in $(ifconfig 2>/dev/null | grep -E 'inet [0-9]' | awk '{print $2}' | sed 's/addr://'); do
+                [[ "$ip" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]] && [[ ! "$ip" =~ ^127\. ]] && [[ ! "$ip" =~ ^172\.(1[6-9]|2[0-9]|3[0-1])\. ]] && [[ ! "$ip" =~ ^169\.254\. ]] && LOCAL_IPS+=("$ip")
+            done
+        fi
+        # 3. Fallback to hostname -I if still empty
+        if [ ${#LOCAL_IPS[@]} -eq 0 ] && command -v hostname &>/dev/null; then
+            for ip in $(hostname -I 2>/dev/null); do
+                [[ "$ip" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]] && [[ ! "$ip" =~ ^127\. ]] && [[ ! "$ip" =~ ^172\.(1[6-9]|2[0-9]|3[0-1])\. ]] && [[ ! "$ip" =~ ^169\.254\. ]] && LOCAL_IPS+=("$ip")
+            done
+        fi
+
+        # Probe external Public IP (essential for Cloud VPS like Hetzner, AWS, GCP, Oracle, or behind 1:1 NAT)
+        EXT_PUB_IP=$(curl -4 -s --connect-timeout 2 -m 3 https://api.ipify.org 2>/dev/null || curl -4 -s --connect-timeout 2 -m 3 https://ifconfig.me 2>/dev/null || curl -4 -s --connect-timeout 2 -m 3 https://checkip.amazonaws.com 2>/dev/null || true)
+        EXT_PUB_IP=$(echo "$EXT_PUB_IP" | tr -d ' \n\r\t')
+        if [[ "$EXT_PUB_IP" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]] && [[ ! "$EXT_PUB_IP" =~ ^127\. ]] && [[ ! "$EXT_PUB_IP" =~ ^10\. ]] && [[ ! "$EXT_PUB_IP" =~ ^172\.(1[6-9]|2[0-9]|3[0-1])\. ]] && [[ ! "$EXT_PUB_IP" =~ ^192\.168\. ]] && [[ ! "$EXT_PUB_IP" =~ ^169\.254\. ]]; then
+            LOCAL_IPS+=("$EXT_PUB_IP")
+        fi
+
+        UNIQUE_IPS=()
+        for ip in "${LOCAL_IPS[@]}"; do
+            skip=0
+            for u in "${UNIQUE_IPS[@]}"; do
+                [ "$u" = "$ip" ] && { skip=1; break; }
+            done
+            [ $skip -eq 0 ] && UNIQUE_IPS+=("$ip")
+        done
+
+        # Ensure CHOSEN_PRIMARY_IP is always initialized (e.g. single-IP Cloud hosts)
+        [ ${#UNIQUE_IPS[@]} -gt 0 ] && CHOSEN_PRIMARY_IP="${UNIQUE_IPS[0]}"
+
+        if [ -n "$ADVERTISED_IP_OVERRIDE" ]; then
+            UNIQUE_IPS=("$ADVERTISED_IP_OVERRIDE")
+            CHOSEN_PRIMARY_IP="$ADVERTISED_IP_OVERRIDE"
+            echo "   🎯 Using specified advertised IP: $ADVERTISED_IP_OVERRIDE"
+        elif [ ${#UNIQUE_IPS[@]} -gt 1 ]; then
+            INTERACTIVE=0
+            if [ -t 0 ]; then
+                INTERACTIVE=1
+            elif [ -r /dev/tty ] && [ -w /dev/tty ]; then
+                INTERACTIVE=2
+            fi
+
+            if [ $INTERACTIVE -gt 0 ]; then
+                echo ""
+                echo "   🌐 Multiple network interfaces / IPs detected on this host:"
+                echo "      [1] All detected IPs (${UNIQUE_IPS[*]}) - Recommended"
+                idx=2
+                for ip in "${UNIQUE_IPS[@]}"; do
+                    if [[ "$ip" =~ ^(10\.|192\.168\.|172\.(1[6-9]|2[0-9]|3[0-1])\.) ]]; then
+                        echo "      [$idx] $ip (Private LAN)"
+                    else
+                        echo "      [$idx] $ip (Public / Cloud IP)"
+                    fi
+                    ((idx++))
+                done
+                echo "      [$idx] Custom IP..."
+
+                IP_CHOICE=""
+                if [ $INTERACTIVE -eq 1 ]; then
+                    read -t 15 -p "   👉 Select IP to advertise to Leader [Default: 1, auto-select in 15s]: " IP_CHOICE || true
+                else
+                    read -t 15 -p "   👉 Select IP to advertise to Leader [Default: 1, auto-select in 15s]: " IP_CHOICE < /dev/tty || true
+                fi
+                echo ""
+                IP_CHOICE=${IP_CHOICE:-1}
+
+                if [ "$IP_CHOICE" = "1" ]; then
+                    echo "   ✅ Advertising all detected IPs."
+                elif [ "$IP_CHOICE" -ge 2 ] && [ "$IP_CHOICE" -lt "$idx" ] 2>/dev/null; then
+                    selected_idx=$((IP_CHOICE - 2))
+                    SELECTED_IP="${UNIQUE_IPS[$selected_idx]}"
+                    UNIQUE_IPS=("$SELECTED_IP")
+                    CHOSEN_PRIMARY_IP="$SELECTED_IP"
+                    echo "   ✅ Advertising selected IP: $SELECTED_IP"
+                elif [ "$IP_CHOICE" = "$idx" ]; then
+                    CUSTOM_IP=""
+                    if [ $INTERACTIVE -eq 1 ]; then
+                        read -p "   Enter custom IP: " CUSTOM_IP
+                    else
+                        read -p "   Enter custom IP: " CUSTOM_IP < /dev/tty
+                    fi
+                    if [ -n "$CUSTOM_IP" ]; then
+                        UNIQUE_IPS=("$CUSTOM_IP")
+                        CHOSEN_PRIMARY_IP="$CUSTOM_IP"
+                        echo "   ✅ Advertising custom IP: $CUSTOM_IP"
+                    fi
+                else
+                    echo "   ⚠️  Invalid choice ($IP_CHOICE), proceeding with all detected IPs."
+                fi
+            fi
+        fi
+
+        LOCAL_IPS_JSON="["
+        first=1
+        for ip in "${UNIQUE_IPS[@]}"; do
+            [ $first -eq 1 ] && LOCAL_IPS_JSON+="\"$ip\"" || LOCAL_IPS_JSON+=",\"$ip\""
+            first=0
+        done
+        LOCAL_IPS_JSON+="]"
+        ANNOUNCE_BODY="{\"instance_id\":\"$NODE_HOSTNAME\",\"site_name\":\"$CHOSEN_SITE\",\"port\":$ANNOUNCE_PORT,\"ips\":$LOCAL_IPS_JSON}"
+        if [ -n "$TOKEN_REALM" ]; then
+            ANNOUNCE_RES=$(curl -s -k -X POST -H "Content-Type: application/json" -d "$ANNOUNCE_BODY" --connect-timeout 4 -m 6 "$REGISTRY_URL/realms/$TOKEN_REALM/register" 2>/dev/null || echo "{}")
+            if echo "$ANNOUNCE_RES" | grep -q '"status":"ok"'; then
+                echo "   ✅ Cloudflare Rendezvous announced (port $ANNOUNCE_PORT)! Private Leader will establish reverse tunnel automatically."
+            fi
+        fi
+        # In Rendezvous mode, Leader dials peer; clear CONTROLLER_URL to avoid blocking reachability check
+        CONTROLLER_URL=""
+    fi
+fi
 
 # Validate and test reachability of --controller URL
 if [ -n "$CONTROLLER_URL" ]; then
@@ -234,8 +462,12 @@ if [ -f docker-compose.yml ]; then
 fi
 
 # 4. Mode-specific adjustments (Creating the right docker-compose/env)
-# Generate a unique JWT secret for this installation
-JWT_SECRET=$(openssl rand -hex 32 2>/dev/null || cat /proc/sys/kernel/random/uuid 2>/dev/null | tr -d '-' || date +%s%N | sha256sum | head -c 64)
+# Generate a unique JWT secret for standalone installation or inherit cluster secret if joined
+if [ -n "$JOINED_JWT_SECRET" ]; then
+    JWT_SECRET="$JOINED_JWT_SECRET"
+else
+    JWT_SECRET=$(openssl rand -hex 32 2>/dev/null || cat /proc/sys/kernel/random/uuid 2>/dev/null | tr -d '-' || date +%s%N | sha256sum | head -c 64)
+fi
 
 PORT=8080
 if [ "$INSTALL_MODE" != "target" ]; then
@@ -268,6 +500,7 @@ fi
 
 echo "STIGIX_ROLE=$INSTALL_MODE" > .env
 echo "JWT_SECRET=$JWT_SECRET" >> .env
+[ -n "$TOKEN_REALM" ] && echo "STIGIX_CLUSTER_REALM=$TOKEN_REALM" >> .env
 echo "PORT=$PORT" >> .env
 echo "BETA=false" >> .env
 echo "" >> .env
@@ -304,8 +537,24 @@ STIGIX_TARGET_BASE_URL=https://target.stigix.io
 # STIGIX_TARGET_MASTER_KEY=
 
 # Site name for dashboard display
-STIGIX_SITE_NAME=$(hostname | cut -d'.' -f1)
+STIGIX_SITE_NAME="${SITE_NAME_OVERRIDE:-$(hostname | cut -d'.' -f1)}"
 EOF
+
+if [ -n "$SITE_NAME_OVERRIDE" ]; then
+    if grep -q "^STIGIX_SITE_NAME=" .env 2>/dev/null; then
+        sed -i.bak -E "s|^STIGIX_SITE_NAME=.*|STIGIX_SITE_NAME=$SITE_NAME_OVERRIDE|g" .env && rm -f .env.bak
+    else
+        echo "STIGIX_SITE_NAME=$SITE_NAME_OVERRIDE" >> .env
+    fi
+fi
+
+if [ -n "$CHOSEN_PRIMARY_IP" ]; then
+    if grep -q "^STIGIX_PRIVATE_IP=" .env 2>/dev/null; then
+        sed -i.bak -E "s|^STIGIX_PRIVATE_IP=.*|STIGIX_PRIVATE_IP=$CHOSEN_PRIMARY_IP|g" .env && rm -f .env.bak
+    else
+        echo "STIGIX_PRIVATE_IP=$CHOSEN_PRIMARY_IP" >> .env
+    fi
+fi
 
 # Adjust the docker-compose.yml based on mode if needed
 if [ "$INSTALL_MODE" == "target" ]; then
@@ -324,17 +573,45 @@ if [ -n "$CONTROLLER_URL" ]; then
     echo "# --- Direct Controller Mode ---" >> .env
     echo "# Set by --controller flag at install time. Bypasses Cloudflare discovery." >> .env
     echo "STIGIX_CONTROLLER_URL=$CONTROLLER_URL" >> .env
-    echo "STIGIX_REGISTRY_ENABLED=true" >> .env
-    # Direct mode requires the v2 image which includes the registry-manager changes
-    echo "TAG=v2" >> .env
     # Set site name from hostname only if not already present
     if ! grep -q "^STIGIX_SITE_NAME=." .env 2>/dev/null; then
-        echo "STIGIX_SITE_NAME=$(hostname | cut -d'.' -f1)" >> .env
+        echo "STIGIX_SITE_NAME=${SITE_NAME_OVERRIDE:-$(hostname | cut -d'.' -f1)}" >> .env
     fi
-    echo "✅ Controller URL written to .env (image: v2)"
+    echo "✅ Controller URL written to .env"
+fi
+
+if [ -n "$JOINED_JWT_SECRET" ]; then
+    if grep -q "^JWT_SECRET=" .env 2>/dev/null; then
+        sed -i.bak -E "s|^JWT_SECRET=.*|JWT_SECRET=$JOINED_JWT_SECRET|g" .env && rm -f .env.bak
+    fi
+fi
+
+if [ -n "$TOKEN_REALM" ]; then
+    if grep -q "^STIGIX_CLUSTER_REALM=" .env 2>/dev/null; then
+        sed -i.bak -E "s|^STIGIX_CLUSTER_REALM=.*|STIGIX_CLUSTER_REALM=$TOKEN_REALM|g" .env && rm -f .env.bak
+    else
+        echo "STIGIX_CLUSTER_REALM=$TOKEN_REALM" >> .env
+    fi
 fi
 
 mkdir -p ./config ./logs ./mcp-data
+
+FINAL_SITE_NAME="${SITE_NAME_OVERRIDE:-$(hostname | cut -d'.' -f1)}"
+echo "{\"siteName\":\"$FINAL_SITE_NAME\"}" > ./config/site-name.json
+
+if [ -n "$CHOSEN_PRIMARY_IP" ]; then
+    IFACE_FOR_IP=$(ip -4 -o addr show 2>/dev/null | grep "$CHOSEN_PRIMARY_IP" | awk '{print $2}' | head -n 1)
+    if [ -z "$IFACE_FOR_IP" ] && command -v ifconfig &>/dev/null; then
+        IFACE_FOR_IP=$(ifconfig 2>/dev/null | grep -B 1 "$CHOSEN_PRIMARY_IP" | grep -E '^[a-zA-Z0-9]+' | awk '{print $1}' | tr -d ':' | head -n 1)
+    fi
+    if [ -n "$IFACE_FOR_IP" ]; then
+        echo "$IFACE_FOR_IP" > ./config/interfaces.txt
+    else
+        DEFAULT_IFACE=$(ip route show default 2>/dev/null | awk '/default/ {print $5}' | head -n 1)
+        [ -n "$DEFAULT_IFACE" ] && echo "$DEFAULT_IFACE" > ./config/interfaces.txt
+    fi
+fi
+
 # Pre-create CLI persistence files so Docker mounts them as files (not dirs)
 touch ./.stigix-cli.history ./.stigix-cli.json
 
@@ -395,6 +672,43 @@ if [ "$INSTALL_MODE" != "target" ]; then
         echo "⚠️  Warning: Web Dashboard is not responding yet."
         echo "💡 Diagnostics: The server might still be initializing. Run 'docker logs stigix' to verify."
     fi
+
+    # 4. Fleet WebSocket Tunnel Verification (when joining a cluster)
+    if [ -n "$JOIN_TOKEN" ] || [ -n "$CONTROLLER_URL" ] || [ -n "$TOKEN_REALM" ]; then
+        echo "🔍 Verifying Fleet Mesh WebSocket Tunnel with Leader..."
+        TUNNEL_ESTABLISHED=false
+        MAX_TUNNEL_WAIT=25
+        for ((t=1; t<=MAX_TUNNEL_WAIT; t++)); do
+            STATUS_JSON=$(curl -sf "http://localhost:$PORT/api/system/tunnel-status" 2>/dev/null || echo "{}")
+            if echo "$STATUS_JSON" | grep -q '"tunnel_active":true'; then
+                TUNNEL_ESTABLISHED=true
+                LEADER_NAME=$(echo "$STATUS_JSON" | grep -o '"siteName":"[^"]*' | cut -d'"' -f4)
+                [ -z "$LEADER_NAME" ] && LEADER_NAME=$(echo "$STATUS_JSON" | grep -o '"instanceId":"[^"]*' | cut -d'"' -f4)
+                print_progress_bar $MAX_TUNNEL_WAIT $MAX_TUNNEL_WAIT "⚡ WebSocket Fleet Tunnel ESTABLISHED with Leader (${LEADER_NAME:-Leader})!"
+                echo ""
+                echo ""
+                echo "   ╔═══════════════════════════════════════════════════════════════════════╗"
+                echo "   ║  🎉 FLEET MESH CONNECTED & SYNCHRONIZED !                             ║"
+                echo "   ╠═══════════════════════════════════════════════════════════════════════╣"
+                echo "   ║  🟢 Node Status:    Online [ ⚡ WS TUNNEL ]                            ║"
+                printf "   ║  👑 Leader Name:    %-49s ║\n" "${LEADER_NAME:-Leader}"
+                echo "   ║  🔒 Security Realm: Synchronized & Enrolled                           ║"
+                echo "   ║  📦 Provisioning:   Targets, Probes & Applications Active             ║"
+                echo "   ╚═══════════════════════════════════════════════════════════════════════╝"
+                echo ""
+                break
+            fi
+            print_progress_bar $t $MAX_TUNNEL_WAIT "Awaiting Leader reverse dial (~10-15s cycle, attempt $t/$MAX_TUNNEL_WAIT)..."
+            sleep 2
+        done
+        if [ "$TUNNEL_ESTABLISHED" = false ]; then
+            echo ""
+            echo "   🟢 Node initialized and registered to Cloudflare Rendezvous."
+            echo "   ⏳ Background reverse tunnel handshake in progress (typically completes within ~30-60s)."
+            echo "   ✨ The node will link automatically — check your Leader dashboard for '⚡ WS Tunnel'."
+            echo "   💡 Note: If it does not appear within 2 min, verify that Inbound TCP port $PORT is allowed in your Cloud firewall."
+        fi
+    fi
 fi
 
 echo ""
@@ -419,9 +733,7 @@ fi
 if [ -n "$CONTROLLER_URL" ]; then
     echo ""
     echo "🔗 Controller: $CONTROLLER_URL"
-    echo "🤝 Peer registration is starting automatically."
-    echo "💡 Tip: Run the following to watch live registration logs:"
-    echo "   cd stigix && docker compose logs -f"
+    echo "🤝 Peer registration is active."
 fi
 echo "📝 Check logs: cd stigix && docker compose logs -f"
 echo "=========================================="

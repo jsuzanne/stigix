@@ -1,13 +1,13 @@
-> **Last Updated:** 2026-06-05 | **Created:** 2026-01-16 (v1.0.2)
+> **Last Updated:** 2026-10-03 | **Created:** 2026-01-16 (v1.0.2) | **Initial Stigix Version:** v1.0.2
 
 # Security Testing Feature - Technical Documentation
 
 ## Overview
 
-The Security Testing feature enables controlled testing of Palo Alto Networks / Prisma Access security policies for demos and POCs. It provides automated testing of URL Filtering, DNS Security, and Threat Prevention capabilities.
+The Security Testing feature enables controlled testing of Palo Alto Networks / Prisma Access security policies for demos and POCs. It provides automated testing of URL Filtering, DNS Security, Threat Prevention capabilities, and native SSL Decryption validation with Forward Trust CA certificate import.
 
-**Version:** 1.4.0-patch.156
-**Last Updated:** 2026-05-28
+**Version:** 2.0.143
+**Last Updated:** 2026-10-03
 
 ---
 
@@ -600,11 +600,12 @@ Dedicated score visualization panel mounted inside `Security.tsx`. Fetches score
 
 ## Test Categories
 
-### URL Filtering Categories (67 total)
+### URL Filtering Categories (70 total) & Protocol Toggle (HTTP / HTTPS)
 
-Defined in `web-dashboard/src/data/security-categories.ts`
+Defined in `web-dashboard/shared/security-categories.ts` (and customizable via `config/security-profile.json`).
 
-**Example:**
+**Default Configuration:**
+In the configuration file and security profile, test URLs are stored using `http://`:
 ```typescript
 {
   id: 'malware',
@@ -613,13 +614,25 @@ Defined in `web-dashboard/src/data/security-categories.ts`
 }
 ```
 
-**Categories include:**
-- Malware, Phishing, Command and Control
-- Adult Content, Gambling, Weapons
-- Hacking, Proxy Avoidance, Peer-to-Peer
-- And 58 more...
+**HTTP vs HTTPS Protocol Toggle (v2.0.143+):**
+The URL Filtering header includes an instant **`[ 🌐 HTTP | 🔒 HTTPS ]`** protocol selector:
+* **`HTTP` Mode (Default, port 80):** Executes tests using standard `http://urlfiltering.paloaltonetworks.com/...`. The firewall/Prisma Access inspects the full URI directly in plaintext.
+* **`HTTPS` Mode (port 443):** Dynamically replaces `http://` with `https://` (`https://urlfiltering.paloaltonetworks.com/...`) across all execution flows:
+  * Single category test execution (▶)
+  * Batch execution (**RUN SELECTED CATEGORIES**)
+  * Scheduled background execution (`sched-url-...`)
+  * CLI command generator (Copy `curl` command 📋)
+* **SSL Decryption Validation:** Testing in `HTTPS` mode is the ideal method to demonstrate Palo Alto / Prisma Access **SSL Forward Proxy Decryption**:
+  * *Without SSL Decryption:* The firewall only sees the SNI `urlfiltering.paloaltonetworks.com` and cannot inspect individual category paths (`/test-malware`, `/test-gambling`).
+  * *With SSL Decryption + Stigix Forward Trust CA:* The firewall decrypts the TLS session, categorizes the request path, applies URL filtering security profiles, and re-encrypts the session using its CA certificate without client-side TLS errors.
 
-**Full list:** See `URL_CATEGORIES` array in `security-categories.ts`
+**Categories include:**
+- Malware, Phishing, Real-Time Detection C2 / Malware / Phishing / Grayware
+- Adult Content, Gambling, Weapons, Cryptocurrency
+- Hacking, Proxy Avoidance, Peer-to-Peer
+- And 60+ more...
+
+**Full list:** See `URL_CATEGORIES` array in `web-dashboard/shared/security-categories.ts`
 
 ---
 
@@ -1898,3 +1911,62 @@ curl -X GET http://<NODE_IP>:8080/api/security/profile \
   -H "Authorization: Bearer <JWT>"
 # Returns the active profile (custom or default)
 ```
+
+---
+
+## 🔐 Prisma Access SSL Decryption & Enterprise CA Certificates (Forward Trust CA)
+
+### 1. Problem Overview
+When outbound traffic from a branch or datacenter traverses a **Next-Generation Firewall (NGFW)** or **Prisma Access (SASE)** configured with **SSL Forward Proxy Decryption**, the security appliance intercepts the TLS handshake and re-encrypts the session using its own **Forward Trust CA**.
+
+If the client (Stigix testing engines) does not trust this CA:
+- **Security Tests Fail at TLS**: Threat Prevention (EICAR over HTTPS), URL Filtering, and DLP tests fail during the TLS handshake (`UNABLE_TO_VERIFY_LEAF_SIGNATURE` or `SSL: CERTIFICATE_VERIFY_FAILED`) before the HTTP request payload can reach the firewall's inspection engines.
+- **Synthetic Monitoring**: HTTPS synthetic SaaS probes generate false-positive down alarms due to untrusted certificates.
+- **Traffic Generation**: Subprocesses like `curl` and Python web engines abort HTTPS connections.
+
+---
+
+### 2. Scope of Application Across Stigix
+
+When a Forward Trust CA or custom enterprise CA certificate is imported, Stigix automatically applies it across **all engines and modules**:
+
+| Module | Engine / Technology | Injection Mechanism | Impact |
+|---|---|---|---|
+| **Security Testing** | Python `requests`, Node.js `fetch` | `REQUESTS_CA_BUNDLE`, `SSL_CERT_FILE`, `NODE_EXTRA_CA_CERTS` | Allows EICAR, WildFire, URL Filtering, and DLP tests to complete TLS handshake and test real firewall policy enforcement. |
+| **Synthetic Probes** | `ConnectivityLogger`, HTTP/HTTPS probes | `https.globalAgent.options.ca`, `NODE_EXTRA_CA_CERTS` | Synthetic SaaS and web probes monitor real latency through proxy decryption without certificate errors. |
+| **Traffic Generator** | `traffic-generator.sh`, `curl`, Python sessions | `CURL_CA_BUNDLE`, `REQUESTS_CA_BUNDLE`, `SSL_CERT_FILE` | Background traffic generation generates realistic decrypted web and application traffic. |
+| **Mesh Provisioning** | Stigix Zero-Touch Mesh Sync | `ca-certificates` Global Bundle | Auto-propagates certificate bundle from Leader to all remote spoke nodes (DC1, BR1, BR2, BR5, BR8). |
+
+---
+
+### 3. Installation & Management
+
+#### A. 1-Click Auto-Import from Prisma SASE (Recommended)
+1. Navigate to **Settings ➔ Prisma SASE API**.
+2. Ensure your TSG ID, Client ID, and Client Secret are configured.
+3. Click **« ⚡ Auto-Import from Prisma SASE »**.
+4. Stigix connects to the Palo Alto SSE Configuration API (`/sse/config/v1/certificates`), extracts `Forward-Trust-CA` (RSA & ECDSA) and `Root CA`, and saves them to `/config/certs/ca-bundle.pem`.
+5. Status changes to **`Active & Decryption Ready`**.
+
+#### B. Manual Upload / Paste (Fallback)
+1. Click **« 📁 Upload / Paste .crt »**.
+2. Select a `.crt` / `.pem` file from your workstation or paste raw PEM text (`-----BEGIN CERTIFICATE----- ... -----END CERTIFICATE-----`).
+3. Click **Install Certificate**.
+
+#### C. REST API Endpoints
+- `GET /api/security/certificates`: Retrieve active CA certificate inventory and status.
+- `GET /api/security/certificates/bundle`: Download consolidated PEM bundle (`stigix-ca-bundle.pem`).
+- `POST /api/security/certificates/fetch-prisma`: Trigger 1-click fetch from Prisma SASE.
+- `POST /api/security/certificates/upload`: Import manual certificate PEM.
+- `DELETE /api/security/certificates?id=<id>`: Remove individual certificate or purge all.
+
+---
+
+## 📜 Revision History
+
+| Date | Author | Description |
+|---|---|---|
+| 2026-10-03 | Stigix Engineering Team | Added Prisma Access SSL Decryption & 1-Click Forward Trust CA certificate import documentation (v2.0.143). |
+| 2026-06-05 | Stigix Engineering Team | Added vendor-agnostic security profiles (Palo Alto, Fortinet, Cisco) and MCP profile endpoints. |
+| 2026-05-28 | Stigix Engineering Team | Enhanced C2 attack scenarios, AI Security testing (AISA), and test history log search/export. |
+| 2026-01-16 | Stigix Engineering Team | Initial creation of Security Testing technical documentation (v1.0.2). |

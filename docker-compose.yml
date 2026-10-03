@@ -38,6 +38,7 @@ services:
       # --- General & Web UI ---
       - PORT=${PORT:-8080}
       - JWT_SECRET=${JWT_SECRET:-your-secure-secret-here}
+      - STIGIX_CLUSTER_REALM=${STIGIX_CLUSTER_REALM:-}
       - DEBUG=${DEBUG:-false}
       - BETA=${BETA:-false}
       
@@ -64,10 +65,12 @@ services:
       # --- Registry & Discovery (Optional Overrides) ---
       - STIGIX_REGISTRY_ENABLED=${STIGIX_REGISTRY_ENABLED:-true}
       - STIGIX_SITE_NAME=${STIGIX_SITE_NAME:-}
+      - STIGIX_PRIVATE_IP=${STIGIX_PRIVATE_IP:-}
       - STIGIX_INSTANCE_ID=${STIGIX_INSTANCE_ID:-}
       - STIGIX_REGISTRY_HEARTBEAT_SEC=${STIGIX_REGISTRY_HEARTBEAT_SEC:-300}
       - STIGIX_REGISTRY_DISCOVERY_SEC=${STIGIX_REGISTRY_DISCOVERY_SEC:-120}
       - STIGIX_REGISTRY_MODE=${STIGIX_REGISTRY_MODE:-peer}
+      - STIGIX_PUBLIC_URL=${STIGIX_PUBLIC_URL:-}
       # --- Direct Controller Mode (bypasses Cloudflare, set by --controller installer flag) ---
       - STIGIX_CONTROLLER_URL=${STIGIX_CONTROLLER_URL:-}
       # --- Stigix Cloud & Probes ---

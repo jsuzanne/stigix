@@ -2,6 +2,7 @@
  * Stigix Custom TCP Inter-Site Applications — Settings Configuration Tab
  */
 
+import { usePeerContext } from '../../PeerContext';
 import React, { useState, useEffect } from 'react';
 import {
     Server, Plus, Play, Square, Edit3, Copy, Trash2,
@@ -20,6 +21,7 @@ interface CustomTcpSettingsTabProps {
 }
 
 export const CustomTcpSettingsTab: React.FC<CustomTcpSettingsTabProps> = ({ token }) => {
+    const { gFetch } = usePeerContext();
     const [applications, setApplications] = useState<CustomTcpApplicationConfig[]>([]);
     const [instanceInfo, setInstanceInfo] = useState<any>(null);
     const [appStatuses, setAppStatuses] = useState<Record<string, any>>({});
@@ -36,8 +38,8 @@ export const CustomTcpSettingsTab: React.FC<CustomTcpSettingsTabProps> = ({ toke
         setIsLoading(true);
         try {
             const [configRes, statusRes] = await Promise.all([
-                fetch('/api/custom-tcp-apps', { headers: { 'Authorization': `Bearer ${token}` } }),
-                fetch('/api/custom-tcp-apps/summary/all', { headers: { 'Authorization': `Bearer ${token}` } })
+                gFetch('/api/custom-tcp-apps', { headers: { 'Authorization': `Bearer ${token}` } }),
+                gFetch('/api/custom-tcp-apps/summary/all', { headers: { 'Authorization': `Bearer ${token}` } })
             ]);
 
             if (configRes.ok) {
@@ -84,7 +86,7 @@ export const CustomTcpSettingsTab: React.FC<CustomTcpSettingsTabProps> = ({ toke
     const handleToggleListener = async (appId: string, currentListening: boolean) => {
         const action = currentListening ? 'stop' : 'start';
         try {
-            const res = await fetch(`/api/custom-tcp-apps/${appId}/listener/${action}`, {
+            const res = await gFetch(`/api/custom-tcp-apps/${appId}/listener/${action}`, {
                 method: 'POST',
                 headers: { 'Authorization': `Bearer ${token}` }
             });
@@ -102,7 +104,7 @@ export const CustomTcpSettingsTab: React.FC<CustomTcpSettingsTabProps> = ({ toke
 
     const handleDuplicate = async (appId: string) => {
         try {
-            const res = await fetch(`/api/custom-tcp-apps/${appId}/duplicate`, {
+            const res = await gFetch(`/api/custom-tcp-apps/${appId}/duplicate`, {
                 method: 'POST',
                 headers: { 'Authorization': `Bearer ${token}` }
             });
@@ -121,7 +123,7 @@ export const CustomTcpSettingsTab: React.FC<CustomTcpSettingsTabProps> = ({ toke
     const handleDelete = async (appId: string, appName: string) => {
         if (!window.confirm(`Are you sure you want to delete application "${appName}"?`)) return;
         try {
-            const res = await fetch(`/api/custom-tcp-apps/${appId}`, {
+            const res = await gFetch(`/api/custom-tcp-apps/${appId}`, {
                 method: 'DELETE',
                 headers: { 'Authorization': `Bearer ${token}` }
             });
@@ -139,7 +141,7 @@ export const CustomTcpSettingsTab: React.FC<CustomTcpSettingsTabProps> = ({ toke
 
     const handleExportJson = async () => {
         try {
-            const res = await fetch('/api/custom-tcp-apps/export', {
+            const res = await gFetch('/api/custom-tcp-apps/export', {
                 headers: { 'Authorization': `Bearer ${token}` }
             });
             if (!res.ok) throw new Error('Export failed');
@@ -147,7 +149,7 @@ export const CustomTcpSettingsTab: React.FC<CustomTcpSettingsTabProps> = ({ toke
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;
-            a.download = `stigix-custom-apps-${instanceInfo?.siteName || 'fleet'}-${new Date().toISOString().slice(0, 10)}.json`;
+            a.download = `stigix-custom-apps-${instanceInfo?.siteName || 'mesh'}-${new Date().toISOString().slice(0, 10)}.json`;
             document.body.appendChild(a);
             a.click();
             document.body.removeChild(a);
