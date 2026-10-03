@@ -2,133 +2,110 @@
 
 # 🕸️ Stigix — Advanced Networking & Security Simulation Environment
 
-[![Version](https://img.shields.io/badge/Version-2.0.144-blue.svg)](https://github.com/jsuzanne/stigix/releases)
-[![Last Updated](https://img.shields.io/badge/Updated-2026--10--03-brightgreen.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/Version-2.0.145-blue.svg)](https://github.com/jsuzanne/stigix/releases)
+[![Last Updated](https://img.shields.io/badge/Updated-2026--10--03-brightgreen.svg)](CHANGELOG_V2.md)
 [![Docker Pulls](https://img.shields.io/docker/pulls/jlsuzanne/stigix)](https://hub.docker.com/r/jlsuzanne/stigix)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
-A modern web-based SD-WAN traffic generator with real-time monitoring, customizable traffic patterns, and comprehensive security testing. Perfect for testing SD-WAN deployments, network QoS policies, and application performance.
+**The all-in-one open-source validation platform for SASE, SD-WAN, and Enterprise Network Security.**  
+Generate realistic multi-site SaaS, Voice, and IoT traffic, execute live security threat attacks, inject network chaos on underlay routers, and orchestrate tests using AI with native Model Context Protocol (MCP).
 
 ![Stigix](docs/stigix-banner.gif)
 
 ---
 
-## 📑 Table of Contents
+## ⚡ Quick Start in 30 Seconds
 
-- [Features](#-features)
-- [Screenshots Gallery](#-screenshots-gallery)
-- [Platform Support](#️-platform-support)
-- [Prerequisites](#-prerequisites)
-- [Quick Start](#-quick-start)
-- [Verify Installation](#-verify-installation)
-- [What Happens on First Start?](#-what-happens-on-first-start)
-- [Usage](#-usage)
-- [Configuration](#-configuration)
-- [Useful Commands](#️-useful-commands)
-- [Architecture](#️-architecture)
-- [Troubleshooting](#-troubleshooting)
-- [Security](#-security)
-- [Key Concepts](#-key-concepts)
-- [Docker Images](#-docker-images)
-- [Documentation](#-documentation)
-- [Use Cases](#-use-cases)
-- [Contributing](#-contributing)
-- [Roadmap](#-roadmap)
-- [License](#-license)
-- [Support](#-support)
+Deploy the full **Stigix All-in-One** platform with a single command (requires [Docker](#-prerequisites)):
+
+```bash
+curl -sSL https://raw.githubusercontent.com/jsuzanne/stigix/main/install.sh | bash
+```
+
+* 🌐 **Dashboard:** [http://localhost:8080](http://localhost:8080)
+* 🔑 **Default Login:** `admin` / `admin`
+* 🪟 **Windows Users:** See the [Windows Installation Guide (WSL 2)](docs/WINDOWS_INSTALL.md)
+* 🐳 **Manual Docker Compose:** See [Manual Install](#-manual-install-advanced)
 
 ---
 
-## Why I built Stigix tool ?
+## 📑 Table of Contents
+
+- [⚡ Quick Start in 30 Seconds](#-quick-start-in-30-seconds)
+- [Why I built Stigix ?](#why-i-built-stigix-)
+- [🏛️ Core Functional Pillars](#️-core-functional-pillars)
+  - [1. 🌐 Real-World Traffic & Digital Experience (DEM)](#1--real-world-traffic--digital-experience-dem)
+  - [2. 🛡️ SASE & Advanced Security Validation](#2-️-sase--advanced-security-validation)
+  - [3. ⚡ SD-WAN Chaos Engineering & VyOS Underlay](#3-️-sd-wan-chaos-engineering--vyos-underlay)
+  - [4. 🎙️ Physical IoT (L2/L3) & Voice RTP Simulation](#4-️-physical-iot-l2l3--voice-rtp-simulation)
+  - [5. 🤖 AI-Native Orchestration (FastMCP) & Mesh Fleet](#5--ai-native-orchestration-fastmcp--mesh-fleet)
+- [📸 Screenshots Gallery](#-screenshots-gallery)
+- [🖥️ Platform Support](#️-platform-support)
+- [📋 Prerequisites](#-prerequisites)
+- [📊 Verify Installation](#-verify-installation)
+- [🏗️ Architecture & Deployment](#️-architecture)
+- [🔧 Configuration](#-configuration)
+- [🛠️ Useful Commands](#️-useful-commands)
+- [🐛 Troubleshooting](#-troubleshooting)
+- [📚 Complete Documentation Index](#-documentation)
+- [🎯 Use Cases](#-use-cases)
+- [📝 License & Disclaimer](#disclaimer)
+
+---
+
+## Why I built Stigix ?
 
 I built this tool after years of writing one-off scripts for SD-WAN and security POCs, and never finding a single lab platform that really matched what I see in the field.
+
 With a long background in networking and security, I wanted something that could generate realistic mixes of web/SaaS, voice and IoT traffic, tie in security use cases, and still be simple enough for engineers, partners and customers to run on their own.
+
 This project is my way to turn all that lab and demo experience into an open-source tool that helps people design, validate and troubleshoot modern SASE/SD-WAN deployments more effectively.
 
 ---
 
-## ✨ Features
+## 🏛️ Core Functional Pillars
 
-### 🎯 Digital Experience (DEM) & Synthetic Monitoring Probes
-- **Multi-Protocol Synthetic Probes** ⚡ — Continuous synthetic path monitoring across **HTTP, HTTPS, ICMP (Ping), TCP Connect, UDP, and DNS Resolution** to benchmark SD-WAN and SASE transport quality. [Read more](docs/DIGITAL_EXPERIENCE_TESTING.md)
-- **Multi-WAN Path Quality Scoring** 📊 — Weighted 0–100 MOS-style performance score per path combining latency, jitter, and packet loss with configurable SLA thresholds.
-- **Multi-Interface / Multi-Circuit Binding** 🔌 — Bind probes to specific WAN underlay/overlay network interfaces (`eth0`, `eth1`, `ppp0`) to validate individual ISP/MPLS links.
-- **1-Click DEM Promotion** 🎯 — Promote any active business application directly from the traffic catalogue into a continuous 1-minute synthetic probe with instant SLA alerting.
-- **Cloud Synthetic Probes (POP Diagnostics)** ☁️ — Multi-region synthetic tests powered by Cloudflare Workers and global POPs to measure Internet egress performance from branch sites.
-- **Target Site Mode & Mesh Probes** 🎯 — Standalone container mode acting as a branch/hub target with automatic end-to-end SLA tracking (HTTP SLA, Voice Echo, XFR Speedtest). [Read more](docs/TARGET_CAPABILITIES.md)
+### 1. 🌐 Real-World Traffic & Digital Experience (DEM)
 
-### 🚀 Traffic Generation
-- **67 Pre-configured Applications** - Popular SaaS apps (Google, Microsoft 365, Salesforce, Zoom, etc.).
-- **Real-Time Application Telemetry & RUM** ⚡ - Extracts live client timing metrics (`DNS resolution`, `TCP connect`, `TLS negotiation`, `Server TTFB`, and `Total RTT`) natively from `curl` during background load generation with zero network overhead. Includes interactive glassmorphism hover cards and rolling EMA statistics.
-- **Realistic Traffic Patterns** - Authentic HTTP requests with proper headers, User-Agents, and Referers
-- **Real-time Dashboard** - Live traffic visualization, metrics, and status monitoring
-- **Weighted Distribution** - Configure application traffic ratios using a visual Group/App percentage system
-- **Traffic Rate Control** - Dynamically adjust generation speed from 0.1s to 5s delay via a slider
-- **Protocol & IP Flexibility** - Support for explicit `http://` or `https://` and full IP address identification
-- **Multi-interface Support** - Bind to specific network interfaces
-- **Voice Simulation (RTP)** - Simulate real-time voice calls (G.711, G.729) with Scapy-based packet forging. [Read more](docs/VOICE_SIMULATION.md)
-- **Speedtest (XFR)**: High-performance throughput and latency validation with real-time telemetry. [Learn more about XFR testing](docs/XFR_TESTING.md). 🚀
-- **IoT/SaaS Emulation**: Pre-populated application targets for SD-WAN policy verification.
-- **API Studio & Live Observability** 📡: Real-time API transaction inspector across Node.js & Python micro-engines with sub-50ms latency, interactive request playground with pre-loaded presets (Prisma SD-WAN, SCM, VyOS), 1-click replay, and instant code generation (cURL, Python, Node.js). [Read more](docs/API_STUDIO_GUIDE.md) ⚡
-- **Custom TCP Inter-Site Applications** 🔄: Multi-application East-West workload simulation with dual host TCP listeners and outbound client workload generators. Includes 8 server simulation modes (fixed delay, jitter, looping degradation, drop response, errors), 5 client workload modes, rolling RTT percentiles ($p50/p95/\text{avg}$), and interactive 4-step wizard. [Read more](docs/CUSTOM_TCP_APPS.md)
-- **IoT Simulation** - Simulate a variety of IoT devices (Cameras, Sensors, Raspberry Pi, Industrial controllers) with Scapy-based DHCP and ARP support for "Real-on-the-Wire" physical network presence. Includes **Security Testing / Attack Mode** to validate malicious behavior detection (DNS Flood, C2 Beacon, Port Scan, Data Exfiltration). Import from **Palo Alto Device Security CSV** or **Vulnerability Report CSV** (CVE-based, Danger Score ranking, APT attribution, ICS-CERT detection). MAC-address device names are automatically resolved to human-readable profile-based names on import. [Read more](docs/IOT_SIMULATION.md)
-- **Unified Source/Target Architecture** - Every Stigix instance is versatile. It can simultaneously act as a **Source** (generating traffic) and a **Target** (responding to echo/bandwidth/SLA probes). 
-- **Active by Default** - High-precision traffic and responsive services (Voice Echo, XFR, HTTP SLA) are started automatically upon deployment. Any instance can be used as a test target by any other instance.
-- **Prisma SD-WAN Integration** - Automatic discovery of sites and LAN interfaces via API for "Zero-Config" connectivity probes and path validation. [Read more](docs/PRISMA-SDWAN_INTEGRATION.md)
-- **Convergence Lab (Performance)** - High-precision UDP failover monitoring (up to 1000 PPS) to measure SD-WAN tunnel transition times. [Read more](docs/CONVERGENCE_LAB.md)
-- **Smart Networking** - Auto-detection of default gateways and interfaces (enp2s0, eth0) for a "Zero-Config" experience on physical Linux boxes. [Read more](docs/SMART_NETWORKING.md)
-- **VyOS Control** - Orchestrate network events and perturbations (latency, loss, rate-limiting, ip blocking) on VyOS routers via Vyos API. The VyOS Control page refreshes automatically when switching between remote peers. [Read more](docs/VYOS_CONTROL.md)
-- **Autodiscovery & Registry** - Automatic peer-to-peer discovery using Cloudflare Workers. "Zero-Config" multi-node setup with stateless authentication. [Read more](docs/AUTODISCOVERY_GUIDE.md) 📡✨
-- **Central Global Provisioning** - Publish 10 core configuration bundles (`Applications Catalogue`, `Connectivity Probes`, `Convergence SLA`, `Prisma SASE`, `CA Certificates & Enterprise PKI`, `Security Policy`, `Voice Settings`, `IoT Simulation`, `Custom TCP Apps`, and `Cloud Probes Credentials`) centrally from the Leader to connected branch peers with pull-mode distribution (`30s` cycle), revisioning, field-level local site overrides, auto-save broadcast, and zero-touch hot reload. [Read more](docs/GLOBAL_PROVISIONING_AND_PEER_ONBOARDING.md) 🌐
-- **Direct Controller Peer Onboarding** - Single-command onboarding (`curl -sSL http://<LEADER_IP>:8080/onboard.sh | bash`) to instantly join remote Linux nodes to a Stigix Leader with zero-touch configuration. [Read more](docs/GLOBAL_PROVISIONING_AND_PEER_ONBOARDING.md) 🚀
-- **Smart Identity** - Automatic instance identification using system hostname. Simplifies deployment by reducing environment variables. 🆔
-- **Fleet Remote View & WebSocket Reverse Gateway (M5 & M6)** ⚡ - Centralized observability and remote node management directly from the Leader dashboard. Transparently proxies all read and write API calls over persistent multiplexed WebSocket reverse tunnels (`/fleet-tunnel`) with automatic fallback to direct HTTP. Traverses firewalls, NAT, and CGNAT with zero inbound ports required on spokes. Supports Leader-initiated outbound reverse dialing to external Cloud / Manual Peers (Hetzner, AWS, Home LAN) without exposing the private Leader to the public Internet. [Read more](docs/REMOTE_VIEW_USER_GUIDE.md) 🌐
-- **Peer Context Switcher** - Dropdown in the top navbar allows switching the entire dashboard to any registered remote peer in one click. Active peer highlighted in amber with instant context awareness and non-blocking background telemetry sync.
+- **67 Pre-Configured Enterprise SaaS Applications** 📊 — Realistic HTTP/HTTPS traffic generation across Microsoft 365, Google Workspace, Salesforce, Zoom, and popular business apps with configurable probabilistic weights. [Read more](docs/TRAFFIC_GENERATOR.md)
+- **Real-Time Client Telemetry & RUM** ⚡ — Zero-overhead timing breakdowns extracted directly from `curl` at runtime: DNS resolution, TCP handshake, TLS negotiation, TTFB (Time to First Byte), and Total RTT with rolling EMA statistics.
+- **Multi-Protocol Synthetic Probes** 🎯 — Continuous path monitoring across **HTTP, HTTPS, ICMP (Ping), TCP Connect, UDP, and DNS Resolution** to benchmark SD-WAN and SASE transport quality. [Read more](docs/DIGITAL_EXPERIENCE_TESTING.md)
+- **Multi-WAN Path Quality Scoring** 📈 — 0–100 MOS-style performance score per path combining latency, jitter, and packet loss with configurable SLA thresholds.
+- **Multi-Interface / Multi-Circuit Binding** 🔌 — Bind probes and traffic to specific WAN interfaces (`eth0`, `enp2s0`, `ppp0`) to validate individual ISP/MPLS links.
+- **XFR High-Performance Speedtest** 🚀 — Multi-stream TCP bandwidth testing with real-time throughput curves, TCP window analysis, and retransmission diagnostics. [Read more](docs/XFR_TESTING.md)
+- **API Studio & Live Observability** 📡 — Sub-50ms API transaction inspector across Node.js & Python micro-engines with 1-click request replay and code generator (cURL, Python, Node.js). [Read more](docs/API_STUDIO_GUIDE.md)
 
-### 🛡️ Security
-- **Prisma Access SSL Decryption & 1-Click Forward Trust CA Import** 🔐 — Native trust store management for Palo Alto Prisma Access SSL forward proxy decryption. 1-Click extraction of `Forward-Trust-CA` (RSA/ECDSA) and `Root CA` directly from the Prisma SASE API (`/sse/config/v1/certificates`) into `config/certs/ca-bundle.pem`. Automatically injected across Node.js (`NODE_EXTRA_CA_CERTS`), Python engines (`REQUESTS_CA_BUNDLE`, `SSL_CERT_FILE`), and subprocesses (`CURL_CA_BUNDLE`), enabling seamless HTTPS threat testing (EICAR, URL Filtering, DLP) and SaaS probes through SSL decryption without TLS errors. Automatically propagated from Leader to spoke nodes via Mesh Provisioning (`ca-certificates` bundle). [Read more](docs/SECURITY_TESTING.md)
-- **URL Filtering Tests & HTTP/HTTPS Protocol Toggle** - Validate 70 different URL categories (malware, phishing, gambling, adult content, C2, etc.) with instant `[ 🌐 HTTP | 🔒 HTTPS ]` toggle to test plaintext inspection vs. SSL Decryption policy enforcement. [Read more](docs/SECURITY_TESTING.md)
-- **DNS Security Tests** - Test DNS security policies with 24 domains (malware, phishing, DGA, etc.)
-- **Threat Prevention** - EICAR file download testing for IPS/Threat Prevention validation. The Custom TCP Apps **EICAR Response** server mode periodically injects the EICAR test string into live TCP sessions. The client runtime detects whether the EICAR payload was actually received (SASE failed to block it) and surfaces a **🛡️ EICAR not blocked × N** warning badge in the Outgoing Sessions dashboard — invisible when the SASE is working correctly.
-- **C2 Attack Scenarios** - 7 real-traffic attack simulations (SQL Injection, DNS C2, Greyware DNS, Compromised DNS, Sliver C2, EICAR over HTTPS, DNS Tunneling) with Enforced / Bypass / Inconclusive verdicts. [Read more](docs/SECURITY_TESTING.md)
-- **AI Security Tests (AISA)** - 5 Palo Alto AI Security simulation scenarios targeting live AI apps (ChatGPT, Grok, Gemini, Perplexity): DLP, Prompt Injection, CVE-2014-9222, EICAR Upload, and AI Volume Traffic (24 apps). [Read more](docs/SECURITY_TESTING.md)
-- **Security Score Dashboard** - Per-module security scoring (URL, DNS, Threat, C2) with trend charts, baseline pinning, gap analysis, and Latest Changes diff view. 📊
-- **Scheduled Testing** - Automated security tests at configurable intervals per module (URL, DNS, C2, AI Security)
-- **EDL** - IP, URL, DNS urls with sequential or random execution
-- **Test Results History** - Persistent logging with search, filtering, export, and per-type badge filtering (URL / DNS / THREAT / C2S / AIS)
+### 2. 🛡️ SASE & Advanced Security Validation
 
-### 🤖 AI & MCP Integration (Claude Desktop)
-- **Natural Language Network Control** — Control the entire Stigix mesh from Claude Desktop in plain English: run tests, simulate failures, check posture across any node — no UI required. [Read more](docs/MCP_SERVER.md)
-- **VyOS Chaos Engineering via Claude** — *"Add 150ms latency on the MPLS link of BR8"* → Claude discovers all routers, lists chaos-eligible interfaces (those with descriptions), proposes the exact target, waits for your confirmation, then executes. Supports multiple VyOS routers per node.
-- **Propose & Confirm Flow** — For any VyOS action Claude presents the resolved router + interface and asks for confirmation. Destructive actions (interface-down, deny-traffic) require mandatory confirmation.
-- **MCP Live Interaction Feed** — Settings → MCP Server shows a real-time color-coded feed of every Claude tool call: category icons, duration mini-bar (green/amber/red), node badge, relative timestamps, LIVE pulse. Refreshes every 3 seconds.
-- **MCP Interaction Logging** — Every Claude tool call is transparently logged server-side to `mcp-history.jsonl` (tool name, target node, duration, status) with zero impact on the MCP protocol.
-- **Accurate Security Scores** — Claude now reports real weighted posture scores (URL Filter, DNS Security, Threat Prevention out of 100) matching the dashboard, plus a 24-run trend for evolution analysis.
+- **Prisma Access SSL Decryption & 1-Click Forward Trust CA Sync** 🔐 — Native trust store management for Palo Alto Prisma Access SSL forward proxy decryption. 1-Click extraction of `Forward-Trust-CA` (RSA/ECDSA) and custom Root CAs directly from Prisma SASE API (`/sse/config/v1/certificates`) into `config/certs/ca-bundle.pem`. Automatically injected across Node.js (`NODE_EXTRA_CA_CERTS`), Python engines (`REQUESTS_CA_BUNDLE`, `SSL_CERT_FILE`), and subprocesses (`CURL_CA_BUNDLE`), enabling seamless HTTPS threat testing without TLS errors. Propagated across the mesh via Central Provisioning. [Read more](docs/SECURITY_TESTING.md)
+- **URL Filtering Tests & HTTP/HTTPS Switcher** 🌐 — Validate 70 URL categories (malware, phishing, gambling, C2, etc.) with instant `[ HTTP | HTTPS ]` toggle to test plaintext inspection vs. SSL Decryption policy enforcement.
+- **DNS Security Tests** 🔍 — Validate DNS security policies against 24 domains (malware, phishing, DGA, tunneling).
+- **Threat Prevention & EICAR Bypass Detection** 🛡️ — EICAR file download testing for IPS/Threat Prevention validation. Includes an **EICAR Response** TCP server mode that injects EICAR payloads into active sessions and surfaces a `🛡️ EICAR not blocked` warning if SASE fails to intercept it.
+- **Real-World C2 Attack Scenarios** ⚔️ — 7 real-traffic attack simulations (SQL Injection, DNS C2, Greyware DNS, Compromised DNS, Sliver C2, EICAR over HTTPS, DNS Tunneling) with Enforced / Bypass / Inconclusive verdicts.
+- **AI Security (AISA)** 🤖 — 5 Palo Alto AI Security simulation scenarios targeting live AI apps (ChatGPT, Grok, Gemini, Perplexity): DLP, Prompt Injection, CVE-2014-9222, EICAR Upload, and AI Volume Traffic (24 apps).
+- **Security Score Dashboard** 📊 — Multi-module security scoring (URL, DNS, Threat, C2) with 24h trend charts, baseline pinning, gap analysis, and automated scheduling.
 
-### 📊 Monitoring & Analytics
-- **Real-time Logs** - Live log streaming with WebSocket updates
-- **Statistics Dashboard** - Success/failure rates, latency metrics, bandwidth tracking
-- **Security Score Dashboard** - Multi-module security posture scoring with 24h trend charts, min/max tracking, and run markers
-- **Live VPN Topology & Underlay Mapping** - Real-time visualization of SD-WAN logical tunnels (Active/Backup/Down) alongside VyOS backbone router topology with direct 1:1 port-to-port cable wiring and live Link Trace diagnostics. [Read more](docs/UNDERLAY_TOPOLOGY.md)
-- **Persistent Logging** - JSONL storage with 10,000 lines retention and auto-rotation
-- **Search & Filter** - Find specific tests quickly with powerful search
-- **Export Capabilities** - Download results in JSON, CSV, or JSONL format
-- **Traffic Density Scaling** - Multi-client parallel traffic generation (1–10 concurrent workers) with dynamic scaling
+### 3. ⚡ SD-WAN Chaos Engineering & VyOS Underlay
 
-### 🔧 Zero-Config Deployment
-- **Auto-detection** - Automatically detects network interfaces on first start
-- **Auto-generated Config** - Creates `applications-config.json` with 67 apps automatically
-- **One-liner Install** - Ready in 30 seconds with single command (Linux/macOS). Supports **Dashboard** or **Target Site** modes.
-- **Docker-based** - Pre-built multi-platform images (AMD64 + ARM64).
-- **Export/Import config capability** - to clone appplications, probes, IOT , Vyos configurations
-- **One-Click Upgrade (Beta)** - Built-in maintenance UI to pull latest images and restart services with a single click.
-- **State Persistence** - Per-service toggle (Settings → State Persistence) to preserve the running state of Traffic, Probes, Custom TCP Apps, IoT, and Voice across reboots and upgrades. Each service resumes exactly its pre-reboot state — only services that were running before the restart will come back up.
+- **Unified Underlay / Overlay Visual Mapping** 🗺️ — Interactive visual topology rendering active VyOS backbone routers mapped directly to Prisma SD-WAN circuits with port-level resolution (`ethX`) and direct 1:1 animated cable wiring. [Read more](docs/UNDERLAY_TOPOLOGY.md)
+- **Direct Topology Chaos Actions** ⚡ — Instant Shut / No-Shut port toggle, Netem latency/loss impairment injection, and live QoS rate-limiting directly from the canvas via VyOS API. [Read more](docs/VYOS_CONTROL.md)
+- **Convergence Lab & Sub-Second Failover Probing** ⏱️ — High-precision UDP failover probing (up to 1000 PPS) to measure exact SD-WAN tunnel transition times and packet drop duration with interactive time scrubber and HD PoC Card export. [Read more](docs/CONVERGENCE_LAB.md)
+- **Prisma SD-WAN API Auto-Discovery** ☁️ — Automatic discovery of sites and LAN interfaces via API for "Zero-Config" connectivity probes and path validation. [Read more](docs/PRISMA-SDWAN_INTEGRATION.md)
 
-### 🔒 Production Ready
-- **JWT Authentication** - Secure login with token-based auth
-- **Log Rotation** - Automatic cleanup with configurable retention
-- **Health Monitoring** - Built-in healthchecks and dependency management
-- **Resource Limits** - Optional CPU and memory constraints
+### 4. 🎙️ Physical IoT (L2/L3) & Voice RTP Simulation
+
+- **IoT "Real-on-the-Wire" Simulation** 🔌 — Simulate physical IoT devices (Cameras, Sensors, Raspberry Pi, Medical/Industrial controllers) with Scapy-based DHCP and ARP for true Layer-2/3 network presence. Supports CSV import from **Palo Alto Device Security** and Vulnerability Reports. [Read more](docs/IOT_SIMULATION.md)
+- **IoT Security Attack Mode** ⚠️ — Trigger malicious behavior simulations from IoT profiles (DNS Flood, C2 Beacon, Port Scan, Data Exfiltration) to validate IoT Security detection rules.
+- **Voice VoIP Simulation (RTP)** 🎙️ — Scapy-based RTP packet generation for G.711 / G.729 voice calls. Measures live MOS score estimation, jitter, RTT latency, and per-target QoS breakdown for voice path validation. [Read more](docs/VOICE_SIMULATION.md)
+- **Custom TCP Inter-Site Applications** 🔄 — Stateful East-West workload simulation with dual host TCP listeners, outbound client workload generators, 8 server chaos modes (fixed delay, jitter, looping degradation, drop response, errors), 5 client workload modes, and rolling RTT percentiles ($p50/p95/\text{avg}$). [Read more](docs/CUSTOM_TCP_APPS.md)
+
+### 5. 🤖 AI-Native Orchestration (FastMCP) & Mesh Fleet
+
+- **Model Context Protocol (FastMCP) Server** 🤖 — Natural language network orchestration for Claude Desktop and AI agents. Execute tests, query topologies, inspect telemetry, and trigger chaos impairments in plain English. [Read more](docs/MCP_SERVER.md)
+- **Safe Propose & Confirm Execution** 🛡️ — Claude presents the resolved router, interface, and impairment parameters and requires explicit confirmation before executing destructive network actions.
+- **Central Global Provisioning** 🌐 — Publish 10 core configuration bundles (`Applications`, `Probes`, `Convergence`, `Prisma SASE`, `CA Certificates`, `Security`, `Voice`, `IoT`, `Custom TCP`) centrally from the Leader to branch peers with pull-mode sync (`30s` cycle) and zero-touch hot reload. [Read more](docs/GLOBAL_PROVISIONING_AND_PEER_ONBOARDING.md)
+- **Fleet Remote View & WebSocket Reverse Gateway** ⚡ — Centralized observability and remote node management directly from the Leader. Transparently proxies API calls over multiplexed WebSocket reverse tunnels (`/fleet-tunnel`) traversing NAT, CGNAT, and firewalls with zero inbound ports required on spokes. [Read more](docs/REMOTE_VIEW_USER_GUIDE.md)
+- **Peer Autodiscovery** 📡 — Automatic peer-to-peer discovery using Cloudflare Workers with zero-touch multi-node setup. [Read more](docs/AUTODISCOVERY_GUIDE.md)
 
 ---
 
