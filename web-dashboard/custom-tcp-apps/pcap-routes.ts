@@ -358,6 +358,37 @@ export function createPcapApiRouter(configDir: string, projectRoot: string, pyth
         res.json({ jobs: jobsList });
     });
 
+    // GET /api/pcap/replay/active-server - Check if there is an active replay server listening on this node
+    router.get('/replay/active-server', (_req: Request, res: Response) => {
+        const runningServer = Array.from(activeJobs.values()).find(j => j.role === 'server' && j.status === 'running');
+        if (runningServer) {
+            return res.json({
+                active: true,
+                profile_file: runningServer.profile_file,
+                port: runningServer.port,
+                startedAt: runningServer.startedAt
+            });
+        }
+        res.json({ active: false });
+    });
+
+    // GET /api/pcap/replay/discover?target=192.168.203.100 - Query remote target node for active replay listener
+    router.get('/replay/discover', checkFeatureFlag, async (req: Request, res: Response) => {
+        const target = req.query.target as string;
+        if (!target) return res.status(400).json({ error: 'Missing target' });
+        try {
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 2000);
+            const targetRes = await fetch(`http://${target}:8080/api/pcap/replay/active-server`, { signal: controller.signal });
+            clearTimeout(timeoutId);
+            if (targetRes.ok) {
+                const data = await targetRes.json();
+                return res.json(data);
+            }
+        } catch (_) {}
+        res.json({ active: false });
+    });
+
     return router;
 }
 

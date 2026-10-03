@@ -46,6 +46,7 @@ export const PcapReplayModal: React.FC<PcapReplayModalProps> = ({
     const [isLooping, setIsLooping] = useState<boolean>(false);
     const [activeJob, setActiveJob] = useState<any>(null);
     const [isStartingReplay, setIsStartingReplay] = useState(false);
+    const [discoveredServer, setDiscoveredServer] = useState<{ active: boolean; port?: number; profile_file?: string } | null>(null);
 
     const fileInputRef = useRef<HTMLInputElement>(null);
     const profileFileInputRef = useRef<HTMLInputElement>(null);
@@ -96,6 +97,37 @@ export const PcapReplayModal: React.FC<PcapReplayModalProps> = ({
             toast.error(err.message || 'Import failed');
         }
     };
+
+    // Auto-discover if target has an active PCAP Replay server
+    useEffect(() => {
+        if (!isOpen || replayRole !== 'client' || !targetIp || targetIp.trim().length < 7) {
+            setDiscoveredServer(null);
+            return;
+        }
+
+        let isMounted = true;
+        const checkTarget = async () => {
+            try {
+                const res = await gFetch(`/api/pcap/replay/discover?target=${encodeURIComponent(targetIp.trim())}`, {
+                    headers: { Authorization: `Bearer ${token}` }
+                });
+                if (res.ok && isMounted) {
+                    const data = await res.json();
+                    setDiscoveredServer(data);
+                    if (data.active && data.port && !portOverride) {
+                        setPortOverride(String(data.port));
+                    }
+                }
+            } catch (_) {}
+        };
+
+        checkTarget();
+        const interval = setInterval(checkTarget, 3000);
+        return () => {
+            isMounted = false;
+            clearInterval(interval);
+        };
+    }, [isOpen, replayRole, targetIp, portOverride]);
 
     // Fetch existing profiles on open
     useEffect(() => {
@@ -748,6 +780,36 @@ export const PcapReplayModal: React.FC<PcapReplayModalProps> = ({
                                                 className="w-full px-3 py-1.5 bg-card border border-border rounded-xl text-xs text-text-primary focus:outline-none focus:border-indigo-500 font-mono"
                                             />
                                         </div>
+
+                                        {/* Auto-discovered active server banner */}
+                                        {targetIp && targetIp.trim().length >= 7 && (
+                                            <div className="sm:col-span-3 pt-0.5">
+                                                {discoveredServer?.active ? (
+                                                    <div className="p-2.5 bg-emerald-500/10 border border-emerald-500/30 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-[11px] text-emerald-300">
+                                                        <div className="flex items-center gap-1.5">
+                                                            <CheckCircle2 size={13} className="text-emerald-400 shrink-0" />
+                                                            <span>
+                                                                Serveur Stigix actif détecté sur <strong>{targetIp}</strong> : en écoute sur le port <strong>{discoveredServer.port}</strong>.
+                                                            </span>
+                                                        </div>
+                                                        {portOverride !== String(discoveredServer.port) && (
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => setPortOverride(String(discoveredServer.port))}
+                                                                className="px-2.5 py-1 bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-200 rounded-lg font-semibold text-[10px] cursor-pointer shrink-0"
+                                                            >
+                                                                ⚡ Aligner sur port {discoveredServer.port}
+                                                            </button>
+                                                        )}
+                                                    </div>
+                                                ) : (
+                                                    <div className="p-2 bg-muted/30 border border-border/60 rounded-xl flex items-center gap-1.5 text-[10px] text-text-muted">
+                                                        <Activity size={12} className="text-text-muted shrink-0" />
+                                                        <span>Aucun serveur PCAP Replay n'a été détecté en écoute sur {targetIp}. Démarrez d'abord le mode Serveur sur la machine cible.</span>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        )}
                                     </div>
                                 )}
 
