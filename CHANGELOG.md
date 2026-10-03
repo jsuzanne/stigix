@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.144] - 2026-10-03
+
+### Added
+- **Stigix V2 Login Console Redesign (`Login.tsx`)**:
+  - Replaced legacy v1.1.2 console with a modern Stigix V2 dark glassmorphism aesthetic (`backdrop-blur-2xl`, cyber mesh grid background, neon ambient glow).
+  - Added official Stigix glowing Activity logo, `⚡ SECURE NODE CONSOLE` badge, and tagline `The Engine for SASE Validation`.
+  - Added input icons (User/Lock), password show/hide eye toggle, dark autofill styling, and dynamic platform version retrieval. ✨
+- **URL Filtering HTTP / HTTPS Protocol Switcher (`Security.tsx`, `server.ts`)**:
+  - Added `[ 🌐 HTTP | 🔒 HTTPS ]` toggle to dynamically switch PAN-DB test URLs between HTTP (port 80) and HTTPS (port 443) for live SSL Decryption policy validation. 🔄
+
+### Fixed / Improved
+- **Installer Magic Join Token & Site Name Persistence (`install.sh`, `install-autodocker.sh`)**:
+  - Added multi-tier decoding with POSIX grep/sed fallbacks for extracting `site_hint` and endpoints without external runtime dependencies.
+  - Unconditionally initialized `config/site-name.json` with the selected site name hint so `Local Site Name` is instantly configured on the node without manual post-install typing. 🚀
+
 ## [2.0.143] - 2026-10-03
 
 ### Added

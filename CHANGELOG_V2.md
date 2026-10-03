@@ -2,6 +2,12 @@
 
 All notable changes made specifically on the `v2` branch are documented in this file.
 
+## [v2.0.144] - 2026-10-03 — Feature: Stigix V2 Login Console Redesign & URL Filtering HTTPS Toggle
+
+- **feat(ui)**: Redesigned the entire Login screen (`Login.tsx`) with a state-of-the-art Stigix V2 dark glassmorphism aesthetic, cyber grid radial background, ambient neon orbs, animated Activity logo, and updated tagline `"The Engine for SASE Validation"`.
+- **feat(security)**: Added instant `[ 🌐 HTTP | 🔒 HTTPS ]` toggle to URL Filtering with dynamic URL transformation to easily demonstrate and validate SSL Forward Proxy Decryption with Prisma Access.
+- **fix(install)**: Enhanced `install.sh` and `install-autodocker.sh` with multi-tier Magic Join token decoding (Python3 / Node / POSIX grep+sed) and unconditional `config/site-name.json` persistence, ensuring `Local Site Name` is instantly and automatically configured on newly deployed nodes.
+
 ## [v2.0.143] - 2026-10-03 — Feature: Prisma Access SSL Decryption & 1-Click CA Certificate Import
 
 - **feat(security)**: Added native support for Palo Alto Prisma Access **Forward Trust CA** and custom enterprise Root CA certificates in `certificate-manager.ts`.
