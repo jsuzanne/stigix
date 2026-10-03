@@ -595,6 +595,7 @@ if [ -n "$TOKEN_REALM" ]; then
 fi
 
 mkdir -p ./config ./logs ./mcp-data
+chmod -R 777 ./config ./logs ./mcp-data 2>/dev/null || true
 
 FINAL_SITE_NAME="${SITE_NAME_OVERRIDE:-$(hostname | cut -d'.' -f1)}"
 echo "{\"siteName\":\"$FINAL_SITE_NAME\"}" > ./config/site-name.json
