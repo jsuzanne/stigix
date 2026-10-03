@@ -31,6 +31,7 @@ import { ProvisioningManager } from './provisioning-manager.js';
 import { UnderlayTopologyManager } from './underlay-topology-manager.js';
 import { TcpAppManager } from './custom-tcp-apps/tcp-app-manager.js';
 import { createCustomTcpApiRouter } from './custom-tcp-apps/api-routes.js';
+import { createPcapApiRouter } from './custom-tcp-apps/pcap-routes.js';
 import { createApiStudioRouter } from './api-studio-routes.js';
 import { apiLogBuffer } from './api-logger.js';
 import { AiManager } from './ai-copilot/ai-manager.js';
@@ -3000,7 +3001,8 @@ app.get('/api/config/ui', (req, res) => {
     res.json({
         refreshInterval: parseInt(process.env.DASHBOARD_REFRESH_MS || '1000'),
         maxCaptures,
-        globalScoreTypes
+        globalScoreTypes,
+        enablePcapReplay: process.env.ENABLE_PCAP_REPLAY === 'true'
     });
 });
 
@@ -13900,6 +13902,10 @@ log('FLEET', `🔀 Fleet Gateway Reverse Proxy mounted at /api/gateway/:peerId/*
 // --- Custom TCP Inter-Site Applications API ---
 app.use('/api/custom-tcp-apps', authenticateToken, createCustomTcpApiRouter(tcpAppManager));
 log('CUSTOM_TCP', `🖧 Custom TCP Applications API mounted at /api/custom-tcp-apps`);
+
+// --- PCAP Stateful Replay Engine API (M1 - Feature Flag Gated) ---
+app.use('/api/pcap', authenticateToken, createPcapApiRouter(APP_CONFIG.configDir, PROJECT_ROOT, PYTHON_PATH));
+log('PCAP', `📦 PCAP Stateful Replay API mounted at /api/pcap (Feature Flag: ENABLE_PCAP_REPLAY=${process.env.ENABLE_PCAP_REPLAY === 'true'})`);
 
 // --- Stigix API Studio & Telemetry Routes ---
 const apiStudioRouter = createApiStudioRouter(APP_CONFIG.configDir, PROJECT_ROOT, vyosManager);
