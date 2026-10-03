@@ -190,5 +190,132 @@ export function createPcapApiRouter(configDir: string, projectRoot: string, pyth
         }
     });
 
+    // --- M2: Active Replay Process Tracking ---
+    interface ActiveReplayJob {
+        id: string;
+        role: 'server' | 'client';
+        profile_file: string;
+        target?: string;
+        port?: number;
+        pid?: number;
+        proc?: any;
+        startedAt: number;
+        recentEvents: any[];
+        lastVerdict?: string;
+        status: 'running' | 'stopped' | 'failed' | 'completed';
+    }
+
+    const activeJobs = new Map<string, ActiveReplayJob>();
+    const runtimeScript = path.join(projectRoot, 'engines', 'pcap_replay_runtime.py');
+
+    // POST /api/pcap/replay/start - Start server or client replay runtime
+    router.post('/replay/start', checkFeatureFlag, (req: Request, res: Response) => {
+        const { role, profile_file, target, port, loop, interval } = req.body;
+
+        if (!role || !profile_file) {
+            return res.status(400).json({ success: false, error: 'Missing role or profile_file' });
+        }
+        if (role === 'client' && !target) {
+            return res.status(400).json({ success: false, error: 'Target IP is required for client role' });
+        }
+
+        const safeProfile = path.basename(profile_file);
+        const profilePath = path.join(profilesDir, safeProfile);
+        if (!fs.existsSync(profilePath)) {
+            return res.status(404).json({ success: false, error: 'Profile file not found' });
+        }
+
+        const jobId = `job-${role}-${Date.now()}`;
+        const args = [runtimeScript, profilePath, '--role', role];
+        if (target) args.push('--target', target);
+        if (port) args.push('--port', String(port));
+        if (loop) args.push('--loop');
+        if (interval) args.push('--interval', String(interval));
+
+        const proc = spawn(pythonPath, args);
+        const job: ActiveReplayJob = {
+            id: jobId,
+            role,
+            profile_file: safeProfile,
+            target,
+            port,
+            pid: proc.pid,
+            proc,
+            startedAt: Date.now(),
+            recentEvents: [],
+            status: 'running'
+        };
+
+        proc.stdout.on('data', data => {
+            const lines = data.toString().split('\n').filter((l: string) => l.trim().length > 0);
+            for (const line of lines) {
+                try {
+                    const ev = JSON.parse(line);
+                    job.recentEvents.push(ev);
+                    if (ev.verdict) job.lastVerdict = ev.verdict;
+                    if (job.recentEvents.length > 50) job.recentEvents.shift();
+                } catch (_) {}
+            }
+        });
+
+        proc.stderr.on('data', data => {
+            job.recentEvents.push({ timestamp: Date.now() / 1000, event: 'stderr', text: data.toString() });
+        });
+
+        proc.on('close', code => {
+            job.status = code === 0 ? 'completed' : 'failed';
+            delete job.proc;
+        });
+
+        activeJobs.set(jobId, job);
+
+        res.json({
+            success: true,
+            job_id: jobId,
+            pid: proc.pid,
+            role,
+            profile: safeProfile
+        });
+    });
+
+    // POST /api/pcap/replay/stop - Stop a running replay job
+    router.post('/replay/stop', checkFeatureFlag, (req: Request, res: Response) => {
+        const { job_id } = req.body;
+        if (!job_id) {
+            return res.status(400).json({ success: false, error: 'Missing job_id' });
+        }
+        const job = activeJobs.get(job_id);
+        if (!job) {
+            return res.status(404).json({ success: false, error: 'Job not found' });
+        }
+
+        if (job.proc) {
+            try {
+                job.proc.kill('SIGTERM');
+            } catch (_) {}
+        }
+        job.status = 'stopped';
+        res.json({ success: true, job_id, status: 'stopped' });
+    });
+
+    // GET /api/pcap/replay/jobs - Get active and recent replay jobs
+    router.get('/replay/jobs', checkFeatureFlag, (_req: Request, res: Response) => {
+        const jobsList = Array.from(activeJobs.values()).map(j => ({
+            id: j.id,
+            role: j.role,
+            profile_file: j.profile_file,
+            target: j.target,
+            port: j.port,
+            pid: j.pid,
+            startedAt: j.startedAt,
+            status: j.status,
+            lastVerdict: j.lastVerdict,
+            recentEventsCount: j.recentEvents.length,
+            latestEvent: j.recentEvents[j.recentEvents.length - 1] || null
+        }));
+        res.json({ jobs: jobsList });
+    });
+
     return router;
 }
+
