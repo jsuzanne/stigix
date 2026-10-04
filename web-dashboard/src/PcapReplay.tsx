@@ -1,11 +1,11 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import {
     Layers, Play, Square, Upload, Download, Trash2, RefreshCw,
     CheckCircle2, AlertTriangle, Shield, ShieldAlert, Activity,
     Terminal, ArrowRight, ArrowDownRight, Server, Globe, Search,
     Filter, Lock, FileCode, Check, Eye, HelpCircle, Sparkles,
     Cpu, Zap, Radio, Copy, ChevronRight, X, Headphones, Binary,
-    FileSpreadsheet, ArrowUpRight
+    FileSpreadsheet, ArrowUpRight, Edit3, Save, RotateCcw
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { usePeerContext } from './PeerContext';
@@ -31,6 +31,18 @@ export const PcapReplay: React.FC<PcapReplayProps> = ({ token }) => {
     const [isLoadingDetails, setIsLoadingDetails] = useState(false);
     const [selectedTurnIndex, setSelectedTurnIndex] = useState<number | null>(null);
     const [payloadViewMode, setPayloadViewMode] = useState<'hex' | 'raw'>('hex');
+
+    // Profile Editing Modal
+    const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+    const [editingProfile, setEditingProfile] = useState<any | null>(null);
+    const [editName, setEditName] = useState('');
+    const [editCategory, setEditCategory] = useState('');
+    const [editPort, setEditPort] = useState('');
+    const [editDescription, setEditDescription] = useState('');
+    const [isSavingEdit, setIsSavingEdit] = useState(false);
+
+    // Console View Mode
+    const [consoleViewMode, setConsoleViewMode] = useState<'formatted' | 'raw'>('formatted');
 
     // Import / Modal state
     const [isPcapModalOpen, setIsPcapModalOpen] = useState(false);
@@ -147,6 +159,17 @@ export const PcapReplay: React.FC<PcapReplayProps> = ({ token }) => {
         return () => clearInterval(interval);
     }, [pollActiveJobs]);
 
+    // Auto-select remote peer when entering client mode
+    useEffect(() => {
+        if (replayRole === 'client' && serverNodeId === 'local' && peers.length > 0) {
+            const remotePeer = peers.find(p => p.instance_id !== activePeerId) || peers[0];
+            if (remotePeer) {
+                setServerNodeId(remotePeer.instance_id);
+                setCustomTargetIp(remotePeer.ip_private || '127.0.0.1');
+            }
+        }
+    }, [replayRole, peers, activePeerId, serverNodeId]);
+
     // Auto-detect default server IP when serverNodeId changes
     useEffect(() => {
         if (serverNodeId === 'local') {
@@ -158,6 +181,70 @@ export const PcapReplay: React.FC<PcapReplayProps> = ({ token }) => {
             }
         }
     }, [serverNodeId, peers]);
+
+    // ─── Actions: Profile Editing ─────────────────────────────────────────────
+
+    const handleOpenEditModal = (profile: any) => {
+        setEditingProfile(profile);
+        setEditName(profile.name || profile.file_name.replace('.stx-replay', ''));
+        setEditCategory(profile.category || 'CUSTOM');
+        setEditPort(String(profile.primary_flow?.server_port || profile.server_port || 18443));
+        setEditDescription(profile.description || '');
+        setIsEditModalOpen(true);
+    };
+
+    const handleSaveEditProfile = async () => {
+        if (!editingProfile) return;
+        setIsSavingEdit(true);
+        try {
+            const res = await gFetch(`/api/pcap/profiles/${encodeURIComponent(editingProfile.file_name)}`, {
+                method: 'PUT',
+                headers: {
+                    Authorization: `Bearer ${token}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    name: editName.trim(),
+                    category: editCategory.trim(),
+                    server_port: parseInt(editPort, 10),
+                    description: editDescription.trim()
+                })
+            });
+            const data = await res.json();
+            if (data.success) {
+                toast.success(`Profile updated & broadcast to fleet: ${editName}`);
+                setIsEditModalOpen(false);
+                fetchProfiles();
+                if (selectedProfileFile === editingProfile.file_name) {
+                    fetchProfileDetails(editingProfile.file_name);
+                }
+            } else {
+                toast.error(data.error || 'Failed to update profile');
+            }
+        } catch (e: any) {
+            toast.error(e.message || 'Error updating profile');
+        } finally {
+            setIsSavingEdit(false);
+        }
+    };
+
+    // Calculate real-time completed turn sequence index from logs
+    const lastCompletedTurnSeq = useMemo(() => {
+        let maxSeq = 0;
+        for (const log of terminalLogs) {
+            const ev = typeof log === 'string' ? null : log;
+            if (ev?.event === 'turn_completed' || ev?.event === 'client_turn_completed') {
+                if (typeof ev.seq === 'number' && ev.seq > maxSeq) {
+                    maxSeq = ev.seq;
+                }
+            } else if (ev?.event === 'session_finished' || ev?.event === 'client_session_finished') {
+                if (typeof ev.completed_turns === 'number') {
+                    maxSeq = Math.max(maxSeq, ev.completed_turns);
+                }
+            }
+        }
+        return maxSeq;
+    }, [terminalLogs]);
 
     // ─── Actions: Profile Management ──────────────────────────────────────────
 
@@ -386,6 +473,137 @@ export const PcapReplay: React.FC<PcapReplayProps> = ({ token }) => {
     const selectedTurnRawPayload = selectedTurn?.ascii_preview || selectedTurn?.preview || selectedTurn?.payload_b64 || '';
     const turnAnalysis = formatPayload(selectedTurnRawPayload);
 
+    // ─── Real-Time Console Formatter ──────────────────────────────────────────
+
+    const formatLogEvent = (rawLog: any, idx: number) => {
+        let log = rawLog;
+        if (typeof rawLog === 'string') {
+            try {
+                log = JSON.parse(rawLog);
+            } catch (_) {
+                return (
+                    <div key={idx} className="flex items-start gap-1.5 text-text-secondary leading-tight font-mono text-[10px]">
+                        <span className="text-text-muted/40 select-none text-[8px]">[{idx + 1}]</span>
+                        <span>{rawLog}</span>
+                    </div>
+                );
+            }
+        }
+
+        const ev = log.event;
+
+        if (ev === 'server_listening') {
+            return (
+                <div key={idx} className="flex items-center gap-2 py-0.5 text-[10px]">
+                    <span className="text-text-muted/40 select-none text-[8px] font-mono">[{idx + 1}]</span>
+                    <span className="px-1.5 py-0.2 rounded bg-purple-500/20 text-purple-400 font-bold uppercase text-[8px] border border-purple-500/30">
+                        SERVER READY
+                    </span>
+                    <span className="font-semibold text-text-primary">
+                        Listening on {log.bind_ip || '0.0.0.0'}:{log.port} ({log.transport?.toUpperCase() || 'TCP'})
+                    </span>
+                    <span className="text-text-muted text-[9px]">— Awaiting incoming spoke replay connection</span>
+                </div>
+            );
+        }
+
+        if (ev === 'session_started') {
+            return (
+                <div key={idx} className="flex items-center gap-2 py-0.5 text-[10px]">
+                    <span className="text-text-muted/40 select-none text-[8px] font-mono">[{idx + 1}]</span>
+                    <span className="px-1.5 py-0.2 rounded bg-blue-500/20 text-blue-400 font-bold uppercase text-[8px] border border-blue-500/30">
+                        SESSION OPEN
+                    </span>
+                    <span className="font-semibold text-text-primary">
+                        {log.client_ip}:{log.client_port} ➔ {log.server_ip}:{log.server_port}
+                    </span>
+                    <span className="text-text-muted text-[9px]">
+                        ({log.total_turns} turns total)
+                    </span>
+                </div>
+            );
+        }
+
+        if (ev === 'turn_completed' || ev === 'client_turn_completed') {
+            const isClient = log.sender === 'client';
+            return (
+                <div key={idx} className="flex items-center gap-2 py-0.5 text-[10px]">
+                    <span className="text-text-muted/40 select-none text-[8px] font-mono">[{idx + 1}]</span>
+                    <span className={`px-1.5 py-0.2 rounded font-black uppercase text-[8px] flex items-center gap-1 ${
+                        isClient
+                            ? 'bg-blue-500/20 text-blue-400 border border-blue-500/30'
+                            : 'bg-purple-500/20 text-purple-400 border border-purple-500/30'
+                    }`}>
+                        {isClient ? '⬆️ CLIENT ➔ SERVER' : '⬇️ SERVER ➔ CLIENT'}
+                    </span>
+                    <span className="font-black text-text-primary">Turn #{log.seq}</span>
+                    <span className="text-text-secondary font-mono">{log.bytes} bytes</span>
+                    <span className="text-text-muted/70 text-[9px] font-mono">({log.duration_ms}ms)</span>
+                </div>
+            );
+        }
+
+        if (ev === 'session_finished' || ev === 'client_session_finished') {
+            const isBypass = log.verdict === 'Bypass';
+            const isReset = log.verdict?.includes('Reset');
+            const isDrop = log.verdict?.includes('Drop');
+            const isError = log.status === 'error' || Boolean(log.error);
+
+            if (isError) {
+                return (
+                    <div key={idx} className="flex items-center gap-2 py-1 text-[10px] text-red-400 bg-red-500/10 px-2 rounded-lg border border-red-500/20">
+                        <span className="text-red-400 select-none text-[8px] font-mono">[{idx + 1}]</span>
+                        <span className="px-1.5 py-0.2 rounded bg-red-500/30 text-red-300 font-black uppercase text-[8px]">
+                            FAILED
+                        </span>
+                        <span className="font-bold">{log.error || 'Connection Failed'}</span>
+                        <span className="text-text-muted text-[9px]">— Verdict: {log.verdict || 'Inconclusive'}</span>
+                    </div>
+                );
+            }
+
+            return (
+                <div key={idx} className={`flex items-center gap-2 py-1 text-[10px] px-2 rounded-lg border ${
+                    isBypass
+                        ? 'bg-emerald-500/15 border-emerald-500/30 text-emerald-400'
+                        : isReset
+                        ? 'bg-red-500/15 border-red-500/30 text-red-400'
+                        : 'bg-amber-500/15 border-amber-500/30 text-amber-400'
+                }`}>
+                    <span className="select-none text-[8px] font-mono">[{idx + 1}]</span>
+                    <span className="px-1.5 py-0.2 rounded font-black uppercase text-[8px] bg-black/30">
+                        VERDICT: {log.verdict?.toUpperCase()}
+                    </span>
+                    <span className="font-bold">
+                        {log.completed_turns}/{log.total_turns} turns completed
+                    </span>
+                    {log.tx_bytes !== undefined && (
+                        <span className="text-[9px] opacity-80 font-mono">
+                            TX: {log.tx_bytes}B • RX: {log.rx_bytes}B in {log.duration_ms}ms
+                        </span>
+                    )}
+                </div>
+            );
+        }
+
+        if (ev === 'session_error' || ev === 'stderr') {
+            return (
+                <div key={idx} className="flex items-center gap-2 py-0.5 text-[10px] text-red-400">
+                    <span className="text-text-muted/40 select-none text-[8px] font-mono">[{idx + 1}]</span>
+                    <span className="px-1.5 py-0.2 rounded bg-red-500/20 text-red-400 font-bold uppercase text-[8px]">STDERR</span>
+                    <span>{log.error || log.text}</span>
+                </div>
+            );
+        }
+
+        return (
+            <div key={idx} className="flex items-start gap-1.5 text-text-secondary leading-tight text-[10px] font-mono">
+                <span className="text-text-muted/40 select-none text-[8px]">[{idx + 1}]</span>
+                <span>{JSON.stringify(log)}</span>
+            </div>
+        );
+    };
+
     return (
         <div className="space-y-3.5 animate-in fade-in duration-300">
             {/* ─── Top Banner / Header (Compact) ─── */}
@@ -556,8 +774,15 @@ export const PcapReplay: React.FC<PcapReplayProps> = ({ token }) => {
                                                     )}
                                                 </div>
 
-                                                {/* Action Buttons (Download / Delete) */}
+                                                {/* Action Buttons (Edit / Download / Delete) */}
                                                 <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
+                                                    <button
+                                                        onClick={(e) => { e.stopPropagation(); handleOpenEditModal(p); }}
+                                                        className="p-1 hover:bg-card-secondary rounded text-text-muted hover:text-indigo-400 transition-colors cursor-pointer"
+                                                        title="Edit profile parameters (Name, Port, Category, Description)"
+                                                    >
+                                                        <Edit3 size={11} />
+                                                    </button>
                                                     <button
                                                         onClick={(e) => { e.stopPropagation(); handleDownloadProfile(p.file_name); }}
                                                         className="p-1 hover:bg-card-secondary rounded text-text-muted hover:text-text-primary transition-colors cursor-pointer"
@@ -732,6 +957,25 @@ export const PcapReplay: React.FC<PcapReplayProps> = ({ token }) => {
                                         </div>
                                     </div>
 
+                                    {/* Traffic Path Telemetry Pill */}
+                                    <div className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border text-[10px] font-mono ${
+                                        customTargetIp === '127.0.0.1' || serverNodeId === 'local'
+                                            ? 'bg-amber-500/10 border-amber-500/30 text-amber-300'
+                                            : 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300'
+                                    }`}>
+                                        {customTargetIp === '127.0.0.1' || serverNodeId === 'local' ? (
+                                            <>
+                                                <AlertTriangle size={13} className="text-amber-400 shrink-0" />
+                                                <span><strong>Loopback Mode:</strong> Replaying to this local node (127.0.0.1). Server role must be running locally. To test SD-WAN, select a remote peer above.</span>
+                                            </>
+                                        ) : (
+                                            <>
+                                                <Globe size={13} className="text-emerald-400 shrink-0" />
+                                                <span><strong>SD-WAN Replay Path:</strong> Local Spoke ➔ Remote Peer <strong>{serverNodeId}</strong> ({customTargetIp}:{portOverride || 'Default'})</span>
+                                            </>
+                                        )}
+                                    </div>
+
                                     {/* Port & Loop Controls */}
                                     <div className="grid grid-cols-1 md:grid-cols-3 gap-2.5">
                                         <div>
@@ -904,6 +1148,8 @@ export const PcapReplay: React.FC<PcapReplayProps> = ({ token }) => {
                                     {turns.map((turn: any, idx: number) => {
                                         const isClient = turn.direction === 'client_to_server';
                                         const isTurnSelected = selectedTurnIndex === idx;
+                                        const isCompleted = (idx + 1) <= lastCompletedTurnSeq;
+                                        const isActive = (idx + 1) === (lastCompletedTurnSeq + 1) && activeJob?.status === 'running';
                                         const previewText = turn.ascii_preview || turn.preview || '';
                                         const info = formatPayload(previewText);
 
@@ -914,12 +1160,22 @@ export const PcapReplay: React.FC<PcapReplayProps> = ({ token }) => {
                                                 className={`p-1.5 px-2 rounded-lg border transition-all cursor-pointer flex items-center justify-between gap-2 ${
                                                     isTurnSelected
                                                         ? 'bg-purple-500/15 border-purple-500/50 shadow-sm'
+                                                        : isCompleted
+                                                        ? 'bg-emerald-500/5 border-emerald-500/30'
+                                                        : isActive
+                                                        ? 'bg-indigo-500/10 border-indigo-500/40 animate-pulse'
                                                         : 'bg-card-secondary/25 hover:bg-card-secondary/60 border-border/50'
                                                 }`}
                                             >
                                                 <div className="flex items-center gap-2">
-                                                    <span className="w-5 h-5 rounded bg-card-secondary border border-border flex items-center justify-center font-mono text-[9px] font-black text-text-muted">
-                                                        {idx + 1}
+                                                    <span className={`w-5 h-5 rounded border flex items-center justify-center font-mono text-[9px] font-black ${
+                                                        isCompleted
+                                                            ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/40'
+                                                            : isActive
+                                                            ? 'bg-indigo-500/20 text-indigo-400 border-indigo-500/40'
+                                                            : 'bg-card-secondary border-border text-text-muted'
+                                                    }`}>
+                                                        {isCompleted ? '✓' : idx + 1}
                                                     </span>
                                                     <div className="flex items-center gap-1.5">
                                                         <span className={`px-1.5 py-0.2 rounded text-[8px] font-black uppercase tracking-wider flex items-center gap-1 ${
@@ -937,6 +1193,16 @@ export const PcapReplay: React.FC<PcapReplayProps> = ({ token }) => {
                                                 </div>
 
                                                 <div className="flex items-center gap-1.5">
+                                                    {isCompleted && (
+                                                        <span className="px-1.5 py-0.2 rounded bg-emerald-500/20 text-emerald-400 font-black text-[8px] border border-emerald-500/30 flex items-center gap-0.5">
+                                                            <Check size={8} /> DONE
+                                                        </span>
+                                                    )}
+                                                    {isActive && (
+                                                        <span className="px-1.5 py-0.2 rounded bg-indigo-500/20 text-indigo-400 font-black text-[8px] border border-indigo-500/30 flex items-center gap-0.5 animate-pulse">
+                                                            <Activity size={8} /> LIVE
+                                                        </span>
+                                                    )}
                                                     <span className={`text-[8px] px-1 py-0.2 rounded border font-bold uppercase ${info.badge}`}>
                                                         {info.type.split(' ')[0]}
                                                     </span>
@@ -995,34 +1261,184 @@ export const PcapReplay: React.FC<PcapReplayProps> = ({ token }) => {
                     {/* 3. Live Replay Terminal Logs */}
                     <div className="bg-card border border-border rounded-2xl p-3.5 shadow-xl font-mono shrink-0">
                         <div className="flex items-center justify-between pb-2 border-b border-border text-text-muted text-xs">
-                            <div className="flex items-center gap-1.5">
+                            <div className="flex items-center gap-2">
                                 <Terminal size={13} className="text-emerald-400" />
                                 <span className="font-black uppercase tracking-widest text-[9px]">Real-Time Replay Socket Console</span>
+                                <span className="text-[9px] text-text-muted/60 font-mono">({terminalLogs.length} events)</span>
                             </div>
-                            <span className="text-[9px] text-text-muted/60">{terminalLogs.length} events</span>
+                            
+                            <div className="flex items-center gap-2">
+                                <div className="flex items-center bg-black/40 rounded-lg p-0.5 border border-border/60">
+                                    <button
+                                        type="button"
+                                        onClick={() => setConsoleViewMode('formatted')}
+                                        className={`px-2 py-0.5 rounded text-[9px] font-bold transition-all ${
+                                            consoleViewMode === 'formatted'
+                                                ? 'bg-primary text-black shadow-sm'
+                                                : 'text-text-muted hover:text-text-primary'
+                                        }`}
+                                    >
+                                        Live Activity
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => setConsoleViewMode('raw')}
+                                        className={`px-2 py-0.5 rounded text-[9px] font-bold transition-all ${
+                                            consoleViewMode === 'raw'
+                                                ? 'bg-primary text-black shadow-sm'
+                                                : 'text-text-muted hover:text-text-primary'
+                                        }`}
+                                    >
+                                        Raw JSON
+                                    </button>
+                                </div>
+                                {terminalLogs.length > 0 && (
+                                    <button
+                                        type="button"
+                                        onClick={() => setTerminalLogs([])}
+                                        className="px-2 py-0.5 rounded text-[9px] font-semibold text-text-muted hover:text-red-400 hover:bg-red-500/10 border border-border/40 hover:border-red-500/30 transition-all"
+                                        title="Clear console logs"
+                                    >
+                                        Clear
+                                    </button>
+                                )}
+                            </div>
                         </div>
 
-                        <div className="mt-2 bg-black/50 border border-border/60 rounded-xl p-2.5 h-28 overflow-y-auto space-y-0.5 text-[10px] scrollbar-thin scrollbar-thumb-border">
+                        <div className="mt-2 bg-black/50 border border-border/60 rounded-xl p-2.5 h-32 overflow-y-auto space-y-1 text-[10px] scrollbar-thin scrollbar-thumb-border">
                             {terminalLogs.length === 0 ? (
                                 <div className="flex items-center justify-center h-full text-text-muted/40 italic text-xs">
                                     Waiting for replay events...
                                 </div>
                             ) : (
                                 terminalLogs.map((log: any, idx: number) => (
-                                    <div key={idx} className="flex items-start gap-1.5 text-text-secondary leading-tight">
-                                        <span className="text-text-muted/50 select-none text-[8px] font-mono">
-                                            [{idx + 1}]
-                                        </span>
-                                        <span className={log.verdict ? 'text-emerald-400 font-bold' : log.event === 'error' ? 'text-red-400' : 'text-text-primary'}>
-                                            {typeof log === 'string' ? log : JSON.stringify(log)}
-                                        </span>
-                                    </div>
+                                    consoleViewMode === 'formatted' ? (
+                                        formatLogEvent(log, idx)
+                                    ) : (
+                                        <div key={idx} className="flex items-start gap-1.5 text-text-secondary leading-tight">
+                                            <span className="text-text-muted/50 select-none text-[8px] font-mono">
+                                                [{idx + 1}]
+                                            </span>
+                                            <span className={log.verdict ? 'text-emerald-400 font-bold' : log.event === 'error' || log.status === 'error' ? 'text-red-400' : 'text-text-primary'}>
+                                                {typeof log === 'string' ? log : JSON.stringify(log)}
+                                            </span>
+                                        </div>
+                                    )
                                 ))
                             )}
                         </div>
                     </div>
                 </div>
             </div>
+
+            {/* ─── Edit Replay Profile Modal ─── */}
+            {isEditModalOpen && editingProfile && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-in fade-in duration-200">
+                    <div className="bg-card border border-border/80 rounded-2xl w-full max-w-lg p-5 shadow-2xl space-y-4">
+                        <div className="flex items-center justify-between pb-3 border-b border-border">
+                            <div className="flex items-center gap-2">
+                                <div className="p-2 rounded-xl bg-primary/10 border border-primary/20 text-primary">
+                                    <Edit3 size={16} />
+                                </div>
+                                <div>
+                                    <h3 className="text-sm font-bold text-text-primary">Edit Replay Profile</h3>
+                                    <p className="text-[11px] text-text-muted font-mono">{editingProfile.file_name}</p>
+                                </div>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => setIsEditModalOpen(false)}
+                                className="text-text-muted hover:text-text-primary p-1 rounded-lg hover:bg-white/5 transition-colors"
+                            >
+                                <X size={16} />
+                            </button>
+                        </div>
+
+                        <div className="space-y-3 text-xs">
+                            <div>
+                                <label className="block text-[11px] font-bold text-text-muted uppercase tracking-wider mb-1">
+                                    Scenario Name
+                                </label>
+                                <input
+                                    type="text"
+                                    value={editName}
+                                    onChange={(e) => setEditName(e.target.value)}
+                                    placeholder="e.g. TLS App Identification Bypass"
+                                    className="w-full bg-black/40 border border-border rounded-xl px-3 py-2 text-text-primary text-xs focus:outline-none focus:border-primary/60 transition-colors"
+                                />
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-3">
+                                <div>
+                                    <label className="block text-[11px] font-bold text-text-muted uppercase tracking-wider mb-1">
+                                        Category Tag
+                                    </label>
+                                    <input
+                                        type="text"
+                                        value={editCategory}
+                                        onChange={(e) => setEditCategory(e.target.value)}
+                                        placeholder="e.g. CUSTOM, TLS, SASE"
+                                        className="w-full bg-black/40 border border-border rounded-xl px-3 py-2 text-text-primary text-xs focus:outline-none focus:border-primary/60 transition-colors"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-[11px] font-bold text-text-muted uppercase tracking-wider mb-1">
+                                        Default Server Port
+                                    </label>
+                                    <input
+                                        type="number"
+                                        value={editPort}
+                                        onChange={(e) => setEditPort(e.target.value)}
+                                        placeholder="18443"
+                                        className="w-full bg-black/40 border border-border rounded-xl px-3 py-2 text-text-primary text-xs font-mono focus:outline-none focus:border-primary/60 transition-colors"
+                                    />
+                                </div>
+                            </div>
+
+                            <div>
+                                <label className="block text-[11px] font-bold text-text-muted uppercase tracking-wider mb-1">
+                                    Description / Security Context
+                                </label>
+                                <textarea
+                                    value={editDescription}
+                                    onChange={(e) => setEditDescription(e.target.value)}
+                                    rows={3}
+                                    placeholder="Describe the application protocol, expected firewall policy, or SASE inspection behavior..."
+                                    className="w-full bg-black/40 border border-border rounded-xl px-3 py-2 text-text-primary text-xs focus:outline-none focus:border-primary/60 transition-colors resize-none"
+                                />
+                            </div>
+                        </div>
+
+                        <div className="flex items-center justify-end gap-2 pt-3 border-t border-border">
+                            <button
+                                type="button"
+                                onClick={() => setIsEditModalOpen(false)}
+                                className="px-3.5 py-1.5 text-xs text-text-muted hover:text-text-primary transition-colors"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                type="button"
+                                onClick={handleSaveEditProfile}
+                                disabled={isSavingEdit || !editName.trim()}
+                                className="flex items-center gap-1.5 px-4 py-1.5 rounded-xl bg-primary text-black font-bold text-xs hover:opacity-90 transition-all disabled:opacity-50 shadow-md"
+                            >
+                                {isSavingEdit ? (
+                                    <>
+                                        <RotateCcw size={13} className="animate-spin" />
+                                        <span>Saving...</span>
+                                    </>
+                                ) : (
+                                    <>
+                                        <Save size={13} />
+                                        <span>Save Changes</span>
+                                    </>
+                                )}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {/* ─── PCAP Raw Capture Parser Modal ─── */}
             <PcapReplayModal

@@ -276,6 +276,46 @@ export function createPcapApiRouter(configDir: string, projectRoot: string, pyth
         res.status(404).json({ success: false, error: 'Profile not found' });
     });
 
+    // PUT /api/pcap/profiles/:filename - Edit a compiled profile (name, category, server_port, description)
+    router.put('/profiles/:filename', checkFeatureFlag, (req: Request, res: Response) => {
+        const safeFile = path.basename(req.params.filename);
+        const filePath = path.join(profilesDir, safeFile);
+        if (!fs.existsSync(filePath)) {
+            return res.status(404).json({ success: false, error: 'Profile not found' });
+        }
+        try {
+            const buf = fs.readFileSync(filePath);
+            const unzipped = zlib.gunzipSync(buf);
+            const json = JSON.parse(unzipped.toString('utf8'));
+
+            const { name, category, server_port, description } = req.body;
+            if (name !== undefined && String(name).trim()) {
+                json.name = String(name).trim();
+            }
+            if (category !== undefined && String(category).trim()) {
+                json.category = String(category).trim();
+            }
+            if (description !== undefined) {
+                json.description = String(description).trim();
+            }
+            if (server_port !== undefined && !isNaN(parseInt(server_port, 10))) {
+                const portNum = parseInt(server_port, 10);
+                if (Array.isArray(json.flows)) {
+                    json.flows.forEach((flow: any) => {
+                        flow.server_port = portNum;
+                    });
+                }
+            }
+
+            const updatedGzip = zlib.gzipSync(Buffer.from(JSON.stringify(json, null, 2), 'utf8'));
+            fs.writeFileSync(filePath, updatedGzip);
+            onProfilesChanged?.();
+            res.json({ success: true, updated: safeFile, profile: json });
+        } catch (err: any) {
+            res.status(500).json({ success: false, error: `Failed to update profile: ${err.message}` });
+        }
+    });
+
     // --- M2: Active Replay Process Tracking ---
     interface ActiveReplayJob {
         id: string;
