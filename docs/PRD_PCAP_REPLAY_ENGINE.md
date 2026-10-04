@@ -1,10 +1,10 @@
-> **Last Updated:** 2026-10-03 | **Created:** 2026-10-03 (v2.0.145)
+> **Last Updated:** 2026-10-04 | **Created:** 2026-10-03 (v2.0.145)
 
 # 📄 PRD — Stigix PCAP Stateful Replay Engine
 
 ## 1. Executive Summary
 
-The **Stigix PCAP Stateful Replay Engine** lets network and security engineers import real application and threat packet captures (`.pcap`, `.pcapng`) and replay them as live, bidirectional traffic between Stigix instances: across SD-WAN overlays, through Prisma SASE, and towards Stigix Cloud Targets.
+The **Stigix PCAP Stateful Replay Engine** lets network and security engineers import real application and threat packet captures (`.pcap`, `.pcapng`, and encrypted `.zip` archives) and replay them as live, bidirectional traffic between Stigix instances: across SD-WAN overlays, through Prisma SASE, and towards Stigix Cloud Targets.
 
 ### 1.1 The Field Problem
 In PoCs, Ultimate Test Drive (UTD) labs, and SASE validation sessions, SEs and TMEs struggle to populate **App-ID**, **Threat Prevention**, and **IoT Device Security** with realistic traffic. Today's workaround is a dedicated Linux VM running `tcpreplay` into an NGFW **TAP interface**. This works, but it is:
@@ -14,6 +14,7 @@ In PoCs, Ultimate Test Drive (UTD) labs, and SASE validation sessions, SEs and T
 
 ### 1.2 Value Proposition
 * **Bring Your Own App (BYO-App):** replay a short capture of a proprietary or legacy application (SAP GUI, Oracle TNS, Citrix ICA, DICOM, HL7, Modbus) across the Stigix mesh.
+* **Direct ZIP & Exploit Archive Ingestion:** natively upload nested malware archives with automatic password recovery (`infected`, `virus`, `malware`).
 * **Real App-ID and Threat signatures in-band:** exact L7 payloads traverse the real enforcement path (SD-WAN + NGFW/SASE), not a TAP.
 * **Realistic SD-WAN chaos validation:** real kernel TCP sessions react naturally to VyOS-injected latency, loss, and failover.
 
@@ -26,6 +27,7 @@ In PoCs, Ultimate Test Drive (UTD) labs, and SASE validation sessions, SEs and T
 * Trigger the **same App-ID** on Palo Alto NGFW / Prisma Access as the original capture, for cleartext protocols.
 * Produce a **security verdict** (Enforced / Bypass / Inconclusive) for threat captures, consistent with existing Stigix C2 scenarios.
 * Stay **NAT, firewall, and SD-WAN friendly** (no raw packet injection).
+* Provide **zero-touch fleet distribution** via WebSocket reverse tunnels across all spoke nodes.
 
 ### 2.2 Non-Goals (Phase 1)
 * ❌ Decrypting TLS captures without session keys.
@@ -39,18 +41,20 @@ In PoCs, Ultimate Test Drive (UTD) labs, and SASE validation sessions, SEs and T
 
 ## 3. How Replay Works (Phase 1: Stateful L7 Socket Replay)
 
-The capture is treated as a **script**: the parser extracts the ordered application turns, then two Stigix instances play the client and server roles with real sockets. **`tcpreplay` is not used in Phase 1.**
+The capture is treated as a **script**: the parser extracts the ordered application steps, then two Stigix instances play the client and server roles with real sockets. **`tcpreplay` is not used in Phase 1.**
 
-### 3.1 Parsing Pipeline (Leader)
-1. Stream-read the capture (`dpkt` / `scapy.PcapReader`) without loading it fully into memory.
-2. Identify flows (5-tuple) and their roles (client = SYN initiator; for UDP, first sender).
-3. Reassemble TCP segments in sequence order; drop pure ACKs, retransmissions, and empty SYN/FIN.
-4. Merge consecutive same-direction segments into **turns**.
-5. Record per turn: direction, byte count, payload, and inter-turn delay from the original capture.
-6. Emit a compressed replay profile (`.stx-replay`, gzip).
+### 3.1 Parsing & Extraction Pipeline (Leader)
+1. **Direct Capture & ZIP Upload**: Ingest `.pcap`, `.pcapng`, or `.zip` archives. For encrypted research ZIPs, automatically trial common passwords (`infected`, `virus`, `malware`, dynamic dates) and extract into an ephemeral memory buffer (`Memory Guard` — zero disk pollution).
+2. **Stream-read the capture**: (`scapy.PcapReader`) without loading the full file into memory (< 128 MB RSS).
+3. **Automated Noise Isolation**: Discover 5-tuples and automatically classify background network noise (`DHCPv6`, `LLMNR`, `mDNS`, `NetBIOS`, subnet broadcasts). Fast bulk filters (`Unicast Only`, `+ TCP`, `- UDP`) allow instant isolation of the clean application flow.
+4. **Identify flows & roles**: Client = SYN initiator; for UDP, first sender.
+5. **Reassemble TCP segments**: Drop pure ACKs, retransmissions, and empty SYN/FIN.
+6. **Merge consecutive segments into Steps**: Order bidirectional exchanges (`⬆️ Client ➔ Server` vs `⬇️ Server ➔ Client`).
+7. **Automated Credential Scrubbing**: Redact passwords, Bearer tokens, Basic Auth, and emails using regex substitution.
+8. **Emit compressed replay profile**: (`.stx-replay`, gzip).
 
 ### 3.2 Byte-Accurate State Machine
-TCP is a **byte stream**: a single `recv()` may return only part of a turn. Each side therefore reads **until the expected byte count is reached** (or a timeout fires) before moving to the next turn:
+TCP is a **byte stream**: a single `recv()` may return only part of a step. Each side therefore reads **until the expected byte count is reached** (or a timeout fires) before moving to the next step:
 
 ```python
 def read_exact(sock, n, timeout):
@@ -64,28 +68,33 @@ def read_exact(sock, n, timeout):
     return bytes(buf)
 
 # Server side
-for turn in profile.turns:
-    if turn.sender == "client":
-        read_exact(conn, turn.length, timeout=turn_timeout)
+for step in profile.steps:
+    if step.sender == "client":
+        read_exact(conn, step.length, timeout=step_timeout)
     else:
-        if turn.delay_ms:
-            sleep(turn.delay_ms / 1000)   # optional "original timing" mode
-        conn.sendall(turn.payload)
+        if step.delay_ms:
+            sleep(step.delay_ms / 1000)   # optional "original timing" mode
+        conn.sendall(step.payload)
 ```
 
-### 3.3 Turn Triggers
+### 3.3 Step Triggers
 | Trigger | Meaning | Example |
 | :--- | :--- | :--- |
-| `after_peer_turn` (default) | Send once the previous peer turn is fully received | Request → Response |
+| `after_peer_turn` (default) | Send once the previous peer step is fully received | Request → Response |
 | `on_connect` | Server speaks first right after the handshake | SSH / FTP / SMTP banner |
 | `after_delay` | Send after a recorded delay, without waiting for the peer | Server push, heartbeat |
 
-### 3.4 Ports
-* **Server port:** same as the capture by default (preserves `application-default` service matching). Overridable if already in use.
+### 3.4 Ports & Automatic Anti-Collision Remapping
+* **Automatic Port Conflict Avoidance**: To prevent collisions with local web daemons (Nginx, Apache) and avoid Linux root privilege restrictions on ports $< 1024$, Stigix evaluates `RESERVED_PORTS = {80, 443, 8080..8090, 8443}`.
+* **Remapping Formula**: Any reserved port is shifted: $\text{Effective Port} = 10000 + \text{Original Port}$.
+  - Port `80` (HTTP) ➔ **`10080`** (default for most web exploit profiles).
+  - Port `443` (HTTPS) ➔ **`10443`**.
+  - Non-conflicting ports (e.g. `5060` SIP, `3389` RDP) retain their exact captured port.
+* **Server port:** Overridable at any time via UI header or profile editor.
 * **Client port:** OS-assigned ephemeral port, like any real client.
 
 ### 3.5 UDP
-UDP turns are sent as datagrams preserving original boundaries. Each side waits for the expected datagram(s) with a timeout. This covers DNS, NTP, SSDP, mDNS (unicast), CoAP, syslog, and most IoT telemetry.
+UDP steps are sent as datagrams preserving original boundaries. Each side waits for the expected datagram(s) with a timeout. This covers DNS, NTP, SSDP, mDNS (unicast), CoAP, syslog, VoIP RTP, and IoT telemetry.
 
 ---
 
@@ -123,8 +132,8 @@ sequenceDiagram
     end
 ```
 
-### 4.1 Profile Distribution
-Profiles can weigh several MB, so they are **not** embedded in the 30s Central Provisioning pull cycle. Provisioning only carries **references** (`profile_id`, `sha256`, size). Nodes download the profile on demand from the Leader through the existing gateway / reverse tunnel, verify the hash, and cache it locally.
+### 4.1 Fleet-Wide Mesh Profile Distribution
+Profiles compiled on the Leader node (**DC1**) are automatically packaged into the dedicated `pcap-profiles` bundle within the **Stigix Central Global Provisioning** subsystem (`provisioning-manager.ts`). Remote branch peers (**BR1, BR2, BR5, BR8**) pull and synchronize profiles over multiplexed WebSocket reverse tunnels (`/fleet-tunnel`). Creating, editing, or deleting a profile on the Leader triggers fleet-wide propagation within seconds with zero manual file copying.
 
 ---
 
@@ -144,20 +153,20 @@ B. North-South (SASE egress)
 
 ---
 
-## 6. Security Verdict Model
+## 6. Security Verdict Model & Live Telemetry Hub
 
-For threat captures, the client must distinguish **blocked by security** from **network failure**. The verdict model is aligned with existing Stigix C2 scenarios and accounts for both active resets and silent drops:
+For threat captures, the client distinguishes **blocked by security** from **network failure** in real-time. The verdict model is displayed through the prominent **Hero SASE Verdict Card** with 5 color-coded states:
 
-| Observation | Verdict | Details |
+| Observation | Verdict & UI Banner | Details |
 | :--- | :--- | :--- |
-| All turns completed, payload received intact | **Bypass** | Threat not blocked by security policy |
-| TCP RST / connection closed right after the malicious turn (control replay succeeds) | **Enforced (Reset)** | Firewall / SASE sent an active RST packet (`reset-server`, `reset-client`, `reset-both`) |
-| Timeout / retransmissions stalled on the malicious turn (control replay succeeds) | **Enforced (Drop)** | Firewall / SASE silently dropped the packet (`drop` action common on Anti-Spyware / Vulnerability profiles) |
-| HTTP block page detected in the server turn (status / signature) | **Enforced (Block Page)** | SASE / Web Security intercepted and served a captive block page |
-| Timeout before reaching the malicious turn, or control replay also fails | **Inconclusive** | Underlay / overlay network failure, unreachable route, or misconfigured port |
+| All steps completed, payload received intact | 🟢 **Bypass** | Threat not blocked by security policy; application signature permitted |
+| TCP RST / connection closed right after an attack step | 🔴 **Enforced (Reset)** | Firewall / SASE injected an active TCP RST packet (`reset-server`, `reset-client`, `reset-both`) |
+| Timeout / retransmissions stalled on an attack step | 🟠 **Enforced (Drop)** | Firewall / SASE silently dropped the packet (`drop` action on Anti-Spyware / Vulnerability profile) |
+| HTTP block page detected in server response | 🔴 **Enforced (Block Page)** | SASE / Web Security intercepted and served a captive block page (`<title>Access Denied</title>`) |
+| Handshake fails immediately or port closed | ⚪ **Inconclusive** | Underlay / overlay network failure, unreachable route, or listener not started on target |
 
-* **Control replay:** before each threat replay, a benign profile is replayed on the same source/target/port to prove the network path is functional.
-* Each threat profile declares its **malicious turn index** so the verdict can tell "blocked at the exploit" apart from "blocked at the handshake".
+* The **SASE Telemetry Hub** provides 4 live KPI tiles: **Steps Progress** (completed/total), **Data Volume** (TX/RX and cumulative loop volume), **Replay Duration** (elapsed ms and avg latency per step), and **Target Host**.
+* A 3-mode Activity Console provides **Timeline** (step-by-step milestones), **Stream Log** (packet-by-packet logs), and **Raw JSON** telemetry.
 
 ---
 
@@ -319,14 +328,14 @@ Kernel TCP/UDP sockets, byte-accurate state machine, verdict model, curated libr
 
 ## 16. Implementation Milestones
 
-| Milestone | Scope | Deliverables |
-| :--- | :--- | :--- |
-| **M1 — Parser** | Streaming parser, flow detection, TCP reassembly, UDP turns, TLS keylog support, sensitive data scan | CLI producing `.stx-replay` profiles + measured size ratios |
-| **M2 — Replay Runtime** | Byte-accurate client/server state machine (TCP + UDP), triggers, timeouts, telemetry | Runtime integrated with Custom TCP Apps engine |
-| **M3 — UI & Distribution** | Upload, flow selection preview, source/target assignment, on-demand profile fetch with sha256 | Replay tab in Custom Apps |
-| **M4 — IoT Binding (spike → build)** | macvlan per virtual device vs userspace TCP | Replays sourced from IoT Simulator device identities |
-| **M5 — Security Verdicts & Curated Library** | Control replay, malicious turn tracking, Enforced/Bypass/Inconclusive, first curated profiles | Threat replay presets with expected Threat IDs |
-| **M6 — Phase 2 Hook** | `tcpreplay` raw mode behind a Replay Mode switch | Line-rate / L2-fidelity replay |
+| Milestone | Scope | Deliverables | Status |
+| :--- | :--- | :--- | :---: |
+| **M1 — Parser & ZIP Extraction** | Streaming Scapy parser, flow detection, TCP reassembly, UDP datagrams, ZIP password recovery (`infected`, `virus`), background noise isolation, automated credential scrubbing | CLI & API producing compressed `.stx-replay` profiles | ✅ **COMPLETED** (`v2.0.148`) |
+| **M2 — Replay Runtime** | Byte-accurate client/server state machine (TCP + UDP), step triggers, timeouts, loop cycles, socket exhaustion safety guards | Asynchronous Python runtime (`pcap_replay_runtime.py`) | ✅ **COMPLETED** (`v2.0.149`) |
+| **M3 — UI & Mesh Distribution** | 3-column workspace, Wireshark Hex Dump/ASCII inspector, step payload navigation, Global Provisioning WebSocket reverse tunnel auto-sync | Integrated PCAP Replay Dashboard & Modal | ✅ **COMPLETED** (`v2.0.146`) |
+| **M4 — IoT Binding (spike → build)** | macvlan per virtual device vs userspace TCP | Replays sourced from IoT Simulator device identities | ⏳ **NEXT STEP** (Phase 1.5) |
+| **M5 — Security Verdicts & Presets** | 5-state SASE Hero Card (Bypass, Reset, Drop, Block Page, Inconclusive), live KPI tiles, multi-mode console, curated library | Production SASE policy validation | 🔄 **VERDICTS COMPLETED** (`v2.0.146`) / Presets in progress |
+| **M6 — Phase 2 Hook** | `tcpreplay` raw mode behind a Replay Mode switch | Line-rate / L2-fidelity replay | 🔮 **PHASE 2 ROADMAP** |
 
 ---
 
@@ -334,6 +343,7 @@ Kernel TCP/UDP sockets, byte-accurate state machine, verdict model, curated libr
 
 | Date | Stigix Version | Author / Trigger | Summary of Changes |
 |---|---|---|---|
+| 2026-10-04 | `v2.0.150` | Stigix Core Team | PRD reality alignment: Documented native ZIP ingestion with password recovery, background noise isolation, Global Provisioning WebSocket mesh distribution, 5-state SASE verdict model, port anti-collision logic (port 10080), and updated milestone delivery statuses. |
 | 2026-10-03 | `v2.0.145` | Stigix Core Team | Credibility hardening: Enforced (Drop) vs Enforced (Reset) in security verdict model, macvlan lab/hypervisor constraints, TLS threat prevention limitations without SSLKEYLOGFILE, FQDN requirement for Prisma Cloud Targets, and explicit exclusion of multi-channel/ALG protocols. |
 | 2026-10-03 | `v2.0.145` | Stigix Core Team | Technical review: byte-accurate state machine, UDP in Phase 1, security verdict model, IoT Simulator binding (macvlan / userspace TCP), corrected TLS strategy (keylog / SNI-only, Forward-Untrust pitfall), curated library instead of live hub, on-demand profile distribution, goals/non-goals, limitations, risks, success criteria. |
 | 2026-10-03 | `v2.0.145` | Stigix Core Team | Added public PCAP sources, UTD lab field context, Cloud Target topology, and TLS section. |

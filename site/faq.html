@@ -660,6 +660,27 @@ content_match_ok       true | false</pre>
         </div>
 
         <div class="faq-item">
+          <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">How does Stateful PCAP Replay differ from traditional tcpreplay, and how does it detect SASE verdicts?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
+          <div class="faq-item__body"><div class="faq-item__inner"><div class="faq-item__answer">
+            <p>Traditional tools like <code>tcpreplay</code> blast raw Ethernet frames with historical IP addresses into a switch TAP port. They fail in routed SD-WAN overlays and Next-Gen Firewalls because they do not negotiate a live TCP 3-way handshake.</p>
+            <p><strong>The Stigix Stateful Approach:</strong></p>
+            <ul>
+              <li><strong>Routable L7 Socket Replay:</strong> Stigix extracts the application dialogue into ordered L7 steps and replays them over real kernel sockets across your live SD-WAN overlay tunnels.</li>
+              <li><strong>Native ZIP &amp; Malware Password Ingestion:</strong> Drag-and-drop <code>.pcap</code>, <code>.pcapng</code>, or encrypted <code>.zip</code> archives with automatic password recovery (<code>infected</code>, <code>virus</code>).</li>
+              <li><strong>Automated SASE Verdict Detection:</strong> Stigix monitors socket events in real time to categorize firewall enforcement:
+                <ul>
+                  <li><strong>BYPASS (Allowed) 🟢:</strong> Full session completed without drop or reset.</li>
+                  <li><strong>ENFORCED (Reset) 🔴:</strong> Firewall injected an active TCP RST packet upon matching an attack signature.</li>
+                  <li><strong>ENFORCED (Drop) 🟠:</strong> Firewall silently discarded packets, causing an application socket timeout.</li>
+                  <li><strong>ENFORCED (Block Page) 🔴:</strong> SASE proxy returned an HTTP captive denial notice.</li>
+                </ul>
+              </li>
+              <li><strong>Mesh Fleet Auto-Sync:</strong> Compiling a profile on the Leader immediately synchronizes it across all branch peers via WebSocket tunnels.</li>
+            </ul>
+          </div></div></div>
+        </div>
+
+        <div class="faq-item">
           <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">How does Stigix handle Prisma Access SSL Decryption and Forward Trust CA certificates?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
           <div class="faq-item__body"><div class="faq-item__inner"><div class="faq-item__answer">
             <p>When SSL Forward Proxy Decryption is active on Prisma Access or a Next-Gen Firewall, the firewall intercepts HTTPS connections and re-encrypts the session using its own <strong>Forward Trust CA</strong>. Without this CA certificate, HTTPS threat tests (EICAR, URL Filtering, DLP) and synthetic SaaS probes will abort with TLS handshake errors before reaching the security inspection engine.</p>
