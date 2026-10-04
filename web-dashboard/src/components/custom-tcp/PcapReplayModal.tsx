@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import {
     Upload, Play, Square, CheckCircle2, AlertTriangle, X,
     Layers, Server, Globe, RefreshCw, FileText, Shield, ArrowRight,
-    Terminal, Lock, ShieldAlert, Activity, Check, Download
+    Terminal, Lock, ShieldAlert, Activity, Check, Download, Trash2
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { usePeerContext } from '../../PeerContext';
@@ -35,6 +35,7 @@ export const PcapReplayModal: React.FC<PcapReplayModalProps> = ({
     const [profileName, setProfileName] = useState<string>('');
     const [profileCategory, setProfileCategory] = useState<string>('custom');
     const [expectedAppId, setExpectedAppId] = useState<string>('');
+    const [compilePort, setCompilePort] = useState<string>('');
     const [isCompiling, setIsCompiling] = useState(false);
 
     // Replay State
@@ -68,6 +69,25 @@ export const PcapReplayModal: React.FC<PcapReplayModalProps> = ({
             document.body.removeChild(a);
         } catch (e: any) {
             toast.error(e.message || 'Failed to download profile');
+        }
+    };
+
+    const handleDeleteProfile = async (fileName: string) => {
+        if (!confirm(`Delete profile ${fileName}? This will also remove it across the mesh.`)) return;
+        try {
+            const res = await gFetch(`/api/pcap/profiles/${encodeURIComponent(fileName)}`, {
+                method: 'DELETE',
+                headers: { Authorization: `Bearer ${token}` }
+            });
+            if (res.ok) {
+                toast.success(`Profile deleted: ${fileName}`);
+                await fetchProfiles();
+                if (selectedProfile === fileName) setSelectedProfile('');
+            } else {
+                toast.error('Failed to delete profile');
+            }
+        } catch (e: any) {
+            toast.error(e.message || 'Error deleting profile');
         }
     };
 
@@ -205,9 +225,17 @@ export const PcapReplayModal: React.FC<PcapReplayModalProps> = ({
 
             setTempFileToken(data.temp_file_token);
             setInspectionData(data.inspection);
-            // Select all flows by default
-            if (data.inspection?.flows) {
+            // Select all flows by default and detect port conflicts
+            if (data.inspection?.flows?.length > 0) {
                 setSelectedFlowIds(data.inspection.flows.map((f: any) => f.flow_id));
+                const firstFlow = data.inspection.flows[0];
+                const origPort = firstFlow?.server_port;
+                const reserved = [80, 443, 8080, 8081, 8082, 8083, 8084, 8085, 8086, 8087, 8088, 8089, 8090, 8443];
+                if (reserved.includes(origPort)) {
+                    setCompilePort(String(10000 + origPort));
+                } else if (origPort) {
+                    setCompilePort(String(origPort));
+                }
             }
             setActiveTab('inspect');
             toast.success(`Discovered ${data.inspection.flows?.length || 0} active flows!`);
@@ -240,7 +268,8 @@ export const PcapReplayModal: React.FC<PcapReplayModalProps> = ({
                     category: profileCategory,
                     app_id: expectedAppId || undefined,
                     scrub: scrubSensitive,
-                    flow_ids: selectedFlowIds
+                    flow_ids: selectedFlowIds,
+                    port: compilePort ? parseInt(compilePort, 10) : undefined
                 })
             });
 
@@ -590,7 +619,7 @@ export const PcapReplayModal: React.FC<PcapReplayModalProps> = ({
                             </div>
 
                             {/* Compilation metadata settings */}
-                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                            <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
                                 <div>
                                     <label className="text-[11px] font-medium text-text-muted block mb-1">Profile Name</label>
                                     <input
@@ -623,7 +652,26 @@ export const PcapReplayModal: React.FC<PcapReplayModalProps> = ({
                                         className="w-full px-3 py-1.5 bg-muted/20 border border-border rounded-lg text-xs text-text-primary focus:outline-none focus:border-indigo-500"
                                     />
                                 </div>
+                                <div>
+                                    <label className="text-[11px] font-medium text-text-muted block mb-1">Target Replay Port</label>
+                                    <input
+                                        type="number"
+                                        placeholder="e.g. 18443"
+                                        value={compilePort}
+                                        onChange={(e) => setCompilePort(e.target.value)}
+                                        className="w-full px-3 py-1.5 bg-muted/20 border border-border rounded-lg text-xs text-text-primary focus:outline-none focus:border-indigo-500 font-mono"
+                                    />
+                                </div>
                             </div>
+
+                            {inspectionData.flows?.some((f: any) => [80, 443, 8080, 8081, 8082, 8083, 8084, 8085, 8086, 8087, 8088, 8089, 8090, 8443].includes(f.server_port)) && (
+                                <div className="p-2.5 bg-amber-500/10 border border-amber-500/20 rounded-xl text-xs text-amber-300 flex items-center gap-2">
+                                    <AlertTriangle size={14} className="shrink-0 text-amber-400" />
+                                    <span>
+                                        Port de capture original en conflit avec les daemons Stigix (8443/8080..8090/80/443). Mappé automatiquement sur le port sécurisé <strong>{compilePort || '10000+port'}</strong> pour éviter toute interruption.
+                                    </span>
+                                </div>
+                            )}
 
                             <div className="flex justify-between items-center pt-2">
                                 <button
@@ -684,20 +732,35 @@ export const PcapReplayModal: React.FC<PcapReplayModalProps> = ({
                                             <Upload size={11} /> Importer .stx-replay
                                         </button>
                                         {selectedProfile && (
-                                            <button
-                                                type="button"
-                                                onClick={() => handleDownloadProfile(selectedProfile)}
-                                                className="text-[11px] text-emerald-400 hover:text-emerald-300 flex items-center gap-1 cursor-pointer font-medium"
-                                                title="Télécharger ce profil .stx-replay pour le copier sur un autre nœud"
-                                            >
-                                                <Download size={11} /> Exporter Profil
-                                            </button>
+                                            <>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleDownloadProfile(selectedProfile)}
+                                                    className="text-[11px] text-emerald-400 hover:text-emerald-300 flex items-center gap-1 cursor-pointer font-medium"
+                                                    title="Télécharger ce profil .stx-replay pour le copier sur un autre nœud"
+                                                >
+                                                    <Download size={11} /> Exporter
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleDeleteProfile(selectedProfile)}
+                                                    className="text-[11px] text-red-400 hover:text-red-300 flex items-center gap-1 cursor-pointer font-medium"
+                                                    title="Supprimer ce profil du parc"
+                                                >
+                                                    <Trash2 size={11} /> Supprimer
+                                                </button>
+                                            </>
                                         )}
                                     </div>
                                 </div>
                                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                                     <div>
-                                        <label className="text-[11px] text-text-muted block mb-1">Compiled Profile (.stx-replay)</label>
+                                        <div className="flex items-center justify-between mb-1">
+                                            <label className="text-[11px] text-text-muted block">Compiled Profile (.stx-replay)</label>
+                                            <span className="text-[10px] text-indigo-400 flex items-center gap-1">
+                                                <RefreshCw size={10} className="animate-spin-slow" /> Auto-sync Fleet
+                                            </span>
+                                        </div>
                                         <select
                                             value={selectedProfile}
                                             onChange={(e) => setSelectedProfile(e.target.value)}

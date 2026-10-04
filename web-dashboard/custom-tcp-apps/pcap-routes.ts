@@ -5,7 +5,7 @@ import fs from 'fs';
 import { spawn } from 'child_process';
 import zlib from 'zlib';
 
-export function createPcapApiRouter(configDir: string, projectRoot: string, pythonPath: string): Router {
+export function createPcapApiRouter(configDir: string, projectRoot: string, pythonPath: string, onProfilesChanged?: () => void): Router {
     const router = Router();
 
     const isEnabled = () => process.env.ENABLE_PCAP_REPLAY === 'true';
@@ -105,7 +105,7 @@ export function createPcapApiRouter(configDir: string, projectRoot: string, pyth
 
     // POST /api/pcap/compile - Compile selected flow(s) into .stx-replay profile
     router.post('/compile', checkFeatureFlag, (req: Request, res: Response) => {
-        const { temp_file_token, name, category, app_id, threat_id, scrub, flow_ids } = req.body;
+        const { temp_file_token, name, category, app_id, threat_id, scrub, flow_ids, port } = req.body;
 
         if (!temp_file_token) {
             return res.status(400).json({ success: false, error: 'Missing temp_file_token' });
@@ -127,6 +127,7 @@ export function createPcapApiRouter(configDir: string, projectRoot: string, pyth
         if (category) args.push('--category', category);
         if (app_id) args.push('--app-id', app_id);
         if (threat_id) args.push('--threat-id', threat_id);
+        if (port) args.push('--port', String(port));
         if (scrub) args.push('--scrub');
         if (Array.isArray(flow_ids)) {
             flow_ids.forEach((id: number) => args.push('--flow-id', String(id)));
@@ -153,6 +154,7 @@ export function createPcapApiRouter(configDir: string, projectRoot: string, pyth
 
             try {
                 const result = JSON.parse(stdout);
+                onProfilesChanged?.();
                 res.json({
                     success: true,
                     profile_id: result.profile_id,
@@ -228,7 +230,33 @@ export function createPcapApiRouter(configDir: string, projectRoot: string, pyth
         if (!req.file) {
             return res.status(400).json({ success: false, error: 'No profile file provided' });
         }
-        res.json({ success: true, file_name: req.file.filename });
+        try {
+            const destPath = path.join(profilesDir, path.basename(req.file.originalname));
+            if (fs.existsSync(req.file.path)) {
+                fs.copyFileSync(req.file.path, destPath);
+                try { fs.unlinkSync(req.file.path); } catch (_) {}
+            }
+            onProfilesChanged?.();
+            res.json({ success: true, file_name: path.basename(req.file.originalname) });
+        } catch (err: any) {
+            res.status(500).json({ success: false, error: err.message });
+        }
+    });
+
+    // DELETE /api/pcap/profiles/:filename - Delete a compiled profile
+    router.delete('/profiles/:filename', checkFeatureFlag, (req: Request, res: Response) => {
+        const safeFile = path.basename(req.params.filename);
+        const filePath = path.join(profilesDir, safeFile);
+        if (fs.existsSync(filePath)) {
+            try {
+                fs.unlinkSync(filePath);
+                onProfilesChanged?.();
+                return res.json({ success: true, deleted: safeFile });
+            } catch (err: any) {
+                return res.status(500).json({ success: false, error: err.message });
+            }
+        }
+        res.status(404).json({ success: false, error: 'Profile not found' });
     });
 
     // --- M2: Active Replay Process Tracking ---

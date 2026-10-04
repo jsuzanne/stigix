@@ -13903,8 +13903,46 @@ log('FLEET', `🔀 Fleet Gateway Reverse Proxy mounted at /api/gateway/:peerId/*
 app.use('/api/custom-tcp-apps', authenticateToken, createCustomTcpApiRouter(tcpAppManager));
 log('CUSTOM_TCP', `🖧 Custom TCP Applications API mounted at /api/custom-tcp-apps`);
 
+const buildPcapProfilesPayload = (): { profiles: any[] } => {
+    const pcapDir = path.join(APP_CONFIG.configDir, 'pcap-profiles');
+    const profiles: any[] = [];
+    if (fs.existsSync(pcapDir)) {
+        const files = fs.readdirSync(pcapDir).filter(f => f.endsWith('.stx-replay'));
+        for (const file of files) {
+            try {
+                const fullPath = path.join(pcapDir, file);
+                const buf = fs.readFileSync(fullPath);
+                const stat = fs.statSync(fullPath);
+                profiles.push({
+                    file_name: file,
+                    content_b64: buf.toString('base64'),
+                    size_bytes: stat.size,
+                    checksum: crypto.createHash('sha256').update(buf).digest('hex')
+                });
+            } catch {}
+        }
+    }
+    return { profiles };
+};
+
+const syncFleetPcapProfiles = () => {
+    const isLeader = typeof registryManager?.isLeader === 'function' 
+        ? registryManager.isLeader() 
+        : (registryManager?.getStatus?.()?.mode === 'leader');
+    if (!isLeader) return;
+
+    try {
+        const payload = buildPcapProfilesPayload();
+        provisioningManager.publishBundle('pcap-profiles', payload);
+        fleetTunnelManager.broadcastProvisioningUpdate('pcap-profiles');
+        log('PROVISIONING', `📦 [FLEET SYNC] Broadcasted ${payload.profiles.length} PCAP Replay profile(s) across fleet`);
+    } catch (e: any) {
+        log('PROVISIONING', `Failed to broadcast PCAP profiles: ${e.message}`, 'warn');
+    }
+};
+
 // --- PCAP Stateful Replay Engine API (M1 - Feature Flag Gated) ---
-app.use('/api/pcap', authenticateToken, createPcapApiRouter(APP_CONFIG.configDir, PROJECT_ROOT, PYTHON_PATH));
+app.use('/api/pcap', authenticateToken, createPcapApiRouter(APP_CONFIG.configDir, PROJECT_ROOT, PYTHON_PATH, syncFleetPcapProfiles));
 log('PCAP', `📦 PCAP Stateful Replay API mounted at /api/pcap (Feature Flag: ENABLE_PCAP_REPLAY=${process.env.ENABLE_PCAP_REPLAY === 'true'})`);
 
 // --- Stigix API Studio & Telemetry Routes ---
@@ -13994,6 +14032,9 @@ provisioningManager.onBundleApplied((type, payload) => {
     } else if (type === 'cloud-config') {
         log('PROVISIONING', `⚡ Hot-reloading Cloud Probes credentials and Worker URL on peer...`);
         targetManager.reload();
+    } else if (type === 'pcap-profiles') {
+        const count = payload?.profiles?.length || 0;
+        log('PROVISIONING', `⚡ Synchronized ${count} PCAP Replay profile(s) on peer.`);
     }
 });
 
@@ -14034,6 +14075,7 @@ app.get('/api/provisioning/config', authenticateToken, (_req, res) => {
     const iotPending = provisioningManager.hasUnpublishedChanges('iot-config', readJson(IOT_DEVICES_FILE));
     const customTcpPending = provisioningManager.hasUnpublishedChanges('custom-tcp-apps', readJson(path.join(APP_CONFIG.configDir, 'custom-tcp-applications.json')));
     const cloudPending = provisioningManager.hasUnpublishedChanges('cloud-config', readJson(CLOUD_CONFIG_FILE));
+    const pcapPending = provisioningManager.hasUnpublishedChanges('pcap-profiles', buildPcapProfilesPayload());
 
     const isLeader = typeof registryManager?.isLeader === 'function' 
         ? registryManager.isLeader() 
@@ -14052,7 +14094,8 @@ app.get('/api/provisioning/config', authenticateToken, (_req, res) => {
             voiceConfig: voicePending,
             iotConfig: iotPending,
             customTcpApps: customTcpPending,
-            cloudConfig: cloudPending
+            cloudConfig: cloudPending,
+            pcapProfiles: pcapPending
         }
     });
 });
@@ -14202,7 +14245,7 @@ app.post('/api/provisioning/publish/:type', authenticateToken, (req, res) => {
     const validTypes: GlobalBundleType[] = [
         'applications', 'connectivity-probes', 'convergence-sla',
         'prisma-sase', 'security-config', 'voice-config', 'iot-config',
-        'custom-tcp-apps', 'cloud-config'
+        'custom-tcp-apps', 'cloud-config', 'pcap-profiles'
     ];
     if (!validTypes.includes(type)) {
         return res.status(400).json({ error: 'invalid_bundle_type' });
@@ -14219,6 +14262,8 @@ app.post('/api/provisioning/publish/:type', authenticateToken, (req, res) => {
         if (!payload) payload = [];
     } else if (type === 'connectivity-probes') {
         payload = buildConnectivityProbesPayload();
+    } else if (type === 'pcap-profiles') {
+        payload = buildPcapProfilesPayload();
     } else {
         const file = provisioningManager.getActiveConfigFile(type);
         if (fs.existsSync(file)) {
@@ -14247,7 +14292,7 @@ app.post('/api/provisioning/publish', authenticateToken, (req, res) => {
     const validTypes: GlobalBundleType[] = [
         'applications', 'connectivity-probes', 'convergence-sla',
         'prisma-sase', 'security-config', 'voice-config', 'iot-config',
-        'custom-tcp-apps', 'cloud-config'
+        'custom-tcp-apps', 'cloud-config', 'pcap-profiles'
     ];
 
     if (type === 'all') {
@@ -14260,6 +14305,8 @@ app.post('/api/provisioning/publish', authenticateToken, (req, res) => {
                 }
             } else if (t === 'connectivity-probes') {
                 payload = buildConnectivityProbesPayload();
+            } else if (t === 'pcap-profiles') {
+                payload = buildPcapProfilesPayload();
             } else {
                 const file = provisioningManager.getActiveConfigFile(t);
                 if (fs.existsSync(file)) {
@@ -14285,6 +14332,8 @@ app.post('/api/provisioning/publish', authenticateToken, (req, res) => {
         if (!payload) payload = [];
     } else if (type === 'connectivity-probes') {
         payload = buildConnectivityProbesPayload();
+    } else if (type === 'pcap-profiles') {
+        payload = buildPcapProfilesPayload();
     } else {
         const file = provisioningManager.getActiveConfigFile(type as GlobalBundleType);
         if (fs.existsSync(file)) {

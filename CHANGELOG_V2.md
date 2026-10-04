@@ -2,6 +2,13 @@
 
 All notable changes made specifically on the `v2` branch are documented in this file.
 
+## [v2.0.146] - 2026-10-04 — Feature: Fleet-Wide PCAP Replay Profile Auto-Sync & Conflict-Free Port Resolution
+
+- **feat(provisioning)**: Added `pcap-profiles` bundle type to Stigix Global Mesh Provisioning (`provisioning-manager.ts` and `server.ts`). Compiling or uploading `.stx-replay` profiles on the mesh Leader automatically broadcasts and synchronizes the profiles across all remote spoke nodes (DC1, BR1, BR2, BR5, BR8) over WebSocket tunnels, completely eliminating manual export/import steps.
+- **feat(pcap-engine)**: Added intelligent conflict avoidance in `engines/pcap_parser.py`. If captured flows use ports conflicting with Stigix web daemons or core services (ports `8443`, `8080..8090`, `80`, `443`), the profile compiler automatically remaps the replay target port (`10000 + port` e.g., `18443`), preserving the original captured port metadata while guaranteeing conflict-free execution.
+- **feat(ui)**: Enhanced `PcapReplayModal.tsx` with customizable target replay port input, real-time conflict warning banner, automatic peer server listener discovery polling, 1-click profile deletion across the mesh, and a dedicated `"Auto-sync Fleet"` status badge.
+- **feat(api)**: Added `DELETE /api/pcap/profiles/:filename` endpoint and enhanced `POST /api/pcap/profiles/upload` with automatic file destination routing and provisioning sync callbacks.
+
 ## [v2.0.145] - 2026-10-03 — Fix: Multi-Platform Docker Builds for Release Tags (AMD64 + ARM64) & Security UI Refactor
 
 - **feat(pcap-engine)**: Implemented Milestone 2 (M2) Stateful Replay Runtime in `engines/pcap_replay_runtime.py` and backend process orchestration in `web-dashboard/custom-tcp-apps/pcap-routes.ts`. Executes byte-accurate TCP and UDP application turn replays between Stigix nodes with synchronous socket state machine, loop interval controls, and automated security verdict calculation (`Bypass`, `Enforced (Reset)`, `Enforced (Drop)`, `Enforced (Block Page)`, and `Inconclusive`).

@@ -411,15 +411,27 @@ def inspect_pcap(pcap_path: str, scrub: bool = False) -> Dict[str, Any]:
 def compile_stx_profile(inspection: Dict[str, Any], selected_flow_ids: Optional[List[int]] = None,
                         profile_name: Optional[str] = None, category: str = "custom",
                         expected_app_id: Optional[str] = None,
-                        expected_threat_id: Optional[str] = None) -> Dict[str, Any]:
+                        expected_threat_id: Optional[str] = None,
+                        target_port: Optional[int] = None) -> Dict[str, Any]:
     """Convert inspected flows into a compressed .stx-replay profile structure."""
+    RESERVED_PORTS = {80, 443, 8080, 8081, 8082, 8083, 8084, 8085, 8086, 8087, 8088, 8089, 8090, 8443}
+
     flows_to_include = []
     for f in inspection["flows"]:
         if selected_flow_ids is None or f["flow_id"] in selected_flow_ids:
+            orig_port = f["server_port"]
+            if target_port:
+                eff_port = int(target_port)
+            elif orig_port in RESERVED_PORTS:
+                eff_port = 10000 + orig_port if orig_port < 50000 else orig_port - 10000
+            else:
+                eff_port = orig_port
+
             flows_to_include.append({
                 "flow_id": f["flow_id"],
                 "transport": f["transport"],
-                "server_port": f["server_port"],
+                "server_port": eff_port,
+                "original_server_port": orig_port,
                 "client_ip": f["client_ip"],
                 "server_ip": f["server_ip"],
                 "turns": f["_turns"]
@@ -498,6 +510,7 @@ Examples:
     parser.add_argument("--category", default="custom", choices=["custom", "enterprise", "threat", "iot"], help="Profile category")
     parser.add_argument("--app-id", help="Expected Palo Alto App-ID (e.g. sap, modbus, dicom)")
     parser.add_argument("--threat-id", help="Expected Palo Alto Threat ID (e.g. 55123)")
+    parser.add_argument("--port", type=int, help="Target replay port (defaults to conflict-free port if original conflicts)")
     parser.add_argument("--scrub", action="store_true", help="Scrub credentials, tokens, and sensitive patterns")
     parser.add_argument("--json", action="store_true", help="Output JSON format instead of human-readable text")
 
@@ -545,7 +558,8 @@ Examples:
                 profile_name=args.name,
                 category=args.category,
                 expected_app_id=args.app_id,
-                expected_threat_id=args.threat_id
+                expected_threat_id=args.threat_id,
+                target_port=args.port
             )
             out_size, ratio = save_stx_profile(profile, args.out)
             if args.json:

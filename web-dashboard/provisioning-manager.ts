@@ -13,7 +13,8 @@ export type GlobalBundleType =
     | 'iot-config'
     | 'custom-tcp-apps'
     | 'cloud-config'
-    | 'ca-certificates';
+    | 'ca-certificates'
+    | 'pcap-profiles';
 
 export interface ProvisioningManifestBundle {
     type: GlobalBundleType;
@@ -354,6 +355,8 @@ export class ProvisioningManager {
         let count = isArrayType ? normalized.length : 1;
         if (type === 'custom-tcp-apps') {
             count = normalized?.applications ? normalized.applications.length : (Array.isArray(normalized) ? normalized.length : 1);
+        } else if (type === 'pcap-profiles') {
+            count = normalized?.profiles ? normalized.profiles.length : 0;
         }
         const bundleEntry: ProvisioningManifestBundle = {
             type,
@@ -452,6 +455,8 @@ export class ProvisioningManager {
                 return path.join(this.configDir, 'cloud-config.json');
             case 'ca-certificates':
                 return path.join(this.configDir, 'certs', 'certs-metadata.json');
+            case 'pcap-profiles':
+                return path.join(this.configDir, 'pcap-profiles.json');
             default:
                 return path.join(this.configDir, `${type}-config.json`);
         }
@@ -648,6 +653,30 @@ export class ProvisioningManager {
                     }
                 }
                 return { diff, summary: { added, removed, modified } };
+            } else if (type === 'pcap-profiles') {
+                const oldProfiles: any[] = cleanOld?.profiles || [];
+                const newProfiles: any[] = cleanNew?.profiles || [];
+                const oldMap = new Map<string, any>(oldProfiles.map((p: any) => [p.file_name, p]));
+                const newMap = new Map<string, any>(newProfiles.map((p: any) => [p.file_name, p]));
+                let added = 0, removed = 0, modified = 0;
+
+                for (const [name, newP] of newMap.entries()) {
+                    const oldP = oldMap.get(name);
+                    if (!oldP) {
+                        added++;
+                        diff.push({ id: name, name, action: 'added', details: `${newP.size_bytes || 0} bytes` });
+                    } else if (oldP.size_bytes !== newP.size_bytes || oldP.checksum !== newP.checksum) {
+                        modified++;
+                        diff.push({ id: name, name, action: 'modified', details: `Updated profile content` });
+                    }
+                }
+                for (const [name] of oldMap.entries()) {
+                    if (!newMap.has(name)) {
+                        removed++;
+                        diff.push({ id: name, name, action: 'removed' });
+                    }
+                }
+                return { diff, summary: { added, removed, modified } };
             } else {
                 if (JSON.stringify(oldObj) !== JSON.stringify(newObj)) {
                     diff.push({ id: type, name: `${type} configuration`, action: 'modified', details: 'Configuration updated' });
@@ -809,6 +838,34 @@ export class ProvisioningManager {
                 if (this.certificateManager) {
                     this.certificateManager.init();
                 }
+            } else if (type === 'pcap-profiles') {
+                const profilesDir = path.join(this.configDir, 'pcap-profiles');
+                if (!fs.existsSync(profilesDir)) fs.mkdirSync(profilesDir, { recursive: true });
+
+                const incomingProfiles: any[] = normalizedGlobal?.profiles || [];
+                const incomingFileNames = new Set(incomingProfiles.map((p: any) => p.file_name));
+
+                // Write/update incoming profiles
+                for (const p of incomingProfiles) {
+                    if (p.file_name && p.content_b64) {
+                        const targetPath = path.join(profilesDir, path.basename(p.file_name));
+                        const buf = Buffer.from(p.content_b64, 'base64');
+                        fs.writeFileSync(targetPath, buf);
+                    }
+                }
+
+                // Delete any local profiles removed on Leader
+                if (fs.existsSync(profilesDir)) {
+                    const localFiles = fs.readdirSync(profilesDir).filter(f => f.endsWith('.stx-replay'));
+                    for (const localFile of localFiles) {
+                        if (!incomingFileNames.has(localFile)) {
+                            try { fs.unlinkSync(path.join(profilesDir, localFile)); } catch {}
+                        }
+                    }
+                }
+
+                fs.writeFileSync(activeFile, JSON.stringify(normalizedGlobal, null, 2), 'utf8');
+                mergedPayload = normalizedGlobal;
             } else {
                 // SLA, Prisma SASE, Security, IoT objects/arrays
                 fs.writeFileSync(activeFile, JSON.stringify(normalizedGlobal, null, 2), 'utf8');
