@@ -2,7 +2,8 @@
 
 All notable changes made specifically on the `v2` branch are documented in this file.
 
-## [v2.0.149] - 2026-10-04 — Fix: PCAP Profile Compilation Flow Selection & Archive Password Input
+## [v2.0.149] - 2026-10-04 — Fix: PCAP Profile Compilation Flow Selection, Archive Password & Voice UI
+- **style(voice-ui)**: Enhanced contrast and layout in Live Streams widget (`web-dashboard/src/Voice.tsx`). Combined target IP:port and codec/duration onto a single line to save vertical space. Replaced rigid 384px height limit (`max-h-96`) with dynamic vertical expansion (`flex-1 min-h-[300px] lg:max-h-none`), allowing active calls to occupy full vertical space matching the targets table.
 - **fix(pcap-parser)**: Fixed indentation bug in `compile_stx_profile()` (`engines/pcap_parser.py`) where passing `--flow-id` skipped appending to `flows_to_include`, triggering fatal `ValueError: No flows selected or available for replay profile` (code 1) during profile compilation. Validated with 100% success rate on 33 captures in `New samples` including `145.pcap`.
 - **fix(pcap-routes)**: Preserved temporary upload file upon compilation errors in `web-dashboard/custom-tcp-apps/pcap-routes.ts` instead of unlinking immediately, eliminating premature `"Temporary capture file expired or not found"` errors. Surfaced raw JSON parser errors directly to frontend toasts.
 - **feat(pcap-zip)**: Added configurable **Archive Password (Optional)** input field in `PcapReplayModal.tsx` for encrypted ZIP archives. Forwarded password through inspect and compile endpoints to `pcap_parser.py --password`. Added expanded security research dictionary (`infected666p`, `infected666`, `infected666c`, and auto-detected date formats `infected_YYYYMMDD`).
