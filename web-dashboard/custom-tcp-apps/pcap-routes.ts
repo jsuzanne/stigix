@@ -225,6 +225,23 @@ export function createPcapApiRouter(configDir: string, projectRoot: string, pyth
         fs.createReadStream(filePath).pipe(res);
     });
 
+    // GET /api/pcap/profiles/details/:filename - Read unpacked profile JSON (flows, turns, metadata)
+    router.get('/profiles/details/:filename', checkFeatureFlag, (req: Request, res: Response) => {
+        const safeFile = path.basename(req.params.filename);
+        const filePath = path.join(profilesDir, safeFile);
+        if (!fs.existsSync(filePath)) {
+            return res.status(404).json({ success: false, error: 'Profile not found' });
+        }
+        try {
+            const buf = fs.readFileSync(filePath);
+            const unzipped = zlib.gunzipSync(buf);
+            const json = JSON.parse(unzipped.toString('utf8'));
+            res.json({ success: true, profile: json });
+        } catch (err: any) {
+            res.status(500).json({ success: false, error: `Failed to unpack profile: ${err.message}` });
+        }
+    });
+
     // POST /api/pcap/profiles/upload - Upload an already compiled .stx-replay profile
     router.post('/profiles/upload', checkFeatureFlag, upload.single('profile'), (req: Request, res: Response) => {
         if (!req.file) {
