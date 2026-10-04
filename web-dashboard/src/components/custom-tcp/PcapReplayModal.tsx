@@ -12,13 +12,15 @@ interface PcapReplayModalProps {
     onClose: () => void;
     token: string | null;
     isPcapEnabled?: boolean;
+    onProfileCreated?: (profileFile: string) => void;
 }
 
 export const PcapReplayModal: React.FC<PcapReplayModalProps> = ({
     isOpen,
     onClose,
     token,
-    isPcapEnabled = true
+    isPcapEnabled = true,
+    onProfileCreated
 }) => {
     const { gFetch } = usePeerContext();
 
@@ -293,7 +295,12 @@ export const PcapReplayModal: React.FC<PcapReplayModalProps> = ({
             toast.success(`Profile compiled: ${data.stats?.profile_size_bytes} bytes (${data.stats?.compression_ratio_pct}% of original)`);
             await fetchProfiles();
             setSelectedProfile(data.profile_file);
-            setActiveTab('replay');
+            if (onProfileCreated) {
+                onProfileCreated(data.profile_file);
+                onClose();
+            } else {
+                setActiveTab('replay');
+            }
         } catch (err: any) {
             toast.error(err.message || 'Error compiling profile');
         } finally {

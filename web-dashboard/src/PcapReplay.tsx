@@ -4,7 +4,8 @@ import {
     CheckCircle2, AlertTriangle, Shield, ShieldAlert, Activity,
     Terminal, ArrowRight, ArrowDownRight, Server, Globe, Search,
     Filter, Lock, FileCode, Check, Eye, HelpCircle, Sparkles,
-    Cpu, Zap, Radio, Copy, ChevronRight, X
+    Cpu, Zap, Radio, Copy, ChevronRight, X, Headphones, Binary,
+    FileSpreadsheet, ArrowUpRight
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { usePeerContext } from './PeerContext';
@@ -29,15 +30,15 @@ export const PcapReplay: React.FC<PcapReplayProps> = ({ token }) => {
     const [profileDetails, setProfileDetails] = useState<any | null>(null);
     const [isLoadingDetails, setIsLoadingDetails] = useState(false);
     const [selectedTurnIndex, setSelectedTurnIndex] = useState<number | null>(null);
+    const [payloadViewMode, setPayloadViewMode] = useState<'hex' | 'raw'>('hex');
 
     // Import / Modal state
     const [isPcapModalOpen, setIsPcapModalOpen] = useState(false);
     const profileUploadInputRef = useRef<HTMLInputElement>(null);
 
     // Execution / Orchestrator state
-    const [executionMode, setExecutionMode] = useState<'mesh' | 'local'>('local');
+    const [replayRole, setReplayRole] = useState<'client' | 'server'>('client');
     const [serverNodeId, setServerNodeId] = useState<string>('local');
-    const [clientNodeId, setClientNodeId] = useState<string>('local');
     const [customTargetIp, setCustomTargetIp] = useState<string>('');
     const [portOverride, setPortOverride] = useState<string>('');
     const [isLooping, setIsLooping] = useState<boolean>(false);
@@ -244,15 +245,17 @@ export const PcapReplay: React.FC<PcapReplayProps> = ({ token }) => {
         setIsStartingReplay(true);
 
         try {
-            // Mode 1: Single Node / Local Client Replay against target IP
             const payload: any = {
-                role: 'client',
+                role: replayRole,
                 profile_file: selectedProfileFile,
-                target: customTargetIp || '127.0.0.1',
-                port: effectivePort,
-                loop: isLooping,
-                interval: loopInterval
+                port: effectivePort
             };
+
+            if (replayRole === 'client') {
+                payload.target = customTargetIp || '127.0.0.1';
+                payload.loop = isLooping;
+                payload.interval = loopInterval;
+            }
 
             const res = await gFetch('/api/pcap/replay/start', {
                 method: 'POST',
@@ -265,7 +268,11 @@ export const PcapReplay: React.FC<PcapReplayProps> = ({ token }) => {
 
             const data = await res.json();
             if (data.success) {
-                toast.success(`Stateful Replay launched against ${payload.target}:${effectivePort || 'default'}`);
+                if (replayRole === 'server') {
+                    toast.success(`Server listener started on port ${effectivePort || 'default'}`);
+                } else {
+                    toast.success(`Client replay started against ${payload.target}:${effectivePort || 'default'}`);
+                }
                 pollActiveJobs();
             } else {
                 toast.error(data.error || 'Failed to start replay');
@@ -298,7 +305,70 @@ export const PcapReplay: React.FC<PcapReplayProps> = ({ token }) => {
         }
     };
 
-    // ─── Helpers & Filtering ──────────────────────────────────────────────────
+    // ─── Helpers: Payload Formatting & Detection ──────────────────────────────
+
+    const formatPayload = (rawStr: string) => {
+        if (!rawStr) return { type: 'Empty', badge: 'bg-card text-text-muted', hex: '', ascii: '' };
+
+        // Detection: TLS Record Layer
+        if (rawStr.startsWith('\\x16\\x03') || rawStr.includes('\\x16\\x03\\x01')) {
+            return {
+                type: 'TLS Record Layer (Handshake / Encrypted)',
+                badge: 'bg-purple-500/15 text-purple-400 border-purple-500/30',
+                isBinary: true
+            };
+        }
+        // Detection: HTTP
+        if (rawStr.startsWith('HTTP/') || rawStr.startsWith('GET ') || rawStr.startsWith('POST ') || rawStr.startsWith('PUT ') || rawStr.startsWith('HEAD ')) {
+            return {
+                type: 'HTTP Application Protocol',
+                badge: 'bg-blue-500/15 text-blue-400 border-blue-500/30',
+                isBinary: false
+            };
+        }
+        // Binary Stream
+        if (rawStr.includes('\\x')) {
+            return {
+                type: 'Binary L7 Stream',
+                badge: 'bg-amber-500/15 text-amber-400 border-amber-500/30',
+                isBinary: true
+            };
+        }
+        return {
+            type: 'Plaintext Stream',
+            badge: 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30',
+            isBinary: false
+        };
+    };
+
+    const convertToCleanHex = (rawStr: string): string => {
+        if (!rawStr) return '';
+        // If string contains escaped \xNN sequences, format as clean hex pairs
+        if (rawStr.includes('\\x')) {
+            const tokens = rawStr.split(/(\\x[0-9a-fA-F]{2})/g).filter(Boolean);
+            const hexParts: string[] = [];
+            for (const token of tokens) {
+                if (token.startsWith('\\x') && token.length === 4) {
+                    hexParts.push(token.substring(2).toUpperCase());
+                } else {
+                    for (let i = 0; i < token.length; i++) {
+                        hexParts.push(token.charCodeAt(i).toString(16).padStart(2, '0').toUpperCase());
+                    }
+                }
+            }
+            // Format into lines of 16 bytes
+            const lines: string[] = [];
+            for (let i = 0; i < hexParts.length; i += 16) {
+                const chunk = hexParts.slice(i, i + 16);
+                const offset = i.toString(16).padStart(4, '0').toUpperCase();
+                lines.push(`${offset}  ${chunk.slice(0, 8).join(' ')}   ${chunk.slice(8).join(' ')}`);
+            }
+            return lines.join('\n');
+        }
+        return rawStr;
+    };
+
+    // ─── Helpers: Filtering ───────────────────────────────────────────────────
 
     const filteredProfiles = profiles.filter(p => {
         const matchesSearch = p.file_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -313,6 +383,8 @@ export const PcapReplay: React.FC<PcapReplayProps> = ({ token }) => {
     const activeFlow = flows[0];
     const turns = activeFlow?.turns || [];
     const selectedTurn = selectedTurnIndex !== null && turns[selectedTurnIndex] ? turns[selectedTurnIndex] : null;
+    const selectedTurnRawPayload = selectedTurn?.ascii_preview || selectedTurn?.preview || selectedTurn?.payload_b64 || '';
+    const turnAnalysis = formatPayload(selectedTurnRawPayload);
 
     return (
         <div className="space-y-6 animate-in fade-in duration-300">
@@ -499,7 +571,7 @@ export const PcapReplay: React.FC<PcapReplayProps> = ({ token }) => {
                                                     <button
                                                         onClick={(e) => { e.stopPropagation(); handleDeleteProfile(p.file_name); }}
                                                         className="p-1 hover:bg-red-500/20 rounded-lg text-text-muted hover:text-red-400 transition-colors cursor-pointer"
-                                                        title="Delete profile"
+                                                        title="Delete profile across mesh"
                                                     >
                                                         <Trash2 size={13} />
                                                     </button>
@@ -543,13 +615,17 @@ export const PcapReplay: React.FC<PcapReplayProps> = ({ token }) => {
                                     <span>Replay Orchestrator</span>
                                 </h2>
                                 <p className="text-[10px] text-text-muted font-bold tracking-wider mt-0.5">
-                                    TARGET SELECTION & SASE VERDICT VERIFICATION
+                                    CHOOSE ROLE & EXECUTE CONVERSATION TURNS
                                 </p>
                             </div>
 
                             {activeJob?.status === 'running' ? (
-                                <span className="px-2.5 py-1 bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 text-[10px] font-black uppercase tracking-wider rounded-xl flex items-center gap-1.5 animate-pulse">
-                                    <Activity size={12} /> Execution Active
+                                <span className={`px-2.5 py-1 border text-[10px] font-black uppercase tracking-wider rounded-xl flex items-center gap-1.5 animate-pulse ${
+                                    activeJob.role === 'server'
+                                        ? 'bg-purple-500/15 border-purple-500/30 text-purple-400'
+                                        : 'bg-emerald-500/15 border-emerald-500/30 text-emerald-400'
+                                }`}>
+                                    <Activity size={12} /> {activeJob.role === 'server' ? 'Server Listening' : 'Client Replaying'} (PID: {activeJob.pid})
                                 </span>
                             ) : (
                                 <span className="px-2.5 py-1 bg-card-secondary border border-border text-text-muted text-[10px] font-bold uppercase tracking-wider rounded-xl">
@@ -558,91 +634,155 @@ export const PcapReplay: React.FC<PcapReplayProps> = ({ token }) => {
                             )}
                         </div>
 
-                        {/* Target Configuration Form */}
+                        {/* Role Selector: Server (Listen) vs Client (Play) */}
+                        <div className="pt-4">
+                            <div className="flex p-1 bg-card-secondary/70 border border-border rounded-2xl gap-1">
+                                <button
+                                    type="button"
+                                    onClick={() => setReplayRole('server')}
+                                    className={`flex-1 py-2.5 px-3 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center justify-center gap-2 cursor-pointer ${
+                                        replayRole === 'server'
+                                            ? 'bg-purple-600 text-white shadow-md shadow-purple-600/25'
+                                            : 'text-text-muted hover:text-text-primary'
+                                    }`}
+                                >
+                                    <Headphones size={15} />
+                                    <span>Server Role (Listen)</span>
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setReplayRole('client')}
+                                    className={`flex-1 py-2.5 px-3 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center justify-center gap-2 cursor-pointer ${
+                                        replayRole === 'client'
+                                            ? 'bg-emerald-600 text-white shadow-md shadow-emerald-600/25'
+                                            : 'text-text-muted hover:text-text-primary'
+                                    }`}
+                                >
+                                    <Play size={15} />
+                                    <span>Client Role (Play)</span>
+                                </button>
+                            </div>
+                        </div>
+
+                        {/* Configuration Form based on Role */}
                         <div className="py-4 space-y-4">
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                {/* Server Node Selector */}
-                                <div>
-                                    <label className="text-[10px] font-black uppercase tracking-wider text-text-muted block mb-1.5 flex items-center gap-1">
-                                        <Server size={12} className="text-purple-400" />
-                                        <span>Target Server Host / Peer</span>
-                                    </label>
-                                    <select
-                                        value={serverNodeId}
-                                        onChange={(e) => setServerNodeId(e.target.value)}
-                                        className="w-full bg-card-secondary/70 border border-border rounded-xl px-3 py-2 text-xs font-bold text-text-primary focus:outline-none focus:ring-1 focus:ring-indigo-500"
-                                    >
-                                        <option value="local">Local Node (127.0.0.1)</option>
-                                        {peers.map(p => (
-                                            <option key={p.instance_id} value={p.instance_id}>
-                                                {p.site || p.instance_id} ({p.ip_private || 'No IP'})
-                                            </option>
-                                        ))}
-                                    </select>
-                                </div>
+                            {replayRole === 'server' ? (
+                                /* Server Configuration */
+                                <div className="space-y-3 bg-purple-500/5 border border-purple-500/20 rounded-2xl p-4">
+                                    <div className="flex items-center justify-between text-xs">
+                                        <span className="font-bold text-text-secondary flex items-center gap-1.5">
+                                            <Server size={14} className="text-purple-400" />
+                                            <span>Listening Interface:</span>
+                                        </span>
+                                        <span className="font-mono text-text-primary font-black bg-card px-2 py-0.5 rounded border border-border">
+                                            0.0.0.0 (All Interfaces)
+                                        </span>
+                                    </div>
 
-                                {/* Target IP (Auto-filled or Custom) */}
-                                <div>
-                                    <label className="text-[10px] font-black uppercase tracking-wider text-text-muted block mb-1.5 flex items-center gap-1">
-                                        <Globe size={12} className="text-blue-400" />
-                                        <span>Destination IP / VIP</span>
-                                    </label>
-                                    <input
-                                        type="text"
-                                        value={customTargetIp}
-                                        onChange={(e) => setCustomTargetIp(e.target.value)}
-                                        placeholder="192.168.203.1 or 127.0.0.1"
-                                        className="w-full bg-card-secondary/70 border border-border rounded-xl px-3 py-2 text-xs font-mono font-bold text-text-primary focus:outline-none focus:ring-1 focus:ring-indigo-500"
-                                    />
+                                    <div>
+                                        <label className="text-[10px] font-black uppercase tracking-wider text-text-muted block mb-1.5">
+                                            Server Listening Port
+                                        </label>
+                                        <input
+                                            type="number"
+                                            value={portOverride}
+                                            onChange={(e) => setPortOverride(e.target.value)}
+                                            placeholder="Port (e.g. 62910)"
+                                            className="w-full bg-card border border-border rounded-xl px-3 py-2 text-xs font-mono font-bold text-text-primary focus:outline-none focus:ring-1 focus:ring-purple-500"
+                                        />
+                                        <p className="text-[10px] text-text-muted mt-1 leading-relaxed">
+                                            Starts a stateful socket listener on this node. It will wait for incoming client replay connections from remote peers (e.g. BR8 or local client) and synchronously return expected turns.
+                                        </p>
+                                    </div>
                                 </div>
-                            </div>
+                            ) : (
+                                /* Client Configuration */
+                                <div className="space-y-4">
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                        {/* Server Node Selector */}
+                                        <div>
+                                            <label className="text-[10px] font-black uppercase tracking-wider text-text-muted block mb-1.5 flex items-center gap-1">
+                                                <Server size={12} className="text-purple-400" />
+                                                <span>Target Server Host / Peer</span>
+                                            </label>
+                                            <select
+                                                value={serverNodeId}
+                                                onChange={(e) => setServerNodeId(e.target.value)}
+                                                className="w-full bg-card-secondary/70 border border-border rounded-xl px-3 py-2 text-xs font-bold text-text-primary focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                                            >
+                                                <option value="local">Local Node (127.0.0.1)</option>
+                                                {peers.map(p => (
+                                                    <option key={p.instance_id} value={p.instance_id}>
+                                                        {p.site || p.instance_id} ({p.ip_private || 'No IP'})
+                                                    </option>
+                                                ))}
+                                            </select>
+                                        </div>
 
-                            {/* Port & Loop Controls */}
-                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                                <div>
-                                    <label className="text-[10px] font-black uppercase tracking-wider text-text-muted block mb-1.5">
-                                        Replay Port
-                                    </label>
-                                    <input
-                                        type="number"
-                                        value={portOverride}
-                                        onChange={(e) => setPortOverride(e.target.value)}
-                                        placeholder="Auto from profile"
-                                        className="w-full bg-card-secondary/70 border border-border rounded-xl px-3 py-2 text-xs font-mono font-bold text-text-primary focus:outline-none focus:ring-1 focus:ring-indigo-500"
-                                    />
-                                </div>
+                                        {/* Target IP (Auto-filled or Custom) */}
+                                        <div>
+                                            <label className="text-[10px] font-black uppercase tracking-wider text-text-muted block mb-1.5 flex items-center gap-1">
+                                                <Globe size={12} className="text-blue-400" />
+                                                <span>Destination Server IP / VIP</span>
+                                            </label>
+                                            <input
+                                                type="text"
+                                                value={customTargetIp}
+                                                onChange={(e) => setCustomTargetIp(e.target.value)}
+                                                placeholder="192.168.203.1 or 127.0.0.1"
+                                                className="w-full bg-card-secondary/70 border border-border rounded-xl px-3 py-2 text-xs font-mono font-bold text-text-primary focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                                            />
+                                        </div>
+                                    </div>
 
-                                <div>
-                                    <label className="text-[10px] font-black uppercase tracking-wider text-text-muted block mb-1.5">
-                                        Continuous Loop
-                                    </label>
-                                    <button
-                                        type="button"
-                                        onClick={() => setIsLooping(!isLooping)}
-                                        className={`w-full py-2 px-3 border rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center justify-between cursor-pointer ${
-                                            isLooping
-                                                ? 'bg-indigo-600/20 text-indigo-400 border-indigo-500/40'
-                                                : 'bg-card-secondary/70 text-text-muted border-border hover:bg-card-secondary'
-                                        }`}
-                                    >
-                                        <span>{isLooping ? 'Loop Enabled' : 'Single Run'}</span>
-                                        <div className={`w-3.5 h-3.5 rounded-full ${isLooping ? 'bg-indigo-400 animate-pulse' : 'bg-border'}`} />
-                                    </button>
-                                </div>
+                                    {/* Port & Loop Controls */}
+                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                        <div>
+                                            <label className="text-[10px] font-black uppercase tracking-wider text-text-muted block mb-1.5">
+                                                Target Port
+                                            </label>
+                                            <input
+                                                type="number"
+                                                value={portOverride}
+                                                onChange={(e) => setPortOverride(e.target.value)}
+                                                placeholder="Auto from profile"
+                                                className="w-full bg-card-secondary/70 border border-border rounded-xl px-3 py-2 text-xs font-mono font-bold text-text-primary focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                                            />
+                                        </div>
 
-                                <div>
-                                    <label className="text-[10px] font-black uppercase tracking-wider text-text-muted block mb-1.5">
-                                        Interval (seconds)
-                                    </label>
-                                    <input
-                                        type="number"
-                                        disabled={!isLooping}
-                                        value={loopInterval}
-                                        onChange={(e) => setLoopInterval(Math.max(1, parseInt(e.target.value, 10) || 1))}
-                                        className="w-full bg-card-secondary/70 disabled:opacity-40 border border-border rounded-xl px-3 py-2 text-xs font-mono font-bold text-text-primary focus:outline-none focus:ring-1 focus:ring-indigo-500"
-                                    />
+                                        <div>
+                                            <label className="text-[10px] font-black uppercase tracking-wider text-text-muted block mb-1.5">
+                                                Continuous Loop
+                                            </label>
+                                            <button
+                                                type="button"
+                                                onClick={() => setIsLooping(!isLooping)}
+                                                className={`w-full py-2 px-3 border rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center justify-between cursor-pointer ${
+                                                    isLooping
+                                                        ? 'bg-indigo-600/20 text-indigo-400 border-indigo-500/40'
+                                                        : 'bg-card-secondary/70 text-text-muted border-border hover:bg-card-secondary'
+                                                }`}
+                                            >
+                                                <span>{isLooping ? 'Loop Enabled' : 'Single Run'}</span>
+                                                <div className={`w-3.5 h-3.5 rounded-full ${isLooping ? 'bg-indigo-400 animate-pulse' : 'bg-border'}`} />
+                                            </button>
+                                        </div>
+
+                                        <div>
+                                            <label className="text-[10px] font-black uppercase tracking-wider text-text-muted block mb-1.5">
+                                                Interval (seconds)
+                                            </label>
+                                            <input
+                                                type="number"
+                                                disabled={!isLooping}
+                                                value={loopInterval}
+                                                onChange={(e) => setLoopInterval(Math.max(1, parseInt(e.target.value, 10) || 1))}
+                                                className="w-full bg-card-secondary/70 disabled:opacity-40 border border-border rounded-xl px-3 py-2 text-xs font-mono font-bold text-text-primary focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                                            />
+                                        </div>
+                                    </div>
                                 </div>
-                            </div>
+                            )}
 
                             {/* Execution Triggers */}
                             <div className="pt-2 flex items-center gap-3">
@@ -651,7 +791,16 @@ export const PcapReplay: React.FC<PcapReplayProps> = ({ token }) => {
                                         onClick={handleStopReplay}
                                         className="flex-1 py-3 px-6 bg-red-600 hover:bg-red-500 text-white font-black uppercase tracking-wider text-xs rounded-xl transition-all shadow-lg shadow-red-600/25 flex items-center justify-center gap-2 cursor-pointer"
                                     >
-                                        <Square size={16} /> Stop Active Replay (PID: {activeJob.pid})
+                                        <Square size={16} /> Stop Active {activeJob.role === 'server' ? 'Server Listener' : 'Client Replay'} (PID: {activeJob.pid})
+                                    </button>
+                                ) : replayRole === 'server' ? (
+                                    <button
+                                        onClick={handleLaunchReplay}
+                                        disabled={isStartingReplay || !selectedProfileFile}
+                                        className="flex-1 py-3 px-6 bg-purple-600 hover:bg-purple-500 text-white font-black uppercase tracking-wider text-xs rounded-xl transition-all shadow-lg shadow-purple-600/25 flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                                    >
+                                        <Headphones size={16} />
+                                        <span>{isStartingReplay ? 'Starting Listener...' : `Start Server Listener (Port ${portOverride || 'Default'})`}</span>
                                     </button>
                                 ) : (
                                     <button
@@ -660,7 +809,7 @@ export const PcapReplay: React.FC<PcapReplayProps> = ({ token }) => {
                                         className="flex-1 py-3 px-6 bg-gradient-to-r from-emerald-600 to-teal-500 hover:from-emerald-500 hover:to-teal-400 text-white font-black uppercase tracking-wider text-xs rounded-xl transition-all shadow-lg shadow-emerald-600/25 flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                                     >
                                         <Play size={16} />
-                                        <span>{isStartingReplay ? 'Starting Replay...' : `Replay Scenario: ${selectedProfileFile || 'Select Profile'}`}</span>
+                                        <span>{isStartingReplay ? 'Connecting Client...' : `Launch Client Replay ➔ ${customTargetIp || '127.0.0.1'}:${portOverride || 'Default'}`}</span>
                                     </button>
                                 )}
                             </div>
@@ -697,7 +846,7 @@ export const PcapReplay: React.FC<PcapReplayProps> = ({ token }) => {
                                         </div>
                                         <div>
                                             <div className="text-xs font-black uppercase tracking-wider">
-                                                {activeJob.lastVerdict || (activeJob.status === 'running' ? 'Traffic in Progress...' : 'Replay Finished')}
+                                                {activeJob.lastVerdict || (activeJob.status === 'running' ? `${activeJob.role === 'server' ? 'Server Listening for connections...' : 'Client Executing turns...'}` : 'Replay Stopped')}
                                             </div>
                                             <p className="text-[10px] opacity-80 mt-0.5">
                                                 {activeJob.lastVerdict === 'Bypass'
@@ -706,6 +855,8 @@ export const PcapReplay: React.FC<PcapReplayProps> = ({ token }) => {
                                                     ? 'TCP Connection was abruptly RST by Prisma SASE or Security Gateway.'
                                                     : activeJob.lastVerdict?.includes('Block Page')
                                                     ? 'Firewall returned HTTP 403 Access Denied block page.'
+                                                    : activeJob.role === 'server'
+                                                    ? 'Socket bound and awaiting incoming traffic from Stigix spoke client...'
                                                     : 'Executing turns with synchronous byte comparison...'}
                                             </p>
                                         </div>
@@ -713,7 +864,7 @@ export const PcapReplay: React.FC<PcapReplayProps> = ({ token }) => {
 
                                     <div className="text-right font-mono text-xs font-bold">
                                         <div>PID {activeJob.pid}</div>
-                                        <div className="text-[10px] opacity-60 uppercase">{activeJob.status}</div>
+                                        <div className="text-[10px] opacity-60 uppercase">{activeJob.role} · {activeJob.status}</div>
                                     </div>
                                 </div>
                             </div>
@@ -756,6 +907,8 @@ export const PcapReplay: React.FC<PcapReplayProps> = ({ token }) => {
                                     {turns.map((turn: any, idx: number) => {
                                         const isClient = turn.direction === 'client_to_server';
                                         const isTurnSelected = selectedTurnIndex === idx;
+                                        const previewText = turn.ascii_preview || turn.preview || '';
+                                        const info = formatPayload(previewText);
 
                                         return (
                                             <div
@@ -786,9 +939,14 @@ export const PcapReplay: React.FC<PcapReplayProps> = ({ token }) => {
                                                     </div>
                                                 </div>
 
-                                                <span className="text-[10px] text-text-muted font-mono truncate max-w-[240px]">
-                                                    {turn.preview || turn.ascii_preview || 'Binary Data'}
-                                                </span>
+                                                <div className="flex items-center gap-2">
+                                                    <span className={`text-[9px] px-1.5 py-0.2 rounded border font-bold uppercase ${info.badge}`}>
+                                                        {info.type.split(' ')[0]}
+                                                    </span>
+                                                    <span className="text-[10px] text-text-muted font-mono truncate max-w-[180px]">
+                                                        {previewText || 'Binary Data'}
+                                                    </span>
+                                                </div>
                                             </div>
                                         );
                                     })}
@@ -798,11 +956,38 @@ export const PcapReplay: React.FC<PcapReplayProps> = ({ token }) => {
                                 {selectedTurn && (
                                     <div className="bg-card-secondary/40 border border-border rounded-2xl p-4 font-mono text-xs space-y-2">
                                         <div className="flex items-center justify-between text-[10px] font-black uppercase tracking-wider text-text-muted">
-                                            <span>Turn #{selectedTurnIndex! + 1} Raw Payload Preview</span>
-                                            <span>{selectedTurn.payload_len || 0} Bytes</span>
+                                            <div className="flex items-center gap-2">
+                                                <span>Turn #{selectedTurnIndex! + 1} Payload Preview</span>
+                                                <span className={`px-1.5 py-0.2 rounded border text-[9px] font-bold uppercase ${turnAnalysis.badge}`}>
+                                                    {turnAnalysis.type}
+                                                </span>
+                                            </div>
+
+                                            {/* View Mode Toggle: Hex Dump vs Raw ASCII */}
+                                            <div className="flex items-center gap-1 bg-card p-0.5 rounded-lg border border-border">
+                                                <button
+                                                    onClick={() => setPayloadViewMode('hex')}
+                                                    className={`px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-wider transition-all cursor-pointer ${
+                                                        payloadViewMode === 'hex' ? 'bg-indigo-600 text-white' : 'text-text-muted hover:text-text-primary'
+                                                    }`}
+                                                >
+                                                    Hex Dump
+                                                </button>
+                                                <button
+                                                    onClick={() => setPayloadViewMode('raw')}
+                                                    className={`px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-wider transition-all cursor-pointer ${
+                                                        payloadViewMode === 'raw' ? 'bg-indigo-600 text-white' : 'text-text-muted hover:text-text-primary'
+                                                    }`}
+                                                >
+                                                    Raw Escaped
+                                                </button>
+                                            </div>
                                         </div>
-                                        <div className="bg-black/40 border border-border/60 rounded-xl p-3 max-h-32 overflow-y-auto text-[11px] text-text-secondary font-mono leading-relaxed whitespace-pre-wrap break-all">
-                                            {selectedTurn.ascii_preview || selectedTurn.preview || selectedTurn.payload_b64 || 'No preview available'}
+
+                                        <div className="bg-black/40 border border-border/60 rounded-xl p-3 max-h-36 overflow-y-auto text-[11px] text-text-secondary font-mono leading-relaxed whitespace-pre-wrap break-all">
+                                            {payloadViewMode === 'hex'
+                                                ? convertToCleanHex(selectedTurnRawPayload)
+                                                : (selectedTurnRawPayload || 'No preview available')}
                                         </div>
                                     </div>
                                 )}
@@ -848,6 +1033,10 @@ export const PcapReplay: React.FC<PcapReplayProps> = ({ token }) => {
                 onClose={() => {
                     setIsPcapModalOpen(false);
                     fetchProfiles();
+                }}
+                onProfileCreated={(newProfile) => {
+                    fetchProfiles();
+                    setSelectedProfileFile(newProfile);
                 }}
                 token={token}
                 isPcapEnabled={isPcapEnabled}
