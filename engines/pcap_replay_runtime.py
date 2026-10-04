@@ -402,14 +402,51 @@ def run_tcp_client(profile: Dict[str, Any], flow_id: Optional[int], target_ip: s
                 pass
 
     # Handle loop if requested
+    cumulative_tx = 0
+    cumulative_rx = 0
+    iteration = 1
+
     last_res = execute_single_run()
+    cumulative_tx += last_res.get("tx_bytes", 0)
+    cumulative_rx += last_res.get("rx_bytes", 0)
+
     if loop:
+        emit_event("loop_cycle_completed", {
+            "iteration": iteration,
+            "completed_turns": last_res.get("completed_turns", 0),
+            "total_turns": total_turns,
+            "cycle_tx_bytes": last_res.get("tx_bytes", 0),
+            "cycle_rx_bytes": last_res.get("rx_bytes", 0),
+            "cumulative_tx_bytes": cumulative_tx,
+            "cumulative_rx_bytes": cumulative_rx,
+            "verdict": last_res.get("verdict"),
+            "status": "running"
+        }, json_output)
+
         try:
             while True:
                 time.sleep(loop_interval_ms / 1000.0)
+                iteration += 1
                 last_res = execute_single_run()
+                cumulative_tx += last_res.get("tx_bytes", 0)
+                cumulative_rx += last_res.get("rx_bytes", 0)
+                emit_event("loop_cycle_completed", {
+                    "iteration": iteration,
+                    "completed_turns": last_res.get("completed_turns", 0),
+                    "total_turns": total_turns,
+                    "cycle_tx_bytes": last_res.get("tx_bytes", 0),
+                    "cycle_rx_bytes": last_res.get("rx_bytes", 0),
+                    "cumulative_tx_bytes": cumulative_tx,
+                    "cumulative_rx_bytes": cumulative_rx,
+                    "verdict": last_res.get("verdict"),
+                    "status": "running"
+                }, json_output)
         except KeyboardInterrupt:
-            emit_event("client_stopped", {"reason": "interrupted"}, json_output)
+            emit_event("client_stopped", {
+                "reason": "interrupted",
+                "cumulative_tx_bytes": cumulative_tx,
+                "cumulative_rx_bytes": cumulative_rx
+            }, json_output)
 
     return last_res
 
@@ -465,8 +502,9 @@ def run_udp_server(profile: Dict[str, Any], flow_id: Optional[int], bind_ip: str
 
 
 def run_udp_client(profile: Dict[str, Any], flow_id: Optional[int], target_ip: str,
-                   port_override: Optional[int], json_output: bool) -> Dict[str, Any]:
-    """Run UDP client role."""
+                   port_override: Optional[int], loop: bool = False,
+                   loop_interval_ms: int = 1000, json_output: bool = True) -> Dict[str, Any]:
+    """Run UDP client role with datagram transmission and continuous loop support."""
     flow = None
     for f in profile.get("flows", []):
         if flow_id is None or f["flow_id"] == flow_id:
@@ -478,39 +516,87 @@ def run_udp_client(profile: Dict[str, Any], flow_id: Optional[int], target_ip: s
         raise ValueError(f"No valid UDP flow found in profile for flow_id={flow_id}")
 
     server_port = port_override or flow.get("server_port") or 8080
-    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    sock.settimeout(3.0)
-
     turns = flow.get("turns", [])
-    sent_turns = 0
-    tx_bytes = 0
-    start_time = time.time()
+    total_turns = len(turns)
 
-    for turn in turns:
-        if turn["sender"] == "client":
-            payload = base64.b64decode(turn["payload_b64"]) if "payload_b64" in turn else b""
-            sock.sendto(payload, (target_ip, server_port))
-            sent_turns += 1
-            tx_bytes += len(payload)
-            emit_event("udp_datagram_sent", {
-                "seq": turn.get("seq", sent_turns),
-                "target_ip": target_ip,
-                "target_port": server_port,
-                "bytes": len(payload)
+    def execute_single_run(iter_num: int = 1) -> Dict[str, Any]:
+        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        sock.settimeout(3.0)
+        sent_turns = 0
+        tx_bytes = 0
+        start_time = time.time()
+
+        for turn in turns:
+            if turn["sender"] == "client":
+                payload = base64.b64decode(turn["payload_b64"]) if "payload_b64" in turn else b""
+                sock.sendto(payload, (target_ip, server_port))
+                sent_turns += 1
+                tx_bytes += len(payload)
+                emit_event("udp_datagram_sent", {
+                    "seq": turn.get("seq", sent_turns),
+                    "target_ip": target_ip,
+                    "target_port": server_port,
+                    "bytes": len(payload),
+                    "iteration": iter_num
+                }, json_output)
+
+        sock.close()
+        dur_ms = round((time.time() - start_time) * 1000, 2)
+        return {
+            "status": "completed",
+            "verdict": "Bypass",
+            "completed_turns": sent_turns,
+            "total_turns": total_turns,
+            "tx_bytes": tx_bytes,
+            "rx_bytes": 0,
+            "duration_ms": dur_ms
+        }
+
+    cumulative_tx = 0
+    iteration = 1
+
+    last_res = execute_single_run(iteration)
+    cumulative_tx += last_res.get("tx_bytes", 0)
+
+    if loop:
+        emit_event("loop_cycle_completed", {
+            "iteration": iteration,
+            "completed_turns": last_res.get("completed_turns", 0),
+            "total_turns": total_turns,
+            "cycle_tx_bytes": last_res.get("tx_bytes", 0),
+            "cycle_rx_bytes": 0,
+            "cumulative_tx_bytes": cumulative_tx,
+            "cumulative_rx_bytes": 0,
+            "verdict": last_res.get("verdict"),
+            "status": "running"
+        }, json_output)
+
+        try:
+            while True:
+                time.sleep(loop_interval_ms / 1000.0)
+                iteration += 1
+                last_res = execute_single_run(iteration)
+                cumulative_tx += last_res.get("tx_bytes", 0)
+                emit_event("loop_cycle_completed", {
+                    "iteration": iteration,
+                    "completed_turns": last_res.get("completed_turns", 0),
+                    "total_turns": total_turns,
+                    "cycle_tx_bytes": last_res.get("tx_bytes", 0),
+                    "cycle_rx_bytes": 0,
+                    "cumulative_tx_bytes": cumulative_tx,
+                    "cumulative_rx_bytes": 0,
+                    "verdict": last_res.get("verdict"),
+                    "status": "running"
+                }, json_output)
+        except KeyboardInterrupt:
+            emit_event("client_stopped", {
+                "reason": "interrupted",
+                "cumulative_tx_bytes": cumulative_tx
             }, json_output)
+    else:
+        emit_event("client_session_finished", last_res, json_output)
 
-    sock.close()
-    dur_ms = round((time.time() - start_time) * 1000, 2)
-    res = {
-        "status": "completed",
-        "verdict": "Bypass",
-        "completed_turns": sent_turns,
-        "total_turns": len(turns),
-        "tx_bytes": tx_bytes,
-        "duration_ms": dur_ms
-    }
-    emit_event("client_session_finished", res, json_output)
-    return res
+    return last_res
 
 
 def main():
@@ -566,7 +652,7 @@ Examples:
             sys.exit(1)
 
         if transport == "udp":
-            run_udp_client(profile, args.flow_id, args.target, args.port, json_output)
+            run_udp_client(profile, args.flow_id, args.target, args.port, args.loop, args.interval, json_output)
         else:
             run_tcp_client(profile, args.flow_id, args.target, args.port, args.loop, args.interval, json_output)
 

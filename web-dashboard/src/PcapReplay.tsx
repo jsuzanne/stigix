@@ -274,22 +274,45 @@ export const PcapReplay: React.FC<PcapReplayProps> = ({ token }) => {
         setIsEditModalOpen(true);
     };
 
+    const formatBytes = (bytes: number): string => {
+        if (!bytes || bytes <= 0) return '0 B';
+        if (bytes < 1024) return `${bytes} B`;
+        if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+        return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
+    };
+
+    const selectedProfileObj = useMemo(() => {
+        return profiles.find((p: any) => p.file_name === selectedProfileFile) || null;
+    }, [profiles, selectedProfileFile]);
+    const selectedProfileName = selectedProfileObj?.name || selectedProfileFile?.replace('.stx-replay', '') || 'Scenario';
+
+    const runningProfileObj = useMemo(() => {
+        if (!activeJob?.profile_file) return null;
+        return profiles.find((p: any) => p.file_name === activeJob.profile_file) || null;
+    }, [profiles, activeJob]);
+    const runningProfileName = runningProfileObj?.name || activeJob?.profile_file?.replace('.stx-replay', '') || activeJob?.profile_file || 'Active Job';
+
     const handleSaveEditProfile = async () => {
         if (!editingProfile) return;
         setIsSavingEdit(true);
         try {
+            const parsedPort = parseInt(editPort, 10);
+            const payload: any = {
+                name: editName.trim(),
+                category: editCategory.trim(),
+                description: editDescription.trim()
+            };
+            if (!isNaN(parsedPort) && parsedPort > 0) {
+                payload.server_port = parsedPort;
+            }
+
             const res = await gFetch(`/api/pcap/profiles/${encodeURIComponent(editingProfile.file_name)}`, {
                 method: 'PUT',
                 headers: {
                     Authorization: `Bearer ${token}`,
                     'Content-Type': 'application/json'
                 },
-                body: JSON.stringify({
-                    name: editName.trim(),
-                    category: editCategory.trim(),
-                    server_port: parseInt(editPort, 10),
-                    description: editDescription.trim()
-                })
+                body: JSON.stringify(payload)
             });
             const data = await res.json();
             if (data.success) {
@@ -318,7 +341,7 @@ export const PcapReplay: React.FC<PcapReplayProps> = ({ token }) => {
                 if (typeof ev.seq === 'number' && ev.seq > maxSeq) {
                     maxSeq = ev.seq;
                 }
-            } else if (ev?.event === 'session_finished' || ev?.event === 'client_session_finished') {
+            } else if (ev?.event === 'session_finished' || ev?.event === 'client_session_finished' || ev?.event === 'loop_cycle_completed') {
                 if (typeof ev.completed_turns === 'number') {
                     maxSeq = Math.max(maxSeq, ev.completed_turns);
                 }
@@ -327,18 +350,30 @@ export const PcapReplay: React.FC<PcapReplayProps> = ({ token }) => {
         return maxSeq;
     }, [terminalLogs]);
 
-    // Live SASE and Replay Telemetry
+    // Live SASE and Replay Telemetry with Loop and Cumulative byte counting
     const liveTelemetry = useMemo(() => {
         let txBytes = 0;
         let rxBytes = 0;
         let durationMs = 0;
         let lastVerdict = activeJob?.lastVerdict || null;
         let isFinished = false;
+        let loopIteration = 1;
+        let hasLoopEvent = false;
 
         for (const log of terminalLogs) {
             const ev = typeof log === 'string' ? null : log;
             if (!ev) continue;
-            if (ev.event === 'udp_datagram_sent') {
+            if (ev.iteration && ev.iteration > loopIteration) {
+                loopIteration = ev.iteration;
+            }
+            if (ev.event === 'loop_cycle_completed') {
+                hasLoopEvent = true;
+                if (ev.iteration) loopIteration = Math.max(loopIteration, ev.iteration);
+                if (ev.cumulative_tx_bytes !== undefined) txBytes = Math.max(txBytes, ev.cumulative_tx_bytes);
+                if (ev.cumulative_rx_bytes !== undefined) rxBytes = Math.max(rxBytes, ev.cumulative_rx_bytes);
+                if (ev.verdict) lastVerdict = ev.verdict;
+                if (ev.duration_ms) durationMs = ev.duration_ms;
+            } else if (ev.event === 'udp_datagram_sent') {
                 txBytes += (ev.bytes || 0);
             } else if (ev.event === 'udp_datagram_received') {
                 rxBytes += (ev.bytes || 0);
@@ -347,15 +382,19 @@ export const PcapReplay: React.FC<PcapReplayProps> = ({ token }) => {
                 else rxBytes += (ev.bytes || 0);
             } else if (ev.event === 'session_finished' || ev.event === 'client_session_finished') {
                 isFinished = true;
-                if (ev.tx_bytes !== undefined) txBytes = ev.tx_bytes;
-                if (ev.rx_bytes !== undefined) rxBytes = ev.rx_bytes;
+                if (ev.cumulative_tx_bytes !== undefined) txBytes = Math.max(txBytes, ev.cumulative_tx_bytes);
+                else if (ev.tx_bytes !== undefined) txBytes = Math.max(txBytes, ev.tx_bytes);
+                if (ev.cumulative_rx_bytes !== undefined) rxBytes = Math.max(rxBytes, ev.cumulative_rx_bytes);
+                else if (ev.rx_bytes !== undefined) rxBytes = Math.max(rxBytes, ev.rx_bytes);
                 if (ev.duration_ms !== undefined) durationMs = ev.duration_ms;
                 if (ev.verdict) lastVerdict = ev.verdict;
             }
         }
 
+        const isRunning = activeJob?.status === 'running';
+        const isLoopMode = isLooping || hasLoopEvent || loopIteration > 1;
         const totalTurns = activeJob?.total_turns || profileDetails?.flows?.[0]?.turns?.length || 0;
-        const completedTurns = isFinished && lastVerdict
+        const completedTurns = (isFinished && !isRunning && lastVerdict)
             ? totalTurns
             : Math.min(totalTurns, lastCompletedTurnSeq);
         const progressPct = totalTurns > 0 ? Math.min(100, Math.round((completedTurns / totalTurns) * 100)) : 0;
@@ -366,12 +405,15 @@ export const PcapReplay: React.FC<PcapReplayProps> = ({ token }) => {
             progressPct,
             txBytes,
             rxBytes,
+            totalBytes: txBytes + rxBytes,
             durationMs,
             lastVerdict,
             isFinished,
-            isRunning: activeJob?.status === 'running'
+            loopIteration,
+            isLooping: isLoopMode,
+            isRunning
         };
-    }, [activeJob, terminalLogs, profileDetails, lastCompletedTurnSeq]);
+    }, [activeJob, terminalLogs, profileDetails, lastCompletedTurnSeq, isLooping]);
 
     // ─── Actions: Profile Management ──────────────────────────────────────────
 
@@ -1115,9 +1157,10 @@ export const PcapReplay: React.FC<PcapReplayProps> = ({ token }) => {
                                 type="button"
                                 onClick={handleStopReplay}
                                 className="px-4 py-1.5 rounded-xl bg-red-600 hover:bg-red-500 text-white font-black uppercase tracking-wider text-xs flex items-center gap-1.5 shadow-md shadow-red-600/20 cursor-pointer transition-all animate-pulse"
+                                title={`Stop running ${activeJob.role} process (PID: ${activeJob.pid})`}
                             >
                                 <Square size={13} />
-                                <span>Stop {activeJob.role === 'server' ? 'Server Listener' : 'Client Replay'} (PID: {activeJob.pid})</span>
+                                <span>Stop {activeJob.role === 'server' ? 'Server' : 'Client'}: {runningProfileName} (PID: {activeJob.pid})</span>
                             </button>
                         ) : replayRole === 'server' ? (
                             <button
@@ -1125,9 +1168,10 @@ export const PcapReplay: React.FC<PcapReplayProps> = ({ token }) => {
                                 onClick={handleLaunchReplay}
                                 disabled={isStartingReplay || !selectedProfileFile}
                                 className="px-4 py-1.5 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-black uppercase tracking-wider text-xs flex items-center gap-1.5 shadow-md shadow-purple-600/20 cursor-pointer transition-all disabled:opacity-50"
+                                title={`Start Server Listener for ${selectedProfileName}`}
                             >
                                 <Headphones size={13} />
-                                <span>{isStartingReplay ? 'Starting...' : `Start Server Listener (Port ${portOverride || 'Default'})`}</span>
+                                <span>{isStartingReplay ? 'Starting...' : `Start Server: ${selectedProfileName} (Port ${portOverride || activeFlow?.server_port || '10080'})`}</span>
                             </button>
                         ) : (
                             <button
@@ -1135,9 +1179,10 @@ export const PcapReplay: React.FC<PcapReplayProps> = ({ token }) => {
                                 onClick={handleLaunchReplay}
                                 disabled={isStartingReplay || !selectedProfileFile}
                                 className="px-4 py-1.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-500 hover:from-emerald-500 hover:to-teal-400 text-white font-black uppercase tracking-wider text-xs flex items-center gap-1.5 shadow-md shadow-emerald-600/20 cursor-pointer transition-all disabled:opacity-50"
+                                title={`Launch Client Replay for ${selectedProfileName}`}
                             >
                                 <Play size={13} />
-                                <span>{isStartingReplay ? 'Connecting...' : `Launch Client Replay ➔ ${customTargetIp || '192.168.203.100'}`}</span>
+                                <span>{isStartingReplay ? 'Connecting...' : `Launch Client: ${selectedProfileName} ➔ ${customTargetIp || '192.168.203.100'}`}</span>
                             </button>
                         )}
                     </div>
@@ -1214,6 +1259,7 @@ export const PcapReplay: React.FC<PcapReplayProps> = ({ token }) => {
                             ) : (
                                 filteredProfiles.map(p => {
                                     const isSelected = selectedProfileFile === p.file_name;
+                                    const isRunningThisJob = activeJob?.status === 'running' && activeJob?.profile_file === p.file_name;
                                     const flow = p.primary_flow;
                                     return (
                                         <div
@@ -1223,6 +1269,8 @@ export const PcapReplay: React.FC<PcapReplayProps> = ({ token }) => {
                                             className={`py-1.5 px-2 rounded-xl border transition-all cursor-pointer relative group ${
                                                 isSelected
                                                     ? 'bg-indigo-500/15 border-indigo-500/50 shadow-sm shadow-indigo-500/10'
+                                                    : isRunningThisJob
+                                                    ? 'bg-emerald-500/10 border-emerald-500/40 shadow-sm shadow-emerald-500/10'
                                                     : 'bg-card-secondary/25 hover:bg-card-secondary/60 border-border/60'
                                             }`}
                                         >
@@ -1231,7 +1279,12 @@ export const PcapReplay: React.FC<PcapReplayProps> = ({ token }) => {
                                                     <span className="text-[11px] font-bold text-text-primary truncate">
                                                         {p.name || p.file_name.replace('.stx-replay', '')}
                                                     </span>
-                                                    {p.category && (
+                                                    {isRunningThisJob ? (
+                                                        <span className="text-[7px] px-1.5 py-0.2 bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 rounded-full font-black uppercase shrink-0 animate-pulse flex items-center gap-1">
+                                                            <span className="w-1 h-1 rounded-full bg-emerald-400"></span>
+                                                            {activeJob.role === 'server' ? 'Server' : 'Client'}
+                                                        </span>
+                                                    ) : p.category && (
                                                         <span className="text-[7px] px-1 py-0.2 bg-card-secondary text-text-secondary border border-border rounded font-black uppercase shrink-0">
                                                             {p.category}
                                                         </span>
@@ -1290,6 +1343,25 @@ export const PcapReplay: React.FC<PcapReplayProps> = ({ token }) => {
                 {/* ─── Column 2: Selected Scenario & Turn Sequence (lg:col-span-4) ─── */}
                 <div className="lg:col-span-4 flex flex-col h-full overflow-hidden">
                     <div className="bg-card border border-border rounded-2xl p-3.5 shadow-xl flex flex-col h-full overflow-hidden">
+                        {/* Background Active Job Alert if viewing another profile */}
+                        {activeJob?.status === 'running' && activeJob?.profile_file !== selectedProfileFile && (
+                            <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl px-2.5 py-1.5 mb-2 flex items-center justify-between text-xs text-amber-300">
+                                <span className="flex items-center gap-1.5 text-[10px] truncate">
+                                    <Activity size={11} className="animate-spin text-amber-400 shrink-0" />
+                                    <span className="truncate">
+                                        Running {activeJob.role === 'server' ? 'Server' : 'Client'}: <b>{runningProfileName}</b> (PID {activeJob.pid})
+                                    </span>
+                                </span>
+                                <button
+                                    type="button"
+                                    onClick={() => setSelectedProfileFile(activeJob.profile_file)}
+                                    className="text-[9px] font-bold text-amber-200 underline hover:text-white cursor-pointer ml-1.5 shrink-0"
+                                >
+                                    View
+                                </button>
+                            </div>
+                        )}
+
                         {/* Header with High-Level Conversation KPIs */}
                         <div className="pb-2.5 border-b border-border shrink-0 space-y-2">
                             <div className="flex items-center justify-between">
@@ -1656,7 +1728,14 @@ export const PcapReplay: React.FC<PcapReplayProps> = ({ token }) => {
                     <div className="grid grid-cols-4 gap-2 shrink-0">
                         {/* Turns Progress */}
                         <div className="bg-card border border-border rounded-xl p-2 flex flex-col justify-between">
-                            <span className="text-[8px] font-black uppercase tracking-wider text-text-muted">Turns Progress</span>
+                            <div className="flex items-center justify-between">
+                                <span className="text-[8px] font-black uppercase tracking-wider text-text-muted">Turns Progress</span>
+                                {liveTelemetry.isLooping && (
+                                    <span className="px-1 py-0.2 rounded bg-indigo-500/20 text-indigo-300 text-[8px] font-bold border border-indigo-500/30 animate-pulse">
+                                        Loop #{liveTelemetry.loopIteration}
+                                    </span>
+                                )}
+                            </div>
                             <div className="mt-1 font-mono font-bold text-xs text-text-primary">
                                 {liveTelemetry.completedTurns} <span className="text-[9px] font-normal text-text-muted">/ {liveTelemetry.totalTurns}</span>
                             </div>
@@ -1674,14 +1753,19 @@ export const PcapReplay: React.FC<PcapReplayProps> = ({ token }) => {
                             </div>
                         </div>
 
-                        {/* Data Transferred */}
+                        {/* Data Transferred (Cumulative) */}
                         <div className="bg-card border border-border rounded-xl p-2 flex flex-col justify-between">
-                            <span className="text-[8px] font-black uppercase tracking-wider text-text-muted">Data Volume</span>
+                            <div className="flex items-center justify-between">
+                                <span className="text-[8px] font-black uppercase tracking-wider text-text-muted">Data Volume</span>
+                                {liveTelemetry.isLooping && (
+                                    <span className="text-[7px] font-mono text-cyan-400 font-bold tracking-tight">CUMULATIVE</span>
+                                )}
+                            </div>
                             <div className="mt-1 font-mono font-bold text-xs text-cyan-400">
-                                {(liveTelemetry.txBytes / 1024).toFixed(1)} <span className="text-[8px] font-normal text-text-muted">KB TX</span>
+                                {formatBytes(liveTelemetry.totalBytes || liveTelemetry.txBytes + liveTelemetry.rxBytes)}
                             </div>
                             <div className="text-[8px] font-mono text-text-muted/80 truncate">
-                                {(liveTelemetry.rxBytes / 1024).toFixed(1)} KB RX
+                                {formatBytes(liveTelemetry.txBytes)} TX · {formatBytes(liveTelemetry.rxBytes)} RX
                             </div>
                         </div>
 
@@ -1976,7 +2060,7 @@ export const PcapReplay: React.FC<PcapReplayProps> = ({ token }) => {
                                 type="button"
                                 onClick={handleSaveEditProfile}
                                 disabled={isSavingEdit || !editName.trim()}
-                                className="flex items-center gap-1.5 px-4 py-1.5 rounded-xl bg-primary text-black font-bold text-xs hover:opacity-90 transition-all disabled:opacity-50 shadow-md"
+                                className="flex items-center gap-1.5 px-5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs shadow-lg shadow-indigo-600/30 hover:shadow-indigo-600/50 transition-all disabled:opacity-50 cursor-pointer"
                             >
                                 {isSavingEdit ? (
                                     <>

@@ -33,6 +33,7 @@ export const PcapReplayModal: React.FC<PcapReplayModalProps> = ({
     const [tempFileToken, setTempFileToken] = useState<string | null>(null);
     const [inspectionData, setInspectionData] = useState<any>(null);
     const [selectedFlowIds, setSelectedFlowIds] = useState<number[]>([]);
+    const [hideNoiseFlows, setHideNoiseFlows] = useState<boolean>(true);
     const [scrubSensitive, setScrubSensitive] = useState<boolean>(true);
     const [profileName, setProfileName] = useState<string>('');
     const [profileCategory, setProfileCategory] = useState<string>('custom');
@@ -205,12 +206,18 @@ export const PcapReplayModal: React.FC<PcapReplayModalProps> = ({
     if (!isOpen) return null;
 
     const handleFileSelect = (file: File) => {
-        if (!file.name.endsWith('.pcap') && !file.name.endsWith('.pcapng') && !file.name.endsWith('.cap')) {
-            toast.error('Only .pcap and .pcapng files are supported');
+        const lower = file.name.toLowerCase();
+        if (!lower.endsWith('.pcap') && !lower.endsWith('.pcapng') && !lower.endsWith('.cap') && !lower.endsWith('.zip')) {
+            toast.error('Only .pcap, .pcapng, and .zip files are supported');
             return;
         }
         setSelectedFile(file);
-        setProfileName(file.name.replace(/\.[^/.]+$/, ''));
+        // Clean scenario name: strip .pcap.zip, .zip, .pcap, .pcapng, etc.
+        const cleanName = file.name
+            .replace(/\.(pcap|pcapng|cap)\.zip$/i, '')
+            .replace(/\.(pcap|pcapng|cap|zip)$/i, '')
+            .replace(/[^a-zA-Z0-9_-]/g, '_');
+        setProfileName(cleanName);
     };
 
     const handleInspectUpload = async () => {
@@ -241,10 +248,23 @@ export const PcapReplayModal: React.FC<PcapReplayModalProps> = ({
 
             setTempFileToken(data.temp_file_token);
             setInspectionData(data.inspection);
-            // Select all flows by default and detect port conflicts
+            
+            // If from ZIP archive and inner PCAP name is available, update profile name if it was just generic
+            if (data.inspection?.file_name && selectedFile?.name.toLowerCase().endsWith('.zip')) {
+                const innerClean = data.inspection.file_name
+                    .replace(/\.(pcap|pcapng|cap)$/i, '')
+                    .replace(/[^a-zA-Z0-9_-]/g, '_');
+                if (innerClean && innerClean !== 'sample') {
+                    setProfileName(innerClean);
+                }
+            }
+
+            // Select unicast flows by default (filter out background noise) and detect port conflicts
             if (data.inspection?.flows?.length > 0) {
-                setSelectedFlowIds(data.inspection.flows.map((f: any) => f.flow_id));
-                const firstFlow = data.inspection.flows[0];
+                const unicastFlows = data.inspection.flows.filter((f: any) => !f.is_noise);
+                const flowsToSelect = unicastFlows.length > 0 ? unicastFlows : data.inspection.flows;
+                setSelectedFlowIds(flowsToSelect.map((f: any) => f.flow_id));
+                const firstFlow = flowsToSelect[0];
                 const origPort = firstFlow?.server_port;
                 const reserved = [80, 443, 8080, 8081, 8082, 8083, 8084, 8085, 8086, 8087, 8088, 8089, 8090, 8443];
                 if (reserved.includes(origPort)) {
@@ -254,7 +274,10 @@ export const PcapReplayModal: React.FC<PcapReplayModalProps> = ({
                 }
             }
             setActiveTab('inspect');
-            toast.success(`Discovered ${data.inspection.flows?.length || 0} active flows!`);
+            const unicastCount = data.inspection?.unicast_flows_count ?? data.inspection?.flows?.length ?? 0;
+            const noiseCount = data.inspection?.noise_flows_count ?? 0;
+            const zipNote = data.inspection?.archive_source ? ` (extracted from ${data.inspection.archive_source})` : '';
+            toast.success(`Discovered ${unicastCount} unicast flow(s)${noiseCount > 0 ? ` (${noiseCount} background noise filtered)` : ''}${zipNote}!`);
         } catch (err: any) {
             toast.error(err.message || 'Error parsing capture');
         } finally {
@@ -491,7 +514,7 @@ export const PcapReplayModal: React.FC<PcapReplayModalProps> = ({
                                 <input
                                     ref={fileInputRef}
                                     type="file"
-                                    accept=".pcap,.pcapng,.cap"
+                                    accept=".pcap,.pcapng,.cap,.zip"
                                     className="hidden"
                                     onChange={(e) => {
                                         if (e.target.files?.[0]) handleFileSelect(e.target.files[0]);
@@ -501,12 +524,12 @@ export const PcapReplayModal: React.FC<PcapReplayModalProps> = ({
                                     <Upload size={28} />
                                 </div>
                                 <h4 className="text-sm font-semibold text-text-primary">
-                                    {selectedFile ? selectedFile.name : 'Drop a .pcap or .pcapng file here'}
+                                    {selectedFile ? selectedFile.name : 'Drop a .pcap, .pcapng or .zip file here'}
                                 </h4>
                                 <p className="text-xs text-text-muted mt-1 max-w-md">
                                     {selectedFile
                                         ? `${(selectedFile.size / 1024).toFixed(1)} KB — Click to change file`
-                                        : 'Supports bidirectional TCP and UDP application captures (SAP, Modbus, DICOM, HL7, DNS, HTTP)'}
+                                        : 'Supports bidirectional TCP and UDP application captures (.pcap, .pcapng, or .zip archive)'}
                                 </p>
                             </div>
 
@@ -555,32 +578,153 @@ export const PcapReplayModal: React.FC<PcapReplayModalProps> = ({
                             {/* Summary banner */}
                             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                                 <div className="p-3 bg-muted/20 border border-border rounded-xl">
-                                    <div className="text-[11px] text-text-muted">Original Capture</div>
-                                    <div className="text-xs font-bold text-text-primary truncate">{inspectionData.file_name}</div>
+                                    <div className="text-[11px] text-text-muted">
+                                        {inspectionData.archive_source ? 'Extracted Capture' : 'Original Capture'}
+                                    </div>
+                                    <div className="text-xs font-bold text-text-primary truncate" title={inspectionData.file_name}>
+                                        {inspectionData.file_name}
+                                    </div>
+                                    <div className="text-[10px] text-text-muted mt-0.5 truncate">
+                                        {(inspectionData.file_size_bytes / 1024 / 1024).toFixed(2)} MB
+                                        {inspectionData.archive_source && (
+                                            <span className="text-indigo-400 ml-1 font-mono truncate" title={`Extracted from ${inspectionData.archive_source}`}>
+                                                (zip)
+                                            </span>
+                                        )}
+                                    </div>
                                 </div>
                                 <div className="p-3 bg-muted/20 border border-border rounded-xl">
-                                    <div className="text-[11px] text-text-muted">Packets / Duration</div>
+                                    <div className="text-[11px] text-text-muted">Packets & Protocols</div>
                                     <div className="text-xs font-bold text-text-primary">
-                                        {inspectionData.packet_count} pkts / {inspectionData.duration_seconds}s
+                                        {inspectionData.packet_count?.toLocaleString()} pkts ({inspectionData.duration_seconds}s)
+                                    </div>
+                                    <div className="text-[10px] text-text-muted mt-0.5 flex items-center gap-1.5 flex-wrap">
+                                        <span>IPv4: <b className="text-text-primary">{inspectionData.ipv4_packets ?? 0}</b></span>
+                                        <span>•</span>
+                                        <span>IPv6: <b className="text-text-primary">{inspectionData.ipv6_packets ?? 0}</b></span>
+                                        {((inspectionData.arp_packets || 0) + (inspectionData.non_ip_packets || 0) > 0) && (
+                                            <>
+                                                <span>•</span>
+                                                <span>ARP/Other: <b className="text-amber-400">{(inspectionData.arp_packets || 0) + (inspectionData.non_ip_packets || 0)}</b></span>
+                                            </>
+                                        )}
                                     </div>
                                 </div>
                                 <div className="p-3 bg-muted/20 border border-border rounded-xl">
                                     <div className="text-[11px] text-text-muted">Discovered Flows</div>
-                                    <div className="text-xs font-bold text-indigo-400">{inspectionData.total_active_flows} active</div>
+                                    <div className="text-xs font-bold text-indigo-400">
+                                        {inspectionData.unicast_flows_count ?? inspectionData.total_active_flows} Unicast L7
+                                    </div>
+                                    {inspectionData.noise_flows_count > 0 && (
+                                        <div className="text-[10px] text-amber-400 mt-0.5">
+                                            +{inspectionData.noise_flows_count} background noise
+                                        </div>
+                                    )}
                                 </div>
                                 <div className="p-3 bg-muted/20 border border-border rounded-xl">
                                     <div className="text-[11px] text-text-muted">Selected for Profile</div>
                                     <div className="text-xs font-bold text-emerald-400">{selectedFlowIds.length} flow(s)</div>
+                                    <div className="text-[10px] text-text-muted mt-0.5">
+                                        target port: {compilePort || 'auto'}
+                                    </div>
                                 </div>
                             </div>
 
                             {/* Flows table */}
                             <div className="border border-border rounded-xl overflow-hidden">
-                                <div className="px-4 py-2.5 bg-muted/30 border-b border-border text-xs font-bold text-text-primary flex items-center justify-between">
-                                    <span>Select Flows to Compile into Profile</span>
-                                    <span className="text-[11px] text-text-muted font-normal">
-                                        Checkboxes determine which flows become the stateful script
-                                    </span>
+                                <div className="px-4 py-2.5 bg-muted/30 border-b border-border text-xs font-bold text-text-primary flex items-center justify-between flex-wrap gap-2">
+                                    <div className="flex items-center gap-2">
+                                        <span>Select Flows to Compile into Profile</span>
+                                        {inspectionData.noise_flows_count > 0 && (
+                                            <button
+                                                type="button"
+                                                onClick={() => setHideNoiseFlows(!hideNoiseFlows)}
+                                                className={`px-2 py-0.5 rounded-full text-[10px] font-semibold border cursor-pointer transition-colors ${
+                                                    hideNoiseFlows
+                                                        ? 'bg-amber-500/10 text-amber-400 border-amber-500/30 hover:bg-amber-500/20'
+                                                        : 'bg-muted/40 text-text-muted border-border hover:bg-muted/60'
+                                                }`}
+                                            >
+                                                {hideNoiseFlows ? `Showing Unicast (${inspectionData.noise_flows_count} noise hidden)` : 'Showing All (incl. noise)'}
+                                            </button>
+                                        )}
+                                    </div>
+                                    <div className="flex items-center gap-1.5 text-[11px] flex-wrap">
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                const allIds = inspectionData.flows?.map((f: any) => f.flow_id) || [];
+                                                setSelectedFlowIds(allIds);
+                                            }}
+                                            className="px-2 py-0.5 rounded bg-muted/30 hover:bg-muted/60 text-text-primary text-[10px] font-medium transition-colors cursor-pointer"
+                                        >
+                                            Select All
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => setSelectedFlowIds([])}
+                                            className="px-2 py-0.5 rounded bg-muted/30 hover:bg-muted/60 text-text-muted hover:text-text-primary text-[10px] font-medium transition-colors cursor-pointer"
+                                        >
+                                            Deselect All
+                                        </button>
+                                        <span className="text-text-muted/40">|</span>
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                const uFlows = inspectionData.flows?.filter((f: any) => !f.is_noise) || [];
+                                                setSelectedFlowIds(uFlows.map((f: any) => f.flow_id));
+                                            }}
+                                            className="px-2 py-0.5 rounded bg-indigo-500/15 hover:bg-indigo-500/25 text-indigo-300 border border-indigo-500/30 text-[10px] font-semibold transition-colors cursor-pointer"
+                                        >
+                                            Unicast Only
+                                        </button>
+                                        <span className="text-text-muted/40">|</span>
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                const tcpIds = (inspectionData.flows || []).filter((f: any) => f.transport === 'tcp').map((f: any) => f.flow_id);
+                                                setSelectedFlowIds(prev => Array.from(new Set([...prev, ...tcpIds])));
+                                            }}
+                                            className="px-2 py-0.5 rounded bg-cyan-500/15 hover:bg-cyan-500/25 text-cyan-300 border border-cyan-500/30 text-[10px] font-semibold transition-colors cursor-pointer"
+                                            title="Add all TCP flows to selection"
+                                        >
+                                            + TCP
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                const tcpIds = new Set((inspectionData.flows || []).filter((f: any) => f.transport === 'tcp').map((f: any) => f.flow_id));
+                                                setSelectedFlowIds(prev => prev.filter(id => !tcpIds.has(id)));
+                                            }}
+                                            className="px-2 py-0.5 rounded bg-muted/20 hover:bg-muted/40 text-text-muted text-[10px] font-medium transition-colors cursor-pointer"
+                                            title="Remove all TCP flows from selection"
+                                        >
+                                            - TCP
+                                        </button>
+                                        <span className="text-text-muted/40">|</span>
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                const udpIds = (inspectionData.flows || []).filter((f: any) => f.transport === 'udp').map((f: any) => f.flow_id);
+                                                setSelectedFlowIds(prev => Array.from(new Set([...prev, ...udpIds])));
+                                            }}
+                                            className="px-2 py-0.5 rounded bg-purple-500/15 hover:bg-purple-500/25 text-purple-300 border border-purple-500/30 text-[10px] font-semibold transition-colors cursor-pointer"
+                                            title="Add all UDP flows to selection"
+                                        >
+                                            + UDP
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                const udpIds = new Set((inspectionData.flows || []).filter((f: any) => f.transport === 'udp').map((f: any) => f.flow_id));
+                                                setSelectedFlowIds(prev => prev.filter(id => !udpIds.has(id)));
+                                            }}
+                                            className="px-2 py-0.5 rounded bg-muted/20 hover:bg-muted/40 text-text-muted text-[10px] font-medium transition-colors cursor-pointer"
+                                            title="Remove all UDP flows from selection"
+                                        >
+                                            - UDP
+                                        </button>
+                                    </div>
                                 </div>
                                 <div className="max-h-60 overflow-y-auto">
                                     <table className="w-full text-left text-xs">
@@ -592,56 +736,72 @@ export const PcapReplayModal: React.FC<PcapReplayModalProps> = ({
                                                 <th className="p-3">Server Endpoint</th>
                                                 <th className="p-3">Turns</th>
                                                 <th className="p-3">Payload</th>
-                                                <th className="p-3">Security Warnings</th>
+                                                <th className="p-3">Security & Classification</th>
                                             </tr>
                                         </thead>
                                         <tbody className="divide-y divide-border/60">
-                                            {inspectionData.flows?.map((f: any) => {
-                                                const isSelected = selectedFlowIds.includes(f.flow_id);
-                                                return (
-                                                    <tr key={f.flow_id} className="hover:bg-muted/10 transition-colors">
-                                                        <td className="p-3">
-                                                            <input
-                                                                type="checkbox"
-                                                                checked={isSelected}
-                                                                onChange={() => {
-                                                                    setSelectedFlowIds(prev =>
-                                                                        isSelected ? prev.filter(id => id !== f.flow_id) : [...prev, f.flow_id]
-                                                                    );
-                                                                }}
-                                                                className="w-4 h-4 accent-indigo-500 rounded cursor-pointer"
-                                                            />
-                                                        </td>
-                                                        <td className="p-3 font-semibold text-text-primary uppercase">
-                                                            <span className="px-1.5 py-0.5 rounded bg-muted text-[10px]">
-                                                                {f.transport}
-                                                            </span>
-                                                        </td>
-                                                        <td className="p-3 text-text-muted font-mono text-[11px]">
-                                                            {f.client_ip}:{f.client_port}
-                                                        </td>
-                                                        <td className="p-3 text-text-muted font-mono text-[11px]">
-                                                            {f.server_ip}:{f.server_port}
-                                                        </td>
-                                                        <td className="p-3 font-bold text-text-primary">
-                                                            {f.turns_count} turns
-                                                        </td>
-                                                        <td className="p-3 text-text-muted">
-                                                            {f.payload_bytes} B
-                                                        </td>
-                                                        <td className="p-3">
-                                                            {f.warnings?.length > 0 ? (
-                                                                <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-amber-500/10 text-amber-400 border border-amber-500/20 flex items-center gap-1 w-fit">
-                                                                    <AlertTriangle size={10} />
-                                                                    {f.warnings.join(', ')}
-                                                                </span>
-                                                            ) : (
-                                                                <span className="text-text-muted text-[11px]">Clean</span>
-                                                            )}
-                                                        </td>
-                                                    </tr>
-                                                );
-                                            })}
+                                            {inspectionData.flows
+                                                ?.filter((f: any) => !hideNoiseFlows || !f.is_noise)
+                                                .map((f: any) => {
+                                                    const isSelected = selectedFlowIds.includes(f.flow_id);
+                                                    return (
+                                                        <tr key={f.flow_id} className={`hover:bg-muted/10 transition-colors ${f.is_noise ? 'opacity-65 bg-muted/5' : ''}`}>
+                                                            <td className="p-3">
+                                                                <input
+                                                                    type="checkbox"
+                                                                    checked={isSelected}
+                                                                    onChange={() => {
+                                                                        setSelectedFlowIds(prev =>
+                                                                            isSelected ? prev.filter(id => id !== f.flow_id) : [...prev, f.flow_id]
+                                                                        );
+                                                                    }}
+                                                                    className="w-4 h-4 accent-indigo-500 rounded cursor-pointer"
+                                                                />
+                                                            </td>
+                                                            <td className="p-3 font-semibold text-text-primary uppercase">
+                                                                <div className="flex items-center gap-1.5">
+                                                                    <span className="px-1.5 py-0.5 rounded bg-muted text-[10px]">
+                                                                        {f.transport}
+                                                                    </span>
+                                                                    {f.is_noise && (
+                                                                        <span className="px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-400 border border-amber-500/20 text-[9px] uppercase font-bold">
+                                                                            Noise
+                                                                        </span>
+                                                                    )}
+                                                                </div>
+                                                            </td>
+                                                            <td className="p-3 text-text-muted font-mono text-[11px]">
+                                                                {f.client_ip}:{f.client_port}
+                                                            </td>
+                                                            <td className="p-3 text-text-muted font-mono text-[11px]">
+                                                                {f.server_ip}:{f.server_port}
+                                                            </td>
+                                                            <td className="p-3 font-bold text-text-primary">
+                                                                {f.turns_count} turns
+                                                            </td>
+                                                            <td className="p-3 text-text-muted">
+                                                                {f.payload_bytes?.toLocaleString()} B
+                                                            </td>
+                                                            <td className="p-3">
+                                                                <div className="flex items-center gap-1.5 flex-wrap">
+                                                                    {f.is_noise && (
+                                                                        <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-amber-500/10 text-amber-400 border border-amber-500/20">
+                                                                            {f.noise_type || 'Discovery Noise'}
+                                                                        </span>
+                                                                    )}
+                                                                    {f.warnings?.length > 0 ? (
+                                                                        <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-red-500/10 text-red-400 border border-red-500/20 flex items-center gap-1">
+                                                                            <AlertTriangle size={10} />
+                                                                            {f.warnings.join(', ')}
+                                                                        </span>
+                                                                    ) : !f.is_noise && (
+                                                                        <span className="text-text-muted text-[11px]">Clean</span>
+                                                                    )}
+                                                                </div>
+                                                            </td>
+                                                        </tr>
+                                                    );
+                                                })}
                                         </tbody>
                                     </table>
                                 </div>

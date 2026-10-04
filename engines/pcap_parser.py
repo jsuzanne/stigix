@@ -9,6 +9,9 @@ Part of the Stigix PCAP Stateful Replay Engine (PRD_PCAP_REPLAY_ENGINE.md).
 
 import sys
 import os
+import io
+import zipfile
+import tempfile
 import gzip
 import json
 import base64
@@ -23,6 +26,7 @@ from typing import Dict, List, Tuple, Any, Optional
 
 try:
     from scapy.utils import PcapReader
+    from scapy.layers.l2 import ARP
     from scapy.layers.inet import IP, TCP, UDP
     from scapy.layers.inet6 import IPv6
     from scapy.packet import Raw
@@ -75,6 +79,58 @@ def scan_and_scrub_payload(payload: bytes, scrub: bool = False) -> Tuple[bytes, 
                     pass
     return processed, warnings
 
+
+def classify_flow(client_ip: Optional[str], client_port: Optional[int],
+                  server_ip: Optional[str], server_port: Optional[int]) -> Tuple[bool, Optional[str]]:
+    """Determine if a flow is broadcast/multicast/link-local background noise not suitable for unicast L7 replay."""
+    def _is_noise_ip(ip: Optional[str]) -> Tuple[bool, Optional[str]]:
+        if not ip:
+            return False, None
+        ip_clean = ip.strip()
+        if ip_clean == "255.255.255.255" or ip_clean.endswith(".255"):
+            return True, "IPv4 Subnet Broadcast"
+        if ip_clean.startswith("ff02::1:2") or ip_clean.startswith("FF02::1:2"):
+            return True, "DHCPv6 Multicast"
+        if ip_clean.startswith("ff02::1:3") or ip_clean.startswith("FF02::1:3") or ip_clean == "224.0.0.252":
+            return True, "LLMNR Discovery"
+        if ip_clean.startswith("ff02::fb") or ip_clean.startswith("FF02::FB") or ip_clean == "224.0.0.251":
+            return True, "mDNS Multicast"
+        if ip_clean.startswith("ff") or ip_clean.startswith("FF"):
+            return True, "IPv6 Multicast"
+        if ip_clean.startswith("fe80:"):
+            return True, "IPv6 Link-Local"
+        try:
+            parts = ip_clean.split(".")
+            if len(parts) == 4:
+                first = int(parts[0])
+                if 224 <= first <= 239:
+                    return True, "IPv4 Multicast"
+        except Exception:
+            pass
+        return False, None
+
+    # Check known broadcast / discovery service ports
+    ports = {p for p in (client_port, server_port) if p is not None}
+    if {137, 138} & ports:
+        return True, "NetBIOS Name Service"
+    if {546, 547} & ports:
+        return True, "DHCPv6 Solicit/Reply"
+    if 5355 in ports:
+        return True, "LLMNR Name Resolution"
+    if 5353 in ports:
+        return True, "mDNS Discovery"
+    if 1900 in ports:
+        return True, "SSDP Discovery"
+
+    s_is, s_type = _is_noise_ip(server_ip)
+    if s_is:
+        return True, s_type
+
+    c_is, c_type = _is_noise_ip(client_ip)
+    if c_is and ("Multicast" in (c_type or "") or "Broadcast" in (c_type or "")):
+        return True, c_type
+
+    return False, None
 
 
 class TCPFlowReassembler:
@@ -293,145 +349,271 @@ def normalize_flow_key(src_ip: str, src_port: int, dst_ip: str, dst_port: int, p
         return (ep2[0], ep2[1], ep1[0], ep1[1], proto)
 
 
-def inspect_pcap(pcap_path: str, scrub: bool = False) -> Dict[str, Any]:
-    """Stream-read PCAP and extract all flows and metadata without loading whole file into RAM."""
+def unpack_pcap_from_zip(file_path: str, target_inner_pcap: Optional[str] = None) -> Tuple[str, bool, Optional[str], List[str]]:
+    """
+    Checks if file_path is a zip archive (by extension or magic PK\\x03\\x04).
+    If so, searches for .pcap, .pcapng, or .cap files (including nested .zip archives),
+    extracts the target or first PCAP to a temporary file, and returns:
+    (actual_pcap_path, is_temporary, original_inner_filename, all_discovered_pcaps)
+    """
+    if not os.path.isfile(file_path):
+        return file_path, False, None, []
+
+    is_zip = file_path.lower().endswith('.zip')
+    if not is_zip:
+        try:
+            with open(file_path, 'rb') as f:
+                magic = f.read(4)
+                if magic == b'PK\x03\x04':
+                    is_zip = True
+        except Exception:
+            pass
+
+    if not is_zip:
+        return file_path, False, None, []
+
+    COMMON_PWDS = [None, b"infected", b"virus", b"password", b"malware", b"clean", b"infected!"]
+
+    try:
+        with zipfile.ZipFile(file_path, 'r') as outer:
+            # 1. Direct PCAP files in outer zip
+            direct_pcaps = [n for n in outer.namelist() if n.lower().endswith(('.pcap', '.pcapng', '.cap'))]
+            if direct_pcaps:
+                chosen = target_inner_pcap if target_inner_pcap in direct_pcaps else direct_pcaps[0]
+                pcap_data = None
+                for pwd in COMMON_PWDS:
+                    try:
+                        pcap_data = outer.read(chosen, pwd=pwd)
+                        break
+                    except RuntimeError:
+                        continue
+                if pcap_data is not None:
+                    fd, temp_pcap_path = tempfile.mkstemp(suffix=os.path.splitext(chosen)[1] or '.pcap', prefix='stx_unzip_')
+                    with os.fdopen(fd, 'wb') as tf:
+                        tf.write(pcap_data)
+                    return temp_pcap_path, True, os.path.basename(chosen), direct_pcaps
+
+            # 2. Check nested zip files
+            inner_zips = [n for n in outer.namelist() if n.lower().endswith(('.zip', '.zip'))]
+            all_nested_pcaps = []
+            for iz in inner_zips:
+                try:
+                    outer_data = outer.read(iz)
+                    with zipfile.ZipFile(io.BytesIO(outer_data), 'r') as inner:
+                        nested_pcaps = [n for n in inner.namelist() if n.lower().endswith(('.pcap', '.pcapng', '.cap'))]
+                        all_nested_pcaps.extend(nested_pcaps)
+                        if nested_pcaps:
+                            chosen = target_inner_pcap if target_inner_pcap in nested_pcaps else nested_pcaps[0]
+                            pcap_data = None
+                            for pwd in COMMON_PWDS:
+                                try:
+                                    pcap_data = inner.read(chosen, pwd=pwd)
+                                    break
+                                except RuntimeError:
+                                    continue
+                            if pcap_data is not None:
+                                fd, temp_pcap_path = tempfile.mkstemp(suffix=os.path.splitext(chosen)[1] or '.pcap', prefix='stx_unzip_')
+                                with os.fdopen(fd, 'wb') as tf:
+                                    tf.write(pcap_data)
+                                return temp_pcap_path, True, os.path.basename(chosen), all_nested_pcaps
+                except Exception:
+                    continue
+
+            if not direct_pcaps and not all_nested_pcaps:
+                raise ValueError("ZIP archive does not contain any .pcap or .pcapng files")
+    except Exception as e:
+        raise ValueError(f"Failed to extract PCAP from ZIP archive: {str(e)}")
+
+    raise ValueError("ZIP archive contains PCAP files, but extraction failed or password was unknown")
+
+
+def inspect_pcap(pcap_path: str, scrub: bool = False, inner_pcap: Optional[str] = None) -> Dict[str, Any]:
+    """Stream-read PCAP (or unpack PCAP from .zip) and extract all flows and metadata without loading whole file into RAM."""
     if not os.path.isfile(pcap_path):
         raise FileNotFoundError(f"Capture file not found: {pcap_path}")
 
-    file_size = os.path.getsize(pcap_path)
-    with open(pcap_path, "rb") as f:
-        file_sha256 = hashlib.sha256(f.read(65536 * 10)).hexdigest()  # sample hash for fast ID
+    actual_pcap_path, is_temp, inner_name, discovered_pcaps = unpack_pcap_from_zip(pcap_path, inner_pcap)
+    archive_file_size = os.path.getsize(pcap_path) if is_temp else None
 
-    tcp_flows: Dict[Tuple, TCPFlowReassembler] = {}
-    udp_flows: Dict[Tuple, UDPFlowReassembler] = {}
+    try:
+        file_size = os.path.getsize(actual_pcap_path)
+        with open(actual_pcap_path, "rb") as f:
+            file_sha256 = hashlib.sha256(f.read(65536 * 10)).hexdigest()  # sample hash for fast ID
 
-    packet_count = 0
-    start_time = None
-    end_time = None
+        tcp_flows: Dict[Tuple, TCPFlowReassembler] = {}
+        udp_flows: Dict[Tuple, UDPFlowReassembler] = {}
 
-    with PcapReader(pcap_path) as reader:
-        while True:
-            try:
-                pkt = reader.read_packet()
-                if pkt is None:
+        packet_count = 0
+        ipv4_packets_count = 0
+        ipv6_packets_count = 0
+        arp_packets_count = 0
+        non_ip_packets_count = 0
+        start_time = None
+        end_time = None
+
+        with PcapReader(actual_pcap_path) as reader:
+            while True:
+                try:
+                    pkt = reader.read_packet()
+                    if pkt is None:
+                        break
+                except (EOFError, StopIteration):
                     break
-            except (EOFError, StopIteration):
-                break
-            except Exception:
-                continue
+                except Exception:
+                    continue
 
-            packet_count += 1
-            pkt_time = float(pkt.time) if hasattr(pkt, 'time') else 0.0
-            if start_time is None:
-                start_time = pkt_time
-            end_time = pkt_time
+                packet_count += 1
+                pkt_time = float(pkt.time) if hasattr(pkt, 'time') else 0.0
+                if start_time is None:
+                    start_time = pkt_time
+                end_time = pkt_time
 
-            # IP / IPv6 detection
-            ip_layer = pkt.getlayer(IP) or pkt.getlayer(IPv6)
-            if not ip_layer:
-                continue
+                # Non-IP / ARP detection
+                if pkt.haslayer(ARP):
+                    arp_packets_count += 1
+                    continue
 
-            src_ip = ip_layer.src
-            dst_ip = ip_layer.dst
-
-            # TCP handling
-            tcp_layer = pkt.getlayer(TCP)
-            if tcp_layer:
-                src_port = tcp_layer.sport
-                dst_port = tcp_layer.dport
-                flow_key = normalize_flow_key(src_ip, src_port, dst_ip, dst_port, 'tcp')
-
-                if flow_key not in tcp_flows:
-                    tcp_flows[flow_key] = TCPFlowReassembler(flow_key)
-
-                reassembler = tcp_flows[flow_key]
-
-                # Check SYN flags
-                flags = tcp_layer.flags
-                if flags & 0x02:  # SYN
-                    if flags & 0x10:  # SYN-ACK
-                        reassembler.register_syn_ack(src_ip, src_port, dst_ip, dst_port)
+                # IP / IPv6 detection
+                ip_layer = pkt.getlayer(IP)
+                if ip_layer:
+                    ipv4_packets_count += 1
+                else:
+                    ip_layer = pkt.getlayer(IPv6)
+                    if ip_layer:
+                        ipv6_packets_count += 1
                     else:
-                        reassembler.register_syn(src_ip, src_port, dst_ip, dst_port)
+                        non_ip_packets_count += 1
+                        continue
 
-                raw_layer = pkt.getlayer(Raw)
-                payload = raw_layer.load if raw_layer else b""
-                reassembler.add_segment(src_ip, src_port, dst_ip, dst_port, tcp_layer.seq, payload, pkt_time)
+                src_ip = ip_layer.src
+                dst_ip = ip_layer.dst
+
+                # TCP handling
+                tcp_layer = pkt.getlayer(TCP)
+                if tcp_layer:
+                    src_port = tcp_layer.sport
+                    dst_port = tcp_layer.dport
+                    flow_key = normalize_flow_key(src_ip, src_port, dst_ip, dst_port, 'tcp')
+
+                    if flow_key not in tcp_flows:
+                        tcp_flows[flow_key] = TCPFlowReassembler(flow_key)
+
+                    reassembler = tcp_flows[flow_key]
+
+                    # Check SYN flags
+                    flags = tcp_layer.flags
+                    if flags & 0x02:  # SYN
+                        if flags & 0x10:  # SYN-ACK
+                            reassembler.register_syn_ack(src_ip, src_port, dst_ip, dst_port)
+                        else:
+                            reassembler.register_syn(src_ip, src_port, dst_ip, dst_port)
+
+                    raw_layer = pkt.getlayer(Raw)
+                    payload = raw_layer.load if raw_layer else b""
+                    reassembler.add_segment(src_ip, src_port, dst_ip, dst_port, tcp_layer.seq, payload, pkt_time)
+                    continue
+
+                # UDP handling
+                udp_layer = pkt.getlayer(UDP)
+                if udp_layer:
+                    src_port = udp_layer.sport
+                    dst_port = udp_layer.dport
+                    flow_key = normalize_flow_key(src_ip, src_port, dst_ip, dst_port, 'udp')
+
+                    if flow_key not in udp_flows:
+                        udp_flows[flow_key] = UDPFlowReassembler(flow_key)
+
+                    raw_layer = pkt.getlayer(Raw)
+                    payload = raw_layer.load if raw_layer else b""
+                    udp_flows[flow_key].add_datagram(src_ip, src_port, dst_ip, dst_port, payload, pkt_time)
+
+        duration_sec = round((end_time - start_time), 3) if (start_time and end_time) else 0.0
+
+        # Build flow summaries
+        flow_summaries = []
+        flow_idx = 1
+
+        # Process TCP flows
+        for key, reasm in tcp_flows.items():
+            turns, warnings, stats = reasm.compile_turns(scrub=scrub)
+            if not turns:
                 continue
+            is_noise, noise_type = classify_flow(reasm.client_ip, reasm.client_port, reasm.server_ip, reasm.server_port)
+            flow_summaries.append({
+                "flow_id": flow_idx,
+                "transport": "tcp",
+                "client_ip": reasm.client_ip,
+                "client_port": reasm.client_port,
+                "server_ip": reasm.server_ip,
+                "server_port": reasm.server_port,
+                "turns_count": len(turns),
+                "payload_bytes": stats.get("total_payload_bytes", 0),
+                "warnings": warnings,
+                "stats": stats,
+                "is_noise": is_noise,
+                "noise_type": noise_type,
+                "_turns": turns
+            })
+            flow_idx += 1
 
-            # UDP handling
-            udp_layer = pkt.getlayer(UDP)
-            if udp_layer:
-                src_port = udp_layer.sport
-                dst_port = udp_layer.dport
-                flow_key = normalize_flow_key(src_ip, src_port, dst_ip, dst_port, 'udp')
+        # Process UDP flows
+        for key, reasm in udp_flows.items():
+            turns, warnings, stats = reasm.compile_turns(scrub=scrub)
+            if not turns:
+                continue
+            is_noise, noise_type = classify_flow(reasm.client_ip, reasm.client_port, reasm.server_ip, reasm.server_port)
+            flow_summaries.append({
+                "flow_id": flow_idx,
+                "transport": "udp",
+                "client_ip": reasm.client_ip,
+                "client_port": reasm.client_port,
+                "server_ip": reasm.server_ip,
+                "server_port": reasm.server_port,
+                "turns_count": len(turns),
+                "payload_bytes": stats.get("total_payload_bytes", 0),
+                "warnings": warnings,
+                "stats": stats,
+                "is_noise": is_noise,
+                "noise_type": noise_type,
+                "_turns": turns
+            })
+            flow_idx += 1
 
-                if flow_key not in udp_flows:
-                    udp_flows[flow_key] = UDPFlowReassembler(flow_key)
+        # Sort flows: unicast flows first (payload_bytes desc), then background noise flows
+        flow_summaries.sort(key=lambda x: (not x.get("is_noise", False), x["payload_bytes"]), reverse=True)
 
-                raw_layer = pkt.getlayer(Raw)
-                payload = raw_layer.load if raw_layer else b""
-                udp_flows[flow_key].add_datagram(src_ip, src_port, dst_ip, dst_port, payload, pkt_time)
+        # Re-index flow_id sequentially
+        for idx, f in enumerate(flow_summaries, 1):
+            f["flow_id"] = idx
 
-    duration_sec = round((end_time - start_time), 3) if (start_time and end_time) else 0.0
+        unicast_count = sum(1 for f in flow_summaries if not f.get("is_noise"))
+        noise_count = sum(1 for f in flow_summaries if f.get("is_noise"))
 
-    # Build flow summaries
-    flow_summaries = []
-    flow_idx = 1
-
-    # Process TCP flows
-    for key, reasm in tcp_flows.items():
-        turns, warnings, stats = reasm.compile_turns(scrub=scrub)
-        if not turns:
-            continue
-        flow_summaries.append({
-            "flow_id": flow_idx,
-            "transport": "tcp",
-            "client_ip": reasm.client_ip,
-            "client_port": reasm.client_port,
-            "server_ip": reasm.server_ip,
-            "server_port": reasm.server_port,
-            "turns_count": len(turns),
-            "payload_bytes": stats.get("total_payload_bytes", 0),
-            "warnings": warnings,
-            "stats": stats,
-            "_turns": turns
-        })
-        flow_idx += 1
-
-    # Process UDP flows
-    for key, reasm in udp_flows.items():
-        turns, warnings, stats = reasm.compile_turns(scrub=scrub)
-        if not turns:
-            continue
-        flow_summaries.append({
-            "flow_id": flow_idx,
-            "transport": "udp",
-            "client_ip": reasm.client_ip,
-            "client_port": reasm.client_port,
-            "server_ip": reasm.server_ip,
-            "server_port": reasm.server_port,
-            "turns_count": len(turns),
-            "payload_bytes": stats.get("total_payload_bytes", 0),
-            "warnings": warnings,
-            "stats": stats,
-            "_turns": turns
-        })
-        flow_idx += 1
-
-    # Sort flows by payload bytes descending
-    flow_summaries.sort(key=lambda x: x["payload_bytes"], reverse=True)
-
-    return {
-        "file_path": pcap_path,
-        "file_name": os.path.basename(pcap_path),
-        "file_size_bytes": file_size,
-        "sample_sha256": file_sha256,
-        "packet_count": packet_count,
-        "duration_seconds": duration_sec,
-        "total_active_flows": len(flow_summaries),
-        "flows": flow_summaries
-    }
+        return {
+            "file_path": pcap_path,
+            "file_name": inner_name if inner_name else os.path.basename(pcap_path),
+            "archive_source": os.path.basename(pcap_path) if is_temp else None,
+            "archive_pcaps_found": discovered_pcaps if is_temp else [],
+            "file_size_bytes": file_size,
+            "archive_file_size": archive_file_size,
+            "sample_sha256": file_sha256,
+            "packet_count": packet_count,
+            "duration_seconds": duration_sec,
+            "ipv4_packets": ipv4_packets_count,
+            "ipv6_packets": ipv6_packets_count,
+            "arp_packets": arp_packets_count,
+            "non_ip_packets": non_ip_packets_count,
+            "total_active_flows": len(flow_summaries),
+            "unicast_flows_count": unicast_count,
+            "noise_flows_count": noise_count,
+            "flows": flow_summaries
+        }
+    finally:
+        if is_temp and os.path.exists(actual_pcap_path):
+            try:
+                os.unlink(actual_pcap_path)
+            except Exception:
+                pass
 
 
 def compile_stx_profile(inspection: Dict[str, Any], selected_flow_ids: Optional[List[int]] = None,
@@ -443,8 +625,17 @@ def compile_stx_profile(inspection: Dict[str, Any], selected_flow_ids: Optional[
     RESERVED_PORTS = {80, 443, 8080, 8081, 8082, 8083, 8084, 8085, 8086, 8087, 8088, 8089, 8090, 8443}
 
     flows_to_include = []
+    unicast_flows_count = inspection.get("unicast_flows_count", 0)
+
     for f in inspection["flows"]:
-        if selected_flow_ids is None or f["flow_id"] in selected_flow_ids:
+        # If user explicitly specified flow IDs, respect selection
+        if selected_flow_ids is not None:
+            if f["flow_id"] not in selected_flow_ids:
+                continue
+        else:
+            # If no selection specified, default to all non-noise unicast flows (if available)
+            if f.get("is_noise") and unicast_flows_count > 0:
+                continue
             orig_port = f["server_port"]
             if target_port:
                 eff_port = int(target_port)
@@ -565,13 +756,19 @@ Examples:
             print(json.dumps(preview, indent=2))
         else:
             print(f"\n📦 Capture: {inspection['file_name']} ({inspection['file_size_bytes']:,} bytes, {inspection['packet_count']} packets, {inspection['duration_seconds']}s)")
-            print(f"🎯 Total Active Flows: {inspection['total_active_flows']}\n")
-            print(f"{'ID':<4} {'Proto':<6} {'Client Endpoint':<24} {'Server Endpoint':<24} {'Turns':<7} {'Payload':<10} {'Warnings'}")
-            print("-" * 95)
+            print(f"📊 Protocol Breakdown: IPv4={inspection.get('ipv4_packets', 0)}, IPv6={inspection.get('ipv6_packets', 0)}, ARP={inspection.get('arp_packets', 0)}, Non-IP={inspection.get('non_ip_packets', 0)}")
+            print(f"🎯 Total Active Flows: {inspection['total_active_flows']} ({inspection.get('unicast_flows_count', 0)} Unicast L7, {inspection.get('noise_flows_count', 0)} Background Noise)\n")
+            print(f"{'ID':<4} {'Proto':<6} {'Client Endpoint':<24} {'Server Endpoint':<24} {'Turns':<7} {'Payload':<10} {'Classification / Warnings'}")
+            print("-" * 105)
             for f in inspection["flows"]:
                 client_ep = f"{f['client_ip']}:{f['client_port']}" if f['client_ip'] else "N/A"
                 server_ep = f"{f['server_ip']}:{f['server_port']}" if f['server_ip'] else "N/A"
-                warn = ", ".join(f["warnings"]) if f["warnings"] else "none"
+                notes = []
+                if f.get("is_noise"):
+                    notes.append(f"[NOISE: {f.get('noise_type')}]")
+                if f.get("warnings"):
+                    notes.extend(f["warnings"])
+                warn = ", ".join(notes) if notes else "clean unicast"
                 print(f"{f['flow_id']:<4} {f['transport'].upper():<6} {client_ep:<24} {server_ep:<24} {f['turns_count']:<7} {f['payload_bytes']:<10} {warn}")
             print("\nUse --out <filename.stx-replay> to compile a replay profile.")
 
