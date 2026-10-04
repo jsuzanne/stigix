@@ -39,7 +39,7 @@ curl -sSL https://raw.githubusercontent.com/jsuzanne/stigix/main/install.sh | ba
   - [3. ⚡ SD-WAN Chaos Engineering & VyOS Underlay](#3-️-sd-wan-chaos-engineering--vyos-underlay)
   - [4. 🎙️ Physical IoT (L2/L3) & Voice RTP Simulation](#4-️-physical-iot-l2l3--voice-rtp-simulation)
   - [5. 🤖 AI-Native Orchestration (FastMCP) & Mesh Fleet](#5--ai-native-orchestration-fastmcp--mesh-fleet)
-  - [6. 📦 Stateful PCAP Replay Engine (L7 Turns, SASE & Exploits)](#6-️-stateful-pcap-replay-engine-l7-turns-sase--exploits)
+  - [6. 📦 Stateful PCAP Replay Engine (L7 Steps, SASE & Exploits)](#6-️-stateful-pcap-replay-engine-l7-steps-sase--exploits)
 - [📸 Screenshots Gallery](#-screenshots-gallery)
 - [🖥️ Platform Support](#️-platform-support)
 - [📋 Prerequisites](#-prerequisites)
@@ -108,9 +108,9 @@ This project is my way to turn all that lab and demo experience into an open-sou
 - **Fleet Remote View & WebSocket Reverse Gateway** ⚡ — Centralized observability and remote node management directly from the Leader. Transparently proxies API calls over multiplexed WebSocket reverse tunnels (`/fleet-tunnel`) traversing NAT, CGNAT, and firewalls with zero inbound ports required on spokes. [Read more](docs/REMOTE_VIEW_USER_GUIDE.md)
 - **Peer Autodiscovery** 📡 — Automatic peer-to-peer discovery using Cloudflare Workers with zero-touch multi-node setup. [Read more](docs/AUTODISCOVERY_GUIDE.md)
 
-### 6. 📦 Stateful PCAP Replay Engine (L7 Turns, SASE & Exploits)
+### 6. 📦 Stateful PCAP Replay Engine (L7 Steps, SASE & Exploits)
 
-- **Stateful L7 Protocol Turn Reassembly** 🔄 — Ingests standard `.pcap`, `.pcapng`, `.cap`, and nested `.zip` archives. Assembles raw bidirectional TCP streams and UDP datagrams into conversational application turns (`⬆️ Client ➔ Server` vs `⬇️ Server ➔ Client`) with microsecond timing and payload offsets. [Read more](docs/PRD_PCAP_REPLAY_ENGINE.md)
+- **Stateful L7 Protocol Step Reassembly** 🔄 — Ingests standard `.pcap`, `.pcapng`, `.cap`, and nested `.zip` archives. Assembles raw bidirectional TCP streams and UDP datagrams into conversational application steps (`⬆️ Client ➔ Server` vs `⬇️ Server ➔ Client`) with microsecond timing and payload offsets. [Read more](docs/PRD_PCAP_REPLAY_ENGINE.md)
 - **Direct ZIP & Exploit Archive Ingestion** 📦 — Native drag-and-drop support for `.zip` archives (including nested `.pcap.zip` malware archives). Extracts captures into an ephemeral memory buffer with automatic password recovery (`infected`, `virus`, `malware`) and guaranteed cleanup (`Memory Guard` — zero disk residue).
 - **Automated Credential & PII Scrubbing** 🛡️ — Masks passwords, Bearer tokens, Basic Auth, and email addresses in application payloads with regex substitution, preserving protocol structures for safe replay across enterprise networks.
 - **Noise Isolation & Clean Flow Filtering** 🎯 — Classifies and filters background multicast/broadcast noise (DHCPv6, LLMNR, mDNS, NetBIOS, subnet broadcasts) with 1-click bulk controls (`Select All`, `Deselect All`, `Unicast Only`, `+ TCP`, `- TCP`, `+ UDP`, `- UDP`).
@@ -966,7 +966,7 @@ npm run build
 - [ ] Advanced traffic patterns (burst, gradual ramp-up)
 - [ ] Custom protocol support (FTP, SMTP, etc.)
 - [ ] Grafana/Prometheus integration
-- [x] Traffic replay from PCAP & ZIP archives (Stateful L7 turns, SASE telemetry, credential scrubbing, mesh sync)
+- [x] Traffic replay from PCAP & ZIP archives (Stateful L7 steps, SASE telemetry, credential scrubbing, mesh sync)
 - [ ] Cloud provider integrations (AWS, Azure, GCP)
 - [ ] WebRTC and video streaming simulation
 - [ ] PowerShell installation script for Windows

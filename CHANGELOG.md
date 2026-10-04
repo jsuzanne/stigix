@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.150] - 2026-10-04
+
+### Changed
+- **Renamed PCAP Replay "Turns" to "Steps" for Operational Clarity (`PcapReplay.tsx`, `PcapReplayModal.tsx`, `PCAP_REPLAY_USER_GUIDE.md`)**:
+  - Replaced ambiguous network term "turns" / "Turns" with intuitive "steps" / "Steps" across all user-facing UI elements.
+  - Updated badges (`L7 Steps`), headers (`DIRECTIONAL STEPS`), summary cards (`Client Sent: X steps`, `Server Sent: X steps`), sequence items (`Step #X`), payload inspector (`Step #X Payload Inspector`), and telemetry gauges (`Steps Progress`, `Avg ms/step`, `Replaying Steps`).
+  - Underlying JSON contracts, parser outputs, and `.stx-replay` format definitions remain 100% backward-compatible.
+
 ## [2.0.149] - 2026-10-04
 
 ### Fixed

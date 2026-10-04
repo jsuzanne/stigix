@@ -635,7 +635,7 @@ export const PcapReplay: React.FC<PcapReplayProps> = ({ token }) => {
             return {
                 proto: 'Unknown',
                 badge: 'bg-card text-text-muted border-border',
-                snippet: 'Empty turn',
+                snippet: 'Empty step',
                 isBinary: false
             };
         }
@@ -786,7 +786,7 @@ export const PcapReplay: React.FC<PcapReplayProps> = ({ token }) => {
             if (!turnSearchQuery.trim()) return true;
 
             const q = turnSearchQuery.toLowerCase().trim();
-            if (String(idx + 1) === q || `turn #${idx + 1}`.includes(q)) return true;
+            if (String(idx + 1) === q || `step #${idx + 1}`.includes(q) || `turn #${idx + 1}`.includes(q)) return true;
             if (String(turn.length || turn.payload_len) === q) return true;
             const preview = (turn.ascii_preview || turn.preview || '').toLowerCase();
             if (preview.includes(q)) return true;
@@ -845,7 +845,7 @@ export const PcapReplay: React.FC<PcapReplayProps> = ({ token }) => {
                         {log.client_ip}:{log.client_port} ➔ {log.server_ip}:{log.server_port}
                     </span>
                     <span className="text-text-muted text-[9px]">
-                        ({log.total_turns} turns total)
+                        ({log.total_turns} steps total)
                     </span>
                 </div>
             );
@@ -863,7 +863,7 @@ export const PcapReplay: React.FC<PcapReplayProps> = ({ token }) => {
                     }`}>
                         {isClient ? '⬆️ CLIENT ➔ SERVER' : '⬇️ SERVER ➔ CLIENT'}
                     </span>
-                    <span className="font-black text-text-primary">Turn #{log.seq}</span>
+                    <span className="font-black text-text-primary">Step #{log.seq}</span>
                     <span className="text-text-secondary font-mono">{log.bytes} bytes</span>
                     <span className="text-text-muted/70 text-[9px] font-mono">({log.duration_ms}ms)</span>
                 </div>
@@ -877,7 +877,7 @@ export const PcapReplay: React.FC<PcapReplayProps> = ({ token }) => {
                     <span className="px-1.5 py-0.2 rounded font-black uppercase text-[8px] flex items-center gap-1 bg-cyan-500/20 text-cyan-400 border border-cyan-500/30">
                         ⬆️ UDP ➔ {log.target_ip}:{log.target_port}
                     </span>
-                    {log.seq !== undefined && <span className="font-black text-text-primary">Turn #{log.seq}</span>}
+                    {log.seq !== undefined && <span className="font-black text-text-primary">Step #{log.seq}</span>}
                     <span className="text-text-secondary font-mono">{log.bytes} bytes</span>
                 </div>
             );
@@ -927,7 +927,7 @@ export const PcapReplay: React.FC<PcapReplayProps> = ({ token }) => {
                         VERDICT: {log.verdict?.toUpperCase()}
                     </span>
                     <span className="font-bold">
-                        {log.completed_turns}/{log.total_turns} turns completed
+                        {log.completed_turns}/{log.total_turns} steps completed
                     </span>
                     {log.tx_bytes !== undefined && (
                         <span className="text-[9px] opacity-80 font-mono">
@@ -972,14 +972,14 @@ export const PcapReplay: React.FC<PcapReplayProps> = ({ token }) => {
                                     Stateful PCAP Replay Engine
                                 </h1>
                                 <span className="px-1.5 py-0.5 rounded text-[9px] font-black uppercase tracking-wider bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">
-                                    L7 Turns
+                                    L7 Steps
                                 </span>
                                 <span className="px-1.5 py-0.5 rounded text-[9px] font-black uppercase tracking-wider bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 flex items-center gap-1">
                                     <Sparkles size={9} /> Auto-Sync Fleet
                                 </span>
                             </div>
                             <p className="text-[11px] text-text-muted mt-0.5 line-clamp-1 max-w-2xl">
-                                Package raw PCAP traces into zero-config replay profiles, auto-scrub credentials, distribute across spokes & execute synchronized client/server turns with SASE verdict enforcement.
+                                Package raw PCAP traces into zero-config replay profiles, auto-scrub credentials, distribute across spokes & execute synchronized client/server steps with SASE verdict enforcement.
                             </p>
                         </div>
                     </div>
@@ -1336,7 +1336,7 @@ export const PcapReplay: React.FC<PcapReplayProps> = ({ token }) => {
                                             <div className="flex items-center gap-2 mt-0.5 text-[9px] text-text-muted">
                                                 <span className="flex items-center gap-1 font-semibold text-text-secondary">
                                                     <Radio size={8} className="text-indigo-400" />
-                                                    <span>{p.total_turns || 0} turns</span>
+                                                    <span>{p.total_turns || 0} steps</span>
                                                 </span>
                                                 {flow?.server_port && (
                                                     <span className="font-mono text-purple-400 font-bold bg-purple-500/10 px-1 py-0.2 rounded border border-purple-500/20 text-[8px]">
@@ -1357,7 +1357,7 @@ export const PcapReplay: React.FC<PcapReplayProps> = ({ token }) => {
                     </div>
                 </div>
 
-                {/* ─── Column 2: Selected Scenario & Turn Sequence (lg:col-span-4) ─── */}
+                {/* ─── Column 2: Selected Scenario & Step Sequence (lg:col-span-4) ─── */}
                 <div className="lg:col-span-4 flex flex-col h-full overflow-hidden">
                     <div className="bg-card border border-border rounded-2xl p-3.5 shadow-xl flex flex-col h-full overflow-hidden">
                         {/* Background Active Job Alert if viewing another profile */}
@@ -1391,7 +1391,7 @@ export const PcapReplay: React.FC<PcapReplayProps> = ({ token }) => {
                                             Conversation Sequence
                                         </h3>
                                         <p className="text-[9px] text-text-muted font-bold tracking-wider">
-                                            {profileDetails ? `${turns.length} DIRECTIONAL TURNS` : 'SELECT A PROFILE'}
+                                            {profileDetails ? `${turns.length} DIRECTIONAL STEPS` : 'SELECT A PROFILE'}
                                         </p>
                                     </div>
                                 </div>
@@ -1410,7 +1410,7 @@ export const PcapReplay: React.FC<PcapReplayProps> = ({ token }) => {
                                             <ArrowRight size={10} /> Client Sent
                                         </span>
                                         <span className="font-mono text-text-primary font-bold">
-                                            {turnsSummary.clientTurns} turns · {(turnsSummary.clientBytes / 1024).toFixed(1)} KB
+                                            {turnsSummary.clientTurns} steps · {(turnsSummary.clientBytes / 1024).toFixed(1)} KB
                                         </span>
                                     </div>
                                     <div className="bg-purple-500/10 border border-purple-500/20 rounded-lg px-2 py-1 flex items-center justify-between text-[9px]">
@@ -1418,7 +1418,7 @@ export const PcapReplay: React.FC<PcapReplayProps> = ({ token }) => {
                                             <ArrowDownRight size={10} /> Server Sent
                                         </span>
                                         <span className="font-mono text-text-primary font-bold">
-                                            {turnsSummary.serverTurns} turns · {(turnsSummary.serverBytes / 1024).toFixed(1)} KB
+                                            {turnsSummary.serverTurns} steps · {(turnsSummary.serverBytes / 1024).toFixed(1)} KB
                                         </span>
                                     </div>
                                 </div>
@@ -1491,20 +1491,20 @@ export const PcapReplay: React.FC<PcapReplayProps> = ({ token }) => {
                         {isLoadingDetails ? (
                             <div className="flex flex-col items-center justify-center flex-1 text-text-muted gap-2">
                                 <RefreshCw className="animate-spin text-purple-400" size={18} />
-                                <span className="text-xs">Unpacking turns...</span>
+                                <span className="text-xs">Unpacking steps...</span>
                             </div>
                         ) : !profileDetails ? (
                             <div className="flex flex-col items-center justify-center flex-1 text-center text-text-muted p-4">
                                 <p className="text-xs font-bold">No Profile Selected</p>
-                                <p className="text-[10px] opacity-70 mt-1">Select a profile on the left to inspect its turn sequence.</p>
+                                <p className="text-[10px] opacity-70 mt-1">Select a profile on the left to inspect its step sequence.</p>
                             </div>
                         ) : (
                             <div className="flex-1 min-h-0 flex flex-col pt-2 gap-2">
-                                {/* Turns Step List with Informative Directional Cards */}
+                                {/* Step List with Informative Directional Cards */}
                                 <div className="flex-1 min-h-0 overflow-y-auto space-y-1.5 pr-1 scrollbar-thin scrollbar-thumb-border">
                                     {filteredTurns.length === 0 ? (
                                         <div className="text-center py-6 text-text-muted text-[10px] italic">
-                                            No conversation turns match the current filter.
+                                            No conversation steps match the current filter.
                                         </div>
                                     ) : (
                                         <>
@@ -1589,7 +1589,7 @@ export const PcapReplay: React.FC<PcapReplayProps> = ({ token }) => {
                                             {filteredTurns.length > turnDisplayLimit && (
                                                 <div className="p-2 text-center bg-card-secondary/40 border border-border/60 rounded-xl space-y-1">
                                                     <p className="text-[9px] text-text-muted">
-                                                        Displaying first {turnDisplayLimit} of {filteredTurns.length} turns.
+                                                        Displaying first {turnDisplayLimit} of {filteredTurns.length} steps.
                                                     </p>
                                                     <div className="flex items-center justify-center gap-2">
                                                         <button
@@ -1597,7 +1597,7 @@ export const PcapReplay: React.FC<PcapReplayProps> = ({ token }) => {
                                                             onClick={() => setTurnDisplayLimit(prev => prev + 250)}
                                                             className="px-2 py-0.5 rounded text-[8px] font-bold bg-purple-600/30 hover:bg-purple-600 text-purple-200 transition-colors cursor-pointer"
                                                         >
-                                                            Load +250 turns
+                                                            Load +250 steps
                                                         </button>
                                                         <button
                                                             type="button"
@@ -1618,7 +1618,7 @@ export const PcapReplay: React.FC<PcapReplayProps> = ({ token }) => {
                                     <div className="bg-card-secondary/40 border border-border rounded-xl p-2 font-mono text-xs space-y-1.5 shrink-0">
                                         <div className="flex items-center justify-between text-[8px] font-black uppercase tracking-wider text-text-muted">
                                             <div className="flex items-center gap-1.5">
-                                                <span>Turn #{selectedTurnIndex! + 1} Payload Inspector</span>
+                                                <span>Step #{selectedTurnIndex! + 1} Payload Inspector</span>
                                                 <span className={`px-1.5 py-0.2 rounded border text-[7px] font-bold uppercase ${selectedTurnAnalysis.badge}`}>
                                                     {selectedTurnAnalysis.proto}
                                                 </span>
@@ -1714,7 +1714,7 @@ export const PcapReplay: React.FC<PcapReplayProps> = ({ token }) => {
                                             {liveTelemetry.lastVerdict
                                                 ? `SASE VERDICT: ${liveTelemetry.lastVerdict.toUpperCase()}`
                                                 : liveTelemetry.isRunning
-                                                ? (activeJob.role === 'server' ? 'Server Listening for Peers...' : `Replaying Turns (${liveTelemetry.progressPct}%)`)
+                                                ? (activeJob.role === 'server' ? 'Server Listening for Peers...' : `Replaying Steps (${liveTelemetry.progressPct}%)`)
                                                 : 'SASE Policy Replay Engine Ready'}
                                         </span>
                                     </div>
@@ -1726,7 +1726,7 @@ export const PcapReplay: React.FC<PcapReplayProps> = ({ token }) => {
                                             : liveTelemetry.lastVerdict?.includes('Drop')
                                             ? 'Session timed out with silent packet drop. Firewall security rule prevented delivery.'
                                             : liveTelemetry.isRunning
-                                            ? `Streaming bidirectional L7 turns to ${customTargetIp || 'target'}:${portOverride || 'port'} across SD-WAN`
+                                            ? `Streaming bidirectional L7 steps to ${customTargetIp || 'target'}:${portOverride || 'port'} across SD-WAN`
                                             : 'Select a profile and start client replay to benchmark firewall policy enforcement.'}
                                     </p>
                                 </div>
@@ -1743,10 +1743,10 @@ export const PcapReplay: React.FC<PcapReplayProps> = ({ token }) => {
 
                     {/* 4 Live Telemetry Tiles */}
                     <div className="grid grid-cols-4 gap-2 shrink-0">
-                        {/* Turns Progress */}
+                        {/* Steps Progress */}
                         <div className="bg-card border border-border rounded-xl p-2 flex flex-col justify-between">
                             <div className="flex items-center justify-between">
-                                <span className="text-[8px] font-black uppercase tracking-wider text-text-muted">Turns Progress</span>
+                                <span className="text-[8px] font-black uppercase tracking-wider text-text-muted">Steps Progress</span>
                                 {liveTelemetry.isLooping && (
                                     <span className="px-1 py-0.2 rounded bg-indigo-500/20 text-indigo-300 text-[8px] font-bold border border-indigo-500/30 animate-pulse">
                                         Loop #{liveTelemetry.loopIteration}
@@ -1794,7 +1794,7 @@ export const PcapReplay: React.FC<PcapReplayProps> = ({ token }) => {
                             </div>
                             <div className="text-[8px] font-mono text-text-muted/80 truncate">
                                 {liveTelemetry.totalTurns > 0 && liveTelemetry.durationMs > 0
-                                    ? `Avg ${(liveTelemetry.durationMs / liveTelemetry.totalTurns).toFixed(1)} ms/turn`
+                                    ? `Avg ${(liveTelemetry.durationMs / liveTelemetry.totalTurns).toFixed(1)} ms/step`
                                     : 'Zero loss'}
                             </div>
                         </div>
@@ -1903,14 +1903,14 @@ export const PcapReplay: React.FC<PcapReplayProps> = ({ token }) => {
                                         </div>
                                         <div className="flex-1 bg-card/40 border border-border/60 rounded-xl p-2">
                                             <div className="flex items-center justify-between">
-                                                <span className="font-bold text-text-primary text-[10px]">Bidirectional L7 Turns Exchange</span>
+                                                <span className="font-bold text-text-primary text-[10px]">Bidirectional L7 Steps Exchange</span>
                                                 <span className="text-[8px] font-mono text-purple-400">{liveTelemetry.progressPct}%</span>
                                             </div>
                                             <p className="text-[9px] text-text-muted mt-0.5">
                                                 {liveTelemetry.isRunning
-                                                    ? `Replaying packet sequence... ${liveTelemetry.completedTurns} of ${liveTelemetry.totalTurns} turns completed.`
+                                                    ? `Replaying packet sequence... ${liveTelemetry.completedTurns} of ${liveTelemetry.totalTurns} steps completed.`
                                                     : liveTelemetry.completedTurns > 0
-                                                    ? `Completed ${liveTelemetry.completedTurns} turns (${(liveTelemetry.txBytes / 1024).toFixed(1)} KB transmitted across overlay).`
+                                                    ? `Completed ${liveTelemetry.completedTurns} steps (${(liveTelemetry.txBytes / 1024).toFixed(1)} KB transmitted across overlay).`
                                                     : 'Waiting for replay execution to begin.'}
                                             </p>
                                         </div>
@@ -1944,7 +1944,7 @@ export const PcapReplay: React.FC<PcapReplayProps> = ({ token }) => {
                                             </div>
                                             <p className="text-[9px] mt-1 text-text-secondary">
                                                 {liveTelemetry.lastVerdict === 'Bypass'
-                                                    ? 'All conversation turns completed with zero packet drop and zero TCP RST resets. Security policies fully permit this application signature.'
+                                                    ? 'All conversation steps completed with zero packet drop and zero TCP RST resets. Security policies fully permit this application signature.'
                                                     : liveTelemetry.lastVerdict?.includes('Reset')
                                                     ? 'Traffic was terminated with TCP RST injection by firewall policy.'
                                                     : liveTelemetry.lastVerdict?.includes('Drop')

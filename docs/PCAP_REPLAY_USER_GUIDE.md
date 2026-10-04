@@ -1,4 +1,4 @@
-> **Last Updated:** 2026-10-04 | **Created:** 2026-10-04 (v2.0.149)
+> **Last Updated:** 2026-10-04 | **Created:** 2026-10-04 (v2.0.150)
 
 # 📖 User Guide — Stigix Stateful PCAP Replay Engine
 ## *Zero-Config L7 Application Replay, SASE Security Benchmarking & Fleet Auto-Sync*
@@ -6,7 +6,7 @@
 ---
 
 ## 📑 Table of Contents
-1. [Why Stateful PCAP Replay? (Stateful Socket Turns vs Raw Packet Blasting)](#1-why-stateful-pcap-replay-stateful-socket-turns-vs-raw-packet-blasting)
+1. [Why Stateful PCAP Replay? (Stateful Socket Steps vs Raw Packet Blasting)](#1-why-stateful-pcap-replay-stateful-socket-steps-vs-raw-packet-blasting)
 2. [Architecture Overview & Zero-Config Replay](#2-architecture-overview--zero-config-replay)
 3. [Step-by-Step Guide: From Raw PCAP to Live SASE Validation](#3-step-by-step-guide-from-raw-pcap-to-live-sase-validation)
    - [Step 1: Upload Capture (.pcap, .pcapng, or Encrypted .zip)](#step-1-upload-capture-pcap-pcapng-or-encrypted-zip)
@@ -26,7 +26,7 @@
 
 ---
 
-## 1. Why Stateful PCAP Replay? (Stateful Socket Turns vs Raw Packet Blasting)
+## 1. Why Stateful PCAP Replay? (Stateful Socket Steps vs Raw Packet Blasting)
 
 Traditional packet replay tools (such as `tcpreplay` or raw scapy senders) suffer from fatal limitations when testing modern Next-Gen Firewalls (NGFW) and SASE security architectures (Palo Alto Prisma Access / SD-WAN):
 
@@ -34,9 +34,9 @@ Traditional packet replay tools (such as `tcpreplay` or raw scapy senders) suffe
 * **TCP Handshake Desynchronization**: A real firewall state machine tracks TCP Sequence numbers ($SEQ$), Acknowledgements ($ACK$), and TCP window sizes. Blasting replayed packets without negotiating a real, live TCP 3-way handshake with the recipient causes the firewall to drop everything as invalid out-of-order packets.
 * **No Real-Time Server Emulation**: Enterprise applications and exploits require stateful request/reply dialogues (e.g., Client sends HTTP GET ➔ Server responds 200 OK ➔ Client requests sub-resource).
 
-### The Stigix Solution: Stateful L7 Turn Replay
+### The Stigix Solution: Stateful L7 Step Replay
 
-Stigix parses the original packet capture, reconstructs the bidirectional application dialogue into ordered **L7 Conversation Turns**, scrubs sensitive credentials, and packages the flow into a compact `.stx-replay` profile:
+Stigix parses the original packet capture, reconstructs the bidirectional application dialogue into ordered **L7 Conversation Steps**, scrubs sensitive credentials, and packages the flow into a compact `.stx-replay` profile:
 
 ```
   ┌─────────────────────────────────────────────────────────────────────────────┐
@@ -46,12 +46,12 @@ Stigix parses the original packet capture, reconstructs the bidirectional applic
   │   Real IP: 192.168.219.1                          Real IP: 192.168.203.100  │
   │                                                                             │
   │   1. Live TCP 3-Way Handshake (SYN ➔ SYN-ACK ➔ ACK) on port 10080          │
-  │   2. Turn #1: Client sends 645B L7 Payload (Scrubbed Exploitation Payload) │
+  │   2. Step #1: Client sends 645B L7 Payload (Scrubbed Exploitation Payload) │
   │        ═══════════════════════════════════════════════════════►             │
   │                   [ Palo Alto NGFW / Prisma SASE ]                          │
   │                   App-ID & Threat Inspection Engine                         │
   │                                                                             │
-  │   3. Turn #2: Server responds with 1201B L7 Payload (HTTP 200 OK)           │
+  │   3. Step #2: Server responds with 1201B L7 Payload (HTTP 200 OK)           │
   │        ◄═══════════════════════════════════════════════════════             │
   │   4. Clean TCP Teardown / SASE Verdict Generated                            │
   └─────────────────────────────────────────────────────────────────────────────┘
@@ -128,20 +128,20 @@ To benchmark firewall inspection between two SD-WAN sites:
 
 ## 4. Decoding SASE Firewall Verdicts
 
-As the conversation turns execute across the SD-WAN overlay, the **SASE Telemetry Hub** calculates a real-time security enforcement verdict:
+As the conversation steps execute across the SD-WAN overlay, the **SASE Telemetry Hub** calculates a real-time security enforcement verdict:
 
 ```
 ┌───────────────────────────────────────────────────────────────────────────────┐
 │ SASE VERDICT: BYPASS (ALLOWED)                         PID 20435 · CLIENT OK  │
 │ Full L7 application session completed without inspection drop or TCP RST.     │
 ├───────────────┬─────────────────┬────────────────────┬────────────────────────┤
-│ TURNS PROGRESS│ DATA VOLUME     │ REPLAY DURATION    │ TARGET HOST            │
+│ STEPS PROGRESS│ DATA VOLUME     │ REPLAY DURATION    │ TARGET HOST            │
 │    2 / 2      │ 2.3 KB          │ 3.29 ms            │ 192.168.203.100:10080  │
 └───────────────┴─────────────────┴────────────────────┴────────────────────────┘
 ```
 
 ### Verdict 1: BYPASS (Allowed)
-* **Visual in UI**: 🟢 **Emerald Green Banner** (`CheckCircle2` icon), all turns show green **`DONE`** badges.
+* **Visual in UI**: 🟢 **Emerald Green Banner** (`CheckCircle2` icon), all steps show green **`DONE`** badges.
 * **Network Behavior**: The full conversational transaction completed without disruption. The client sent its requests, the server returned its exact expected responses, and the TCP session terminated cleanly.
 * **Firewall Interpretation**: The firewall allowed the traffic. If this was a benign application test, this validates normal service delivery. If this was a malware sample or exploit kit, it indicates a **security gap (policy bypassed)** requiring firewall policy tuning.
 
@@ -195,7 +195,7 @@ This behavior is intentional:
 
 ## 6. Wireshark-Style Hex Dump & Payload Inspector
 
-Clicking on any turn in the **Conversation Sequence** highlights that specific step and populates the **Turn Payload Inspector** at the bottom of the screen:
+Clicking on any step in the **Conversation Sequence** highlights that specific step and populates the **Step Payload Inspector** at the bottom of the screen:
 
 * **HEX DUMP View**: Displays classical 16-byte aligned hexadecimal offsets on the left, paired with printable ASCII characters on the right.
 * **CLEAN ASCII View**: Strips binary framing and displays sanitized HTTP headers, REST JSON, or decoded text.
@@ -210,7 +210,7 @@ To perform continuous load testing, firewall session table stress testing, or lo
 1. In **`CLIENT MODE`**, check the **`Loop`** checkbox.
 2. Enter the desired interval in the **`[3] s`** input field (defaults to 3 seconds).
 3. Click **`LAUNCH CLIENT`**.
-4. The client will repeat the full conversation turn sequence every $N$ seconds, continuously updating the **Cumulative Data Volume** counter (`Total MB Exchanged`) and displaying a live pulsing **`Loop #X`** badge.
+4. The client will repeat the full conversation step sequence every $N$ seconds, continuously updating the **Cumulative Data Volume** counter (`Total MB Exchanged`) and displaying a live pulsing **`Loop #X`** badge.
 5. Click **`STOP CLIENT`** at any time to cease transmission.
 
 ---
@@ -226,7 +226,7 @@ To perform continuous load testing, firewall session table stress testing, or lo
 **A**: No. The PCAP compilation engine automatically scrubs sensitive credentials (Basic Auth, Bearer tokens, passwords, emails). Furthermore, original L3 IP addresses from the capture are completely discarded: all replayed packets use the live, valid IP addresses of your Stigix hosts.
 
 ### Q: How does the Server know when a session is finished?
-**A**: The server follows the state machine defined in the `.stx-replay` file. Once the final turn is acknowledged and transmitted, the server cleanly closes the client socket and immediately returns to listening for the next incoming test.
+**A**: The server follows the state machine defined in the `.stx-replay` file. Once the final step is acknowledged and transmitted, the server cleanly closes the client socket and immediately returns to listening for the next incoming test.
 
 ---
 
@@ -234,4 +234,5 @@ To perform continuous load testing, firewall session table stress testing, or lo
 
 | Date | Stigix Version | Author / Trigger | Summary of Changes |
 |---|---|---|---|
+| 2026-10-04 | `v2.0.150` | Stigix Core Team | Terminology update: Aligned user-facing UI labels and docs from "Turns" to "Steps" |
 | 2026-10-04 | `v2.0.149` | Stigix Core Team | Initial creation of the Stateful PCAP Replay Engine User Guide |

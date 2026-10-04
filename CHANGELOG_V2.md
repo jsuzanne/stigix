@@ -2,6 +2,11 @@
 
 All notable changes made specifically on the `v2` branch are documented in this file.
 
+## [v2.0.150] - 2026-10-04 — UX: Renamed PCAP Replay "Turns" to "Steps" for Operational Clarity
+
+- **refactor(pcap-ui)**: Replaced confusing network jargon "turns" / "Turns" with intuitive "steps" / "Steps" across all PCAP Replay views (`web-dashboard/src/PcapReplay.tsx`, `PcapReplayModal.tsx`). Updated badges (`L7 Steps`), headers (`DIRECTIONAL STEPS`), summary cards (`Client Sent: X steps`, `Server Sent: X steps`), sequence cards (`Step #X`), payload inspector (`Step #X Payload Inspector`), and telemetry gauges (`Steps Progress`, `Avg ms/step`, `Replaying Steps`). Internal JSON schema and `.stx-replay` format compatibility is 100% preserved.
+- **docs(pcap-replay)**: Updated user guide `docs/PCAP_REPLAY_USER_GUIDE.md` and repository `README.md` to align terminology with the new "Steps" UI convention.
+
 ## [v2.0.149] - 2026-10-04 — Fix: PCAP Profile Compilation Flow Selection, Archive Password & Voice UI
 - **docs(pcap-replay)**: Created comprehensive step-by-step user guide in `docs/PCAP_REPLAY_USER_GUIDE.md` detailing zero-config L7 stateful replay, encrypted ZIP imports, mesh fleet auto-sync across SD-WAN spokes, and in-depth SASE firewall verdict detection mechanics (TCP RST, Silent Drop, HTTP Block Page, Bypass).
 - **i18n(pcap-modal)**: Translated all French UI labels, buttons, and helper cards to English in `web-dashboard/src/components/custom-tcp/PcapReplayModal.tsx` adhering to the Stigix English repository language policy.

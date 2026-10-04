@@ -440,7 +440,7 @@ export const PcapReplayModal: React.FC<PcapReplayModalProps> = ({
                                 </span>
                             </div>
                             <p className="text-xs text-text-muted">
-                                Stateful L7 socket turn replay across SD-WAN overlays and Prisma Access
+                                Stateful L7 socket step replay across SD-WAN overlays and Prisma Access
                             </p>
                         </div>
                     </div>
@@ -761,7 +761,7 @@ export const PcapReplayModal: React.FC<PcapReplayModalProps> = ({
                                                 <th className="p-3">Proto</th>
                                                 <th className="p-3">Client Endpoint</th>
                                                 <th className="p-3">Server Endpoint</th>
-                                                <th className="p-3">Turns</th>
+                                                <th className="p-3">Steps</th>
                                                 <th className="p-3">Payload</th>
                                                 <th className="p-3">Security & Classification</th>
                                             </tr>
@@ -804,7 +804,7 @@ export const PcapReplayModal: React.FC<PcapReplayModalProps> = ({
                                                                 {f.server_ip}:{f.server_port}
                                                             </td>
                                                             <td className="p-3 font-bold text-text-primary">
-                                                                {f.turns_count} turns
+                                                                {f.turns_count} steps
                                                             </td>
                                                             <td className="p-3 text-text-muted">
                                                                 {f.payload_bytes?.toLocaleString()} B
@@ -1120,7 +1120,7 @@ export const PcapReplayModal: React.FC<PcapReplayModalProps> = ({
                                             <span>Selected Profile: {currentProf.name || currentProf.file_name}</span>
                                         </span>
                                         <span className="text-[10px] text-text-muted">
-                                            {currentProf.total_turns || 0} L7 turns • Category: <span className="uppercase font-semibold text-indigo-400">{currentProf.category || 'custom'}</span>
+                                            {currentProf.total_turns || 0} L7 steps • Category: <span className="uppercase font-semibold text-indigo-400">{currentProf.category || 'custom'}</span>
                                         </span>
                                     </div>
 
@@ -1240,7 +1240,7 @@ export const PcapReplayModal: React.FC<PcapReplayModalProps> = ({
                                                 <Activity size={14} className="animate-pulse" />
                                                 Active Server Replay Session
                                             </span>
-                                            <span className="text-[10px] font-mono text-text-muted">{serverStartedEv.total_turns} turns expected</span>
+                                            <span className="text-[10px] font-mono text-text-muted">{serverStartedEv.total_turns} steps expected</span>
                                         </div>
                                         <div className="flex items-center gap-2 font-mono text-xs text-text-primary">
                                             <span className="text-text-muted">Remote client:</span>
@@ -1277,7 +1277,7 @@ export const PcapReplayModal: React.FC<PcapReplayModalProps> = ({
                                                      ev.event === 'server_listening' ? <span className="text-indigo-300 font-semibold">Listening on {ev.bind_ip}:{ev.port}</span> :
                                                      ev.event === 'port_fallback' ? <span className="text-amber-400 font-semibold">{ev.reason}</span> :
                                                      ev.text ? <span className="text-indigo-300">{ev.text}</span> :
-                                                     ev.sender ? `Turn #${ev.seq} (${ev.sender}) - ${ev.bytes}B in ${ev.duration_ms}ms` :
+                                                     ev.sender ? `Step #${ev.seq} (${ev.sender}) - ${ev.bytes}B in ${ev.duration_ms}ms` :
                                                      JSON.stringify(ev)}
                                                 </span>
                                             </div>
