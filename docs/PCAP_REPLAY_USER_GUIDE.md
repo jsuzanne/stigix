@@ -94,6 +94,15 @@ Only the Layer 7 application payload is replayed, while Layer 3 and Layer 4 use 
    - **Scenario Name**: Give your profile an intuitive name (e.g., `Log4j-Exploit-Simulation`, `VoIP-SIP-Call`).
    - **Default Server Port**: Specify the listener port (defaults to the original port or `10080`).
    - **Scrub Credentials**: Leave checked to automatically redact emails, passwords, and API keys.
+
+> [!NOTE]
+> **Why is Port 10080 so frequently assigned by default?**
+> The Stigix parser automatically protects against socket collisions via `RESERVED_PORTS = {80, 443, 8080..8090, 8443}`:
+> - Ports $< 1024$ (like standard HTTP port 80) require root privileges under Linux and would conflict with host reverse-proxies or web servers.
+> - Stigix automatically remaps any reserved port using the formula: $\text{Effective Port} = 10000 + \text{Original Port}$.
+> - Since the vast majority of web exploit kits and PCAP traces were captured on port **80**, the compiled replay listener defaults to **`10080`** ($10000 + 80$). HTTPS port 443 becomes `10443`.
+> - The original port (`80`) is preserved in the profile metadata for reference. You can override this port at any time.
+
 4. Click **`Compile & Save Profile`**.
 
 ---
@@ -221,6 +230,9 @@ To perform continuous load testing, firewall session table stress testing, or lo
 **A**: Ensure that the **Server Mode** listener is actively running on the target machine on the exact same port (`10080` by default). Remember:
 * If testing across SD-WAN from **BR8 ➔ DC1**, start the Server on **DC1** and launch the Client from **BR8** towards `192.168.203.100`.
 * If testing on a single machine (**Loopback**), target `127.0.0.1`.
+
+### Q: Why is port 10080 so frequently assigned as the default replay port?
+**A**: When a PCAP is compiled into a `.stx-replay` profile, Stigix evaluates the captured destination port against `RESERVED_PORTS` (`80`, `443`, `8080..8090`, `8443`). Because binding ports $< 1024$ requires `root` privileges under Linux and often clashes with local reverse-proxies (Nginx/Apache), Stigix automatically adds 10,000 to reserved ports. Since the vast majority of web captures and exploit kits target standard HTTP port 80, the replay port becomes **`10080`** ($80 + 10000$). The original port is retained in the profile metadata and you can override the port at any time.
 
 ### Q: Does the PCAP replay expose my real passwords or production IP addresses?
 **A**: No. The PCAP compilation engine automatically scrubs sensitive credentials (Basic Auth, Bearer tokens, passwords, emails). Furthermore, original L3 IP addresses from the capture are completely discarded: all replayed packets use the live, valid IP addresses of your Stigix hosts.
