@@ -8,6 +8,7 @@ All notable changes made specifically on the `v2` branch are documented in this 
 - **feat(pcap-engine)**: Added intelligent conflict avoidance in `engines/pcap_parser.py`. If captured flows use ports conflicting with Stigix web daemons or core services (ports `8443`, `8080..8090`, `80`, `443`), the profile compiler automatically remaps the replay target port (`10000 + port` e.g., `18443`), preserving the original captured port metadata while guaranteeing conflict-free execution.
 - **feat(ui)**: Enhanced `PcapReplayModal.tsx` with customizable target replay port input, real-time conflict warning banner, automatic peer server listener discovery polling, 1-click profile deletion across the mesh, and a dedicated `"Auto-sync Fleet"` status badge.
 - **feat(api)**: Added `DELETE /api/pcap/profiles/:filename` endpoint and enhanced `POST /api/pcap/profiles/upload` with automatic file destination routing and provisioning sync callbacks.
+- **fix(topology)**: Extracted Topology header and Logical Overlay View widget into a dedicated Top Bar outside of the ReactFlow drawing canvas in `Topology.tsx`. Completely eliminates node overlap and truncation for top-tier Datacenter/Hub sites during canvas zooming, panning, and site focus mode.
 
 ## [v2.0.145] - 2026-10-03 — Fix: Multi-Platform Docker Builds for Release Tags (AMD64 + ARM64) & Security UI Refactor
 
