@@ -76,7 +76,6 @@ import type {
 import { CustomAppWizardModal } from './components/custom-tcp/CustomAppWizardModal';
 import { CustomAppImportModal } from './components/custom-tcp/CustomAppImportModal';
 import { PrismaAppSyncModal } from './components/custom-tcp/PrismaAppSyncModal';
-import { PcapReplayModal } from './components/custom-tcp/PcapReplayModal';
 import { MicroSparkline } from './components/custom-tcp/MicroSparkline';
 import { SessionDeepDiveDrawer } from './components/custom-tcp/SessionDeepDiveDrawer';
 
@@ -107,8 +106,6 @@ export const CustomApps: React.FC<CustomAppsProps> = ({ token }) => {
     const [isWizardOpen, setIsWizardOpen] = useState(false);
     const [isImportModalOpen, setIsImportModalOpen] = useState(false);
     const [isPrismaModalOpen, setIsPrismaModalOpen] = useState(false);
-    const [isPcapModalOpen, setIsPcapModalOpen] = useState(false);
-    const [isPcapEnabled, setIsPcapEnabled] = useState(false);
     const [editingApp, setEditingApp] = useState<CustomTcpApplicationConfig | null>(null);
     const [peerTestModal, setPeerTestModal] = useState<{ isOpen: boolean; peerId: string; peerName: string; host: string; port: number } | null>(null);
     const [peerTestResult, setPeerTestResult] = useState<{ loading: boolean; success?: boolean; rttMs?: number; error?: string } | null>(null);
@@ -133,15 +130,6 @@ export const CustomApps: React.FC<CustomAppsProps> = ({ token }) => {
     const loadConfig = async () => {
         setIsLoading(true);
         try {
-            // Check PCAP feature flag status
-            try {
-                const uiRes = await gFetch('/api/config/ui');
-                if (uiRes.ok) {
-                    const uiData = await uiRes.json();
-                    setIsPcapEnabled(Boolean(uiData.enablePcapReplay));
-                }
-            } catch (_) {}
-
             const res = await gFetch('/api/custom-tcp-apps', {
                 headers: { 'Authorization': `Bearer ${token}` }
             });
@@ -863,18 +851,6 @@ const secs = seconds % 60;
                         <span>Import</span>
                     </button>
 
-                    {/* PCAP Replay Button (Only visible when ENABLE_PCAP_REPLAY=true) */}
-                    {isPcapEnabled && (
-                        <button
-                            onClick={() => setIsPcapModalOpen(true)}
-                            className="h-[32px] px-3 border rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-colors shadow-sm cursor-pointer bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-600 dark:text-indigo-400 border-indigo-500/30"
-                            title="Stateful PCAP Replay Engine"
-                        >
-                            <Layers size={13} className="text-indigo-400" />
-                            <span>PCAP Replay</span>
-                        </button>
-                    )}
-
                     {/* New App Button */}
                     <button
                         onClick={() => {
@@ -1525,14 +1501,6 @@ const secs = seconds % 60;
                 onClose={() => setIsPrismaModalOpen(false)}
                 token={token}
                 applications={applications}
-            />
-
-            {/* PCAP Stateful Replay Modal */}
-            <PcapReplayModal
-                isOpen={isPcapModalOpen}
-                onClose={() => setIsPcapModalOpen(false)}
-                token={token}
-                isPcapEnabled={isPcapEnabled}
             />
         </div>
     );

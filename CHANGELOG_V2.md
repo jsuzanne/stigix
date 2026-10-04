@@ -8,7 +8,7 @@ All notable changes made specifically on the `v2` branch are documented in this 
   - Guarded the top horizontal navigation button in `web-dashboard/src/App.tsx` behind `isPcapEnabled`.
   - Added route guard `useEffect` in `App.tsx` that silently redirects cached views from `view === 'pcap_replay'` back to `dashboard` when the feature flag is absent or false.
   - Guarded the component render `{view === 'pcap_replay' && isPcapEnabled && <PcapReplay ... />}` to ensure no inactive node renders the engine.
-  - Completely hid the "PCAP Replay" button in the `CustomApps.tsx` toolbar when `isPcapEnabled` is false.
+  - Completely removed the redundant "PCAP Replay" button and modal from `CustomApps.tsx` toolbar, keeping PCAP Replay exclusively in its dedicated top-level view.
   - Added `enablePcapReplay` boolean to `/api/features` in `server.ts` for unified feature introspection.
 - **feat(site)**: Reorganized `site/index.html` Core Capabilities datasheet back to natural thematic order (SaaS Traffic Generation first, followed by Digital Experience, Security Validation, AI Security, IoT, Voice, Failover Monitoring, VyOS Control, Custom TCP, PCAP Replay, Global Provisioning, Zero-Touch Mesh, Remote View, CLI, and MCP Server). Added discrete date tags (`Sep 2026`, `Oct 2026`) instead of disruptive badges.
 
