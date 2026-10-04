@@ -159,16 +159,42 @@ export const PcapReplay: React.FC<PcapReplayProps> = ({ token }) => {
         return () => clearInterval(interval);
     }, [pollActiveJobs]);
 
-    // Auto-select remote peer when entering client mode
+    // Auto-select remote peer or leader when entering client mode
     useEffect(() => {
-        if (replayRole === 'client' && serverNodeId === 'local' && peers.length > 0) {
-            const remotePeer = peers.find(p => p.instance_id !== activePeerId) || peers[0];
-            if (remotePeer) {
-                setServerNodeId(remotePeer.instance_id);
-                setCustomTargetIp(remotePeer.ip_private || '127.0.0.1');
+        if (replayRole === 'client' && peers.length > 0) {
+            const leaderPeer = peers.find(p => p.is_leader && p.instance_id !== activePeerId);
+            const remotePeer = leaderPeer || peers.find(p => p.instance_id !== activePeerId) || peers[0];
+            if (remotePeer && remotePeer.ip_private) {
+                if (serverNodeId === 'local' || !customTargetIp || customTargetIp === '127.0.0.1') {
+                    setServerNodeId(remotePeer.instance_id);
+                    setCustomTargetIp(remotePeer.ip_private);
+                }
             }
         }
-    }, [replayRole, peers, activePeerId, serverNodeId]);
+    }, [replayRole, peers, activePeerId, serverNodeId, customTargetIp]);
+
+    // Fallback: detect default Leader IP from registry status
+    useEffect(() => {
+        const detectLeaderFromRegistry = async () => {
+            try {
+                const res = await gFetch('/api/registry/status');
+                if (res.ok) {
+                    const status = await res.json();
+                    let leaderIp = status?.leader_info?.ip;
+                    if (!leaderIp && status?.static_leader_url) {
+                        try {
+                            const u = new URL(status.static_leader_url);
+                            leaderIp = u.hostname;
+                        } catch {}
+                    }
+                    if (leaderIp && (!customTargetIp || customTargetIp === '127.0.0.1')) {
+                        setCustomTargetIp(leaderIp);
+                    }
+                }
+            } catch {}
+        };
+        detectLeaderFromRegistry();
+    }, [gFetch, customTargetIp]);
 
     // Auto-detect default server IP when serverNodeId changes
     useEffect(() => {
@@ -543,6 +569,31 @@ export const PcapReplay: React.FC<PcapReplayProps> = ({ token }) => {
             );
         }
 
+        if (ev === 'udp_datagram_sent') {
+            return (
+                <div key={idx} className="flex items-center gap-2 py-0.5 text-[10px]">
+                    <span className="text-text-muted/40 select-none text-[8px] font-mono">[{idx + 1}]</span>
+                    <span className="px-1.5 py-0.2 rounded font-black uppercase text-[8px] flex items-center gap-1 bg-cyan-500/20 text-cyan-400 border border-cyan-500/30">
+                        ⬆️ UDP ➔ {log.target_ip}:{log.target_port}
+                    </span>
+                    {log.seq !== undefined && <span className="font-black text-text-primary">Turn #{log.seq}</span>}
+                    <span className="text-text-secondary font-mono">{log.bytes} bytes</span>
+                </div>
+            );
+        }
+
+        if (ev === 'udp_datagram_received') {
+            return (
+                <div key={idx} className="flex items-center gap-2 py-0.5 text-[10px]">
+                    <span className="text-text-muted/40 select-none text-[8px] font-mono">[{idx + 1}]</span>
+                    <span className="px-1.5 py-0.2 rounded font-black uppercase text-[8px] flex items-center gap-1 bg-teal-500/20 text-teal-400 border border-teal-500/30">
+                        ⬇️ UDP  {log.client_ip}:{log.client_port}
+                    </span>
+                    <span className="text-text-secondary font-mono">{log.bytes} bytes</span>
+                </div>
+            );
+        }
+
         if (ev === 'session_finished' || ev === 'client_session_finished') {
             const isBypass = log.verdict === 'Bypass';
             const isReset = log.verdict?.includes('Reset');
@@ -676,26 +727,180 @@ export const PcapReplay: React.FC<PcapReplayProps> = ({ token }) => {
                         <span>PCAP Replay is currently inactive. Ensure <code className="font-mono bg-black/30 px-1 py-0.5 rounded text-amber-300">ENABLE_PCAP_REPLAY=true</code> is defined in your environment file.</span>
                     </div>
                 )}
+
+                {/* Integrated Stateful Replay Control Ribbon */}
+                <div className="mt-3 pt-3 border-t border-border/60 flex flex-wrap items-center justify-between gap-3">
+                    {/* Left: Role Switcher & Inline Parameters */}
+                    <div className="flex flex-wrap items-center gap-2.5">
+                        {/* Role Switcher */}
+                        <div className="flex p-0.5 bg-black/40 border border-border rounded-xl">
+                            <button
+                                type="button"
+                                onClick={() => setReplayRole('server')}
+                                className={`py-1.5 px-3 rounded-lg text-xs font-black uppercase tracking-wider transition-all flex items-center gap-1.5 cursor-pointer ${
+                                    replayRole === 'server'
+                                        ? 'bg-purple-600 text-white shadow-sm shadow-purple-600/25'
+                                        : 'text-text-muted hover:text-text-primary'
+                                }`}
+                            >
+                                <Headphones size={13} />
+                                <span>Server Mode</span>
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setReplayRole('client')}
+                                className={`py-1.5 px-3 rounded-lg text-xs font-black uppercase tracking-wider transition-all flex items-center gap-1.5 cursor-pointer ${
+                                    replayRole === 'client'
+                                        ? 'bg-emerald-600 text-white shadow-sm shadow-emerald-600/25'
+                                        : 'text-text-muted hover:text-text-primary'
+                                }`}
+                            >
+                                <Play size={13} />
+                                <span>Client Mode</span>
+                            </button>
+                        </div>
+
+                        {/* Inline Role Parameters */}
+                        {replayRole === 'server' ? (
+                            <div className="flex items-center gap-2 text-xs">
+                                <span className="text-[11px] text-text-muted font-bold font-mono bg-black/30 px-2 py-1 rounded-lg border border-border">
+                                    Bind: 0.0.0.0
+                                </span>
+                                <div className="flex items-center gap-1.5 bg-black/30 px-2.5 py-1 rounded-lg border border-border">
+                                    <span className="text-[10px] text-text-muted font-bold uppercase">Port:</span>
+                                    <input
+                                        type="number"
+                                        value={portOverride}
+                                        onChange={(e) => setPortOverride(e.target.value)}
+                                        placeholder="18443"
+                                        className="w-16 bg-transparent text-xs font-mono font-bold text-text-primary focus:outline-none"
+                                    />
+                                </div>
+                            </div>
+                        ) : (
+                            <div className="flex flex-wrap items-center gap-2 text-xs">
+                                {/* Target Peer Selector */}
+                                <div className="flex items-center gap-1.5 bg-black/30 px-2.5 py-1 rounded-lg border border-border">
+                                    <Server size={11} className="text-purple-400" />
+                                    <select
+                                        value={serverNodeId}
+                                        onChange={(e) => setServerNodeId(e.target.value)}
+                                        className="bg-transparent text-xs font-bold text-text-primary focus:outline-none cursor-pointer"
+                                    >
+                                        {peers.map((peer) => (
+                                            <option key={peer.instance_id} value={peer.instance_id} className="bg-card text-text-primary">
+                                                {peer.site || peer.instance_id} {peer.is_leader ? '(Leader)' : ''} ({peer.ip_private || 'No IP'})
+                                            </option>
+                                        ))}
+                                        <option value="local" className="bg-card text-text-primary">Local Node (127.0.0.1)</option>
+                                    </select>
+                                </div>
+
+                                {/* Destination IP */}
+                                <div className="flex items-center gap-1.5 bg-black/30 px-2.5 py-1 rounded-lg border border-border">
+                                    <Globe size={11} className="text-blue-400" />
+                                    <input
+                                        type="text"
+                                        value={customTargetIp}
+                                        onChange={(e) => setCustomTargetIp(e.target.value)}
+                                        placeholder="192.168.203.100"
+                                        className="w-28 bg-transparent text-xs font-mono font-bold text-text-primary focus:outline-none"
+                                    />
+                                </div>
+
+                                {/* Port */}
+                                <div className="flex items-center gap-1.5 bg-black/30 px-2.5 py-1 rounded-lg border border-border">
+                                    <span className="text-[10px] text-text-muted font-bold uppercase">Port:</span>
+                                    <input
+                                        type="number"
+                                        value={portOverride}
+                                        onChange={(e) => setPortOverride(e.target.value)}
+                                        placeholder="Port"
+                                        className="w-16 bg-transparent text-xs font-mono font-bold text-text-primary focus:outline-none"
+                                    />
+                                </div>
+
+                                {/* Loop Toggle */}
+                                <label className="flex items-center gap-1.5 cursor-pointer text-[10px] font-bold text-text-muted hover:text-text-primary bg-black/30 px-2 py-1 rounded-lg border border-border">
+                                    <input
+                                        type="checkbox"
+                                        checked={isLooping}
+                                        onChange={(e) => setIsLooping(e.target.checked)}
+                                        className="rounded border-border accent-emerald-500 cursor-pointer"
+                                    />
+                                    <span>Loop</span>
+                                </label>
+                            </div>
+                        )}
+
+                        {/* Telemetry Path Pill */}
+                        <div className={`hidden xl:flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-[10px] font-mono ${
+                            customTargetIp === '127.0.0.1' || serverNodeId === 'local'
+                                ? 'bg-amber-500/10 border-amber-500/30 text-amber-300'
+                                : 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300'
+                        }`}>
+                            {customTargetIp === '127.0.0.1' || serverNodeId === 'local' ? (
+                                <span>⚠️ Loopback 127.0.0.1</span>
+                            ) : (
+                                <span>⚡ SD-WAN: Local ➔ {serverNodeId} ({customTargetIp})</span>
+                            )}
+                        </div>
+                    </div>
+
+                    {/* Right: Primary Action Button */}
+                    <div className="flex items-center gap-2">
+                        {activeJob?.status === 'running' ? (
+                            <button
+                                type="button"
+                                onClick={handleStopReplay}
+                                className="px-4 py-1.5 rounded-xl bg-red-600 hover:bg-red-500 text-white font-black uppercase tracking-wider text-xs flex items-center gap-1.5 shadow-md shadow-red-600/20 cursor-pointer transition-all animate-pulse"
+                            >
+                                <Square size={13} />
+                                <span>Stop {activeJob.role === 'server' ? 'Server Listener' : 'Client Replay'} (PID: {activeJob.pid})</span>
+                            </button>
+                        ) : replayRole === 'server' ? (
+                            <button
+                                type="button"
+                                onClick={handleLaunchReplay}
+                                disabled={isStartingReplay || !selectedProfileFile}
+                                className="px-4 py-1.5 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-black uppercase tracking-wider text-xs flex items-center gap-1.5 shadow-md shadow-purple-600/20 cursor-pointer transition-all disabled:opacity-50"
+                            >
+                                <Headphones size={13} />
+                                <span>{isStartingReplay ? 'Starting...' : `Start Server Listener (Port ${portOverride || 'Default'})`}</span>
+                            </button>
+                        ) : (
+                            <button
+                                type="button"
+                                onClick={handleLaunchReplay}
+                                disabled={isStartingReplay || !selectedProfileFile}
+                                className="px-4 py-1.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-500 hover:from-emerald-500 hover:to-teal-400 text-white font-black uppercase tracking-wider text-xs flex items-center gap-1.5 shadow-md shadow-emerald-600/20 cursor-pointer transition-all disabled:opacity-50"
+                            >
+                                <Play size={13} />
+                                <span>{isStartingReplay ? 'Connecting...' : `Launch Client Replay ➔ ${customTargetIp || '192.168.203.100'}`}</span>
+                            </button>
+                        )}
+                    </div>
+                </div>
             </div>
 
-            {/* ─── Two-Column Main Content Grid ─── */}
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-3.5">
+            {/* ─── Three-Column Main Workspace ─── */}
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-3.5 h-[calc(100vh-215px)] min-h-[500px]">
 
-                {/* ─── Left Column: Profiles Catalogue (Zero-Config) ─── */}
-                <div className="lg:col-span-5 flex flex-col">
-                    <div className="bg-card border border-border rounded-2xl p-3.5 shadow-xl flex flex-col h-[calc(100vh-175px)] min-h-[500px]">
+                {/* ─── Column 1: Profiles Catalogue (Narrow: lg:col-span-3) ─── */}
+                <div className="lg:col-span-3 flex flex-col h-full overflow-hidden">
+                    <div className="bg-card border border-border rounded-2xl p-3 shadow-xl flex flex-col h-full overflow-hidden">
                         {/* Catalogue Header */}
-                        <div className="flex items-center justify-between pb-2.5 border-b border-border shrink-0">
+                        <div className="flex items-center justify-between pb-2 border-b border-border shrink-0">
                             <div>
                                 <h2 className="text-xs font-black text-text-primary uppercase tracking-tight flex items-center gap-1.5">
-                                    <FileCode size={14} className="text-indigo-400" />
-                                    <span>Replay Profiles Catalogue</span>
+                                    <FileCode size={13} className="text-indigo-400" />
+                                    <span>Profiles Catalogue</span>
                                 </h2>
                                 <p className="text-[9px] text-text-muted font-bold tracking-wider mt-0.5">
-                                    {profiles.length} COMPILED PROFILES AVAILABLE
+                                    {profiles.length} COMPILED
                                 </p>
                             </div>
-                            <span className="text-[9px] font-black text-indigo-400 bg-indigo-500/10 px-1.5 py-0.5 rounded border border-indigo-500/20">
+                            <span className="text-[8px] font-black text-indigo-400 bg-indigo-500/10 px-1.5 py-0.5 rounded border border-indigo-500/20">
                                 Zero-Config
                             </span>
                         </div>
@@ -703,13 +908,13 @@ export const PcapReplay: React.FC<PcapReplayProps> = ({ token }) => {
                         {/* Search and Category Filters */}
                         <div className="py-2 space-y-1.5 border-b border-border/50 shrink-0">
                             <div className="relative">
-                                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 text-text-muted" size={12} />
+                                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 text-text-muted" size={11} />
                                 <input
                                     type="text"
-                                    placeholder="Search profiles..."
+                                    placeholder="Search..."
                                     value={searchQuery}
                                     onChange={(e) => setSearchQuery(e.target.value)}
-                                    className="w-full bg-card-secondary/50 border border-border rounded-lg pl-8 pr-2.5 py-1 text-xs text-text-primary placeholder:text-text-muted focus:outline-none focus:ring-1 focus:ring-indigo-500/50"
+                                    className="w-full bg-card-secondary/50 border border-border rounded-lg pl-7 pr-2 py-1 text-[11px] text-text-primary placeholder:text-text-muted focus:outline-none focus:ring-1 focus:ring-indigo-500/50"
                                 />
                             </div>
 
@@ -720,7 +925,7 @@ export const PcapReplay: React.FC<PcapReplayProps> = ({ token }) => {
                                         <button
                                             key={cat}
                                             onClick={() => setCategoryFilter(cat)}
-                                            className={`px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-wider transition-all whitespace-nowrap cursor-pointer ${
+                                            className={`px-1.5 py-0.2 rounded text-[8px] font-black uppercase tracking-wider transition-all whitespace-nowrap cursor-pointer ${
                                                 categoryFilter === cat
                                                     ? 'bg-indigo-600 text-white shadow-sm shadow-indigo-600/20'
                                                     : 'bg-card-secondary/50 hover:bg-card-secondary text-text-muted hover:text-text-primary'
@@ -733,18 +938,17 @@ export const PcapReplay: React.FC<PcapReplayProps> = ({ token }) => {
                             )}
                         </div>
 
-                        {/* Profile List Container (Compact 2-line cards, internal widget scroll) */}
-                        <div className="flex-1 min-h-0 overflow-y-auto pt-2 space-y-1.5 pr-1 scrollbar-thin scrollbar-thumb-border">
+                        {/* Profile List Container */}
+                        <div className="flex-1 min-h-0 overflow-y-auto pt-1.5 space-y-1.5 pr-1 scrollbar-thin scrollbar-thumb-border">
                             {isLoading ? (
                                 <div className="flex flex-col items-center justify-center h-48 text-text-muted gap-2">
-                                    <RefreshCw className="animate-spin" size={18} />
-                                    <span className="text-xs">Loading profile catalogue...</span>
+                                    <RefreshCw className="animate-spin" size={16} />
+                                    <span className="text-[11px]">Loading catalogue...</span>
                                 </div>
                             ) : filteredProfiles.length === 0 ? (
-                                <div className="flex flex-col items-center justify-center h-48 text-text-muted text-center p-4 border-2 border-dashed border-border/60 rounded-xl">
-                                    <FileCode size={26} className="opacity-30 mb-2" />
-                                    <p className="text-xs font-bold">No Replay Profiles Found</p>
-                                    <p className="text-[10px] text-text-muted mt-1">Import a PCAP capture or upload an existing .stx-replay package to get started.</p>
+                                <div className="flex flex-col items-center justify-center h-48 text-text-muted text-center p-3 border-2 border-dashed border-border/60 rounded-xl">
+                                    <FileCode size={22} className="opacity-30 mb-1" />
+                                    <p className="text-[11px] font-bold">No Profiles Found</p>
                                 </div>
                             ) : (
                                 filteredProfiles.map(p => {
@@ -755,64 +959,61 @@ export const PcapReplay: React.FC<PcapReplayProps> = ({ token }) => {
                                             key={p.file_name}
                                             onClick={() => setSelectedProfileFile(p.file_name)}
                                             title={p.file_name}
-                                            className={`py-2 px-2.5 rounded-xl border transition-all cursor-pointer relative group ${
+                                            className={`py-1.5 px-2 rounded-xl border transition-all cursor-pointer relative group ${
                                                 isSelected
                                                     ? 'bg-indigo-500/15 border-indigo-500/50 shadow-sm shadow-indigo-500/10'
                                                     : 'bg-card-secondary/25 hover:bg-card-secondary/60 border-border/60'
                                             }`}
                                         >
-                                            {/* Line 1: Scenario Name + Category Badge + Quick Actions */}
-                                            <div className="flex items-center justify-between gap-1.5">
-                                                <div className="flex items-center gap-1.5 min-w-0 flex-1">
-                                                    <span className="text-xs font-bold text-text-primary truncate">
+                                            <div className="flex items-center justify-between gap-1">
+                                                <div className="flex items-center gap-1 min-w-0 flex-1">
+                                                    <span className="text-[11px] font-bold text-text-primary truncate">
                                                         {p.name || p.file_name.replace('.stx-replay', '')}
                                                     </span>
                                                     {p.category && (
-                                                        <span className="text-[8px] px-1.5 py-0.2 bg-card-secondary text-text-secondary border border-border rounded font-black uppercase shrink-0">
+                                                        <span className="text-[7px] px-1 py-0.2 bg-card-secondary text-text-secondary border border-border rounded font-black uppercase shrink-0">
                                                             {p.category}
                                                         </span>
                                                     )}
                                                 </div>
 
-                                                {/* Action Buttons (Edit / Download / Delete) */}
                                                 <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
                                                     <button
                                                         onClick={(e) => { e.stopPropagation(); handleOpenEditModal(p); }}
-                                                        className="p-1 hover:bg-card-secondary rounded text-text-muted hover:text-indigo-400 transition-colors cursor-pointer"
-                                                        title="Edit profile parameters (Name, Port, Category, Description)"
+                                                        className="p-0.5 hover:bg-card-secondary rounded text-text-muted hover:text-indigo-400 transition-colors cursor-pointer"
+                                                        title="Edit profile"
                                                     >
                                                         <Edit3 size={11} />
                                                     </button>
                                                     <button
                                                         onClick={(e) => { e.stopPropagation(); handleDownloadProfile(p.file_name); }}
-                                                        className="p-1 hover:bg-card-secondary rounded text-text-muted hover:text-text-primary transition-colors cursor-pointer"
-                                                        title="Download .stx-replay file"
+                                                        className="p-0.5 hover:bg-card-secondary rounded text-text-muted hover:text-text-primary transition-colors cursor-pointer"
+                                                        title="Download"
                                                     >
                                                         <Download size={11} />
                                                     </button>
                                                     <button
                                                         onClick={(e) => { e.stopPropagation(); handleDeleteProfile(p.file_name); }}
-                                                        className="p-1 hover:bg-red-500/20 rounded text-text-muted hover:text-red-400 transition-colors cursor-pointer"
-                                                        title="Delete profile across mesh"
+                                                        className="p-0.5 hover:bg-red-500/20 rounded text-text-muted hover:text-red-400 transition-colors cursor-pointer"
+                                                        title="Delete"
                                                     >
                                                         <Trash2 size={11} />
                                                     </button>
                                                 </div>
                                             </div>
 
-                                            {/* Line 2: Inline Metadata (Turns, Port, Size) */}
-                                            <div className="flex items-center gap-2 mt-1 text-[10px] text-text-muted">
+                                            <div className="flex items-center gap-2 mt-0.5 text-[9px] text-text-muted">
                                                 <span className="flex items-center gap-1 font-semibold text-text-secondary">
-                                                    <Radio size={9} className="text-indigo-400" />
+                                                    <Radio size={8} className="text-indigo-400" />
                                                     <span>{p.total_turns || 0} turns</span>
                                                 </span>
                                                 {flow?.server_port && (
-                                                    <span className="font-mono text-purple-400 font-bold bg-purple-500/10 px-1.5 py-0.2 rounded border border-purple-500/20 text-[9px]">
+                                                    <span className="font-mono text-purple-400 font-bold bg-purple-500/10 px-1 py-0.2 rounded border border-purple-500/20 text-[8px]">
                                                         Port {flow.server_port}
                                                     </span>
                                                 )}
                                                 {p.size_bytes && (
-                                                    <span className="text-[9px] text-text-muted/60 font-mono ml-auto">
+                                                    <span className="text-[8px] text-text-muted/60 font-mono ml-auto">
                                                         {(p.size_bytes / 1024).toFixed(1)} KB
                                                     </span>
                                                 )}
@@ -825,326 +1026,41 @@ export const PcapReplay: React.FC<PcapReplayProps> = ({ token }) => {
                     </div>
                 </div>
 
-                {/* ─── Right Column: Timeline Inspection & Orchestrator Execution ─── */}
-                <div className="lg:col-span-7 flex flex-col gap-3.5 h-[calc(100vh-175px)] min-h-[500px] overflow-y-auto pr-1 scrollbar-thin scrollbar-thumb-border">
-
-                    {/* 1. Execution & Multi-Node Orchestration Card */}
-                    <div className="bg-card border border-border rounded-2xl p-4 shadow-xl relative overflow-hidden shrink-0">
-                        <div className="flex items-center justify-between pb-3 border-b border-border">
-                            <div>
-                                <h2 className="text-xs font-black text-text-primary uppercase tracking-tight flex items-center gap-1.5">
-                                    <Play size={14} className="text-emerald-400" />
-                                    <span>Replay Orchestrator</span>
-                                </h2>
-                                <p className="text-[9px] text-text-muted font-bold tracking-wider mt-0.5">
-                                    CHOOSE ROLE & EXECUTE CONVERSATION TURNS
-                                </p>
-                            </div>
-
-                            {activeJob?.status === 'running' ? (
-                                <span className={`px-2 py-0.5 border text-[9px] font-black uppercase tracking-wider rounded-lg flex items-center gap-1 animate-pulse ${
-                                    activeJob.role === 'server'
-                                        ? 'bg-purple-500/15 border-purple-500/30 text-purple-400'
-                                        : 'bg-emerald-500/15 border-emerald-500/30 text-emerald-400'
-                                }`}>
-                                    <Activity size={11} /> {activeJob.role === 'server' ? 'Server Listening' : 'Client Replaying'} (PID: {activeJob.pid})
-                                </span>
-                            ) : (
-                                <span className="px-2 py-0.5 bg-card-secondary border border-border text-text-muted text-[9px] font-bold uppercase tracking-wider rounded-lg">
-                                    Ready to Execute
-                                </span>
-                            )}
-                        </div>
-
-                        {/* Role Selector: Server (Listen) vs Client (Play) */}
-                        <div className="pt-3">
-                            <div className="flex p-0.5 bg-card-secondary/70 border border-border rounded-xl gap-1">
-                                <button
-                                    type="button"
-                                    onClick={() => setReplayRole('server')}
-                                    className={`flex-1 py-1.5 px-3 rounded-lg text-xs font-black uppercase tracking-wider transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
-                                        replayRole === 'server'
-                                            ? 'bg-purple-600 text-white shadow-sm shadow-purple-600/25'
-                                            : 'text-text-muted hover:text-text-primary'
-                                    }`}
-                                >
-                                    <Headphones size={13} />
-                                    <span>Server Role (Listen)</span>
-                                </button>
-                                <button
-                                    type="button"
-                                    onClick={() => setReplayRole('client')}
-                                    className={`flex-1 py-1.5 px-3 rounded-lg text-xs font-black uppercase tracking-wider transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
-                                        replayRole === 'client'
-                                            ? 'bg-emerald-600 text-white shadow-sm shadow-emerald-600/25'
-                                            : 'text-text-muted hover:text-text-primary'
-                                    }`}
-                                >
-                                    <Play size={13} />
-                                    <span>Client Role (Play)</span>
-                                </button>
-                            </div>
-                        </div>
-
-                        {/* Configuration Form based on Role */}
-                        <div className="py-3 space-y-3">
-                            {replayRole === 'server' ? (
-                                /* Server Configuration */
-                                <div className="space-y-2.5 bg-purple-500/5 border border-purple-500/20 rounded-xl p-3">
-                                    <div className="flex items-center justify-between text-xs">
-                                        <span className="font-bold text-text-secondary flex items-center gap-1.5 text-[11px]">
-                                            <Server size={13} className="text-purple-400" />
-                                            <span>Listening Interface:</span>
-                                        </span>
-                                        <span className="font-mono text-text-primary font-bold bg-card px-2 py-0.5 rounded border border-border text-[11px]">
-                                            0.0.0.0 (All Interfaces)
-                                        </span>
-                                    </div>
-
-                                    <div>
-                                        <label className="text-[9px] font-black uppercase tracking-wider text-text-muted block mb-1">
-                                            Server Listening Port
-                                        </label>
-                                        <input
-                                            type="number"
-                                            value={portOverride}
-                                            onChange={(e) => setPortOverride(e.target.value)}
-                                            placeholder="Port (e.g. 62910)"
-                                            className="w-full bg-card border border-border rounded-lg px-2.5 py-1.5 text-xs font-mono font-bold text-text-primary focus:outline-none focus:ring-1 focus:ring-purple-500"
-                                        />
-                                        <p className="text-[10px] text-text-muted mt-1 leading-normal">
-                                            Starts a stateful socket listener on this node waiting for incoming client turns from remote peers.
-                                        </p>
-                                    </div>
-                                </div>
-                            ) : (
-                                /* Client Configuration */
-                                <div className="space-y-2.5">
-                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
-                                        {/* Server Node Selector */}
-                                        <div>
-                                            <label className="text-[9px] font-black uppercase tracking-wider text-text-muted block mb-1 flex items-center gap-1">
-                                                <Server size={11} className="text-purple-400" />
-                                                <span>Target Server Host / Peer</span>
-                                            </label>
-                                            <select
-                                                value={serverNodeId}
-                                                onChange={(e) => setServerNodeId(e.target.value)}
-                                                className="w-full bg-card-secondary/70 border border-border rounded-lg px-2.5 py-1.5 text-xs font-bold text-text-primary focus:outline-none focus:ring-1 focus:ring-indigo-500"
-                                            >
-                                                <option value="local">Local Node (127.0.0.1)</option>
-                                                {peers.map(p => (
-                                                    <option key={p.instance_id} value={p.instance_id}>
-                                                        {p.site || p.instance_id} ({p.ip_private || 'No IP'})
-                                                    </option>
-                                                ))}
-                                            </select>
-                                        </div>
-
-                                        {/* Target IP (Auto-filled or Custom) */}
-                                        <div>
-                                            <label className="text-[9px] font-black uppercase tracking-wider text-text-muted block mb-1 flex items-center gap-1">
-                                                <Globe size={11} className="text-blue-400" />
-                                                <span>Destination Server IP / VIP</span>
-                                            </label>
-                                            <input
-                                                type="text"
-                                                value={customTargetIp}
-                                                onChange={(e) => setCustomTargetIp(e.target.value)}
-                                                placeholder="192.168.203.1 or 127.0.0.1"
-                                                className="w-full bg-card-secondary/70 border border-border rounded-lg px-2.5 py-1.5 text-xs font-mono font-bold text-text-primary focus:outline-none focus:ring-1 focus:ring-indigo-500"
-                                            />
-                                        </div>
-                                    </div>
-
-                                    {/* Traffic Path Telemetry Pill */}
-                                    <div className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border text-[10px] font-mono ${
-                                        customTargetIp === '127.0.0.1' || serverNodeId === 'local'
-                                            ? 'bg-amber-500/10 border-amber-500/30 text-amber-300'
-                                            : 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300'
-                                    }`}>
-                                        {customTargetIp === '127.0.0.1' || serverNodeId === 'local' ? (
-                                            <>
-                                                <AlertTriangle size={13} className="text-amber-400 shrink-0" />
-                                                <span><strong>Loopback Mode:</strong> Replaying to this local node (127.0.0.1). Server role must be running locally. To test SD-WAN, select a remote peer above.</span>
-                                            </>
-                                        ) : (
-                                            <>
-                                                <Globe size={13} className="text-emerald-400 shrink-0" />
-                                                <span><strong>SD-WAN Replay Path:</strong> Local Spoke ➔ Remote Peer <strong>{serverNodeId}</strong> ({customTargetIp}:{portOverride || 'Default'})</span>
-                                            </>
-                                        )}
-                                    </div>
-
-                                    {/* Port & Loop Controls */}
-                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-2.5">
-                                        <div>
-                                            <label className="text-[9px] font-black uppercase tracking-wider text-text-muted block mb-1">
-                                                Target Port
-                                            </label>
-                                            <input
-                                                type="number"
-                                                value={portOverride}
-                                                onChange={(e) => setPortOverride(e.target.value)}
-                                                placeholder="Auto from profile"
-                                                className="w-full bg-card-secondary/70 border border-border rounded-lg px-2.5 py-1.5 text-xs font-mono font-bold text-text-primary focus:outline-none focus:ring-1 focus:ring-indigo-500"
-                                            />
-                                        </div>
-
-                                        <div>
-                                            <label className="text-[9px] font-black uppercase tracking-wider text-text-muted block mb-1">
-                                                Continuous Loop
-                                            </label>
-                                            <button
-                                                type="button"
-                                                onClick={() => setIsLooping(!isLooping)}
-                                                className={`w-full py-1.5 px-2.5 border rounded-lg text-xs font-black uppercase tracking-wider transition-all flex items-center justify-between cursor-pointer ${
-                                                    isLooping
-                                                        ? 'bg-indigo-600/20 text-indigo-400 border-indigo-500/40'
-                                                        : 'bg-card-secondary/70 text-text-muted border-border hover:bg-card-secondary'
-                                                }`}
-                                            >
-                                                <span>{isLooping ? 'Loop' : 'Single'}</span>
-                                                <div className={`w-2.5 h-2.5 rounded-full ${isLooping ? 'bg-indigo-400 animate-pulse' : 'bg-border'}`} />
-                                            </button>
-                                        </div>
-
-                                        <div>
-                                            <label className="text-[9px] font-black uppercase tracking-wider text-text-muted block mb-1">
-                                                Interval (s)
-                                            </label>
-                                            <input
-                                                type="number"
-                                                disabled={!isLooping}
-                                                value={loopInterval}
-                                                onChange={(e) => setLoopInterval(Math.max(1, parseInt(e.target.value, 10) || 1))}
-                                                className="w-full bg-card-secondary/70 disabled:opacity-40 border border-border rounded-lg px-2.5 py-1.5 text-xs font-mono font-bold text-text-primary focus:outline-none focus:ring-1 focus:ring-indigo-500"
-                                            />
-                                        </div>
-                                    </div>
-                                </div>
-                            )}
-
-                            {/* Execution Triggers */}
-                            <div className="pt-1 flex items-center gap-2">
-                                {activeJob?.status === 'running' ? (
-                                    <button
-                                        onClick={handleStopReplay}
-                                        className="flex-1 py-2 px-4 bg-red-600 hover:bg-red-500 text-white font-black uppercase tracking-wider text-xs rounded-xl transition-all shadow-md shadow-red-600/25 flex items-center justify-center gap-2 cursor-pointer"
-                                    >
-                                        <Square size={14} /> Stop Active {activeJob.role === 'server' ? 'Server Listener' : 'Client Replay'} (PID: {activeJob.pid})
-                                    </button>
-                                ) : replayRole === 'server' ? (
-                                    <button
-                                        onClick={handleLaunchReplay}
-                                        disabled={isStartingReplay || !selectedProfileFile}
-                                        className="flex-1 py-2.5 px-4 bg-purple-600 hover:bg-purple-500 text-white font-black uppercase tracking-wider text-xs rounded-xl transition-all shadow-md shadow-purple-600/25 flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-                                    >
-                                        <Headphones size={15} />
-                                        <span>{isStartingReplay ? 'Starting Listener...' : `Start Server Listener (Port ${portOverride || 'Default'})`}</span>
-                                    </button>
-                                ) : (
-                                    <button
-                                        onClick={handleLaunchReplay}
-                                        disabled={isStartingReplay || !selectedProfileFile}
-                                        className="flex-1 py-2.5 px-4 bg-gradient-to-r from-emerald-600 to-teal-500 hover:from-emerald-500 hover:to-teal-400 text-white font-black uppercase tracking-wider text-xs rounded-xl transition-all shadow-md shadow-emerald-600/25 flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-                                    >
-                                        <Play size={15} />
-                                        <span>{isStartingReplay ? 'Connecting Client...' : `Launch Client Replay ➔ ${customTargetIp || '127.0.0.1'}:${portOverride || 'Default'}`}</span>
-                                    </button>
-                                )}
-                            </div>
-                        </div>
-
-                        {/* Security Verdict Banner */}
-                        {activeJob && (
-                            <div className="mt-1 pt-2.5 border-t border-border">
-                                <div className="text-[9px] font-black text-text-muted uppercase tracking-wider mb-1.5 flex items-center gap-1">
-                                    <Shield size={11} />
-                                    <span>SASE Security Verdict Telemetry</span>
-                                </div>
-
-                                <div className={`p-2.5 rounded-xl border flex items-center justify-between ${
-                                    activeJob.lastVerdict === 'Bypass'
-                                        ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400'
-                                        : activeJob.lastVerdict?.includes('Reset')
-                                        ? 'bg-red-500/10 border-red-500/30 text-red-400'
-                                        : activeJob.lastVerdict?.includes('Drop')
-                                        ? 'bg-orange-500/10 border-orange-500/30 text-orange-400'
-                                        : activeJob.lastVerdict?.includes('Block Page')
-                                        ? 'bg-amber-500/10 border-amber-500/30 text-amber-400'
-                                        : 'bg-indigo-500/10 border-indigo-500/30 text-indigo-300'
-                                }`}>
-                                    <div className="flex items-center gap-2.5">
-                                        <div className="p-1.5 rounded-lg bg-card">
-                                            {activeJob.lastVerdict === 'Bypass' ? (
-                                                <CheckCircle2 size={18} className="text-emerald-400" />
-                                            ) : activeJob.lastVerdict ? (
-                                                <ShieldAlert size={18} className="text-red-400" />
-                                            ) : (
-                                                <Activity size={18} className="text-indigo-400 animate-pulse" />
-                                            )}
-                                        </div>
-                                        <div>
-                                            <div className="text-xs font-black uppercase tracking-wider">
-                                                {activeJob.lastVerdict || (activeJob.status === 'running' ? `${activeJob.role === 'server' ? 'Server Listening for connections...' : 'Client Executing turns...'}` : 'Replay Stopped')}
-                                            </div>
-                                            <p className="text-[9px] opacity-80 mt-0.5">
-                                                {activeJob.lastVerdict === 'Bypass'
-                                                    ? 'All L7 conversation turns completed successfully with no enforcement drop.'
-                                                    : activeJob.lastVerdict?.includes('Reset')
-                                                    ? 'TCP Connection was abruptly RST by Prisma SASE or Security Gateway.'
-                                                    : activeJob.lastVerdict?.includes('Block Page')
-                                                    ? 'Firewall returned HTTP 403 Access Denied block page.'
-                                                    : activeJob.role === 'server'
-                                                    ? 'Socket bound and awaiting incoming traffic from Stigix spoke client...'
-                                                    : 'Executing turns with synchronous byte comparison...'}
-                                            </p>
-                                        </div>
-                                    </div>
-
-                                    <div className="text-right font-mono text-[11px] font-bold shrink-0">
-                                        <div>PID {activeJob.pid}</div>
-                                        <div className="text-[9px] opacity-60 uppercase">{activeJob.role} · {activeJob.status}</div>
-                                    </div>
-                                </div>
-                            </div>
-                        )}
-                    </div>
-
-                    {/* 2. Zero-Config Profile Sequence Inspector (Turns Timeline) */}
-                    <div className="bg-card border border-border rounded-2xl p-4 shadow-xl shrink-0">
-                        <div className="flex items-center justify-between pb-2.5 border-b border-border">
+                {/* ─── Column 2: Selected Scenario & Turn Sequence (lg:col-span-4) ─── */}
+                <div className="lg:col-span-4 flex flex-col h-full overflow-hidden">
+                    <div className="bg-card border border-border rounded-2xl p-3.5 shadow-xl flex flex-col h-full overflow-hidden">
+                        {/* Header */}
+                        <div className="flex items-center justify-between pb-2 border-b border-border shrink-0">
                             <div>
                                 <h3 className="text-xs font-black text-text-primary uppercase tracking-tight flex items-center gap-1.5">
-                                    <Radio size={14} className="text-purple-400" />
-                                    <span>Conversation Turns Sequence</span>
+                                    <Radio size={13} className="text-purple-400" />
+                                    <span>Conversation Sequence</span>
                                 </h3>
                                 <p className="text-[9px] text-text-muted font-bold tracking-wider mt-0.5">
-                                    {profileDetails ? `${turns.length} DIRECTIONAL APPLICATION TURNS COMPILED` : 'SELECT A PROFILE TO INSPECT'}
+                                    {profileDetails ? `${turns.length} DIRECTIONAL TURNS` : 'SELECT A PROFILE'}
                                 </p>
                             </div>
                             {profileDetails && (
-                                <span className="text-[9px] font-mono text-purple-400 bg-purple-500/10 px-2 py-0.5 rounded border border-purple-500/20">
-                                    Transport: {activeFlow?.transport || 'TCP'}
+                                <span className="text-[9px] font-mono text-purple-400 bg-purple-500/10 px-1.5 py-0.2 rounded border border-purple-500/20">
+                                    {activeFlow?.transport?.toUpperCase() || 'TCP'}
                                 </span>
                             )}
                         </div>
 
                         {isLoadingDetails ? (
-                            <div className="flex flex-col items-center justify-center h-32 text-text-muted gap-2">
-                                <RefreshCw className="animate-spin text-purple-400" size={20} />
-                                <span className="text-xs">Unpacking profile turns...</span>
+                            <div className="flex flex-col items-center justify-center flex-1 text-text-muted gap-2">
+                                <RefreshCw className="animate-spin text-purple-400" size={18} />
+                                <span className="text-xs">Unpacking turns...</span>
                             </div>
                         ) : !profileDetails ? (
-                            <div className="py-6 text-center text-text-muted">
+                            <div className="flex flex-col items-center justify-center flex-1 text-center text-text-muted p-4">
                                 <p className="text-xs font-bold">No Profile Selected</p>
-                                <p className="text-[10px] opacity-70 mt-1">Select a profile from the left catalogue to view its full conversation turn sequence.</p>
+                                <p className="text-[10px] opacity-70 mt-1">Select a profile on the left to inspect its turn sequence.</p>
                             </div>
                         ) : (
-                            <div className="py-2.5 space-y-2.5">
+                            <div className="flex-1 min-h-0 flex flex-col pt-2 gap-2">
                                 {/* Turns Step List */}
-                                <div className="space-y-1.5 max-h-36 overflow-y-auto pr-1 scrollbar-thin scrollbar-thumb-border">
+                                <div className="flex-1 min-h-0 overflow-y-auto space-y-1.5 pr-1 scrollbar-thin scrollbar-thumb-border">
                                     {turns.map((turn: any, idx: number) => {
                                         const isClient = turn.direction === 'client_to_server';
                                         const isTurnSelected = selectedTurnIndex === idx;
@@ -1157,7 +1073,7 @@ export const PcapReplay: React.FC<PcapReplayProps> = ({ token }) => {
                                             <div
                                                 key={idx}
                                                 onClick={() => setSelectedTurnIndex(idx)}
-                                                className={`p-1.5 px-2 rounded-lg border transition-all cursor-pointer flex items-center justify-between gap-2 ${
+                                                className={`p-1.5 px-2 rounded-lg border transition-all cursor-pointer flex items-center justify-between gap-1.5 ${
                                                     isTurnSelected
                                                         ? 'bg-purple-500/15 border-purple-500/50 shadow-sm'
                                                         : isCompleted
@@ -1167,8 +1083,8 @@ export const PcapReplay: React.FC<PcapReplayProps> = ({ token }) => {
                                                         : 'bg-card-secondary/25 hover:bg-card-secondary/60 border-border/50'
                                                 }`}
                                             >
-                                                <div className="flex items-center gap-2">
-                                                    <span className={`w-5 h-5 rounded border flex items-center justify-center font-mono text-[9px] font-black ${
+                                                <div className="flex items-center gap-1.5 min-w-0">
+                                                    <span className={`w-4 h-4 rounded border flex items-center justify-center font-mono text-[8px] font-black shrink-0 ${
                                                         isCompleted
                                                             ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/40'
                                                             : isActive
@@ -1177,37 +1093,32 @@ export const PcapReplay: React.FC<PcapReplayProps> = ({ token }) => {
                                                     }`}>
                                                         {isCompleted ? '✓' : idx + 1}
                                                     </span>
-                                                    <div className="flex items-center gap-1.5">
-                                                        <span className={`px-1.5 py-0.2 rounded text-[8px] font-black uppercase tracking-wider flex items-center gap-1 ${
-                                                            isClient
-                                                                ? 'bg-blue-500/15 text-blue-400 border border-blue-500/30'
-                                                                : 'bg-purple-500/15 text-purple-400 border border-purple-500/30'
-                                                        }`}>
-                                                            {isClient ? <ArrowRight size={9} /> : <ArrowDownRight size={9} />}
-                                                            <span>{isClient ? 'Client ➔ Server' : 'Server ➔ Client'}</span>
-                                                        </span>
-                                                        <span className="text-[9px] font-mono text-text-muted">
-                                                            {turn.payload_len || turn.length || 0} bytes
-                                                        </span>
-                                                    </div>
+                                                    <span className={`px-1 py-0.2 rounded text-[8px] font-black uppercase tracking-wider flex items-center gap-1 shrink-0 ${
+                                                        isClient
+                                                            ? 'bg-blue-500/15 text-blue-400 border border-blue-500/30'
+                                                            : 'bg-purple-500/15 text-purple-400 border border-purple-500/30'
+                                                    }`}>
+                                                        {isClient ? <ArrowRight size={8} /> : <ArrowDownRight size={8} />}
+                                                        <span>{isClient ? 'Client' : 'Server'}</span>
+                                                    </span>
+                                                    <span className="text-[9px] font-mono text-text-muted shrink-0">
+                                                        {turn.payload_len || turn.length || 0}B
+                                                    </span>
                                                 </div>
 
-                                                <div className="flex items-center gap-1.5">
+                                                <div className="flex items-center gap-1 shrink-0">
                                                     {isCompleted && (
-                                                        <span className="px-1.5 py-0.2 rounded bg-emerald-500/20 text-emerald-400 font-black text-[8px] border border-emerald-500/30 flex items-center gap-0.5">
-                                                            <Check size={8} /> DONE
+                                                        <span className="px-1 py-0.2 rounded bg-emerald-500/20 text-emerald-400 font-black text-[7px] border border-emerald-500/30">
+                                                            DONE
                                                         </span>
                                                     )}
                                                     {isActive && (
-                                                        <span className="px-1.5 py-0.2 rounded bg-indigo-500/20 text-indigo-400 font-black text-[8px] border border-indigo-500/30 flex items-center gap-0.5 animate-pulse">
-                                                            <Activity size={8} /> LIVE
+                                                        <span className="px-1 py-0.2 rounded bg-indigo-500/20 text-indigo-400 font-black text-[7px] border border-indigo-500/30 animate-pulse">
+                                                            LIVE
                                                         </span>
                                                     )}
-                                                    <span className={`text-[8px] px-1 py-0.2 rounded border font-bold uppercase ${info.badge}`}>
+                                                    <span className={`text-[7px] px-1 py-0.2 rounded border font-bold uppercase ${info.badge}`}>
                                                         {info.type.split(' ')[0]}
-                                                    </span>
-                                                    <span className="text-[9px] text-text-muted font-mono truncate max-w-[150px]">
-                                                        {previewText || 'Binary Data'}
                                                     </span>
                                                 </div>
                                             </div>
@@ -1217,37 +1128,36 @@ export const PcapReplay: React.FC<PcapReplayProps> = ({ token }) => {
 
                                 {/* Turn Detail Preview */}
                                 {selectedTurn && (
-                                    <div className="bg-card-secondary/40 border border-border rounded-xl p-2.5 font-mono text-xs space-y-1.5">
-                                        <div className="flex items-center justify-between text-[9px] font-black uppercase tracking-wider text-text-muted">
-                                            <div className="flex items-center gap-1.5">
-                                                <span>Turn #{selectedTurnIndex! + 1} Payload Preview</span>
-                                                <span className={`px-1 py-0.2 rounded border text-[8px] font-bold uppercase ${turnAnalysis.badge}`}>
+                                    <div className="bg-card-secondary/40 border border-border rounded-xl p-2 font-mono text-xs space-y-1 shrink-0">
+                                        <div className="flex items-center justify-between text-[8px] font-black uppercase tracking-wider text-text-muted">
+                                            <div className="flex items-center gap-1">
+                                                <span>Turn #{selectedTurnIndex! + 1} Preview</span>
+                                                <span className={`px-1 py-0.2 rounded border text-[7px] font-bold uppercase ${turnAnalysis.badge}`}>
                                                     {turnAnalysis.type}
                                                 </span>
                                             </div>
 
-                                            {/* View Mode Toggle: Hex Dump vs Raw ASCII */}
                                             <div className="flex items-center gap-1 bg-card p-0.5 rounded border border-border">
                                                 <button
                                                     onClick={() => setPayloadViewMode('hex')}
-                                                    className={`px-1.5 py-0.2 rounded text-[8px] font-black uppercase tracking-wider transition-all cursor-pointer ${
+                                                    className={`px-1.5 py-0.2 rounded text-[7px] font-black uppercase tracking-wider transition-all cursor-pointer ${
                                                         payloadViewMode === 'hex' ? 'bg-indigo-600 text-white' : 'text-text-muted hover:text-text-primary'
                                                     }`}
                                                 >
-                                                    Hex Dump
+                                                    Hex
                                                 </button>
                                                 <button
                                                     onClick={() => setPayloadViewMode('raw')}
-                                                    className={`px-1.5 py-0.2 rounded text-[8px] font-black uppercase tracking-wider transition-all cursor-pointer ${
+                                                    className={`px-1.5 py-0.2 rounded text-[7px] font-black uppercase tracking-wider transition-all cursor-pointer ${
                                                         payloadViewMode === 'raw' ? 'bg-indigo-600 text-white' : 'text-text-muted hover:text-text-primary'
                                                     }`}
                                                 >
-                                                    Raw Escaped
+                                                    Raw
                                                 </button>
                                             </div>
                                         </div>
 
-                                        <div className="bg-black/40 border border-border/60 rounded-lg p-2 max-h-24 overflow-y-auto text-[10px] text-text-secondary font-mono leading-normal whitespace-pre-wrap break-all">
+                                        <div className="bg-black/40 border border-border/60 rounded-lg p-1.5 max-h-20 overflow-y-auto text-[9px] text-text-secondary font-mono leading-normal whitespace-pre-wrap break-all">
                                             {payloadViewMode === 'hex'
                                                 ? convertToCleanHex(selectedTurnRawPayload)
                                                 : (selectedTurnRawPayload || 'No preview available')}
@@ -1257,33 +1167,92 @@ export const PcapReplay: React.FC<PcapReplayProps> = ({ token }) => {
                             </div>
                         )}
                     </div>
+                </div>
 
-                    {/* 3. Live Replay Terminal Logs */}
-                    <div className="bg-card border border-border rounded-2xl p-3.5 shadow-xl font-mono shrink-0">
-                        <div className="flex items-center justify-between pb-2 border-b border-border text-text-muted text-xs">
-                            <div className="flex items-center gap-2">
+                {/* ─── Column 3: Live Replay Console & SASE Verdict (lg:col-span-5) ─── */}
+                <div className="lg:col-span-5 flex flex-col gap-2.5 h-full overflow-hidden">
+                    {/* SASE Security Verdict Banner */}
+                    <div className="shrink-0">
+                        <div className={`p-2.5 rounded-2xl border flex items-center justify-between shadow-lg ${
+                            activeJob?.lastVerdict === 'Bypass'
+                                ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400'
+                                : activeJob?.lastVerdict?.includes('Reset')
+                                ? 'bg-red-500/10 border-red-500/30 text-red-400'
+                                : activeJob?.lastVerdict?.includes('Drop')
+                                ? 'bg-orange-500/10 border-orange-500/30 text-orange-400'
+                                : activeJob?.lastVerdict?.includes('Block Page')
+                                ? 'bg-amber-500/10 border-amber-500/30 text-amber-400'
+                                : activeJob?.status === 'running'
+                                ? 'bg-indigo-500/10 border-indigo-500/30 text-indigo-300'
+                                : 'bg-card border-border text-text-muted'
+                        }`}>
+                            <div className="flex items-center gap-2 min-w-0">
+                                <div className="p-1.5 rounded-lg bg-card/80 shrink-0">
+                                    {activeJob?.lastVerdict === 'Bypass' ? (
+                                        <CheckCircle2 size={16} className="text-emerald-400" />
+                                    ) : activeJob?.lastVerdict ? (
+                                        <ShieldAlert size={16} className="text-red-400" />
+                                    ) : activeJob?.status === 'running' ? (
+                                        <Activity size={16} className="text-indigo-400 animate-pulse" />
+                                    ) : (
+                                        <Shield size={16} className="text-text-muted" />
+                                    )}
+                                </div>
+                                <div className="min-w-0">
+                                    <div className="text-xs font-black uppercase tracking-wider truncate">
+                                        {activeJob?.lastVerdict
+                                            ? `VERDICT: ${activeJob.lastVerdict}`
+                                            : activeJob?.status === 'running'
+                                            ? (activeJob.role === 'server' ? 'Server Listening for connections...' : 'Client Executing turns...')
+                                            : 'Replay Engine Idle'}
+                                    </div>
+                                    <p className="text-[9px] opacity-80 mt-0.5 truncate">
+                                        {activeJob?.lastVerdict === 'Bypass'
+                                            ? 'All conversation turns completed successfully with no enforcement drop.'
+                                            : activeJob?.lastVerdict?.includes('Reset')
+                                            ? 'Connection was abruptly RST by SASE / Firewall.'
+                                            : activeJob?.status === 'running'
+                                            ? `${activeJob.role === 'server' ? 'Waiting for incoming spoke client' : `Replaying turns to ${customTargetIp}`}`
+                                            : 'Select a profile and launch replay above'}
+                                    </p>
+                                </div>
+                            </div>
+
+                            {activeJob && (
+                                <div className="text-right font-mono text-[10px] font-bold shrink-0 pl-2">
+                                    <div>PID {activeJob.pid}</div>
+                                    <div className="text-[8px] opacity-60 uppercase">{activeJob.role} · {activeJob.status}</div>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+
+                    {/* Real-Time Live Activity Socket Console */}
+                    <div className="bg-card border border-border rounded-2xl p-3 shadow-xl font-mono flex-1 min-h-0 flex flex-col overflow-hidden">
+                        <div className="flex items-center justify-between pb-2 border-b border-border text-text-muted text-xs shrink-0">
+                            <div className="flex items-center gap-1.5">
                                 <Terminal size={13} className="text-emerald-400" />
-                                <span className="font-black uppercase tracking-widest text-[9px]">Real-Time Replay Socket Console</span>
-                                <span className="text-[9px] text-text-muted/60 font-mono">({terminalLogs.length} events)</span>
+                                <span className="font-black uppercase tracking-widest text-[9px]">Live Activity Console</span>
+                                <span className="text-[9px] text-text-muted/60 font-mono">({terminalLogs.length})</span>
                             </div>
                             
-                            <div className="flex items-center gap-2">
+                            <div className="flex items-center gap-1.5">
                                 <div className="flex items-center bg-black/40 rounded-lg p-0.5 border border-border/60">
                                     <button
                                         type="button"
                                         onClick={() => setConsoleViewMode('formatted')}
-                                        className={`px-2 py-0.5 rounded text-[9px] font-bold transition-all ${
+                                        className={`px-2 py-0.5 rounded text-[8px] font-bold transition-all cursor-pointer ${
                                             consoleViewMode === 'formatted'
                                                 ? 'bg-primary text-black shadow-sm'
                                                 : 'text-text-muted hover:text-text-primary'
                                         }`}
                                     >
-                                        Live Activity
+                                        Live
                                     </button>
                                     <button
                                         type="button"
                                         onClick={() => setConsoleViewMode('raw')}
-                                        className={`px-2 py-0.5 rounded text-[9px] font-bold transition-all ${
+                                        className={`px-2 py-0.5 rounded text-[8px] font-bold transition-all cursor-pointer ${
                                             consoleViewMode === 'raw'
                                                 ? 'bg-primary text-black shadow-sm'
                                                 : 'text-text-muted hover:text-text-primary'
@@ -1296,8 +1265,8 @@ export const PcapReplay: React.FC<PcapReplayProps> = ({ token }) => {
                                     <button
                                         type="button"
                                         onClick={() => setTerminalLogs([])}
-                                        className="px-2 py-0.5 rounded text-[9px] font-semibold text-text-muted hover:text-red-400 hover:bg-red-500/10 border border-border/40 hover:border-red-500/30 transition-all"
-                                        title="Clear console logs"
+                                        className="px-1.5 py-0.5 rounded text-[8px] font-semibold text-text-muted hover:text-red-400 hover:bg-red-500/10 border border-border/40 hover:border-red-500/30 transition-all cursor-pointer"
+                                        title="Clear console"
                                     >
                                         Clear
                                     </button>
@@ -1305,7 +1274,7 @@ export const PcapReplay: React.FC<PcapReplayProps> = ({ token }) => {
                             </div>
                         </div>
 
-                        <div className="mt-2 bg-black/50 border border-border/60 rounded-xl p-2.5 h-32 overflow-y-auto space-y-1 text-[10px] scrollbar-thin scrollbar-thumb-border">
+                        <div className="mt-2 bg-black/50 border border-border/60 rounded-xl p-2 flex-1 min-h-0 overflow-y-auto space-y-1 text-[10px] scrollbar-thin scrollbar-thumb-border">
                             {terminalLogs.length === 0 ? (
                                 <div className="flex items-center justify-center h-full text-text-muted/40 italic text-xs">
                                     Waiting for replay events...

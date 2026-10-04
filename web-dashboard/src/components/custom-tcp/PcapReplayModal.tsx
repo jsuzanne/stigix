@@ -155,9 +155,15 @@ export const PcapReplayModal: React.FC<PcapReplayModalProps> = ({
         };
     }, [isOpen, replayRole, targetIp, portOverride]);
 
-    // Fetch existing profiles on open
+    // Fetch existing profiles and reset modal state on open
     useEffect(() => {
         if (!isOpen) return;
+        setActiveTab('upload');
+        setSelectedFile(null);
+        setTempFileToken(null);
+        setInspectionData(null);
+        setSelectedFlowIds([]);
+        setIsCompiling(false);
         fetchProfiles();
         const interval = setInterval(fetchJobs, 2000);
         return () => clearInterval(interval);

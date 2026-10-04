@@ -483,20 +483,34 @@ def run_udp_client(profile: Dict[str, Any], flow_id: Optional[int], target_ip: s
 
     turns = flow.get("turns", [])
     sent_turns = 0
+    tx_bytes = 0
+    start_time = time.time()
 
     for turn in turns:
         if turn["sender"] == "client":
             payload = base64.b64decode(turn["payload_b64"]) if "payload_b64" in turn else b""
             sock.sendto(payload, (target_ip, server_port))
             sent_turns += 1
+            tx_bytes += len(payload)
             emit_event("udp_datagram_sent", {
+                "seq": turn.get("seq", sent_turns),
                 "target_ip": target_ip,
                 "target_port": server_port,
                 "bytes": len(payload)
             }, json_output)
 
     sock.close()
-    return {"status": "completed", "sent_turns": sent_turns}
+    dur_ms = round((time.time() - start_time) * 1000, 2)
+    res = {
+        "status": "completed",
+        "verdict": "Bypass",
+        "completed_turns": sent_turns,
+        "total_turns": len(turns),
+        "tx_bytes": tx_bytes,
+        "duration_ms": dur_ms
+    }
+    emit_event("client_session_finished", res, json_output)
+    return res
 
 
 def main():
