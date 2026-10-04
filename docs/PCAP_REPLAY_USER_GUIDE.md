@@ -210,6 +210,21 @@ Clicking on any step in the **Conversation Sequence** highlights that specific s
 * **CLEAN ASCII View**: Strips binary framing and displays sanitized HTTP headers, REST JSON, or decoded text.
 * **Copy Payload Action**: 1-click clipboard icon copies raw hex or sanitized ASCII for external analysis in CyberChef or Wireshark.
 
+### 6.1 Automatic L7 Protocol Recognition & Badges
+
+The Stigix inspection engine continuously evaluates each step's binary payload and renders dynamic protocol badges alongside human-readable previews:
+
+| Badge & Color | Protocol Signature | Sample Snippet Displayed |
+|---|---|---|
+| **`HTTP REST`** (Blue) | Standard Web & API Requests/Responses | Method & Path: `GET /api/v1/users...` or `HTTP/1.1 200 OK` |
+| **`SIP Signaling`** (Cyan) | VoIP telephony signaling | `INVITE sip:100@...` or `SIP/2.0 200 OK` |
+| **`TLS Handshake`** (Purple) | SSL/TLS connection negotiation | `ClientHello (TLS 1.3)` or `ServerHello` |
+| **`TLS Encrypted`** (Purple) | Encrypted application data | `Application Data (Encrypted L7) - 1420B` |
+| **`RTP Voice`** (Amber) | Real-time audio media payload | `Media Payload: PCMU (G.711u), Seq #142` |
+| **`DNS Datagram`** (Emerald) | Domain name resolution queries/answers | `DNS Record: c2.malicious-threat.com (64B)` |
+| **`Plaintext`** (Green) | Cleartext ASCII or JSON payloads | First 50 readable characters of the payload |
+| **`Binary L7`** (Indigo) | Proprietary / non-printable binary streams | Hex header representation: `Hex: 00 70 06 00... (114B)` |
+
 ---
 
 ## 7. Looping & Continuous Soak Testing
