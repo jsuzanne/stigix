@@ -863,24 +863,17 @@ const secs = seconds % 60;
                         <span>Import</span>
                     </button>
 
-                    {/* PCAP Replay Button */}
-                    <button
-                        onClick={() => setIsPcapModalOpen(true)}
-                        className={`h-[32px] px-3 border rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-colors shadow-sm cursor-pointer ${
-                            isPcapEnabled
-                                ? 'bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-600 dark:text-indigo-400 border-indigo-500/30'
-                                : 'bg-muted/30 hover:bg-muted/50 text-text-muted border-border'
-                        }`}
-                        title={isPcapEnabled ? "Stateful PCAP Replay Engine" : "PCAP Replay (Requires ENABLE_PCAP_REPLAY=true in .env)"}
-                    >
-                        <Layers size={13} className={isPcapEnabled ? "text-indigo-400" : "text-text-muted"} />
-                        <span>PCAP Replay</span>
-                        {!isPcapEnabled && (
-                            <span className="text-[9px] px-1.5 py-0.2 bg-amber-500/10 text-amber-500 dark:text-amber-400 rounded-md border border-amber-500/20 font-bold uppercase">
-                                Flag
-                            </span>
-                        )}
-                    </button>
+                    {/* PCAP Replay Button (Only visible when ENABLE_PCAP_REPLAY=true) */}
+                    {isPcapEnabled && (
+                        <button
+                            onClick={() => setIsPcapModalOpen(true)}
+                            className="h-[32px] px-3 border rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-colors shadow-sm cursor-pointer bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-600 dark:text-indigo-400 border-indigo-500/30"
+                            title="Stateful PCAP Replay Engine"
+                        >
+                            <Layers size={13} className="text-indigo-400" />
+                            <span>PCAP Replay</span>
+                        </button>
+                    )}
 
                     {/* New App Button */}
                     <button

@@ -246,7 +246,6 @@ export default function App() {
   const [isRemoteView, setIsRemoteView] = React.useState<boolean>(false);
   const [activePeerLabel, setActivePeerLabel] = React.useState<string | null>(null);
   const [isNavigating, setIsNavigating] = useState(false);
-
   useEffect(() => {
     setIsNavigating(true);
     const t = setTimeout(() => setIsNavigating(false), 600);
@@ -375,7 +374,8 @@ export default function App() {
   const [timeRange, setTimeRange] = useState<'1h' | '6h' | '24h'>('1h');
   const [isHistoryLoading, setIsHistoryLoading] = useState(false);
   const [registryStatus, setRegistryStatus] = useState<any>(null);
-  const [uiConfig, setUiConfig] = useState<{ refreshInterval: number, maxCaptures: number, globalScoreTypes?: string[] }>({ refreshInterval: 1000, maxCaptures: 10 });
+  const [uiConfig, setUiConfig] = useState<{ refreshInterval: number, maxCaptures: number, globalScoreTypes?: string[], enablePcapReplay?: boolean }>({ refreshInterval: 1000, maxCaptures: 10 });
+  const isPcapEnabled = Boolean(uiConfig?.enablePcapReplay);
   const [healthData, setHealthData] = useState<any | null>(null);
   const [isHealthLoading, setIsHealthLoading] = useState(false);
   const [showHealthModal, setShowHealthModal] = useState(false);
@@ -949,6 +949,12 @@ export default function App() {
     }
   }, [timeRange]);
 
+  // Guard PCAP Replay view: if flag is not enabled, silently redirect to dashboard
+  useEffect(() => {
+    if (view === 'pcap_replay' && !isPcapEnabled) {
+      setView('dashboard');
+    }
+  }, [view, isPcapEnabled]);
 
   const totalErrors = stats ? Object.values(stats.errors_by_app).reduce((a, b) => a + b, 0) : 0;
   const successRate = stats ? ((stats.total_requests - totalErrors) / stats.total_requests * 100).toFixed(1) : '100';
@@ -1342,16 +1348,18 @@ export default function App() {
           <Layers size={18} /> Custom Apps
           <span className="absolute top-full left-1/2 -translate-x-1/2 mt-1 px-3 py-1.5 bg-[#0f172a] text-[#f8fafc] text-[10px] font-bold rounded shadow-2xl opacity-0 scale-95 group-hover:opacity-100 group-hover:scale-100 transition-all pointer-events-none z-[100] border border-[#1e293b] whitespace-nowrap">Simulate Custom TCP & HTTP Applications across SD-WAN overlays and direct breakouts</span>
         </button>
-        <button
-          onClick={() => setView('pcap_replay')}
-          className={cn(
-            "group relative px-4 py-3 flex items-center gap-2 font-bold tracking-wider text-sm border-b-2 transition-all",
-            view === 'pcap_replay' ? "border-indigo-600 text-indigo-600 dark:text-indigo-300" : "border-transparent text-text-muted hover:text-text-primary"
-          )}
-        >
-          <Binary size={18} /> PCAP Replay <span className="px-1 py-0.5 rounded text-[8px] font-black uppercase tracking-tighter bg-indigo-600/10 text-indigo-600 dark:text-indigo-400 border border-indigo-500/20 ml-1">New</span>
-          <span className="absolute top-full left-1/2 -translate-x-1/2 mt-1 px-3 py-1.5 bg-[#0f172a] text-[#f8fafc] text-[10px] font-bold rounded shadow-2xl opacity-0 scale-95 group-hover:opacity-100 group-hover:scale-100 transition-all pointer-events-none z-[100] border border-[#1e293b] whitespace-nowrap">Stateful L7 PCAP Replay Engine with zero-config profiles & SASE verdict validation</span>
-        </button>
+        {isPcapEnabled && (
+          <button
+            onClick={() => setView('pcap_replay')}
+            className={cn(
+              "group relative px-4 py-3 flex items-center gap-2 font-bold tracking-wider text-sm border-b-2 transition-all",
+              view === 'pcap_replay' ? "border-indigo-600 text-indigo-600 dark:text-indigo-300" : "border-transparent text-text-muted hover:text-text-primary"
+            )}
+          >
+            <Binary size={18} /> PCAP Replay <span className="px-1 py-0.5 rounded text-[8px] font-black uppercase tracking-tighter bg-indigo-600/10 text-indigo-600 dark:text-indigo-400 border border-indigo-500/20 ml-1">New</span>
+            <span className="absolute top-full left-1/2 -translate-x-1/2 mt-1 px-3 py-1.5 bg-[#0f172a] text-[#f8fafc] text-[10px] font-bold rounded shadow-2xl opacity-0 scale-95 group-hover:opacity-100 group-hover:scale-100 transition-all pointer-events-none z-[100] border border-[#1e293b] whitespace-nowrap">Stateful L7 PCAP Replay Engine with zero-config profiles & SASE verdict validation</span>
+          </button>
+        )}
         <button
           onClick={() => setView('convergence')}
           className={cn(
@@ -2050,7 +2058,7 @@ export default function App() {
       {(view === 'failover' || view === 'convergence') && <Failover token={token!} externalStatus={globalConvStatus} />}
       {view === 'settings' && <SettingsComponent token={token!} uiConfig={uiConfig} onUpdateUIConfig={fetchConfigUi} onUpdateCopilotConfig={fetchCopilotConfig} initialTab={initialSettingsTab} />}
       {view === 'custom_apps' && <CustomApps token={token!} />}
-      {view === 'pcap_replay' && <PcapReplay token={token!} />}
+      {view === 'pcap_replay' && isPcapEnabled && <PcapReplay token={token!} />}
       {view === 'speedtest' && features.xfr_enabled && <Speedtest token={token!} />}
       {view === 'events' && <LiveEvents token={token!} />}
       {copilotConfig?.featureEnabled && copilotConfig?.hasKey && view === 'copilot' && <Copilot token={token!} onOpenSettings={() => { setInitialSettingsTab('mcp'); setView('settings'); }} />}

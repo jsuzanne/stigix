@@ -2,6 +2,16 @@
 
 All notable changes made specifically on the `v2` branch are documented in this file.
 
+## [v2.0.151] - 2026-10-04 — Fix: Strict PCAP Feature Flag Visibility & Website Capabilities Reorganization
+
+- **fix(ui-pcap)**: Made PCAP Replay menu completely disappear when `ENABLE_PCAP_REPLAY=true` is not set in `.env`.
+  - Guarded the top horizontal navigation button in `web-dashboard/src/App.tsx` behind `isPcapEnabled`.
+  - Added route guard `useEffect` in `App.tsx` that silently redirects cached views from `view === 'pcap_replay'` back to `dashboard` when the feature flag is absent or false.
+  - Guarded the component render `{view === 'pcap_replay' && isPcapEnabled && <PcapReplay ... />}` to ensure no inactive node renders the engine.
+  - Completely hid the "PCAP Replay" button in the `CustomApps.tsx` toolbar when `isPcapEnabled` is false.
+  - Added `enablePcapReplay` boolean to `/api/features` in `server.ts` for unified feature introspection.
+- **feat(site)**: Reorganized `site/index.html` Core Capabilities datasheet back to natural thematic order (SaaS Traffic Generation first, followed by Digital Experience, Security Validation, AI Security, IoT, Voice, Failover Monitoring, VyOS Control, Custom TCP, PCAP Replay, Global Provisioning, Zero-Touch Mesh, Remote View, CLI, and MCP Server). Added discrete date tags (`Sep 2026`, `Oct 2026`) instead of disruptive badges.
+
 ## [v2.0.150] - 2026-10-04 — UX: Renamed PCAP Replay "Turns" to "Steps" for Operational Clarity
 
 - **refactor(pcap-ui)**: Replaced confusing network jargon "turns" / "Turns" with intuitive "steps" / "Steps" across all PCAP Replay views (`web-dashboard/src/PcapReplay.tsx`, `PcapReplayModal.tsx`). Updated badges (`L7 Steps`), headers (`DIRECTIONAL STEPS`), summary cards (`Client Sent: X steps`, `Server Sent: X steps`), sequence cards (`Step #X`), payload inspector (`Step #X Payload Inspector`), and telemetry gauges (`Steps Progress`, `Avg ms/step`, `Replaying Steps`). Internal JSON schema and `.stx-replay` format compatibility is 100% preserved.

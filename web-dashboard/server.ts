@@ -2855,7 +2855,8 @@ app.get('/api/features', (req, res) => {
     res.json({
         xfr_enabled: true,
         xfr_targets: XFR_QUICK_TARGETS,
-        targets: targetsManager.getMergedTargets()   // shared targets registry
+        targets: targetsManager.getMergedTargets(),   // shared targets registry
+        enablePcapReplay: process.env.ENABLE_PCAP_REPLAY === 'true'
     });
 });
 
