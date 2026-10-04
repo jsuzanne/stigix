@@ -394,7 +394,8 @@ export const PcapReplay: React.FC<PcapReplayProps> = ({ token }) => {
         const isRunning = activeJob?.status === 'running';
         const isLoopMode = isLooping || hasLoopEvent || loopIteration > 1;
         const totalTurns = activeJob?.total_turns || profileDetails?.flows?.[0]?.turns?.length || 0;
-        const completedTurns = (isFinished && !isRunning && lastVerdict)
+        const isSuccessVerdict = lastVerdict === 'Bypass' || (lastVerdict?.includes('Enforced') ?? false);
+        const completedTurns = (isFinished && !isRunning && isSuccessVerdict)
             ? totalTurns
             : Math.min(totalTurns, lastCompletedTurnSeq);
         const progressPct = totalTurns > 0 ? Math.min(100, Math.round((completedTurns / totalTurns) * 100)) : 0;
@@ -510,7 +511,7 @@ export const PcapReplay: React.FC<PcapReplayProps> = ({ token }) => {
             if (replayRole === 'client') {
                 payload.target = customTargetIp || '127.0.0.1';
                 payload.loop = isLooping;
-                payload.interval = loopInterval;
+                payload.interval = (loopInterval || 1) * 1000;
             }
 
             const res = await gFetch('/api/pcap/replay/start', {
@@ -1124,15 +1125,31 @@ export const PcapReplay: React.FC<PcapReplayProps> = ({ token }) => {
                                 </div>
 
                                 {/* Loop Toggle */}
-                                <label className="flex items-center gap-1.5 cursor-pointer text-[10px] font-bold text-text-muted hover:text-text-primary bg-black/30 px-2 py-1 rounded-lg border border-border">
-                                    <input
-                                        type="checkbox"
-                                        checked={isLooping}
-                                        onChange={(e) => setIsLooping(e.target.checked)}
-                                        className="rounded border-border accent-emerald-500 cursor-pointer"
-                                    />
-                                    <span>Loop</span>
-                                </label>
+                                <div className="flex items-center gap-1 bg-black/30 px-2 py-1 rounded-lg border border-border">
+                                    <label className="flex items-center gap-1.5 cursor-pointer text-[10px] font-bold text-text-muted hover:text-text-primary">
+                                        <input
+                                            type="checkbox"
+                                            checked={isLooping}
+                                            onChange={(e) => setIsLooping(e.target.checked)}
+                                            className="rounded border-border accent-emerald-500 cursor-pointer"
+                                        />
+                                        <span>Loop</span>
+                                    </label>
+                                    {isLooping && (
+                                        <div className="flex items-center gap-0.5 text-[9px] font-mono text-text-muted border-l border-border/50 pl-1.5 ml-1">
+                                            <input
+                                                type="number"
+                                                min={1}
+                                                max={60}
+                                                value={loopInterval}
+                                                onChange={(e) => setLoopInterval(Math.max(1, parseInt(e.target.value) || 1))}
+                                                className="w-7 bg-black/40 border border-border/80 rounded px-1 text-center text-text-primary focus:outline-none text-[9px]"
+                                                title="Loop interval in seconds"
+                                            />
+                                            <span>s</span>
+                                        </div>
+                                    )}
+                                </div>
                             </div>
                         )}
 

@@ -391,7 +391,7 @@ export const PcapReplayModal: React.FC<PcapReplayModalProps> = ({
                     {
                         timestamp: Date.now() / 1000,
                         event: 'starting',
-                        text: `Démarrage du processus ${replayRole.toUpperCase()} (PID ${data.pid})...`
+                        text: `Starting ${replayRole.toUpperCase()} process (PID ${data.pid})...`
                     }
                 ]
             });
@@ -495,7 +495,7 @@ export const PcapReplayModal: React.FC<PcapReplayModalProps> = ({
                         <div className="p-3.5 bg-amber-500/10 border border-amber-500/30 rounded-xl flex items-start gap-3">
                             <AlertTriangle size={18} className="text-amber-400 shrink-0 mt-0.5" />
                             <div className="text-xs text-amber-300/90 leading-relaxed">
-                                <span className="font-bold text-amber-300">Feature Flag Requis :</span> La fonctionnalité PCAP Replay est actuellement désactivée sur cette instance Stigix. Ajoutez <code className="px-1.5 py-0.5 bg-black/40 rounded text-amber-200 font-mono text-[11px]">ENABLE_PCAP_REPLAY=true</code> dans le fichier <code className="px-1.5 py-0.5 bg-black/40 rounded text-amber-200 font-mono text-[11px]">.env</code> de cette machine puis redémarrez le conteneur pour débloquer l'upload et le rejeu en direct.
+                                <span className="font-bold text-amber-300">Feature Flag Required:</span> PCAP Replay is currently disabled on this Stigix instance. Add <code className="px-1.5 py-0.5 bg-black/40 rounded text-amber-200 font-mono text-[11px]">ENABLE_PCAP_REPLAY=true</code> to your host <code className="px-1.5 py-0.5 bg-black/40 rounded text-amber-200 font-mono text-[11px]">.env</code> file and restart the container to enable upload and live replay.
                             </div>
                         </div>
                     )}
@@ -884,7 +884,7 @@ export const PcapReplayModal: React.FC<PcapReplayModalProps> = ({
                                 <div className="p-2.5 bg-amber-500/10 border border-amber-500/20 rounded-xl text-xs text-amber-300 flex items-center gap-2">
                                     <AlertTriangle size={14} className="shrink-0 text-amber-400" />
                                     <span>
-                                        Port de capture original en conflit avec les daemons Stigix (8443/8080..8090/80/443). Mappé automatiquement sur le port sécurisé <strong>{compilePort || '10000+port'}</strong> pour éviter toute interruption.
+                                        Original capture port conflicts with Stigix core services (8443/8080..8090/80/443). Automatically remapped to safe port <strong>{compilePort || '10000+port'}</strong> to prevent service interruption.
                                     </span>
                                 </div>
                             )}
@@ -943,9 +943,9 @@ export const PcapReplayModal: React.FC<PcapReplayModalProps> = ({
                                             type="button"
                                             onClick={() => profileFileInputRef.current?.click()}
                                             className="text-[11px] text-indigo-400 hover:text-indigo-300 flex items-center gap-1 cursor-pointer font-medium"
-                                            title="Importer un profil .stx-replay depuis le Leader ou une autre machine"
+                                            title="Import a .stx-replay profile from Leader or another node"
                                         >
-                                            <Upload size={11} /> Importer .stx-replay
+                                            <Upload size={11} /> Import .stx-replay
                                         </button>
                                         {selectedProfile && (
                                             <>
@@ -953,17 +953,17 @@ export const PcapReplayModal: React.FC<PcapReplayModalProps> = ({
                                                     type="button"
                                                     onClick={() => handleDownloadProfile(selectedProfile)}
                                                     className="text-[11px] text-emerald-400 hover:text-emerald-300 flex items-center gap-1 cursor-pointer font-medium"
-                                                    title="Télécharger ce profil .stx-replay pour le copier sur un autre nœud"
+                                                    title="Download this .stx-replay profile to copy it to another node"
                                                 >
-                                                    <Download size={11} /> Exporter
+                                                    <Download size={11} /> Export
                                                 </button>
                                                 <button
                                                     type="button"
                                                     onClick={() => handleDeleteProfile(selectedProfile)}
                                                     className="text-[11px] text-red-400 hover:text-red-300 flex items-center gap-1 cursor-pointer font-medium"
-                                                    title="Supprimer ce profil du parc"
+                                                    title="Delete this profile across the fleet"
                                                 >
-                                                    <Trash2 size={11} /> Supprimer
+                                                    <Trash2 size={11} /> Delete
                                                 </button>
                                             </>
                                         )}
@@ -1032,7 +1032,7 @@ export const PcapReplayModal: React.FC<PcapReplayModalProps> = ({
                                             className="w-full px-3 py-1.5 bg-card border border-border rounded-xl text-xs text-text-primary focus:outline-none focus:border-indigo-500 font-mono"
                                         />
                                         <p className="text-[10px] text-text-muted mt-1">
-                                            💡 Si le port d'origine du PCAP est déjà occupé par un service de cette machine (ex: 8443), indiquez un port alternatif libre (ex: 18443).
+                                            💡 If the original capture port is already in use by a host service (e.g. 8443), specify an available alternative port (e.g. 18443).
                                         </p>
                                     </div>
                                 ) : (
@@ -1068,7 +1068,7 @@ export const PcapReplayModal: React.FC<PcapReplayModalProps> = ({
                                                         <div className="flex items-center gap-1.5">
                                                             <CheckCircle2 size={13} className="text-emerald-400 shrink-0" />
                                                             <span>
-                                                                Serveur Stigix actif détecté sur <strong>{targetIp}</strong> : en écoute sur le port <strong>{discoveredServer.port}</strong>.
+                                                                Active Stigix server detected on <strong>{targetIp}</strong>: listening on port <strong>{discoveredServer.port}</strong>.
                                                             </span>
                                                         </div>
                                                         {portOverride !== String(discoveredServer.port) && (
@@ -1077,14 +1077,14 @@ export const PcapReplayModal: React.FC<PcapReplayModalProps> = ({
                                                                 onClick={() => setPortOverride(String(discoveredServer.port))}
                                                                 className="px-2.5 py-1 bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-200 rounded-lg font-semibold text-[10px] cursor-pointer shrink-0"
                                                             >
-                                                                ⚡ Aligner sur port {discoveredServer.port}
+                                                                ⚡ Align with port {discoveredServer.port}
                                                             </button>
                                                         )}
                                                     </div>
                                                 ) : (
                                                     <div className="p-2 bg-muted/30 border border-border/60 rounded-xl flex items-center gap-1.5 text-[10px] text-text-muted">
                                                         <Activity size={12} className="text-text-muted shrink-0" />
-                                                        <span>Aucun serveur PCAP Replay n'a été détecté en écoute sur {targetIp}. Démarrez d'abord le mode Serveur sur la machine cible.</span>
+                                                        <span>No PCAP Replay server detected on {targetIp}. Start Server mode on the target machine first.</span>
                                                     </div>
                                                 )}
                                             </div>
@@ -1097,7 +1097,7 @@ export const PcapReplayModal: React.FC<PcapReplayModalProps> = ({
                                         <div className="flex items-center gap-1.5">
                                             <AlertTriangle size={13} className="text-amber-400 shrink-0" />
                                             <span>
-                                                <strong>Conflit Port 8443 :</strong> Ce port est utilisé par Stigix Custom Apps sur DC1. Utilisez le port alternatif <strong>18443</strong> sur le Serveur et le Client.
+                                                <strong>Port 8443 Conflict:</strong> This port is used by Stigix Custom Apps on DC1. Use alternative port <strong>18443</strong> on both Server and Client.
                                             </span>
                                         </div>
                                         <button
@@ -1105,7 +1105,7 @@ export const PcapReplayModal: React.FC<PcapReplayModalProps> = ({
                                             onClick={() => setPortOverride('18443')}
                                             className="px-2.5 py-1 bg-amber-500/20 hover:bg-amber-500/30 text-amber-200 rounded-lg font-semibold text-[10px] cursor-pointer shrink-0"
                                         >
-                                            ⚡ Utiliser 18443
+                                            ⚡ Use 18443
                                         </button>
                                     </div>
                                 )}
@@ -1117,40 +1117,40 @@ export const PcapReplayModal: React.FC<PcapReplayModalProps> = ({
                                     <div className="flex items-center justify-between">
                                         <span className="font-semibold text-text-primary flex items-center gap-1.5">
                                             <Layers size={13} className="text-indigo-400" />
-                                            <span>Profil Sélectionné : {currentProf.name || currentProf.file_name}</span>
+                                            <span>Selected Profile: {currentProf.name || currentProf.file_name}</span>
                                         </span>
                                         <span className="text-[10px] text-text-muted">
-                                            {currentProf.total_turns || 0} tours L7 • Catégorie : <span className="uppercase font-semibold text-indigo-400">{currentProf.category || 'custom'}</span>
+                                            {currentProf.total_turns || 0} L7 turns • Category: <span className="uppercase font-semibold text-indigo-400">{currentProf.category || 'custom'}</span>
                                         </span>
                                     </div>
 
                                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px]">
                                         <div className="p-2.5 bg-card/60 border border-border/60 rounded-xl">
                                             <div className="text-[10px] uppercase font-bold text-text-muted mb-1">
-                                                Capture PCAP Originale (L7)
+                                                Original PCAP Capture (L7)
                                             </div>
                                             <div className="font-mono text-text-secondary truncate">
-                                                {currentProf.primary_flow?.client_endpoint || 'Client'} ➔ {currentProf.primary_flow?.server_endpoint || 'Serveur'}
+                                                {currentProf.primary_flow?.client_endpoint || 'Client'} ➔ {currentProf.primary_flow?.server_endpoint || 'Server'}
                                             </div>
                                             <div className="text-[10px] text-text-muted mt-1">
-                                                Adresses historiques de la capture (non injectées sur le réseau).
+                                                Historical capture endpoints (not injected onto network).
                                             </div>
                                         </div>
 
                                         <div className="p-2.5 bg-indigo-500/10 border border-indigo-500/20 rounded-xl">
                                             <div className="text-[10px] uppercase font-bold text-indigo-400 mb-1">
-                                                Flux Réseau Réel (L3/L4 Routed)
+                                                Real Network Flow (L3/L4 Routed)
                                             </div>
                                             <div className="font-mono text-text-primary font-bold truncate">
                                                 {replayRole === 'client'
-                                                    ? `Client Local ➔ ${targetIp || '192.168.203.100'}:${portOverride || currentProf.primary_flow?.server_port || 8080}`
-                                                    : `0.0.0.0:${portOverride || currentProf.primary_flow?.server_port || 8080} (Serveur Écoute)`
+                                                    ? `Local Client ➔ ${targetIp || '192.168.203.100'}:${portOverride || currentProf.primary_flow?.server_port || 8080}`
+                                                    : `0.0.0.0:${portOverride || currentProf.primary_flow?.server_port || 8080} (Server Listening)`
                                                 }
                                             </div>
                                             <div className="text-[10px] text-indigo-300/80 mt-1">
                                                 {replayRole === 'client'
-                                                    ? `Vraie connexion TCP établie vers la cible.`
-                                                    : `En attente d'une connexion TCP réelle.`}
+                                                    ? `Real TCP connection established to destination.`
+                                                    : `Awaiting real incoming TCP connection.`}
                                             </div>
                                         </div>
                                     </div>
@@ -1158,7 +1158,7 @@ export const PcapReplayModal: React.FC<PcapReplayModalProps> = ({
                                     <div className="text-[10px] text-text-muted flex items-center gap-1.5 px-1">
                                         <Globe size={11} className="text-indigo-400 shrink-0" />
                                         <span>
-                                            <strong>Remplacement IP :</strong> Les paquets utilisent vos vraies IP réseau. Seuls les octets applicatifs L7 sont rejoués à l'identique pour déclencher les signatures (App-ID / Menaces).
+                                            <strong>IP Translation:</strong> Packets use your real network host IPs. Only Layer 7 application payloads are faithfully replayed to trigger security signatures (App-ID / Threats).
                                         </span>
                                     </div>
                                 </div>
@@ -1216,7 +1216,7 @@ export const PcapReplayModal: React.FC<PcapReplayModalProps> = ({
                                         <div className="flex items-center justify-between text-xs">
                                             <span className="font-bold text-emerald-400 flex items-center gap-1.5">
                                                 <CheckCircle2 size={14} className="text-emerald-400" />
-                                                Connexion Réseau Réelle Établie (L3/L4)
+                                                Real Network Connection Established (L3/L4)
                                             </span>
                                             <span className="text-[10px] font-mono text-emerald-300">RTT: {connectedEv.handshake_rtt_ms} ms</span>
                                         </div>
@@ -1226,9 +1226,9 @@ export const PcapReplayModal: React.FC<PcapReplayModalProps> = ({
                                             <span className="font-bold text-indigo-300">{connectedEv.target_ip}:{connectedEv.target_port}</span>
                                         </div>
                                         <div className="text-[10px] text-text-muted flex items-center gap-1 flex-wrap">
-                                            <span>Remplacement IP effectué :</span>
+                                            <span>IP translation applied:</span>
                                             <span className="font-mono line-through opacity-70">{connectedEv.pcap_original_src} ➔ {connectedEv.pcap_original_dst}</span>
-                                            <span className="text-emerald-400 font-semibold">remplacé par les adresses réseau réelles ci-dessus.</span>
+                                            <span className="text-emerald-400 font-semibold">remapped to live network endpoints above.</span>
                                         </div>
                                     </div>
                                 )}
@@ -1238,14 +1238,14 @@ export const PcapReplayModal: React.FC<PcapReplayModalProps> = ({
                                         <div className="flex items-center justify-between text-xs">
                                             <span className="font-bold text-indigo-400 flex items-center gap-1.5">
                                                 <Activity size={14} className="animate-pulse" />
-                                                Session Rejeu Serveur Active
+                                                Active Server Replay Session
                                             </span>
-                                            <span className="text-[10px] font-mono text-text-muted">{serverStartedEv.total_turns} tours prévus</span>
+                                            <span className="text-[10px] font-mono text-text-muted">{serverStartedEv.total_turns} turns expected</span>
                                         </div>
                                         <div className="flex items-center gap-2 font-mono text-xs text-text-primary">
-                                            <span className="text-text-muted">Client distant :</span>
+                                            <span className="text-text-muted">Remote client:</span>
                                             <span className="font-bold text-emerald-300">{serverStartedEv.client_ip}:{serverStartedEv.client_port}</span>
-                                            <span className="text-text-muted">➔ Port local :</span>
+                                            <span className="text-text-muted">➔ Local port:</span>
                                             <span className="font-bold text-indigo-300">{serverStartedEv.server_port}</span>
                                         </div>
                                     </div>
@@ -1258,10 +1258,10 @@ export const PcapReplayModal: React.FC<PcapReplayModalProps> = ({
                                             {activeJob?.status === 'running' ? (
                                                 <>
                                                     <RefreshCw size={16} className="animate-spin text-indigo-400" />
-                                                    <span>Établissement de la connexion vers {activeJob.target || 'serveur'}:{activeJob.port || 'port par défaut'}...</span>
+                                                    <span>Establishing connection to {activeJob.target || 'server'}:{activeJob.port || 'default port'}...</span>
                                                 </>
                                             ) : (
-                                                <span>Aucun rejeu actif. Cliquez sur "Start Replay" pour lancer la séquence.</span>
+                                                <span>No active replay job. Click "Start Replay" to initiate sequence.</span>
                                             )}
                                         </div>
                                     ) : (

@@ -411,6 +411,7 @@ def run_tcp_client(profile: Dict[str, Any], flow_id: Optional[int], target_ip: s
     cumulative_rx += last_res.get("rx_bytes", 0)
 
     if loop:
+        effective_interval_ms = loop_interval_ms * 1000 if 0 < loop_interval_ms < 50 else max(loop_interval_ms, 200)
         emit_event("loop_cycle_completed", {
             "iteration": iteration,
             "completed_turns": last_res.get("completed_turns", 0),
@@ -425,7 +426,7 @@ def run_tcp_client(profile: Dict[str, Any], flow_id: Optional[int], target_ip: s
 
         try:
             while True:
-                time.sleep(loop_interval_ms / 1000.0)
+                time.sleep(effective_interval_ms / 1000.0)
                 iteration += 1
                 last_res = execute_single_run()
                 cumulative_tx += last_res.get("tx_bytes", 0)
@@ -559,6 +560,7 @@ def run_udp_client(profile: Dict[str, Any], flow_id: Optional[int], target_ip: s
     cumulative_tx += last_res.get("tx_bytes", 0)
 
     if loop:
+        effective_interval_ms = loop_interval_ms * 1000 if 0 < loop_interval_ms < 50 else max(loop_interval_ms, 200)
         emit_event("loop_cycle_completed", {
             "iteration": iteration,
             "completed_turns": last_res.get("completed_turns", 0),
@@ -573,7 +575,7 @@ def run_udp_client(profile: Dict[str, Any], flow_id: Optional[int], target_ip: s
 
         try:
             while True:
-                time.sleep(loop_interval_ms / 1000.0)
+                time.sleep(effective_interval_ms / 1000.0)
                 iteration += 1
                 last_res = execute_single_run(iteration)
                 cumulative_tx += last_res.get("tx_bytes", 0)
