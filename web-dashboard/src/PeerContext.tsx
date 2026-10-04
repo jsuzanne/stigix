@@ -76,11 +76,23 @@ export function PeerContextProvider({ token, isLeader, children, onActivePeerCha
                 });
                 if (statusRes.ok) {
                     const status = await statusRes.json();
-                    let leaderIp = status?.leader_info?.ip;
-                    let leaderId = status?.leader_info?.id || 'Leader-DC1';
+                    let leaderIp = status?.leader_info?.ip
+                        || status?.leader_tunnel_info?.ip
+                        || status?.leader_tunnel_info?.remoteLeaderIp
+                        || status?.remote_leader_ip;
+                    let leaderId = status?.leader_info?.id
+                        || status?.leader_tunnel_info?.remoteLeaderId
+                        || status?.leader_tunnel_info?.siteName
+                        || 'DC1-Ubuntu';
                     if (!leaderIp && status?.static_leader_url) {
                         try {
                             const u = new URL(status.static_leader_url);
+                            leaderIp = u.hostname;
+                        } catch {}
+                    }
+                    if (!leaderIp && status?.controller_url) {
+                        try {
+                            const u = new URL(status.controller_url);
                             leaderIp = u.hostname;
                         } catch {}
                     }

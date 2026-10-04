@@ -5,7 +5,8 @@ import {
     Terminal, ArrowRight, ArrowDownRight, Server, Globe, Search,
     Filter, Lock, FileCode, Check, Eye, HelpCircle, Sparkles,
     Cpu, Zap, Radio, Copy, ChevronRight, X, Headphones, Binary,
-    FileSpreadsheet, ArrowUpRight, Edit3, Save, RotateCcw
+    FileSpreadsheet, ArrowUpRight, Edit3, Save, RotateCcw,
+    Clock, BarChart2, ListFilter, SlidersHorizontal, Info, Compass
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { usePeerContext } from './PeerContext';
@@ -41,8 +42,16 @@ export const PcapReplay: React.FC<PcapReplayProps> = ({ token }) => {
     const [editDescription, setEditDescription] = useState('');
     const [isSavingEdit, setIsSavingEdit] = useState(false);
 
-    // Console View Mode
-    const [consoleViewMode, setConsoleViewMode] = useState<'formatted' | 'raw'>('formatted');
+    // Console View Mode ('timeline' = SASE milestones, 'stream' = packet stream, 'raw' = json)
+    const [consoleViewMode, setConsoleViewMode] = useState<'timeline' | 'stream' | 'raw'>('timeline');
+
+    // Conversation Sequence Filters & Search
+    const [turnFilter, setTurnFilter] = useState<'all' | 'client' | 'server'>('all');
+    const [turnSearchQuery, setTurnSearchQuery] = useState('');
+
+    // Persistence keys
+    const STORAGE_KEY_TARGET_IP = 'stigix_replay_target_ip';
+    const STORAGE_KEY_SERVER_NODE = 'stigix_replay_server_node';
 
     // Import / Modal state
     const [isPcapModalOpen, setIsPcapModalOpen] = useState(false);
@@ -50,8 +59,12 @@ export const PcapReplay: React.FC<PcapReplayProps> = ({ token }) => {
 
     // Execution / Orchestrator state
     const [replayRole, setReplayRole] = useState<'client' | 'server'>('client');
-    const [serverNodeId, setServerNodeId] = useState<string>('local');
-    const [customTargetIp, setCustomTargetIp] = useState<string>('');
+    const [serverNodeId, setServerNodeId] = useState<string>(() => {
+        return localStorage.getItem('stigix_replay_server_node') || '';
+    });
+    const [customTargetIp, setCustomTargetIp] = useState<string>(() => {
+        return localStorage.getItem('stigix_replay_target_ip') || '';
+    });
     const [portOverride, setPortOverride] = useState<string>('');
     const [isLooping, setIsLooping] = useState<boolean>(false);
     const [loopInterval, setLoopInterval] = useState<number>(3);
@@ -159,54 +172,95 @@ export const PcapReplay: React.FC<PcapReplayProps> = ({ token }) => {
         return () => clearInterval(interval);
     }, [pollActiveJobs]);
 
-    // Auto-select remote peer or leader when entering client mode
+    // Auto-discover leader or remote peer when entering client mode without saved IP
     useEffect(() => {
-        if (replayRole === 'client' && peers.length > 0) {
+        // If user already has a saved IP or explicitly entered one, do not override
+        const savedIp = localStorage.getItem(STORAGE_KEY_TARGET_IP);
+        if (savedIp && savedIp !== '127.0.0.1') {
+            if (!customTargetIp) setCustomTargetIp(savedIp);
+            const savedNode = localStorage.getItem(STORAGE_KEY_SERVER_NODE);
+            if (savedNode && !serverNodeId) setServerNodeId(savedNode);
+            return;
+        }
+
+        // 1. Try finding Leader or remote peer in peers list
+        if (peers.length > 0) {
             const leaderPeer = peers.find(p => p.is_leader && p.instance_id !== activePeerId);
-            const remotePeer = leaderPeer || peers.find(p => p.instance_id !== activePeerId) || peers[0];
-            if (remotePeer && remotePeer.ip_private) {
-                if (serverNodeId === 'local' || !customTargetIp || customTargetIp === '127.0.0.1') {
-                    setServerNodeId(remotePeer.instance_id);
-                    setCustomTargetIp(remotePeer.ip_private);
-                }
+            const remotePeer = leaderPeer || peers.find(p => p.instance_id !== activePeerId);
+            if (remotePeer && remotePeer.ip_private && remotePeer.ip_private !== '127.0.0.1') {
+                setServerNodeId(remotePeer.instance_id);
+                setCustomTargetIp(remotePeer.ip_private);
+                localStorage.setItem(STORAGE_KEY_SERVER_NODE, remotePeer.instance_id);
+                localStorage.setItem(STORAGE_KEY_TARGET_IP, remotePeer.ip_private);
+                return;
             }
         }
-    }, [replayRole, peers, activePeerId, serverNodeId, customTargetIp]);
 
-    // Fallback: detect default Leader IP from registry status
-    useEffect(() => {
+        // 2. Query registry status to get Leader IP
         const detectLeaderFromRegistry = async () => {
             try {
                 const res = await gFetch('/api/registry/status');
                 if (res.ok) {
                     const status = await res.json();
-                    let leaderIp = status?.leader_info?.ip;
+                    let leaderIp = status?.leader_info?.ip
+                        || status?.leader_tunnel_info?.ip
+                        || status?.leader_tunnel_info?.remoteLeaderIp
+                        || status?.remote_leader_ip;
                     if (!leaderIp && status?.static_leader_url) {
                         try {
-                            const u = new URL(status.static_leader_url);
-                            leaderIp = u.hostname;
+                            leaderIp = new URL(status.static_leader_url).hostname;
                         } catch {}
                     }
-                    if (leaderIp && (!customTargetIp || customTargetIp === '127.0.0.1')) {
+                    if (!leaderIp && status?.controller_url) {
+                        try {
+                            leaderIp = new URL(status.controller_url).hostname;
+                        } catch {}
+                    }
+                    if (leaderIp && leaderIp !== '127.0.0.1') {
                         setCustomTargetIp(leaderIp);
+                        localStorage.setItem(STORAGE_KEY_TARGET_IP, leaderIp);
+                        const leaderId = status?.leader_info?.id || status?.leader_tunnel_info?.remoteLeaderId || 'leader';
+                        setServerNodeId(leaderId);
+                        localStorage.setItem(STORAGE_KEY_SERVER_NODE, leaderId);
                     }
                 }
             } catch {}
         };
         detectLeaderFromRegistry();
-    }, [gFetch, customTargetIp]);
+    }, [peers, activePeerId, gFetch]);
 
-    // Auto-detect default server IP when serverNodeId changes
-    useEffect(() => {
-        if (serverNodeId === 'local') {
+    const handleTargetPeerChange = (nodeId: string) => {
+        setServerNodeId(nodeId);
+        localStorage.setItem(STORAGE_KEY_SERVER_NODE, nodeId);
+        if (nodeId === 'local') {
             setCustomTargetIp('127.0.0.1');
+            localStorage.setItem(STORAGE_KEY_TARGET_IP, '127.0.0.1');
+        } else if (nodeId === 'custom') {
+            // Keep current custom target IP
         } else {
-            const peer = peers.find(p => p.instance_id === serverNodeId);
+            const peer = peers.find(p => p.instance_id === nodeId);
             if (peer?.ip_private) {
                 setCustomTargetIp(peer.ip_private);
+                localStorage.setItem(STORAGE_KEY_TARGET_IP, peer.ip_private);
             }
         }
-    }, [serverNodeId, peers]);
+    };
+
+    const handleCustomTargetIpChange = (ip: string) => {
+        setCustomTargetIp(ip);
+        localStorage.setItem(STORAGE_KEY_TARGET_IP, ip);
+        const match = peers.find(p => p.ip_private === ip);
+        if (match) {
+            setServerNodeId(match.instance_id);
+            localStorage.setItem(STORAGE_KEY_SERVER_NODE, match.instance_id);
+        } else if (ip === '127.0.0.1') {
+            setServerNodeId('local');
+            localStorage.setItem(STORAGE_KEY_SERVER_NODE, 'local');
+        } else {
+            setServerNodeId('custom');
+            localStorage.setItem(STORAGE_KEY_SERVER_NODE, 'custom');
+        }
+    };
 
     // ─── Actions: Profile Editing ─────────────────────────────────────────────
 
@@ -259,7 +313,7 @@ export const PcapReplay: React.FC<PcapReplayProps> = ({ token }) => {
         let maxSeq = 0;
         for (const log of terminalLogs) {
             const ev = typeof log === 'string' ? null : log;
-            if (ev?.event === 'turn_completed' || ev?.event === 'client_turn_completed') {
+            if (ev?.event === 'turn_completed' || ev?.event === 'client_turn_completed' || ev?.event === 'udp_datagram_sent') {
                 if (typeof ev.seq === 'number' && ev.seq > maxSeq) {
                     maxSeq = ev.seq;
                 }
@@ -271,6 +325,52 @@ export const PcapReplay: React.FC<PcapReplayProps> = ({ token }) => {
         }
         return maxSeq;
     }, [terminalLogs]);
+
+    // Live SASE and Replay Telemetry
+    const liveTelemetry = useMemo(() => {
+        let txBytes = 0;
+        let rxBytes = 0;
+        let durationMs = 0;
+        let lastVerdict = activeJob?.lastVerdict || null;
+        let isFinished = false;
+
+        for (const log of terminalLogs) {
+            const ev = typeof log === 'string' ? null : log;
+            if (!ev) continue;
+            if (ev.event === 'udp_datagram_sent') {
+                txBytes += (ev.bytes || 0);
+            } else if (ev.event === 'udp_datagram_received') {
+                rxBytes += (ev.bytes || 0);
+            } else if (ev.event === 'turn_completed' || ev.event === 'client_turn_completed') {
+                if (ev.sender === 'client') txBytes += (ev.bytes || 0);
+                else rxBytes += (ev.bytes || 0);
+            } else if (ev.event === 'session_finished' || ev.event === 'client_session_finished') {
+                isFinished = true;
+                if (ev.tx_bytes !== undefined) txBytes = ev.tx_bytes;
+                if (ev.rx_bytes !== undefined) rxBytes = ev.rx_bytes;
+                if (ev.duration_ms !== undefined) durationMs = ev.duration_ms;
+                if (ev.verdict) lastVerdict = ev.verdict;
+            }
+        }
+
+        const totalTurns = activeJob?.total_turns || profileDetails?.flows?.[0]?.turns?.length || 0;
+        const completedTurns = isFinished && lastVerdict
+            ? totalTurns
+            : Math.min(totalTurns, lastCompletedTurnSeq);
+        const progressPct = totalTurns > 0 ? Math.min(100, Math.round((completedTurns / totalTurns) * 100)) : 0;
+
+        return {
+            totalTurns,
+            completedTurns,
+            progressPct,
+            txBytes,
+            rxBytes,
+            durationMs,
+            lastVerdict,
+            isFinished,
+            isRunning: activeJob?.status === 'running'
+        };
+    }, [activeJob, terminalLogs, profileDetails, lastCompletedTurnSeq]);
 
     // ─── Actions: Profile Management ──────────────────────────────────────────
 
@@ -418,70 +518,180 @@ export const PcapReplay: React.FC<PcapReplayProps> = ({ token }) => {
         }
     };
 
-    // ─── Helpers: Payload Formatting & Detection ──────────────────────────────
+    // ─── Helpers: Advanced Payload Decoding & Protocol Intelligence ───────────
 
-    const formatPayload = (rawStr: string) => {
-        if (!rawStr) return { type: 'Empty', badge: 'bg-card text-text-muted', hex: '', ascii: '' };
-
-        // Detection: TLS Record Layer
-        if (rawStr.startsWith('\\x16\\x03') || rawStr.includes('\\x16\\x03\\x01')) {
-            return {
-                type: 'TLS Record Layer (Handshake / Encrypted)',
-                badge: 'bg-purple-500/15 text-purple-400 border-purple-500/30',
-                isBinary: true
-            };
+    const getTurnBytes = useCallback((turn: any): Uint8Array => {
+        if (!turn) return new Uint8Array(0);
+        if (turn.payload_b64) {
+            try {
+                const bin = atob(turn.payload_b64);
+                const bytes = new Uint8Array(bin.length);
+                for (let i = 0; i < bin.length; i++) {
+                    bytes[i] = bin.charCodeAt(i);
+                }
+                return bytes;
+            } catch {}
         }
-        // Detection: HTTP
-        if (rawStr.startsWith('HTTP/') || rawStr.startsWith('GET ') || rawStr.startsWith('POST ') || rawStr.startsWith('PUT ') || rawStr.startsWith('HEAD ')) {
+        const raw = turn.ascii_preview || turn.preview || '';
+        const bytes: number[] = [];
+        let i = 0;
+        while (i < raw.length) {
+            if (raw[i] === '\\' && raw[i + 1] === 'x' && i + 3 < raw.length) {
+                const hex = raw.slice(i + 2, i + 4);
+                bytes.push(parseInt(hex, 16) || 0);
+                i += 4;
+            } else {
+                bytes.push(raw.charCodeAt(i));
+                i++;
+            }
+        }
+        return new Uint8Array(bytes);
+    }, []);
+
+    const formatWiresharkHexDump = useCallback((bytes: Uint8Array): string => {
+        if (!bytes || bytes.length === 0) return 'No payload data available';
+        const lines: string[] = [];
+        for (let i = 0; i < bytes.length; i += 16) {
+            const offset = i.toString(16).padStart(4, '0').toUpperCase();
+            const chunk = bytes.slice(i, i + 16);
+            const hexParts: string[] = [];
+            let asciiStr = '';
+            for (let j = 0; j < 16; j++) {
+                if (j < chunk.length) {
+                    const b = chunk[j];
+                    hexParts.push(b.toString(16).padStart(2, '0').toUpperCase());
+                    asciiStr += (b >= 32 && b <= 126) ? String.fromCharCode(b) : '.';
+                } else {
+                    hexParts.push('  ');
+                }
+            }
+            const group1 = hexParts.slice(0, 8).join(' ');
+            const group2 = hexParts.slice(8, 16).join(' ');
+            lines.push(`${offset}  ${group1}  ${group2}  |${asciiStr}|`);
+        }
+        return lines.join('\n');
+    }, []);
+
+    const formatCleanAscii = useCallback((bytes: Uint8Array): string => {
+        if (!bytes || bytes.length === 0) return 'No payload data available';
+        let str = '';
+        for (let i = 0; i < bytes.length; i++) {
+            const b = bytes[i];
+            if (b === 10 || b === 13 || (b >= 32 && b <= 126)) {
+                str += String.fromCharCode(b);
+            } else {
+                str += '.';
+            }
+        }
+        return str;
+    }, []);
+
+    const analyzeTurn = useCallback((turn: any) => {
+        if (!turn) {
             return {
-                type: 'HTTP Application Protocol',
-                badge: 'bg-blue-500/15 text-blue-400 border-blue-500/30',
+                proto: 'Unknown',
+                badge: 'bg-card text-text-muted border-border',
+                snippet: 'Empty turn',
                 isBinary: false
             };
         }
-        // Binary Stream
-        if (rawStr.includes('\\x')) {
+        const bytes = getTurnBytes(turn);
+        const len = turn.length || turn.payload_len || bytes.length || 0;
+        const ascii = formatCleanAscii(bytes);
+
+        // Check SIP (Voice Signaling)
+        if (ascii.includes('SIP/2.0') || ascii.startsWith('INVITE ') || ascii.startsWith('REGISTER ') || ascii.startsWith('ACK ') || ascii.startsWith('BYE ') || ascii.startsWith('OPTIONS ')) {
+            const firstLine = ascii.split(/[\r\n]+/)[0].trim().slice(0, 52);
             return {
-                type: 'Binary L7 Stream',
-                badge: 'bg-amber-500/15 text-amber-400 border-amber-500/30',
+                proto: 'SIP Signaling',
+                badge: 'bg-cyan-500/15 text-cyan-400 border-cyan-500/30',
+                snippet: firstLine,
+                isBinary: false
+            };
+        }
+
+        // Check HTTP (REST APIs / Web)
+        if (ascii.startsWith('GET ') || ascii.startsWith('POST ') || ascii.startsWith('PUT ') || ascii.startsWith('DELETE ') || ascii.startsWith('HEAD ') || ascii.startsWith('HTTP/1.')) {
+            const firstLine = ascii.split(/[\r\n]+/)[0].trim().slice(0, 52);
+            return {
+                proto: 'HTTP REST',
+                badge: 'bg-blue-500/15 text-blue-400 border-blue-500/30',
+                snippet: firstLine,
+                isBinary: false
+            };
+        }
+
+        // Check TLS Record Layer
+        if (bytes.length >= 3 && bytes[0] === 0x16 && bytes[1] === 0x03) {
+            let tlsType = 'TLS Handshake';
+            if (bytes.length >= 6 && bytes[5] === 0x01) tlsType = 'ClientHello';
+            else if (bytes.length >= 6 && bytes[5] === 0x02) tlsType = 'ServerHello';
+            return {
+                proto: 'TLS Handshake',
+                badge: 'bg-purple-500/15 text-purple-400 border-purple-500/30',
+                snippet: `${tlsType} (TLS 1.${bytes[2]}) - ${len}B`,
                 isBinary: true
             };
         }
-        return {
-            type: 'Plaintext Stream',
-            badge: 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30',
-            isBinary: false
-        };
-    };
-
-    const convertToCleanHex = (rawStr: string): string => {
-        if (!rawStr) return '';
-        // If string contains escaped \xNN sequences, format as clean hex pairs
-        if (rawStr.includes('\\x')) {
-            const tokens = rawStr.split(/(\\x[0-9a-fA-F]{2})/g).filter(Boolean);
-            const hexParts: string[] = [];
-            for (const token of tokens) {
-                if (token.startsWith('\\x') && token.length === 4) {
-                    hexParts.push(token.substring(2).toUpperCase());
-                } else {
-                    for (let i = 0; i < token.length; i++) {
-                        hexParts.push(token.charCodeAt(i).toString(16).padStart(2, '0').toUpperCase());
-                    }
-                }
-            }
-            // Format into lines of 16 bytes
-            const lines: string[] = [];
-            for (let i = 0; i < hexParts.length; i += 16) {
-                const chunk = hexParts.slice(i, i + 16);
-                const offset = i.toString(16).padStart(4, '0').toUpperCase();
-                lines.push(`${offset}  ${chunk.slice(0, 8).join(' ')}   ${chunk.slice(8).join(' ')}`);
-            }
-            return lines.join('\n');
+        if (bytes.length >= 3 && bytes[0] === 0x17 && bytes[1] === 0x03) {
+            return {
+                proto: 'TLS Encrypted',
+                badge: 'bg-purple-500/15 text-purple-400 border-purple-500/30',
+                snippet: `Application Data (Encrypted L7) - ${len}B`,
+                isBinary: true
+            };
         }
-        return rawStr;
-    };
 
-    // ─── Helpers: Filtering ───────────────────────────────────────────────────
+        // Check RTP (VoIP voice payload)
+        if (bytes.length >= 12 && (bytes[0] === 0x80 || bytes[0] === 0x81)) {
+            const pt = bytes[1] & 0x7F;
+            const ptName = pt === 0 ? 'PCMU (G.711u)' : pt === 8 ? 'PCMA (G.711a)' : pt === 9 ? 'G.722' : pt === 18 ? 'G.729' : `PT=${pt}`;
+            const seq = (bytes[2] << 8) | bytes[3];
+            return {
+                proto: 'RTP Voice',
+                badge: 'bg-amber-500/15 text-amber-400 border-amber-500/30',
+                snippet: `Media Payload: ${ptName}, Seq #${seq} (${len}B)`,
+                isBinary: true
+            };
+        }
+
+        // Check DNS
+        if (ascii.includes('.com') || ascii.includes('.net') || ascii.includes('.org') || ascii.includes('.local')) {
+            const clean = ascii.replace(/[^a-zA-Z0-9\.\-_]/g, ' ').trim().split(/\s+/).find(w => w.includes('.')) || 'Query/Answer';
+            return {
+                proto: 'DNS Datagram',
+                badge: 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30',
+                snippet: `DNS Record: ${clean} (${len}B)`,
+                isBinary: true
+            };
+        }
+
+        // Check Plaintext / JSON
+        let printableCount = 0;
+        for (let j = 0; j < Math.min(bytes.length, 32); j++) {
+            if (bytes[j] >= 32 && bytes[j] <= 126) printableCount++;
+        }
+        if (printableCount > Math.min(bytes.length, 32) * 0.7) {
+            const clean = ascii.replace(/[\r\n\t]+/g, ' ').trim().slice(0, 52);
+            return {
+                proto: 'Plaintext',
+                badge: 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30',
+                snippet: clean || `${len} bytes payload`,
+                isBinary: false
+            };
+        }
+
+        // Default Binary
+        const hexHead = Array.from(bytes.slice(0, 6)).map(b => b.toString(16).padStart(2, '0')).join(' ');
+        return {
+            proto: 'Binary L7',
+            badge: 'bg-indigo-500/15 text-indigo-400 border-indigo-500/30',
+            snippet: `Hex: ${hexHead}... (${len}B)`,
+            isBinary: true
+        };
+    }, [getTurnBytes, formatCleanAscii]);
+
+    // ─── Helpers: Filtering & Turns Computation ───────────────────────────────
 
     const filteredProfiles = profiles.filter(p => {
         const matchesSearch = p.file_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -495,9 +705,56 @@ export const PcapReplay: React.FC<PcapReplayProps> = ({ token }) => {
     const flows = profileDetails?.flows || [];
     const activeFlow = flows[0];
     const turns = activeFlow?.turns || [];
+
+    // Directional turns summary KPIs
+    const turnsSummary = useMemo(() => {
+        let clientTurns = 0;
+        let serverTurns = 0;
+        let clientBytes = 0;
+        let serverBytes = 0;
+        for (const t of turns) {
+            const isClient = t.sender === 'client' || t.direction === 'client' || t.direction === 'client_to_server';
+            const len = t.length || t.payload_len || 0;
+            if (isClient) {
+                clientTurns++;
+                clientBytes += len;
+            } else {
+                serverTurns++;
+                serverBytes += len;
+            }
+        }
+        return {
+            totalTurns: turns.length,
+            clientTurns,
+            serverTurns,
+            clientBytes,
+            serverBytes,
+            totalBytes: clientBytes + serverBytes
+        };
+    }, [turns]);
+
+    // Filtered turns list based on user filter pill and search box
+    const filteredTurns = useMemo(() => {
+        return turns.filter((turn: any, idx: number) => {
+            const isClient = turn.sender === 'client' || turn.direction === 'client' || turn.direction === 'client_to_server';
+            if (turnFilter === 'client' && !isClient) return false;
+            if (turnFilter === 'server' && isClient) return false;
+            if (!turnSearchQuery.trim()) return true;
+
+            const q = turnSearchQuery.toLowerCase().trim();
+            if (String(idx + 1) === q || `turn #${idx + 1}`.includes(q)) return true;
+            if (String(turn.length || turn.payload_len) === q) return true;
+            const preview = (turn.ascii_preview || turn.preview || '').toLowerCase();
+            if (preview.includes(q)) return true;
+            return false;
+        });
+    }, [turns, turnFilter, turnSearchQuery]);
+
     const selectedTurn = selectedTurnIndex !== null && turns[selectedTurnIndex] ? turns[selectedTurnIndex] : null;
-    const selectedTurnRawPayload = selectedTurn?.ascii_preview || selectedTurn?.preview || selectedTurn?.payload_b64 || '';
-    const turnAnalysis = formatPayload(selectedTurnRawPayload);
+    const selectedTurnBytes = useMemo(() => getTurnBytes(selectedTurn), [selectedTurn, getTurnBytes]);
+    const selectedTurnAnalysis = useMemo(() => analyzeTurn(selectedTurn), [selectedTurn, analyzeTurn]);
+    const selectedTurnHexDump = useMemo(() => formatWiresharkHexDump(selectedTurnBytes), [selectedTurnBytes, formatWiresharkHexDump]);
+    const selectedTurnCleanAscii = useMemo(() => formatCleanAscii(selectedTurnBytes), [selectedTurnBytes, formatCleanAscii]);
 
     // ─── Real-Time Console Formatter ──────────────────────────────────────────
 
@@ -784,7 +1041,7 @@ export const PcapReplay: React.FC<PcapReplayProps> = ({ token }) => {
                                     <Server size={11} className="text-purple-400" />
                                     <select
                                         value={serverNodeId}
-                                        onChange={(e) => setServerNodeId(e.target.value)}
+                                        onChange={(e) => handleTargetPeerChange(e.target.value)}
                                         className="bg-transparent text-xs font-bold text-text-primary focus:outline-none cursor-pointer"
                                     >
                                         {peers.map((peer) => (
@@ -792,6 +1049,9 @@ export const PcapReplay: React.FC<PcapReplayProps> = ({ token }) => {
                                                 {peer.site || peer.instance_id} {peer.is_leader ? '(Leader)' : ''} ({peer.ip_private || 'No IP'})
                                             </option>
                                         ))}
+                                        {serverNodeId === 'custom' && (
+                                            <option value="custom" className="bg-card text-text-primary">Custom Host ({customTargetIp})</option>
+                                        )}
                                         <option value="local" className="bg-card text-text-primary">Local Node (127.0.0.1)</option>
                                     </select>
                                 </div>
@@ -802,7 +1062,7 @@ export const PcapReplay: React.FC<PcapReplayProps> = ({ token }) => {
                                     <input
                                         type="text"
                                         value={customTargetIp}
-                                        onChange={(e) => setCustomTargetIp(e.target.value)}
+                                        onChange={(e) => handleCustomTargetIpChange(e.target.value)}
                                         placeholder="192.168.203.100"
                                         className="w-28 bg-transparent text-xs font-mono font-bold text-text-primary focus:outline-none"
                                     />
@@ -1029,21 +1289,112 @@ export const PcapReplay: React.FC<PcapReplayProps> = ({ token }) => {
                 {/* ─── Column 2: Selected Scenario & Turn Sequence (lg:col-span-4) ─── */}
                 <div className="lg:col-span-4 flex flex-col h-full overflow-hidden">
                     <div className="bg-card border border-border rounded-2xl p-3.5 shadow-xl flex flex-col h-full overflow-hidden">
-                        {/* Header */}
-                        <div className="flex items-center justify-between pb-2 border-b border-border shrink-0">
-                            <div>
-                                <h3 className="text-xs font-black text-text-primary uppercase tracking-tight flex items-center gap-1.5">
-                                    <Radio size={13} className="text-purple-400" />
-                                    <span>Conversation Sequence</span>
-                                </h3>
-                                <p className="text-[9px] text-text-muted font-bold tracking-wider mt-0.5">
-                                    {profileDetails ? `${turns.length} DIRECTIONAL TURNS` : 'SELECT A PROFILE'}
-                                </p>
+                        {/* Header with High-Level Conversation KPIs */}
+                        <div className="pb-2.5 border-b border-border shrink-0 space-y-2">
+                            <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-1.5">
+                                    <div className="p-1 rounded-lg bg-purple-500/10 border border-purple-500/20 text-purple-400">
+                                        <Radio size={13} />
+                                    </div>
+                                    <div>
+                                        <h3 className="text-xs font-black text-text-primary uppercase tracking-tight">
+                                            Conversation Sequence
+                                        </h3>
+                                        <p className="text-[9px] text-text-muted font-bold tracking-wider">
+                                            {profileDetails ? `${turns.length} DIRECTIONAL TURNS` : 'SELECT A PROFILE'}
+                                        </p>
+                                    </div>
+                                </div>
+                                {profileDetails && (
+                                    <span className="text-[9px] font-mono text-purple-400 bg-purple-500/10 px-2 py-0.5 rounded-lg border border-purple-500/20 font-bold">
+                                        {activeFlow?.transport?.toUpperCase() || 'TCP'}:{portOverride || activeFlow?.server_port || 18443}
+                                    </span>
+                                )}
                             </div>
-                            {profileDetails && (
-                                <span className="text-[9px] font-mono text-purple-400 bg-purple-500/10 px-1.5 py-0.2 rounded border border-purple-500/20">
-                                    {activeFlow?.transport?.toUpperCase() || 'TCP'}
-                                </span>
+
+                            {/* Conversation Summary Bar */}
+                            {profileDetails && turns.length > 0 && (
+                                <div className="grid grid-cols-2 gap-1.5 pt-0.5">
+                                    <div className="bg-blue-500/10 border border-blue-500/20 rounded-lg px-2 py-1 flex items-center justify-between text-[9px]">
+                                        <span className="text-blue-400 font-bold flex items-center gap-1">
+                                            <ArrowRight size={10} /> Client Sent
+                                        </span>
+                                        <span className="font-mono text-text-primary font-bold">
+                                            {turnsSummary.clientTurns} turns · {(turnsSummary.clientBytes / 1024).toFixed(1)} KB
+                                        </span>
+                                    </div>
+                                    <div className="bg-purple-500/10 border border-purple-500/20 rounded-lg px-2 py-1 flex items-center justify-between text-[9px]">
+                                        <span className="text-purple-400 font-bold flex items-center gap-1">
+                                            <ArrowDownRight size={10} /> Server Sent
+                                        </span>
+                                        <span className="font-mono text-text-primary font-bold">
+                                            {turnsSummary.serverTurns} turns · {(turnsSummary.serverBytes / 1024).toFixed(1)} KB
+                                        </span>
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Turns Filter and Search Toolbar */}
+                            {profileDetails && turns.length > 0 && (
+                                <div className="flex items-center gap-1.5 pt-1">
+                                    <div className="flex p-0.5 bg-black/40 border border-border/70 rounded-lg shrink-0">
+                                        <button
+                                            type="button"
+                                            onClick={() => setTurnFilter('all')}
+                                            className={`px-2 py-0.5 rounded text-[8px] font-bold transition-all cursor-pointer ${
+                                                turnFilter === 'all'
+                                                    ? 'bg-purple-600 text-white shadow-sm'
+                                                    : 'text-text-muted hover:text-text-primary'
+                                            }`}
+                                        >
+                                            All ({turns.length})
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => setTurnFilter('client')}
+                                            className={`px-2 py-0.5 rounded text-[8px] font-bold transition-all cursor-pointer flex items-center gap-0.5 ${
+                                                turnFilter === 'client'
+                                                    ? 'bg-blue-600 text-white shadow-sm'
+                                                    : 'text-text-muted hover:text-blue-400'
+                                            }`}
+                                        >
+                                            <span>⬆️ Client</span>
+                                            <span>({turnsSummary.clientTurns})</span>
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => setTurnFilter('server')}
+                                            className={`px-2 py-0.5 rounded text-[8px] font-bold transition-all cursor-pointer flex items-center gap-0.5 ${
+                                                turnFilter === 'server'
+                                                    ? 'bg-purple-600 text-white shadow-sm'
+                                                    : 'text-text-muted hover:text-purple-400'
+                                            }`}
+                                        >
+                                            <span>⬇️ Server</span>
+                                            <span>({turnsSummary.serverTurns})</span>
+                                        </button>
+                                    </div>
+
+                                    <div className="relative flex-1">
+                                        <Search size={10} className="absolute left-2 top-2 text-text-muted" />
+                                        <input
+                                            type="text"
+                                            value={turnSearchQuery}
+                                            onChange={(e) => setTurnSearchQuery(e.target.value)}
+                                            placeholder="Search payload, hex, #..."
+                                            className="w-full bg-black/40 border border-border/70 rounded-lg pl-6 pr-2 py-0.5 text-[9px] text-text-primary focus:outline-none focus:border-purple-500/50 transition-colors"
+                                        />
+                                        {turnSearchQuery && (
+                                            <button
+                                                type="button"
+                                                onClick={() => setTurnSearchQuery('')}
+                                                className="absolute right-1.5 top-1.5 text-text-muted hover:text-text-primary"
+                                            >
+                                                <X size={9} />
+                                            </button>
+                                        )}
+                                    </div>
+                                </div>
                             )}
                         </div>
 
@@ -1059,108 +1410,143 @@ export const PcapReplay: React.FC<PcapReplayProps> = ({ token }) => {
                             </div>
                         ) : (
                             <div className="flex-1 min-h-0 flex flex-col pt-2 gap-2">
-                                {/* Turns Step List */}
+                                {/* Turns Step List with Informative Directional Cards */}
                                 <div className="flex-1 min-h-0 overflow-y-auto space-y-1.5 pr-1 scrollbar-thin scrollbar-thumb-border">
-                                    {turns.map((turn: any, idx: number) => {
-                                        const isClient = turn.direction === 'client_to_server';
-                                        const isTurnSelected = selectedTurnIndex === idx;
-                                        const isCompleted = (idx + 1) <= lastCompletedTurnSeq;
-                                        const isActive = (idx + 1) === (lastCompletedTurnSeq + 1) && activeJob?.status === 'running';
-                                        const previewText = turn.ascii_preview || turn.preview || '';
-                                        const info = formatPayload(previewText);
+                                    {filteredTurns.length === 0 ? (
+                                        <div className="text-center py-6 text-text-muted text-[10px] italic">
+                                            No conversation turns match the current filter.
+                                        </div>
+                                    ) : (
+                                        filteredTurns.map((turn: any) => {
+                                            const originalIndex = turns.indexOf(turn);
+                                            const idx = originalIndex >= 0 ? originalIndex : 0;
+                                            const isClient = turn.sender === 'client' || turn.direction === 'client' || turn.direction === 'client_to_server';
+                                            const isTurnSelected = selectedTurnIndex === idx;
+                                            const isCompleted = (idx + 1) <= lastCompletedTurnSeq;
+                                            const isActive = (idx + 1) === (lastCompletedTurnSeq + 1) && activeJob?.status === 'running';
+                                            const analysis = analyzeTurn(turn);
+                                            const len = turn.length || turn.payload_len || 0;
 
-                                        return (
-                                            <div
-                                                key={idx}
-                                                onClick={() => setSelectedTurnIndex(idx)}
-                                                className={`p-1.5 px-2 rounded-lg border transition-all cursor-pointer flex items-center justify-between gap-1.5 ${
-                                                    isTurnSelected
-                                                        ? 'bg-purple-500/15 border-purple-500/50 shadow-sm'
-                                                        : isCompleted
-                                                        ? 'bg-emerald-500/5 border-emerald-500/30'
-                                                        : isActive
-                                                        ? 'bg-indigo-500/10 border-indigo-500/40 animate-pulse'
-                                                        : 'bg-card-secondary/25 hover:bg-card-secondary/60 border-border/50'
-                                                }`}
-                                            >
-                                                <div className="flex items-center gap-1.5 min-w-0">
-                                                    <span className={`w-4 h-4 rounded border flex items-center justify-center font-mono text-[8px] font-black shrink-0 ${
-                                                        isCompleted
-                                                            ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/40'
+                                            return (
+                                                <div
+                                                    key={idx}
+                                                    onClick={() => setSelectedTurnIndex(idx)}
+                                                    className={`p-1.5 px-2 rounded-xl border transition-all cursor-pointer flex flex-col gap-1 ${
+                                                        isTurnSelected
+                                                            ? 'bg-purple-500/15 border-purple-500/60 shadow-md ring-1 ring-purple-500/30'
+                                                            : isCompleted
+                                                            ? 'bg-emerald-500/5 hover:bg-emerald-500/10 border-emerald-500/25'
                                                             : isActive
-                                                            ? 'bg-indigo-500/20 text-indigo-400 border-indigo-500/40'
-                                                            : 'bg-card-secondary border-border text-text-muted'
-                                                    }`}>
-                                                        {isCompleted ? '✓' : idx + 1}
-                                                    </span>
-                                                    <span className={`px-1 py-0.2 rounded text-[8px] font-black uppercase tracking-wider flex items-center gap-1 shrink-0 ${
-                                                        isClient
-                                                            ? 'bg-blue-500/15 text-blue-400 border border-blue-500/30'
-                                                            : 'bg-purple-500/15 text-purple-400 border border-purple-500/30'
-                                                    }`}>
-                                                        {isClient ? <ArrowRight size={8} /> : <ArrowDownRight size={8} />}
-                                                        <span>{isClient ? 'Client' : 'Server'}</span>
-                                                    </span>
-                                                    <span className="text-[9px] font-mono text-text-muted shrink-0">
-                                                        {turn.payload_len || turn.length || 0}B
-                                                    </span>
-                                                </div>
+                                                            ? 'bg-indigo-500/10 border-indigo-500/40 animate-pulse'
+                                                            : 'bg-card-secondary/30 hover:bg-card-secondary/70 border-border/50'
+                                                    }`}
+                                                >
+                                                    <div className="flex items-center justify-between gap-1.5">
+                                                        <div className="flex items-center gap-1.5 min-w-0">
+                                                            <span className={`w-4 h-4 rounded border flex items-center justify-center font-mono text-[8px] font-black shrink-0 ${
+                                                                isCompleted
+                                                                    ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/40'
+                                                                    : isActive
+                                                                    ? 'bg-indigo-500/20 text-indigo-400 border-indigo-500/40'
+                                                                    : 'bg-card border-border text-text-muted'
+                                                            }`}>
+                                                                {isCompleted ? '✓' : idx + 1}
+                                                            </span>
+                                                            <span className={`px-1.5 py-0.2 rounded text-[8px] font-black uppercase tracking-wider flex items-center gap-1 shrink-0 ${
+                                                                isClient
+                                                                    ? 'bg-blue-500/20 text-blue-400 border border-blue-500/30'
+                                                                    : 'bg-purple-500/20 text-purple-400 border border-purple-500/30'
+                                                            }`}>
+                                                                {isClient ? <ArrowRight size={8} /> : <ArrowDownRight size={8} />}
+                                                                <span>{isClient ? 'Client' : 'Server'}</span>
+                                                            </span>
+                                                            <span className="text-[9px] font-mono font-bold text-text-primary shrink-0">
+                                                                {len}B
+                                                            </span>
+                                                            {turn.delay_ms !== undefined && turn.delay_ms > 0 && (
+                                                                <span className="text-[8px] font-mono text-text-muted/70 shrink-0">
+                                                                    +{turn.delay_ms}ms
+                                                                </span>
+                                                            )}
+                                                        </div>
 
-                                                <div className="flex items-center gap-1 shrink-0">
-                                                    {isCompleted && (
-                                                        <span className="px-1 py-0.2 rounded bg-emerald-500/20 text-emerald-400 font-black text-[7px] border border-emerald-500/30">
-                                                            DONE
-                                                        </span>
-                                                    )}
-                                                    {isActive && (
-                                                        <span className="px-1 py-0.2 rounded bg-indigo-500/20 text-indigo-400 font-black text-[7px] border border-indigo-500/30 animate-pulse">
-                                                            LIVE
-                                                        </span>
-                                                    )}
-                                                    <span className={`text-[7px] px-1 py-0.2 rounded border font-bold uppercase ${info.badge}`}>
-                                                        {info.type.split(' ')[0]}
-                                                    </span>
+                                                        <div className="flex items-center gap-1 shrink-0">
+                                                            <span className={`text-[7px] px-1.5 py-0.2 rounded border font-bold uppercase ${analysis.badge}`}>
+                                                                {analysis.proto}
+                                                            </span>
+                                                            {isCompleted && (
+                                                                <span className="px-1 py-0.2 rounded bg-emerald-500/20 text-emerald-400 font-black text-[7px] border border-emerald-500/30">
+                                                                    DONE
+                                                                </span>
+                                                            )}
+                                                            {isActive && (
+                                                                <span className="px-1 py-0.2 rounded bg-indigo-500/20 text-indigo-400 font-black text-[7px] border border-indigo-500/30 animate-pulse">
+                                                                    LIVE
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                    </div>
+
+                                                    {/* Readable Payload Snippet */}
+                                                    <div className="text-[9px] font-mono text-text-secondary truncate bg-black/35 px-1.5 py-0.5 rounded border border-border/40 leading-tight">
+                                                        {analysis.snippet}
+                                                    </div>
                                                 </div>
-                                            </div>
-                                        );
-                                    })}
+                                            );
+                                        })
+                                    )}
                                 </div>
 
-                                {/* Turn Detail Preview */}
+                                {/* Deep-Dive Wireshark Payload Inspector */}
                                 {selectedTurn && (
-                                    <div className="bg-card-secondary/40 border border-border rounded-xl p-2 font-mono text-xs space-y-1 shrink-0">
+                                    <div className="bg-card-secondary/40 border border-border rounded-xl p-2 font-mono text-xs space-y-1.5 shrink-0">
                                         <div className="flex items-center justify-between text-[8px] font-black uppercase tracking-wider text-text-muted">
-                                            <div className="flex items-center gap-1">
-                                                <span>Turn #{selectedTurnIndex! + 1} Preview</span>
-                                                <span className={`px-1 py-0.2 rounded border text-[7px] font-bold uppercase ${turnAnalysis.badge}`}>
-                                                    {turnAnalysis.type}
+                                            <div className="flex items-center gap-1.5">
+                                                <span>Turn #{selectedTurnIndex! + 1} Payload Inspector</span>
+                                                <span className={`px-1.5 py-0.2 rounded border text-[7px] font-bold uppercase ${selectedTurnAnalysis.badge}`}>
+                                                    {selectedTurnAnalysis.proto}
+                                                </span>
+                                                <span className="text-[8px] font-mono text-text-muted">
+                                                    ({selectedTurn.length || selectedTurn.payload_len || selectedTurnBytes.length} bytes)
                                                 </span>
                                             </div>
 
-                                            <div className="flex items-center gap-1 bg-card p-0.5 rounded border border-border">
+                                            <div className="flex items-center gap-1.5">
+                                                <div className="flex items-center bg-card p-0.5 rounded border border-border">
+                                                    <button
+                                                        onClick={() => setPayloadViewMode('hex')}
+                                                        className={`px-1.5 py-0.2 rounded text-[7px] font-black uppercase tracking-wider transition-all cursor-pointer ${
+                                                            payloadViewMode === 'hex' ? 'bg-indigo-600 text-white' : 'text-text-muted hover:text-text-primary'
+                                                        }`}
+                                                    >
+                                                        Hex Dump
+                                                    </button>
+                                                    <button
+                                                        onClick={() => setPayloadViewMode('raw')}
+                                                        className={`px-1.5 py-0.2 rounded text-[7px] font-black uppercase tracking-wider transition-all cursor-pointer ${
+                                                            payloadViewMode === 'raw' ? 'bg-indigo-600 text-white' : 'text-text-muted hover:text-text-primary'
+                                                        }`}
+                                                    >
+                                                        Clean ASCII
+                                                    </button>
+                                                </div>
                                                 <button
-                                                    onClick={() => setPayloadViewMode('hex')}
-                                                    className={`px-1.5 py-0.2 rounded text-[7px] font-black uppercase tracking-wider transition-all cursor-pointer ${
-                                                        payloadViewMode === 'hex' ? 'bg-indigo-600 text-white' : 'text-text-muted hover:text-text-primary'
-                                                    }`}
+                                                    type="button"
+                                                    onClick={() => {
+                                                        const text = payloadViewMode === 'hex' ? selectedTurnHexDump : selectedTurnCleanAscii;
+                                                        navigator.clipboard.writeText(text);
+                                                        toast.success('Payload copied to clipboard');
+                                                    }}
+                                                    className="p-1 hover:bg-card rounded text-text-muted hover:text-text-primary border border-border/40 transition-colors cursor-pointer"
+                                                    title="Copy payload"
                                                 >
-                                                    Hex
-                                                </button>
-                                                <button
-                                                    onClick={() => setPayloadViewMode('raw')}
-                                                    className={`px-1.5 py-0.2 rounded text-[7px] font-black uppercase tracking-wider transition-all cursor-pointer ${
-                                                        payloadViewMode === 'raw' ? 'bg-indigo-600 text-white' : 'text-text-muted hover:text-text-primary'
-                                                    }`}
-                                                >
-                                                    Raw
+                                                    <Copy size={10} />
                                                 </button>
                                             </div>
                                         </div>
 
-                                        <div className="bg-black/40 border border-border/60 rounded-lg p-1.5 max-h-20 overflow-y-auto text-[9px] text-text-secondary font-mono leading-normal whitespace-pre-wrap break-all">
-                                            {payloadViewMode === 'hex'
-                                                ? convertToCleanHex(selectedTurnRawPayload)
-                                                : (selectedTurnRawPayload || 'No preview available')}
+                                        <div className="bg-black/60 border border-border/60 rounded-lg p-2 max-h-24 overflow-y-auto text-[9px] text-text-secondary font-mono leading-relaxed whitespace-pre font-normal scrollbar-thin scrollbar-thumb-border">
+                                            {payloadViewMode === 'hex' ? selectedTurnHexDump : selectedTurnCleanAscii}
                                         </div>
                                     </div>
                                 )}
@@ -1169,51 +1555,63 @@ export const PcapReplay: React.FC<PcapReplayProps> = ({ token }) => {
                     </div>
                 </div>
 
-                {/* ─── Column 3: Live Replay Console & SASE Verdict (lg:col-span-5) ─── */}
+                {/* ─── Column 3: Live Replay Console & SASE Verdict Hub (lg:col-span-5) ─── */}
                 <div className="lg:col-span-5 flex flex-col gap-2.5 h-full overflow-hidden">
-                    {/* SASE Security Verdict Banner */}
+                    {/* Hero SASE Security Verdict Card */}
                     <div className="shrink-0">
-                        <div className={`p-2.5 rounded-2xl border flex items-center justify-between shadow-lg ${
-                            activeJob?.lastVerdict === 'Bypass'
-                                ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400'
-                                : activeJob?.lastVerdict?.includes('Reset')
-                                ? 'bg-red-500/10 border-red-500/30 text-red-400'
-                                : activeJob?.lastVerdict?.includes('Drop')
-                                ? 'bg-orange-500/10 border-orange-500/30 text-orange-400'
-                                : activeJob?.lastVerdict?.includes('Block Page')
-                                ? 'bg-amber-500/10 border-amber-500/30 text-amber-400'
-                                : activeJob?.status === 'running'
-                                ? 'bg-indigo-500/10 border-indigo-500/30 text-indigo-300'
+                        <div className={`p-3 rounded-2xl border flex items-center justify-between shadow-xl transition-all ${
+                            liveTelemetry.lastVerdict === 'Bypass'
+                                ? 'bg-emerald-500/10 border-emerald-500/40 text-emerald-400 shadow-emerald-500/10'
+                                : liveTelemetry.lastVerdict?.includes('Reset')
+                                ? 'bg-red-500/10 border-red-500/40 text-red-400 shadow-red-500/10'
+                                : liveTelemetry.lastVerdict?.includes('Drop')
+                                ? 'bg-orange-500/10 border-orange-500/40 text-orange-400 shadow-orange-500/10'
+                                : liveTelemetry.isRunning
+                                ? 'bg-indigo-500/10 border-indigo-500/40 text-indigo-300 shadow-indigo-500/10'
                                 : 'bg-card border-border text-text-muted'
                         }`}>
-                            <div className="flex items-center gap-2 min-w-0">
-                                <div className="p-1.5 rounded-lg bg-card/80 shrink-0">
-                                    {activeJob?.lastVerdict === 'Bypass' ? (
-                                        <CheckCircle2 size={16} className="text-emerald-400" />
-                                    ) : activeJob?.lastVerdict ? (
-                                        <ShieldAlert size={16} className="text-red-400" />
-                                    ) : activeJob?.status === 'running' ? (
-                                        <Activity size={16} className="text-indigo-400 animate-pulse" />
+                            <div className="flex items-center gap-2.5 min-w-0">
+                                <div className={`p-2 rounded-xl shrink-0 ${
+                                    liveTelemetry.lastVerdict === 'Bypass'
+                                        ? 'bg-emerald-500/20 text-emerald-400'
+                                        : liveTelemetry.lastVerdict?.includes('Reset')
+                                        ? 'bg-red-500/20 text-red-400'
+                                        : liveTelemetry.lastVerdict?.includes('Drop')
+                                        ? 'bg-orange-500/20 text-orange-400'
+                                        : liveTelemetry.isRunning
+                                        ? 'bg-indigo-500/20 text-indigo-400'
+                                        : 'bg-card-secondary text-text-muted'
+                                }`}>
+                                    {liveTelemetry.lastVerdict === 'Bypass' ? (
+                                        <CheckCircle2 size={18} className="text-emerald-400" />
+                                    ) : liveTelemetry.lastVerdict ? (
+                                        <ShieldAlert size={18} className="text-red-400" />
+                                    ) : liveTelemetry.isRunning ? (
+                                        <Activity size={18} className="text-indigo-400 animate-pulse" />
                                     ) : (
-                                        <Shield size={16} className="text-text-muted" />
+                                        <Shield size={18} className="text-text-muted" />
                                     )}
                                 </div>
                                 <div className="min-w-0">
-                                    <div className="text-xs font-black uppercase tracking-wider truncate">
-                                        {activeJob?.lastVerdict
-                                            ? `VERDICT: ${activeJob.lastVerdict}`
-                                            : activeJob?.status === 'running'
-                                            ? (activeJob.role === 'server' ? 'Server Listening for connections...' : 'Client Executing turns...')
-                                            : 'Replay Engine Idle'}
+                                    <div className="text-xs font-black uppercase tracking-wider truncate flex items-center gap-2">
+                                        <span>
+                                            {liveTelemetry.lastVerdict
+                                                ? `SASE VERDICT: ${liveTelemetry.lastVerdict.toUpperCase()}`
+                                                : liveTelemetry.isRunning
+                                                ? (activeJob.role === 'server' ? 'Server Listening for Peers...' : `Replaying Turns (${liveTelemetry.progressPct}%)`)
+                                                : 'SASE Policy Replay Engine Ready'}
+                                        </span>
                                     </div>
-                                    <p className="text-[9px] opacity-80 mt-0.5 truncate">
-                                        {activeJob?.lastVerdict === 'Bypass'
-                                            ? 'All conversation turns completed successfully with no enforcement drop.'
-                                            : activeJob?.lastVerdict?.includes('Reset')
-                                            ? 'Connection was abruptly RST by SASE / Firewall.'
-                                            : activeJob?.status === 'running'
-                                            ? `${activeJob.role === 'server' ? 'Waiting for incoming spoke client' : `Replaying turns to ${customTargetIp}`}`
-                                            : 'Select a profile and launch replay above'}
+                                    <p className="text-[10px] opacity-80 mt-0.5 line-clamp-1">
+                                        {liveTelemetry.lastVerdict === 'Bypass'
+                                            ? 'Full L7 application session completed without inspection drop or TCP RST. Palo Alto / SD-WAN policy allowed.'
+                                            : liveTelemetry.lastVerdict?.includes('Reset')
+                                            ? 'Session was abruptly terminated by TCP RST injection from firewall security enforcement.'
+                                            : liveTelemetry.lastVerdict?.includes('Drop')
+                                            ? 'Session timed out with silent packet drop. Firewall security rule prevented delivery.'
+                                            : liveTelemetry.isRunning
+                                            ? `Streaming bidirectional L7 turns to ${customTargetIp || 'target'}:${portOverride || 'port'} across SD-WAN`
+                                            : 'Select a profile and start client replay to benchmark firewall policy enforcement.'}
                                     </p>
                                 </div>
                             </div>
@@ -1227,27 +1625,96 @@ export const PcapReplay: React.FC<PcapReplayProps> = ({ token }) => {
                         </div>
                     </div>
 
-                    {/* Real-Time Live Activity Socket Console */}
+                    {/* 4 Live Telemetry Tiles */}
+                    <div className="grid grid-cols-4 gap-2 shrink-0">
+                        {/* Turns Progress */}
+                        <div className="bg-card border border-border rounded-xl p-2 flex flex-col justify-between">
+                            <span className="text-[8px] font-black uppercase tracking-wider text-text-muted">Turns Progress</span>
+                            <div className="mt-1 font-mono font-bold text-xs text-text-primary">
+                                {liveTelemetry.completedTurns} <span className="text-[9px] font-normal text-text-muted">/ {liveTelemetry.totalTurns}</span>
+                            </div>
+                            <div className="w-full bg-black/40 h-1 rounded-full mt-1.5 overflow-hidden">
+                                <div
+                                    className={`h-full transition-all duration-300 ${
+                                        liveTelemetry.lastVerdict === 'Bypass'
+                                            ? 'bg-emerald-500'
+                                            : liveTelemetry.lastVerdict
+                                            ? 'bg-red-500'
+                                            : 'bg-indigo-500'
+                                    }`}
+                                    style={{ width: `${liveTelemetry.progressPct}%` }}
+                                />
+                            </div>
+                        </div>
+
+                        {/* Data Transferred */}
+                        <div className="bg-card border border-border rounded-xl p-2 flex flex-col justify-between">
+                            <span className="text-[8px] font-black uppercase tracking-wider text-text-muted">Data Volume</span>
+                            <div className="mt-1 font-mono font-bold text-xs text-cyan-400">
+                                {(liveTelemetry.txBytes / 1024).toFixed(1)} <span className="text-[8px] font-normal text-text-muted">KB TX</span>
+                            </div>
+                            <div className="text-[8px] font-mono text-text-muted/80 truncate">
+                                {(liveTelemetry.rxBytes / 1024).toFixed(1)} KB RX
+                            </div>
+                        </div>
+
+                        {/* Elapsed Duration */}
+                        <div className="bg-card border border-border rounded-xl p-2 flex flex-col justify-between">
+                            <span className="text-[8px] font-black uppercase tracking-wider text-text-muted">Replay Duration</span>
+                            <div className="mt-1 font-mono font-bold text-xs text-text-primary">
+                                {liveTelemetry.durationMs ? `${liveTelemetry.durationMs} ms` : liveTelemetry.isRunning ? 'Active...' : '—'}
+                            </div>
+                            <div className="text-[8px] font-mono text-text-muted/80 truncate">
+                                {liveTelemetry.totalTurns > 0 && liveTelemetry.durationMs > 0
+                                    ? `Avg ${(liveTelemetry.durationMs / liveTelemetry.totalTurns).toFixed(1)} ms/turn`
+                                    : 'Zero loss'}
+                            </div>
+                        </div>
+
+                        {/* Destination Target */}
+                        <div className="bg-card border border-border rounded-xl p-2 flex flex-col justify-between">
+                            <span className="text-[8px] font-black uppercase tracking-wider text-text-muted">Target Host</span>
+                            <div className="mt-1 font-mono font-bold text-[10px] text-purple-400 truncate">
+                                {customTargetIp || '127.0.0.1'}
+                            </div>
+                            <div className="text-[8px] font-mono text-text-muted/80 truncate">
+                                Port {portOverride || activeFlow?.server_port || 18443} · {activeFlow?.transport?.toUpperCase() || 'UDP'}
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Multi-Mode Live Activity & Timeline Console */}
                     <div className="bg-card border border-border rounded-2xl p-3 shadow-xl font-mono flex-1 min-h-0 flex flex-col overflow-hidden">
                         <div className="flex items-center justify-between pb-2 border-b border-border text-text-muted text-xs shrink-0">
                             <div className="flex items-center gap-1.5">
                                 <Terminal size={13} className="text-emerald-400" />
-                                <span className="font-black uppercase tracking-widest text-[9px]">Live Activity Console</span>
+                                <span className="font-black uppercase tracking-widest text-[9px]">Activity & SASE Console</span>
                                 <span className="text-[9px] text-text-muted/60 font-mono">({terminalLogs.length})</span>
                             </div>
-                            
+
                             <div className="flex items-center gap-1.5">
                                 <div className="flex items-center bg-black/40 rounded-lg p-0.5 border border-border/60">
                                     <button
                                         type="button"
-                                        onClick={() => setConsoleViewMode('formatted')}
+                                        onClick={() => setConsoleViewMode('timeline')}
                                         className={`px-2 py-0.5 rounded text-[8px] font-bold transition-all cursor-pointer ${
-                                            consoleViewMode === 'formatted'
+                                            consoleViewMode === 'timeline'
                                                 ? 'bg-primary text-black shadow-sm'
                                                 : 'text-text-muted hover:text-text-primary'
                                         }`}
                                     >
-                                        Live
+                                        Timeline
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => setConsoleViewMode('stream')}
+                                        className={`px-2 py-0.5 rounded text-[8px] font-bold transition-all cursor-pointer ${
+                                            consoleViewMode === 'stream'
+                                                ? 'bg-primary text-black shadow-sm'
+                                                : 'text-text-muted hover:text-text-primary'
+                                        }`}
+                                    >
+                                        Stream Log
                                     </button>
                                     <button
                                         type="button"
@@ -1274,16 +1741,108 @@ export const PcapReplay: React.FC<PcapReplayProps> = ({ token }) => {
                             </div>
                         </div>
 
-                        <div className="mt-2 bg-black/50 border border-border/60 rounded-xl p-2 flex-1 min-h-0 overflow-y-auto space-y-1 text-[10px] scrollbar-thin scrollbar-thumb-border">
-                            {terminalLogs.length === 0 ? (
-                                <div className="flex items-center justify-center h-full text-text-muted/40 italic text-xs">
-                                    Waiting for replay events...
+                        {/* Console Viewport */}
+                        <div className="mt-2 bg-black/50 border border-border/60 rounded-xl p-2.5 flex-1 min-h-0 overflow-y-auto space-y-1.5 text-[10px] scrollbar-thin scrollbar-thumb-border">
+                            {consoleViewMode === 'timeline' ? (
+                                /* 📊 Milestone Session Timeline View */
+                                <div className="space-y-2.5 py-1">
+                                    {/* Milestone 1: Initialization */}
+                                    <div className="flex items-start gap-2.5">
+                                        <div className="w-5 h-5 rounded-full bg-blue-500/20 text-blue-400 border border-blue-500/40 flex items-center justify-center text-[9px] font-bold shrink-0 mt-0.5">
+                                            1
+                                        </div>
+                                        <div className="flex-1 bg-card/40 border border-border/60 rounded-xl p-2">
+                                            <div className="flex items-center justify-between">
+                                                <span className="font-bold text-text-primary text-[10px]">Session Setup & Peer Binding</span>
+                                                <span className="text-[8px] text-text-muted font-mono uppercase">{replayRole} mode</span>
+                                            </div>
+                                            <div className="text-[9px] text-text-secondary mt-1 flex flex-wrap gap-2">
+                                                <span>Target: <strong className="text-purple-400 font-mono">{customTargetIp || '127.0.0.1'}:{portOverride || '10080'}</strong></span>
+                                                <span>Transport: <strong className="text-text-primary">{activeFlow?.transport?.toUpperCase() || 'UDP'}</strong></span>
+                                                <span>Scenario: <strong className="text-indigo-400">{profileDetails?.name || selectedProfileFile || 'Custom'}</strong></span>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* Milestone 2: Stateful Replay Execution */}
+                                    <div className="flex items-start gap-2.5">
+                                        <div className={`w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-bold shrink-0 mt-0.5 ${
+                                            liveTelemetry.completedTurns > 0
+                                                ? 'bg-purple-500/20 text-purple-400 border border-purple-500/40'
+                                                : 'bg-card border border-border text-text-muted'
+                                        }`}>
+                                            2
+                                        </div>
+                                        <div className="flex-1 bg-card/40 border border-border/60 rounded-xl p-2">
+                                            <div className="flex items-center justify-between">
+                                                <span className="font-bold text-text-primary text-[10px]">Bidirectional L7 Turns Exchange</span>
+                                                <span className="text-[8px] font-mono text-purple-400">{liveTelemetry.progressPct}%</span>
+                                            </div>
+                                            <p className="text-[9px] text-text-muted mt-0.5">
+                                                {liveTelemetry.isRunning
+                                                    ? `Replaying packet sequence... ${liveTelemetry.completedTurns} of ${liveTelemetry.totalTurns} turns completed.`
+                                                    : liveTelemetry.completedTurns > 0
+                                                    ? `Completed ${liveTelemetry.completedTurns} turns (${(liveTelemetry.txBytes / 1024).toFixed(1)} KB transmitted across overlay).`
+                                                    : 'Waiting for replay execution to begin.'}
+                                            </p>
+                                        </div>
+                                    </div>
+
+                                    {/* Milestone 3: SASE Security Policy Verdict */}
+                                    <div className="flex items-start gap-2.5">
+                                        <div className={`w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-bold shrink-0 mt-0.5 ${
+                                            liveTelemetry.lastVerdict === 'Bypass'
+                                                ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40'
+                                                : liveTelemetry.lastVerdict
+                                                ? 'bg-red-500/20 text-red-400 border border-red-500/40'
+                                                : 'bg-card border border-border text-text-muted'
+                                        }`}>
+                                            3
+                                        </div>
+                                        <div className={`flex-1 rounded-xl p-2 border ${
+                                            liveTelemetry.lastVerdict === 'Bypass'
+                                                ? 'bg-emerald-500/10 border-emerald-500/30'
+                                                : liveTelemetry.lastVerdict
+                                                ? 'bg-red-500/10 border-red-500/30'
+                                                : 'bg-card/40 border-border/60'
+                                        }`}>
+                                            <div className="flex items-center justify-between">
+                                                <span className="font-bold text-[10px]">
+                                                    {liveTelemetry.lastVerdict ? `SASE Verdict: ${liveTelemetry.lastVerdict}` : 'Policy Enforcement Result'}
+                                                </span>
+                                                {liveTelemetry.durationMs > 0 && (
+                                                    <span className="text-[8px] font-mono text-text-muted">{liveTelemetry.durationMs}ms</span>
+                                                )}
+                                            </div>
+                                            <p className="text-[9px] mt-1 text-text-secondary">
+                                                {liveTelemetry.lastVerdict === 'Bypass'
+                                                    ? 'All conversation turns completed with zero packet drop and zero TCP RST resets. Security policies fully permit this application signature.'
+                                                    : liveTelemetry.lastVerdict?.includes('Reset')
+                                                    ? 'Traffic was terminated with TCP RST injection by firewall policy.'
+                                                    : liveTelemetry.lastVerdict?.includes('Drop')
+                                                    ? 'Traffic timed out waiting for server response. Silent drop policy detected.'
+                                                    : 'Awaiting execution completion to render final SASE verdict.'}
+                                            </p>
+                                        </div>
+                                    </div>
                                 </div>
+                            ) : consoleViewMode === 'stream' ? (
+                                /* 📋 Stream Packet-by-Packet Real-Time Logs */
+                                terminalLogs.length === 0 ? (
+                                    <div className="flex items-center justify-center h-full text-text-muted/40 italic text-xs">
+                                        Waiting for replay packet events...
+                                    </div>
+                                ) : (
+                                    terminalLogs.map((log: any, idx: number) => formatLogEvent(log, idx))
+                                )
                             ) : (
-                                terminalLogs.map((log: any, idx: number) => (
-                                    consoleViewMode === 'formatted' ? (
-                                        formatLogEvent(log, idx)
-                                    ) : (
+                                /* 💻 Raw JSON Telemetry */
+                                terminalLogs.length === 0 ? (
+                                    <div className="flex items-center justify-center h-full text-text-muted/40 italic text-xs">
+                                        Waiting for replay events...
+                                    </div>
+                                ) : (
+                                    terminalLogs.map((log: any, idx: number) => (
                                         <div key={idx} className="flex items-start gap-1.5 text-text-secondary leading-tight">
                                             <span className="text-text-muted/50 select-none text-[8px] font-mono">
                                                 [{idx + 1}]
@@ -1292,8 +1851,8 @@ export const PcapReplay: React.FC<PcapReplayProps> = ({ token }) => {
                                                 {typeof log === 'string' ? log : JSON.stringify(log)}
                                             </span>
                                         </div>
-                                    )
-                                ))
+                                    ))
+                                )
                             )}
                         </div>
                     </div>
