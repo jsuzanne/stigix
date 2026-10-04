@@ -1,9 +1,9 @@
-> **Last Updated:** 2026-10-03 | **Created:** 2026-01-25 (v1.0.0)
+> **Last Updated:** 2026-10-04 | **Created:** 2026-01-25 (v1.0.0)
 
 # 🕸️ Stigix — Advanced Networking & Security Simulation Environment
 
-[![Version](https://img.shields.io/badge/Version-2.0.145-blue.svg)](https://github.com/jsuzanne/stigix/releases)
-[![Last Updated](https://img.shields.io/badge/Updated-2026--10--03-brightgreen.svg)](CHANGELOG_V2.md)
+[![Version](https://img.shields.io/badge/Version-2.0.148-blue.svg)](https://github.com/jsuzanne/stigix/releases)
+[![Last Updated](https://img.shields.io/badge/Updated-2026--10--04-brightgreen.svg)](CHANGELOG_V2.md)
 [![Docker Pulls](https://img.shields.io/docker/pulls/jlsuzanne/stigix)](https://hub.docker.com/r/jlsuzanne/stigix)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
@@ -39,6 +39,7 @@ curl -sSL https://raw.githubusercontent.com/jsuzanne/stigix/main/install.sh | ba
   - [3. ⚡ SD-WAN Chaos Engineering & VyOS Underlay](#3-️-sd-wan-chaos-engineering--vyos-underlay)
   - [4. 🎙️ Physical IoT (L2/L3) & Voice RTP Simulation](#4-️-physical-iot-l2l3--voice-rtp-simulation)
   - [5. 🤖 AI-Native Orchestration (FastMCP) & Mesh Fleet](#5--ai-native-orchestration-fastmcp--mesh-fleet)
+  - [6. 📦 Stateful PCAP Replay Engine (L7 Turns, SASE & Exploits)](#6-️-stateful-pcap-replay-engine-l7-turns-sase--exploits)
 - [📸 Screenshots Gallery](#-screenshots-gallery)
 - [🖥️ Platform Support](#️-platform-support)
 - [📋 Prerequisites](#-prerequisites)
@@ -107,11 +108,28 @@ This project is my way to turn all that lab and demo experience into an open-sou
 - **Fleet Remote View & WebSocket Reverse Gateway** ⚡ — Centralized observability and remote node management directly from the Leader. Transparently proxies API calls over multiplexed WebSocket reverse tunnels (`/fleet-tunnel`) traversing NAT, CGNAT, and firewalls with zero inbound ports required on spokes. [Read more](docs/REMOTE_VIEW_USER_GUIDE.md)
 - **Peer Autodiscovery** 📡 — Automatic peer-to-peer discovery using Cloudflare Workers with zero-touch multi-node setup. [Read more](docs/AUTODISCOVERY_GUIDE.md)
 
+### 6. 📦 Stateful PCAP Replay Engine (L7 Turns, SASE & Exploits)
+
+- **Stateful L7 Protocol Turn Reassembly** 🔄 — Ingests standard `.pcap`, `.pcapng`, `.cap`, and nested `.zip` archives. Assembles raw bidirectional TCP streams and UDP datagrams into conversational application turns (`⬆️ Client ➔ Server` vs `⬇️ Server ➔ Client`) with microsecond timing and payload offsets. [Read more](docs/PRD_PCAP_REPLAY_ENGINE.md)
+- **Direct ZIP & Exploit Archive Ingestion** 📦 — Native drag-and-drop support for `.zip` archives (including nested `.pcap.zip` malware archives). Extracts captures into an ephemeral memory buffer with automatic password recovery (`infected`, `virus`, `malware`) and guaranteed cleanup (`Memory Guard` — zero disk residue).
+- **Automated Credential & PII Scrubbing** 🛡️ — Masks passwords, Bearer tokens, Basic Auth, and email addresses in application payloads with regex substitution, preserving protocol structures for safe replay across enterprise networks.
+- **Noise Isolation & Clean Flow Filtering** 🎯 — Classifies and filters background multicast/broadcast noise (DHCPv6, LLMNR, mDNS, NetBIOS, subnet broadcasts) with 1-click bulk controls (`Select All`, `Deselect All`, `Unicast Only`, `+ TCP`, `- TCP`, `+ UDP`, `- UDP`).
+- **Fleet-Wide Mesh Profile Auto-Sync** 🌐 — Compiling or editing a `.stx-replay` profile on the Leader automatically synchronizes it across all spoke nodes (DC1, BR1, BR2, BR5, BR8) over WebSocket reverse tunnels.
+- **Dual Server Listener & Client Replay Orchestration** 🕹️ — Bind background server sockets on DC1 and launch realistic client replays from branch nodes (BR8) with continuous looping (`Loop #X`) and cumulative TX/RX volume tracking.
+- **Live SASE Telemetry Hub & Wireshark-Style Hex Dump** 📊 — Real-time security policy verdicts (`Bypass / Allowed`, `TCP RST Reset`, `Silent Drop`), 16-byte aligned Hex Dump viewer, and telemetry console (`Timeline`, `Stream Log`, `Raw JSON`).
+
 ---
 
 ## 🆕 What's New
 
 The project is evolving rapidly with major features, engines, and UX refinements in every release.
+
+### 📦 Stateful PCAP Replay Engine & Native ZIP Exploit Ingestion *(v2.0.148)*
+- **Direct ZIP & Malware Archive Ingestion** 📦 — Native upload support for `.zip` archives (including nested `.pcap.zip` captures) with automatic password recovery (`infected`, `virus`, `malware`) and zero disk pollution (`Memory Guard`).
+- **100% Exploit Benchmark Validation** 🛡️ — Tested across 496 real-world exploit kit and malware captures (`Nuclear-EK`, `Rig-EK`, `Angler-EK`, `Magnitude-EK`, `Blaster`) with zero failures.
+- **Noise Classification & Fast Flow Filter Bar** 🎯 — Automatic isolation of network background noise (DHCPv6, LLMNR, NetBIOS) and 1-click bulk filters (`Select All`, `Unicast Only`, `+ TCP`, `+ UDP`).
+- **UDP Loop Replay & Cumulative Byte Telemetry** 🔄 — Continuous replay looping with real-time accumulation of total TX/RX bytes exchanged across iterations.
+- **Dynamic Scenario Awareness** 🕹️ — Explicit scenario names and active PID tracking on Server/Client Start and Stop action buttons.
 
 ### 🔐 Prisma Access SSL Decryption & URL Filtering HTTPS Toggle *(v2.0.143)*
 - **1-Click Forward Trust CA Auto-Import** 🔐 — Direct extraction of `Forward-Trust-CA` (RSA/ECDSA) and custom Root CAs from Prisma SASE API (`/sse/config/v1/certificates`) into `config/certs/ca-bundle.pem`.
@@ -948,7 +966,7 @@ npm run build
 - [ ] Advanced traffic patterns (burst, gradual ramp-up)
 - [ ] Custom protocol support (FTP, SMTP, etc.)
 - [ ] Grafana/Prometheus integration
-- [ ] Traffic replay from PCAP files
+- [x] Traffic replay from PCAP & ZIP archives (Stateful L7 turns, SASE telemetry, credential scrubbing, mesh sync)
 - [ ] Cloud provider integrations (AWS, Azure, GCP)
 - [ ] WebRTC and video streaming simulation
 - [ ] PowerShell installation script for Windows
