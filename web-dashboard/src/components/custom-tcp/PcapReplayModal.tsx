@@ -94,6 +94,10 @@ export const PcapReplayModal: React.FC<PcapReplayModalProps> = ({
     const handleProfileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         if (!file) return;
+        if (!isPcapEnabled) {
+            toast.error('PCAP Replay is disabled. Set ENABLE_PCAP_REPLAY=true in .env');
+            return;
+        }
         if (!file.name.endsWith('.stx-replay')) {
             toast.error('Only .stx-replay files can be imported directly');
             return;
@@ -203,6 +207,10 @@ export const PcapReplayModal: React.FC<PcapReplayModalProps> = ({
 
     const handleInspectUpload = async () => {
         if (!selectedFile) return;
+        if (!isPcapEnabled) {
+            toast.error('PCAP Replay is disabled. Set ENABLE_PCAP_REPLAY=true in .env');
+            return;
+        }
 
         setIsUploading(true);
         try {
@@ -248,6 +256,10 @@ export const PcapReplayModal: React.FC<PcapReplayModalProps> = ({
 
     const handleCompile = async () => {
         if (!tempFileToken) return;
+        if (!isPcapEnabled) {
+            toast.error('PCAP Replay is disabled. Set ENABLE_PCAP_REPLAY=true in .env');
+            return;
+        }
 
         if (selectedFlowIds.length === 0) {
             toast.error('Please select at least one flow to include');
@@ -290,6 +302,10 @@ export const PcapReplayModal: React.FC<PcapReplayModalProps> = ({
     };
 
     const handleStartReplay = async () => {
+        if (!isPcapEnabled) {
+            toast.error('PCAP Replay is disabled. Set ENABLE_PCAP_REPLAY=true in .env');
+            return;
+        }
         if (!selectedProfile) {
             toast.error('Select a replay profile');
             return;
@@ -502,7 +518,7 @@ export const PcapReplayModal: React.FC<PcapReplayModalProps> = ({
                             <div className="flex justify-end pt-2">
                                 <button
                                     onClick={handleInspectUpload}
-                                    disabled={!selectedFile || isUploading}
+                                    disabled={!selectedFile || isUploading || !isPcapEnabled}
                                     className="px-6 py-2.5 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed text-white text-xs font-semibold rounded-xl shadow-sm transition-all flex items-center gap-2 cursor-pointer"
                                 >
                                     {isUploading ? (
@@ -682,8 +698,8 @@ export const PcapReplayModal: React.FC<PcapReplayModalProps> = ({
                                 </button>
                                 <button
                                     onClick={handleCompile}
-                                    disabled={isCompiling || selectedFlowIds.length === 0}
-                                    className="px-6 py-2.5 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white text-xs font-semibold rounded-xl shadow-sm transition-all flex items-center gap-2 cursor-pointer"
+                                    disabled={isCompiling || selectedFlowIds.length === 0 || !isPcapEnabled}
+                                    className="px-6 py-2.5 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 disabled:cursor-not-allowed text-white text-xs font-semibold rounded-xl shadow-sm transition-all flex items-center gap-2 cursor-pointer"
                                 >
                                     {isCompiling ? (
                                         <>
@@ -986,8 +1002,8 @@ export const PcapReplayModal: React.FC<PcapReplayModalProps> = ({
                                     ) : (
                                         <button
                                             onClick={handleStartReplay}
-                                            disabled={isStartingReplay || !selectedProfile}
-                                            className="px-5 py-2 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white text-xs font-semibold rounded-xl shadow-sm flex items-center gap-1.5 cursor-pointer"
+                                            disabled={isStartingReplay || !selectedProfile || !isPcapEnabled}
+                                            className="px-5 py-2 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed text-white text-xs font-semibold rounded-xl shadow-sm flex items-center gap-1.5 cursor-pointer"
                                         >
                                             <Play size={13} /> Start Replay
                                         </button>

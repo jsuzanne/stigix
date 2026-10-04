@@ -387,7 +387,7 @@ export function createPcapApiRouter(configDir: string, projectRoot: string, pyth
     });
 
     // GET /api/pcap/replay/active-server - Check if there is an active replay server listening on this node
-    router.get('/replay/active-server', (_req: Request, res: Response) => {
+    router.get('/replay/active-server', checkFeatureFlag, (_req: Request, res: Response) => {
         const runningServer = Array.from(activeJobs.values()).find(j => j.role === 'server' && j.status === 'running');
         if (runningServer) {
             return res.json({

@@ -839,6 +839,10 @@ export class ProvisioningManager {
                     this.certificateManager.init();
                 }
             } else if (type === 'pcap-profiles') {
+                if (process.env.ENABLE_PCAP_REPLAY !== 'true') {
+                    log('PROVISIONING', `⚠️ Ignored 'pcap-profiles' bundle on peer: ENABLE_PCAP_REPLAY is disabled in .env`);
+                    return false;
+                }
                 const profilesDir = path.join(this.configDir, 'pcap-profiles');
                 if (!fs.existsSync(profilesDir)) fs.mkdirSync(profilesDir, { recursive: true });
 

@@ -978,6 +978,7 @@ export class FleetTunnelManager {
 
             for (const bundle of manifest.bundles) {
                 if (specificType && bundle.type !== specificType) continue;
+                if (bundle.type === 'pcap-profiles' && process.env.ENABLE_PCAP_REPLAY !== 'true') continue;
                 const currentApplied = localState.appliedRevisions?.[bundle.type];
                 const needsSync = !currentApplied || currentApplied.revision < bundle.revision || currentApplied.checksum !== bundle.checksum || currentApplied.status !== 'applied';
 

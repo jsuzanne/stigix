@@ -13904,6 +13904,9 @@ app.use('/api/custom-tcp-apps', authenticateToken, createCustomTcpApiRouter(tcpA
 log('CUSTOM_TCP', `🖧 Custom TCP Applications API mounted at /api/custom-tcp-apps`);
 
 const buildPcapProfilesPayload = (): { profiles: any[] } => {
+    if (process.env.ENABLE_PCAP_REPLAY !== 'true') {
+        return { profiles: [] };
+    }
     const pcapDir = path.join(APP_CONFIG.configDir, 'pcap-profiles');
     const profiles: any[] = [];
     if (fs.existsSync(pcapDir)) {
@@ -13926,6 +13929,7 @@ const buildPcapProfilesPayload = (): { profiles: any[] } => {
 };
 
 const syncFleetPcapProfiles = () => {
+    if (process.env.ENABLE_PCAP_REPLAY !== 'true') return;
     const isLeader = typeof registryManager?.isLeader === 'function' 
         ? registryManager.isLeader() 
         : (registryManager?.getStatus?.()?.mode === 'leader');
@@ -14033,6 +14037,7 @@ provisioningManager.onBundleApplied((type, payload) => {
         log('PROVISIONING', `⚡ Hot-reloading Cloud Probes credentials and Worker URL on peer...`);
         targetManager.reload();
     } else if (type === 'pcap-profiles') {
+        if (process.env.ENABLE_PCAP_REPLAY !== 'true') return;
         const count = payload?.profiles?.length || 0;
         log('PROVISIONING', `⚡ Synchronized ${count} PCAP Replay profile(s) on peer.`);
     }
@@ -14073,9 +14078,10 @@ app.get('/api/provisioning/config', authenticateToken, (_req, res) => {
     const securityPending = provisioningManager.hasUnpublishedChanges('security-config', readJson(path.join(APP_CONFIG.configDir, 'security-config.json')));
     const voicePending = provisioningManager.hasUnpublishedChanges('voice-config', readJson(path.join(APP_CONFIG.configDir, 'voice-config.json')));
     const iotPending = provisioningManager.hasUnpublishedChanges('iot-config', readJson(IOT_DEVICES_FILE));
+    const isPcapEnabled = process.env.ENABLE_PCAP_REPLAY === 'true';
     const customTcpPending = provisioningManager.hasUnpublishedChanges('custom-tcp-apps', readJson(path.join(APP_CONFIG.configDir, 'custom-tcp-applications.json')));
     const cloudPending = provisioningManager.hasUnpublishedChanges('cloud-config', readJson(CLOUD_CONFIG_FILE));
-    const pcapPending = provisioningManager.hasUnpublishedChanges('pcap-profiles', buildPcapProfilesPayload());
+    const pcapPending = isPcapEnabled ? provisioningManager.hasUnpublishedChanges('pcap-profiles', buildPcapProfilesPayload()) : false;
 
     const isLeader = typeof registryManager?.isLeader === 'function' 
         ? registryManager.isLeader() 
@@ -14242,10 +14248,12 @@ app.post('/api/provisioning/publish/:type', authenticateToken, (req, res) => {
     }
 
     const type = req.params.type as GlobalBundleType;
+    const isPcapEnabled = process.env.ENABLE_PCAP_REPLAY === 'true';
     const validTypes: GlobalBundleType[] = [
         'applications', 'connectivity-probes', 'convergence-sla',
         'prisma-sase', 'security-config', 'voice-config', 'iot-config',
-        'custom-tcp-apps', 'cloud-config', 'pcap-profiles'
+        'custom-tcp-apps', 'cloud-config',
+        ...(isPcapEnabled ? ['pcap-profiles' as GlobalBundleType] : [])
     ];
     if (!validTypes.includes(type)) {
         return res.status(400).json({ error: 'invalid_bundle_type' });
@@ -14289,10 +14297,12 @@ app.post('/api/provisioning/publish', authenticateToken, (req, res) => {
     }
 
     const type = (req.body?.type || req.body?.bundle_type || 'all') as string;
+    const isPcapEnabled = process.env.ENABLE_PCAP_REPLAY === 'true';
     const validTypes: GlobalBundleType[] = [
         'applications', 'connectivity-probes', 'convergence-sla',
         'prisma-sase', 'security-config', 'voice-config', 'iot-config',
-        'custom-tcp-apps', 'cloud-config', 'pcap-profiles'
+        'custom-tcp-apps', 'cloud-config',
+        ...(isPcapEnabled ? ['pcap-profiles' as GlobalBundleType] : [])
     ];
 
     if (type === 'all') {
