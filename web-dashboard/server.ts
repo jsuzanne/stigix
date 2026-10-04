@@ -13903,7 +13903,7 @@ log('FLEET', `🔀 Fleet Gateway Reverse Proxy mounted at /api/gateway/:peerId/*
 app.use('/api/custom-tcp-apps', authenticateToken, createCustomTcpApiRouter(tcpAppManager));
 log('CUSTOM_TCP', `🖧 Custom TCP Applications API mounted at /api/custom-tcp-apps`);
 
-const buildPcapProfilesPayload = (): { profiles: any[] } => {
+const buildPcapProfilesPayload = (includeContent = true): { profiles: any[] } => {
     if (process.env.ENABLE_PCAP_REPLAY !== 'true') {
         return { profiles: [] };
     }
@@ -13914,14 +13914,18 @@ const buildPcapProfilesPayload = (): { profiles: any[] } => {
         for (const file of files) {
             try {
                 const fullPath = path.join(pcapDir, file);
-                const buf = fs.readFileSync(fullPath);
                 const stat = fs.statSync(fullPath);
-                profiles.push({
+                const item: any = {
                     file_name: file,
-                    content_b64: buf.toString('base64'),
                     size_bytes: stat.size,
-                    checksum: crypto.createHash('sha256').update(buf).digest('hex')
-                });
+                    checksum: `${file}-${stat.size}-${stat.mtimeMs}`
+                };
+                if (includeContent) {
+                    const buf = fs.readFileSync(fullPath);
+                    item.content_b64 = buf.toString('base64');
+                    item.checksum = crypto.createHash('sha256').update(buf).digest('hex');
+                }
+                profiles.push(item);
             } catch {}
         }
     }
@@ -14081,7 +14085,7 @@ app.get('/api/provisioning/config', authenticateToken, (_req, res) => {
     const isPcapEnabled = process.env.ENABLE_PCAP_REPLAY === 'true';
     const customTcpPending = provisioningManager.hasUnpublishedChanges('custom-tcp-apps', readJson(path.join(APP_CONFIG.configDir, 'custom-tcp-applications.json')));
     const cloudPending = provisioningManager.hasUnpublishedChanges('cloud-config', readJson(CLOUD_CONFIG_FILE));
-    const pcapPending = isPcapEnabled ? provisioningManager.hasUnpublishedChanges('pcap-profiles', buildPcapProfilesPayload()) : false;
+    const pcapPending = isPcapEnabled ? provisioningManager.hasUnpublishedChanges('pcap-profiles', buildPcapProfilesPayload(false)) : false;
 
     const isLeader = typeof registryManager?.isLeader === 'function' 
         ? registryManager.isLeader() 
