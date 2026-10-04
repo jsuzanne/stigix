@@ -349,12 +349,13 @@ def normalize_flow_key(src_ip: str, src_port: int, dst_ip: str, dst_port: int, p
         return (ep2[0], ep2[1], ep1[0], ep1[1], proto)
 
 
-def unpack_pcap_from_zip(file_path: str, target_inner_pcap: Optional[str] = None) -> Tuple[str, bool, Optional[str], List[str]]:
+def unpack_pcap_from_zip(file_path: str, target_inner_pcap: Optional[str] = None, password: Optional[str] = None) -> Tuple[str, bool, Optional[str], List[str]]:
     """
-    Checks if file_path is a zip archive (by extension or magic PK\\x03\\x04).
+    Checks if file_path is a zip archive (by extension or magic PK\x03\x04).
     If so, searches for .pcap, .pcapng, or .cap files (including nested .zip archives),
     extracts the target or first PCAP to a temporary file, and returns:
     (actual_pcap_path, is_temporary, original_inner_filename, all_discovered_pcaps)
+    Supports user-supplied password and common security research passwords.
     """
     if not os.path.isfile(file_path):
         return file_path, False, None, []
@@ -372,7 +373,33 @@ def unpack_pcap_from_zip(file_path: str, target_inner_pcap: Optional[str] = None
     if not is_zip:
         return file_path, False, None, []
 
-    COMMON_PWDS = [None, b"infected", b"virus", b"password", b"malware", b"clean", b"infected!"]
+    # Password candidates: explicit user-provided password first
+    candidate_pwds: List[Optional[bytes]] = []
+    if password and password.strip():
+        candidate_pwds.append(password.strip().encode('utf-8'))
+        candidate_pwds.append(password.strip().encode('latin1'))
+
+    # Candidate: auto-detect date pattern in filename like 2014-03-15 -> infected_20140315
+    m = re.search(r'\b(20\d{2})[-_]?(\d{2})[-_]?(\d{2})\b', os.path.basename(file_path))
+    if m:
+        candidate_pwds.append(f"infected_{m.group(1)}{m.group(2)}{m.group(3)}".encode('utf-8'))
+
+    # Common research passwords (Netresec, DeepEnd, Contagio, Malware-Traffic-Analysis)
+    candidate_pwds.extend([
+        None,
+        b"infected",
+        b"infected666p",
+        b"infected666",
+        b"infected666c",
+        b"virus",
+        b"password",
+        b"malware",
+        b"clean",
+        b"infected!"
+    ])
+
+    encrypted_detected = False
+    aes_detected = False
 
     try:
         with zipfile.ZipFile(file_path, 'r') as outer:
@@ -380,13 +407,23 @@ def unpack_pcap_from_zip(file_path: str, target_inner_pcap: Optional[str] = None
             direct_pcaps = [n for n in outer.namelist() if n.lower().endswith(('.pcap', '.pcapng', '.cap'))]
             if direct_pcaps:
                 chosen = target_inner_pcap if target_inner_pcap in direct_pcaps else direct_pcaps[0]
+                info = outer.getinfo(chosen)
+                if info.flag_bits & 0x1:
+                    encrypted_detected = True
+                if info.compress_type == 99:
+                    aes_detected = True
+
                 pcap_data = None
-                for pwd in COMMON_PWDS:
+                for pwd in candidate_pwds:
                     try:
                         pcap_data = outer.read(chosen, pwd=pwd)
                         break
-                    except RuntimeError:
+                    except (RuntimeError, zipfile.BadZipFile):
                         continue
+                    except NotImplementedError:
+                        aes_detected = True
+                        break
+
                 if pcap_data is not None:
                     fd, temp_pcap_path = tempfile.mkstemp(suffix=os.path.splitext(chosen)[1] or '.pcap', prefix='stx_unzip_')
                     with os.fdopen(fd, 'wb') as tf:
@@ -394,7 +431,7 @@ def unpack_pcap_from_zip(file_path: str, target_inner_pcap: Optional[str] = None
                     return temp_pcap_path, True, os.path.basename(chosen), direct_pcaps
 
             # 2. Check nested zip files
-            inner_zips = [n for n in outer.namelist() if n.lower().endswith(('.zip', '.zip'))]
+            inner_zips = [n for n in outer.namelist() if n.lower().endswith('.zip')]
             all_nested_pcaps = []
             for iz in inner_zips:
                 try:
@@ -404,13 +441,23 @@ def unpack_pcap_from_zip(file_path: str, target_inner_pcap: Optional[str] = None
                         all_nested_pcaps.extend(nested_pcaps)
                         if nested_pcaps:
                             chosen = target_inner_pcap if target_inner_pcap in nested_pcaps else nested_pcaps[0]
+                            info = inner.getinfo(chosen)
+                            if info.flag_bits & 0x1:
+                                encrypted_detected = True
+                            if info.compress_type == 99:
+                                aes_detected = True
+
                             pcap_data = None
-                            for pwd in COMMON_PWDS:
+                            for pwd in candidate_pwds:
                                 try:
                                     pcap_data = inner.read(chosen, pwd=pwd)
                                     break
-                                except RuntimeError:
+                                except (RuntimeError, zipfile.BadZipFile):
                                     continue
+                                except NotImplementedError:
+                                    aes_detected = True
+                                    break
+
                             if pcap_data is not None:
                                 fd, temp_pcap_path = tempfile.mkstemp(suffix=os.path.splitext(chosen)[1] or '.pcap', prefix='stx_unzip_')
                                 with os.fdopen(fd, 'wb') as tf:
@@ -420,19 +467,30 @@ def unpack_pcap_from_zip(file_path: str, target_inner_pcap: Optional[str] = None
                     continue
 
             if not direct_pcaps and not all_nested_pcaps:
-                raise ValueError("ZIP archive does not contain any .pcap or .pcapng files")
+                raise ValueError("ZIP archive does not contain any .pcap, .pcapng, or .cap files")
     except Exception as e:
+        if "does not contain" in str(e):
+            raise
+        if aes_detected:
+            raise ValueError("ZIP archive uses WinZip AES-256 encryption. Please extract the archive first or provide standard ZipCrypto.")
+        if encrypted_detected:
+            raise ValueError("ZIP archive is password-protected. Please provide the archive password in the Archive Password field.")
         raise ValueError(f"Failed to extract PCAP from ZIP archive: {str(e)}")
 
-    raise ValueError("ZIP archive contains PCAP files, but extraction failed or password was unknown")
+    if aes_detected:
+        raise ValueError("ZIP archive uses WinZip AES-256 encryption. Please extract the archive first or provide standard ZipCrypto.")
+    if encrypted_detected:
+        raise ValueError("ZIP archive is password-protected. Please provide the archive password in the Archive Password field.")
+
+    raise ValueError("ZIP archive contains PCAP files, but extraction failed. Please check archive password.")
 
 
-def inspect_pcap(pcap_path: str, scrub: bool = False, inner_pcap: Optional[str] = None) -> Dict[str, Any]:
+def inspect_pcap(pcap_path: str, scrub: bool = False, inner_pcap: Optional[str] = None, password: Optional[str] = None) -> Dict[str, Any]:
     """Stream-read PCAP (or unpack PCAP from .zip) and extract all flows and metadata without loading whole file into RAM."""
     if not os.path.isfile(pcap_path):
         raise FileNotFoundError(f"Capture file not found: {pcap_path}")
 
-    actual_pcap_path, is_temp, inner_name, discovered_pcaps = unpack_pcap_from_zip(pcap_path, inner_pcap)
+    actual_pcap_path, is_temp, inner_name, discovered_pcaps = unpack_pcap_from_zip(pcap_path, inner_pcap, password=password)
     archive_file_size = os.path.getsize(pcap_path) if is_temp else None
 
     try:
@@ -636,23 +694,24 @@ def compile_stx_profile(inspection: Dict[str, Any], selected_flow_ids: Optional[
             # If no selection specified, default to all non-noise unicast flows (if available)
             if f.get("is_noise") and unicast_flows_count > 0:
                 continue
-            orig_port = f["server_port"]
-            if target_port:
-                eff_port = int(target_port)
-            elif orig_port in RESERVED_PORTS:
-                eff_port = 10000 + orig_port if orig_port < 50000 else orig_port - 10000
-            else:
-                eff_port = orig_port
 
-            flows_to_include.append({
-                "flow_id": f["flow_id"],
-                "transport": f["transport"],
-                "server_port": eff_port,
-                "original_server_port": orig_port,
-                "client_ip": f["client_ip"],
-                "server_ip": f["server_ip"],
-                "turns": f["_turns"]
-            })
+        orig_port = f["server_port"]
+        if target_port:
+            eff_port = int(target_port)
+        elif orig_port in RESERVED_PORTS:
+            eff_port = 10000 + orig_port if orig_port < 50000 else orig_port - 10000
+        else:
+            eff_port = orig_port
+
+        flows_to_include.append({
+            "flow_id": f["flow_id"],
+            "transport": f["transport"],
+            "server_port": eff_port,
+            "original_server_port": orig_port,
+            "client_ip": f["client_ip"],
+            "server_ip": f["server_ip"],
+            "turns": f["_turns"]
+        })
 
     if not flows_to_include:
         raise ValueError("No flows selected or available for replay profile")
@@ -729,12 +788,13 @@ Examples:
     parser.add_argument("--threat-id", help="Expected Palo Alto Threat ID (e.g. 55123)")
     parser.add_argument("--port", type=int, help="Target replay port (defaults to conflict-free port if original conflicts)")
     parser.add_argument("--scrub", action="store_true", help="Scrub credentials, tokens, and sensitive patterns")
+    parser.add_argument("--password", "-p", help="Password for encrypted .zip archives")
     parser.add_argument("--json", action="store_true", help="Output JSON format instead of human-readable text")
 
     args = parser.parse_args()
 
     try:
-        inspection = inspect_pcap(args.pcap, scrub=args.scrub)
+        inspection = inspect_pcap(args.pcap, scrub=args.scrub, password=args.password)
     except Exception as e:
         if args.json:
             print(json.dumps({"error": str(e)}))

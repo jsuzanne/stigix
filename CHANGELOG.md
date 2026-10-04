@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.149] - 2026-10-04
+
+### Fixed
+- **Critical Flow Selection & Profile Compilation Fix (`pcap_parser.py`)**:
+  - Fixed indentation defect in `compile_stx_profile()` where selected flow IDs (`--flow-id`) caused `flows_to_include` to never append flows, resulting in `ValueError: No flows selected or available for replay profile` and code 1 exit during compile.
+  - Verified across 33 real-world captures in `New samples` (including `145.pcap`, `taobao`, `GPWA`, `hao123`) with 100% compile success rate.
+- **Upload Retention on Compilation Error (`pcap-routes.ts`)**:
+  - Prevented premature deletion of temporary uploads when compilation returns an error, eliminating the misleading `"Temporary capture file expired or not found"` toast on retries.
+  - Improved API error reporting to surface actual Python parser JSON error messages directly to the frontend.
+
+### Added
+- **Flexible Archive Password Support (`pcap_parser.py`, `pcap-routes.ts`, `PcapReplayModal.tsx`)**:
+  - Added dedicated **Archive Password (Optional)** input field in the modal when `.zip` archives are uploaded.
+  - Password parameter forwarded via `POST /api/pcap/inspect` and `POST /api/pcap/compile` to `--password`.
+  - Added extended security research password dictionary (`infected666p`, `infected666`, `infected666c`, and dynamic date extraction `infected_YYYYMMDD` from filenames).
+
 ## [2.0.148] - 2026-10-04
 
 ### Added

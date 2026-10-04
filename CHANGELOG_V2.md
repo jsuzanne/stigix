@@ -2,6 +2,11 @@
 
 All notable changes made specifically on the `v2` branch are documented in this file.
 
+## [v2.0.149] - 2026-10-04 — Fix: PCAP Profile Compilation Flow Selection & Archive Password Input
+- **fix(pcap-parser)**: Fixed indentation bug in `compile_stx_profile()` (`engines/pcap_parser.py`) where passing `--flow-id` skipped appending to `flows_to_include`, triggering fatal `ValueError: No flows selected or available for replay profile` (code 1) during profile compilation. Validated with 100% success rate on 33 captures in `New samples` including `145.pcap`.
+- **fix(pcap-routes)**: Preserved temporary upload file upon compilation errors in `web-dashboard/custom-tcp-apps/pcap-routes.ts` instead of unlinking immediately, eliminating premature `"Temporary capture file expired or not found"` errors. Surfaced raw JSON parser errors directly to frontend toasts.
+- **feat(pcap-zip)**: Added configurable **Archive Password (Optional)** input field in `PcapReplayModal.tsx` for encrypted ZIP archives. Forwarded password through inspect and compile endpoints to `pcap_parser.py --password`. Added expanded security research dictionary (`infected666p`, `infected666`, `infected666c`, and auto-detected date formats `infected_YYYYMMDD`).
+
 ## [v2.0.148] - 2026-10-04 — Feature: PCAP Flow Filtering, Profile Editing, Continuous Replay Loops & Cumulative Byte Telemetry
 
 - **feat(pcap-parser)**: Added intelligent packet and flow classification in `engines/pcap_parser.py`. Automatically identifies and tags network background noise (`DHCPv6 Solicit/Reply`, `LLMNR`, `mDNS`, `NetBIOS`, IPv4/IPv6 subnet broadcasts) as `is_noise: True`. Clean unicast flows are automatically sorted first in inspect tables and the profile compiler excludes noise flows by default if unicast flows exist.

@@ -62,9 +62,11 @@ export function createPcapApiRouter(configDir: string, projectRoot: string, pyth
 
         const filePath = req.file.path;
         const scrub = req.body.scrub === 'true' || req.body.scrub === true;
+        const password = req.body.password ? String(req.body.password).trim() : '';
 
         const args = [parserScript, filePath, '--inspect', '--json'];
         if (scrub) args.push('--scrub');
+        if (password) args.push('--password', password);
 
         const proc = spawn(pythonPath, args);
         let stdout = '';
@@ -75,12 +77,21 @@ export function createPcapApiRouter(configDir: string, projectRoot: string, pyth
 
         proc.on('close', code => {
             if (code !== 0) {
+                // Parse python json error if available
+                let errorMsg = `PCAP parser exited with code ${code}`;
+                try {
+                    const parsedErr = JSON.parse(stdout);
+                    if (parsedErr && parsedErr.error) errorMsg = parsedErr.error;
+                } catch (_) {
+                    if (stderr.trim()) errorMsg = stderr.trim();
+                }
+
                 // Cleanup on failure
                 try { if (fs.existsSync(filePath)) fs.unlinkSync(filePath); } catch (_) {}
                 return res.status(500).json({
                     success: false,
-                    error: `PCAP parser exited with code ${code}`,
-                    details: stderr.trim()
+                    error: errorMsg,
+                    details: stderr.trim() || stdout.trim()
                 });
             }
 
@@ -105,7 +116,7 @@ export function createPcapApiRouter(configDir: string, projectRoot: string, pyth
 
     // POST /api/pcap/compile - Compile selected flow(s) into .stx-replay profile
     router.post('/compile', checkFeatureFlag, (req: Request, res: Response) => {
-        const { temp_file_token, name, category, app_id, threat_id, scrub, flow_ids, port } = req.body;
+        const { temp_file_token, name, category, app_id, threat_id, scrub, flow_ids, port, password } = req.body;
 
         if (!temp_file_token) {
             return res.status(400).json({ success: false, error: 'Missing temp_file_token' });
@@ -116,7 +127,7 @@ export function createPcapApiRouter(configDir: string, projectRoot: string, pyth
         const filePath = path.join(uploadsDir, safeToken);
 
         if (!fs.existsSync(filePath)) {
-            return res.status(404).json({ success: false, error: 'Temporary capture file expired or not found' });
+            return res.status(404).json({ success: false, error: 'Temporary capture file expired or not found. Please upload again.' });
         }
 
         const outName = `${safeToken}.stx-replay`;
@@ -129,6 +140,7 @@ export function createPcapApiRouter(configDir: string, projectRoot: string, pyth
         if (threat_id) args.push('--threat-id', threat_id);
         if (port) args.push('--port', String(port));
         if (scrub) args.push('--scrub');
+        if (password) args.push('--password', String(password).trim());
         if (Array.isArray(flow_ids)) {
             flow_ids.forEach((id: number) => args.push('--flow-id', String(id)));
         }
@@ -141,16 +153,25 @@ export function createPcapApiRouter(configDir: string, projectRoot: string, pyth
         proc.stderr.on('data', data => { stderr += data.toString(); });
 
         proc.on('close', code => {
-            // Delete raw uploaded PCAP file per PRD Section 13 (data protection)
-            try { if (fs.existsSync(filePath)) fs.unlinkSync(filePath); } catch (_) {}
-
             if (code !== 0) {
+                let errorMsg = `Profile compilation failed`;
+                try {
+                    const parsedErr = JSON.parse(stdout);
+                    if (parsedErr && parsedErr.error) errorMsg = parsedErr.error;
+                } catch (_) {
+                    if (stderr.trim()) errorMsg = stderr.trim();
+                }
+
+                // Keep filePath on error so user can correct parameters or retry
                 return res.status(500).json({
                     success: false,
-                    error: `Profile compilation exited with code ${code}`,
-                    details: stderr.trim()
+                    error: errorMsg,
+                    details: stderr.trim() || stdout.trim()
                 });
             }
+
+            // Delete raw uploaded file only upon successful compilation
+            try { if (fs.existsSync(filePath)) fs.unlinkSync(filePath); } catch (_) {}
 
             try {
                 const result = JSON.parse(stdout);

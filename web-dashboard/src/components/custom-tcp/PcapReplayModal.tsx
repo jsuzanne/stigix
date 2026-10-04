@@ -40,6 +40,7 @@ export const PcapReplayModal: React.FC<PcapReplayModalProps> = ({
     const [expectedAppId, setExpectedAppId] = useState<string>('');
     const [compilePort, setCompilePort] = useState<string>('');
     const [isCompiling, setIsCompiling] = useState(false);
+    const [archivePassword, setArchivePassword] = useState<string>('');
 
     // Replay State
     const [compiledProfiles, setCompiledProfiles] = useState<any[]>([]);
@@ -165,6 +166,7 @@ export const PcapReplayModal: React.FC<PcapReplayModalProps> = ({
         setInspectionData(null);
         setSelectedFlowIds([]);
         setIsCompiling(false);
+        setArchivePassword('');
         fetchProfiles();
         const interval = setInterval(fetchJobs, 2000);
         return () => clearInterval(interval);
@@ -232,6 +234,9 @@ export const PcapReplayModal: React.FC<PcapReplayModalProps> = ({
             const formData = new FormData();
             formData.append('pcap', selectedFile);
             formData.append('scrub', String(scrubSensitive));
+            if (archivePassword.trim()) {
+                formData.append('password', archivePassword.trim());
+            }
 
             const res = await gFetch('/api/pcap/inspect', {
                 method: 'POST',
@@ -312,7 +317,8 @@ export const PcapReplayModal: React.FC<PcapReplayModalProps> = ({
                     app_id: expectedAppId || undefined,
                     scrub: scrubSensitive,
                     flow_ids: selectedFlowIds,
-                    port: compilePort ? parseInt(compilePort, 10) : undefined
+                    port: compilePort ? parseInt(compilePort, 10) : undefined,
+                    password: archivePassword.trim() || undefined
                 })
             });
 
@@ -550,6 +556,27 @@ export const PcapReplayModal: React.FC<PcapReplayModalProps> = ({
                                     className="w-4 h-4 accent-indigo-500 rounded cursor-pointer"
                                 />
                             </div>
+
+                            {selectedFile && selectedFile.name.toLowerCase().endsWith('.zip') && (
+                                <div className="bg-muted/20 border border-border rounded-xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                                    <div className="flex items-center gap-3">
+                                        <Lock size={18} className="text-amber-400 shrink-0" />
+                                        <div>
+                                            <div className="text-xs font-semibold text-text-primary">Archive Password (Optional)</div>
+                                            <div className="text-[11px] text-text-muted">
+                                                If this ZIP archive is password-protected or encrypted, enter the password
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <input
+                                        type="password"
+                                        placeholder="e.g. infected"
+                                        value={archivePassword}
+                                        onChange={(e) => setArchivePassword(e.target.value)}
+                                        className="w-full sm:w-56 px-3 py-1.5 bg-background/60 border border-border/80 focus:border-indigo-500 rounded-lg text-xs text-text-primary font-mono placeholder:text-text-muted/50 focus:outline-none"
+                                    />
+                                </div>
+                            )}
 
                             <div className="flex justify-end pt-2">
                                 <button
