@@ -387,41 +387,41 @@ export const PcapReplay: React.FC<PcapReplayProps> = ({ token }) => {
     const turnAnalysis = formatPayload(selectedTurnRawPayload);
 
     return (
-        <div className="space-y-6 animate-in fade-in duration-300">
-            {/* ─── Top Banner / Header ─── */}
-            <div className="bg-card border border-border rounded-3xl p-6 shadow-xl relative overflow-hidden">
-                <div className="absolute top-0 right-0 w-96 h-96 bg-indigo-500/5 rounded-full blur-3xl pointer-events-none" />
-                <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 relative z-10">
-                    <div className="flex items-start gap-4">
-                        <div className="p-3.5 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-2xl text-white shadow-lg shadow-indigo-500/25 shrink-0">
-                            <Layers size={28} />
+        <div className="space-y-3.5 animate-in fade-in duration-300">
+            {/* ─── Top Banner / Header (Compact) ─── */}
+            <div className="bg-card border border-border rounded-2xl p-3.5 px-5 shadow-lg relative overflow-hidden shrink-0">
+                <div className="absolute top-0 right-0 w-80 h-80 bg-indigo-500/5 rounded-full blur-3xl pointer-events-none" />
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 relative z-10">
+                    <div className="flex items-center gap-3">
+                        <div className="p-2.5 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-xl text-white shadow-md shadow-indigo-500/25 shrink-0">
+                            <Layers size={22} />
                         </div>
                         <div>
-                            <div className="flex items-center gap-3">
-                                <h1 className="text-xl font-black text-text-primary tracking-tight">
+                            <div className="flex items-center gap-2">
+                                <h1 className="text-base font-black text-text-primary tracking-tight">
                                     Stateful PCAP Replay Engine
                                 </h1>
-                                <span className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">
-                                    L7 Conversation Turns
+                                <span className="px-1.5 py-0.5 rounded text-[9px] font-black uppercase tracking-wider bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">
+                                    L7 Turns
                                 </span>
-                                <span className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 flex items-center gap-1">
-                                    <Sparkles size={10} /> Auto-Sync Fleet
+                                <span className="px-1.5 py-0.5 rounded text-[9px] font-black uppercase tracking-wider bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 flex items-center gap-1">
+                                    <Sparkles size={9} /> Auto-Sync Fleet
                                 </span>
                             </div>
-                            <p className="text-xs text-text-muted mt-1 leading-relaxed max-w-3xl">
-                                Package raw PCAP traces into zero-config replay profiles, automatically scrub sensitive passwords, distribute seamlessly across SD-WAN spoke nodes, and execute synchronized client/server turns with automated SASE security verdict enforcement.
+                            <p className="text-[11px] text-text-muted mt-0.5 line-clamp-1 max-w-2xl">
+                                Package raw PCAP traces into zero-config replay profiles, auto-scrub credentials, distribute across spokes & execute synchronized client/server turns with SASE verdict enforcement.
                             </p>
                         </div>
                     </div>
 
                     {/* Action Bar */}
-                    <div className="flex items-center gap-2.5 shrink-0">
+                    <div className="flex items-center gap-2 shrink-0">
                         {/* Import / Parse Raw PCAP */}
                         <button
                             onClick={() => setIsPcapModalOpen(true)}
-                            className="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-2 shadow-lg shadow-indigo-600/20 cursor-pointer"
+                            className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-black uppercase tracking-wider transition-all flex items-center gap-1.5 shadow-md shadow-indigo-600/20 cursor-pointer"
                         >
-                            <Upload size={14} /> Import & Parse PCAP
+                            <Upload size={13} /> Import & Parse PCAP
                         </button>
 
                         {/* Import Ready .stx-replay Profile */}
@@ -434,75 +434,75 @@ export const PcapReplay: React.FC<PcapReplayProps> = ({ token }) => {
                         />
                         <button
                             onClick={() => profileUploadInputRef.current?.click()}
-                            className="px-4 py-2.5 bg-card-secondary hover:bg-card-secondary/80 text-text-primary border border-border rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer"
+                            className="px-3 py-1.5 bg-card-secondary hover:bg-card-secondary/80 text-text-primary border border-border rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer"
                             title="Import an existing .stx-replay profile directly with zero configuration"
                         >
-                            <FileCode size={14} className="text-purple-400" />
+                            <FileCode size={13} className="text-purple-400" />
                             <span>Import Profile</span>
                         </button>
 
                         {/* Refresh */}
                         <button
                             onClick={() => { fetchProfiles(); pollActiveJobs(); }}
-                            className="p-2.5 hover:bg-card-secondary rounded-xl text-text-muted hover:text-text-primary border border-border transition-all cursor-pointer"
+                            className="p-1.5 hover:bg-card-secondary rounded-lg text-text-muted hover:text-text-primary border border-border transition-all cursor-pointer"
                             title="Refresh profiles catalogue"
                         >
-                            <RefreshCw size={15} />
+                            <RefreshCw size={14} />
                         </button>
                     </div>
                 </div>
 
                 {!isPcapEnabled && (
-                    <div className="mt-4 p-3 bg-amber-500/10 border border-amber-500/20 rounded-2xl flex items-center gap-3 text-xs text-amber-400 font-medium">
-                        <AlertTriangle size={16} className="shrink-0" />
+                    <div className="mt-2.5 p-2 px-3 bg-amber-500/10 border border-amber-500/20 rounded-xl flex items-center gap-2.5 text-xs text-amber-400 font-medium">
+                        <AlertTriangle size={15} className="shrink-0" />
                         <span>PCAP Replay is currently inactive. Ensure <code className="font-mono bg-black/30 px-1 py-0.5 rounded text-amber-300">ENABLE_PCAP_REPLAY=true</code> is defined in your environment file.</span>
                     </div>
                 )}
             </div>
 
             {/* ─── Two-Column Main Content Grid ─── */}
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-3.5">
 
                 {/* ─── Left Column: Profiles Catalogue (Zero-Config) ─── */}
-                <div className="lg:col-span-5 space-y-4">
-                    <div className="bg-card border border-border rounded-3xl p-5 shadow-xl flex flex-col h-[780px]">
+                <div className="lg:col-span-5 flex flex-col">
+                    <div className="bg-card border border-border rounded-2xl p-3.5 shadow-xl flex flex-col h-[calc(100vh-175px)] min-h-[500px]">
                         {/* Catalogue Header */}
-                        <div className="flex items-center justify-between pb-4 border-b border-border">
+                        <div className="flex items-center justify-between pb-2.5 border-b border-border shrink-0">
                             <div>
-                                <h2 className="text-sm font-black text-text-primary uppercase tracking-tight flex items-center gap-2">
-                                    <FileCode size={16} className="text-indigo-400" />
+                                <h2 className="text-xs font-black text-text-primary uppercase tracking-tight flex items-center gap-1.5">
+                                    <FileCode size={14} className="text-indigo-400" />
                                     <span>Replay Profiles Catalogue</span>
                                 </h2>
-                                <p className="text-[10px] text-text-muted font-bold tracking-wider mt-0.5">
+                                <p className="text-[9px] text-text-muted font-bold tracking-wider mt-0.5">
                                     {profiles.length} COMPILED PROFILES AVAILABLE
                                 </p>
                             </div>
-                            <span className="text-[10px] font-black text-indigo-400 bg-indigo-500/10 px-2 py-0.5 rounded-md border border-indigo-500/20">
+                            <span className="text-[9px] font-black text-indigo-400 bg-indigo-500/10 px-1.5 py-0.5 rounded border border-indigo-500/20">
                                 Zero-Config
                             </span>
                         </div>
 
                         {/* Search and Category Filters */}
-                        <div className="py-3 space-y-2 border-b border-border/50">
+                        <div className="py-2 space-y-1.5 border-b border-border/50 shrink-0">
                             <div className="relative">
-                                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-text-muted" size={13} />
+                                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 text-text-muted" size={12} />
                                 <input
                                     type="text"
-                                    placeholder="Search profiles by name or file..."
+                                    placeholder="Search profiles..."
                                     value={searchQuery}
                                     onChange={(e) => setSearchQuery(e.target.value)}
-                                    className="w-full bg-card-secondary/50 border border-border rounded-xl pl-9 pr-3 py-1.5 text-xs text-text-primary placeholder:text-text-muted focus:outline-none focus:ring-1 focus:ring-indigo-500/50"
+                                    className="w-full bg-card-secondary/50 border border-border rounded-lg pl-8 pr-2.5 py-1 text-xs text-text-primary placeholder:text-text-muted focus:outline-none focus:ring-1 focus:ring-indigo-500/50"
                                 />
                             </div>
 
                             {/* Category Filter Pills */}
                             {categories.length > 2 && (
-                                <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none">
+                                <div className="flex items-center gap-1 overflow-x-auto pb-0.5 scrollbar-none">
                                     {categories.map(cat => (
                                         <button
                                             key={cat}
                                             onClick={() => setCategoryFilter(cat)}
-                                            className={`px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all whitespace-nowrap cursor-pointer ${
+                                            className={`px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-wider transition-all whitespace-nowrap cursor-pointer ${
                                                 categoryFilter === cat
                                                     ? 'bg-indigo-600 text-white shadow-sm shadow-indigo-600/20'
                                                     : 'bg-card-secondary/50 hover:bg-card-secondary text-text-muted hover:text-text-primary'
@@ -515,18 +515,18 @@ export const PcapReplay: React.FC<PcapReplayProps> = ({ token }) => {
                             )}
                         </div>
 
-                        {/* Profile List Container */}
-                        <div className="flex-1 overflow-y-auto pt-2 space-y-2 pr-1 scrollbar-thin scrollbar-thumb-border">
+                        {/* Profile List Container (Compact 2-line cards, internal widget scroll) */}
+                        <div className="flex-1 min-h-0 overflow-y-auto pt-2 space-y-1.5 pr-1 scrollbar-thin scrollbar-thumb-border">
                             {isLoading ? (
                                 <div className="flex flex-col items-center justify-center h-48 text-text-muted gap-2">
-                                    <RefreshCw className="animate-spin" size={20} />
+                                    <RefreshCw className="animate-spin" size={18} />
                                     <span className="text-xs">Loading profile catalogue...</span>
                                 </div>
                             ) : filteredProfiles.length === 0 ? (
-                                <div className="flex flex-col items-center justify-center h-56 text-text-muted text-center p-6 border-2 border-dashed border-border/60 rounded-2xl">
-                                    <FileCode size={32} className="opacity-30 mb-2" />
+                                <div className="flex flex-col items-center justify-center h-48 text-text-muted text-center p-4 border-2 border-dashed border-border/60 rounded-xl">
+                                    <FileCode size={26} className="opacity-30 mb-2" />
                                     <p className="text-xs font-bold">No Replay Profiles Found</p>
-                                    <p className="text-[11px] text-text-muted mt-1">Import a PCAP capture or upload an existing .stx-replay package to get started.</p>
+                                    <p className="text-[10px] text-text-muted mt-1">Import a PCAP capture or upload an existing .stx-replay package to get started.</p>
                                 </div>
                             ) : (
                                 filteredProfiles.map(p => {
@@ -536,56 +536,53 @@ export const PcapReplay: React.FC<PcapReplayProps> = ({ token }) => {
                                         <div
                                             key={p.file_name}
                                             onClick={() => setSelectedProfileFile(p.file_name)}
-                                            className={`p-3.5 rounded-2xl border transition-all cursor-pointer relative group ${
+                                            title={p.file_name}
+                                            className={`py-2 px-2.5 rounded-xl border transition-all cursor-pointer relative group ${
                                                 isSelected
-                                                    ? 'bg-indigo-500/10 border-indigo-500/40 shadow-md shadow-indigo-500/10'
-                                                    : 'bg-card-secondary/30 hover:bg-card-secondary/70 border-border/70'
+                                                    ? 'bg-indigo-500/15 border-indigo-500/50 shadow-sm shadow-indigo-500/10'
+                                                    : 'bg-card-secondary/25 hover:bg-card-secondary/60 border-border/60'
                                             }`}
                                         >
-                                            <div className="flex items-start justify-between gap-2">
-                                                <div className="min-w-0 flex-1">
-                                                    <div className="flex items-center gap-2">
-                                                        <span className="text-xs font-black text-text-primary truncate">
-                                                            {p.name || p.file_name.replace('.stx-replay', '')}
+                                            {/* Line 1: Scenario Name + Category Badge + Quick Actions */}
+                                            <div className="flex items-center justify-between gap-1.5">
+                                                <div className="flex items-center gap-1.5 min-w-0 flex-1">
+                                                    <span className="text-xs font-bold text-text-primary truncate">
+                                                        {p.name || p.file_name.replace('.stx-replay', '')}
+                                                    </span>
+                                                    {p.category && (
+                                                        <span className="text-[8px] px-1.5 py-0.2 bg-card-secondary text-text-secondary border border-border rounded font-black uppercase shrink-0">
+                                                            {p.category}
                                                         </span>
-                                                        {p.category && (
-                                                            <span className="text-[9px] px-1.5 py-0.2 bg-card-secondary text-text-secondary border border-border rounded font-bold uppercase shrink-0">
-                                                                {p.category}
-                                                            </span>
-                                                        )}
-                                                    </div>
-                                                    <p className="text-[10px] text-text-muted font-mono truncate mt-0.5">
-                                                        {p.file_name}
-                                                    </p>
+                                                    )}
                                                 </div>
 
-                                                {/* Action Buttons */}
-                                                <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                {/* Action Buttons (Download / Delete) */}
+                                                <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
                                                     <button
                                                         onClick={(e) => { e.stopPropagation(); handleDownloadProfile(p.file_name); }}
-                                                        className="p-1 hover:bg-card-secondary rounded-lg text-text-muted hover:text-text-primary transition-colors cursor-pointer"
+                                                        className="p-1 hover:bg-card-secondary rounded text-text-muted hover:text-text-primary transition-colors cursor-pointer"
                                                         title="Download .stx-replay file"
                                                     >
-                                                        <Download size={13} />
+                                                        <Download size={11} />
                                                     </button>
                                                     <button
                                                         onClick={(e) => { e.stopPropagation(); handleDeleteProfile(p.file_name); }}
-                                                        className="p-1 hover:bg-red-500/20 rounded-lg text-text-muted hover:text-red-400 transition-colors cursor-pointer"
+                                                        className="p-1 hover:bg-red-500/20 rounded text-text-muted hover:text-red-400 transition-colors cursor-pointer"
                                                         title="Delete profile across mesh"
                                                     >
-                                                        <Trash2 size={13} />
+                                                        <Trash2 size={11} />
                                                     </button>
                                                 </div>
                                             </div>
 
-                                            {/* Metadata Badges */}
-                                            <div className="flex items-center gap-2 mt-2.5 text-[10px] text-text-muted font-bold">
-                                                <span className="flex items-center gap-1 bg-card/60 px-2 py-0.5 rounded-md border border-border">
-                                                    <Radio size={10} className="text-indigo-400" />
-                                                    <span>{p.total_turns || 0} Turns</span>
+                                            {/* Line 2: Inline Metadata (Turns, Port, Size) */}
+                                            <div className="flex items-center gap-2 mt-1 text-[10px] text-text-muted">
+                                                <span className="flex items-center gap-1 font-semibold text-text-secondary">
+                                                    <Radio size={9} className="text-indigo-400" />
+                                                    <span>{p.total_turns || 0} turns</span>
                                                 </span>
                                                 {flow?.server_port && (
-                                                    <span className="bg-card/60 px-2 py-0.5 rounded-md border border-border font-mono text-purple-400">
+                                                    <span className="font-mono text-purple-400 font-bold bg-purple-500/10 px-1.5 py-0.2 rounded border border-purple-500/20 text-[9px]">
                                                         Port {flow.server_port}
                                                     </span>
                                                 )}
@@ -604,83 +601,83 @@ export const PcapReplay: React.FC<PcapReplayProps> = ({ token }) => {
                 </div>
 
                 {/* ─── Right Column: Timeline Inspection & Orchestrator Execution ─── */}
-                <div className="lg:col-span-7 space-y-6">
+                <div className="lg:col-span-7 flex flex-col gap-3.5 h-[calc(100vh-175px)] min-h-[500px] overflow-y-auto pr-1 scrollbar-thin scrollbar-thumb-border">
 
                     {/* 1. Execution & Multi-Node Orchestration Card */}
-                    <div className="bg-card border border-border rounded-3xl p-6 shadow-xl relative overflow-hidden">
-                        <div className="flex items-center justify-between pb-4 border-b border-border">
+                    <div className="bg-card border border-border rounded-2xl p-4 shadow-xl relative overflow-hidden shrink-0">
+                        <div className="flex items-center justify-between pb-3 border-b border-border">
                             <div>
-                                <h2 className="text-sm font-black text-text-primary uppercase tracking-tight flex items-center gap-2">
-                                    <Play size={16} className="text-emerald-400" />
+                                <h2 className="text-xs font-black text-text-primary uppercase tracking-tight flex items-center gap-1.5">
+                                    <Play size={14} className="text-emerald-400" />
                                     <span>Replay Orchestrator</span>
                                 </h2>
-                                <p className="text-[10px] text-text-muted font-bold tracking-wider mt-0.5">
+                                <p className="text-[9px] text-text-muted font-bold tracking-wider mt-0.5">
                                     CHOOSE ROLE & EXECUTE CONVERSATION TURNS
                                 </p>
                             </div>
 
                             {activeJob?.status === 'running' ? (
-                                <span className={`px-2.5 py-1 border text-[10px] font-black uppercase tracking-wider rounded-xl flex items-center gap-1.5 animate-pulse ${
+                                <span className={`px-2 py-0.5 border text-[9px] font-black uppercase tracking-wider rounded-lg flex items-center gap-1 animate-pulse ${
                                     activeJob.role === 'server'
                                         ? 'bg-purple-500/15 border-purple-500/30 text-purple-400'
                                         : 'bg-emerald-500/15 border-emerald-500/30 text-emerald-400'
                                 }`}>
-                                    <Activity size={12} /> {activeJob.role === 'server' ? 'Server Listening' : 'Client Replaying'} (PID: {activeJob.pid})
+                                    <Activity size={11} /> {activeJob.role === 'server' ? 'Server Listening' : 'Client Replaying'} (PID: {activeJob.pid})
                                 </span>
                             ) : (
-                                <span className="px-2.5 py-1 bg-card-secondary border border-border text-text-muted text-[10px] font-bold uppercase tracking-wider rounded-xl">
+                                <span className="px-2 py-0.5 bg-card-secondary border border-border text-text-muted text-[9px] font-bold uppercase tracking-wider rounded-lg">
                                     Ready to Execute
                                 </span>
                             )}
                         </div>
 
                         {/* Role Selector: Server (Listen) vs Client (Play) */}
-                        <div className="pt-4">
-                            <div className="flex p-1 bg-card-secondary/70 border border-border rounded-2xl gap-1">
+                        <div className="pt-3">
+                            <div className="flex p-0.5 bg-card-secondary/70 border border-border rounded-xl gap-1">
                                 <button
                                     type="button"
                                     onClick={() => setReplayRole('server')}
-                                    className={`flex-1 py-2.5 px-3 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center justify-center gap-2 cursor-pointer ${
+                                    className={`flex-1 py-1.5 px-3 rounded-lg text-xs font-black uppercase tracking-wider transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
                                         replayRole === 'server'
-                                            ? 'bg-purple-600 text-white shadow-md shadow-purple-600/25'
+                                            ? 'bg-purple-600 text-white shadow-sm shadow-purple-600/25'
                                             : 'text-text-muted hover:text-text-primary'
                                     }`}
                                 >
-                                    <Headphones size={15} />
+                                    <Headphones size={13} />
                                     <span>Server Role (Listen)</span>
                                 </button>
                                 <button
                                     type="button"
                                     onClick={() => setReplayRole('client')}
-                                    className={`flex-1 py-2.5 px-3 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center justify-center gap-2 cursor-pointer ${
+                                    className={`flex-1 py-1.5 px-3 rounded-lg text-xs font-black uppercase tracking-wider transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
                                         replayRole === 'client'
-                                            ? 'bg-emerald-600 text-white shadow-md shadow-emerald-600/25'
+                                            ? 'bg-emerald-600 text-white shadow-sm shadow-emerald-600/25'
                                             : 'text-text-muted hover:text-text-primary'
                                     }`}
                                 >
-                                    <Play size={15} />
+                                    <Play size={13} />
                                     <span>Client Role (Play)</span>
                                 </button>
                             </div>
                         </div>
 
                         {/* Configuration Form based on Role */}
-                        <div className="py-4 space-y-4">
+                        <div className="py-3 space-y-3">
                             {replayRole === 'server' ? (
                                 /* Server Configuration */
-                                <div className="space-y-3 bg-purple-500/5 border border-purple-500/20 rounded-2xl p-4">
+                                <div className="space-y-2.5 bg-purple-500/5 border border-purple-500/20 rounded-xl p-3">
                                     <div className="flex items-center justify-between text-xs">
-                                        <span className="font-bold text-text-secondary flex items-center gap-1.5">
-                                            <Server size={14} className="text-purple-400" />
+                                        <span className="font-bold text-text-secondary flex items-center gap-1.5 text-[11px]">
+                                            <Server size={13} className="text-purple-400" />
                                             <span>Listening Interface:</span>
                                         </span>
-                                        <span className="font-mono text-text-primary font-black bg-card px-2 py-0.5 rounded border border-border">
+                                        <span className="font-mono text-text-primary font-bold bg-card px-2 py-0.5 rounded border border-border text-[11px]">
                                             0.0.0.0 (All Interfaces)
                                         </span>
                                     </div>
 
                                     <div>
-                                        <label className="text-[10px] font-black uppercase tracking-wider text-text-muted block mb-1.5">
+                                        <label className="text-[9px] font-black uppercase tracking-wider text-text-muted block mb-1">
                                             Server Listening Port
                                         </label>
                                         <input
@@ -688,27 +685,27 @@ export const PcapReplay: React.FC<PcapReplayProps> = ({ token }) => {
                                             value={portOverride}
                                             onChange={(e) => setPortOverride(e.target.value)}
                                             placeholder="Port (e.g. 62910)"
-                                            className="w-full bg-card border border-border rounded-xl px-3 py-2 text-xs font-mono font-bold text-text-primary focus:outline-none focus:ring-1 focus:ring-purple-500"
+                                            className="w-full bg-card border border-border rounded-lg px-2.5 py-1.5 text-xs font-mono font-bold text-text-primary focus:outline-none focus:ring-1 focus:ring-purple-500"
                                         />
-                                        <p className="text-[10px] text-text-muted mt-1 leading-relaxed">
-                                            Starts a stateful socket listener on this node. It will wait for incoming client replay connections from remote peers (e.g. BR8 or local client) and synchronously return expected turns.
+                                        <p className="text-[10px] text-text-muted mt-1 leading-normal">
+                                            Starts a stateful socket listener on this node waiting for incoming client turns from remote peers.
                                         </p>
                                     </div>
                                 </div>
                             ) : (
                                 /* Client Configuration */
-                                <div className="space-y-4">
-                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div className="space-y-2.5">
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
                                         {/* Server Node Selector */}
                                         <div>
-                                            <label className="text-[10px] font-black uppercase tracking-wider text-text-muted block mb-1.5 flex items-center gap-1">
-                                                <Server size={12} className="text-purple-400" />
+                                            <label className="text-[9px] font-black uppercase tracking-wider text-text-muted block mb-1 flex items-center gap-1">
+                                                <Server size={11} className="text-purple-400" />
                                                 <span>Target Server Host / Peer</span>
                                             </label>
                                             <select
                                                 value={serverNodeId}
                                                 onChange={(e) => setServerNodeId(e.target.value)}
-                                                className="w-full bg-card-secondary/70 border border-border rounded-xl px-3 py-2 text-xs font-bold text-text-primary focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                                                className="w-full bg-card-secondary/70 border border-border rounded-lg px-2.5 py-1.5 text-xs font-bold text-text-primary focus:outline-none focus:ring-1 focus:ring-indigo-500"
                                             >
                                                 <option value="local">Local Node (127.0.0.1)</option>
                                                 {peers.map(p => (
@@ -721,8 +718,8 @@ export const PcapReplay: React.FC<PcapReplayProps> = ({ token }) => {
 
                                         {/* Target IP (Auto-filled or Custom) */}
                                         <div>
-                                            <label className="text-[10px] font-black uppercase tracking-wider text-text-muted block mb-1.5 flex items-center gap-1">
-                                                <Globe size={12} className="text-blue-400" />
+                                            <label className="text-[9px] font-black uppercase tracking-wider text-text-muted block mb-1 flex items-center gap-1">
+                                                <Globe size={11} className="text-blue-400" />
                                                 <span>Destination Server IP / VIP</span>
                                             </label>
                                             <input
@@ -730,15 +727,15 @@ export const PcapReplay: React.FC<PcapReplayProps> = ({ token }) => {
                                                 value={customTargetIp}
                                                 onChange={(e) => setCustomTargetIp(e.target.value)}
                                                 placeholder="192.168.203.1 or 127.0.0.1"
-                                                className="w-full bg-card-secondary/70 border border-border rounded-xl px-3 py-2 text-xs font-mono font-bold text-text-primary focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                                                className="w-full bg-card-secondary/70 border border-border rounded-lg px-2.5 py-1.5 text-xs font-mono font-bold text-text-primary focus:outline-none focus:ring-1 focus:ring-indigo-500"
                                             />
                                         </div>
                                     </div>
 
                                     {/* Port & Loop Controls */}
-                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-2.5">
                                         <div>
-                                            <label className="text-[10px] font-black uppercase tracking-wider text-text-muted block mb-1.5">
+                                            <label className="text-[9px] font-black uppercase tracking-wider text-text-muted block mb-1">
                                                 Target Port
                                             </label>
                                             <input
@@ -746,38 +743,38 @@ export const PcapReplay: React.FC<PcapReplayProps> = ({ token }) => {
                                                 value={portOverride}
                                                 onChange={(e) => setPortOverride(e.target.value)}
                                                 placeholder="Auto from profile"
-                                                className="w-full bg-card-secondary/70 border border-border rounded-xl px-3 py-2 text-xs font-mono font-bold text-text-primary focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                                                className="w-full bg-card-secondary/70 border border-border rounded-lg px-2.5 py-1.5 text-xs font-mono font-bold text-text-primary focus:outline-none focus:ring-1 focus:ring-indigo-500"
                                             />
                                         </div>
 
                                         <div>
-                                            <label className="text-[10px] font-black uppercase tracking-wider text-text-muted block mb-1.5">
+                                            <label className="text-[9px] font-black uppercase tracking-wider text-text-muted block mb-1">
                                                 Continuous Loop
                                             </label>
                                             <button
                                                 type="button"
                                                 onClick={() => setIsLooping(!isLooping)}
-                                                className={`w-full py-2 px-3 border rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center justify-between cursor-pointer ${
+                                                className={`w-full py-1.5 px-2.5 border rounded-lg text-xs font-black uppercase tracking-wider transition-all flex items-center justify-between cursor-pointer ${
                                                     isLooping
                                                         ? 'bg-indigo-600/20 text-indigo-400 border-indigo-500/40'
                                                         : 'bg-card-secondary/70 text-text-muted border-border hover:bg-card-secondary'
                                                 }`}
                                             >
-                                                <span>{isLooping ? 'Loop Enabled' : 'Single Run'}</span>
-                                                <div className={`w-3.5 h-3.5 rounded-full ${isLooping ? 'bg-indigo-400 animate-pulse' : 'bg-border'}`} />
+                                                <span>{isLooping ? 'Loop' : 'Single'}</span>
+                                                <div className={`w-2.5 h-2.5 rounded-full ${isLooping ? 'bg-indigo-400 animate-pulse' : 'bg-border'}`} />
                                             </button>
                                         </div>
 
                                         <div>
-                                            <label className="text-[10px] font-black uppercase tracking-wider text-text-muted block mb-1.5">
-                                                Interval (seconds)
+                                            <label className="text-[9px] font-black uppercase tracking-wider text-text-muted block mb-1">
+                                                Interval (s)
                                             </label>
                                             <input
                                                 type="number"
                                                 disabled={!isLooping}
                                                 value={loopInterval}
                                                 onChange={(e) => setLoopInterval(Math.max(1, parseInt(e.target.value, 10) || 1))}
-                                                className="w-full bg-card-secondary/70 disabled:opacity-40 border border-border rounded-xl px-3 py-2 text-xs font-mono font-bold text-text-primary focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                                                className="w-full bg-card-secondary/70 disabled:opacity-40 border border-border rounded-lg px-2.5 py-1.5 text-xs font-mono font-bold text-text-primary focus:outline-none focus:ring-1 focus:ring-indigo-500"
                                             />
                                         </div>
                                     </div>
@@ -785,30 +782,30 @@ export const PcapReplay: React.FC<PcapReplayProps> = ({ token }) => {
                             )}
 
                             {/* Execution Triggers */}
-                            <div className="pt-2 flex items-center gap-3">
+                            <div className="pt-1 flex items-center gap-2">
                                 {activeJob?.status === 'running' ? (
                                     <button
                                         onClick={handleStopReplay}
-                                        className="flex-1 py-3 px-6 bg-red-600 hover:bg-red-500 text-white font-black uppercase tracking-wider text-xs rounded-xl transition-all shadow-lg shadow-red-600/25 flex items-center justify-center gap-2 cursor-pointer"
+                                        className="flex-1 py-2 px-4 bg-red-600 hover:bg-red-500 text-white font-black uppercase tracking-wider text-xs rounded-xl transition-all shadow-md shadow-red-600/25 flex items-center justify-center gap-2 cursor-pointer"
                                     >
-                                        <Square size={16} /> Stop Active {activeJob.role === 'server' ? 'Server Listener' : 'Client Replay'} (PID: {activeJob.pid})
+                                        <Square size={14} /> Stop Active {activeJob.role === 'server' ? 'Server Listener' : 'Client Replay'} (PID: {activeJob.pid})
                                     </button>
                                 ) : replayRole === 'server' ? (
                                     <button
                                         onClick={handleLaunchReplay}
                                         disabled={isStartingReplay || !selectedProfileFile}
-                                        className="flex-1 py-3 px-6 bg-purple-600 hover:bg-purple-500 text-white font-black uppercase tracking-wider text-xs rounded-xl transition-all shadow-lg shadow-purple-600/25 flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                                        className="flex-1 py-2.5 px-4 bg-purple-600 hover:bg-purple-500 text-white font-black uppercase tracking-wider text-xs rounded-xl transition-all shadow-md shadow-purple-600/25 flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                                     >
-                                        <Headphones size={16} />
+                                        <Headphones size={15} />
                                         <span>{isStartingReplay ? 'Starting Listener...' : `Start Server Listener (Port ${portOverride || 'Default'})`}</span>
                                     </button>
                                 ) : (
                                     <button
                                         onClick={handleLaunchReplay}
                                         disabled={isStartingReplay || !selectedProfileFile}
-                                        className="flex-1 py-3 px-6 bg-gradient-to-r from-emerald-600 to-teal-500 hover:from-emerald-500 hover:to-teal-400 text-white font-black uppercase tracking-wider text-xs rounded-xl transition-all shadow-lg shadow-emerald-600/25 flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                                        className="flex-1 py-2.5 px-4 bg-gradient-to-r from-emerald-600 to-teal-500 hover:from-emerald-500 hover:to-teal-400 text-white font-black uppercase tracking-wider text-xs rounded-xl transition-all shadow-md shadow-emerald-600/25 flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                                     >
-                                        <Play size={16} />
+                                        <Play size={15} />
                                         <span>{isStartingReplay ? 'Connecting Client...' : `Launch Client Replay ➔ ${customTargetIp || '127.0.0.1'}:${portOverride || 'Default'}`}</span>
                                     </button>
                                 )}
@@ -817,13 +814,13 @@ export const PcapReplay: React.FC<PcapReplayProps> = ({ token }) => {
 
                         {/* Security Verdict Banner */}
                         {activeJob && (
-                            <div className="mt-2 pt-4 border-t border-border">
-                                <div className="text-[10px] font-black text-text-muted uppercase tracking-wider mb-2 flex items-center gap-1.5">
-                                    <Shield size={12} />
+                            <div className="mt-1 pt-2.5 border-t border-border">
+                                <div className="text-[9px] font-black text-text-muted uppercase tracking-wider mb-1.5 flex items-center gap-1">
+                                    <Shield size={11} />
                                     <span>SASE Security Verdict Telemetry</span>
                                 </div>
 
-                                <div className={`p-4 rounded-2xl border flex items-center justify-between ${
+                                <div className={`p-2.5 rounded-xl border flex items-center justify-between ${
                                     activeJob.lastVerdict === 'Bypass'
                                         ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400'
                                         : activeJob.lastVerdict?.includes('Reset')
@@ -834,21 +831,21 @@ export const PcapReplay: React.FC<PcapReplayProps> = ({ token }) => {
                                         ? 'bg-amber-500/10 border-amber-500/30 text-amber-400'
                                         : 'bg-indigo-500/10 border-indigo-500/30 text-indigo-300'
                                 }`}>
-                                    <div className="flex items-center gap-3">
-                                        <div className="p-2 rounded-xl bg-card">
+                                    <div className="flex items-center gap-2.5">
+                                        <div className="p-1.5 rounded-lg bg-card">
                                             {activeJob.lastVerdict === 'Bypass' ? (
-                                                <CheckCircle2 size={24} className="text-emerald-400" />
+                                                <CheckCircle2 size={18} className="text-emerald-400" />
                                             ) : activeJob.lastVerdict ? (
-                                                <ShieldAlert size={24} className="text-red-400" />
+                                                <ShieldAlert size={18} className="text-red-400" />
                                             ) : (
-                                                <Activity size={24} className="text-indigo-400 animate-pulse" />
+                                                <Activity size={18} className="text-indigo-400 animate-pulse" />
                                             )}
                                         </div>
                                         <div>
                                             <div className="text-xs font-black uppercase tracking-wider">
                                                 {activeJob.lastVerdict || (activeJob.status === 'running' ? `${activeJob.role === 'server' ? 'Server Listening for connections...' : 'Client Executing turns...'}` : 'Replay Stopped')}
                                             </div>
-                                            <p className="text-[10px] opacity-80 mt-0.5">
+                                            <p className="text-[9px] opacity-80 mt-0.5">
                                                 {activeJob.lastVerdict === 'Bypass'
                                                     ? 'All L7 conversation turns completed successfully with no enforcement drop.'
                                                     : activeJob.lastVerdict?.includes('Reset')
@@ -862,9 +859,9 @@ export const PcapReplay: React.FC<PcapReplayProps> = ({ token }) => {
                                         </div>
                                     </div>
 
-                                    <div className="text-right font-mono text-xs font-bold">
+                                    <div className="text-right font-mono text-[11px] font-bold shrink-0">
                                         <div>PID {activeJob.pid}</div>
-                                        <div className="text-[10px] opacity-60 uppercase">{activeJob.role} · {activeJob.status}</div>
+                                        <div className="text-[9px] opacity-60 uppercase">{activeJob.role} · {activeJob.status}</div>
                                     </div>
                                 </div>
                             </div>
@@ -872,38 +869,38 @@ export const PcapReplay: React.FC<PcapReplayProps> = ({ token }) => {
                     </div>
 
                     {/* 2. Zero-Config Profile Sequence Inspector (Turns Timeline) */}
-                    <div className="bg-card border border-border rounded-3xl p-6 shadow-xl">
-                        <div className="flex items-center justify-between pb-4 border-b border-border">
+                    <div className="bg-card border border-border rounded-2xl p-4 shadow-xl shrink-0">
+                        <div className="flex items-center justify-between pb-2.5 border-b border-border">
                             <div>
-                                <h3 className="text-sm font-black text-text-primary uppercase tracking-tight flex items-center gap-2">
-                                    <Radio size={16} className="text-purple-400" />
+                                <h3 className="text-xs font-black text-text-primary uppercase tracking-tight flex items-center gap-1.5">
+                                    <Radio size={14} className="text-purple-400" />
                                     <span>Conversation Turns Sequence</span>
                                 </h3>
-                                <p className="text-[10px] text-text-muted font-bold tracking-wider mt-0.5">
+                                <p className="text-[9px] text-text-muted font-bold tracking-wider mt-0.5">
                                     {profileDetails ? `${turns.length} DIRECTIONAL APPLICATION TURNS COMPILED` : 'SELECT A PROFILE TO INSPECT'}
                                 </p>
                             </div>
                             {profileDetails && (
-                                <span className="text-[10px] font-mono text-purple-400 bg-purple-500/10 px-2.5 py-1 rounded-xl border border-purple-500/20">
+                                <span className="text-[9px] font-mono text-purple-400 bg-purple-500/10 px-2 py-0.5 rounded border border-purple-500/20">
                                     Transport: {activeFlow?.transport || 'TCP'}
                                 </span>
                             )}
                         </div>
 
                         {isLoadingDetails ? (
-                            <div className="flex flex-col items-center justify-center h-48 text-text-muted gap-2">
-                                <RefreshCw className="animate-spin text-purple-400" size={24} />
+                            <div className="flex flex-col items-center justify-center h-32 text-text-muted gap-2">
+                                <RefreshCw className="animate-spin text-purple-400" size={20} />
                                 <span className="text-xs">Unpacking profile turns...</span>
                             </div>
                         ) : !profileDetails ? (
-                            <div className="py-12 text-center text-text-muted">
+                            <div className="py-6 text-center text-text-muted">
                                 <p className="text-xs font-bold">No Profile Selected</p>
-                                <p className="text-[11px] opacity-70 mt-1">Select a profile from the left catalogue to view its full conversation turn sequence.</p>
+                                <p className="text-[10px] opacity-70 mt-1">Select a profile from the left catalogue to view its full conversation turn sequence.</p>
                             </div>
                         ) : (
-                            <div className="py-4 space-y-4">
+                            <div className="py-2.5 space-y-2.5">
                                 {/* Turns Step List */}
-                                <div className="space-y-2 max-h-56 overflow-y-auto pr-1 scrollbar-thin scrollbar-thumb-border">
+                                <div className="space-y-1.5 max-h-36 overflow-y-auto pr-1 scrollbar-thin scrollbar-thumb-border">
                                     {turns.map((turn: any, idx: number) => {
                                         const isClient = turn.direction === 'client_to_server';
                                         const isTurnSelected = selectedTurnIndex === idx;
@@ -914,36 +911,36 @@ export const PcapReplay: React.FC<PcapReplayProps> = ({ token }) => {
                                             <div
                                                 key={idx}
                                                 onClick={() => setSelectedTurnIndex(idx)}
-                                                className={`p-2.5 rounded-xl border transition-all cursor-pointer flex items-center justify-between gap-3 ${
+                                                className={`p-1.5 px-2 rounded-lg border transition-all cursor-pointer flex items-center justify-between gap-2 ${
                                                     isTurnSelected
-                                                        ? 'bg-purple-500/10 border-purple-500/40 shadow-sm'
-                                                        : 'bg-card-secondary/30 hover:bg-card-secondary/60 border-border/50'
+                                                        ? 'bg-purple-500/15 border-purple-500/50 shadow-sm'
+                                                        : 'bg-card-secondary/25 hover:bg-card-secondary/60 border-border/50'
                                                 }`}
                                             >
-                                                <div className="flex items-center gap-3">
-                                                    <span className="w-6 h-6 rounded-lg bg-card-secondary border border-border flex items-center justify-center font-mono text-[10px] font-black text-text-muted">
+                                                <div className="flex items-center gap-2">
+                                                    <span className="w-5 h-5 rounded bg-card-secondary border border-border flex items-center justify-center font-mono text-[9px] font-black text-text-muted">
                                                         {idx + 1}
                                                     </span>
-                                                    <div className="flex items-center gap-2">
-                                                        <span className={`px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-wider flex items-center gap-1 ${
+                                                    <div className="flex items-center gap-1.5">
+                                                        <span className={`px-1.5 py-0.2 rounded text-[8px] font-black uppercase tracking-wider flex items-center gap-1 ${
                                                             isClient
                                                                 ? 'bg-blue-500/15 text-blue-400 border border-blue-500/30'
                                                                 : 'bg-purple-500/15 text-purple-400 border border-purple-500/30'
                                                         }`}>
-                                                            {isClient ? <ArrowRight size={10} /> : <ArrowDownRight size={10} />}
+                                                            {isClient ? <ArrowRight size={9} /> : <ArrowDownRight size={9} />}
                                                             <span>{isClient ? 'Client ➔ Server' : 'Server ➔ Client'}</span>
                                                         </span>
-                                                        <span className="text-[10px] font-mono text-text-muted">
+                                                        <span className="text-[9px] font-mono text-text-muted">
                                                             {turn.payload_len || turn.length || 0} bytes
                                                         </span>
                                                     </div>
                                                 </div>
 
-                                                <div className="flex items-center gap-2">
-                                                    <span className={`text-[9px] px-1.5 py-0.2 rounded border font-bold uppercase ${info.badge}`}>
+                                                <div className="flex items-center gap-1.5">
+                                                    <span className={`text-[8px] px-1 py-0.2 rounded border font-bold uppercase ${info.badge}`}>
                                                         {info.type.split(' ')[0]}
                                                     </span>
-                                                    <span className="text-[10px] text-text-muted font-mono truncate max-w-[180px]">
+                                                    <span className="text-[9px] text-text-muted font-mono truncate max-w-[150px]">
                                                         {previewText || 'Binary Data'}
                                                     </span>
                                                 </div>
@@ -954,20 +951,20 @@ export const PcapReplay: React.FC<PcapReplayProps> = ({ token }) => {
 
                                 {/* Turn Detail Preview */}
                                 {selectedTurn && (
-                                    <div className="bg-card-secondary/40 border border-border rounded-2xl p-4 font-mono text-xs space-y-2">
-                                        <div className="flex items-center justify-between text-[10px] font-black uppercase tracking-wider text-text-muted">
-                                            <div className="flex items-center gap-2">
+                                    <div className="bg-card-secondary/40 border border-border rounded-xl p-2.5 font-mono text-xs space-y-1.5">
+                                        <div className="flex items-center justify-between text-[9px] font-black uppercase tracking-wider text-text-muted">
+                                            <div className="flex items-center gap-1.5">
                                                 <span>Turn #{selectedTurnIndex! + 1} Payload Preview</span>
-                                                <span className={`px-1.5 py-0.2 rounded border text-[9px] font-bold uppercase ${turnAnalysis.badge}`}>
+                                                <span className={`px-1 py-0.2 rounded border text-[8px] font-bold uppercase ${turnAnalysis.badge}`}>
                                                     {turnAnalysis.type}
                                                 </span>
                                             </div>
 
                                             {/* View Mode Toggle: Hex Dump vs Raw ASCII */}
-                                            <div className="flex items-center gap-1 bg-card p-0.5 rounded-lg border border-border">
+                                            <div className="flex items-center gap-1 bg-card p-0.5 rounded border border-border">
                                                 <button
                                                     onClick={() => setPayloadViewMode('hex')}
-                                                    className={`px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-wider transition-all cursor-pointer ${
+                                                    className={`px-1.5 py-0.2 rounded text-[8px] font-black uppercase tracking-wider transition-all cursor-pointer ${
                                                         payloadViewMode === 'hex' ? 'bg-indigo-600 text-white' : 'text-text-muted hover:text-text-primary'
                                                     }`}
                                                 >
@@ -975,7 +972,7 @@ export const PcapReplay: React.FC<PcapReplayProps> = ({ token }) => {
                                                 </button>
                                                 <button
                                                     onClick={() => setPayloadViewMode('raw')}
-                                                    className={`px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-wider transition-all cursor-pointer ${
+                                                    className={`px-1.5 py-0.2 rounded text-[8px] font-black uppercase tracking-wider transition-all cursor-pointer ${
                                                         payloadViewMode === 'raw' ? 'bg-indigo-600 text-white' : 'text-text-muted hover:text-text-primary'
                                                     }`}
                                                 >
@@ -984,7 +981,7 @@ export const PcapReplay: React.FC<PcapReplayProps> = ({ token }) => {
                                             </div>
                                         </div>
 
-                                        <div className="bg-black/40 border border-border/60 rounded-xl p-3 max-h-36 overflow-y-auto text-[11px] text-text-secondary font-mono leading-relaxed whitespace-pre-wrap break-all">
+                                        <div className="bg-black/40 border border-border/60 rounded-lg p-2 max-h-24 overflow-y-auto text-[10px] text-text-secondary font-mono leading-normal whitespace-pre-wrap break-all">
                                             {payloadViewMode === 'hex'
                                                 ? convertToCleanHex(selectedTurnRawPayload)
                                                 : (selectedTurnRawPayload || 'No preview available')}
@@ -996,24 +993,24 @@ export const PcapReplay: React.FC<PcapReplayProps> = ({ token }) => {
                     </div>
 
                     {/* 3. Live Replay Terminal Logs */}
-                    <div className="bg-card border border-border rounded-3xl p-5 shadow-xl font-mono">
-                        <div className="flex items-center justify-between pb-3 border-b border-border text-text-muted text-xs">
-                            <div className="flex items-center gap-2">
-                                <Terminal size={14} className="text-emerald-400" />
-                                <span className="font-black uppercase tracking-widest text-[10px]">Real-Time Replay Socket Console</span>
+                    <div className="bg-card border border-border rounded-2xl p-3.5 shadow-xl font-mono shrink-0">
+                        <div className="flex items-center justify-between pb-2 border-b border-border text-text-muted text-xs">
+                            <div className="flex items-center gap-1.5">
+                                <Terminal size={13} className="text-emerald-400" />
+                                <span className="font-black uppercase tracking-widest text-[9px]">Real-Time Replay Socket Console</span>
                             </div>
-                            <span className="text-[9px] text-text-muted/60">{terminalLogs.length} events logged</span>
+                            <span className="text-[9px] text-text-muted/60">{terminalLogs.length} events</span>
                         </div>
 
-                        <div className="mt-3 bg-black/50 border border-border/60 rounded-2xl p-3.5 h-44 overflow-y-auto space-y-1 text-[11px] scrollbar-thin scrollbar-thumb-border">
+                        <div className="mt-2 bg-black/50 border border-border/60 rounded-xl p-2.5 h-28 overflow-y-auto space-y-0.5 text-[10px] scrollbar-thin scrollbar-thumb-border">
                             {terminalLogs.length === 0 ? (
                                 <div className="flex items-center justify-center h-full text-text-muted/40 italic text-xs">
                                     Waiting for replay events...
                                 </div>
                             ) : (
                                 terminalLogs.map((log: any, idx: number) => (
-                                    <div key={idx} className="flex items-start gap-2 text-text-secondary leading-tight">
-                                        <span className="text-text-muted/50 select-none text-[9px] font-mono">
+                                    <div key={idx} className="flex items-start gap-1.5 text-text-secondary leading-tight">
+                                        <span className="text-text-muted/50 select-none text-[8px] font-mono">
                                             [{idx + 1}]
                                         </span>
                                         <span className={log.verdict ? 'text-emerald-400 font-bold' : log.event === 'error' ? 'text-red-400' : 'text-text-primary'}>
