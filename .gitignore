@@ -12,6 +12,7 @@ playwright.config.ts
 !site/reports/*.pdf
 *.log
 *.log.*
+pcap samples/
 *.json
 !package.json
 !package-lock.json

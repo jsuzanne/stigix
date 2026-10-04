@@ -48,6 +48,7 @@ export const PcapReplay: React.FC<PcapReplayProps> = ({ token }) => {
     // Conversation Sequence Filters & Search
     const [turnFilter, setTurnFilter] = useState<'all' | 'client' | 'server'>('all');
     const [turnSearchQuery, setTurnSearchQuery] = useState('');
+    const [turnDisplayLimit, setTurnDisplayLimit] = useState<number>(250);
 
     // Persistence keys
     const STORAGE_KEY_TARGET_IP = 'stigix_replay_target_ip';
@@ -1417,83 +1418,109 @@ export const PcapReplay: React.FC<PcapReplayProps> = ({ token }) => {
                                             No conversation turns match the current filter.
                                         </div>
                                     ) : (
-                                        filteredTurns.map((turn: any) => {
-                                            const originalIndex = turns.indexOf(turn);
-                                            const idx = originalIndex >= 0 ? originalIndex : 0;
-                                            const isClient = turn.sender === 'client' || turn.direction === 'client' || turn.direction === 'client_to_server';
-                                            const isTurnSelected = selectedTurnIndex === idx;
-                                            const isCompleted = (idx + 1) <= lastCompletedTurnSeq;
-                                            const isActive = (idx + 1) === (lastCompletedTurnSeq + 1) && activeJob?.status === 'running';
-                                            const analysis = analyzeTurn(turn);
-                                            const len = turn.length || turn.payload_len || 0;
+                                        <>
+                                            {filteredTurns.slice(0, turnDisplayLimit).map((turn: any) => {
+                                                const originalIndex = turns.indexOf(turn);
+                                                const idx = originalIndex >= 0 ? originalIndex : 0;
+                                                const isClient = turn.sender === 'client' || turn.direction === 'client' || turn.direction === 'client_to_server';
+                                                const isTurnSelected = selectedTurnIndex === idx;
+                                                const isCompleted = (idx + 1) <= lastCompletedTurnSeq;
+                                                const isActive = (idx + 1) === (lastCompletedTurnSeq + 1) && activeJob?.status === 'running';
+                                                const analysis = analyzeTurn(turn);
+                                                const len = turn.length || turn.payload_len || 0;
 
-                                            return (
-                                                <div
-                                                    key={idx}
-                                                    onClick={() => setSelectedTurnIndex(idx)}
-                                                    className={`p-1.5 px-2 rounded-xl border transition-all cursor-pointer flex flex-col gap-1 ${
-                                                        isTurnSelected
-                                                            ? 'bg-purple-500/15 border-purple-500/60 shadow-md ring-1 ring-purple-500/30'
-                                                            : isCompleted
-                                                            ? 'bg-emerald-500/5 hover:bg-emerald-500/10 border-emerald-500/25'
-                                                            : isActive
-                                                            ? 'bg-indigo-500/10 border-indigo-500/40 animate-pulse'
-                                                            : 'bg-card-secondary/30 hover:bg-card-secondary/70 border-border/50'
-                                                    }`}
-                                                >
-                                                    <div className="flex items-center justify-between gap-1.5">
-                                                        <div className="flex items-center gap-1.5 min-w-0">
-                                                            <span className={`w-4 h-4 rounded border flex items-center justify-center font-mono text-[8px] font-black shrink-0 ${
-                                                                isCompleted
-                                                                    ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/40'
-                                                                    : isActive
-                                                                    ? 'bg-indigo-500/20 text-indigo-400 border-indigo-500/40'
-                                                                    : 'bg-card border-border text-text-muted'
-                                                            }`}>
-                                                                {isCompleted ? '✓' : idx + 1}
-                                                            </span>
-                                                            <span className={`px-1.5 py-0.2 rounded text-[8px] font-black uppercase tracking-wider flex items-center gap-1 shrink-0 ${
-                                                                isClient
-                                                                    ? 'bg-blue-500/20 text-blue-400 border border-blue-500/30'
-                                                                    : 'bg-purple-500/20 text-purple-400 border border-purple-500/30'
-                                                            }`}>
-                                                                {isClient ? <ArrowRight size={8} /> : <ArrowDownRight size={8} />}
-                                                                <span>{isClient ? 'Client' : 'Server'}</span>
-                                                            </span>
-                                                            <span className="text-[9px] font-mono font-bold text-text-primary shrink-0">
-                                                                {len}B
-                                                            </span>
-                                                            {turn.delay_ms !== undefined && turn.delay_ms > 0 && (
-                                                                <span className="text-[8px] font-mono text-text-muted/70 shrink-0">
-                                                                    +{turn.delay_ms}ms
+                                                return (
+                                                    <div
+                                                        key={idx}
+                                                        onClick={() => setSelectedTurnIndex(idx)}
+                                                        className={`p-1.5 px-2 rounded-xl border transition-all cursor-pointer flex flex-col gap-1 ${
+                                                            isTurnSelected
+                                                                ? 'bg-purple-500/15 border-purple-500/60 shadow-md ring-1 ring-purple-500/30'
+                                                                : isCompleted
+                                                                ? 'bg-emerald-500/5 hover:bg-emerald-500/10 border-emerald-500/25'
+                                                                : isActive
+                                                                ? 'bg-indigo-500/10 border-indigo-500/40 animate-pulse'
+                                                                : 'bg-card-secondary/30 hover:bg-card-secondary/70 border-border/50'
+                                                        }`}
+                                                    >
+                                                        <div className="flex items-center justify-between gap-1.5">
+                                                            <div className="flex items-center gap-1.5 min-w-0">
+                                                                <span className={`w-4 h-4 rounded border flex items-center justify-center font-mono text-[8px] font-black shrink-0 ${
+                                                                    isCompleted
+                                                                        ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/40'
+                                                                        : isActive
+                                                                        ? 'bg-indigo-500/20 text-indigo-400 border-indigo-500/40'
+                                                                        : 'bg-card border-border text-text-muted'
+                                                                }`}>
+                                                                    {isCompleted ? '✓' : idx + 1}
                                                                 </span>
-                                                            )}
+                                                                <span className={`px-1.5 py-0.2 rounded text-[8px] font-black uppercase tracking-wider flex items-center gap-1 shrink-0 ${
+                                                                    isClient
+                                                                        ? 'bg-blue-500/20 text-blue-400 border border-blue-500/30'
+                                                                        : 'bg-purple-500/20 text-purple-400 border border-purple-500/30'
+                                                                }`}>
+                                                                    {isClient ? <ArrowRight size={8} /> : <ArrowDownRight size={8} />}
+                                                                    <span>{isClient ? 'Client' : 'Server'}</span>
+                                                                </span>
+                                                                <span className="text-[9px] font-mono font-bold text-text-primary shrink-0">
+                                                                    {len}B
+                                                                </span>
+                                                                {turn.delay_ms !== undefined && turn.delay_ms > 0 && (
+                                                                    <span className="text-[8px] font-mono text-text-muted/70 shrink-0">
+                                                                        +{turn.delay_ms}ms
+                                                                    </span>
+                                                                )}
+                                                            </div>
+
+                                                            <div className="flex items-center gap-1 shrink-0">
+                                                                <span className={`text-[7px] px-1.5 py-0.2 rounded border font-bold uppercase ${analysis.badge}`}>
+                                                                    {analysis.proto}
+                                                                </span>
+                                                                {isCompleted && (
+                                                                    <span className="px-1 py-0.2 rounded bg-emerald-500/20 text-emerald-400 font-black text-[7px] border border-emerald-500/30">
+                                                                        DONE
+                                                                    </span>
+                                                                )}
+                                                                {isActive && (
+                                                                    <span className="px-1 py-0.2 rounded bg-indigo-500/20 text-indigo-400 font-black text-[7px] border border-indigo-500/30 animate-pulse">
+                                                                        LIVE
+                                                                    </span>
+                                                                )}
+                                                            </div>
                                                         </div>
 
-                                                        <div className="flex items-center gap-1 shrink-0">
-                                                            <span className={`text-[7px] px-1.5 py-0.2 rounded border font-bold uppercase ${analysis.badge}`}>
-                                                                {analysis.proto}
-                                                            </span>
-                                                            {isCompleted && (
-                                                                <span className="px-1 py-0.2 rounded bg-emerald-500/20 text-emerald-400 font-black text-[7px] border border-emerald-500/30">
-                                                                    DONE
-                                                                </span>
-                                                            )}
-                                                            {isActive && (
-                                                                <span className="px-1 py-0.2 rounded bg-indigo-500/20 text-indigo-400 font-black text-[7px] border border-indigo-500/30 animate-pulse">
-                                                                    LIVE
-                                                                </span>
-                                                            )}
+                                                        {/* Readable Payload Snippet */}
+                                                        <div className="text-[9px] font-mono text-text-secondary truncate bg-black/35 px-1.5 py-0.5 rounded border border-border/40 leading-tight">
+                                                            {analysis.snippet}
                                                         </div>
                                                     </div>
+                                                );
+                                            })}
 
-                                                    {/* Readable Payload Snippet */}
-                                                    <div className="text-[9px] font-mono text-text-secondary truncate bg-black/35 px-1.5 py-0.5 rounded border border-border/40 leading-tight">
-                                                        {analysis.snippet}
+                                            {filteredTurns.length > turnDisplayLimit && (
+                                                <div className="p-2 text-center bg-card-secondary/40 border border-border/60 rounded-xl space-y-1">
+                                                    <p className="text-[9px] text-text-muted">
+                                                        Displaying first {turnDisplayLimit} of {filteredTurns.length} turns.
+                                                    </p>
+                                                    <div className="flex items-center justify-center gap-2">
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => setTurnDisplayLimit(prev => prev + 250)}
+                                                            className="px-2 py-0.5 rounded text-[8px] font-bold bg-purple-600/30 hover:bg-purple-600 text-purple-200 transition-colors cursor-pointer"
+                                                        >
+                                                            Load +250 turns
+                                                        </button>
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => setTurnDisplayLimit(filteredTurns.length)}
+                                                            className="px-2 py-0.5 rounded text-[8px] font-bold bg-white/10 hover:bg-white/20 text-text-primary transition-colors cursor-pointer"
+                                                        >
+                                                            Load All ({filteredTurns.length})
+                                                        </button>
                                                     </div>
                                                 </div>
-                                            );
-                                        })
+                                            )}
+                                        </>
                                     )}
                                 </div>
 

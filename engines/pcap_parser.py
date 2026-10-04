@@ -33,29 +33,46 @@ except ImportError:
     sys.exit(1)
 
 
-# Regular expressions for sensitive data detection
-SENSITIVE_PATTERNS = [
-    (re.compile(rb'(Authorization:\s*Basic\s+)([A-Za-z0-9+/=]+)', re.IGNORECASE), b'Basic Auth Credentials'),
-    (re.compile(rb'(Authorization:\s*Bearer\s+)([A-Za-z0-9_\-\.]+)', re.IGNORECASE), b'Bearer Token'),
-    (re.compile(rb'((?:password|passwd|pwd|secret|api_key|apikey)\s*[:=]\s*["\']?)([^"\'\s&;]+)', re.IGNORECASE), b'Password / Secret in payload'),
-    (re.compile(rb'([a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+)', re.IGNORECASE), b'Email address'),
+def _scrub_two_groups(match) -> bytes:
+    prefix = match.group(1)
+    secret = match.group(2)
+    return prefix + (b'*' * len(secret))
+
+
+def _scrub_email(match) -> bytes:
+    email = match.group(1)
+    parts = email.split(b'@', 1)
+    if len(parts) == 2:
+        user, domain = parts
+        scrubbed_user = user[:1] + (b'*' * max(1, len(user) - 2)) + user[-1:] if len(user) > 2 else b'*' * len(user)
+        return scrubbed_user + b'@' + domain
+    return b'*' * len(email)
+
+
+# Regular expressions for sensitive data detection & robust scrubbing
+SENSITIVE_DEFINITIONS = [
+    (re.compile(rb'(Authorization:\s*Basic\s+)([A-Za-z0-9+/=]+)', re.IGNORECASE), b'Basic Auth Credentials', _scrub_two_groups),
+    (re.compile(rb'(Authorization:\s*Bearer\s+)([A-Za-z0-9_\-\.]+)', re.IGNORECASE), b'Bearer Token', _scrub_two_groups),
+    (re.compile(rb'((?:password|passwd|pwd|secret|api_key|apikey)\s*[:=]\s*["\']?)([^"\'\s&;]+)', re.IGNORECASE), b'Password / Secret in payload', _scrub_two_groups),
+    (re.compile(rb'([a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+)', re.IGNORECASE), b'Email address', _scrub_email),
 ]
 
 
 def scan_and_scrub_payload(payload: bytes, scrub: bool = False) -> Tuple[bytes, List[str]]:
-    """Scan for sensitive patterns; scrub them with '*' if scrub=True."""
+    """Scan for sensitive patterns; scrub them with '*' if scrub=True without group index errors."""
+    if not payload:
+        return payload, []
     processed = payload
     warnings = []
-    for pattern, desc in SENSITIVE_PATTERNS:
-        matches = list(pattern.finditer(payload))
+    for pattern, desc, scrub_fn in SENSITIVE_DEFINITIONS:
+        matches = list(pattern.finditer(processed))
         if matches:
             warnings.append(f"{desc.decode()}: {len(matches)} occurrence(s)")
             if scrub:
-                for match in matches:
-                    prefix = match.group(1)
-                    secret = match.group(2)
-                    replacement = prefix + (b'*' * len(secret))
-                    processed = processed[:match.start()] + replacement + processed[match.end():]
+                try:
+                    processed = pattern.sub(scrub_fn, processed)
+                except Exception:
+                    pass
     return processed, warnings
 
 
@@ -293,7 +310,16 @@ def inspect_pcap(pcap_path: str, scrub: bool = False) -> Dict[str, Any]:
     end_time = None
 
     with PcapReader(pcap_path) as reader:
-        for pkt in reader:
+        while True:
+            try:
+                pkt = reader.read_packet()
+                if pkt is None:
+                    break
+            except (EOFError, StopIteration):
+                break
+            except Exception:
+                continue
+
             packet_count += 1
             pkt_time = float(pkt.time) if hasattr(pkt, 'time') else 0.0
             if start_time is None:

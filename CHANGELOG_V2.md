@@ -2,6 +2,12 @@
 
 All notable changes made specifically on the `v2` branch are documented in this file.
 
+## [v2.0.147] - 2026-10-04 — Fix: PCAP Parser Regex Scrubbing & UI Large Flow Pagination
+
+- **fix(pcap-parser)**: Fixed fatal `IndexError: no such group` in `scan_and_scrub_payload` (`engines/pcap_parser.py`). The email regex had a single capture group while the scrubbing routine hardcoded `match.group(2)`. Replaced with `SENSITIVE_DEFINITIONS` and regex substitution functions (`_scrub_two_groups` and `_scrub_email`) ensuring seamless sanitization of captures containing email addresses (such as `2013-11-06_capture-win8.pcap`).
+- **fix(pcap-parser)**: Hardened packet ingestion loop in `inspect_pcap` (`engines/pcap_parser.py`) with safe packet-by-packet reading, gracefully catching `EOFError`, `StopIteration`, and malformed packets without aborting the entire PCAP inspection.
+- **feat(pcap-ui)**: Added pagination and progressive loading (`turnDisplayLimit`, `Load +250 turns`, `Load All`) in `PcapReplay.tsx` for large flows (e.g. captures with 5,000–10,000+ turns), preventing browser DOM freezing and maintaining smooth UI responsiveness.
+
 ## [v2.0.146] - 2026-10-04 — Feature: Fleet-Wide PCAP Replay Profile Auto-Sync & Conflict-Free Port Resolution
 
 - **fix(pcap-target)**: Eliminated `127.0.0.1` loopback reset bug. Removed conflicting background `useEffect` that continuously forced loopback IP whenever `serverNodeId === 'local'`. Added persistent `localStorage` storage for chosen destination IP (`stigix_replay_target_ip`) and target server node (`stigix_replay_server_node`). Added multi-field Leader auto-discovery fallback on spoke nodes (`leader_info`, `leader_tunnel_info`, `remoteLeaderIp`, `controller_url`, `static_leader_url`). Opening or switching profiles no longer resets the selected target IP.
