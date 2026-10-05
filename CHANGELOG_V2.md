@@ -2,7 +2,7 @@
 
 All notable changes made specifically on the `v2` branch are documented in this file.
 
-## [v2.0.151] - 2026-10-05 — Fix: Target Port Isolation (Dashboard :8080, EICAR :8082, XFR Speedtest :9000)
+## [v2.0.153] - 2026-10-05 — Fix: Target Port Isolation (Dashboard :8080, EICAR :8082, XFR Speedtest :9000)
 
 - **fix(bandwidth-targets)**: Fixed default port for XFR Bandwidth speedtest to 9000 instead of 5201 across `types/targets.ts`, `targets-manager.ts`, `Settings.tsx`, and `Speedtest.tsx`. Auto-migrated any legacy `5201` on `ports.xfr` to `9000`, strictly keeping 5201 dedicated to iperf3 and 9000 to XFR speedtest.
 - **fix(security-targets)**: Resolved target port pollution causing EICAR security probes to target port 8080 instead of 8082 on remote peers (such as BR8).

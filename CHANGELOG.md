@@ -5,6 +5,26 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.153] - 2026-10-05
+
+### Fixed
+- **Target Port Architecture Isolation (Dashboard `:8080`, EICAR `:8082`, XFR Speedtest `:9000`)**:
+  - Fixed target port collision where remote peers (e.g. BR8) had their EICAR security probes targeted against port `8080` (the management Web Dashboard) instead of port `8082` (the target HTTP daemon).
+  - Fixed leader reverse dial and rendezvous push logic in `fleet-tunnel.ts` to strictly separate `ports.dashboard` (`8080`) from `ports.http` (`8082`).
+  - Added auto-migration in `targets-manager.ts` and `server.ts` to seamlessly convert legacy `:8080` / `:80` on HTTP targets to `:8082` and persist fixes to `targets.json`.
+  - Fixed XFR Bandwidth speedtest default port across `types/targets.ts`, `targets-manager.ts`, `Settings.tsx`, and `Speedtest.tsx` to `9000` (reserving `5201` strictly for iperf3).
+- **PCAP Replay Navigation Visibility Guard**:
+  - Hidden PCAP Replay menu from top navigation and routing when `ENABLE_PCAP_REPLAY=true` is not set in `.env`.
+  - Removed duplicate PCAP Replay triggers from the Custom Applications view.
+
+### Changed
+- **Bidirectional Reachability Matrix Terminology**:
+  - Replaced ambiguous `Optimal` with `SLA OK` / `SLA Compliant`.
+  - Replaced `One-Way` with `Egress Only` / `Ingress Only` for NAT/firewall constrained external endpoints.
+  - Granular failure indicators: `Unreachable`, `Return Blocked`, `Fwd Blocked`, and `SLA Breach`.
+- **Custom Applications UI Overhaul**:
+  - Reorganized catalog actions to top identity bar with responsive uniform app selection grid.
+
 ## [2.0.150] - 2026-10-04
 
 ### Changed
