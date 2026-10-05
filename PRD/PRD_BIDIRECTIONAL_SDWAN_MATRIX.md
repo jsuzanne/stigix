@@ -1,4 +1,4 @@
-> **Last Updated:** 2026-09-29 (source IP clarification, A→A self-health, scale note) | **Created:** 2026-09-29 (v2.0.82)
+> **Last Updated:** 2026-10-05 (operational terminology consolidation: SLA OK, Egress Only, Unreachable, No Probe) | **Created:** 2026-09-29 (v2.0.82)
 
 # PRD: Bidirectional Cross-Instance SD-WAN Reachability Matrix
 
@@ -172,14 +172,17 @@ The matrix will be placed as a high-visibility tab or toggle within **Digital Ex
   1. **$N \times N$ Interactive Heatmap Grid**:
      - Rows = Source Nodes ($A$), Columns = Destination Nodes ($B$).
      - Diagonal = Self ($A \to A$) — displays **node self-health** (CPU load, memory usage, probe engine uptime) rather than N/A, turning the matrix into a combined path health *and* node health view at a glance.
-     - Cell coloring:
-       - 🟢 **Solid Green**: Bidirectionally healthy ($< 5\text{ms}$ delta, score $\ge 90$).
-       - 🟡 **Split Amber/Green**: Performance asymmetry (e.g. forward 12ms, return 65ms).
-       - 🔴 **Split Red/Green**: Unidirectional drop ($A \to B = \text{OK}$, $B \to A = \text{DOWN}$).
-       - ⬛ **Dark Grey / Red**: Full bidirectional outage.
-  2. **Hover / Click Detail Popover**: Clicking a cell opens a split inspector showing side-by-side forward vs. reverse packet timings, TTL, and Prisma circuit tags.
-  3. **Filter Bar**: Quick toggles for `Show Asymmetric Links Only`, `Filter by Site Type (Hub vs Spoke)`, and `Protocol (PING / TCP / HTTP)`.
-
+      - Cell coloring & status conventions:
+        - 🟢 **SLA OK** (Solid Green): Bidirectionally healthy, latency delta within SLA limits, loss < 1%.
+        - 🟡 **Degraded / Δ Xms** (Amber): Performance or latency asymmetry (> 20ms) or elevated warning metrics.
+        - 🔵 **Egress Only** (Sky Blue): Unidirectional reachability toward external/cloud targets where return ingress is prevented by design (NAT boundary).
+        - 🔴 **Unreachable** (Solid Red): Total blackout (100% loss / timeout in both directions).
+        - 🔴 **Return Blocked / Fwd Blocked** (Red): Unilateral link failure on internal cluster nodes.
+        - 🔴 **SLA Breach** (Red): Connected link failing critical SLA boundaries (latency > 150ms or loss > 5%).
+        - 🟣 **Hub & Spoke Bypassed** (Purple): Direct spoke-to-spoke path bypassed in Hub & Spoke topology.
+        - ⚪ **No Probe** (Muted Gray): No active telemetry probe defined between nodes.
+   2. **Hover / Click Detail Popover**: Clicking a cell opens a split inspector showing side-by-side forward vs. reverse packet timings, TTL, and Prisma circuit tags.
+   3. **Filter Bar**: Quick toggles for `All`, `SLA OK`, `Degraded`, `Critical / Down`, `Egress Only`, and `H&S Policy`.
 > [!NOTE]
 > **Scale Consideration**: Stigix is not designed today for large-scale deployments (50+ nodes). At $N$ nodes the matrix contains $N^2$ cells; rendering and telemetry overhead grows accordingly. For the current lab-scale use case (5–15 nodes) this is not a concern. Future releases should introduce **site-group filtering** (e.g., display only Hub↔Branch pairs, or a specific region subset) to keep the UI tractable as the fleet grows.
 
@@ -228,5 +231,6 @@ gantt
 
 | Date | Stigix Version | Author / Trigger | Summary of Changes |
 |---|---|---|---|
+| 2026-10-05 | `v2.0.151` | Stigix Core Team | Overhauled matrix operational terminology: replaced `Optimal` with `SLA OK`, `One-Way` with `Egress Only`, and `Path Down` with precise `Unreachable` / `Return Blocked` / `SLA Breach` and `No Probe`. |
 | 2026-09-29 | `v2.0.82` | Stigix Core Team | Initial creation of the Bidirectional Cross-Instance SD-WAN Reachability Matrix PRD. |
 | 2026-09-29 | `v2.0.82` | User Review | Clarified source IP (Stigix LAN co-location with Prisma ION); repurposed A→A diagonal for node self-health; added scale limitation note with future site-group filtering recommendation. |
