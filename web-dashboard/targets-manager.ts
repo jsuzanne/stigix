@@ -364,7 +364,7 @@ export class TargetsManager {
                 try {
                     const url = new URL(ep);
                     const host = url.hostname;
-                    const httpPort = url.port ? parseInt(url.port, 10) : 80;
+                    const httpPort = url.port ? parseInt(url.port, 10) : 8082;
                     return {
                         id: `syn-security-${host}`,
                         name: host,
@@ -432,7 +432,11 @@ export class TargetsManager {
                 connectivity: !!p.capabilities?.connectivity,
             },
             ports: {
-                http: p.port || p.meta?.port || (p as any).ports?.http || 8080
+                dashboard: p.port || p.meta?.port || 8080,
+                http: (p as any).ports?.http || 8082,
+                voice: (p as any).ports?.voice || 6100,
+                convergence: (p as any).ports?.convergence || 6200,
+                iperf: (p as any).ports?.iperf || 5201,
             },
             source: 'synthesized' as const, // Use synthesized to make it read-only in UI
             meta: {
@@ -462,6 +466,13 @@ export class TargetsManager {
                 host: ownIp,
                 enabled: true,
                 capabilities: ownCaps,
+                ports: {
+                    dashboard: parseInt(process.env.PORT || '8080', 10),
+                    http: parseInt(process.env.TARGET_HTTP_PORT || '8082', 10),
+                    voice: 6100,
+                    convergence: 6200,
+                    iperf: 5201
+                },
                 source: 'synthesized' as const,
                 meta: {
                     registry: true,

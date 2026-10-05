@@ -20,6 +20,7 @@ export type TargetDefinition = {
     enabled: boolean;
     capabilities: TargetCapability;
     ports?: {
+        dashboard?: number; // Web UI port, default 8080
         voice?: number; // default 6100
         convergence?: number; // default 6200
         iperf?: number; // default 5201
