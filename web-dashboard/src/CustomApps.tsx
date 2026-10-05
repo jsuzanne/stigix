@@ -828,8 +828,12 @@ const secs = seconds % 60;
                                 </div>
 
                                 <div className="flex items-center gap-1.5 shrink-0">
-                                    <span className={`text-[10px] font-mono font-bold ${isSel ? 'text-indigo-200' : 'text-amber-500'}`}>
-                                        :{app.listener?.port}
+                                    <span className={`text-[10px] font-mono font-bold px-1.5 py-0.5 rounded border ${
+                                        isSel
+                                            ? 'bg-white/15 border-white/30 text-white'
+                                            : 'bg-amber-500/10 border-amber-500/25 text-amber-500 dark:text-amber-400'
+                                    }`}>
+                                        [{app.listener?.port}]
                                     </span>
 
                                     {app.protocol === 'http_1_1' && (
