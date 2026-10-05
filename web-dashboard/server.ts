@@ -7271,6 +7271,26 @@ const getSecurityConfig = () => {
         if (!config.statistics) { config.statistics = { ...DEFAULT_SECURITY_CONFIG.statistics }; migrated = true; }
         if (!config.sls_config) { config.sls_config = { ...DEFAULT_SECURITY_CONFIG.sls_config }; migrated = true; }
 
+        // Auto-migrate legacy 8080 or un-ported / 80 internal node URLs to 8082
+        if (config.threat_prevention?.eicar_endpoints && Array.isArray(config.threat_prevention.eicar_endpoints)) {
+            const newEndpoints = config.threat_prevention.eicar_endpoints.map((ep: string) =>
+                ep.replace(/:8080\/eicar\.com\.txt/g, ':8082/eicar.com.txt').replace(/:80\/eicar\.com\.txt/g, ':8082/eicar.com.txt')
+            );
+            if (JSON.stringify(newEndpoints) !== JSON.stringify(config.threat_prevention.eicar_endpoints)) {
+                config.threat_prevention.eicar_endpoints = newEndpoints;
+                migrated = true;
+            }
+        }
+        if (config.threat_prevention?.eicar_endpoint && typeof config.threat_prevention.eicar_endpoint === 'string') {
+            const newEp = config.threat_prevention.eicar_endpoint
+                .replace(/:8080\/eicar\.com\.txt/g, ':8082/eicar.com.txt')
+                .replace(/:80\/eicar\.com\.txt/g, ':8082/eicar.com.txt');
+            if (newEp !== config.threat_prevention.eicar_endpoint) {
+                config.threat_prevention.eicar_endpoint = newEp;
+                migrated = true;
+            }
+        }
+
         if (migrated) saveSecurityConfig(config);
         return config;
     } catch (e) {
@@ -10645,7 +10665,8 @@ app.get('/api/security/eicar-targets', authenticateToken, (req, res) => {
         const allTargets = targetsManager.getMergedTargets();
         const secTargets = allTargets.filter((t: any) => t.enabled && t.capabilities?.security);
         for (const t of secTargets) {
-            const url = `http://${t.host}:${t.ports?.http ?? 8082}/eicar.com.txt`;
+            const httpPort = (t.ports?.http && t.ports.http !== 8080 && t.ports.http !== 80) ? t.ports.http : 8082;
+            const url = `http://${t.host}:${httpPort}/eicar.com.txt`;
             targets.push({ name: t.name || t.host, target: url, type: 'direct', url });
         }
     } catch (_) {}
@@ -13648,7 +13669,7 @@ app.post('/api/fleet/join-redeem', async (req: any, res: any) => {
                     targetsManager.createTarget({
                         name: effectiveSite,
                         host: public_ip,
-                        port: 8080,
+                        ports: { dashboard: 8080, http: 8082 },
                         enabled: true,
                         protocol: 'http',
                         capabilities: capabilities || { voice: true, convergence: true, custom_app: true, xfr: true, security: true, connectivity: true },
@@ -13658,11 +13679,12 @@ app.post('/api/fleet/join-redeem', async (req: any, res: any) => {
                     });
                     log('FLEET', `🎯 Target auto-provisioned for ${effectiveSite} (${public_ip}:8080)`);
                 } else {
+                    const effectiveHttp = (existing.ports?.http && existing.ports.http !== 8080 && existing.ports.http !== 80) ? existing.ports.http : 8082;
                     targetsManager.updateTarget(existing.id, {
                         ...existing,
                         name: effectiveSite,
                         host: public_ip,
-                        port: 8080,
+                        ports: { ...(existing.ports || {}), dashboard: 8080, http: effectiveHttp },
                         enabled: true,
                         meta: { ...(existing.meta || {}), registry: true, magic_join: true, last_seen: new Date().toISOString() }
                     });

@@ -2,8 +2,13 @@
 
 All notable changes made specifically on the `v2` branch are documented in this file.
 
-## [v2.0.151] - 2026-10-04 — Fix: Strict PCAP Feature Flag Visibility & Website Capabilities Reorganization
+## [v2.0.151] - 2026-10-05 — Fix: Target Port Isolation (Dashboard :8080 vs EICAR :8082) & Auto-Migration
 
+- **fix(security-targets)**: Resolved target port pollution causing EICAR security probes to target port 8080 instead of 8082 on remote peers (such as BR8).
+  - In `fleet-tunnel.ts`, fixed leader reverse dial and peer push logic that was overwriting target `ports.http` with the dashboard management port (`8080`), strictly separating `ports.dashboard` (8080) and `ports.http` (8082).
+  - In `targets-manager.ts`, hardened `loadTargets()`, `createTarget()`, `updateTarget()`, `synthesizeFromSecurityConfig()`, and `getMergedTargets()` to automatically sanitize and isolate `ports.dashboard` (8080) and `ports.http` (8082), auto-migrating any legacy `8080` or `80` on HTTP ports to `8082` and persisting the fix to `targets.json`.
+  - In `server.ts`, added automated migration of legacy `:8080/eicar.com.txt` and `:80/eicar.com.txt` in `getSecurityConfig()`, ensured `/api/security/eicar-targets` always uses port 8082 for security targets, and corrected Magic Join auto-provisioning to register `ports: { dashboard: 8080, http: 8082 }`.
+  - In `Security.tsx`, strictly enforced `8082` on all dynamic security targets and automatically persisted migrated `eicar_endpoints` back to configuration.
 - **fix(ui-pcap)**: Made PCAP Replay menu completely disappear when `ENABLE_PCAP_REPLAY=true` is not set in `.env`.
   - Guarded the top horizontal navigation button in `web-dashboard/src/App.tsx` behind `isPcapEnabled`.
   - Added route guard `useEffect` in `App.tsx` that silently redirects cached views from `view === 'pcap_replay'` back to `dashboard` when the feature flag is absent or false.

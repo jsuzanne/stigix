@@ -58,25 +58,36 @@ export class TargetsManager {
         try {
             if (!fs.existsSync(this.configFile)) return [];
             const list = JSON.parse(fs.readFileSync(this.configFile, 'utf-8')) as TargetDefinition[];
-            return list.map(t => {
-                const httpPort = (t.ports?.http && t.ports.http !== 8080 && t.ports.http !== 80) 
-                    ? t.ports.http 
+            let dirty = false;
+            const migrated = list.map(t => {
+                const rawHttp = t.ports?.http;
+                const httpPort = (rawHttp && rawHttp !== 8080 && rawHttp !== 80) 
+                    ? rawHttp 
                     : 8082;
+                if (rawHttp === 8080 || rawHttp === 80 || (t as any).port === 8080) {
+                    dirty = true;
+                }
+                const dashboardPort = t.ports?.dashboard || (t as any).port || 8080;
                 return {
                     ...t,
                     name: t.name || (t as any).label || t.host,
                     enabled: t.enabled !== false,
                     ports: {
-                        dashboard: t.ports?.dashboard || 8080,
+                        dashboard: dashboardPort,
                         voice: t.ports?.voice || 6100,
                         convergence: t.ports?.convergence || 6200,
                         iperf: t.ports?.iperf || 5201,
                         xfr: t.ports?.xfr || 5201,
                         ...(t.ports || {}),
+                        dashboard: dashboardPort,
                         http: httpPort
                     }
                 };
             });
+            if (dirty) {
+                try { this.saveTargets(migrated); } catch {}
+            }
+            return migrated;
         } catch (e: any) {
             log('TARGETS', `Failed to load targets.json: ${e.message}`, 'warn');
             return [];
@@ -99,18 +110,21 @@ export class TargetsManager {
         const targets = this.loadTargets();
         const now = new Date().toISOString();
         const rawName = (data as any).name || (data as any).label || (data as any).host || 'Target';
-        const httpPort = data.ports?.http || 8082;
+        const rawHttp = data.ports?.http;
+        const httpPort = (rawHttp && rawHttp !== 8080 && rawHttp !== 80) ? rawHttp : 8082;
+        const dashboardPort = data.ports?.dashboard || (data as any).port || 8080;
         const newTarget: TargetDefinition = {
             enabled: data.enabled !== undefined ? data.enabled : true,
             ...data,
             name: rawName,
             ports: {
-                dashboard: data.ports?.dashboard || 8080,
+                dashboard: dashboardPort,
                 voice: data.ports?.voice || 6100,
                 convergence: data.ports?.convergence || 6200,
                 iperf: data.ports?.iperf || 5201,
                 xfr: data.ports?.xfr || 5201,
                 ...(data.ports || {}),
+                dashboard: dashboardPort,
                 http: httpPort
             },
             id: makeId(),
@@ -132,10 +146,20 @@ export class TargetsManager {
         const now = new Date().toISOString();
         
         let portsUpdate = data.ports;
-        if ((data as any).port || data.ports?.http) {
+        if ((data as any).port || data.ports?.http || data.ports?.dashboard) {
+            const rawHttp = data.ports?.http;
+            const existingHttp = idx !== -1 ? targets[idx]?.ports?.http : undefined;
+            const httpPort = (rawHttp && rawHttp !== 8080 && rawHttp !== 80)
+                ? rawHttp
+                : (existingHttp && existingHttp !== 8080 && existingHttp !== 80)
+                    ? existingHttp
+                    : 8082;
+            const dashboardPort = data.ports?.dashboard || (data as any).port || (idx !== -1 ? targets[idx]?.ports?.dashboard : undefined) || 8080;
             portsUpdate = {
+                ...(idx !== -1 ? targets[idx]?.ports || {} : {}),
                 ...(data.ports || {}),
-                http: data.ports?.http || (data as any).port
+                dashboard: dashboardPort,
+                http: httpPort
             };
         }
         
@@ -152,13 +176,16 @@ export class TargetsManager {
         if (!result) {
             const synthTarget = this.getMergedTargets().find(t => t.id === id);
             if (synthTarget) {
-                const httpPort = data.ports?.http || (data as any).port || synthTarget.ports?.http || 8080;
+                const rawHttp = data.ports?.http || synthTarget.ports?.http;
+                const httpPort = (rawHttp && rawHttp !== 8080 && rawHttp !== 80) ? rawHttp : 8082;
+                const dashboardPort = data.ports?.dashboard || (data as any).port || synthTarget.ports?.dashboard || 8080;
                 const promoted: TargetDefinition = {
                     ...synthTarget,
                     ...data,
                     ports: {
                         ...(synthTarget.ports || {}),
                         ...(portsUpdate || {}),
+                        dashboard: dashboardPort,
                         http: httpPort
                     },
                     id: makeId(), // Assign a new managed ID
@@ -376,7 +403,8 @@ export class TargetsManager {
                 try {
                     const url = new URL(ep);
                     const host = url.hostname;
-                    const httpPort = url.port ? parseInt(url.port, 10) : 8082;
+                    const parsedPort = url.port ? parseInt(url.port, 10) : 8082;
+                    const httpPort = (parsedPort !== 8080 && parsedPort !== 80) ? parsedPort : 8082;
                     return {
                         id: `syn-security-${host}`,
                         name: host,
@@ -445,7 +473,7 @@ export class TargetsManager {
             },
             ports: {
                 dashboard: p.port || p.meta?.port || 8080,
-                http: (p as any).ports?.http || 8082,
+                http: ((p as any).ports?.http && (p as any).ports.http !== 8080 && (p as any).ports.http !== 80) ? (p as any).ports.http : 8082,
                 voice: (p as any).ports?.voice || 6100,
                 convergence: (p as any).ports?.convergence || 6200,
                 iperf: (p as any).ports?.iperf || 5201,
@@ -503,8 +531,20 @@ export class TargetsManager {
         const sharedTgtDefs: TargetDefinition[] = sharedTargetsList.map((t: any) => {
             const meta = { ...(t.meta || {}), registry: true, leader_provided: true };
             delete meta.self; // Strip self flag so remote peers don't mark leader as local node
+            const rawHttp = t.ports?.http;
+            const httpPort = (rawHttp && rawHttp !== 8080 && rawHttp !== 80) ? rawHttp : 8082;
+            const dashboardPort = t.ports?.dashboard || 8080;
             return {
                 ...t,
+                ports: {
+                    voice: 6100,
+                    convergence: 6200,
+                    iperf: 5201,
+                    xfr: 5201,
+                    ...(t.ports || {}),
+                    dashboard: dashboardPort,
+                    http: httpPort
+                },
                 id: `reg-shared-${t.id || t.host}`,
                 source: 'synthesized' as const,
                 meta
@@ -596,6 +636,19 @@ export class TargetsManager {
             }
         }
 
-        return Array.from(byHost.values());
+        return Array.from(byHost.values()).map(t => {
+            const ports = t.ports || {};
+            const rawHttp = ports.http;
+            const httpPort = (rawHttp && rawHttp !== 8080 && rawHttp !== 80) ? rawHttp : 8082;
+            const dashboardPort = ports.dashboard || (t as any).port || 8080;
+            return {
+                ...t,
+                ports: {
+                    ...ports,
+                    dashboard: dashboardPort,
+                    http: httpPort
+                }
+            };
+        });
     }
 }
