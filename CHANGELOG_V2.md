@@ -10,6 +10,9 @@ All notable changes made specifically on the `v2` branch are documented in this 
   - Guarded the component render `{view === 'pcap_replay' && isPcapEnabled && <PcapReplay ... />}` to ensure no inactive node renders the engine.
   - Completely removed the redundant "PCAP Replay" button and modal from `CustomApps.tsx` toolbar, keeping PCAP Replay exclusively in its dedicated top-level view.
   - Added `enablePcapReplay` boolean to `/api/features` in `server.ts` for unified feature introspection.
+- **refactor(custom-apps-ui)**: Overhauled Custom Applications layout hierarchy:
+  - Relocated catalog management buttons (`+ New App`, `Import`, `Export ▾`) to the top node identity header bar next to node controls with a subtle vertical divider.
+  - Dedicated the entire secondary tab bar to application selection, transforming jagged variable-width pills into a responsive uniform grid (`grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6`) with truncated app names, listener ports (`:8083`), protocol tags, and aligned traffic telemetry badges (`RX`, `TX`, `RX+TX`).
 - **feat(site)**: Reorganized `site/index.html` Core Capabilities datasheet back to natural thematic order (SaaS Traffic Generation first, followed by Digital Experience, Security Validation, AI Security, IoT, Voice, Failover Monitoring, VyOS Control, Custom TCP, PCAP Replay, Global Provisioning, Zero-Touch Mesh, Remote View, CLI, and MCP Server). Added discrete date tags (`Sep 2026`, `Oct 2026`) instead of disruptive badges.
 
 ## [v2.0.150] - 2026-10-04 — UX: Renamed PCAP Replay "Turns" to "Steps" for Operational Clarity

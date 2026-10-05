@@ -566,6 +566,80 @@ const secs = seconds % 60;
                 </div>
 
                 <div className="flex flex-wrap items-center gap-2.5">
+                    {/* Catalog Management: New App, Import, Export */}
+                    <div className="flex items-center gap-2">
+                        {/* New App Button */}
+                        <button
+                            onClick={() => {
+                                setEditingApp(null);
+                                setIsWizardOpen(true);
+                            }}
+                            className="h-[32px] px-3 bg-indigo-600 hover:bg-indigo-500 text-white shadow-sm shadow-indigo-600/20 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer"
+                        >
+                            <Plus size={14} /> <span>New App</span>
+                        </button>
+
+                        {/* Import Button */}
+                        <button
+                            onClick={() => setIsImportModalOpen(true)}
+                            className="h-[32px] px-3 bg-card-secondary hover:bg-card-hover text-text-secondary hover:text-text-primary border border-border rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-colors shadow-sm cursor-pointer"
+                            title="Import Custom TCP applications from JSON"
+                        >
+                            <Upload size={13} />
+                            <span>Import</span>
+                        </button>
+
+                        {/* Export Dropdown Button */}
+                        <div className="relative">
+                            <button
+                                onClick={() => setExportMenuOpen(!exportMenuOpen)}
+                                className="h-[32px] px-3 bg-card-secondary hover:bg-card-hover text-text-secondary hover:text-text-primary border border-border rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-colors shadow-sm cursor-pointer"
+                                title="Export Custom TCP applications as JSON"
+                            >
+                                <Download size={13} />
+                                <span>Export</span>
+                                <ChevronDown size={11} className={cn("transition-transform duration-200", exportMenuOpen && "rotate-180")} />
+                            </button>
+
+                            {exportMenuOpen && (
+                                <div
+                                    className="absolute right-0 mt-1.5 w-64 bg-card border border-border rounded-xl shadow-xl z-50 py-1.5 animate-in fade-in zoom-in-95 duration-100"
+                                    onMouseLeave={() => setExportMenuOpen(false)}
+                                >
+                                    <div className="px-3 py-1 text-[10px] font-black uppercase tracking-wider text-text-muted">
+                                        Export Options
+                                    </div>
+                                    <button
+                                        onClick={() => { setExportMenuOpen(false); handleExportAll(); }}
+                                        className="w-full text-left px-3 py-2 text-xs text-text-primary hover:bg-card-secondary flex items-center gap-2.5 transition-colors cursor-pointer"
+                                    >
+                                        <FileJson size={14} className="text-indigo-500" />
+                                        <div>
+                                            <div className="font-bold">Export All Applications</div>
+                                            <div className="text-[10px] text-text-muted">Download full mesh bundle ({applications.length} apps)</div>
+                                        </div>
+                                    </button>
+                                    {currentApp && (
+                                        <button
+                                            onClick={() => { setExportMenuOpen(false); handleExportCurrent(); }}
+                                            className="w-full text-left px-3 py-2 text-xs text-text-primary hover:bg-card-secondary flex items-center gap-2.5 transition-colors cursor-pointer"
+                                        >
+                                            <Download size={14} className="text-emerald-500" />
+                                            <div>
+                                                <div className="font-bold">Export "{currentApp.name}" Only</div>
+                                                <div className="text-[10px] text-text-muted">Download single profile JSON</div>
+                                            </div>
+                                        </button>
+                                    )}
+                                </div>
+                            )}
+                        </div>
+                    </div>
+
+                    {/* Subtle Vertical Divider */}
+                    <div className="hidden sm:block h-5 w-px bg-border/80 mx-0.5" />
+
+                    {/* Local Site Badge */}
                     {instanceInfo && (
                         <div className="flex items-center gap-2 bg-card-secondary border border-border px-3 py-1.5 rounded-xl text-xs shadow-sm">
                             <span className="text-text-muted font-medium">Local Site:</span>
@@ -716,13 +790,16 @@ const secs = seconds % 60;
                 </div>
             </div>
 
-            {/* Application Switcher Tab Bar (All Applications with Live Traffic Badges) */}
-            <div className="bg-card border border-border rounded-2xl p-3.5 flex flex-wrap items-center justify-between gap-3 text-xs shadow-sm">
-                <div className="flex items-center gap-2 text-text-primary font-semibold">
-                    <Layers size={16} className="text-indigo-500" />
-                    <span className="text-xs font-bold uppercase tracking-wider text-text-muted">Applications ({applications.length}):</span>
+            {/* Application Switcher Tab Bar (Uniform Width App Cards) */}
+            <div className="bg-card border border-border rounded-2xl p-4 space-y-3 shadow-sm">
+                <div className="flex items-center justify-between text-xs">
+                    <div className="flex items-center gap-2 text-text-primary font-semibold">
+                        <Layers size={16} className="text-indigo-500" />
+                        <span className="text-xs font-bold uppercase tracking-wider text-text-muted">Applications ({applications.length}):</span>
+                    </div>
+                    <span className="text-[11px] text-text-muted font-medium">Select an application to view live sessions, telemetry, and chaos injection controls</span>
                 </div>
-                <div className="flex items-center gap-2 flex-wrap flex-1 justify-start">
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-2.5">
                     {applications.map(app => {
                         const isSel = app.id === selectedAppId;
                         const sum = allAppSummaries[app.id];
@@ -738,129 +815,67 @@ const secs = seconds % 60;
                             <button
                                 key={app.id}
                                 onClick={() => setSelectedAppId(app.id)}
-                                className={`px-3.5 py-1.5 rounded-xl border text-xs font-semibold flex items-center gap-2 transition-all cursor-pointer ${
+                                title={`${app.name} (Port ${app.listener?.port})`}
+                                className={`w-full min-w-0 h-[38px] px-3 rounded-xl border text-xs font-semibold flex items-center justify-between gap-2 transition-all cursor-pointer ${
                                     isSel
-                                        ? 'bg-indigo-600 border-indigo-600 text-white shadow-sm'
+                                        ? 'bg-indigo-600 border-indigo-600 text-white shadow-md shadow-indigo-600/20'
                                         : 'bg-card-secondary hover:bg-card-hover border-border text-text-secondary hover:text-text-primary'
                                 }`}
                             >
-                                <span className={`w-2 h-2 rounded-full ${isL ? 'bg-emerald-400' : 'bg-text-muted'}`} />
-                                <span>{app.name}</span>
-                                <span className={`text-[10px] font-mono ${isSel ? 'text-indigo-200' : 'text-amber-500'}`}>
-                                    Port {app.listener?.port}
-                                </span>
+                                <div className="flex items-center gap-2 min-w-0 flex-1">
+                                    <span className={`w-2 h-2 rounded-full shrink-0 ${isL ? 'bg-emerald-400' : 'bg-text-muted'}`} />
+                                    <span className="truncate font-semibold text-left">{app.name}</span>
+                                </div>
 
-                                {app.protocol === 'http_1_1' && (
-                                    <span className={`text-[9px] font-mono font-black uppercase px-1.5 py-0.5 rounded-md border ${
-                                        isSel ? 'bg-white/20 border-white/40 text-white' : 'bg-emerald-500/15 border-emerald-500/30 text-emerald-600 dark:text-emerald-400'
-                                    }`}>
-                                        HTTP
+                                <div className="flex items-center gap-1.5 shrink-0">
+                                    <span className={`text-[10px] font-mono font-bold ${isSel ? 'text-indigo-200' : 'text-amber-500'}`}>
+                                        :{app.listener?.port}
                                     </span>
-                                )}
 
-                                {/* Traffic flow badges */}
-                                {hasRxTraffic && hasTxTraffic ? (
-                                    <span
-                                        className={`text-[9px] px-1.5 py-0.5 rounded-md font-mono font-bold flex items-center gap-1 ${
-                                            isSel ? 'bg-white/20 text-white' : 'bg-indigo-500/20 text-indigo-400 border border-indigo-500/30'
-                                        }`}
-                                        title={`Active RX & TX: ${inSess} incoming session(s), ${outSess} outgoing session(s)`}
-                                    >
-                                        <Activity size={10} className="animate-pulse" />
-                                        RX+TX on {totalSess > 0 ? `(${totalSess})` : ''}
-                                    </span>
-                                ) : hasRxTraffic ? (
-                                    <span
-                                        className={`text-[9px] px-1.5 py-0.5 rounded-md font-mono font-bold flex items-center gap-1 ${
-                                            isSel ? 'bg-white/20 text-white' : 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
-                                        }`}
-                                        title={`Receiving Server Traffic: ${inSess} active incoming session(s)`}
-                                    >
-                                        <ArrowDownRight size={10} className="animate-pulse" />
-                                        RX on {inSess > 0 ? `(${inSess})` : ''}
-                                    </span>
-                                ) : hasTxTraffic || isC ? (
-                                    <span
-                                        className={`text-[9px] px-1.5 py-0.5 rounded-md font-mono font-bold flex items-center gap-1 ${
-                                            isSel ? 'bg-white/20 text-white' : 'bg-amber-500/20 text-amber-400 border border-amber-500/30'
-                                        }`}
-                                        title={`Transmitting Client Traffic: ${outSess} active outgoing session(s)`}
-                                    >
-                                        <ArrowUpRight size={10} className={outSess > 0 ? "animate-pulse" : ""} />
-                                        TX on {outSess > 0 ? `(${outSess})` : ''}
-                                    </span>
-                                ) : null}
+                                    {app.protocol === 'http_1_1' && (
+                                        <span className={`text-[8px] font-mono font-black uppercase px-1 py-0.2 rounded border ${
+                                            isSel ? 'bg-white/20 border-white/40 text-white' : 'bg-emerald-500/15 border-emerald-500/30 text-emerald-600 dark:text-emerald-400'
+                                        }`}>
+                                            HTTP
+                                        </span>
+                                    )}
+
+                                    {/* Traffic flow badges */}
+                                    {hasRxTraffic && hasTxTraffic ? (
+                                        <span
+                                            className={`text-[9px] px-1.5 py-0.5 rounded font-mono font-bold flex items-center gap-0.5 ${
+                                                isSel ? 'bg-white/20 text-white' : 'bg-indigo-500/20 text-indigo-400 border border-indigo-500/30'
+                                            }`}
+                                            title={`Active RX & TX: ${inSess} in, ${outSess} out`}
+                                        >
+                                            <Activity size={9} className="animate-pulse" />
+                                            <span>{totalSess}</span>
+                                        </span>
+                                    ) : hasRxTraffic ? (
+                                        <span
+                                            className={`text-[9px] px-1.5 py-0.5 rounded font-mono font-bold flex items-center gap-0.5 ${
+                                                isSel ? 'bg-white/20 text-white' : 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
+                                            }`}
+                                            title={`Receiving Server Traffic: ${inSess} active in`}
+                                        >
+                                            <ArrowDownRight size={9} className="animate-pulse" />
+                                            <span>{inSess}</span>
+                                        </span>
+                                    ) : hasTxTraffic || isC ? (
+                                        <span
+                                            className={`text-[9px] px-1.5 py-0.5 rounded font-mono font-bold flex items-center gap-0.5 ${
+                                                isSel ? 'bg-white/20 text-white' : 'bg-amber-500/20 text-amber-400 border border-amber-500/30'
+                                            }`}
+                                            title={`Transmitting Client Traffic: ${outSess} active out`}
+                                        >
+                                            <ArrowUpRight size={9} className={outSess > 0 ? "animate-pulse" : ""} />
+                                            <span>{outSess}</span>
+                                        </span>
+                                    ) : null}
+                                </div>
                             </button>
                         );
                     })}
-                </div>
-                <div className="flex items-center gap-2 shrink-0">
-                    {/* Export Dropdown Button */}
-                    <div className="relative">
-                        <button
-                            onClick={() => setExportMenuOpen(!exportMenuOpen)}
-                            className="h-[32px] px-3 bg-card-secondary hover:bg-card-hover text-text-secondary hover:text-text-primary border border-border rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-colors shadow-sm cursor-pointer"
-                            title="Export Custom TCP applications as JSON"
-                        >
-                            <Download size={13} />
-                            <span>Export</span>
-                            <ChevronDown size={11} className={cn("transition-transform duration-200", exportMenuOpen && "rotate-180")} />
-                        </button>
-
-                        {exportMenuOpen && (
-                            <div
-                                className="absolute right-0 mt-1.5 w-64 bg-card border border-border rounded-xl shadow-xl z-50 py-1.5 animate-in fade-in zoom-in-95 duration-100"
-                                onMouseLeave={() => setExportMenuOpen(false)}
-                            >
-                                <div className="px-3 py-1 text-[10px] font-black uppercase tracking-wider text-text-muted">
-                                    Export Options
-                                </div>
-                                <button
-                                    onClick={() => { setExportMenuOpen(false); handleExportAll(); }}
-                                    className="w-full text-left px-3 py-2 text-xs text-text-primary hover:bg-card-secondary flex items-center gap-2.5 transition-colors cursor-pointer"
-                                >
-                                    <FileJson size={14} className="text-indigo-500" />
-                                    <div>
-                                        <div className="font-bold">Export All Applications</div>
-                                        <div className="text-[10px] text-text-muted">Download full mesh bundle ({applications.length} apps)</div>
-                                    </div>
-                                </button>
-                                {currentApp && (
-                                    <button
-                                        onClick={() => { setExportMenuOpen(false); handleExportCurrent(); }}
-                                        className="w-full text-left px-3 py-2 text-xs text-text-primary hover:bg-card-secondary flex items-center gap-2.5 transition-colors cursor-pointer"
-                                    >
-                                        <Download size={14} className="text-emerald-500" />
-                                        <div>
-                                            <div className="font-bold">Export "{currentApp.name}" Only</div>
-                                            <div className="text-[10px] text-text-muted">Download single profile JSON</div>
-                                        </div>
-                                    </button>
-                                )}
-                            </div>
-                        )}
-                    </div>
-
-                    {/* Import Button */}
-                    <button
-                        onClick={() => setIsImportModalOpen(true)}
-                        className="h-[32px] px-3 bg-card-secondary hover:bg-card-hover text-text-secondary hover:text-text-primary border border-border rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-colors shadow-sm cursor-pointer"
-                        title="Import Custom TCP applications from JSON"
-                    >
-                        <Upload size={13} />
-                        <span>Import</span>
-                    </button>
-
-                    {/* New App Button */}
-                    <button
-                        onClick={() => {
-                            setEditingApp(null);
-                            setIsWizardOpen(true);
-                        }}
-                        className="h-[32px] px-3 bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-600 dark:text-indigo-400 border border-indigo-500/30 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-colors shadow-sm cursor-pointer"
-                    >
-                        <Plus size={14} /> New App
-                    </button>
                 </div>
             </div>
 
