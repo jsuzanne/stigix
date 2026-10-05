@@ -5035,7 +5035,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                                                     { key: 'convergence', label: 'Failover', placeholder: '6200' },
                                                     { key: 'iperf', label: 'Iperf', placeholder: '5201' },
                                                     { key: 'http', label: 'HTTP', placeholder: '8082' },
-                                                    { key: 'xfr', label: 'Speedtest', placeholder: '5201' },
+                                                    { key: 'xfr', label: 'Speedtest', placeholder: '9000' },
                                                 ].map(({ key, label, placeholder }) => (
                                                     <div key={key} className="space-y-1">
                                                         <label className="text-[9px] font-black text-text-muted">{label}</label>

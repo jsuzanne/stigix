@@ -504,11 +504,19 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
         if (config?.threat_prevention && !eicarInitialized.current) {
             const saved = config.threat_prevention.eicar_endpoints;
             if (saved && Array.isArray(saved) && saved.length > 0) {
-                // If cloud URL was already added by the other useEffect, we don't want to duplicate
-                setSelectedEicarTargets(prev => Array.from(new Set([...prev, ...saved])));
+                // Auto-migrate legacy 8080 or un-ported / 80 internal node URLs to 8082
+                const migrated = saved.map(ep => ep.replace(/:8080\/eicar\.com\.txt/g, ':8082/eicar.com.txt').replace(/:80\/eicar\.com\.txt/g, ':8082/eicar.com.txt'));
+                setSelectedEicarTargets(prev => Array.from(new Set([...prev.map(p => p.replace(/:8080\/eicar\.com\.txt/g, ':8082/eicar.com.txt').replace(/:80\/eicar\.com\.txt/g, ':8082/eicar.com.txt')), ...migrated])));
+                if (JSON.stringify(migrated) !== JSON.stringify(saved)) {
+                    saveConfig({ threat_prevention: { ...config.threat_prevention, eicar_endpoints: migrated } });
+                }
             } else if (config.threat_prevention.eicar_endpoint) {
                 // Legacy fallback
-                setSelectedEicarTargets(prev => Array.from(new Set([...prev, config.threat_prevention.eicar_endpoint])));
+                const migrated = config.threat_prevention.eicar_endpoint.replace(/:8080\/eicar\.com\.txt/g, ':8082/eicar.com.txt').replace(/:80\/eicar\.com\.txt/g, ':8082/eicar.com.txt');
+                setSelectedEicarTargets(prev => Array.from(new Set([...prev.map(p => p.replace(/:8080\/eicar\.com\.txt/g, ':8082/eicar.com.txt').replace(/:80\/eicar\.com\.txt/g, ':8082/eicar.com.txt')), migrated])));
+                if (migrated !== config.threat_prevention.eicar_endpoint) {
+                    saveConfig({ threat_prevention: { ...config.threat_prevention, eicar_endpoint: migrated, eicar_endpoints: [migrated] } });
+                }
             }
             eicarInitialized.current = true;
         }
@@ -2356,7 +2364,8 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
 
                                         {/* Dynamic Stigix Targets */}
                                         {securityTargets.map((t) => {
-                                            const url = `http://${t.host}:${t.ports?.http ?? 8082}/eicar.com.txt`;
+                                            const httpPort = (t.ports?.http && t.ports.http !== 8080 && t.ports.http !== 80) ? t.ports.http : 8082;
+                                            const url = `http://${t.host}:${httpPort}/eicar.com.txt`;
                                             const isSelected = selectedEicarTargets.includes(url);
                                             const status = targetReachability[t.host];
                                             const lastResult = getEicarResult(url);

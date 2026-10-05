@@ -537,7 +537,7 @@ export class FleetTunnelManager {
         const now = Date.now();
         for (const [targetKey, socket] of this.outboundDialedSockets) {
             const stillTarget = externalTargets.some(t => {
-                const port = t.ports?.http || 8080;
+                const port = t.ports?.dashboard || 8080;
                 return `${t.host.trim().toLowerCase()}:${port}` === targetKey.toLowerCase();
             });
             // Keep if actively connected tunnel or dialed recently via rendezvous (protect for 60s)
@@ -556,7 +556,7 @@ export class FleetTunnelManager {
         // 2. Dial candidate external cloud/manual targets
         for (const target of externalTargets) {
             const host = target.host.trim();
-            const port = target.ports?.http || 8080;
+            const port = target.ports?.dashboard || 8080;
             const targetKey = `${host.toLowerCase()}:${port}`;
 
             if (!this.outboundDialedSockets.has(targetKey)) {
@@ -615,7 +615,7 @@ export class FleetTunnelManager {
                         this.targetsManager.createTarget({
                             name: targetSiteName,
                             host: host,
-                            ports: { http: port },
+                            ports: { dashboard: port, http: 8082 },
                             enabled: true,
                             protocol: 'http',
                             capabilities: { voice: true, convergence: true, custom_app: true, xfr: true, security: true, connectivity: true },
@@ -624,12 +624,13 @@ export class FleetTunnelManager {
                             meta: { registry: true, magic_join: true, last_seen: new Date().toISOString() }
                         });
                         log('RENDEZVOUS', `🎯 Target auto-provisioned for ${targetSiteName} (${host}:${port})`);
-                    } else if (existing.host !== host || existing.ports?.http !== port || !existing.enabled || !existing.meta?.registry) {
+                    } else if (existing.host !== host || existing.ports?.dashboard !== port || (existing.ports?.http && existing.ports.http === 8080) || !existing.enabled || !existing.meta?.registry) {
+                        const effectiveHttp = (existing.ports?.http && existing.ports.http !== 8080 && existing.ports.http !== 80) ? existing.ports.http : 8082;
                         this.targetsManager.updateTarget(existing.id, { 
                             ...existing, 
                             name: targetSiteName, 
                             host: host, 
-                            ports: { ...(existing.ports || {}), http: port },
+                            ports: { ...(existing.ports || {}), dashboard: port, http: effectiveHttp },
                             enabled: true,
                             meta: { ...(existing.meta || {}), registry: true, magic_join: true, last_seen: new Date().toISOString() }
                         });
@@ -908,7 +909,7 @@ export class FleetTunnelManager {
             // Trigger immediate outbound reverse dial for each candidate
             const targetKey = `${peerIp.toLowerCase()}:${peerPort}`;
             if (!this.outboundDialedSockets.has(targetKey) && !this.activeTunnels.has(peerInstanceId)) {
-                const targetObj = { id: peerInstanceId, name: peerSiteName, host: peerIp, ports: { http: peerPort } };
+                const targetObj = { id: peerInstanceId, name: peerSiteName, host: peerIp, ports: { dashboard: peerPort, http: 8082 } };
                 this.dialOutboundPeer(targetObj, peerIp, peerPort, targetKey);
             }
         }
