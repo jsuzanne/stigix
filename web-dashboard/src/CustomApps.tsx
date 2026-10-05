@@ -566,6 +566,80 @@ const secs = seconds % 60;
                 </div>
 
                 <div className="flex flex-wrap items-center gap-2.5">
+                    {/* Catalog Management: New App, Import, Export */}
+                    <div className="flex items-center gap-2">
+                        {/* New App Button */}
+                        <button
+                            onClick={() => {
+                                setEditingApp(null);
+                                setIsWizardOpen(true);
+                            }}
+                            className="h-[32px] px-3 bg-indigo-600 hover:bg-indigo-500 text-white shadow-sm shadow-indigo-600/20 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer"
+                        >
+                            <Plus size={14} /> <span>New App</span>
+                        </button>
+
+                        {/* Import Button */}
+                        <button
+                            onClick={() => setIsImportModalOpen(true)}
+                            className="h-[32px] px-3 bg-card-secondary hover:bg-card-hover text-text-secondary hover:text-text-primary border border-border rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-colors shadow-sm cursor-pointer"
+                            title="Import Custom TCP applications from JSON"
+                        >
+                            <Upload size={13} />
+                            <span>Import</span>
+                        </button>
+
+                        {/* Export Dropdown Button */}
+                        <div className="relative">
+                            <button
+                                onClick={() => setExportMenuOpen(!exportMenuOpen)}
+                                className="h-[32px] px-3 bg-card-secondary hover:bg-card-hover text-text-secondary hover:text-text-primary border border-border rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-colors shadow-sm cursor-pointer"
+                                title="Export Custom TCP applications as JSON"
+                            >
+                                <Download size={13} />
+                                <span>Export</span>
+                                <ChevronDown size={11} className={cn("transition-transform duration-200", exportMenuOpen && "rotate-180")} />
+                            </button>
+
+                            {exportMenuOpen && (
+                                <div
+                                    className="absolute right-0 mt-1.5 w-64 bg-card border border-border rounded-xl shadow-xl z-50 py-1.5 animate-in fade-in zoom-in-95 duration-100"
+                                    onMouseLeave={() => setExportMenuOpen(false)}
+                                >
+                                    <div className="px-3 py-1 text-[10px] font-black uppercase tracking-wider text-text-muted">
+                                        Export Options
+                                    </div>
+                                    <button
+                                        onClick={() => { setExportMenuOpen(false); handleExportAll(); }}
+                                        className="w-full text-left px-3 py-2 text-xs text-text-primary hover:bg-card-secondary flex items-center gap-2.5 transition-colors cursor-pointer"
+                                    >
+                                        <FileJson size={14} className="text-indigo-500" />
+                                        <div>
+                                            <div className="font-bold">Export All Applications</div>
+                                            <div className="text-[10px] text-text-muted">Download full mesh bundle ({applications.length} apps)</div>
+                                        </div>
+                                    </button>
+                                    {currentApp && (
+                                        <button
+                                            onClick={() => { setExportMenuOpen(false); handleExportCurrent(); }}
+                                            className="w-full text-left px-3 py-2 text-xs text-text-primary hover:bg-card-secondary flex items-center gap-2.5 transition-colors cursor-pointer"
+                                        >
+                                            <Download size={14} className="text-emerald-500" />
+                                            <div>
+                                                <div className="font-bold">Export "{currentApp.name}" Only</div>
+                                                <div className="text-[10px] text-text-muted">Download single profile JSON</div>
+                                            </div>
+                                        </button>
+                                    )}
+                                </div>
+                            )}
+                        </div>
+                    </div>
+
+                    {/* Subtle Vertical Divider */}
+                    <div className="hidden sm:block h-5 w-px bg-border/80 mx-0.5" />
+
+                    {/* Local Site Badge */}
                     {instanceInfo && (
                         <div className="flex items-center gap-2 bg-card-secondary border border-border px-3 py-1.5 rounded-xl text-xs shadow-sm">
                             <span className="text-text-muted font-medium">Local Site:</span>
@@ -716,13 +790,16 @@ const secs = seconds % 60;
                 </div>
             </div>
 
-            {/* Application Switcher Tab Bar (All Applications with Live Traffic Badges) */}
-            <div className="bg-card border border-border rounded-2xl p-3.5 flex flex-wrap items-center justify-between gap-3 text-xs shadow-sm">
-                <div className="flex items-center gap-2 text-text-primary font-semibold">
-                    <Layers size={16} className="text-indigo-500" />
-                    <span className="text-xs font-bold uppercase tracking-wider text-text-muted">Applications ({applications.length}):</span>
+            {/* Application Switcher Tab Bar (Uniform Width App Cards) */}
+            <div className="bg-card border border-border rounded-2xl p-4 space-y-3 shadow-sm">
+                <div className="flex items-center justify-between text-xs">
+                    <div className="flex items-center gap-2 text-text-primary font-semibold">
+                        <Layers size={16} className="text-indigo-500" />
+                        <span className="text-xs font-bold uppercase tracking-wider text-text-muted">Applications ({applications.length}):</span>
+                    </div>
+                    <span className="text-[11px] text-text-muted font-medium">Select an application to view live sessions, telemetry, and chaos injection controls</span>
                 </div>
-                <div className="flex items-center gap-2 flex-wrap flex-1 justify-start">
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-2.5">
                     {applications.map(app => {
                         const isSel = app.id === selectedAppId;
                         const sum = allAppSummaries[app.id];
@@ -738,135 +815,76 @@ const secs = seconds % 60;
                             <button
                                 key={app.id}
                                 onClick={() => setSelectedAppId(app.id)}
-                                className={`px-3.5 py-1.5 rounded-xl border text-xs font-semibold flex items-center gap-2 transition-all cursor-pointer ${
+                                title={`${app.name} (Port ${app.listener?.port})`}
+                                className={`w-full min-w-0 h-[38px] px-3 rounded-xl border text-xs font-semibold flex items-center justify-between gap-2 transition-all cursor-pointer ${
                                     isSel
-                                        ? 'bg-indigo-600 border-indigo-600 text-white shadow-sm'
+                                        ? 'bg-indigo-600 border-indigo-600 text-white shadow-md shadow-indigo-600/20'
                                         : 'bg-card-secondary hover:bg-card-hover border-border text-text-secondary hover:text-text-primary'
                                 }`}
                             >
-                                <span className={`w-2 h-2 rounded-full ${isL ? 'bg-emerald-400' : 'bg-text-muted'}`} />
-                                <span>{app.name}</span>
-                                <span className={`text-[10px] font-mono ${isSel ? 'text-indigo-200' : 'text-amber-500'}`}>
-                                    Port {app.listener?.port}
-                                </span>
+                                <div className="flex items-center gap-2 min-w-0 flex-1">
+                                    <span className={`w-2 h-2 rounded-full shrink-0 ${isL ? 'bg-emerald-400' : 'bg-text-muted'}`} />
+                                    <span className="truncate font-semibold text-left">{app.name}</span>
+                                </div>
 
-                                {app.protocol === 'http_1_1' && (
-                                    <span className={`text-[9px] font-mono font-black uppercase px-1.5 py-0.5 rounded-md border ${
-                                        isSel ? 'bg-white/20 border-white/40 text-white' : 'bg-emerald-500/15 border-emerald-500/30 text-emerald-600 dark:text-emerald-400'
+                                <div className="flex items-center gap-1.5 shrink-0">
+                                    <span className={`text-[11px] font-mono font-bold tracking-tight ${
+                                        isSel
+                                            ? 'text-indigo-100'
+                                            : 'text-amber-500/90 dark:text-amber-400'
                                     }`}>
-                                        HTTP
+                                        {app.listener?.port}
                                     </span>
-                                )}
 
-                                {/* Traffic flow badges */}
-                                {hasRxTraffic && hasTxTraffic ? (
-                                    <span
-                                        className={`text-[9px] px-1.5 py-0.5 rounded-md font-mono font-bold flex items-center gap-1 ${
-                                            isSel ? 'bg-white/20 text-white' : 'bg-indigo-500/20 text-indigo-400 border border-indigo-500/30'
-                                        }`}
-                                        title={`Active RX & TX: ${inSess} incoming session(s), ${outSess} outgoing session(s)`}
-                                    >
-                                        <Activity size={10} className="animate-pulse" />
-                                        RX+TX on {totalSess > 0 ? `(${totalSess})` : ''}
-                                    </span>
-                                ) : hasRxTraffic ? (
-                                    <span
-                                        className={`text-[9px] px-1.5 py-0.5 rounded-md font-mono font-bold flex items-center gap-1 ${
-                                            isSel ? 'bg-white/20 text-white' : 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
-                                        }`}
-                                        title={`Receiving Server Traffic: ${inSess} active incoming session(s)`}
-                                    >
-                                        <ArrowDownRight size={10} className="animate-pulse" />
-                                        RX on {inSess > 0 ? `(${inSess})` : ''}
-                                    </span>
-                                ) : hasTxTraffic || isC ? (
-                                    <span
-                                        className={`text-[9px] px-1.5 py-0.5 rounded-md font-mono font-bold flex items-center gap-1 ${
-                                            isSel ? 'bg-white/20 text-white' : 'bg-amber-500/20 text-amber-400 border border-amber-500/30'
-                                        }`}
-                                        title={`Transmitting Client Traffic: ${outSess} active outgoing session(s)`}
-                                    >
-                                        <ArrowUpRight size={10} className={outSess > 0 ? "animate-pulse" : ""} />
-                                        TX on {outSess > 0 ? `(${outSess})` : ''}
-                                    </span>
-                                ) : null}
+                                    {app.protocol === 'http_1_1' && (
+                                        <span className={`text-[8px] font-mono font-black uppercase px-1 py-0.2 rounded border ${
+                                            isSel ? 'bg-white/20 border-white/40 text-white' : 'bg-emerald-500/15 border-emerald-500/30 text-emerald-600 dark:text-emerald-400'
+                                        }`}>
+                                            HTTP
+                                        </span>
+                                    )}
+
+                                    {/* Traffic flow badges */}
+                                    {hasRxTraffic && hasTxTraffic ? (
+                                        <span
+                                            className={`text-[9px] px-1.5 py-0.5 rounded font-mono font-bold flex items-center gap-0.5 ${
+                                                isSel ? 'bg-white/20 text-white' : 'bg-indigo-500/20 text-indigo-400 border border-indigo-500/30'
+                                            }`}
+                                            title={`Active RX & TX: ${inSess} in, ${outSess} out`}
+                                        >
+                                            <Activity size={9} className="animate-pulse" />
+                                            <span>{totalSess}</span>
+                                        </span>
+                                    ) : hasRxTraffic ? (
+                                        <span
+                                            className={`text-[9px] px-1.5 py-0.5 rounded font-mono font-bold flex items-center gap-0.5 ${
+                                                isSel ? 'bg-white/20 text-white' : 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
+                                            }`}
+                                            title={`Receiving Server Traffic: ${inSess} active in`}
+                                        >
+                                            <ArrowDownRight size={9} className="animate-pulse" />
+                                            <span>{inSess}</span>
+                                        </span>
+                                    ) : hasTxTraffic || isC ? (
+                                        <span
+                                            className={`text-[9px] px-1.5 py-0.5 rounded font-mono font-bold flex items-center gap-0.5 ${
+                                                isSel ? 'bg-white/20 text-white' : 'bg-amber-500/20 text-amber-400 border border-amber-500/30'
+                                            }`}
+                                            title={`Transmitting Client Traffic: ${outSess} active out`}
+                                        >
+                                            <ArrowUpRight size={9} className={outSess > 0 ? "animate-pulse" : ""} />
+                                            <span>{outSess}</span>
+                                        </span>
+                                    ) : null}
+                                </div>
                             </button>
                         );
                     })}
                 </div>
-                <div className="flex items-center gap-2 shrink-0">
-                    {/* Export Dropdown Button */}
-                    <div className="relative">
-                        <button
-                            onClick={() => setExportMenuOpen(!exportMenuOpen)}
-                            className="h-[32px] px-3 bg-card-secondary hover:bg-card-hover text-text-secondary hover:text-text-primary border border-border rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-colors shadow-sm cursor-pointer"
-                            title="Export Custom TCP applications as JSON"
-                        >
-                            <Download size={13} />
-                            <span>Export</span>
-                            <ChevronDown size={11} className={cn("transition-transform duration-200", exportMenuOpen && "rotate-180")} />
-                        </button>
-
-                        {exportMenuOpen && (
-                            <div
-                                className="absolute right-0 mt-1.5 w-64 bg-card border border-border rounded-xl shadow-xl z-50 py-1.5 animate-in fade-in zoom-in-95 duration-100"
-                                onMouseLeave={() => setExportMenuOpen(false)}
-                            >
-                                <div className="px-3 py-1 text-[10px] font-black uppercase tracking-wider text-text-muted">
-                                    Export Options
-                                </div>
-                                <button
-                                    onClick={() => { setExportMenuOpen(false); handleExportAll(); }}
-                                    className="w-full text-left px-3 py-2 text-xs text-text-primary hover:bg-card-secondary flex items-center gap-2.5 transition-colors cursor-pointer"
-                                >
-                                    <FileJson size={14} className="text-indigo-500" />
-                                    <div>
-                                        <div className="font-bold">Export All Applications</div>
-                                        <div className="text-[10px] text-text-muted">Download full mesh bundle ({applications.length} apps)</div>
-                                    </div>
-                                </button>
-                                {currentApp && (
-                                    <button
-                                        onClick={() => { setExportMenuOpen(false); handleExportCurrent(); }}
-                                        className="w-full text-left px-3 py-2 text-xs text-text-primary hover:bg-card-secondary flex items-center gap-2.5 transition-colors cursor-pointer"
-                                    >
-                                        <Download size={14} className="text-emerald-500" />
-                                        <div>
-                                            <div className="font-bold">Export "{currentApp.name}" Only</div>
-                                            <div className="text-[10px] text-text-muted">Download single profile JSON</div>
-                                        </div>
-                                    </button>
-                                )}
-                            </div>
-                        )}
-                    </div>
-
-                    {/* Import Button */}
-                    <button
-                        onClick={() => setIsImportModalOpen(true)}
-                        className="h-[32px] px-3 bg-card-secondary hover:bg-card-hover text-text-secondary hover:text-text-primary border border-border rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-colors shadow-sm cursor-pointer"
-                        title="Import Custom TCP applications from JSON"
-                    >
-                        <Upload size={13} />
-                        <span>Import</span>
-                    </button>
-
-                    {/* New App Button */}
-                    <button
-                        onClick={() => {
-                            setEditingApp(null);
-                            setIsWizardOpen(true);
-                        }}
-                        className="h-[32px] px-3 bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-600 dark:text-indigo-400 border border-indigo-500/30 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-colors shadow-sm cursor-pointer"
-                    >
-                        <Plus size={14} /> New App
-                    </button>
-                </div>
             </div>
 
             {/* Application Toolbar & Primary Controls */}
-            <div className="bg-card border border-border rounded-2xl p-4 lg:p-5 shadow-sm space-y-3.5">
-                {/* Row 1: Selected App Overview & Primary Actions */}
+            <div className="bg-card border border-border rounded-2xl p-4 lg:p-5 shadow-sm">
                 <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3.5">
                     {/* Left: Active App Identity */}
                     <div className="flex items-center gap-3">
@@ -874,7 +892,7 @@ const secs = seconds % 60;
                             <Server size={20} />
                         </div>
                         <div>
-                            <div className="flex items-center gap-2">
+                            <div className="flex items-center gap-2 flex-wrap">
                                 <h2 className="text-base font-bold text-text-primary">{currentApp?.name}</h2>
                                 <span className="font-mono text-xs text-indigo-500 font-bold bg-indigo-500/10 border border-indigo-500/30 px-2 py-0.5 rounded-lg">
                                     Port {currentApp?.listener?.port}
@@ -886,6 +904,30 @@ const secs = seconds % 60;
                                 }`}>
                                     {currentApp?.protocol === 'http_1_1' ? 'HTTP/1.1 REST' : 'TCP Native'}
                                 </span>
+                                {metrics && (() => {
+                                    const health = calculateHealthScore();
+                                    return (
+                                        <div
+                                            title={health.reason}
+                                            className={`h-6 px-2 rounded-md text-[10px] font-black border flex items-center gap-1 cursor-help transition-all ${
+                                                health.color === 'emerald'
+                                                    ? 'bg-emerald-500/10 border-emerald-500/40 text-emerald-600 dark:text-emerald-400'
+                                                    : health.color === 'amber'
+                                                    ? 'bg-amber-500/10 border-amber-500/40 text-amber-600 dark:text-amber-400'
+                                                    : 'bg-rose-500/15 border-rose-500/50 text-rose-600 dark:text-rose-400 animate-pulse'
+                                            }`}
+                                        >
+                                            <span className="font-mono">{health.score}/100</span>
+                                            <span className="uppercase tracking-wider font-extrabold">{health.label}</span>
+                                        </div>
+                                    );
+                                })()}
+                                {currentApp?.startup?.startClientWorkload && (
+                                    <span className="h-6 text-[10px] text-amber-500 bg-amber-500/10 border border-amber-500/30 px-2 rounded-md flex items-center gap-1 font-bold" title="Zero-Touch Auto-Start enabled: client workload starts automatically on sync and boot">
+                                        <Zap size={11} className="fill-amber-500" />
+                                        <span>ZTP Auto-Start</span>
+                                    </span>
+                                )}
                             </div>
                             <p className="text-[11px] text-text-muted mt-0.5">
                                 {currentApp?.peers?.length || 0} Target Peer(s) • Mode: <span className="capitalize">{currentApp?.clientDefaults?.mode?.replace(/_/g, ' ')}</span>
@@ -898,7 +940,7 @@ const secs = seconds % 60;
                         <button
                             onClick={handleToggleListener}
                             disabled={isActionLoading}
-                            className={`h-[38px] px-3.5 py-2 rounded-xl text-xs font-semibold flex items-center gap-2 transition-all shadow-sm cursor-pointer ${
+                            className={`h-[36px] px-3.5 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-2 transition-all shadow-sm cursor-pointer ${
                                 metrics?.listenerState === 'listening'
                                     ? 'bg-card-secondary hover:bg-card-hover text-amber-600 dark:text-amber-400 border border-amber-500/30'
                                     : 'bg-indigo-600 hover:bg-indigo-500 text-white'
@@ -912,7 +954,7 @@ const secs = seconds % 60;
                             onClick={handleToggleClient}
                             disabled={isActionLoading}
                             title={!currentApp?.peers?.length ? 'No target peers configured — click to configure peers' : metrics?.clientWorkloadRunning ? 'Stop outgoing traffic generation' : 'Start outgoing traffic generation to configured targets'}
-                            className={`h-[38px] px-3.5 py-2 rounded-xl text-xs font-semibold flex items-center gap-2 transition-all shadow-sm cursor-pointer ${
+                            className={`h-[36px] px-3.5 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-2 transition-all shadow-sm cursor-pointer ${
                                 metrics?.clientWorkloadRunning
                                     ? 'bg-rose-500/10 hover:bg-rose-500/20 text-rose-600 dark:text-rose-400 border border-rose-500/40'
                                     : 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-emerald-600/20'
@@ -929,89 +971,19 @@ const secs = seconds % 60;
                                 setEditingApp(currentApp || null);
                                 setIsWizardOpen(true);
                             }}
-                            className="h-[38px] px-3 py-2 bg-card-secondary hover:bg-card-hover text-text-primary border border-border rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-colors shadow-sm cursor-pointer"
+                            className="h-[36px] px-3 py-1.5 bg-card-secondary hover:bg-card-hover text-text-primary border border-border rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-colors shadow-sm cursor-pointer"
                         >
                             <Edit3 size={14} /> Edit Profile
                         </button>
 
                         <button
                             onClick={() => setIsPrismaModalOpen(true)}
-                            className="h-[38px] px-3.5 py-2 bg-blue-500/10 hover:bg-blue-500/20 text-blue-600 dark:text-blue-400 border border-blue-500/30 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-colors shadow-sm cursor-pointer"
+                            className="h-[36px] px-3.5 py-1.5 bg-blue-500/10 hover:bg-blue-500/20 text-blue-600 dark:text-blue-400 border border-blue-500/30 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-colors shadow-sm cursor-pointer"
                             title="Push and register this custom application definition to Prisma SD-WAN via Cloud Controller API"
                         >
                             <Cloud size={14} />
                             <span>Push to Prisma SD-WAN</span>
                         </button>
-                    </div>
-                </div>
-
-                {/* Row 2: Live Status Badges & Quick Context Details */}
-                <div className="flex flex-wrap items-center justify-between gap-3 pt-3 border-t border-border/70 text-xs">
-                    {/* Live Status Badges */}
-                    <div className="flex flex-wrap items-center gap-2">
-                        {metrics && (() => {
-                            const health = calculateHealthScore();
-                            return (
-                                <>
-                                    <div
-                                        title={health.reason}
-                                        className={`h-8 px-3 rounded-lg text-xs font-black border flex items-center gap-1.5 cursor-help transition-all shadow-sm ${
-                                            health.color === 'emerald'
-                                                ? 'bg-emerald-500/10 border-emerald-500/40 text-emerald-600 dark:text-emerald-400'
-                                                : health.color === 'amber'
-                                                ? 'bg-amber-500/10 border-amber-500/40 text-amber-600 dark:text-amber-400'
-                                                : 'bg-rose-500/15 border-rose-500/50 text-rose-600 dark:text-rose-400 animate-pulse'
-                                        }`}
-                                    >
-                                        <div className="flex items-center gap-1 font-mono">
-                                            <span className="text-[12px]">{health.score}</span>
-                                            <span className="text-[9px] opacity-70">/100</span>
-                                        </div>
-                                        <span className="text-[10px] uppercase tracking-wider font-extrabold">{health.label}</span>
-                                    </div>
-
-                                    <span className="h-8 text-xs text-text-muted bg-card-secondary border border-border px-3 rounded-lg flex items-center gap-1.5 shadow-sm">
-                                        <Server size={12} className={metrics.listenerState === 'listening' ? 'text-emerald-500' : 'text-text-muted'} />
-                                        <span>Listener:</span>
-                                        <strong className={`uppercase font-bold ${metrics.listenerState === 'listening' ? 'text-emerald-600 dark:text-emerald-400' : 'text-text-muted'}`}>
-                                            {metrics.listenerState}
-                                        </strong>
-                                    </span>
-
-                                    {incomingSessions.length > 0 && (
-                                        <span className="h-8 text-xs text-emerald-500 bg-emerald-500/10 border border-emerald-500/30 px-3 rounded-lg flex items-center gap-1.5 shadow-sm font-bold" title={`${incomingSessions.length} active incoming session(s) currently connected and receiving traffic`}>
-                                            <ArrowDownRight size={12} className="animate-pulse" />
-                                            <span>{incomingSessions.length} Incoming Connected</span>
-                                        </span>
-                                    )}
-
-                                    {metrics.clientWorkloadRunning && (
-                                        <span className="h-8 text-xs text-indigo-400 bg-indigo-500/10 border border-indigo-500/30 px-3 rounded-lg flex items-center gap-1.5 shadow-sm font-bold" title={`${outgoingSessions.filter(s => s.state === 'connected').length} active outgoing session(s) transmitting traffic`}>
-                                            <ArrowUpRight size={12} className="animate-pulse" />
-                                            <span>{outgoingSessions.filter(s => s.state === 'connected').length} Outgoing Connected</span>
-                                        </span>
-                                    )}
-
-                                    {currentApp?.startup?.startClientWorkload && (
-                                        <span className="h-8 text-xs text-amber-500 bg-amber-500/10 border border-amber-500/30 px-3 rounded-lg flex items-center gap-1.5 shadow-sm font-bold" title="Zero-Touch Auto-Start enabled: client workload starts automatically on sync and boot">
-                                            <Zap size={12} className="fill-amber-500" />
-                                            <span>ZTP Auto-Start</span>
-                                        </span>
-                                    )}
-                                </>
-                            );
-                        })()}
-                    </div>
-
-                    {/* Quick Metadata Info */}
-                    <div className="flex items-center gap-3 text-text-muted text-[11px] font-mono">
-                        <span className="bg-card-secondary px-2 py-0.5 rounded border border-border font-semibold text-text-primary">
-                            TCP Port {currentApp?.listener?.port}
-                        </span>
-                        <span>•</span>
-                        <span>{currentApp?.peers?.length || 0} Target Peer(s)</span>
-                        <span>•</span>
-                        <span className="capitalize">{currentApp?.clientDefaults?.mode?.replace(/_/g, ' ')}</span>
                     </div>
                 </div>
             </div>
@@ -1043,7 +1015,11 @@ const secs = seconds % 60;
                                 <span className="font-semibold flex items-center gap-1.5 text-indigo-600 dark:text-indigo-400">
                                     <ArrowDownRight size={16} /> Incoming Sessions
                                 </span>
-                                <span className="font-mono text-[11px] text-text-muted">Port {currentApp?.listener?.port}</span>
+                                <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded ${
+                                    metrics?.listenerState === 'listening' ? 'bg-emerald-500/10 text-emerald-500' : 'bg-zinc-500/10 text-text-muted'
+                                }`}>
+                                    {metrics?.listenerState === 'listening' ? 'Listening' : 'Stopped'}
+                                </span>
                             </div>
                             <div className="mt-3 flex items-baseline justify-between">
                                 <div className="text-3xl font-black text-text-primary">{incomingSessions.length} <span className="text-xs font-normal text-text-muted">active</span></div>
@@ -1077,7 +1053,11 @@ const secs = seconds % 60;
                                 <span className="font-semibold flex items-center gap-1.5 text-emerald-600 dark:text-emerald-400">
                                     <ArrowUpRight size={16} /> Outgoing Sessions
                                 </span>
-                                <span className="font-mono text-[11px] text-text-muted">{currentApp?.peers?.length || 0} peers</span>
+                                <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded ${
+                                    metrics?.clientWorkloadRunning ? 'bg-emerald-500/10 text-emerald-500' : 'bg-zinc-500/10 text-text-muted'
+                                }`}>
+                                    {metrics?.clientWorkloadRunning ? 'Transmitting' : 'Idle'}
+                                </span>
                             </div>
                             <div className="mt-3 flex items-baseline justify-between">
                                 <div className="text-3xl font-black text-text-primary">{outgoingSessions.filter(s => s.state === 'connected').length} <span className="text-xs font-normal text-text-muted">active</span></div>
@@ -1092,11 +1072,7 @@ const secs = seconds % 60;
                                 </div>
                             </div>
                             <div className="mt-2 text-[11px] text-text-muted flex items-center justify-between pt-2.5 border-t border-border">
-                                <span className="truncate max-w-[55%]">
-                                    Mode: <strong className="text-text-secondary font-medium">
-                                        {currentApp?.clientDefaults?.mode?.replace(/_/g, ' ')}
-                                    </strong>
-                                </span>
+                                <span>Peers: <strong className="text-text-secondary font-medium">{currentApp?.peers?.length || 0} configured</strong></span>
                                 <span className="whitespace-nowrap">
                                     Replies: <strong className="text-text-secondary">{clientReplies}</strong>{' '}
                                     {liveClientTps > 0 && <span className="text-emerald-500 font-mono text-[10px] font-bold">({liveClientTps} tps)</span>}
@@ -1124,7 +1100,7 @@ const secs = seconds % 60;
                                 <span className="font-semibold flex items-center gap-1.5 text-amber-500">
                                     <Zap size={16} /> App Latency (RTT)
                                 </span>
-                                <span className="font-mono text-[11px] text-text-muted">Rolling Window</span>
+                                <span className="font-mono text-[10px] text-text-muted">Live RTT</span>
                             </div>
                             <div className="mt-3 flex items-baseline justify-between">
                                 <div className="text-3xl font-black text-amber-500 font-mono">
@@ -1149,9 +1125,9 @@ const secs = seconds % 60;
                         <div className="bg-card border border-border rounded-2xl p-5 shadow-sm hover:shadow-md transition-shadow flex flex-col justify-between">
                             <div className="flex items-center justify-between text-xs">
                                 <span className="font-semibold flex items-center gap-1.5 text-cyan-500">
-                                    <Activity size={16} /> Stability & Chaos
+                                    <Activity size={16} /> Stability & Failover
                                 </span>
-                                <span className="font-mono text-[11px] text-text-muted">Failover</span>
+                                <span className="font-mono text-[10px] text-text-muted">Disruptions</span>
                             </div>
                             <div className="mt-3 flex items-baseline justify-between">
                                 <div className="text-3xl font-black text-text-primary font-mono">
@@ -1162,7 +1138,7 @@ const secs = seconds % 60;
                                 </div>
                             </div>
                             <div className="mt-2 text-[11px] text-text-muted flex justify-between pt-2.5 border-t border-border">
-                                <span>TCP Keepalive: <strong className="text-text-secondary">Enabled</strong></span>
+                                <span>Keepalive: <strong className="text-text-secondary">Enabled</strong></span>
                                 <span>Backoff: <strong className="text-text-secondary">Jittered</strong></span>
                             </div>
                         </div>

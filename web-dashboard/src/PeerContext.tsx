@@ -68,7 +68,49 @@ export function PeerContextProvider({ token, isLeader, children, onActivePeerCha
     onActivePeerChangeRef.current = onActivePeerChange;
 
     const refreshPeers = useCallback(async () => {
-        if (!token || !isLeader) return;
+        if (!token) return;
+        if (!isLeader) {
+            try {
+                const statusRes = await fetch('/api/registry/status', {
+                    headers: { Authorization: `Bearer ${token}` }
+                });
+                if (statusRes.ok) {
+                    const status = await statusRes.json();
+                    let leaderIp = status?.leader_info?.ip
+                        || status?.leader_tunnel_info?.ip
+                        || status?.leader_tunnel_info?.remoteLeaderIp
+                        || status?.remote_leader_ip;
+                    let leaderId = status?.leader_info?.id
+                        || status?.leader_tunnel_info?.remoteLeaderId
+                        || status?.leader_tunnel_info?.siteName
+                        || 'DC1-Ubuntu';
+                    if (!leaderIp && status?.static_leader_url) {
+                        try {
+                            const u = new URL(status.static_leader_url);
+                            leaderIp = u.hostname;
+                        } catch {}
+                    }
+                    if (!leaderIp && status?.controller_url) {
+                        try {
+                            const u = new URL(status.controller_url);
+                            leaderIp = u.hostname;
+                        } catch {}
+                    }
+                    if (leaderIp) {
+                        const leaderPeer: PeerEntry = {
+                            instance_id: leaderId,
+                            site: status?.leader_info?.id || 'Leader',
+                            ip_private: leaderIp,
+                            status: 'online',
+                            is_leader: true,
+                            has_tunnel: Boolean(status?.tunnel_active)
+                        };
+                        setPeers([leaderPeer]);
+                    }
+                }
+            } catch {}
+            return;
+        }
         try {
             const [overviewRes, tunnelsRes] = await Promise.all([
                 fetch('/api/fleet/overview', {

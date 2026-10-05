@@ -98,6 +98,9 @@ services:
       - STIGIX_REGISTRY_URL=${STIGIX_REGISTRY_URL:-https://registry.stigix.io}
       - STIGIX_TARGET_BASE_URL=${STIGIX_TARGET_BASE_URL:-https://target.stigix.io}
       - STIGIX_TARGET_MASTER_KEY=${STIGIX_TARGET_MASTER_KEY:-}
+      # --- PCAP Stateful Replay Engine ---
+      - ENABLE_PCAP_REPLAY=${ENABLE_PCAP_REPLAY:-false}
+      - PCAP_MAX_UPLOAD_MB=${PCAP_MAX_UPLOAD_MB:-100}
 
     healthcheck:
       test: [ "CMD-SHELL", "test -f /app/config/applications-config.json -o -f /app/config/applications.txt" ]

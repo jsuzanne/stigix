@@ -763,7 +763,7 @@ export default function Voice(props: VoiceProps) {
                             {activeCalls.length} UP
                         </span>
                     </div>
-                    <div className="space-y-3 flex-1 overflow-y-auto max-h-96">
+                    <div className="space-y-3 flex-1 min-h-[300px] max-h-[600px] lg:max-h-none overflow-y-auto pr-1">
                         {activeCalls.length === 0 ? (
                             <div className="text-text-muted text-[10px] font-bold uppercase tracking-widest py-16 text-center bg-card-secondary/30 rounded-2xl border border-dashed border-border/50">
                                 No active voice streams
@@ -773,7 +773,7 @@ export default function Voice(props: VoiceProps) {
                                 const siteName = targetNameMap.get(call.target);
                                 return (
                                     <div key={idx} className="bg-card-secondary/50 p-4 rounded-2xl border border-border flex items-center justify-between shadow-sm hover:border-blue-500/30 transition-all">
-                                        <div className="space-y-1 min-w-0 flex-1 mr-3">
+                                        <div className="space-y-1.5 min-w-0 flex-1 mr-3">
                                             <div className="flex items-center gap-2">
                                                 <span
                                                     title={`Source Port: ${deriveSourcePort(call.call_id)}`}
@@ -785,11 +785,18 @@ export default function Voice(props: VoiceProps) {
                                                     {siteName || call.target}
                                                 </div>
                                             </div>
-                                            {siteName && (
-                                                <div className="text-[9px] font-mono text-text-muted opacity-50 truncate">{call.target}</div>
-                                            )}
-                                            <div className="text-[9px] text-text-muted font-bold uppercase tracking-widest opacity-60">
-                                                {call.codec} • {call.duration}s
+                                            <div className="flex items-center gap-1.5 text-[10px] truncate">
+                                                {siteName && (
+                                                    <>
+                                                        <span className="font-mono font-medium text-text-secondary">
+                                                            {call.target}
+                                                        </span>
+                                                        <span className="text-text-muted/60 text-[9px]">•</span>
+                                                    </>
+                                                )}
+                                                <span className="text-text-secondary/90 font-sans font-bold uppercase tracking-wider text-[9px]">
+                                                    {call.codec} • {call.duration}s
+                                                </span>
                                             </div>
 
                                             <CallProgress

@@ -31,6 +31,7 @@ import { ProvisioningManager } from './provisioning-manager.js';
 import { UnderlayTopologyManager } from './underlay-topology-manager.js';
 import { TcpAppManager } from './custom-tcp-apps/tcp-app-manager.js';
 import { createCustomTcpApiRouter } from './custom-tcp-apps/api-routes.js';
+import { createPcapApiRouter } from './custom-tcp-apps/pcap-routes.js';
 import { createApiStudioRouter } from './api-studio-routes.js';
 import { apiLogBuffer } from './api-logger.js';
 import { AiManager } from './ai-copilot/ai-manager.js';
@@ -2854,7 +2855,8 @@ app.get('/api/features', (req, res) => {
     res.json({
         xfr_enabled: true,
         xfr_targets: XFR_QUICK_TARGETS,
-        targets: targetsManager.getMergedTargets()   // shared targets registry
+        targets: targetsManager.getMergedTargets(),   // shared targets registry
+        enablePcapReplay: process.env.ENABLE_PCAP_REPLAY === 'true'
     });
 });
 
@@ -3000,7 +3002,8 @@ app.get('/api/config/ui', (req, res) => {
     res.json({
         refreshInterval: parseInt(process.env.DASHBOARD_REFRESH_MS || '1000'),
         maxCaptures,
-        globalScoreTypes
+        globalScoreTypes,
+        enablePcapReplay: process.env.ENABLE_PCAP_REPLAY === 'true'
     });
 });
 
@@ -13222,23 +13225,23 @@ app.get('/api/fleet/matrix', authenticateToken, async (req, res) => {
                         } else {
                             isAsymmetric = false;
                             statusStr = 'OPTIMAL';
-                            reason = 'Symmetric Path Optimal';
+                            reason = 'Symmetric Path SLA Compliant';
                             healthyBidirectional++;
                         }
                     } else if (fwdData.reachable && !revData.reachable) {
                         isAsymmetric = true;
                         statusStr = 'CRITICAL';
-                        reason = `Return Path Blocked (${target.name} ➔ ${source.name} DOWN)`;
+                        reason = `Return Path Blocked (${target.name} ➔ ${source.name} Unreachable)`;
                         unidirectionalDown++;
                     } else if (!fwdData.reachable && revData.reachable) {
                         isAsymmetric = true;
                         statusStr = 'CRITICAL';
-                        reason = `Forward Path Blocked (${source.name} ➔ ${target.name} DOWN)`;
+                        reason = `Forward Path Blocked (${source.name} ➔ ${target.name} Unreachable)`;
                         unidirectionalDown++;
                     } else {
                         isAsymmetric = false;
                         statusStr = 'CRITICAL';
-                        reason = 'Bidirectional Outage';
+                        reason = 'Bidirectional Outage (Unreachable)';
                         fullOutage++;
                     }
                 } else if (fwdData.has_data && !revData.has_data) {
@@ -13247,11 +13250,11 @@ app.get('/api/fleet/matrix', authenticateToken, async (req, res) => {
                     if (fwdData.reachable) {
                         const isDegraded = fwdData.latency_ms >= thresholds.latency_warning_ms || fwdData.loss_pct >= thresholds.loss_warning_pct;
                         statusStr = isDegraded ? 'DEGRADED' : 'PARTIAL';
-                        reason = isDegraded ? `Forward Path Latency High (${fwdData.latency_ms}ms)` : `Forward Path UP (Return telemetry unconfigured from ${target.name})`;
+                        reason = isDegraded ? `Forward Path Latency High (${fwdData.latency_ms}ms)` : `Egress Path UP (No Inbound Probe from ${target.name})`;
                         if (isDegraded) asymmetricDegraded++; else partialTelemetry++;
                     } else {
                         statusStr = 'CRITICAL';
-                        reason = `Forward Path DOWN (${source.name} ➔ ${target.name})`;
+                        reason = `Forward Path Unreachable (${source.name} ➔ ${target.name})`;
                         unidirectionalDown++;
                     }
                 } else if (!fwdData.has_data && revData.has_data) {
@@ -13260,11 +13263,11 @@ app.get('/api/fleet/matrix', authenticateToken, async (req, res) => {
                     if (revData.reachable) {
                         const isDegraded = revData.latency_ms >= thresholds.latency_warning_ms || revData.loss_pct >= thresholds.loss_warning_pct;
                         statusStr = isDegraded ? 'DEGRADED' : 'PARTIAL';
-                        reason = isDegraded ? `Return Path Latency High (${revData.latency_ms}ms)` : `Return Path UP (${target.name} ➔ ${source.name})`;
+                        reason = isDegraded ? `Return Path Latency High (${revData.latency_ms}ms)` : `Ingress Path UP (${target.name} ➔ ${source.name})`;
                         if (isDegraded) asymmetricDegraded++; else partialTelemetry++;
                     } else {
                         statusStr = 'CRITICAL';
-                        reason = `Return Path DOWN (${target.name} ➔ ${source.name})`;
+                        reason = `Return Path Unreachable (${target.name} ➔ ${source.name})`;
                         unidirectionalDown++;
                     }
                 } else {
@@ -13901,6 +13904,56 @@ log('FLEET', `🔀 Fleet Gateway Reverse Proxy mounted at /api/gateway/:peerId/*
 app.use('/api/custom-tcp-apps', authenticateToken, createCustomTcpApiRouter(tcpAppManager));
 log('CUSTOM_TCP', `🖧 Custom TCP Applications API mounted at /api/custom-tcp-apps`);
 
+const buildPcapProfilesPayload = (includeContent = true): { profiles: any[] } => {
+    if (process.env.ENABLE_PCAP_REPLAY !== 'true') {
+        return { profiles: [] };
+    }
+    const pcapDir = path.join(APP_CONFIG.configDir, 'pcap-profiles');
+    const profiles: any[] = [];
+    if (fs.existsSync(pcapDir)) {
+        const files = fs.readdirSync(pcapDir).filter(f => f.endsWith('.stx-replay'));
+        for (const file of files) {
+            try {
+                const fullPath = path.join(pcapDir, file);
+                const stat = fs.statSync(fullPath);
+                const item: any = {
+                    file_name: file,
+                    size_bytes: stat.size,
+                    checksum: `${file}-${stat.size}-${stat.mtimeMs}`
+                };
+                if (includeContent) {
+                    const buf = fs.readFileSync(fullPath);
+                    item.content_b64 = buf.toString('base64');
+                    item.checksum = crypto.createHash('sha256').update(buf).digest('hex');
+                }
+                profiles.push(item);
+            } catch {}
+        }
+    }
+    return { profiles };
+};
+
+const syncFleetPcapProfiles = () => {
+    if (process.env.ENABLE_PCAP_REPLAY !== 'true') return;
+    const isLeader = typeof registryManager?.isLeader === 'function' 
+        ? registryManager.isLeader() 
+        : (registryManager?.getStatus?.()?.mode === 'leader');
+    if (!isLeader) return;
+
+    try {
+        const payload = buildPcapProfilesPayload();
+        provisioningManager.publishBundle('pcap-profiles', payload);
+        fleetTunnelManager.broadcastProvisioningUpdate('pcap-profiles');
+        log('PROVISIONING', `📦 [FLEET SYNC] Broadcasted ${payload.profiles.length} PCAP Replay profile(s) across fleet`);
+    } catch (e: any) {
+        log('PROVISIONING', `Failed to broadcast PCAP profiles: ${e.message}`, 'warn');
+    }
+};
+
+// --- PCAP Stateful Replay Engine API (M1 - Feature Flag Gated) ---
+app.use('/api/pcap', authenticateToken, createPcapApiRouter(APP_CONFIG.configDir, PROJECT_ROOT, PYTHON_PATH, syncFleetPcapProfiles));
+log('PCAP', `📦 PCAP Stateful Replay API mounted at /api/pcap (Feature Flag: ENABLE_PCAP_REPLAY=${process.env.ENABLE_PCAP_REPLAY === 'true'})`);
+
 // --- Stigix API Studio & Telemetry Routes ---
 const apiStudioRouter = createApiStudioRouter(APP_CONFIG.configDir, PROJECT_ROOT, vyosManager);
 app.use('/api/api-studio', authenticateToken, apiStudioRouter);
@@ -13988,6 +14041,10 @@ provisioningManager.onBundleApplied((type, payload) => {
     } else if (type === 'cloud-config') {
         log('PROVISIONING', `⚡ Hot-reloading Cloud Probes credentials and Worker URL on peer...`);
         targetManager.reload();
+    } else if (type === 'pcap-profiles') {
+        if (process.env.ENABLE_PCAP_REPLAY !== 'true') return;
+        const count = payload?.profiles?.length || 0;
+        log('PROVISIONING', `⚡ Synchronized ${count} PCAP Replay profile(s) on peer.`);
     }
 });
 
@@ -14026,8 +14083,10 @@ app.get('/api/provisioning/config', authenticateToken, (_req, res) => {
     const securityPending = provisioningManager.hasUnpublishedChanges('security-config', readJson(path.join(APP_CONFIG.configDir, 'security-config.json')));
     const voicePending = provisioningManager.hasUnpublishedChanges('voice-config', readJson(path.join(APP_CONFIG.configDir, 'voice-config.json')));
     const iotPending = provisioningManager.hasUnpublishedChanges('iot-config', readJson(IOT_DEVICES_FILE));
+    const isPcapEnabled = process.env.ENABLE_PCAP_REPLAY === 'true';
     const customTcpPending = provisioningManager.hasUnpublishedChanges('custom-tcp-apps', readJson(path.join(APP_CONFIG.configDir, 'custom-tcp-applications.json')));
     const cloudPending = provisioningManager.hasUnpublishedChanges('cloud-config', readJson(CLOUD_CONFIG_FILE));
+    const pcapPending = isPcapEnabled ? provisioningManager.hasUnpublishedChanges('pcap-profiles', buildPcapProfilesPayload(false)) : false;
 
     const isLeader = typeof registryManager?.isLeader === 'function' 
         ? registryManager.isLeader() 
@@ -14046,7 +14105,8 @@ app.get('/api/provisioning/config', authenticateToken, (_req, res) => {
             voiceConfig: voicePending,
             iotConfig: iotPending,
             customTcpApps: customTcpPending,
-            cloudConfig: cloudPending
+            cloudConfig: cloudPending,
+            pcapProfiles: pcapPending
         }
     });
 });
@@ -14193,10 +14253,12 @@ app.post('/api/provisioning/publish/:type', authenticateToken, (req, res) => {
     }
 
     const type = req.params.type as GlobalBundleType;
+    const isPcapEnabled = process.env.ENABLE_PCAP_REPLAY === 'true';
     const validTypes: GlobalBundleType[] = [
         'applications', 'connectivity-probes', 'convergence-sla',
         'prisma-sase', 'security-config', 'voice-config', 'iot-config',
-        'custom-tcp-apps', 'cloud-config'
+        'custom-tcp-apps', 'cloud-config',
+        ...(isPcapEnabled ? ['pcap-profiles' as GlobalBundleType] : [])
     ];
     if (!validTypes.includes(type)) {
         return res.status(400).json({ error: 'invalid_bundle_type' });
@@ -14213,6 +14275,8 @@ app.post('/api/provisioning/publish/:type', authenticateToken, (req, res) => {
         if (!payload) payload = [];
     } else if (type === 'connectivity-probes') {
         payload = buildConnectivityProbesPayload();
+    } else if (type === 'pcap-profiles') {
+        payload = buildPcapProfilesPayload();
     } else {
         const file = provisioningManager.getActiveConfigFile(type);
         if (fs.existsSync(file)) {
@@ -14238,10 +14302,12 @@ app.post('/api/provisioning/publish', authenticateToken, (req, res) => {
     }
 
     const type = (req.body?.type || req.body?.bundle_type || 'all') as string;
+    const isPcapEnabled = process.env.ENABLE_PCAP_REPLAY === 'true';
     const validTypes: GlobalBundleType[] = [
         'applications', 'connectivity-probes', 'convergence-sla',
         'prisma-sase', 'security-config', 'voice-config', 'iot-config',
-        'custom-tcp-apps', 'cloud-config'
+        'custom-tcp-apps', 'cloud-config',
+        ...(isPcapEnabled ? ['pcap-profiles' as GlobalBundleType] : [])
     ];
 
     if (type === 'all') {
@@ -14254,6 +14320,8 @@ app.post('/api/provisioning/publish', authenticateToken, (req, res) => {
                 }
             } else if (t === 'connectivity-probes') {
                 payload = buildConnectivityProbesPayload();
+            } else if (t === 'pcap-profiles') {
+                payload = buildPcapProfilesPayload();
             } else {
                 const file = provisioningManager.getActiveConfigFile(t);
                 if (fs.existsSync(file)) {
@@ -14279,6 +14347,8 @@ app.post('/api/provisioning/publish', authenticateToken, (req, res) => {
         if (!payload) payload = [];
     } else if (type === 'connectivity-probes') {
         payload = buildConnectivityProbesPayload();
+    } else if (type === 'pcap-profiles') {
+        payload = buildPcapProfilesPayload();
     } else {
         const file = provisioningManager.getActiveConfigFile(type as GlobalBundleType);
         if (fs.existsSync(file)) {

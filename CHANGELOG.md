@@ -5,6 +5,86 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.150] - 2026-10-04
+
+### Changed
+- **Renamed PCAP Replay "Turns" to "Steps" for Operational Clarity (`PcapReplay.tsx`, `PcapReplayModal.tsx`, `PCAP_REPLAY_USER_GUIDE.md`)**:
+  - Replaced ambiguous network term "turns" / "Turns" with intuitive "steps" / "Steps" across all user-facing UI elements.
+  - Updated badges (`L7 Steps`), headers (`DIRECTIONAL STEPS`), summary cards (`Client Sent: X steps`, `Server Sent: X steps`), sequence items (`Step #X`), payload inspector (`Step #X Payload Inspector`), and telemetry gauges (`Steps Progress`, `Avg ms/step`, `Replaying Steps`).
+  - Underlying JSON contracts, parser outputs, and `.stx-replay` format definitions remain 100% backward-compatible.
+
+## [2.0.149] - 2026-10-04
+
+### Fixed
+- **Critical Flow Selection & Profile Compilation Fix (`pcap_parser.py`)**:
+  - Fixed indentation defect in `compile_stx_profile()` where selected flow IDs (`--flow-id`) caused `flows_to_include` to never append flows, resulting in `ValueError: No flows selected or available for replay profile` and code 1 exit during compile.
+  - Verified across 33 real-world captures in `New samples` (including `145.pcap`, `taobao`, `GPWA`, `hao123`) with 100% compile success rate.
+- **Upload Retention on Compilation Error (`pcap-routes.ts`)**:
+  - Prevented premature deletion of temporary uploads when compilation returns an error, eliminating the misleading `"Temporary capture file expired or not found"` toast on retries.
+  - Improved API error reporting to surface actual Python parser JSON error messages directly to the frontend.
+
+### Added
+- **Flexible Archive Password Support (`pcap_parser.py`, `pcap-routes.ts`, `PcapReplayModal.tsx`)**:
+  - Added dedicated **Archive Password (Optional)** input field in the modal when `.zip` archives are uploaded.
+  - Password parameter forwarded via `POST /api/pcap/inspect` and `POST /api/pcap/compile` to `--password`.
+  - Added extended security research password dictionary (`infected666p`, `infected666`, `infected666c`, and dynamic date extraction `infected_YYYYMMDD` from filenames).
+
+## [2.0.148] - 2026-10-04
+
+### Added
+- **Native ZIP Archive PCAP Import (`pcap_parser.py`, `PcapReplayModal.tsx`)**:
+  - Direct drag-and-drop and file selection of `.zip` archives containing captures (including nested `.pcap.zip` malware archives).
+  - Ephemeral extraction to a secure temporary buffer with automatic cleanup upon completion (`Memory Guard`).
+  - Automatic trial of standard cybersecurity archive passwords (`infected`, `virus`, `malware`, `password`, `clean`).
+  - Source archive traceability (`archive_source` badge) and automatic scenario name cleanup. 📦
+- **Automated Batch PCAP Exploit & Malware Benchmark (`benchmark_pcap_zip.py`)**:
+  - High-speed validation tool testing hundreds of exploit captures from zip archives without permanent disk writes.
+  - Automatic heuristic detection of malicious payload signatures (PE/MZ binaries, shellcode sleds, exploit kit JS, HTTP droppers).
+  - Validated with 100% success rate across 496 real-world exploit kit and malware captures. 🛡️
+- **PCAP Flow Filter Bar & Protocol Badges (`PcapReplayModal.tsx`)**:
+  - 1-Click bulk flow controls: `Select All`, `Deselect All`, `Unicast Only`, `+ TCP`, `- TCP`, `+ UDP`, `- UDP`.
+  - Packet diagnostic counters for IPv4, IPv6, and ARP/Other.
+- **Continuous Loop Replay for UDP & Cumulative Byte Telemetry (`pcap_replay_runtime.py`, `PcapReplay.tsx`)**:
+  - Full loop and interval support in UDP client replay (`run_udp_client`).
+  - Real-time accumulation and live display of cumulative transmitted/received bytes across loop iterations (`Loop #X`). 🔄
+- **Active Scenario Awareness on Replay Controls (`PcapReplay.tsx`)**:
+  - Dynamic button labels: `START/STOP SERVER: [Scenario]` and `LAUNCH/STOP CLIENT: [Scenario]`.
+  - Real-time pulsating status badges in the catalogue and sticky alert banner when inspecting a scenario other than the actively running one.
+
+### Fixed / Improved
+- **Edit Replay Profile Save Button Visibility (`PcapReplay.tsx`)**:
+  - Replaced invalid Tailwind CSS class with vivid indigo styling, restoring the ability to customize scenario names, ports, categories, and descriptions.
+- **Background Noise Isolation (`pcap_parser.py`)**:
+  - Automatic classification of network background noise (DHCPv6, LLMNR, mDNS, NetBIOS, subnet broadcasts), prioritizing clean L7 unicast flows first.
+
+## [2.0.147] - 2026-10-04
+
+### Fixed / Improved
+- **PCAP Parser Regex Scrubbing (`pcap_parser.py`)**:
+  - Fixed `IndexError: no such group` in `scan_and_scrub_payload` for email patterns.
+  - Hardened packet ingestion loop against EOFError and malformed packets.
+- **Large Flow UI Pagination (`PcapReplay.tsx`)**:
+  - Added progressive loading and pagination for captures with thousands of turns, preventing browser freezing.
+
+## [2.0.146] - 2026-10-04
+
+### Added
+- **Fleet-Wide PCAP Replay Profile Mesh Auto-Sync (`pcap-routes.ts`, `server.ts`)**:
+  - Central Provisioning auto-sync for compiled `.stx-replay` profiles across all remote mesh nodes (DC1, BR1, BR2, BR5, BR8).
+- **SASE Telemetry Hub & Wireshark-Style Hex Dump Inspector (`PcapReplay.tsx`)**:
+  - Hero SASE Security Verdict Card (`Bypass / Allowed`, `TCP RST`, `Drop`), 4 real-time KPI tiles, and Hex Dump viewer with byte offsets.
+- **Intelligent Remote Peer Target Auto-Discovery (`PeerContext.tsx`, `PcapReplay.tsx`)**:
+  - Auto-selects remote Leader private IP (e.g. DC1) when entering Client mode, eliminating loopback `127.0.0.1` confusion.
+- **Conflict-Free Port Remapping (`pcap_parser.py`)**:
+  - Automatically remaps captured flows conflicting with Stigix web daemons (ports 80, 443, 8080..8090, 8443) to `10000 + port` (e.g. 18443).
+
+## [2.0.145] - 2026-10-04
+
+### Added
+- **Stateful PCAP Replay Engine Milestone 1 (`engines/pcap_parser.py`, `pcap-routes.ts`, `PcapReplay.tsx`)**:
+  - Streaming PCAP/PCAPNG packet parser with TCP segment reassembly, flow detection, directional turn compilation, and sensitive data scrubbing.
+  - Dedicated top-level PCAP Replay dashboard in Stigix navigation bar.
+
 ## [2.0.144] - 2026-10-03
 
 ### Added

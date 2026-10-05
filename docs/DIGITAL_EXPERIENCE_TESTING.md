@@ -1,4 +1,4 @@
-> **Last Updated:** 2026-09-25 | **Created:** 2026-01-18 (v1.1.0-beta.14)
+> **Last Updated:** 2026-10-05 | **Created:** 2026-01-18 (v1.1.0-beta.14)
 
 # Digital Experience Testing (DEM)
 
@@ -209,6 +209,60 @@ Or pass directly via the probe JSON config.
 
 ---
 
+---
+
+## 🌐 SD-WAN Bidirectional Reachability Grid (Full-Mesh Matrix)
+
+The **Bidirectional Reachability Grid** (accessible under **Performance / DEM ➔ Full-Mesh Reachability Matrix**) cross-correlates forward egress path performance ($A \to B$) with return ingress telemetry ($B \to A$) across all active Stigix nodes in the fleet.
+
+```
+            ┌────────────────────────────────────────────────────────┐
+            │                  Stigix Fleet Leader                   │
+            │           Centralizes distributed probe results        │
+            └───────────┬────────────────────────────────┬───────────┘
+                        │                                │
+             Telemetry  │                                │  Telemetry
+             (A's view) │                                │  (B's view)
+                        ▼                                ▼
+            ┌───────────────────────┐        ┌───────────────────────┐
+            │     Stigix Node A     │        │     Stigix Node B     │
+            │   (e.g. DC1 - Hub)    │        │  (e.g. BR8 - Branch)  │
+            └───────────┬───────────┘        └───────────┬───────────┘
+                        │    Forward Probe (A ➔ B)       │
+                        ├───────────────────────────────►│
+                        │                                │
+                        │    Return Probe (B ➔ A)        │
+                        │◄───────────────────────────────┤
+                        │                                │
+```
+
+### 📡 Data Sources & Telemetry Pipeline
+
+1. **Active Stigix Synthetic Probes (`ICMP / PING`)**:
+   - Each Stigix instance executes local ICMP probes targeting remote peer IP addresses at regular intervals (default 20s for AutoMesh probes).
+   - To guarantee homogeneous and strictly comparable SLA metrics (RTT, packet loss, jitter), the grid enforces ICMP/PING probing.
+2. **Fleet AutoMesh Telemetry Bus**:
+   - In Hub & Spoke and Full-Mesh topologies, instances automatically report their local peer probe results (`peer_probes`) to the Leader via periodic heartbeats.
+   - The Leader aggregates these reports into an in-memory N×N cross-reachability cache. Spoke nodes proxy matrix queries to the Leader to present the complete fleet-wide grid.
+3. **On-Demand Prisma SD-WAN Flow Path Trace**:
+   - Clicking any cell triggers a deep flow inspection drawer querying Prisma SD-WAN ION appliances (`POST /api/fleet/matrix/flow-trace` via `getflow.py`).
+   - This correlates the synthetic probe metrics with the real underlying WAN circuit (e.g. *Direct Internet Broadband*, *MPLS*, or *VPN Tunnel*) and detects path policy enforcement decisions.
+
+### 🏷️ Status Badges & Operational Taxonomy
+
+The matrix adopts standard network engineering terminology:
+
+| Status Badge | Condition & Meaning | Grid Appearance |
+| :--- | :--- | :--- |
+| **`SLA OK`** | Bidirectionally reachable, symmetric latency, and metrics within SLA thresholds ($< \text{warn thresholds}$). | 🟢 Solid Green |
+| **`Degraded (Δ Xms)`** | Asymmetric path ($|L_{fwd} - L_{rev}| > \text{delta}$), elevated latency, or elevated loss. | 🟡 Amber badge |
+| **`Egress Only`** | Outbound path to public cloud/Internet target is UP; inbound reverse probe is blocked by NAT/Firewall design. | 🔵 Sky Blue badge |
+| **`Unreachable`** | Total blackout (100% packet loss / timeout in both directions). | 🔴 Solid Red |
+| **`Return Blocked` / `Fwd Blocked`** | Unidirectional link failure on internal cluster nodes (one direction UP, return path DOWN). | 🔴 Red badge |
+| **`SLA Breach`** | Connected link failing critical SLA boundaries (latency $> \text{critical}$, loss $> \text{critical}$). | 🔴 Red badge |
+| **`No Probe`** | No active synthetic telemetry probe configured between this pair of nodes. | ⚪ Muted Gray |
+| **`Policy Bypassed`** | Direct Spoke-to-Spoke path is administratively bypassed in Hub & Spoke topology (routed via Hub). | 🟣 Purple badge |
+
 ## ☁️ Stigix Cloud (Shared Probes)
 
 Shared probes are hosted on the **Stigix Cloudflare infrastructure**. They provide a set of pre-configured scenarios that are accessible to all PoCs and tenants without manual configuration.
@@ -262,6 +316,7 @@ STIGIX_TARGET_BASE_URL=https://stigix-staging.workers.dev
 
 | Date | Stigix Version | Author / Trigger | Summary of Changes |
 |---|---|---|---|
+| 2026-10-05 | `v2.0.151` | Stigix Core Team | Added SD-WAN Bidirectional Reachability Grid architecture, probe pipeline (AutoMesh + Prisma getflow), and updated operational status taxonomy (`SLA OK`, `Egress Only`, `Unreachable`, `No Probe`). |
 | 2026-09-25 | `v2.0.64` | Stigix Core Team | Added exhaustive DEM scoring formulas (HTTP 5xx/4xx codes, TTFB/TLS breakdown, ICMP, DNS, TCP, UDP loss/jitter, and global aggregation) |
 | 2026-07-30 | `v1.4.1-patch.34` | Stigix Core Team | Added Content Matching documentation and UI screenshots |
 | 2026-01-18 | `v1.1.0-beta.14` | Stigix Core Team | Initial document creation |

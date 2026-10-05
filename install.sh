@@ -595,6 +595,10 @@ if [ -n "$TOKEN_REALM" ]; then
 fi
 
 mkdir -p ./config ./logs ./mcp-data
+if [ -n "$SUDO_USER" ] && [ "$SUDO_USER" != "root" ]; then
+    chown -R "$SUDO_USER" "$INSTALL_DIR" 2>/dev/null || true
+fi
+chmod -R 777 ./config ./logs ./mcp-data 2>/dev/null || true
 
 FINAL_SITE_NAME="${SITE_NAME_OVERRIDE:-$(hostname | cut -d'.' -f1)}"
 echo "{\"siteName\":\"$FINAL_SITE_NAME\"}" > ./config/site-name.json

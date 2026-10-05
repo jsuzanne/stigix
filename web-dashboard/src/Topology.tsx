@@ -1161,19 +1161,19 @@ function TopologyContent({ token }: TopologyProps) {
                     </div>
                 </div>
 
-                {/* Real-time Progress Bar while VyOS SSH script executes */}
+                {/* Real-time Progress Bar while VyOS API executes */}
                 {isVyosExecuting && (
                     <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl p-2.5 space-y-1.5 animate-fadeIn">
                         <div className="flex items-center justify-between text-[11px] font-mono">
                             <span className="flex items-center gap-1.5 font-bold text-amber-700 dark:text-amber-300">
                                 <Loader2 size={13} className="animate-spin text-amber-500" />
                                 {vyosExecutingAction === 'shut'
-                                    ? `Disabling ${iface} via VyOS SSH...`
+                                    ? `Disabling ${iface} via VyOS API...`
                                     : vyosExecutingAction === 'no-shut'
-                                    ? `Re-enabling ${iface} via VyOS SSH...`
+                                    ? `Restoring ${iface} via VyOS API...`
                                     : vyosExecutingAction === 'clear-qos'
-                                    ? `Clearing QoS on ${iface} via VyOS SSH...`
-                                    : `Applying Netem QoS to ${iface} via VyOS SSH...`}
+                                    ? `Clearing QoS on ${iface} via VyOS API...`
+                                    : `Applying Netem QoS to ${iface} via VyOS API...`}
                             </span>
                             <span className="text-[9.5px] text-amber-600 dark:text-amber-400 font-mono font-bold">~3-4s</span>
                         </div>
@@ -1914,7 +1914,7 @@ function TopologyContent({ token }: TopologyProps) {
     }, [filteredNodes.length, logicalViewSiteId, fitView]);
 
     return (
-        <div className="h-[calc(100vh-140px)] w-full relative dark:bg-black/20 bg-card-secondary/30 rounded-3xl border border-border overflow-hidden animate-in fade-in zoom-in-95 duration-500">
+        <div className="h-[calc(100vh-140px)] w-full relative dark:bg-black/20 bg-card-secondary/30 rounded-3xl border border-border overflow-hidden animate-in fade-in zoom-in-95 duration-500 flex flex-col">
             {loading ? (
                 <div className="absolute inset-0 z-50 flex flex-col items-center justify-center bg-background/80 backdrop-blur-md">
                     <div className="relative w-24 h-24 mb-6">
@@ -1967,8 +1967,60 @@ function TopologyContent({ token }: TopologyProps) {
                 </div>
             ) : (
                 <>
+                    {/* Top Bar Header (Dedicated outside of ReactFlow canvas to eliminate any node overlap) */}
+                    <div className="px-5 py-3 border-b border-border bg-card/75 backdrop-blur-md flex items-center justify-between gap-4 z-20 shrink-0">
+                        <div className="flex items-center gap-3">
+                            <div className={cn(
+                                "p-2.5 rounded-xl text-white shadow-lg transition-all",
+                                logicalViewSiteId ? "bg-purple-600 shadow-purple-500/25" : "bg-blue-600 shadow-blue-500/25"
+                            )}>
+                                {logicalViewSiteId ? <Network size={18} /> : <Share2 size={18} />}
+                            </div>
+                            <div>
+                                <div className="flex items-center gap-2.5">
+                                    <h1 className="text-sm font-black text-text-primary uppercase tracking-tight">
+                                        {logicalViewSiteId ? (
+                                            <>
+                                                Logical Overlay View
+                                                <span className="text-purple-400 font-mono text-xs font-bold lowercase ml-1.5">
+                                                    ({topology?.sites?.find((s: any) => s.site_id === logicalViewSiteId)?.site_name || logicalViewSiteId})
+                                                </span>
+                                            </>
+                                        ) : 'Site Topology'}
+                                    </h1>
+                                    {logicalViewSiteId && (
+                                        <span className="px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-purple-500/15 text-purple-400 border border-purple-500/30 animate-pulse">
+                                            Site Focus Mode
+                                        </span>
+                                    )}
+                                </div>
+                                <div className="flex items-center gap-2 mt-0.5">
+                                    <p className="text-[10px] text-text-muted font-bold tracking-widest">{topology?.site_count || 0} SITES DETECTED</p>
+                                    {lastRefresh && (
+                                        <>
+                                            <span className="text-text-muted/40 text-[10px]">•</span>
+                                            <p className="text-[9px] text-blue-500/80 font-black tracking-widest uppercase font-mono">
+                                                {lastRefresh.toLocaleString()}
+                                            </p>
+                                        </>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
 
-                    {/* Filter Panel Overlay */}
+                        {logicalViewSiteId && (
+                            <button
+                                onClick={() => setLogicalViewSiteId(null)}
+                                className="bg-red-500/10 hover:bg-red-500/20 text-red-500 border border-red-500/25 px-3.5 py-1.5 rounded-xl text-[10px] font-black tracking-widest uppercase transition-all flex items-center gap-2 cursor-pointer shadow-sm shadow-red-500/10"
+                            >
+                                <X size={12} /> Exit Overlay View
+                            </button>
+                        )}
+                    </div>
+
+                    {/* Canvas & Floating Drawers Container */}
+                    <div className="relative flex-1 w-full min-h-0">
+                        {/* Filter Panel Overlay */}
                     {showFilter && topology && (
                         <div className="absolute top-20 right-4 z-[60] w-[350px] bg-card/95 backdrop-blur-xl border border-border rounded-3xl shadow-2xl animate-in fade-in slide-in-from-top-4 duration-300 max-h-[70vh] flex flex-col">
                             <div className="p-4 border-b border-border flex items-center justify-between bg-card-secondary/20 rounded-t-3xl">
@@ -2093,41 +2145,10 @@ function TopologyContent({ token }: TopologyProps) {
                         onEdgeClick={onEdgeClick}
                         nodeTypes={nodeTypes}
                         edgeTypes={edgeTypes}
-                        className="dark:bg-slate-950/40 bg-card-secondary/20"
+                        className="w-full h-full dark:bg-slate-950/40 bg-card-secondary/20"
                     >
                         <Background color="#1e293b" gap={20} size={1} className="topology-bg" />
                         <Controls className="!bg-card !border-border !rounded-xl !shadow-xl" />
-
-                        {/* Upper Toolbar */}
-                        <Panel position="top-left" className="flex items-center gap-3">
-                            <div className="bg-card/90 backdrop-blur-md border border-border p-2 rounded-2xl shadow-2xl flex items-center gap-3">
-                                <div className="p-2.5 bg-blue-500 rounded-xl text-white shadow-lg shadow-blue-500/20">
-                                    <Share2 size={18} />
-                                </div>
-                                <div className="pr-4">
-                                    <h1 className="text-sm font-black text-text-primary uppercase tracking-tight flex items-center gap-2">
-                                        {logicalViewSiteId ? 'Logical Overlay View' : 'Site Topology'}
-                                    </h1>
-                                    <p className="text-[10px] text-text-muted font-bold tracking-widest">{topology?.site_count || 0} SITES DETECTED</p>
-                                    {lastRefresh && (
-                                        <p className="text-[8px] text-blue-500/80 font-black tracking-widest uppercase mt-0.5 font-mono">
-                                            {lastRefresh.toLocaleString()}
-                                        </p>
-                                    )}
-                                </div>
-                                {logicalViewSiteId && (
-                                    <>
-                                        <div className="h-8 w-px bg-border mx-2" />
-                                        <button
-                                            onClick={() => setLogicalViewSiteId(null)}
-                                            className="bg-red-500/10 hover:bg-red-500/20 text-red-500 border border-red-500/20 px-3 py-1.5 rounded-xl text-[10px] font-black tracking-widest uppercase transition-all flex items-center gap-2"
-                                        >
-                                            <X size={12} /> Exit Overlay View
-                                        </button>
-                                    </>
-                                )}
-                            </div>
-                        </Panel>
 
                         {/* Export & Toggles Panel - Vertical Dock Centered on Right */}
                         <div className="absolute right-5 top-1/2 -translate-y-1/2 z-20 pointer-events-auto flex flex-col gap-2.5 items-end">
@@ -2877,6 +2898,7 @@ function TopologyContent({ token }: TopologyProps) {
                             );
                         })()}
                     </div>
+                    </div>
                 </>
             )}
 
@@ -3406,7 +3428,7 @@ function TopologyContent({ token }: TopologyProps) {
                                 <div className="flex items-center justify-between text-xs font-mono">
                                     <span className="flex items-center gap-2 font-bold text-amber-700 dark:text-amber-300">
                                         <Loader2 size={14} className="animate-spin text-amber-500" />
-                                        Running VyOS tc/netem SSH script...
+                                        Applying Netem rules via VyOS API...
                                     </span>
                                     <span className="text-[10px] text-amber-600 dark:text-amber-400 font-bold">~3-4s</span>
                                 </div>

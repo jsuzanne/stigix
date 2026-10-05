@@ -493,7 +493,7 @@ export function ReachabilityMatrix({ token }: { token?: string }) {
                             )}
                         >
                             <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
-                            Optimal ({summary.healthy_bidirectional})
+                            SLA OK ({summary.healthy_bidirectional})
                         </button>
                         <button
                             onClick={() => setStatusFilter('DEGRADED')}
@@ -530,7 +530,7 @@ export function ReachabilityMatrix({ token }: { token?: string }) {
                                 )}
                             >
                                 <span className="w-2 h-2 rounded-full bg-sky-500"></span>
-                                One-Way ({summary.partial_telemetry})
+                                Egress Only ({summary.partial_telemetry})
                             </button>
                         )}
                         {(summary.policy_excluded || 0) > 0 && (
@@ -760,7 +760,7 @@ export function ReachabilityMatrix({ token }: { token?: string }) {
                                                                         <ArrowUpRight size={11} className="text-blue-700 dark:text-blue-400" /> Fwd:
                                                                     </span>
                                                                     <span className={forward.has_data ? (forward.reachable ? (isOpt ? "font-black text-emerald-900 dark:text-emerald-300" : isDeg ? "font-black text-amber-900 dark:text-amber-300" : isPartial ? "font-black text-sky-900 dark:text-sky-300" : "font-black text-red-600 dark:text-red-400") : "font-black text-red-600 dark:text-red-400") : "text-slate-400 dark:text-text-muted text-[10px] font-medium"}>
-                                                                        {forward.has_data ? (forward.reachable ? `${formatNum(forward.latency_ms)}ms` : 'DOWN') : 'Pending'}
+                                                                        {forward.has_data ? (forward.reachable ? `${formatNum(forward.latency_ms)}ms` : 'DOWN') : 'No Probe'}
                                                                     </span>
                                                                 </div>
 
@@ -770,14 +770,14 @@ export function ReachabilityMatrix({ token }: { token?: string }) {
                                                                         <ArrowDownLeft size={11} className="text-purple-700 dark:text-purple-400" /> Rev:
                                                                     </span>
                                                                     <span className={reverse.has_data ? (reverse.reachable ? (isOpt ? "font-black text-emerald-900 dark:text-emerald-300" : isDeg ? "font-black text-amber-900 dark:text-amber-300" : isPartial ? "font-black text-sky-900 dark:text-sky-300" : "font-black text-red-600 dark:text-red-400") : "font-black text-red-600 dark:text-red-400") : "text-slate-400 dark:text-text-muted text-[10px] font-medium"}>
-                                                                        {reverse.has_data ? (reverse.reachable ? `${formatNum(reverse.latency_ms)}ms` : 'DOWN') : 'Pending'}
+                                                                        {reverse.has_data ? (reverse.reachable ? `${formatNum(reverse.latency_ms)}ms` : 'DOWN') : 'No Probe'}
                                                                     </span>
                                                                 </div>
 
                                                                 {/* Status / Delta Badge */}
                                                                 {isOpt && (
                                                                     <div className="mt-0.5 px-1.5 py-0.5 rounded text-[9.5px] font-black bg-emerald-100 text-emerald-900 border border-emerald-300 dark:bg-emerald-500/15 dark:text-emerald-300 dark:border-emerald-500/25 truncate">
-                                                                        Optimal
+                                                                        SLA OK
                                                                     </div>
                                                                 )}
                                                                 {isDeg && (
@@ -787,17 +787,21 @@ export function ReachabilityMatrix({ token }: { token?: string }) {
                                                                 )}
                                                                 {isCrit && (
                                                                     <div className="mt-0.5 px-1.5 py-0.5 rounded text-[9.5px] font-black bg-red-100 text-red-900 border border-red-300 dark:bg-red-500/15 dark:text-red-300 dark:border-red-500/30 truncate">
-                                                                        {asymmetry.reason?.includes('DOWN') ? 'Path Down' : 'Critical'}
+                                                                        {(!forward.reachable && !reverse.reachable)
+                                                                            ? 'Unreachable'
+                                                                            : (!forward.reachable || !reverse.reachable)
+                                                                                ? (forward.reachable ? 'Return Blocked' : 'Fwd Blocked')
+                                                                                : 'SLA Breach'}
                                                                     </div>
                                                                 )}
                                                                 {isPartial && (
                                                                     <div className="mt-0.5 px-1.5 py-0.5 rounded text-[9.5px] font-black bg-sky-100 text-sky-900 border border-sky-300 dark:bg-sky-500/15 dark:text-sky-300 dark:border-sky-500/25 truncate">
-                                                                        {forward.has_data ? 'One-Way (Fwd)' : 'One-Way (Rev)'}
+                                                                        {forward.has_data ? 'Egress Only' : 'Ingress Only'}
                                                                     </div>
                                                                 )}
                                                                 {isUnknown && (
                                                                     <div className="mt-0.5 px-1.5 py-0.5 rounded text-[9px] font-bold bg-slate-100 text-slate-600 border border-slate-200 dark:bg-card-secondary dark:text-text-muted dark:border-border/40 truncate">
-                                                                        Pending
+                                                                        No Probe
                                                                     </div>
                                                                 )}
                                                             </>
@@ -849,7 +853,15 @@ export function ReachabilityMatrix({ token }: { token?: string }) {
                             <Info size={20} className="flex-shrink-0 mt-0.5" />
                             <div>
                                 <div className="text-xs font-black uppercase tracking-wider">
-                                    Path Status: {selectedPair.asymmetry.status === 'POLICY_EXCLUDED' ? 'HUB & SPOKE POLICY (BYPASS)' : selectedPair.asymmetry.status === 'PARTIAL' ? 'ONE-WAY / PARTIAL TELEMETRY' : selectedPair.asymmetry.status}
+                                    Path Status: {selectedPair.asymmetry.status === 'POLICY_EXCLUDED'
+                                        ? 'HUB & SPOKE POLICY (BYPASS)'
+                                        : selectedPair.asymmetry.status === 'PARTIAL'
+                                            ? 'EGRESS ONLY (ONE-WAY TELEMETRY)'
+                                            : selectedPair.asymmetry.status === 'OPTIMAL'
+                                                ? 'SLA OK (SYMMETRIC OPTIMAL)'
+                                                : selectedPair.asymmetry.status === 'CRITICAL' && (!selectedPair.forward.reachable && !selectedPair.reverse.reachable)
+                                                    ? 'UNREACHABLE (OUTAGE)'
+                                                    : selectedPair.asymmetry.status}
                                 </div>
                                 <div className="text-xs mt-1 text-text-muted leading-relaxed">
                                     {selectedPair.asymmetry.reason || 'Normal symmetric routing.'}
@@ -1109,7 +1121,7 @@ export function ReachabilityMatrix({ token }: { token?: string }) {
                                         SD-WAN SLA & Health Thresholds
                                     </h3>
                                     <p className="text-xs text-text-muted">
-                                        Define SLA boundaries for Green (Optimal), Yellow (Degraded), and Red (Critical).
+                                        Define SLA boundaries for Green (SLA OK), Yellow (Degraded), and Red (Critical).
                                     </p>
                                 </div>
                             </div>
@@ -1158,7 +1170,7 @@ export function ReachabilityMatrix({ token }: { token?: string }) {
                         <div className="grid grid-cols-3 gap-3 text-xs">
                             <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-800 dark:text-emerald-300 space-y-1">
                                 <div className="font-bold flex items-center gap-1.5">
-                                    <span className="w-2 h-2 rounded-full bg-emerald-500"></span> 🟢 Optimal
+                                    <span className="w-2 h-2 rounded-full bg-emerald-500"></span> 🟢 SLA OK (Compliant)
                                 </div>
                                 <div className="text-[11px] text-emerald-700/90 dark:text-emerald-300/80 leading-relaxed">
                                     Bidirectional UP, symmetric latency (Δ &lt; {thresholds.asymmetry_warning_delta_ms}ms), loss &lt; {thresholds.loss_warning_pct}%.
