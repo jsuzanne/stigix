@@ -13,6 +13,12 @@ All notable changes made specifically on the `v2` branch are documented in this 
 - **refactor(custom-apps-ui)**: Overhauled Custom Applications layout hierarchy:
   - Relocated catalog management buttons (`+ New App`, `Import`, `Export ▾`) to the top node identity header bar next to node controls with a subtle vertical divider.
   - Dedicated the entire secondary tab bar to application selection, transforming jagged variable-width pills into a responsive uniform grid (`grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6`) with truncated app names, listener ports (`:8083`), protocol tags, and aligned traffic telemetry badges (`RX`, `TX`, `RX+TX`).
+- **refactor(reachability-matrix)**: Overhauled SD-WAN Bidirectional Reachability Grid terminology for operational clarity:
+  - Replaced ambiguous `Optimal` badge and filter pill with explicit `SLA OK` / `SLA Compliant`.
+  - Replaced confusing `One-Way` badge with `Egress Only` (or `Ingress Only`) for external/cloud destinations (such as HetznerCloud) where inbound reverse probes are blocked by NAT/firewalls by architectural design.
+  - Replaced generic `Path Down` badge with precise network conditions: `Unreachable` (100% loss / blackout), `Return Blocked` / `Fwd Blocked` (half-down asymmetric failure), and `SLA Breach` (when connectivity exists but latency/loss violates critical SLA thresholds).
+  - Clarified unmonitored links with `No Probe` instead of misleading `Pending` when no active synthetic telemetry probe is configured between nodes.
+  - Updated backend matrix path reasons in `/api/fleet/matrix` (`server.ts`) and drawer summary inspection banner to match.
 - **feat(site)**: Reorganized `site/index.html` Core Capabilities datasheet back to natural thematic order (SaaS Traffic Generation first, followed by Digital Experience, Security Validation, AI Security, IoT, Voice, Failover Monitoring, VyOS Control, Custom TCP, PCAP Replay, Global Provisioning, Zero-Touch Mesh, Remote View, CLI, and MCP Server). Added discrete date tags (`Sep 2026`, `Oct 2026`) instead of disruptive badges.
 
 ## [v2.0.150] - 2026-10-04 — UX: Renamed PCAP Replay "Turns" to "Steps" for Operational Clarity

@@ -13225,23 +13225,23 @@ app.get('/api/fleet/matrix', authenticateToken, async (req, res) => {
                         } else {
                             isAsymmetric = false;
                             statusStr = 'OPTIMAL';
-                            reason = 'Symmetric Path Optimal';
+                            reason = 'Symmetric Path SLA Compliant';
                             healthyBidirectional++;
                         }
                     } else if (fwdData.reachable && !revData.reachable) {
                         isAsymmetric = true;
                         statusStr = 'CRITICAL';
-                        reason = `Return Path Blocked (${target.name} ➔ ${source.name} DOWN)`;
+                        reason = `Return Path Blocked (${target.name} ➔ ${source.name} Unreachable)`;
                         unidirectionalDown++;
                     } else if (!fwdData.reachable && revData.reachable) {
                         isAsymmetric = true;
                         statusStr = 'CRITICAL';
-                        reason = `Forward Path Blocked (${source.name} ➔ ${target.name} DOWN)`;
+                        reason = `Forward Path Blocked (${source.name} ➔ ${target.name} Unreachable)`;
                         unidirectionalDown++;
                     } else {
                         isAsymmetric = false;
                         statusStr = 'CRITICAL';
-                        reason = 'Bidirectional Outage';
+                        reason = 'Bidirectional Outage (Unreachable)';
                         fullOutage++;
                     }
                 } else if (fwdData.has_data && !revData.has_data) {
@@ -13250,11 +13250,11 @@ app.get('/api/fleet/matrix', authenticateToken, async (req, res) => {
                     if (fwdData.reachable) {
                         const isDegraded = fwdData.latency_ms >= thresholds.latency_warning_ms || fwdData.loss_pct >= thresholds.loss_warning_pct;
                         statusStr = isDegraded ? 'DEGRADED' : 'PARTIAL';
-                        reason = isDegraded ? `Forward Path Latency High (${fwdData.latency_ms}ms)` : `Forward Path UP (Return telemetry unconfigured from ${target.name})`;
+                        reason = isDegraded ? `Forward Path Latency High (${fwdData.latency_ms}ms)` : `Egress Path UP (No Inbound Probe from ${target.name})`;
                         if (isDegraded) asymmetricDegraded++; else partialTelemetry++;
                     } else {
                         statusStr = 'CRITICAL';
-                        reason = `Forward Path DOWN (${source.name} ➔ ${target.name})`;
+                        reason = `Forward Path Unreachable (${source.name} ➔ ${target.name})`;
                         unidirectionalDown++;
                     }
                 } else if (!fwdData.has_data && revData.has_data) {
@@ -13263,11 +13263,11 @@ app.get('/api/fleet/matrix', authenticateToken, async (req, res) => {
                     if (revData.reachable) {
                         const isDegraded = revData.latency_ms >= thresholds.latency_warning_ms || revData.loss_pct >= thresholds.loss_warning_pct;
                         statusStr = isDegraded ? 'DEGRADED' : 'PARTIAL';
-                        reason = isDegraded ? `Return Path Latency High (${revData.latency_ms}ms)` : `Return Path UP (${target.name} ➔ ${source.name})`;
+                        reason = isDegraded ? `Return Path Latency High (${revData.latency_ms}ms)` : `Ingress Path UP (${target.name} ➔ ${source.name})`;
                         if (isDegraded) asymmetricDegraded++; else partialTelemetry++;
                     } else {
                         statusStr = 'CRITICAL';
-                        reason = `Return Path DOWN (${target.name} ➔ ${source.name})`;
+                        reason = `Return Path Unreachable (${target.name} ➔ ${source.name})`;
                         unidirectionalDown++;
                     }
                 } else {
