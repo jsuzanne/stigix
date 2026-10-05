@@ -537,7 +537,7 @@ export class FleetTunnelManager {
         const now = Date.now();
         for (const [targetKey, socket] of this.outboundDialedSockets) {
             const stillTarget = externalTargets.some(t => {
-                const port = t.ports?.http || 8080;
+                const port = t.ports?.dashboard || 8080;
                 return `${t.host.trim().toLowerCase()}:${port}` === targetKey.toLowerCase();
             });
             // Keep if actively connected tunnel or dialed recently via rendezvous (protect for 60s)
@@ -556,7 +556,7 @@ export class FleetTunnelManager {
         // 2. Dial candidate external cloud/manual targets
         for (const target of externalTargets) {
             const host = target.host.trim();
-            const port = target.ports?.http || 8080;
+            const port = target.ports?.dashboard || 8080;
             const targetKey = `${host.toLowerCase()}:${port}`;
 
             if (!this.outboundDialedSockets.has(targetKey)) {

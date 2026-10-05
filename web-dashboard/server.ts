@@ -13729,7 +13729,7 @@ app.all('/api/gateway/:peerId/*path', authenticateToken, async (req: any, res: a
         );
         if (target) {
             peerIp = target.host;
-            peerPort = target.ports?.http || 8080;
+            peerPort = target.ports?.dashboard || 8080;
         }
     }
 
