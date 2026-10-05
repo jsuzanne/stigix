@@ -67,6 +67,11 @@ export class TargetsManager {
                 if (rawHttp === 8080 || rawHttp === 80 || (t as any).port === 8080) {
                     dirty = true;
                 }
+                const rawXfr = t.ports?.xfr;
+                const xfrPort = (rawXfr && rawXfr !== 5201) ? rawXfr : 9000;
+                if (rawXfr === 5201) {
+                    dirty = true;
+                }
                 const dashboardPort = t.ports?.dashboard || (t as any).port || 8080;
                 return {
                     ...t,
@@ -77,10 +82,11 @@ export class TargetsManager {
                         voice: t.ports?.voice || 6100,
                         convergence: t.ports?.convergence || 6200,
                         iperf: t.ports?.iperf || 5201,
-                        xfr: t.ports?.xfr || 5201,
+                        xfr: xfrPort,
                         ...(t.ports || {}),
                         dashboard: dashboardPort,
-                        http: httpPort
+                        http: httpPort,
+                        xfr: xfrPort
                     }
                 };
             });
@@ -112,6 +118,8 @@ export class TargetsManager {
         const rawName = (data as any).name || (data as any).label || (data as any).host || 'Target';
         const rawHttp = data.ports?.http;
         const httpPort = (rawHttp && rawHttp !== 8080 && rawHttp !== 80) ? rawHttp : 8082;
+        const rawXfr = data.ports?.xfr;
+        const xfrPort = (rawXfr && rawXfr !== 5201) ? rawXfr : 9000;
         const dashboardPort = data.ports?.dashboard || (data as any).port || 8080;
         const newTarget: TargetDefinition = {
             enabled: data.enabled !== undefined ? data.enabled : true,
@@ -122,10 +130,11 @@ export class TargetsManager {
                 voice: data.ports?.voice || 6100,
                 convergence: data.ports?.convergence || 6200,
                 iperf: data.ports?.iperf || 5201,
-                xfr: data.ports?.xfr || 5201,
+                xfr: xfrPort,
                 ...(data.ports || {}),
                 dashboard: dashboardPort,
-                http: httpPort
+                http: httpPort,
+                xfr: xfrPort
             },
             id: makeId(),
             source: 'managed',
@@ -146,7 +155,7 @@ export class TargetsManager {
         const now = new Date().toISOString();
         
         let portsUpdate = data.ports;
-        if ((data as any).port || data.ports?.http || data.ports?.dashboard) {
+        if ((data as any).port || data.ports?.http || data.ports?.dashboard || data.ports?.xfr) {
             const rawHttp = data.ports?.http;
             const existingHttp = idx !== -1 ? targets[idx]?.ports?.http : undefined;
             const httpPort = (rawHttp && rawHttp !== 8080 && rawHttp !== 80)
@@ -155,11 +164,19 @@ export class TargetsManager {
                     ? existingHttp
                     : 8082;
             const dashboardPort = data.ports?.dashboard || (data as any).port || (idx !== -1 ? targets[idx]?.ports?.dashboard : undefined) || 8080;
+            const rawXfr = data.ports?.xfr;
+            const existingXfr = idx !== -1 ? targets[idx]?.ports?.xfr : undefined;
+            const xfrPort = (rawXfr && rawXfr !== 5201)
+                ? rawXfr
+                : (existingXfr && existingXfr !== 5201)
+                    ? existingXfr
+                    : 9000;
             portsUpdate = {
                 ...(idx !== -1 ? targets[idx]?.ports || {} : {}),
                 ...(data.ports || {}),
                 dashboard: dashboardPort,
-                http: httpPort
+                http: httpPort,
+                xfr: xfrPort
             };
         }
         
@@ -178,6 +195,8 @@ export class TargetsManager {
             if (synthTarget) {
                 const rawHttp = data.ports?.http || synthTarget.ports?.http;
                 const httpPort = (rawHttp && rawHttp !== 8080 && rawHttp !== 80) ? rawHttp : 8082;
+                const rawXfr = data.ports?.xfr || synthTarget.ports?.xfr;
+                const xfrPort = (rawXfr && rawXfr !== 5201) ? rawXfr : 9000;
                 const dashboardPort = data.ports?.dashboard || (data as any).port || synthTarget.ports?.dashboard || 8080;
                 const promoted: TargetDefinition = {
                     ...synthTarget,
@@ -186,7 +205,8 @@ export class TargetsManager {
                         ...(synthTarget.ports || {}),
                         ...(portsUpdate || {}),
                         dashboard: dashboardPort,
-                        http: httpPort
+                        http: httpPort,
+                        xfr: xfrPort
                     },
                     id: makeId(), // Assign a new managed ID
                     source: 'managed',
@@ -477,6 +497,7 @@ export class TargetsManager {
                 voice: (p as any).ports?.voice || 6100,
                 convergence: (p as any).ports?.convergence || 6200,
                 iperf: (p as any).ports?.iperf || 5201,
+                xfr: ((p as any).ports?.xfr && (p as any).ports.xfr !== 5201) ? (p as any).ports.xfr : 9000,
             },
             source: 'synthesized' as const, // Use synthesized to make it read-only in UI
             meta: {
@@ -511,7 +532,8 @@ export class TargetsManager {
                     http: parseInt(process.env.TARGET_HTTP_PORT || '8082', 10),
                     voice: 6100,
                     convergence: 6200,
-                    iperf: 5201
+                    iperf: 5201,
+                    xfr: 9000
                 },
                 source: 'synthesized' as const,
                 meta: {
@@ -533,6 +555,8 @@ export class TargetsManager {
             delete meta.self; // Strip self flag so remote peers don't mark leader as local node
             const rawHttp = t.ports?.http;
             const httpPort = (rawHttp && rawHttp !== 8080 && rawHttp !== 80) ? rawHttp : 8082;
+            const rawXfr = t.ports?.xfr;
+            const xfrPort = (rawXfr && rawXfr !== 5201) ? rawXfr : 9000;
             const dashboardPort = t.ports?.dashboard || 8080;
             return {
                 ...t,
@@ -540,10 +564,10 @@ export class TargetsManager {
                     voice: 6100,
                     convergence: 6200,
                     iperf: 5201,
-                    xfr: 5201,
                     ...(t.ports || {}),
                     dashboard: dashboardPort,
-                    http: httpPort
+                    http: httpPort,
+                    xfr: xfrPort
                 },
                 id: `reg-shared-${t.id || t.host}`,
                 source: 'synthesized' as const,
@@ -640,13 +664,16 @@ export class TargetsManager {
             const ports = t.ports || {};
             const rawHttp = ports.http;
             const httpPort = (rawHttp && rawHttp !== 8080 && rawHttp !== 80) ? rawHttp : 8082;
+            const rawXfr = ports.xfr;
+            const xfrPort = (rawXfr && rawXfr !== 5201) ? rawXfr : 9000;
             const dashboardPort = ports.dashboard || (t as any).port || 8080;
             return {
                 ...t,
                 ports: {
                     ...ports,
                     dashboard: dashboardPort,
-                    http: httpPort
+                    http: httpPort,
+                    xfr: xfrPort
                 }
             };
         });

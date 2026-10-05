@@ -454,7 +454,7 @@ export default function Speedtest({ token }: Props) {
                                     {sharedTargets.filter(st => !quickTargets.some(qt => qt.host === st.host)).map((t) => {
                                         const isSelected = targetHost === t.host;
                                         const status = targetReachability[t.host];
-                                        const port = t.ports?.xfr ?? 9000;
+                                        const port = (t.ports?.xfr && t.ports.xfr !== 5201) ? t.ports.xfr : 9000;
                                         return (
                                             <div
                                                 key={`tgt-${t.id}`}
