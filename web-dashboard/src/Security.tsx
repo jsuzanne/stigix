@@ -504,11 +504,13 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
         if (config?.threat_prevention && !eicarInitialized.current) {
             const saved = config.threat_prevention.eicar_endpoints;
             if (saved && Array.isArray(saved) && saved.length > 0) {
-                // If cloud URL was already added by the other useEffect, we don't want to duplicate
-                setSelectedEicarTargets(prev => Array.from(new Set([...prev, ...saved])));
+                // Auto-migrate legacy 8080 or un-ported / 80 internal node URLs to 8082
+                const migrated = saved.map(ep => ep.replace(/:8080\/eicar\.com\.txt/g, ':8082/eicar.com.txt').replace(/:80\/eicar\.com\.txt/g, ':8082/eicar.com.txt'));
+                setSelectedEicarTargets(prev => Array.from(new Set([...prev, ...migrated])));
             } else if (config.threat_prevention.eicar_endpoint) {
                 // Legacy fallback
-                setSelectedEicarTargets(prev => Array.from(new Set([...prev, config.threat_prevention.eicar_endpoint])));
+                const migrated = config.threat_prevention.eicar_endpoint.replace(/:8080\/eicar\.com\.txt/g, ':8082/eicar.com.txt').replace(/:80\/eicar\.com\.txt/g, ':8082/eicar.com.txt');
+                setSelectedEicarTargets(prev => Array.from(new Set([...prev, migrated])));
             }
             eicarInitialized.current = true;
         }

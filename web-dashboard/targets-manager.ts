@@ -59,12 +59,19 @@ export class TargetsManager {
             if (!fs.existsSync(this.configFile)) return [];
             const list = JSON.parse(fs.readFileSync(this.configFile, 'utf-8')) as TargetDefinition[];
             return list.map(t => {
-                const httpPort = t.ports?.http || (t as any).port || 8080;
+                const httpPort = (t.ports?.http && t.ports.http !== 8080 && t.ports.http !== 80) 
+                    ? t.ports.http 
+                    : 8082;
                 return {
                     ...t,
                     name: t.name || (t as any).label || t.host,
                     enabled: t.enabled !== false,
                     ports: {
+                        dashboard: t.ports?.dashboard || 8080,
+                        voice: t.ports?.voice || 6100,
+                        convergence: t.ports?.convergence || 6200,
+                        iperf: t.ports?.iperf || 5201,
+                        xfr: t.ports?.xfr || 5201,
                         ...(t.ports || {}),
                         http: httpPort
                     }
@@ -92,12 +99,17 @@ export class TargetsManager {
         const targets = this.loadTargets();
         const now = new Date().toISOString();
         const rawName = (data as any).name || (data as any).label || (data as any).host || 'Target';
-        const httpPort = data.ports?.http || (data as any).port || 8080;
+        const httpPort = data.ports?.http || 8082;
         const newTarget: TargetDefinition = {
             enabled: data.enabled !== undefined ? data.enabled : true,
             ...data,
             name: rawName,
             ports: {
+                dashboard: data.ports?.dashboard || 8080,
+                voice: data.ports?.voice || 6100,
+                convergence: data.ports?.convergence || 6200,
+                iperf: data.ports?.iperf || 5201,
+                xfr: data.ports?.xfr || 5201,
                 ...(data.ports || {}),
                 http: httpPort
             },
