@@ -1161,19 +1161,19 @@ function TopologyContent({ token }: TopologyProps) {
                     </div>
                 </div>
 
-                {/* Real-time Progress Bar while VyOS SSH script executes */}
+                {/* Real-time Progress Bar while VyOS API executes */}
                 {isVyosExecuting && (
                     <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl p-2.5 space-y-1.5 animate-fadeIn">
                         <div className="flex items-center justify-between text-[11px] font-mono">
                             <span className="flex items-center gap-1.5 font-bold text-amber-700 dark:text-amber-300">
                                 <Loader2 size={13} className="animate-spin text-amber-500" />
                                 {vyosExecutingAction === 'shut'
-                                    ? `Disabling ${iface} via VyOS SSH...`
+                                    ? `Disabling ${iface} via VyOS API...`
                                     : vyosExecutingAction === 'no-shut'
-                                    ? `Re-enabling ${iface} via VyOS SSH...`
+                                    ? `Restoring ${iface} via VyOS API...`
                                     : vyosExecutingAction === 'clear-qos'
-                                    ? `Clearing QoS on ${iface} via VyOS SSH...`
-                                    : `Applying Netem QoS to ${iface} via VyOS SSH...`}
+                                    ? `Clearing QoS on ${iface} via VyOS API...`
+                                    : `Applying Netem QoS to ${iface} via VyOS API...`}
                             </span>
                             <span className="text-[9.5px] text-amber-600 dark:text-amber-400 font-mono font-bold">~3-4s</span>
                         </div>
@@ -3428,7 +3428,7 @@ function TopologyContent({ token }: TopologyProps) {
                                 <div className="flex items-center justify-between text-xs font-mono">
                                     <span className="flex items-center gap-2 font-bold text-amber-700 dark:text-amber-300">
                                         <Loader2 size={14} className="animate-spin text-amber-500" />
-                                        Running VyOS tc/netem SSH script...
+                                        Applying Netem rules via VyOS API...
                                     </span>
                                     <span className="text-[10px] text-amber-600 dark:text-amber-400 font-bold">~3-4s</span>
                                 </div>
