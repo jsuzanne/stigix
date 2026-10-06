@@ -530,6 +530,7 @@ interface SystemSettings {
     auto_restart_traffic: boolean;
     auto_restart_probes: boolean;
     auto_restart_custom_tcp: boolean;
+    pcap_max_auto_sync_mb?: number;
     registry_mode?: 'auto' | 'leader' | 'peer';
 }
 const DEFAULT_SYSTEM_SETTINGS: SystemSettings = {
@@ -538,6 +539,7 @@ const DEFAULT_SYSTEM_SETTINGS: SystemSettings = {
     auto_restart_traffic: true,   // retrocompat: traffic was always auto-starting
     auto_restart_probes: true,    // retrocompat: probes were always auto-starting
     auto_restart_custom_tcp: true, // Custom TCP apps state persistence across reboots
+    pcap_max_auto_sync_mb: 10,     // Auto-sync threshold for PCAP profiles (<= 50MB, safety ratio of WS buffer)
     registry_mode: 'auto',
 };
 function getSystemSettings(): SystemSettings {
@@ -13927,18 +13929,31 @@ log('FLEET', `🔀 Fleet Gateway Reverse Proxy mounted at /api/gateway/:peerId/*
 app.use('/api/custom-tcp-apps', authenticateToken, createCustomTcpApiRouter(tcpAppManager));
 log('CUSTOM_TCP', `🖧 Custom TCP Applications API mounted at /api/custom-tcp-apps`);
 
-const buildPcapProfilesPayload = (includeContent = true): { profiles: any[] } => {
+const buildPcapProfilesPayload = (includeContent = true): { profiles: any[]; skipped_count: number } => {
     if (process.env.ENABLE_PCAP_REPLAY !== 'true') {
-        return { profiles: [] };
+        return { profiles: [], skipped_count: 0 };
     }
+    const maxSyncMb = Math.min(50, Math.max(1, getSystemSettings().pcap_max_auto_sync_mb || parseInt(process.env.PCAP_MAX_AUTO_SYNC_MB || '10', 10)));
+    const maxSyncBytes = maxSyncMb * 1024 * 1024;
+
     const pcapDir = path.join(APP_CONFIG.configDir, 'pcap-profiles');
     const profiles: any[] = [];
+    let skipped_count = 0;
+
     if (fs.existsSync(pcapDir)) {
         const files = fs.readdirSync(pcapDir).filter(f => f.endsWith('.stx-replay'));
         for (const file of files) {
             try {
                 const fullPath = path.join(pcapDir, file);
                 const stat = fs.statSync(fullPath);
+                const isUnderLimit = stat.size <= maxSyncBytes;
+
+                if (!isUnderLimit) {
+                    skipped_count++;
+                    log('PROVISIONING', `ℹ️ [FLEET SYNC] Profile '${file}' (${(stat.size / (1024*1024)).toFixed(1)}MB) exceeds ${maxSyncMb}MB auto-sync limit (kept local-only)`, 'info');
+                    continue;
+                }
+
                 const item: any = {
                     file_name: file,
                     size_bytes: stat.size,
@@ -13953,16 +13968,31 @@ const buildPcapProfilesPayload = (includeContent = true): { profiles: any[] } =>
             } catch {}
         }
     }
-    return { profiles };
+    return { profiles, skipped_count };
 };
 
 const syncFleetPcapProfiles = () => {
-    // PCAP Replay profiles are local-only to the node (no automated heavy mesh broadcast)
+    if (process.env.ENABLE_PCAP_REPLAY !== 'true') return;
+    const isLeader = typeof registryManager?.isLeader === 'function' 
+        ? registryManager.isLeader() 
+        : (registryManager?.getStatus?.()?.mode === 'leader');
+    if (!isLeader) return;
+
+    try {
+        const payload = buildPcapProfilesPayload();
+        provisioningManager.publishBundle('pcap-profiles', payload);
+        fleetTunnelManager.broadcastProvisioningUpdate('pcap-profiles');
+        const maxSyncMb = Math.min(50, Math.max(1, getSystemSettings().pcap_max_auto_sync_mb || 10));
+        log('PROVISIONING', `📦 [FLEET SYNC] Broadcasted ${payload.profiles.length} PCAP profile(s) (<= ${maxSyncMb}MB) across fleet (${payload.skipped_count} heavy profile(s) kept local-only)`);
+    } catch (e: any) {
+        log('PROVISIONING', `Failed to broadcast PCAP profiles: ${e.message}`, 'warn');
+    }
 };
 
-// --- PCAP Stateful Replay Engine API (Local-Only Storage & Execution) ---
-app.use('/api/pcap', authenticateToken, createPcapApiRouter(APP_CONFIG.configDir, PROJECT_ROOT, PYTHON_PATH));
-log('PCAP', `📦 PCAP Stateful Replay API mounted at /api/pcap (Local-only mode, ENABLE_PCAP_REPLAY=${process.env.ENABLE_PCAP_REPLAY === 'true'})`);
+// --- PCAP Stateful Replay Engine API ---
+const getPcapAutoSyncThresholdMb = () => Math.min(50, Math.max(1, getSystemSettings().pcap_max_auto_sync_mb || 10));
+app.use('/api/pcap', authenticateToken, createPcapApiRouter(APP_CONFIG.configDir, PROJECT_ROOT, PYTHON_PATH, syncFleetPcapProfiles, getPcapAutoSyncThresholdMb));
+log('PCAP', `📦 PCAP Stateful Replay API mounted at /api/pcap (Auto-sync threshold: ${getPcapAutoSyncThresholdMb()}MB, Feature Flag: ENABLE_PCAP_REPLAY=${process.env.ENABLE_PCAP_REPLAY === 'true'})`);
 
 // --- Stigix API Studio & Telemetry Routes ---
 const apiStudioRouter = createApiStudioRouter(APP_CONFIG.configDir, PROJECT_ROOT, vyosManager);
