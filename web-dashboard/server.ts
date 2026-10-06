@@ -13957,25 +13957,12 @@ const buildPcapProfilesPayload = (includeContent = true): { profiles: any[] } =>
 };
 
 const syncFleetPcapProfiles = () => {
-    if (process.env.ENABLE_PCAP_REPLAY !== 'true') return;
-    const isLeader = typeof registryManager?.isLeader === 'function' 
-        ? registryManager.isLeader() 
-        : (registryManager?.getStatus?.()?.mode === 'leader');
-    if (!isLeader) return;
-
-    try {
-        const payload = buildPcapProfilesPayload();
-        provisioningManager.publishBundle('pcap-profiles', payload);
-        fleetTunnelManager.broadcastProvisioningUpdate('pcap-profiles');
-        log('PROVISIONING', `📦 [FLEET SYNC] Broadcasted ${payload.profiles.length} PCAP Replay profile(s) across fleet`);
-    } catch (e: any) {
-        log('PROVISIONING', `Failed to broadcast PCAP profiles: ${e.message}`, 'warn');
-    }
+    // PCAP Replay profiles are local-only to the node (no automated heavy mesh broadcast)
 };
 
-// --- PCAP Stateful Replay Engine API (M1 - Feature Flag Gated) ---
-app.use('/api/pcap', authenticateToken, createPcapApiRouter(APP_CONFIG.configDir, PROJECT_ROOT, PYTHON_PATH, syncFleetPcapProfiles));
-log('PCAP', `📦 PCAP Stateful Replay API mounted at /api/pcap (Feature Flag: ENABLE_PCAP_REPLAY=${process.env.ENABLE_PCAP_REPLAY === 'true'})`);
+// --- PCAP Stateful Replay Engine API (Local-Only Storage & Execution) ---
+app.use('/api/pcap', authenticateToken, createPcapApiRouter(APP_CONFIG.configDir, PROJECT_ROOT, PYTHON_PATH));
+log('PCAP', `📦 PCAP Stateful Replay API mounted at /api/pcap (Local-only mode, ENABLE_PCAP_REPLAY=${process.env.ENABLE_PCAP_REPLAY === 'true'})`);
 
 // --- Stigix API Studio & Telemetry Routes ---
 const apiStudioRouter = createApiStudioRouter(APP_CONFIG.configDir, PROJECT_ROOT, vyosManager);
