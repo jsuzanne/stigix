@@ -2063,6 +2063,7 @@ const parseDnsOutput = (output: string, type: string): string | null => {
 const app = express();
 const httpServer = createServer(app);
 const io = new Server(httpServer, {
+    maxHttpBufferSize: 100 * 1024 * 1024, // 100 MB buffer for heavy PCAP profiles and telemetry bundles
     cors: {
         origin: '*',
         methods: ['GET', 'POST']
