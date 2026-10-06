@@ -40,6 +40,7 @@ export const PcapReplay: React.FC<PcapReplayProps> = ({ token }) => {
     const [editCategory, setEditCategory] = useState('');
     const [editPort, setEditPort] = useState('');
     const [editDescription, setEditDescription] = useState('');
+    const [editTiming, setEditTiming] = useState<'as_fast_as_possible' | 'original'>('as_fast_as_possible');
     const [isSavingEdit, setIsSavingEdit] = useState(false);
 
     // Console View Mode ('timeline' = SASE milestones, 'stream' = packet stream, 'raw' = json)
@@ -271,6 +272,7 @@ export const PcapReplay: React.FC<PcapReplayProps> = ({ token }) => {
         setEditCategory(profile.category || 'CUSTOM');
         setEditPort(String(profile.primary_flow?.server_port || profile.server_port || 18443));
         setEditDescription(profile.description || '');
+        setEditTiming(profile.replay_settings?.timing === 'original' ? 'original' : 'as_fast_as_possible');
         setIsEditModalOpen(true);
     };
 
@@ -300,7 +302,8 @@ export const PcapReplay: React.FC<PcapReplayProps> = ({ token }) => {
             const payload: any = {
                 name: editName.trim(),
                 category: editCategory.trim(),
-                description: editDescription.trim()
+                description: editDescription.trim(),
+                timing: editTiming
             };
             if (!isNaN(parsedPort) && parsedPort > 0) {
                 payload.server_port = parsedPort;
@@ -2053,6 +2056,19 @@ export const PcapReplay: React.FC<PcapReplayProps> = ({ token }) => {
                             <div className="grid grid-cols-2 gap-3">
                                 <div>
                                     <label className="block text-[11px] font-bold text-text-muted uppercase tracking-wider mb-1">
+                                        Replay Timing Engine
+                                    </label>
+                                    <select
+                                        value={editTiming}
+                                        onChange={(e: any) => setEditTiming(e.target.value)}
+                                        className="w-full bg-black/40 border border-border rounded-xl px-3 py-2 text-text-primary text-xs font-semibold focus:outline-none focus:border-primary/60 transition-colors cursor-pointer"
+                                    >
+                                        <option value="as_fast_as_possible" className="bg-card text-text-primary">⚡ Fastest (Zero-Delay DPI)</option>
+                                        <option value="original" className="bg-card text-text-primary">⏱️ Original PCAP Delays (Real-Time)</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className="block text-[11px] font-bold text-text-muted uppercase tracking-wider mb-1">
                                         Category Tag
                                     </label>
                                     <input
@@ -2063,6 +2079,9 @@ export const PcapReplay: React.FC<PcapReplayProps> = ({ token }) => {
                                         className="w-full bg-black/40 border border-border rounded-xl px-3 py-2 text-text-primary text-xs focus:outline-none focus:border-primary/60 transition-colors"
                                     />
                                 </div>
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-3">
                                 <div>
                                     <label className="block text-[11px] font-bold text-text-muted uppercase tracking-wider mb-1">
                                         Default Server Port
@@ -2075,6 +2094,16 @@ export const PcapReplay: React.FC<PcapReplayProps> = ({ token }) => {
                                         className="w-full bg-black/40 border border-border rounded-xl px-3 py-2 text-text-primary text-xs font-mono focus:outline-none focus:border-primary/60 transition-colors"
                                     />
                                 </div>
+                                <div>
+                                    <label className="block text-[11px] font-bold text-text-muted uppercase tracking-wider mb-1">
+                                        Timing Behavior Note
+                                    </label>
+                                    <div className="text-[10px] text-text-muted bg-black/20 border border-border/40 rounded-xl p-2 leading-tight">
+                                        {editTiming === 'original' 
+                                            ? 'Waits exact inter-packet delta_ms from PCAP between turns.'
+                                            : 'Sends next step immediately upon receiving response.'}
+                                    </div>
+                                </div>
                             </div>
 
                             <div>
@@ -2084,7 +2113,7 @@ export const PcapReplay: React.FC<PcapReplayProps> = ({ token }) => {
                                 <textarea
                                     value={editDescription}
                                     onChange={(e) => setEditDescription(e.target.value)}
-                                    rows={3}
+                                    rows={2}
                                     placeholder="Describe the application protocol, expected firewall policy, or SASE inspection behavior..."
                                     className="w-full bg-black/40 border border-border rounded-xl px-3 py-2 text-text-primary text-xs focus:outline-none focus:border-primary/60 transition-colors resize-none"
                                 />
