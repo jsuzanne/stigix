@@ -463,20 +463,23 @@ export function createPcapApiRouter(
 
     // GET /api/pcap/replay/jobs - Get active and recent replay jobs
     router.get('/replay/jobs', checkFeatureFlag, (_req: Request, res: Response) => {
-        const jobsList = Array.from(activeJobs.values()).map(j => ({
-            id: j.id,
-            role: j.role,
-            profile_file: j.profile_file,
-            target: j.target,
-            port: j.port,
-            pid: j.pid,
-            startedAt: j.startedAt,
-            status: j.status,
-            lastVerdict: j.lastVerdict,
-            recentEventsCount: j.recentEvents.length,
-            recentEvents: j.recentEvents,
-            latestEvent: j.recentEvents[j.recentEvents.length - 1] || null
-        }));
+        const jobsList = Array.from(activeJobs.values())
+            .sort((a, b) => (b.startedAt || 0) - (a.startedAt || 0))
+            .slice(0, 30)
+            .map(j => ({
+                id: j.id,
+                role: j.role,
+                profile_file: j.profile_file,
+                target: j.target,
+                port: j.port,
+                pid: j.pid,
+                startedAt: j.startedAt,
+                status: j.status,
+                lastVerdict: j.lastVerdict,
+                recentEventsCount: j.recentEvents.length,
+                recentEvents: j.recentEvents,
+                latestEvent: j.recentEvents[j.recentEvents.length - 1] || null
+            }));
         res.json({ jobs: jobsList });
     });
 

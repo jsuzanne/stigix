@@ -141,20 +141,20 @@ export const PcapReplay: React.FC<PcapReplayProps> = ({ token }) => {
             });
             if (res.ok) {
                 const data = await res.json();
-                const running = (data.jobs || []).find((j: any) => j.status === 'running');
+                const jobs: any[] = data.jobs || [];
+                const sortedJobs = [...jobs].sort((a, b) => (b.startedAt || 0) - (a.startedAt || 0));
+                const running = sortedJobs.find((j: any) => j.status === 'running');
                 if (running) {
                     setActiveJob(running);
                     setTerminalLogs(running.recentEvents || []);
-                } else {
-                    const latest = (data.jobs || [])[0];
-                    if (latest && activeJob?.status === 'running') {
-                        setActiveJob(latest);
-                        setTerminalLogs(latest.recentEvents || []);
-                    }
+                } else if (sortedJobs.length > 0) {
+                    const latest = sortedJobs[0];
+                    setActiveJob(latest);
+                    setTerminalLogs(latest.recentEvents || []);
                 }
             }
         } catch (_) {}
-    }, [gFetch, token, activeJob]);
+    }, [gFetch, token]);
 
     useEffect(() => {
         checkStatus();
@@ -530,6 +530,23 @@ export const PcapReplay: React.FC<PcapReplayProps> = ({ token }) => {
                 } else {
                     toast.success(`Client replay started against ${payload.target}:${effectivePort || 'default'}`);
                 }
+                setActiveJob({
+                    id: data.job_id,
+                    role: replayRole,
+                    profile_file: selectedProfileFile,
+                    target: payload.target,
+                    port: effectivePort,
+                    pid: data.pid,
+                    startedAt: Date.now(),
+                    status: 'running',
+                    recentEvents: [
+                        {
+                            timestamp: Date.now() / 1000,
+                            event: 'starting',
+                            text: `Starting ${replayRole.toUpperCase()} process against ${payload.target || 'target'} (PID ${data.pid})...`
+                        }
+                    ]
+                });
                 pollActiveJobs();
             } else {
                 toast.error(data.error || 'Failed to start replay');
