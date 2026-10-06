@@ -74,14 +74,58 @@ def _load_engine():
         sys.exit(1)
 
 
-def guess_app_id(flows: List[Dict[str, Any]]) -> str:
-    """Guess App-ID based on server port and payload signatures."""
-    for f in flows:
+import base64
+
+def guess_app_id(flows: List[Dict[str, Any]], primary_flow_id: Optional[int] = None) -> str:
+    """
+    Guess App-ID based on L7 payload signatures first (HTTP, TLS, SSH, etc.),
+    falling back to server port heuristics.
+    """
+    if not flows:
+        return "custom-app"
+
+    # Prioritize primary candidate flow if provided
+    ordered_flows = flows
+    if primary_flow_id is not None:
+        target = [f for f in flows if f.get("flow_id") == primary_flow_id]
+        others = [f for f in flows if f.get("flow_id") != primary_flow_id]
+        ordered_flows = target + others
+
+    # 1. First pass: Inspect actual L7 payload signatures across turns
+    for f in ordered_flows:
+        if f.get("is_noise"):
+            continue
+        turns = f.get("turns") or f.get("_turns") or []
+        for t in turns:
+            p_b64 = t.get("payload_b64")
+            if not p_b64:
+                continue
+            try:
+                raw = base64.b64decode(p_b64)[:64]
+                # HTTP signatures (web-browsing)
+                if any(raw.startswith(verb) for verb in [b"GET ", b"POST ", b"HEAD ", b"PUT ", b"DELETE ", b"OPTIONS ", b"HTTP/1.", b"HTTP/2."]):
+                    return "web-browsing"
+                # TLS / SSL ClientHello / ServerHello handshake
+                if len(raw) >= 3 and raw[0] == 0x16 and raw[1] == 0x03 and raw[2] in (0x00, 0x01, 0x02, 0x03):
+                    return "ssl"
+                # SSH handshake
+                if raw.startswith(b"SSH-"):
+                    return "ssh"
+                # SMTP / FTP / Telnet greeting
+                if raw.startswith(b"220 ") or raw.startswith(b"HELO ") or raw.startswith(b"EHLO "):
+                    port = f.get("server_port")
+                    return "smtp" if port == 25 else "ftp" if port == 21 else "web-browsing"
+            except Exception:
+                pass
+
+    # 2. Second pass: Fallback to well-known port mapping
+    for f in ordered_flows:
         if f.get("is_noise"):
             continue
         port = f.get("server_port")
         if port in WELL_KNOWN_APPS:
             return WELL_KNOWN_APPS[port]
+
     return "custom-app"
 
 
@@ -271,7 +315,8 @@ def process_single_file(engine, file_path: Path, scrub: bool = False, password: 
         res["reason"] = reason
         res["candidate_flow_ids"] = candidate_flow_ids
         res["anomalies"] = anomalies
-        res["suggested_app_id"] = guess_app_id(inspection.get("flows", []))
+        primary_flow_id = candidate_flow_ids[0] if candidate_flow_ids else None
+        res["suggested_app_id"] = guess_app_id(inspection.get("flows", []), primary_flow_id=primary_flow_id)
         
         for f in inspection.get("flows", []):
             if f["flow_id"] in candidate_flow_ids and f.get("server_port"):
