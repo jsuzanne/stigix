@@ -1,91 +1,91 @@
-# Documentation technique : `scm_traffic_log_viewer.py`
+# Technical Documentation: `scm_traffic_log_viewer.py`
 
-## 1. Présentation générale
+## 1. Overview
 
-`scm_traffic_log_viewer.py` est un moteur CLI d'évaluation de politiques et d'inspection théorique de sécurité conçu pour simuler et diagnostiquer l'application des règles de sécurité **Palo Alto Networks / Strata Cloud Manager (SCM)** (Prisma Access & Prisma SD-WAN).
+`scm_traffic_log_viewer.py` is a CLI-based policy evaluation and security diagnostic engine designed to simulate and analyze the enforcement of **Palo Alto Networks / Strata Cloud Manager (SCM)** security rules (Prisma Access & Prisma SD-WAN).
 
-Il permet de corréler instantanément un flux réseau réel (testé via `curl`, sondes Stigix, etc.) avec la politique de sécurité configurée dans le Cloud, afin d'identifier :
-* La **règle gagnante** (*Winning Rule* - First Match)
-* Les **règles masquées** (*Shadowed Rules*)
-* Le statut de la **décryption SSL** (*SSL Forward Proxy*)
-* L'action de sécurité théorique appliquée (**RESET-BOTH**, **DROP**, **ALLOW**)
+It correlates real network test traffic (e.g., generated via `curl`, Stigix test agents, or diagnostic probes) against cloud-managed security policies to determine:
+* The **Winning Security Rule** (*First Match* engine)
+* **Shadowed / Secondary Rules** (rules that would match if the primary rule was absent)
+* **SSL Decryption Status** (*SSL Forward Proxy* vs *No-Decrypt*)
+* The expected security action (**RESET-BOTH**, **DROP**, **ALLOW**) driven by attached Security Profiles and Threat Signatures.
 
 ---
 
-## 2. Architecture & Pipeline de Fonctionnement
+## 2. Architecture & Evaluation Pipeline
 
 ```mermaid
 flowchart TD
-    A[SCM API / Config Cloud] -->|Synchronisation & Cache JSON| B[Cache Local / Memory Store]
-    C[Paramètres du Flux CLI: IP, Port, App, Threat] --> D[Moteur d'Évaluation PAN-OS]
+    A[SCM Cloud API / Config Engine] -->|Sync & JSON Cache| B[Local Cache / In-Memory Store]
+    C[Traffic Input Arguments: IP, Port, App, Threat] --> D[PAN-OS Evaluation Engine]
     B --> D
     
-    subgraph D [Pipeline d'Évaluation]
+    subgraph D [Evaluation Pipeline]
         D1[1. SSL Decryption Policy Match] --> D2[2. Security Policy Match - First Match]
-        D2 --> D3[3. Shadowed / Secondary Rules Match]
+        D2 --> D3[3. Shadowed / Secondary Rules Detection]
         D3 --> D4[4. Security Profile & Threat Evaluation]
     end
     
-    D --> E[Rapport Terminal / JSON & Requêtes SCM]
+    D --> E[Terminal Report / JSON Output & SCM Query Helper]
 ```
 
 ---
 
-## 3. Paramètres de la ligne de commande (CLI Arguments)
+## 3. Command-Line Arguments (CLI Reference)
 
 ```bash
 python3 Scripts/scm_traffic_log_viewer.py [OPTIONS]
 ```
 
-### Paramètres de trafic réseau
-| Option | Type | Description | Exemple |
+### Network Traffic Parameters
+| Option | Type | Description | Example |
 | :--- | :--- | :--- | :--- |
-| `--src` | String | Adresse IP source (Client / Pre-NAT) | `192.168.219.1` |
-| `--sport` | Integer | Port source local | `53991` |
-| `--dst` | String | Destination (IP ou FQDN) | `target.stigix.io` |
-| `--dport` | Integer | Port de destination | `443`, `80` |
-| `--protocol`| String | Protocole de transport (`tcp`, `udp`, `icmp`) | `tcp` |
-| `--app` | String | Application PAN-OS identifiée | `ssl`, `web-browsing`, `dns` |
+| `--src` | String | Source IP address (Client / Pre-NAT) | `192.168.219.1` |
+| `--sport` | Integer | Local source port | `53991` |
+| `--dst` | String | Destination (IP address or FQDN) | `target.stigix.io` |
+| `--dport` | Integer | Destination port | `443`, `80` |
+| `--protocol`| String | Transport protocol (`tcp`, `udp`, `icmp`) | `tcp` |
+| `--app` | String | PAN-OS App-ID | `ssl`, `web-browsing`, `dns` |
 
-### Paramètres de contexte de menace & URL
-| Option | Type | Description | Exemple |
+### Threat & URL Context Parameters
+| Option | Type | Description | Example |
 | :--- | :--- | :--- | :--- |
-| `--threat` | String | Identifiant ou mot-clé de menace | `eicar`, `spyware`, `vulnerability` |
-| `--category`| String | Catégorie d'URL / Nom du test | `EICAR Test (...)` |
+| `--threat` | String | Threat identifier or keyword | `eicar`, `spyware`, `vulnerability` |
+| `--category`| String | URL category or test scenario label | `EICAR Test (https://...)` |
 
-### Options avancées & Diagnostics
+### Diagnostic & Output Options
 | Option | Description |
 | :--- | :--- |
-| `--json` | Sortie brute au format JSON (pour intégration CI/CD ou parsing `jq`) |
-| `--list-rules` | Affiche la liste ordonnée des règles chargées sans le détail des objets |
-| `--no-cache` / `--sync` | Force une ré-interrogation des API SCM pour rafraîchir le cache local |
-| `--verbose` | Affiche le détail étape par étape du matching de chaque critère |
+| `--json` | Outputs raw JSON data for CI/CD pipelines or `jq` parsing |
+| `--list-rules` | Displays a condensed list of loaded security rules without object details |
+| `--no-cache` / `--sync` | Forces a fresh synchronization with SCM APIs, updating local cache |
+| `--verbose` | Shows detailed step-by-step matching criteria for every rule |
 
 ---
 
-## 4. Structure du Rapport généré
+## 4. Report Breakdown
 
-Chaque exécution génère un rapport structuré en 5 sections :
+When executed, the script produces a structured 5-section diagnostic report:
 
-1. **En-tête Plateforme & PCAP :**  
-   Indique l'entité d'inspection (`PRISMA_SDWAN`, `PRISMA_ACCESS`, etc.) et la disponibilité des captures réseau.
-2. **Détails de Menace (Event Type) :**  
-   * **Threat Name** : Nom de la menace (ex: *Eicar File Detected*)
-   * **Threat ID** : Identifiant PAN-OS (ex: `39040`)
-   * **Severity / Category** : Sévérité et type de payload (ex: *Medium / code-execution*)
-   * **Enforcement** : Action configurée (`RESET-BOTH`, `DROP`, `ALLOW`)
-3. **Cartographie Réseau (Source & Destination) :**  
-   Affiche les zones d'entrée/sortie (`CORP` $\rightarrow$ `VPN`/`untrust`), les interfaces (`vlan.219` $\rightarrow$ `ethernet0/1`) et le statut NAT.
-4. **Active Security Policy (Winning Rule) :**  
-   La première règle validant l'intégralité des 5 tuples et profils.
-5. **Secondary / Shadowed Rules :**  
-   Liste ordonnée de toutes les règles suivantes qui auraient également matché le trafic si la règle gagnante n'existait pas.
+1. **Platform & PCAP Header:**  
+   Identifies the inspection platform (`PRISMA_SDWAN`, `PRISMA_ACCESS`, etc.) and PCAP capture status.
+2. **Threat Event Details:**  
+   * **Threat Name**: Associated signature name (e.g., *Eicar File Detected*)
+   * **Threat ID**: PAN-OS Threat ID (e.g., `39040`)
+   * **Severity / Category**: Severity rating and threat category (e.g., *Medium | code-execution*)
+   * **Enforcement**: Configured action (`RESET-BOTH`, `DROP`, `ALLOW`)
+3. **Network Mapping (Source & Destination):**  
+   Details ingress/egress zones (`CORP` $\rightarrow$ `VPN`/`untrust`), interfaces (`vlan.219` $\rightarrow$ `ethernet0/1`), and NAT status.
+4. **Active Security Policy (Winning Rule):**  
+   The primary rule that successfully satisfied all 5-tuple parameters, application, and service requirements.
+5. **Secondary / Shadowed Rules:**  
+   Ordered list of subsequent rules that would have matched the criteria if the winning rule were not present.
 
 ---
 
-## 5. Exemples d'utilisation
+## 5. Usage Examples
 
-### Exemple 1 : Évaluation d'un flux malveillant EICAR (HTTPS)
+### Example 1: Evaluating an HTTPS EICAR Malware Stream
 ```bash
 python3 Scripts/scm_traffic_log_viewer.py \
   --src "192.168.219.1" \
@@ -95,15 +95,15 @@ python3 Scripts/scm_traffic_log_viewer.py \
   --protocol tcp \
   --app "ssl" \
   --threat "eicar" \
-  --category "EICAR Test"
+  --category "EICAR Test (https://target.stigix.io/...)"
 ```
 
-### Exemple 2 : Lister les règles de sécurité synchronisées (format condensé)
+### Example 2: Listing Synchronized Security Rules (Condensed)
 ```bash
 python3 Scripts/scm_traffic_log_viewer.py --list-rules
 ```
 
-### Exemple 3 : Exportation JSON pour traitement avec `jq`
+### Example 3: JSON Output for Automated Tooling
 ```bash
 python3 Scripts/scm_traffic_log_viewer.py \
   --src "192.168.219.1" \
@@ -115,15 +115,15 @@ python3 Scripts/scm_traffic_log_viewer.py \
 
 ---
 
-## 6. Bonnes pratiques & Dépannage
+## 6. Best Practices & Troubleshooting
 
 > [!NOTE]
-> **Corrélation des ports avec Cortex Data Lake (CDL)**  
-> Si du Source NAT/PAT est configuré sur l'équipement de branche, le port source passé en CLI (`--sport`) correspond au port **Pre-NAT**. Pour retrouver le log réel dans la console SCM, effectuez la recherche par **Destination IP** ou par **Threat ID** (`39040`).
+> **Source Port Translation (NAT/PAT) & Log Search**  
+> When Source NAT/PAT is active at the branch, the client's local port (`--sport`) is translated to a randomized Post-NAT port. When querying Cortex Data Lake (CDL) or SCM Log Viewer, search by **Destination IP** or **Threat ID** (`39040`) rather than the Pre-NAT source port.
 
 > [!TIP]
-> **Vérification de la décryption SSL**  
-> Pour qu'une menace chiffrée (HTTPS) soit bloquée au niveau de l'inspection Threat Prevention :
-> 1. La **URL Category** doit inclure le sous-domaine complet (ex: `target.stigix.io` ou `*.stigix.io/`).
-> 2. Les **Zones Source/Destination** de la règle de décryption doivent correspondre au flux d'entrée.
-> 3. Le trafic doit être acheminé vers le composant d'inspection approprié (Prisma Access Remote Network vs sortie DIA locale).
+> **SSL Decryption Prerequisites for Threat Detection**  
+> For encrypted HTTPS traffic to be inspected and blocked by Threat Prevention:
+> 1. **URL Category / FQDN Matching:** The custom URL list must include wildcards (e.g., `*.stigix.io/` and `target.stigix.io`) to properly match the TLS Server Name Indication (SNI).
+> 2. **Zone Alignment:** Ensure Source and Destination zones in the Decryption rule cover the actual traffic paths.
+> 3. **Traffic Path Routing:** Ensure traffic is routed through the intended inspection node (Prisma Access Remote Network tunnel vs. local Direct Internet Access breakout).
