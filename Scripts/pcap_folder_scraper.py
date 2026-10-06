@@ -285,6 +285,7 @@ def process_single_file(engine, file_path: Path, scrub: bool = False, password: 
         "sensitive_warnings": [],
         "anomalies": [],
         "inspection": None,
+    }
     MAX_PCAP_SIZE = 100 * 1024 * 1024  # 100 MB Limit
     if res["size_bytes"] > MAX_PCAP_SIZE:
         res["status"] = "error"
