@@ -325,7 +325,14 @@ export function createPcapApiRouter(
             const unzipped = zlib.gunzipSync(buf);
             const json = JSON.parse(unzipped.toString('utf8'));
 
-            const { name, category, server_port, description } = req.body;
+            const { name, category, server_port, description, timing, turn_timeout_ms } = req.body;
+            if (!json.replay_settings) json.replay_settings = {};
+            if (timing !== undefined && (timing === 'as_fast_as_possible' || timing === 'original')) {
+                json.replay_settings.timing = timing;
+            }
+            if (turn_timeout_ms !== undefined && !isNaN(parseInt(turn_timeout_ms, 10))) {
+                json.replay_settings.turn_timeout_ms = parseInt(turn_timeout_ms, 10);
+            }
             if (name !== undefined && String(name).trim()) {
                 json.name = String(name).trim();
             }
