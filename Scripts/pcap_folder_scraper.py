@@ -1,13 +1,19 @@
 #!/usr/bin/env python3
 """
-Stigix PCAP Folder Scraper & Batch Profile Generator
+Stigix PCAP Folder Scraper & Extraction Diagnostic Engine
 Recursively scans a local directory for .pcap, .pcapng, and .zip files,
-analyzes their L7 replay suitability, and automatically compiles .stx-replay profiles.
+analyzes L7 replay suitability, flags extraction anomalies/edge-cases,
+and generates structured diagnostic packages to improve the parser.
 
 Usage:
+  # Standard scan & diagnostic summary
   python3 Scripts/pcap_folder_scraper.py /path/to/pcaps
+
+  # Full diagnostic mode with edge-case detection & telemetry dump
+  python3 Scripts/pcap_folder_scraper.py /path/to/pcaps --diagnose --diag-out ./pcap-diagnostics
+
+  # Automatically generate .stx-replay profiles for clean captures
   python3 Scripts/pcap_folder_scraper.py /path/to/pcaps --generate --out-dir ./profiles --scrub
-  python3 Scripts/pcap_folder_scraper.py /path/to/pcaps --json
 """
 
 import sys
@@ -17,6 +23,7 @@ import json
 import zipfile
 import tempfile
 import shutil
+import re
 from pathlib import Path
 from typing import Dict, List, Any, Optional, Tuple
 
@@ -63,7 +70,7 @@ def _load_engine():
         return pcap_parser
     except ImportError as e:
         print(f"Error: Required dependency missing ({e}).", file=sys.stderr)
-        print("Please ensure scapy is installed in your python environment: pip3 install scapy", file=sys.stderr)
+        print("Please ensure scapy is installed: pip3 install scapy", file=sys.stderr)
         sys.exit(1)
 
 
@@ -78,43 +85,127 @@ def guess_app_id(flows: List[Dict[str, Any]]) -> str:
     return "custom-app"
 
 
-def evaluate_replay_suitability(inspection: Dict[str, Any]) -> Tuple[str, str, List[int]]:
+def detect_flow_anomalies(flow: Dict[str, Any]) -> List[Dict[str, str]]:
     """
-    Evaluates whether a capture is suitable for stateful L7 replay.
-    Returns (Rating, Reason, Candidate_Flow_IDs).
-    Ratings: EXCELLENT, GOOD, PARTIAL, UNSUITABLE
+    Analyzes a flow for extraction edge-cases, gaps, and potential replay hurdles.
+    Returns a list of structured anomaly objects with suggested improvements.
+    """
+    anomalies = []
+    turns = flow.get("turns", []) or flow.get("_turns", [])
+    turns_count = flow.get("turns_count", len(turns))
+    payload_bytes = flow.get("payload_bytes", 0)
+    server_port = flow.get("server_port")
+
+    # 1. Incomplete Handshake / Mid-stream capture
+    if not flow.get("syn_seen", True):
+        anomalies.append({
+            "type": "MID_STREAM_START",
+            "severity": "MEDIUM",
+            "detail": "Capture started mid-session (No initial TCP SYN observed). Direction of client/server inferred from first packet.",
+            "recommendation": "Check if first turn sender was properly identified or if roles need manual inversion."
+        })
+
+    # 2. Unidirectional Traffic (Half-duplex / Missing Responses)
+    if turns_count == 1:
+        anomalies.append({
+            "type": "UNIDIRECTIONAL_FLOW",
+            "severity": "LOW",
+            "detail": f"Flow only contains 1 turn ({payload_bytes} bytes). Missing response or one-way beacon.",
+            "recommendation": "Verify if server response was dropped by capture filter or if client is push-only UDP/syslog."
+        })
+
+    # 3. High Turn Count (Potential conversational chatty protocol)
+    if turns_count > 30:
+        anomalies.append({
+            "type": "CHATTY_PROTOCOL",
+            "severity": "INFO",
+            "detail": f"Flow contains {turns_count} distinct turns. Long interactive session (e.g. database cursor or terminal).",
+            "recommendation": "Review turn timing delays to avoid replay timeouts."
+        })
+
+    # 4. Zero Payload / Pure Control probes
+    if payload_bytes == 0:
+        anomalies.append({
+            "type": "ZERO_L7_PAYLOAD",
+            "severity": "HIGH",
+            "detail": "TCP connection completed 3-way handshake but exchanged 0 bytes of L7 application data.",
+            "recommendation": "Exclude from L7 replay profiles (pure port-scan or health-check probe)."
+        })
+
+    # 5. Large initial delay
+    if turns and len(turns) > 1:
+        max_delay = max((t.get("delay_ms", 0) for t in turns), default=0)
+        if max_delay > 10000:
+            anomalies.append({
+                "type": "LONG_TURN_PAUSE",
+                "severity": "MEDIUM",
+                "detail": f"Contains an inter-turn delay of {max_delay / 1000.0:.1f}s.",
+                "recommendation": "Cap max turn delay during replay to prevent test timeouts."
+            })
+
+    # 6. Hardcoded IP Detection in Payload
+    # Inspect raw previews for embedded IPv4 addresses (like FTP PORT commands or SIP headers)
+    for t in turns:
+        prev = str(t.get("preview", ""))
+        ips_found = re.findall(r'\b(?:\d{1,3}\.){3}\d{1,3}\b', prev)
+        if ips_found:
+            anomalies.append({
+                "type": "HARDCODED_IP_IN_PAYLOAD",
+                "severity": "HIGH",
+                "detail": f"Payload turn #{t.get('seq')} contains embedded IP address: {', '.join(set(ips_found))}",
+                "recommendation": "Target server may reject replay if IP does not match the test interface IP."
+            })
+            break
+
+    return anomalies
+
+
+def evaluate_replay_suitability(inspection: Dict[str, Any]) -> Tuple[str, str, List[int], List[Dict[str, Any]]]:
+    """
+    Evaluates whether a capture is suitable for stateful L7 replay,
+    and aggregates extraction anomalies across all flows.
     """
     flows = inspection.get("flows", [])
     if not flows:
-        return "UNSUITABLE", "No TCP/UDP flows detected", []
+        return "UNSUITABLE", "No TCP/UDP flows detected", [], []
 
     unicast_flows = [f for f in flows if not f.get("is_noise")]
     if not unicast_flows:
-        return "UNSUITABLE", "All flows are broadcast/multicast background noise", []
+        return "UNSUITABLE", "All flows are broadcast/multicast background noise", [], []
 
     valid_candidate_flows = []
     total_turns = 0
     total_payload = 0
+    all_anomalies = []
 
     for f in unicast_flows:
         turns = f.get("turns_count", 0)
         payload = f.get("payload_bytes", 0)
+        flow_anomalies = detect_flow_anomalies(f)
+        if flow_anomalies:
+            all_anomalies.append({
+                "flow_id": f["flow_id"],
+                "protocol": f.get("transport", "tcp"),
+                "endpoints": f"{f.get('client_ip')}:{f.get('client_port')} -> {f.get('server_ip')}:{f.get('server_port')}",
+                "anomalies": flow_anomalies
+            })
+
         if turns > 0 and payload > 0:
             valid_candidate_flows.append(f["flow_id"])
             total_turns += turns
             total_payload += payload
 
     if not valid_candidate_flows:
-        return "UNSUITABLE", "No L7 application payload or turns in unicast flows", []
+        return "UNSUITABLE", "No L7 application payload in unicast flows", [], all_anomalies
 
     has_bidirectional = any(f.get("turns_count", 0) >= 2 for f in unicast_flows if f["flow_id"] in valid_candidate_flows)
     
     if has_bidirectional and total_payload > 100:
-        return "EXCELLENT", f"Clean bidirectional L7 ({len(valid_candidate_flows)} flow(s), {total_turns} turns, {total_payload:,} B)", valid_candidate_flows
+        return "EXCELLENT", f"Clean bidirectional L7 ({len(valid_candidate_flows)} flow(s), {total_turns} turns, {total_payload:,} B)", valid_candidate_flows, all_anomalies
     elif len(valid_candidate_flows) > 0 and total_payload > 0:
-        return "GOOD", f"Valid L7 replay flow ({len(valid_candidate_flows)} flow(s), {total_turns} turns, {total_payload:,} B)", valid_candidate_flows
+        return "GOOD", f"Valid L7 replay flow ({len(valid_candidate_flows)} flow(s), {total_turns} turns, {total_payload:,} B)", valid_candidate_flows, all_anomalies
 
-    return "PARTIAL", "Unidirectional or minimal payload", valid_candidate_flows
+    return "PARTIAL", "Unidirectional or minimal payload", valid_candidate_flows, all_anomalies
 
 
 def scan_directory(dir_path: str, recursive: bool = True) -> List[Path]:
@@ -133,7 +224,7 @@ def scan_directory(dir_path: str, recursive: bool = True) -> List[Path]:
 
 
 def process_single_file(engine, file_path: Path, scrub: bool = False, password: Optional[str] = None) -> Dict[str, Any]:
-    """Run inspection and return evaluation results for a single file."""
+    """Run inspection and return evaluation results with deep extraction telemetry."""
     res: Dict[str, Any] = {
         "path": str(file_path),
         "name": file_path.name,
@@ -148,6 +239,7 @@ def process_single_file(engine, file_path: Path, scrub: bool = False, password: 
         "suggested_app_id": "custom",
         "suggested_port": None,
         "sensitive_warnings": [],
+        "anomalies": [],
         "inspection": None,
         "error": None
     }
@@ -158,10 +250,11 @@ def process_single_file(engine, file_path: Path, scrub: bool = False, password: 
         res["flows_count"] = inspection.get("total_active_flows", 0)
         res["unicast_flows"] = inspection.get("unicast_flows_count", 0)
         
-        rating, reason, candidate_flow_ids = evaluate_replay_suitability(inspection)
+        rating, reason, candidate_flow_ids, anomalies = evaluate_replay_suitability(inspection)
         res["suitability"] = rating
         res["reason"] = reason
         res["candidate_flow_ids"] = candidate_flow_ids
+        res["anomalies"] = anomalies
         res["suggested_app_id"] = guess_app_id(inspection.get("flows", []))
         
         for f in inspection.get("flows", []):
@@ -184,12 +277,12 @@ def process_single_file(engine, file_path: Path, scrub: bool = False, password: 
     return res
 
 
-def print_terminal_summary(results: List[Dict[str, Any]], base_dir: str):
-    """Print a rich terminal summary table."""
-    print("=" * 115)
-    print(f"📁 STIGIX PCAP FOLDER ANALYSIS: {base_dir}")
+def print_terminal_summary(results: List[Dict[str, Any]], base_dir: str, show_anomalies: bool = False):
+    """Print a rich terminal summary table with optional anomaly drilldown."""
+    print("=" * 120)
+    print(f"📁 STIGIX PCAP FOLDER & EXTRACTION DIAGNOSTIC: {base_dir}")
     print(f"📦 Total Files Scanned: {len(results)}")
-    print("=" * 115)
+    print("=" * 120)
 
     suitability_badges = {
         "EXCELLENT": "🟢 EXCELLENT",
@@ -199,10 +292,12 @@ def print_terminal_summary(results: List[Dict[str, Any]], base_dir: str):
         "ERROR": "❌ ERROR    "
     }
 
-    print(f"{'#':<3} {'File Name':<32} {'Size':<10} {'Suitability':<13} {'Flows':<7} {'App-ID':<14} {'Port':<6} {'Replay Diagnostics'}")
-    print("-" * 115)
+    print(f"{'#':<3} {'File Name':<30} {'Size':<9} {'Suitability':<13} {'Flows':<7} {'App-ID':<12} {'Port':<6} {'Anomalies':<10} {'Diagnostics'}")
+    print("-" * 120)
 
     ready_count = 0
+    total_anomalies = 0
+
     for idx, r in enumerate(results, 1):
         badge = suitability_badges.get(r["suitability"], r["suitability"])
         size_str = f"{r['size_bytes'] / 1024:.1f} KB" if r['size_bytes'] < 1024 * 1024 else f"{r['size_bytes'] / (1024*1024):.1f} MB"
@@ -210,15 +305,71 @@ def print_terminal_summary(results: List[Dict[str, Any]], base_dir: str):
         port_str = str(r['suggested_port']) if r.get('suggested_port') else "-"
         app_str = r.get("suggested_app_id", "-")
         diag = r.get("reason", "") if r["status"] == "success" else f"Err: {r.get('error', '')}"
+        
+        anom_count = len(r.get("anomalies", []))
+        total_anomalies += anom_count
+        anom_str = f"⚠️  {anom_count}" if anom_count > 0 else "✅ 0"
 
         if r["suitability"] in ("EXCELLENT", "GOOD"):
             ready_count += 1
 
-        print(f"{idx:<3} {r['name'][:30]:<32} {size_str:<10} {badge:<13} {flows_str:<7} {app_str:<14} {port_str:<6} {diag[:30]}")
+        print(f"{idx:<3} {r['name'][:28]:<30} {size_str:<9} {badge:<13} {flows_str:<7} {app_str:<12} {port_str:<6} {anom_str:<10} {diag[:30]}")
 
-    print("-" * 115)
-    print(f"🎯 Profiles Ready for Generation: {ready_count} / {len(results)} files")
-    print("=" * 115)
+    print("-" * 120)
+    print(f"🎯 Profiles Ready for Generation: {ready_count} / {len(results)} files | 🔍 Extraction Edge-Cases Detected: {total_anomalies}")
+    print("=" * 120)
+
+    # Anomaly drilldown section if requested or in diagnose mode
+    if show_anomalies and total_anomalies > 0:
+        print("\n" + "=" * 120)
+        print("🔍 EXTRACTION EDGE-CASES & PARSER IMPROVEMENT RECOMMENDATIONS")
+        print("=" * 120)
+        for r in results:
+            if not r.get("anomalies"):
+                continue
+            print(f"\n📦 Capture: {r['name']} ({r['path']})")
+            for flow_anom in r["anomalies"]:
+                print(f"  ├─ Flow #{flow_anom['flow_id']} ({flow_anom['protocol'].upper()}: {flow_anom['endpoints']}):")
+                for a in flow_anom["anomalies"]:
+                    sev_icon = "🔴" if a["severity"] == "HIGH" else ("🟡" if a["severity"] == "MEDIUM" else "ℹ️")
+                    print(f"  │  {sev_icon} [{a['type']}] {a['detail']}")
+                    print(f"  │     👉 Fix / Recommendation: {a['recommendation']}")
+        print("=" * 120)
+
+
+def export_diagnostic_package(results: List[Dict[str, Any]], diag_dir: str):
+    """
+    Exports clean JSON diagnostic telemetry for each file and an aggregated
+    anomalies report. This allows AI assistants and developers to easily inspect
+    edge-cases and patch the parser engine.
+    """
+    out_path = Path(diag_dir)
+    out_path.mkdir(parents=True, exist_ok=True)
+
+    telemetry_list = []
+    for r in results:
+        t = dict(r)
+        # Keep clean flows summary for lightness
+        if t.get("inspection") and t["inspection"].get("flows"):
+            clean_flows = []
+            for f in t["inspection"]["flows"]:
+                cf = dict(f)
+                cf.pop("_turns", None)
+                clean_flows.append(cf)
+            t["flows_summary"] = clean_flows
+        t.pop("inspection", None)
+        telemetry_list.append(t)
+
+    report_file = out_path / "extraction_diagnostic_report.json"
+    with open(report_file, "w", encoding="utf-8") as fp:
+        json.dump({
+            "timestamp": str(os.path.getmtime(str(report_file)) if report_file.exists() else ""),
+            "total_files": len(results),
+            "files_with_anomalies": sum(1 for r in results if r.get("anomalies")),
+            "telemetry": telemetry_list
+        }, fp, indent=2)
+
+    print(f"\n📊 Detailed Extraction Diagnostic Report saved to: {report_file.resolve()}")
 
 
 def generate_profiles(engine, results: List[Dict[str, Any]], out_dir: str, scrub: bool = True) -> List[str]:
@@ -259,21 +410,26 @@ def generate_profiles(engine, results: List[Dict[str, Any]], out_dir: str, scrub
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Stigix PCAP Folder Scraper & Batch Profile Generator",
+        description="Stigix PCAP Folder Scraper & Extraction Diagnostic Engine",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  # Scan a directory and display replay suitability table
+  # Scan a directory and show replay suitability table
   python3 Scripts/pcap_folder_scraper.py /home/user/my_pcaps
 
-  # Scan and compile all eligible captures into .stx-replay files
-  python3 Scripts/pcap_folder_scraper.py /home/user/my_pcaps --generate --out-dir ./stigix_profiles --scrub
+  # Full diagnostic mode: show extraction anomalies & parser recommendations
+  python3 Scripts/pcap_folder_scraper.py /home/user/my_pcaps --diagnose
 
-  # Output JSON report for integration
-  python3 Scripts/pcap_folder_scraper.py /home/user/my_pcaps --json
+  # Export structured diagnostic telemetry to JSON for parser improvement
+  python3 Scripts/pcap_folder_scraper.py /home/user/my_pcaps --diagnose --diag-out ./pcap-diagnostics
+
+  # Compile all eligible captures into .stx-replay files
+  python3 Scripts/pcap_folder_scraper.py /home/user/my_pcaps --generate --out-dir ./stigix_profiles --scrub
 """
     )
     parser.add_argument("folder", help="Path to folder containing .pcap, .pcapng, or .zip files")
+    parser.add_argument("--diagnose", action="store_true", help="Perform deep extraction edge-case analysis & show fix recommendations")
+    parser.add_argument("--diag-out", help="Directory to export structured diagnostic JSON telemetry package")
     parser.add_argument("--generate", action="store_true", help="Automatically generate .stx-replay profiles for eligible PCAPs")
     parser.add_argument("--out-dir", "-o", default="./pcap-profiles", help="Output directory for generated .stx-replay profiles (default: ./pcap-profiles)")
     parser.add_argument("--scrub", action="store_true", help="Sanitize credentials, bearer tokens, and secrets during generation")
@@ -315,7 +471,10 @@ Examples:
             clean_results.append(cr)
         print(json.dumps({"folder": args.folder, "total_files": len(results), "results": clean_results}, indent=2))
     else:
-        print_terminal_summary(results, args.folder)
+        print_terminal_summary(results, args.folder, show_anomalies=args.diagnose)
+
+    if args.diag_out:
+        export_diagnostic_package(results, args.diag_out)
 
     if args.generate:
         generate_profiles(engine, results, args.out_dir, scrub=args.scrub)
