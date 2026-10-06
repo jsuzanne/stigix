@@ -5,7 +5,26 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [2.1.0] - 2026-10-06
+## [2.1.0] - 2026-10-06 — Major Milestone Release
+
+### Added
+- **1-Click Token Onboarding & Magic Join (`fleet-tunnel.ts`, `server.ts`)**:
+  - Secure token generation and 1-line `curl` onboarding command to join remote branch, DC, or cloud nodes to the central Stigix Controller in seconds.
+  - Automatic node registration, target provisioning, and reverse tunnel pairing.
+- **WebSocket Reverse Tunnel & NAT Traversal Engine (`fleet-tunnel.ts`)**:
+  - Out-of-band management of remote nodes across complex enterprise topologies behind strict NAT, CGNAT, and firewalls without opening inbound ports or requiring public IPs.
+- **Centralized Fleet Provisioning (`server.ts`, `targets-manager.ts`)**:
+  - 1-click push of targets, security configs, custom applications, and test schedules from the Controller to all fleet nodes with zero-touch hot reload.
+- **Underlay Topology Chaos & QoS Impairment Injection (`Topology.tsx`, `vyos-control.ts`)**:
+  - Direct canvas controls on VyOS router nodes and links to inject latency, jitter, packet loss, bandwidth rate-limiting, and DSCP/QoS markings in real-time.
+- **Stateful Custom TCP Applications Engine (`CustomApps.tsx`, `custom-apps-engine.ts`)**:
+  - Multi-port TCP/UDP client-server workload generator with custom payloads, transaction loops, server chaos modes (delay, drop, jitter), and live RX/TX telemetry badges.
+- **L7 Bidirectional PCAP Replay Engine (`PcapReplay.tsx`, `pcap_parser.py`)**:
+  - Stateful flow reassembly from `.pcap`, `.pcapng`, and password-protected `.zip` archives with directional step-by-step playback, payload inspector, and zero disk pollution (`Memory Guard`).
+- **Root CA Certificate Onboarding (`/ca.crt`, `server.ts`)**:
+  - Direct download and automated 1-click trust scripts for Linux, macOS, and Windows to facilitate SSL/TLS Decryption (DPI) policy testing on SASE and Next-Gen Firewalls.
+- **Interactive API Studio (`ApiStudio.tsx`, `server.ts`)**:
+  - Built-in REST API explorer with instant `curl`, Python, and TypeScript code generation and Model Context Protocol (FastMCP) AI endpoints.
 
 ### Fixed
 - **Target Port Architecture Isolation (Dashboard `:8080`, EICAR `:8082`, XFR Speedtest `:9000`)**:
