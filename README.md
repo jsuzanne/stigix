@@ -124,7 +124,18 @@ This project is my way to turn all that lab and demo experience into an open-sou
 
 The project is evolving rapidly with major features, engines, and UX refinements in every release.
 
-### 📦 Stateful PCAP Replay Engine & Native ZIP Exploit Ingestion *(v2.0.148)*
+### 🌟 Stigix 2.1 — Major Milestone Release *(v2.1.0)*
+
+- **🪄 1-Click Token Onboarding (Magic Join)** ⚡ — Generate a secure onboarding token or 1-line `curl` installation command directly from the Controller UI. Remote nodes automatically register, establish a secure reverse WebSocket tunnel, sync test targets, and appear live on the topology in seconds. [Read more](docs/GLOBAL_PROVISIONING_AND_PEER_ONBOARDING.md)
+- **🌐 WebSocket Reverse Tunnel & NAT Traversal** 🚀 — Out-of-band remote management across branches, data centers, and public clouds through strict NAT and firewalls with zero inbound ports or public IPs required on spoke nodes. [Read more](docs/REMOTE_VIEW_USER_GUIDE.md)
+- **🎛️ Central Fleet Provisioning & Sync** 📡 — Push targets, security policies, custom application definitions, and test profiles from a central Stigix Controller to all fleet nodes with a single click.
+- **🌪️ Live Underlay Chaos & QoS Impairment Injection** 🗺️ — Interactive VyOS router controls directly on the Underlay Topology map: inject latency, jitter, packet loss, bandwidth shaping, and DSCP/QoS marking to validate SD-WAN path steering, brownout recovery, and sub-second failover. [Read more](docs/UNDERLAY_TOPOLOGY.md)
+- **🛠️ Custom TCP Applications Simulation Engine** 🔄 — Stateful multi-port TCP/UDP client-server workload generator. Configurable payload templates, transaction loops, server chaos modes (delay, drop, jitter), and real-time RX/TX telemetry badges. [Read more](docs/CUSTOM_TCP_APPS.md)
+- **📦 Stateful L7 PCAP Replay Engine** 🛡️ — Replay real-world enterprise traffic flows, malware, and exploits from `.pcap`, `.pcapng`, or password-protected `.zip` archives. Features directional step-by-step reassembly, payload inspector, micro-timing controls, and zero disk residue (`Memory Guard`). [Read more](docs/PRD_PCAP_REPLAY_ENGINE.md)
+- **🔐 Streamlined Root CA Certificate Installation** 🔑 — Direct CA download and 1-click trust scripts for Linux, macOS, and Windows (`/ca.crt`). Automatic environment injection (`curl`, `python`, `node`) for seamless SSL/TLS Decryption (DPI) testing without certificate errors. [Read more](docs/SECURITY_TESTING.md)
+- **🧪 Interactive API Studio & Automation Sandbox** 📡 — Built-in REST API explorer with instant `curl`, Python, and TypeScript code generation, sub-50ms transaction inspector, and Model Context Protocol (FastMCP) AI support. [Read more](docs/API_STUDIO_GUIDE.md)
+- **🎯 Target Port Architecture Isolation** 🔌 — Decoupled service bindings across Management Dashboard (`:8080`), HTTP & EICAR App-Sim (`:8082`), Custom TCP Apps (`:8083+`), XFR Speedtest (`:9000`), and Iperf3 (`:5201`) with automatic configuration migration.
+- **📊 SD-WAN Reachability SLA Grid 2.0** 📈 — Operational bidirectional matrix featuring *SLA Compliant*, *SLA Breach*, *Egress Only* (cloud ingress NAT), and asymmetric failure diagnostics.
 - **Direct ZIP & Malware Archive Ingestion** 📦 — Native upload support for `.zip` archives (including nested `.pcap.zip` captures) with automatic password recovery (`infected`, `virus`, `malware`) and zero disk pollution (`Memory Guard`).
 - **100% Exploit Benchmark Validation** 🛡️ — Tested across 496 real-world exploit kit and malware captures (`Nuclear-EK`, `Rig-EK`, `Angler-EK`, `Magnitude-EK`, `Blaster`) with zero failures.
 - **Noise Classification & Fast Flow Filter Bar** 🎯 — Automatic isolation of network background noise (DHCPv6, LLMNR, NetBIOS) and 1-click bulk filters (`Select All`, `Unicast Only`, `+ TCP`, `+ UDP`).
