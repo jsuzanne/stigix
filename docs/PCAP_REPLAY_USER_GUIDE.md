@@ -249,6 +249,9 @@ To perform continuous load testing, firewall session table stress testing, or lo
 ### Q: Why is port 10080 so frequently assigned as the default replay port?
 **A**: When a PCAP is compiled into a `.stx-replay` profile, Stigix evaluates the captured destination port against `RESERVED_PORTS` (`80`, `443`, `8080..8090`, `8443`). Because binding ports $< 1024$ requires `root` privileges under Linux and often clashes with local reverse-proxies (Nginx/Apache), Stigix automatically adds 10,000 to reserved ports. Since the vast majority of web captures and exploit kits target standard HTTP port 80, the replay port becomes **`10080`** ($80 + 10000$). The original port is retained in the profile metadata and you can override the port at any time.
 
+### Q: Why was my encrypted PCAP classified as unknown-tcp and allowed through the firewall?
+**A**: When replaying a pre-recorded encrypted PCAP (TLS/SSL), Stigix transmits the static recorded ciphertext bytes over a standard raw TCP socket. Because there is no active live TLS certificate exchange between the client and the firewall, the firewall cannot decrypt the payload using SSL Forward Proxy. It classifies the traffic as `unknown-tcp`. If your security policy permits `Application: Any` / `Service: Any` (e.g. `AllowWebTraffic`), the traffic is permitted (`Bypass`). To test threat prevention (IPS/AV), use plaintext PCAPs or test Zero Trust rules that explicitly block `unknown-tcp`.
+
 ### Q: Does the PCAP replay expose my real passwords or production IP addresses?
 **A**: No. The PCAP compilation engine automatically scrubs sensitive credentials (Basic Auth, Bearer tokens, passwords, emails). Furthermore, original L3 IP addresses from the capture are completely discarded: all replayed packets use the live, valid IP addresses of your Stigix hosts.
 
@@ -257,9 +260,64 @@ To perform continuous load testing, firewall session table stress testing, or lo
 
 ---
 
+## 9. Plaintext vs. Encrypted PCAPs: What Can & Cannot Be Validated
+
+Understanding the fundamental difference between **Plaintext PCAPs** and **Encrypted (TLS/SSL) PCAPs** is essential when designing validation tests for Next-Gen Firewalls and SASE platforms (Palo Alto Networks Prisma Access, Fortinet, Check Point).
+
+```
+┌────────────────────────────────────────────────────────────────────────────────────────┐
+│                               PCAP REPLAY CAPABILITY MATRIX                            │
+├──────────────────────────────┬────────────────────────────┬────────────────────────────┤
+│ VALIDATION DOMAIN            │ PLAINTEXT PCAPS (HTTP/DNS) │ ENCRYPTED PCAPS (TLS/SSL)  │
+├──────────────────────────────┼────────────────────────────┼────────────────────────────┤
+│ Antivirus & Malware Payloads │ ✅ YES (Active Block/Reset)│ ❌ NO (Ciphertext masked)  │
+│ IPS / Vulnerability (CVEs)   │ ✅ YES (Payload Inspection)│ ❌ NO (Ciphertext masked)  │
+│ URL Filtering & URI Path     │ ✅ YES (Full URI & Headers)│ ⚠️ Limited to SNI in Hello │
+│ PAN-DB Domain Reputation     │ ✅ YES (Host: header match)│ ✅ YES (SNI in ClientHello)│
+│ JA3 / JA4 Fingerprinting     │ ❌ N/A (Plaintext)         │ ✅ YES (ClientHello hash)  │
+│ Zero Trust (Block unknown)   │ ✅ YES (App-ID match)      │ ✅ YES (Tests Default-Deny)│
+│ SD-WAN Failover & QoS        │ ✅ YES (Stateful TCP)      │ ✅ YES (Heavy Byte Volume) │
+│ MTU / MSS Tunnel Transport   │ ✅ YES (Large Packets)     │ ✅ YES (Large Packets)     │
+└──────────────────────────────┴────────────────────────────┴────────────────────────────┘
+```
+
+### 9.1 Plaintext PCAPs (HTTP, DNS, SMB, FTP, SMTP)
+**Best for**: Deep Security Inspection, Antivirus, Vulnerability Protection (IPS), URL Filtering, and Threat Signatures.
+
+* **How it works**: The conversational steps contain raw, unencrypted application data (e.g. `GET /malware.exe HTTP/1.1`, `Host: beeflex.online`, or raw CVE exploit strings).
+* **Firewall Reaction**:
+  1. **URL Filtering**: Inspects the HTTP `Host:` header and full URI path. If the domain is categorized as `high-risk`, `malware`, or `command-and-control`, the firewall injects an immediate **TCP RST** (`ENFORCED (RESET)`) or returns an HTTP block page (`ENFORCED (BLOCK PAGE)`).
+  2. **Threat Prevention (IPS/AV)**: Inspects the incoming server responses (e.g. 180 KB payload carrying an Exploit Kit or EICAR string). If an attack signature matches, the firewall severs the connection with `reset-both`.
+* **Example Use-Cases**: EICAR test downloads, Log4Shell (`${jndi:...}`), Shellshock (`User-Agent: () { ... }`), Remcos RAT dropper traffic.
+
+---
+
+### 9.2 Encrypted PCAPs (TLS / SSL / Proprietary Crypto)
+**Best for**: Zero Trust Policy Enforcement, Encrypted Traffic Analysis (ETA), JA3/JA4 Detection, and SD-WAN Infrastructure Resilience.
+
+#### Why SSL Forward Proxy Decryption does NOT decrypt pre-recorded PCAPs
+* Live SSL Decryption requires an **interactive, dynamic TLS Handshake** where the firewall negotiates ephemeral session keys with the client and injects its own MITM Proxy CA certificate.
+* When Stigix replays a recorded TLS capture, it streams **pre-encrypted ciphertext bytes** over a standard raw TCP socket. Because the private session keys belong to the past historical session, the firewall cannot decrypt this static ciphertext and classifies the stream as **`Application: unknown-tcp`**.
+
+#### The 3 Core Values of Encrypted PCAP Replays:
+1. **Zero Trust & App-ID Enforcement Validation**:
+   - In a hardened Zero Trust architecture, rules should **never** permit `Application: Any` / `Service: Any`.
+   - Replaying encrypted PCAPs validates that your firewall correctly intercepts unrecognized binary traffic (`unknown-tcp` on non-standard ports) and triggers a **Default-Deny** security rule.
+2. **Encrypted Traffic Analysis (ETA) & Metadata Inspection**:
+   - Even without payload decryption, NGFWs inspect the unencrypted initial TLS negotiation:
+     - **SNI (Server Name Indication)**: Domain requested in plaintext during ClientHello. If `SNI = evil-c2.com`, URL Filtering blocks the session.
+     - **JA3 / JA4 Fingerprinting**: Matches the cipher-suite and extension fingerprint against known malware families (Cobalt Strike, Trickbot, XWorm).
+     - **Certificate Validation**: Detects untrusted, expired, or self-signed server certificates.
+3. **SD-WAN Performance & Network Resilience**:
+   - Validating stateful TCP session survivability during SD-WAN link failover (e.g. Fibre ➔ 5G).
+   - Validating MTU/MSS fragmentation across IPsec / Prisma Access tunnels under multi-megabyte encrypted file transfers.
+
+---
+
 ## 📜 Revision History
 
 | Date | Stigix Version | Author / Trigger | Summary of Changes |
 |---|---|---|---|
+| 2026-10-06 | `v2.1.0` | Stigix Core Team | Added Section 9: Comprehensive Plaintext vs. Encrypted (TLS) PCAP Validation Guide and Zero Trust FAQ |
 | 2026-10-04 | `v2.0.150` | Stigix Core Team | Terminology update: Aligned user-facing UI labels and docs from "Turns" to "Steps" |
 | 2026-10-04 | `v2.0.149` | Stigix Core Team | Initial creation of the Stateful PCAP Replay Engine User Guide |
