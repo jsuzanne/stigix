@@ -4774,6 +4774,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                                                 { key: 'voice-config', label: 'Voice Sync', icon: PhoneCall, color: 'indigo' },
                                                 { key: 'iot-config', label: 'IoT Sync', icon: Radio, color: 'amber' },
                                                 { key: 'custom-tcp-apps', label: 'TCP Apps Sync', icon: Server, color: 'teal' },
+                                                { key: 'pcap-profiles', label: 'PCAP Replay Sync', icon: FileCode, color: 'purple' },
                                                 { key: 'cloud-config', label: 'Cloud Probes Sync', icon: Globe, color: 'sky' },
                                             ].map(b => {
                                                 const Icon = b.icon;
