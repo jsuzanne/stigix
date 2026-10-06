@@ -5,7 +5,13 @@ import fs from 'fs';
 import { spawn } from 'child_process';
 import zlib from 'zlib';
 
-export function createPcapApiRouter(configDir: string, projectRoot: string, pythonPath: string, onProfilesChanged?: () => void): Router {
+export function createPcapApiRouter(
+    configDir: string,
+    projectRoot: string,
+    pythonPath: string,
+    onProfilesChanged?: () => void,
+    getAutoSyncThresholdMb?: () => number
+): Router {
     const router = Router();
 
     const isEnabled = () => process.env.ENABLE_PCAP_REPLAY === 'true';
@@ -47,10 +53,13 @@ export function createPcapApiRouter(configDir: string, projectRoot: string, pyth
 
     // GET /api/pcap/status (Public / unauthenticated check for feature flag status)
     router.get('/status', (_req: Request, res: Response) => {
+        const thresholdMb = getAutoSyncThresholdMb ? getAutoSyncThresholdMb() : 10;
         res.json({
             enabled: isEnabled(),
             max_upload_mb: maxUploadMb,
-            parser_available: fs.existsSync(parserScript)
+            parser_available: fs.existsSync(parserScript),
+            auto_sync_threshold_mb: thresholdMb,
+            ws_buffer_limit_mb: 100
         });
     });
 
@@ -196,8 +205,10 @@ export function createPcapApiRouter(configDir: string, projectRoot: string, pyth
     router.get('/profiles', checkFeatureFlag, (_req: Request, res: Response) => {
         try {
             if (!fs.existsSync(profilesDir)) {
-                return res.json({ profiles: [] });
+                return res.json({ profiles: [], sync_threshold_mb: 10 });
             }
+            const thresholdMb = getAutoSyncThresholdMb ? getAutoSyncThresholdMb() : 10;
+            const thresholdBytes = thresholdMb * 1024 * 1024;
             const files = fs.readdirSync(profilesDir).filter(f => f.endsWith('.stx-replay'));
             const profiles = files.map(file => {
                 const fullPath = path.join(profilesDir, file);
@@ -221,14 +232,19 @@ export function createPcapApiRouter(configDir: string, projectRoot: string, pyth
                         } : null
                     };
                 } catch (_) {}
+
+                const isFleetSynced = stat.size <= thresholdBytes;
+
                 return {
                     file_name: file,
                     size_bytes: stat.size,
                     created_at: stat.birthtime || stat.mtime,
+                    is_fleet_synced: isFleetSynced,
+                    sync_threshold_mb: thresholdMb,
                     ...metadata
                 };
             });
-            res.json({ profiles });
+            res.json({ profiles, sync_threshold_mb: thresholdMb });
         } catch (err: any) {
             res.status(500).json({ success: false, error: err.message });
         }
@@ -447,20 +463,23 @@ export function createPcapApiRouter(configDir: string, projectRoot: string, pyth
 
     // GET /api/pcap/replay/jobs - Get active and recent replay jobs
     router.get('/replay/jobs', checkFeatureFlag, (_req: Request, res: Response) => {
-        const jobsList = Array.from(activeJobs.values()).map(j => ({
-            id: j.id,
-            role: j.role,
-            profile_file: j.profile_file,
-            target: j.target,
-            port: j.port,
-            pid: j.pid,
-            startedAt: j.startedAt,
-            status: j.status,
-            lastVerdict: j.lastVerdict,
-            recentEventsCount: j.recentEvents.length,
-            recentEvents: j.recentEvents,
-            latestEvent: j.recentEvents[j.recentEvents.length - 1] || null
-        }));
+        const jobsList = Array.from(activeJobs.values())
+            .sort((a, b) => (b.startedAt || 0) - (a.startedAt || 0))
+            .slice(0, 30)
+            .map(j => ({
+                id: j.id,
+                role: j.role,
+                profile_file: j.profile_file,
+                target: j.target,
+                port: j.port,
+                pid: j.pid,
+                startedAt: j.startedAt,
+                status: j.status,
+                lastVerdict: j.lastVerdict,
+                recentEventsCount: j.recentEvents.length,
+                recentEvents: j.recentEvents,
+                latestEvent: j.recentEvents[j.recentEvents.length - 1] || null
+            }));
         res.json({ jobs: jobsList });
     });
 

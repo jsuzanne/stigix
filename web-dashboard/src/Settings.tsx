@@ -4,7 +4,7 @@ import {
     Network, Sliders, ChevronDown, ChevronRight, Server, CheckCircle2, Upload, Power,
     Settings as SettingsIcon, Database, Activity, Cpu, Plus, Edit2, Trash2, MapPin, Zap, Info, XCircle, ShieldAlert, Layers, X, Radio,
     Clipboard, ExternalLink, BarChart3, AlertTriangle, Gauge, Bug, TrendingUp, Search, Users, Copy, History, ChevronUp, PhoneCall, Bot,
-    Key, ShieldCheck, FileText
+    Key, ShieldCheck, FileText, FileCode
 } from 'lucide-react';
 import {
     LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as ReTooltip,
@@ -4774,6 +4774,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                                                 { key: 'voice-config', label: 'Voice Sync', icon: PhoneCall, color: 'indigo' },
                                                 { key: 'iot-config', label: 'IoT Sync', icon: Radio, color: 'amber' },
                                                 { key: 'custom-tcp-apps', label: 'TCP Apps Sync', icon: Server, color: 'teal' },
+                                                { key: 'pcap-profiles', label: 'PCAP Replay Sync', icon: FileCode, color: 'purple' },
                                                 { key: 'cloud-config', label: 'Cloud Probes Sync', icon: Globe, color: 'sky' },
                                             ].map(b => {
                                                 const Icon = b.icon;

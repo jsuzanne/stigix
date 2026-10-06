@@ -422,10 +422,11 @@ export class FleetTunnelManager {
         const socket = ioClient(wsUrl, {
             auth: { token, instanceId, siteName, ip: localIp },
             transports: ['websocket', 'polling'],
+            maxHttpBufferSize: 100 * 1024 * 1024,
             reconnection: true,
             reconnectionDelay: 3000,
             reconnectionDelayMax: 15000,
-            timeout: 10000
+            timeout: 15000
         });
 
         socket.on('connect', () => {
@@ -595,10 +596,11 @@ export class FleetTunnelManager {
                 clusterJwtSecret: this.secretKey
             },
             transports: ['websocket', 'polling'],
+            maxHttpBufferSize: 100 * 1024 * 1024,
             reconnection: true,
             reconnectionDelay: 5000,
             reconnectionDelayMax: 20000,
-            timeout: 10000
+            timeout: 15000
         });
 
         let queryInterval: NodeJS.Timeout | null = null;
@@ -985,18 +987,25 @@ export class FleetTunnelManager {
 
                 if (needsSync) {
                     log('PROVISIONING', `⚡ [TUNNEL SYNC] Pulling bundle '${bundle.type}' (rev ${bundle.revision}) from Leader...`);
-                    const bundlePayload = await new Promise<any>((resolve) => {
-                        const timer = setTimeout(() => resolve(null), 5000);
-                        socket.emit('provisioning:pull_bundle', bundle.type, (data: any) => {
-                            clearTimeout(timer);
-                            resolve(data);
+                    const pullTimeoutMs = bundle.type === 'pcap-profiles' ? 30000 : 10000;
+                    try {
+                        const bundlePayload = await new Promise<any>((resolve) => {
+                            const timer = setTimeout(() => resolve(null), pullTimeoutMs);
+                            socket.emit('provisioning:pull_bundle', bundle.type, (data: any) => {
+                                clearTimeout(timer);
+                                resolve(data);
+                            });
                         });
-                    });
 
-                    if (bundlePayload !== undefined && bundlePayload !== null) {
-                        this.provisioningManager.applyGlobalBundle(bundle.type, bundle.revision, bundle.checksum, bundlePayload);
-                        appliedCount++;
-                        log('PROVISIONING', `✅ [TUNNEL SYNC] Successfully applied bundle '${bundle.type}' (rev ${bundle.revision}) over Fleet Tunnel`);
+                        if (bundlePayload !== undefined && bundlePayload !== null) {
+                            this.provisioningManager.applyGlobalBundle(bundle.type, bundle.revision, bundle.checksum, bundlePayload);
+                            appliedCount++;
+                            log('PROVISIONING', `✅ [TUNNEL SYNC] Successfully applied bundle '${bundle.type}' (rev ${bundle.revision}) over Fleet Tunnel`);
+                        } else {
+                            log('PROVISIONING', `⚠️ [TUNNEL SYNC] Bundle '${bundle.type}' (rev ${bundle.revision}) pull timed out after ${pullTimeoutMs/1000}s, skipped safely (tunnel remains healthy)`, 'warn');
+                        }
+                    } catch (pullErr: any) {
+                        log('PROVISIONING', `⚠️ [TUNNEL SYNC] Error pulling bundle '${bundle.type}': ${pullErr.message} (tunnel remains healthy)`, 'warn');
                     }
                 }
             }

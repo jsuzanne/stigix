@@ -141,20 +141,20 @@ export const PcapReplay: React.FC<PcapReplayProps> = ({ token }) => {
             });
             if (res.ok) {
                 const data = await res.json();
-                const running = (data.jobs || []).find((j: any) => j.status === 'running');
+                const jobs: any[] = data.jobs || [];
+                const sortedJobs = [...jobs].sort((a, b) => (b.startedAt || 0) - (a.startedAt || 0));
+                const running = sortedJobs.find((j: any) => j.status === 'running');
                 if (running) {
                     setActiveJob(running);
                     setTerminalLogs(running.recentEvents || []);
-                } else {
-                    const latest = (data.jobs || [])[0];
-                    if (latest && activeJob?.status === 'running') {
-                        setActiveJob(latest);
-                        setTerminalLogs(latest.recentEvents || []);
-                    }
+                } else if (sortedJobs.length > 0) {
+                    const latest = sortedJobs[0];
+                    setActiveJob(latest);
+                    setTerminalLogs(latest.recentEvents || []);
                 }
             }
         } catch (_) {}
-    }, [gFetch, token, activeJob]);
+    }, [gFetch, token]);
 
     useEffect(() => {
         checkStatus();
@@ -530,6 +530,23 @@ export const PcapReplay: React.FC<PcapReplayProps> = ({ token }) => {
                 } else {
                     toast.success(`Client replay started against ${payload.target}:${effectivePort || 'default'}`);
                 }
+                setActiveJob({
+                    id: data.job_id,
+                    role: replayRole,
+                    profile_file: selectedProfileFile,
+                    target: payload.target,
+                    port: effectivePort,
+                    pid: data.pid,
+                    startedAt: Date.now(),
+                    status: 'running',
+                    recentEvents: [
+                        {
+                            timestamp: Date.now() / 1000,
+                            event: 'starting',
+                            text: `Starting ${replayRole.toUpperCase()} process against ${payload.target || 'target'} (PID ${data.pid})...`
+                        }
+                    ]
+                });
                 pollActiveJobs();
             } else {
                 toast.error(data.error || 'Failed to start replay');
@@ -1223,8 +1240,8 @@ export const PcapReplay: React.FC<PcapReplayProps> = ({ token }) => {
                                     {profiles.length} COMPILED
                                 </p>
                             </div>
-                            <span className="text-[8px] font-black text-indigo-400 bg-indigo-500/10 px-1.5 py-0.5 rounded border border-indigo-500/20">
-                                Zero-Config
+                            <span className="text-[8px] font-black text-emerald-400 bg-emerald-500/10 px-1.5 py-0.5 rounded border border-emerald-500/20" title="Profiles up to this threshold are auto-synced across the Mesh tunnel.">
+                                Mesh Sync: &le; {profiles[0]?.sync_threshold_mb || 10}MB
                             </span>
                         </div>
 
@@ -1341,6 +1358,15 @@ export const PcapReplay: React.FC<PcapReplayProps> = ({ token }) => {
                                                 {flow?.server_port && (
                                                     <span className="font-mono text-purple-400 font-bold bg-purple-500/10 px-1 py-0.2 rounded border border-purple-500/20 text-[8px]">
                                                         Port {flow.server_port}
+                                                    </span>
+                                                )}
+                                                {p.is_fleet_synced !== undefined && (
+                                                    <span className={`text-[7px] px-1 py-0.2 rounded font-black uppercase shrink-0 border ${
+                                                        p.is_fleet_synced
+                                                            ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30'
+                                                            : 'bg-amber-500/10 text-amber-300 border-amber-500/30'
+                                                    }`} title={p.is_fleet_synced ? `Auto-synced across fleet (≤ ${p.sync_threshold_mb || 10}MB)` : `Local only (> ${p.sync_threshold_mb || 10}MB) — Export to sync manually`}>
+                                                        {p.is_fleet_synced ? 'Synced' : 'Local Only'}
                                                     </span>
                                                 )}
                                                 {p.size_bytes && (

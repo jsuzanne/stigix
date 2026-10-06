@@ -493,8 +493,16 @@ def inspect_pcap(pcap_path: str, scrub: bool = False, inner_pcap: Optional[str] 
     actual_pcap_path, is_temp, inner_name, discovered_pcaps = unpack_pcap_from_zip(pcap_path, inner_pcap, password=password)
     archive_file_size = os.path.getsize(pcap_path) if is_temp else None
 
+    MAX_PCAP_FILE_SIZE_BYTES = 100 * 1024 * 1024  # 100 MB maximum limit
+
+    file_size = os.path.getsize(actual_pcap_path)
+    if file_size > MAX_PCAP_FILE_SIZE_BYTES:
+        raise ValueError(
+            f"Capture file size ({file_size / (1024*1024):.1f} MB) exceeds the 100 MB safety limit. "
+            "Please filter out noise (e.g. video streams, file transfers) or truncate the capture in Wireshark."
+        )
+
     try:
-        file_size = os.path.getsize(actual_pcap_path)
         with open(actual_pcap_path, "rb") as f:
             file_sha256 = hashlib.sha256(f.read(65536 * 10)).hexdigest()  # sample hash for fast ID
 
