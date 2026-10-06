@@ -241,8 +241,24 @@ def process_single_file(engine, file_path: Path, scrub: bool = False, password: 
         "sensitive_warnings": [],
         "anomalies": [],
         "inspection": None,
-        "error": None
-    }
+    MAX_PCAP_SIZE = 100 * 1024 * 1024  # 100 MB Limit
+    if res["size_bytes"] > MAX_PCAP_SIZE:
+        res["status"] = "error"
+        res["suitability"] = "TOO_LARGE"
+        res["error"] = f"File size ({res['size_bytes'] / (1024*1024):.1f} MB) exceeds 100MB maximum limit."
+        res["reason"] = "Exceeds 100MB safety limit"
+        res["anomalies"] = [{
+            "flow_id": 0,
+            "protocol": "ALL",
+            "endpoints": "N/A",
+            "anomalies": [{
+                "type": "OVERSIZED_CAPTURE",
+                "severity": "HIGH",
+                "detail": f"File size is {res['size_bytes'] / (1024*1024):.1f} MB. Captures over 100MB risk memory exhaustion and network transfer timeouts.",
+                "recommendation": "Filter out bulky streams (e.g. video, downloads) or truncate packet payload length in Wireshark."
+            }]
+        }]
+        return res
 
     try:
         inspection = engine.inspect_pcap(str(file_path), scrub=scrub, password=password)
@@ -289,6 +305,7 @@ def print_terminal_summary(results: List[Dict[str, Any]], base_dir: str, show_an
         "GOOD": "🔵 GOOD     ",
         "PARTIAL": "🟡 PARTIAL  ",
         "UNSUITABLE": "🔴 NO REPLAY",
+        "TOO_LARGE": "⛔ > 100 MB   ",
         "ERROR": "❌ ERROR    "
     }
 
