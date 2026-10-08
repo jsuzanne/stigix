@@ -4325,8 +4325,13 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                                             <Layers size={18} />
                                         </div>
                                         <div>
-                                            <h3 className="text-sm font-black text-text-primary tracking-tight">Mesh Provisioning</h3>
-                                            <p className="text-[10px] text-text-muted mt-0.5 opacity-70">Publish shared configuration bundles to all registered targets</p>
+                                            <div className="flex items-center gap-2">
+                                                <h3 className="text-sm font-black text-text-primary tracking-tight">Mesh Provisioning</h3>
+                                                <span className="px-2 py-0.5 rounded-full text-[9px] font-black tracking-wider bg-blue-500/10 text-blue-400 border border-blue-500/20 flex items-center gap-1">
+                                                    <Zap size={10} className="text-blue-400" /> Auto-Sync Active (2.5s)
+                                                </span>
+                                            </div>
+                                            <p className="text-[10px] text-text-muted mt-0.5 opacity-70">Modifications to probes or applications auto-replicate to all connected peers with a 2.5s safety debounce</p>
                                         </div>
                                     </div>
                                     <button

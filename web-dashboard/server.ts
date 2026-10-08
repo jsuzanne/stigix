@@ -530,6 +530,7 @@ interface SystemSettings {
     auto_restart_traffic: boolean;
     auto_restart_probes: boolean;
     auto_restart_custom_tcp: boolean;
+    auto_sync_probes_to_fleet?: boolean; // Auto-push configuration bundles (probes, apps) to peers with debounce
     pcap_max_auto_sync_mb?: number;
     registry_mode?: 'auto' | 'leader' | 'peer';
 }
@@ -539,6 +540,7 @@ const DEFAULT_SYSTEM_SETTINGS: SystemSettings = {
     auto_restart_traffic: true,   // retrocompat: traffic was always auto-starting
     auto_restart_probes: true,    // retrocompat: probes were always auto-starting
     auto_restart_custom_tcp: true, // Custom TCP apps state persistence across reboots
+    auto_sync_probes_to_fleet: true, // Default enabled: auto-push changes to fleet with debounce
     pcap_max_auto_sync_mb: 10,     // Auto-sync threshold for PCAP profiles (<= 50MB, safety ratio of WS buffer)
     registry_mode: 'auto',
 };
@@ -4952,6 +4954,7 @@ const applyCustomConnectivityEndpoints = async (endpoints: any[]): Promise<boole
     // Save field-level local overrides if global provisioning is active
     if (provisioningManager) {
         provisioningManager.handleLocalSave('connectivity-probes', customAndEnvProbes);
+        triggerAutoSyncFleetBundle('connectivity-probes');
     }
 
     if (customSuccess && newProbes.length > 0) {
@@ -5070,6 +5073,7 @@ app.post('/api/probes/promote-app', authenticateToken, async (req, res) => {
         const updated = [...existing, newProbe];
         saveCustomConnectivityEndpoints(updated);
         provisioningManager.handleLocalSave('connectivity-probes', updated);
+        triggerAutoSyncFleetBundle('connectivity-probes');
 
         // Immediate first check
         setImmediate(async () => {
@@ -6754,6 +6758,7 @@ const updateAppsWeigth = (updates: Record<string, number>, res: any) => {
         config.applications = newApps;
         fs.writeFileSync(APPLICATIONS_CONFIG_FILE, JSON.stringify(config, null, 2));
         provisioningManager.handleLocalSave('applications', newApps);
+        triggerAutoSyncFleetBundle('applications');
         res.json({ success: true });
     } catch (err) {
         res.status(500).json({ error: 'Operation failed', details: err });
@@ -6872,6 +6877,10 @@ app.post('/api/config/applications/import', authenticateToken, (req, res) => {
 
         config.applications = applications;
         fs.writeFileSync(APPLICATIONS_CONFIG_FILE, JSON.stringify(config, null, 2));
+        if (provisioningManager) {
+            provisioningManager.handleLocalSave('applications', applications);
+            triggerAutoSyncFleetBundle('applications');
+        }
 
         res.json({ success: true, count: applications.length });
     } catch (err: any) {
@@ -14111,6 +14120,58 @@ const buildConnectivityProbesPayload = () => {
     return [...mergedEnvProbes, ...pureCustom];
 };
 
+// ── Debounced Auto-Sync Helper (Leader -> Peers) ───────────────────────────
+const autoSyncDebounceTimers: Map<string, NodeJS.Timeout> = new Map();
+
+const triggerAutoSyncFleetBundle = (type: GlobalBundleType, delayMs: number = 2500) => {
+    const isLeader = typeof registryManager?.isLeader === 'function' 
+        ? registryManager.isLeader() 
+        : (registryManager?.getStatus?.()?.mode === 'leader');
+    if (!isLeader) return;
+    if (!getSystemSettings().auto_sync_probes_to_fleet) return;
+    if (!provisioningManager || !fleetTunnelManager) return;
+
+    if (autoSyncDebounceTimers.has(type)) {
+        clearTimeout(autoSyncDebounceTimers.get(type)!);
+    }
+
+    const timer = setTimeout(() => {
+        autoSyncDebounceTimers.delete(type);
+        try {
+            let payload: any = null;
+            if (type === 'applications') {
+                if (fs.existsSync(APPLICATIONS_CONFIG_FILE)) {
+                    try {
+                        const parsed = JSON.parse(fs.readFileSync(APPLICATIONS_CONFIG_FILE, 'utf8'));
+                        payload = parsed.applications || [];
+                    } catch {}
+                }
+                if (!payload) payload = [];
+            } else if (type === 'connectivity-probes') {
+                payload = buildConnectivityProbesPayload();
+            } else if (type === 'pcap-profiles') {
+                payload = buildPcapProfilesPayload();
+            } else {
+                const file = provisioningManager.getActiveConfigFile(type);
+                if (fs.existsSync(file)) {
+                    try { payload = JSON.parse(fs.readFileSync(file, 'utf8')); } catch {}
+                }
+                if (!payload) payload = {};
+            }
+
+            if (provisioningManager.hasUnpublishedChanges(type, payload)) {
+                const pub = provisioningManager.publishBundle(type, payload);
+                fleetTunnelManager.broadcastProvisioningUpdate(type);
+                log('PROVISIONING', `⚡ [AUTO-SYNC] Automatically published & broadcasted bundle '${type}' (rev ${pub.revision}) to fleet`);
+            }
+        } catch (e: any) {
+            log('PROVISIONING', `Auto-sync failed for bundle '${type}': ${e.message}`, 'warn');
+        }
+    }, delayMs);
+
+    autoSyncDebounceTimers.set(type, timer);
+};
+
 // --- Global Provisioning Management APIs ---
 app.get('/api/provisioning/config', authenticateToken, (_req, res) => {
     let rawApps: any[] = [];
@@ -14940,10 +15001,11 @@ app.get('/api/config/system-settings', authenticateToken, (_req, res) => {
 
 app.post('/api/config/system-settings', authenticateToken, async (req, res) => {
     try {
-        const { auto_restart_iot, auto_restart_voice, registry_mode } = req.body;
+        const { auto_restart_iot, auto_restart_voice, auto_sync_probes_to_fleet, registry_mode } = req.body;
         const patch: Partial<SystemSettings> = {};
         if (typeof auto_restart_iot === 'boolean') patch.auto_restart_iot = auto_restart_iot;
         if (typeof auto_restart_voice === 'boolean') patch.auto_restart_voice = auto_restart_voice;
+        if (typeof auto_sync_probes_to_fleet === 'boolean') patch.auto_sync_probes_to_fleet = auto_sync_probes_to_fleet;
         if (registry_mode === 'auto' || registry_mode === 'leader' || registry_mode === 'peer') {
             patch.registry_mode = registry_mode;
         }
