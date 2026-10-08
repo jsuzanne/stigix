@@ -927,7 +927,8 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                 ...prev,
                 auto_restart_iot: !!data.auto_restart_iot,
                 auto_restart_voice: !!data.auto_restart_voice,
-                auto_restart_probes: data.auto_restart_probes !== false, // default true
+                auto_restart_probes: data.auto_restart_probes !== false,
+                auto_sync_probes_to_fleet: data.auto_sync_probes_to_fleet !== false, // default true
                 auto_restart_traffic: data.auto_restart_traffic !== false, // default true
                 auto_restart_custom_tcp: data.auto_restart_custom_tcp !== false, // default true
                 registry_mode: data.registry_mode || 'auto',
@@ -1703,7 +1704,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
         return <SettingsSkeleton />;
     }
 
-    const saveSystemSetting = async (key: 'auto_restart_iot' | 'auto_restart_voice' | 'auto_restart_traffic' | 'auto_restart_probes' | 'auto_restart_custom_tcp' | 'registry_mode', value: any) => {
+    const saveSystemSetting = async (key: 'auto_restart_iot' | 'auto_restart_voice' | 'auto_restart_traffic' | 'auto_restart_probes' | 'auto_restart_custom_tcp' | 'auto_sync_probes_to_fleet' | 'registry_mode', value: any) => {
         const next = { ...systemSettings, [key]: value };
         setSystemSettings(next);
         setSavingSystemSettings(true);
@@ -3781,6 +3782,15 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                                         hasConfig: voiceHasConfig,
                                         noConfigMsg: 'Add a Voice server first',
                                     },
+                                    {
+                                        key: 'auto_sync_probes_to_fleet' as const,
+                                        label: 'Auto-Sync to Fleet',
+                                        desc: 'Auto-broadcasts probe & application edits to peers with 2.5s debounce.',
+                                        icon: '⚡',
+                                        color: 'amber',
+                                        hasConfig: true,
+                                        noConfigMsg: '',
+                                    },
                                 ] as const).map(({ key, label, desc, icon, color, hasConfig, noConfigMsg }) => {
                                     const active = systemSettings[key];
                                     const isLoading = hasConfig === null;
@@ -3792,6 +3802,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                                         indigo: { ring: 'group-hover:border-indigo-500/40', dot: 'bg-indigo-500', bg: 'bg-indigo-500/10 text-indigo-400' },
                                         green:  { ring: 'group-hover:border-green-500/40',  dot: 'bg-green-500',  bg: 'bg-green-500/10 text-green-400'  },
                                         blue:   { ring: 'group-hover:border-blue-500/40',   dot: 'bg-blue-500',   bg: 'bg-blue-500/10 text-blue-400'   },
+                                        amber:  { ring: 'group-hover:border-amber-500/40',  dot: 'bg-amber-500',  bg: 'bg-amber-500/10 text-amber-400'  },
                                     }[color];
 
                                     return (
