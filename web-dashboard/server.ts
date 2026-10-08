@@ -4321,7 +4321,6 @@ const performConnectivityCheck = async (endpoint: any): Promise<ConnectivityResu
                         if (!cmOk) { result.score = 0; result.reachable = false; }
                         if (DEBUG) log('CONNECTIVITY', `[DEBUG] content_match for ${endpoint.name}: ${cmResult} (ok=${cmOk})`, 'debug');
                     }
-                }
             }
         } else if (endpoint.type.toLowerCase() === 'ping') {
             const iface = getInterface();
