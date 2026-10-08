@@ -379,6 +379,7 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
     const [selectedEicarTargets, setSelectedEicarTargets] = useState<string[]>([]);
     const [securityTargets, setSecurityTargets] = useState<any[]>([]);
     const [customAppEicarTargets, setCustomAppEicarTargets] = useState<any[]>([]);
+    const [eicarFilter, setEicarFilter] = useState<'all' | 'custom_app' | 'fabric' | 'cloud'>('all');
     const [targetReachability, setTargetReachability] = useState<Record<string, boolean | 'loading'>>({});
     const [runningEicarTarget, setRunningEicarTarget] = useState<string | null>(null);
 
@@ -2285,14 +2286,78 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
 
                             <div className="space-y-3">
                                 <div>
-                                    <label className="text-[10px] font-black text-text-muted tracking-widest mb-3 flex items-center gap-2">
-                                        <ShieldAlert size={14} className="text-red-500" />
-                                        Select Target endpoints to test
-                                    </label>
+                                    <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+                                        <label className="text-[10px] font-black text-text-muted tracking-widest flex items-center gap-2">
+                                            <ShieldAlert size={14} className="text-red-500" />
+                                            Select Target endpoints to test
+                                        </label>
+                                        
+                                        {/* EICAR Target Type Filter Tabs */}
+                                        <div className="flex items-center gap-1 bg-card-secondary/70 border border-border p-1 rounded-lg text-[10px] font-bold">
+                                            <button
+                                                type="button"
+                                                onClick={() => setEicarFilter('all')}
+                                                className={`px-2.5 py-1 rounded-md transition-all flex items-center gap-1.5 ${
+                                                    eicarFilter === 'all'
+                                                        ? 'bg-blue-600 text-white shadow-sm font-black'
+                                                        : 'text-text-muted hover:text-text-primary'
+                                                }`}
+                                            >
+                                                All
+                                                <span className={`text-[9px] px-1.5 py-0.2 rounded-full ${eicarFilter === 'all' ? 'bg-blue-800/80 text-white' : 'bg-card border border-border/50 text-text-muted'}`}>
+                                                    {(cloudEicarUrl ? 1 : 0) + customAppEicarTargets.length + securityTargets.length}
+                                                </span>
+                                            </button>
+
+                                            <button
+                                                type="button"
+                                                onClick={() => setEicarFilter('custom_app')}
+                                                className={`px-2.5 py-1 rounded-md transition-all flex items-center gap-1.5 ${
+                                                    eicarFilter === 'custom_app'
+                                                        ? 'bg-amber-500 text-black font-black shadow-sm'
+                                                        : 'text-text-muted hover:text-amber-500'
+                                                }`}
+                                            >
+                                                ⚡ Custom Apps
+                                                <span className={`text-[9px] px-1.5 py-0.2 rounded-full ${eicarFilter === 'custom_app' ? 'bg-amber-700/40 text-black' : 'bg-amber-500/15 text-amber-500'}`}>
+                                                    {customAppEicarTargets.length}
+                                                </span>
+                                            </button>
+
+                                            <button
+                                                type="button"
+                                                onClick={() => setEicarFilter('fabric')}
+                                                className={`px-2.5 py-1 rounded-md transition-all flex items-center gap-1.5 ${
+                                                    eicarFilter === 'fabric'
+                                                        ? 'bg-blue-500/20 text-blue-400 border border-blue-500/40 font-bold shadow-sm'
+                                                        : 'text-text-muted hover:text-blue-400'
+                                                }`}
+                                            >
+                                                Fabric (8082)
+                                                <span className={`text-[9px] px-1.5 py-0.2 rounded-full ${eicarFilter === 'fabric' ? 'bg-blue-500/30 text-blue-300' : 'bg-blue-500/10 text-blue-400'}`}>
+                                                    {securityTargets.length}
+                                                </span>
+                                            </button>
+
+                                            {cloudEicarUrl && (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setEicarFilter('cloud')}
+                                                    className={`px-2.5 py-1 rounded-md transition-all flex items-center gap-1.5 ${
+                                                        eicarFilter === 'cloud'
+                                                            ? 'bg-indigo-600 text-white shadow-sm font-black'
+                                                            : 'text-text-muted hover:text-indigo-400'
+                                                    }`}
+                                                >
+                                                    Cloud
+                                                </button>
+                                            )}
+                                        </div>
+                                    </div>
                                     
                                     <div className="flex flex-col gap-2 max-h-[350px] overflow-y-auto pr-1">
                                         {/* Cloudflare Worker Target */}
-                                        {cloudEicarUrl && (() => {
+                                        {(eicarFilter === 'all' || eicarFilter === 'cloud') && cloudEicarUrl && (() => {
                                             const isSelected = selectedEicarTargets.includes(cloudEicarUrl);
                                             let host = '';
                                             try { host = new URL(cloudEicarUrl).hostname; } catch {}
@@ -2388,7 +2453,7 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
                                         })()}
 
                                         {/* Dynamic Custom TCP/HTTP App EICAR Responders */}
-                                        {customAppEicarTargets.map((ca, idx) => {
+                                        {(eicarFilter === 'all' || eicarFilter === 'custom_app') && customAppEicarTargets.map((ca, idx) => {
                                             const isSelected = selectedEicarTargets.includes(ca.url);
                                             const lastResult = getEicarResult(ca.url);
                                             const cleanName = (ca.name || '').replace(/^\[Custom App\]\s*/i, '').replace(/\s*-\s*Eicar Provider APP$/i, '');
@@ -2453,7 +2518,7 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
                                         })}
 
                                         {/* Dynamic Stigix Targets */}
-                                        {securityTargets.map((t) => {
+                                        {(eicarFilter === 'all' || eicarFilter === 'fabric') && securityTargets.map((t) => {
                                             const httpPort = (t.ports?.http && t.ports.http !== 8080 && t.ports.http !== 80) ? t.ports.http : 8082;
                                             const url = `http://${t.host}:${httpPort}/eicar.com.txt`;
                                             const isSelected = selectedEicarTargets.includes(url);
