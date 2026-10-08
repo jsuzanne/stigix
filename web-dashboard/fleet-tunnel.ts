@@ -17,6 +17,10 @@ export interface TunnelPeerInfo {
     ip: string;
     connectedAt: number;
     lastPing: number;
+    rttMs?: number;
+    lastPong?: number;
+    syncStatus?: 'synced' | 'syncing' | 'error' | 'pending';
+    activeRevision?: number;
     transport: string;
     direction: 'inbound' | 'outbound_dial';
 }
@@ -87,6 +91,7 @@ export class FleetTunnelManager {
     private isListeningCloudflare: boolean = false;
 
     private backgroundLoopInterval: NodeJS.Timeout | null = null;
+    private rttPingInterval: NodeJS.Timeout | null = null;
 
     constructor(
         ioServer: SocketIOServer,
@@ -217,6 +222,14 @@ export class FleetTunnelManager {
                     }
                 }, 15000);
 
+                socket.on('tunnel:rtt_ping', (data: any, ack?: (res: any) => void) => {
+                    if (typeof ack === 'function') {
+                        ack({ pongTime: Date.now() });
+                    } else {
+                        socket.emit('tunnel:rtt_pong', { pingTime: data?.pingTime, pongTime: Date.now() });
+                    }
+                });
+
                 // Spoke listens for config updates and triggers initial sync
                 socket.on('peer:bundle_updated', (type?: string) => {
                     this.syncProvisioningOverTunnel(socket, type);
@@ -247,6 +260,30 @@ export class FleetTunnelManager {
                 const entry = this.activeTunnels.get(instanceId);
                 if (entry) entry.info.lastPing = Date.now();
                 if (typeof ack === 'function') ack();
+            });
+
+            socket.on('tunnel:rtt_pong', (data: { pingTime: number }) => {
+                const entry = this.activeTunnels.get(instanceId);
+                if (entry && data?.pingTime) {
+                    const rtt = Math.max(1, Date.now() - data.pingTime);
+                    entry.info.rttMs = rtt;
+                    entry.info.lastPong = Date.now();
+                    if (this.localRegistryServer) {
+                        this.localRegistryServer.updatePeerTunnelMetrics(instanceId, rtt, Date.now());
+                    }
+                }
+            });
+
+            socket.on('provisioning:ack', (ackData: { bundleType: string; revision: number; status: string }) => {
+                const entry = this.activeTunnels.get(instanceId);
+                if (entry) {
+                    entry.info.syncStatus = ackData.status === 'applied' ? 'synced' : 'error';
+                    entry.info.activeRevision = ackData.revision;
+                }
+                if (this.localRegistryServer && instanceId) {
+                    this.localRegistryServer.updateInstanceProvisioningAck(instanceId, ackData);
+                }
+                log('PROVISIONING', `✅ [FLEET ACK] Peer ${siteName || instanceId} confirmed bundle '${ackData.bundleType}' (rev ${ackData.revision}) status: ${ackData.status}`);
             });
 
             // Handle telemetry push from remote peer (M6)
@@ -307,9 +344,33 @@ export class FleetTunnelManager {
     public start(): void {
         this.runBackgroundLoop();
         this.backgroundLoopInterval = setInterval(() => this.runBackgroundLoop(), 5000);
+        this.startRttHeartbeatLoop();
+    }
+
+    private startRttHeartbeatLoop(): void {
+        if (this.rttPingInterval) clearInterval(this.rttPingInterval);
+        this.rttPingInterval = setInterval(() => {
+            for (const [instanceId, entry] of this.activeTunnels.entries()) {
+                if (entry.socket && (entry.socket as any).connected) {
+                    const pingStart = Date.now();
+                    entry.socket.emit('tunnel:rtt_ping', { pingTime: pingStart }, (ackData?: { pongTime: number }) => {
+                        const rtt = Math.max(1, Date.now() - pingStart);
+                        entry.info.rttMs = rtt;
+                        entry.info.lastPong = Date.now();
+                        if (this.localRegistryServer) {
+                            this.localRegistryServer.updatePeerTunnelMetrics(instanceId, rtt, Date.now());
+                        }
+                    });
+                }
+            }
+        }, 15000);
     }
 
     public stop(): void {
+        if (this.rttPingInterval) {
+            clearInterval(this.rttPingInterval);
+            this.rttPingInterval = null;
+        }
         if (this.backgroundLoopInterval) {
             clearInterval(this.backgroundLoopInterval);
             this.backgroundLoopInterval = null;
@@ -439,6 +500,15 @@ export class FleetTunnelManager {
             this.spokeTelemetryInterval = setInterval(() => {
                 if (socket.connected) this.pushLocalTelemetryToSocket(socket);
             }, 15000);
+
+            // Spoke responds to Leader RTT Heartbeats
+            socket.on('tunnel:rtt_ping', (data: any, ack?: (res: any) => void) => {
+                if (typeof ack === 'function') {
+                    ack({ pongTime: Date.now() });
+                } else {
+                    socket.emit('tunnel:rtt_pong', { pingTime: data?.pingTime, pongTime: Date.now() });
+                }
+            });
 
             // Spoke listens for config updates and triggers initial sync
             socket.on('peer:bundle_updated', (type?: string) => {
@@ -1000,8 +1070,23 @@ export class FleetTunnelManager {
                         if (bundlePayload !== undefined && bundlePayload !== null) {
                             this.provisioningManager.applyGlobalBundle(bundle.type, bundle.revision, bundle.checksum, bundlePayload);
                             appliedCount++;
+                            socket.emit('provisioning:ack', {
+                                bundleType: bundle.type,
+                                revision: bundle.revision,
+                                checksum: bundle.checksum,
+                                status: 'applied',
+                                appliedAt: new Date().toISOString()
+                            });
                             log('PROVISIONING', `✅ [TUNNEL SYNC] Successfully applied bundle '${bundle.type}' (rev ${bundle.revision}) over Fleet Tunnel`);
                         } else {
+                            socket.emit('provisioning:ack', {
+                                bundleType: bundle.type,
+                                revision: bundle.revision,
+                                checksum: bundle.checksum,
+                                status: 'error',
+                                error: 'pull_timeout',
+                                appliedAt: new Date().toISOString()
+                            });
                             log('PROVISIONING', `⚠️ [TUNNEL SYNC] Bundle '${bundle.type}' (rev ${bundle.revision}) pull timed out after ${pullTimeoutMs/1000}s, skipped safely (tunnel remains healthy)`, 'warn');
                         }
                     } catch (pullErr: any) {

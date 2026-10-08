@@ -25,6 +25,8 @@ interface PeerInstance {
     is_stale: boolean;
     last_seen_seconds_ago: number;
     last_seen?: string;
+    rtt_ms?: number;
+    last_pong?: string;
     config_sync_status?: 'synced' | 'behind' | 'na';
     behind_bundles_count?: number;
     capabilities?: {
@@ -653,10 +655,26 @@ export default function Fleet({ token, onNavigate: _onNavigate }: FleetProps) {
                                                 )}
                                             </td>
 
-                                            {/* Last Update: Relative + Absolute Timestamp */}
+                                            {/* Last Update: Relative + Absolute Timestamp + RTT */}
                                             <td className="px-6 py-3 text-xs font-mono text-text-muted" title={peer.last_seen || ''}>
                                                 <div className="flex flex-col">
-                                                    <span className="font-bold text-text/80">{rel}</span>
+                                                    <div className="flex items-center gap-1.5 flex-wrap">
+                                                        <span className="font-bold text-text/80">{rel}</span>
+                                                        {(() => {
+                                                            const rtt = peer.meta?.rtt_ms ?? peer.rtt_ms;
+                                                            if (rtt !== undefined && rtt !== null && !isLeader) {
+                                                                const color = rtt < 50 ? "text-emerald-400 bg-emerald-500/10 border-emerald-500/20" :
+                                                                    rtt < 150 ? "text-amber-400 bg-amber-500/10 border-amber-500/20" :
+                                                                    "text-rose-400 bg-rose-500/10 border-rose-500/20";
+                                                                return (
+                                                                    <span className={`px-1.5 py-0.5 rounded text-[10px] font-mono font-bold border ${color}`} title={`Tunnel WebSocket RTT: ${rtt}ms`}>
+                                                                        ⚡ {rtt}ms
+                                                                    </span>
+                                                                );
+                                                            }
+                                                            return null;
+                                                        })()}
+                                                    </div>
                                                     {timeStr && <span className="text-[11px] opacity-60">{timeStr}</span>}
                                                 </div>
                                             </td>
@@ -989,10 +1007,18 @@ export default function Fleet({ token, onNavigate: _onNavigate }: FleetProps) {
 
                             {/* Direct Action Footer */}
                             <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-4 border-t border-border">
-                                <span className="text-xs font-mono text-text-muted flex items-center gap-1.5">
-                                    <Clock size={12} />
-                                    Last heartbeat received: {selectedPeer.last_seen ? new Date(selectedPeer.last_seen).toLocaleString() : '—'}
-                                </span>
+                                <div className="flex flex-col gap-0.5">
+                                    <span className="text-xs font-mono text-text-muted flex items-center gap-1.5">
+                                        <Clock size={12} />
+                                        Last telemetry: {selectedPeer.last_seen ? new Date(selectedPeer.last_seen).toLocaleString() : '—'}
+                                    </span>
+                                    {(selectedPeer.rtt_ms ?? selectedPeer.meta?.rtt_ms) !== undefined && (
+                                        <span className="text-[11px] font-mono text-emerald-400 flex items-center gap-1">
+                                            <Zap size={11} className="text-emerald-400" />
+                                            Tunnel RTT: {selectedPeer.rtt_ms ?? selectedPeer.meta?.rtt_ms} ms (Active Heartbeat)
+                                        </span>
+                                    )}
+                                </div>
                                 <div className="flex items-center gap-2">
                                     <a
                                         href={selectedPeer.meta?.management_url || (selectedPeer.meta?.management_ip ? `http://${selectedPeer.meta.management_ip}:8080` : `http://${selectedPeer.ip_private}:8080`)}

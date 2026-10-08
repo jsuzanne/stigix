@@ -67,6 +67,46 @@ export class LocalRegistryServer {
         this.instances.set(key, mergedInstance);
     }
 
+        public updatePeerTunnelMetrics(instanceId: string, rttMs: number, lastPong: number): void {
+        let inst = this.instances.get(instanceId);
+        if (!inst) {
+            for (const [, v] of this.instances.entries()) {
+                if (v.instance_id === instanceId || v.ip_private === instanceId || v.meta?.site === instanceId) {
+                    inst = v;
+                    break;
+                }
+            }
+        }
+        if (inst) {
+            (inst as any).rtt_ms = rttMs;
+            (inst as any).last_pong = new Date(lastPong).toISOString();
+            if (!inst.meta) inst.meta = {};
+            inst.meta.rtt_ms = rttMs;
+            inst.meta.last_pong = (inst as any).last_pong;
+        }
+    }
+
+    public updateInstanceProvisioningAck(instanceId: string, ack: { bundleType: string; revision: number; status: string }): void {
+        let inst = this.instances.get(instanceId);
+        if (!inst) {
+            for (const [, v] of this.instances.entries()) {
+                if (v.instance_id === instanceId || v.ip_private === instanceId || v.meta?.site === instanceId) {
+                    inst = v;
+                    break;
+                }
+            }
+        }
+        if (inst) {
+            if (!inst.meta) inst.meta = {};
+            inst.meta.sync_ack = {
+                bundleType: ack.bundleType,
+                revision: ack.revision,
+                status: ack.status,
+                ackAt: new Date().toISOString()
+            };
+        }
+    }
+
     getRouter(targetsManager?: any, provisioningManager?: any): Router {
         this.provisioningManager = provisioningManager;
         const router = Router();
