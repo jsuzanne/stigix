@@ -413,6 +413,23 @@ function IoTDebugMonitor({ token }: { token: string }) {
     );
 }
 
+// Helper to format ISO sync timestamp into human readable relative + absolute
+const formatSyncTime = (isoString?: string): { rel: string; time: string } | null => {
+    if (!isoString) return null;
+    try {
+        const d = new Date(isoString);
+        if (isNaN(d.getTime())) return null;
+        const diffSec = Math.max(0, Math.floor((Date.now() - d.getTime()) / 1000));
+        const timeStr = d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+        if (diffSec < 60) return { rel: `${diffSec}s ago`, time: timeStr };
+        if (diffSec < 3600) return { rel: `${Math.floor(diffSec / 60)}m ago`, time: timeStr };
+        if (diffSec < 86400) return { rel: `${Math.floor(diffSec / 3600)}h ago`, time: timeStr };
+        return { rel: `${Math.floor(diffSec / 86400)}d ago`, time: timeStr };
+    } catch {
+        return null;
+    }
+};
+
 export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCopilotConfig, initialTab }: { 
     token: string, 
     uiConfig?: { maxCaptures: number; globalScoreTypes?: string[] },
@@ -4399,10 +4416,21 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                                                             </span>
                                                         )}
                                                     </div>
-                                                    <p className="text-[9px] font-bold text-text-muted mt-1 truncate">
-                                                        Rev: <span className="font-mono text-emerald-400">rev {rev}</span>
-                                                        <span className="opacity-50"> ({cnt} items)</span>
-                                                    </p>
+                                                    <div className="flex items-center gap-2 mt-1 flex-wrap">
+                                                        <span className="text-[9.5px] font-bold text-text-muted font-mono">
+                                                            Rev: <span className="text-emerald-400 font-bold">rev {rev}</span>
+                                                            <span className="opacity-50"> ({cnt} items)</span>
+                                                        </span>
+                                                        {(() => {
+                                                            const syncTime = formatSyncTime(bMeta?.updatedAt);
+                                                            if (!syncTime) return null;
+                                                            return (
+                                                                <span className="text-[9px] font-mono text-cyan-400/90 bg-cyan-500/10 px-1.5 py-0.5 rounded border border-cyan-500/20 flex items-center gap-1" title={`Published at ${syncTime.time} (${syncTime.rel})`}>
+                                                                    ⏱️ {syncTime.time} <span className="opacity-60">({syncTime.rel})</span>
+                                                                </span>
+                                                            );
+                                                        })()}
+                                                    </div>
                                                 </div>
                                                 <button
                                                     onClick={() => handlePublishBundle(b.key as any)}
@@ -4810,9 +4838,22 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                                                             <Icon size={14} className="text-blue-500" />
                                                             <span className="text-[10px] font-bold text-text-muted uppercase tracking-wider">{b.label}</span>
                                                         </div>
-                                                        <span className="font-mono text-[10px] font-bold text-emerald-400">
-                                                            rev {rev} ({status})
-                                                        </span>
+                                                        <div className="flex flex-col items-end">
+                                                            <span className={`font-mono text-[10px] font-bold ${
+                                                                status === "applied" ? "text-emerald-400" : status === "failed" ? "text-rose-400" : "text-amber-400"
+                                                            }`}>
+                                                                rev {rev} ({status})
+                                                            </span>
+                                                            {(() => {
+                                                                const appliedTime = formatSyncTime(bState?.appliedAt);
+                                                                if (!appliedTime) return null;
+                                                                return (
+                                                                    <span className="text-[8.5px] font-mono text-cyan-400/80 flex items-center gap-0.5" title={`Applied at ${appliedTime.time} (${appliedTime.rel})`}>
+                                                                        ⏱️ {appliedTime.time} <span className="opacity-60">({appliedTime.rel})</span>
+                                                                    </span>
+                                                                );
+                                                            })()}
+                                                        </div>
                                                     </div>
                                                 );
                                             })}
