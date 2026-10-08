@@ -12633,6 +12633,46 @@ fleetTunnelManager.setTargetsManager(targetsManager);
 fleetTunnelManager.setLocalRegistryServer(localRegistryServer);
 fleetTunnelManager.setProvisioningManager(provisioningManager);
 fleetTunnelManager.setTcpAppManager(tcpAppManager);
+// Helper to sync all active local custom app listeners to Fleet Mesh
+function syncAllLocalCustomAppServers(): void {
+    if (!tcpAppManager) return;
+    try {
+        const file = tcpAppManager.getConfig();
+        const regStatus = registryManager.getStatus();
+        const nodeId = regStatus.instance_id || 'node';
+        const nodeName = regStatus.site_name || nodeId;
+        const nodeIp = regStatus.ip_private || (typeof detectedIp !== 'undefined' ? detectedIp : '') || '127.0.0.1';
+
+        for (const app of file.applications) {
+            const status = tcpAppManager.getAppStatus(app.id);
+            const isListening = status.listenerState === 'listening';
+            const isEicar = app.serverBehavior?.mode === 'eicar_response'
+                || app.name?.toLowerCase().includes('eicar')
+                || (app as any).is_eicar_responder === true;
+
+            const serverState = {
+                node_id: nodeId,
+                node_name: nodeName,
+                app_id: app.id,
+                app_name: app.name,
+                role: 'server',
+                status: isListening ? 'running' : 'stopped',
+                port: app.listener.port,
+                protocol: app.protocol || 'stigix_tcp',
+                ip: nodeIp,
+                is_eicar_responder: isEicar,
+                eicar_mode: app.protocol === 'http_1_1' ? 'http' : 'tcp_raw',
+                pid: process.pid,
+                updated_at: Date.now()
+            };
+
+            fleetTunnelManager.pushCustomAppServerState(serverState);
+        }
+    } catch (e: any) {
+        log('CUSTOM_TCP', `Error syncing all local custom app servers: ${e.message}`, 'warn');
+    }
+}
+
 // Hook Custom TCP Manager state changes into Fleet Tunnel Mesh
 tcpAppManager.on('state_changed', ({ appId }: { appId: string }) => {
     try {
@@ -15202,7 +15242,11 @@ httpServer.listen(PORT, '0.0.0.0', async () => {
     // Initialize Custom TCP Applications Manager
     const autoRestartCustomTcp = sysSettings.auto_restart_custom_tcp !== false;
     const initialSiteName = registryManager.getSiteName();
-    tcpAppManager.init(initialSiteName, autoRestartCustomTcp).catch(e => log('CUSTOM_TCP', `Failed to initialize Custom TCP Manager: ${e.message}`, 'error'));
+    tcpAppManager.init(initialSiteName, autoRestartCustomTcp).then(() => {
+        syncAllLocalCustomAppServers();
+        // Periodic resync of local custom app listeners every 30s
+        setInterval(syncAllLocalCustomAppServers, 30000);
+    }).catch(e => log('CUSTOM_TCP', `Failed to initialize Custom TCP Manager: ${e.message}`, 'error'));
 
     // Delayed Prisma SD-WAN auto-discovery sync
     setTimeout(async () => {

@@ -240,6 +240,14 @@ export class FleetTunnelManager {
                     }
                 });
 
+                // Spoke listens for custom apps mesh updates (M6 mode)
+                socket.on('custom_app:mesh_update', (mesh: any[]) => {
+                    this.cachedCustomAppMesh = Array.isArray(mesh) ? mesh : [];
+                    if (this.tcpAppManager) {
+                        this.tcpAppManager.handleMeshUpdate(this.cachedCustomAppMesh);
+                    }
+                });
+
                 // Spoke listens for config updates and triggers initial sync
                 socket.on('peer:bundle_updated', (type?: string) => {
                     this.syncProvisioningOverTunnel(socket, type);
@@ -372,16 +380,27 @@ export class FleetTunnelManager {
         if (isLeader) {
             if (this.localRegistryServer) {
                 this.localRegistryServer.updateCustomAppServer(state);
+                if (this.tcpAppManager) {
+                    this.tcpAppManager.handleMeshUpdate(this.localRegistryServer.getCustomAppMesh());
+                }
                 this.broadcastCustomAppMesh();
             }
-        } else if (this.spokeClientSocket && this.spokeClientSocket.connected) {
-            this.spokeClientSocket.emit('custom_app:server_state', state);
+        } else {
+            const leaderSocket = this.spokeClientSocket || this.activeLeaderTunnelSocket;
+            if (leaderSocket && (leaderSocket as any).connected) {
+                leaderSocket.emit('custom_app:server_state', state);
+            }
         }
     }
 
     private startRttHeartbeatLoop(): void {
         if (this.rttPingInterval) clearInterval(this.rttPingInterval);
         this.rttPingInterval = setInterval(() => {
+            const isLeader = this.registryManager.isLeader();
+            if (isLeader && this.localRegistryServer) {
+                this.broadcastCustomAppMesh();
+            }
+
             for (const [instanceId, entry] of this.activeTunnels.entries()) {
                 if (entry.socket && (entry.socket as any).connected) {
                     const pingStart = Date.now();
