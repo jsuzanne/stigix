@@ -30,13 +30,8 @@ export class LocalRegistryServer {
 
     public updateCustomAppServer(server: ActiveCustomAppServer): void {
         const key = `${server.node_id}:${server.app_id}`;
-        if (server.status === 'stopped') {
-            this.activeCustomAppServers.delete(key);
-            log('LOCAL-REGISTRY', `Custom App Server stopped: ${server.app_name} on ${server.node_id}`);
-        } else {
-            this.activeCustomAppServers.set(key, { ...server, updated_at: Date.now() });
-            log('LOCAL-REGISTRY', `Custom App Server active: ${server.app_name} on ${server.node_id} (port ${server.port})`);
-        }
+        this.activeCustomAppServers.set(key, { ...server, updated_at: Date.now() });
+        log('LOCAL-REGISTRY', `Custom App Server ${server.status}: ${server.app_name} on ${server.node_id} (port ${server.port})`);
     }
 
     public removeCustomAppServersForNode(nodeId: string): void {

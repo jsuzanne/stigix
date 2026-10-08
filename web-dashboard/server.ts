@@ -12641,7 +12641,7 @@ function syncAllLocalCustomAppServers(): void {
         const regStatus = registryManager.getStatus();
         const nodeId = regStatus.instance_id || 'node';
         const nodeName = regStatus.site_name || nodeId;
-        const nodeIp = regStatus.ip_private || (typeof detectedIp !== 'undefined' ? detectedIp : '') || '127.0.0.1';
+        const nodeIp = regStatus.ip_private || (typeof detectedIp !== 'undefined' && detectedIp ? detectedIp : '') || (typeof primaryIp !== 'undefined' && primaryIp ? primaryIp : '') || '127.0.0.1';
 
         for (const app of file.applications) {
             const status = tcpAppManager.getAppStatus(app.id);
