@@ -293,6 +293,8 @@ export class LocalRegistryServer {
 
             return {
                 ...inst,
+                rtt_ms: (inst as any).rtt_ms ?? inst.meta?.rtt_ms,
+                last_pong: (inst as any).last_pong ?? inst.meta?.last_pong,
                 is_leader: isLeader,
                 status,
                 is_stale: isStale,
