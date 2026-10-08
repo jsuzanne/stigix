@@ -2,6 +2,20 @@
 
 All notable changes made specifically on the `v2` branch are documented in this file.
 
+## [v2.1.1] - 2026-10-08 — Control Plane RTT Heartbeats, Provisioning ACKs, Auto-Sync & DEM Outage Fix
+
+- **feat(fleet-tunnel)**: Implemented WebSocket Control Plane RTT Heartbeat loop (`fleet-tunnel.ts`). Every 15 seconds, the Leader sends a `tunnel:rtt_ping` timestamp to all connected spokes, which reply immediately with `tunnel:rtt_pong`. Measures exact WebSocket round-trip latency in milliseconds (`rtt_ms`), updates `last_seen` and `last_pong`, and logs warning when latency exceeds 500ms or pong is dropped.
+- **feat(fleet-ui)**: Added live RTT latency badges (`⚡ 12ms`, `⚡ 45ms`, `⚡ 180ms`) in `web-dashboard/src/Fleet.tsx` Fleet Overview table and Peer Detail drawer modal. Latency badges are dynamically color-coded (emerald `<50ms`, amber `<150ms`, rose `>150ms`) for real-time visibility into control plane path quality.
+- **feat(provisioning-ack)**: Implemented bidirectional Provisioning Acknowledgment (`provisioning:ack`) in `fleet-tunnel.ts` and `local-registry-server.ts`. When a spoke node receives and applies a bundle (`probes`, `applications`, `custom_tcp`, `security`, `pcap_profiles`), it acknowledges with its active revision and human timestamp (`appliedAt`), allowing the Leader to track accurate synchronization state per module across the entire fleet.
+- **feat(provisioning-timestamps)**: Displayed explicit human sync timestamps (`Settings.tsx`) on Leader and Spoke module cards (`HH:mm:ss` with relative elapsed time `Xm ago`). Shows `updatedAt` for the Leader and `appliedAt` for Spoke peers, replacing ambiguous revision comparisons with transparent time indicators.
+- **feat(fleet-auto-sync)**: Added automated debounced synchronization (2.5s window) in `web-dashboard/server.ts` for Synthetic Probes & Applications Catalogue (`triggerAutoSyncFleetBundle`). Any addition, edit, or removal on the Leader automatically pushes the updated bundle to all registered fleet spokes.
+- **feat(settings-ui)**: Added `Auto-Sync: ON/OFF` toggle switch in Target Controller header banner (`Settings.tsx`), backed by `auto_sync_probes_to_fleet` configuration field in `system-info.json`.
+- **fix(dem-score)**: Fixed DEM (Digital Experience Monitoring) score calculation in `calculateDEMScore()` (`server.ts`). When a synthetic probe experiences complete outage, packet timeout, connection drop, or HTTP error, the score is strictly forced to `0` (Critical Outage) instead of misleading fallback base scores (`50`).
+- **fix(speedtest-ui)**: Fixed `Analyzing sequence undefined` subtitle display in `web-dashboard/src/Speedtest.tsx`. Added `formatCwnd()` helper function to format TCP congestion window (`cwnd`) in `KB` or `MB` instead of raw byte values.
+- **feat(pcap-timing)**: Added Replay Timing Engine selector (`PcapReplayModal.tsx`) allowing users to choose between `Fastest Execution (Zero Delay)` and `Original PCAP Delays` during profile compilation.
+- **feat(pcap-sync)**: Enabled automatic synchronization of compiled `.stx-replay` profiles across spoke nodes via `pcap-profiles` WebSocket tunnel bundle channel (`fleet-tunnel.ts`).
+- **docs(pcap-guide)**: Added Section 9 to `docs/PCAP_REPLAY_USER_GUIDE.md` covering Plaintext vs Encrypted PCAP handling, TLS inspection requirements, and zero-trust validation patterns.
+
 ## [v2.1.0] - 2026-10-06 — Major Milestone Release: Fleet Onboarding, PCAP Replay, CA Trust & Port Architecture Isolation
 
 - **fix(bandwidth-targets)**: Fixed default port for XFR Bandwidth speedtest to 9000 instead of 5201 across `types/targets.ts`, `targets-manager.ts`, `Settings.tsx`, and `Speedtest.tsx`. Auto-migrated any legacy `5201` on `ports.xfr` to `9000`, strictly keeping 5201 dedicated to iperf3 and 9000 to XFR speedtest.

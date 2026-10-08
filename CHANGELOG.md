@@ -5,6 +5,36 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.1.1] - 2026-10-08
+
+### Added
+- **WebSocket Control Plane RTT Heartbeat & Live Latency Monitoring (`fleet-tunnel.ts`, `local-registry-server.ts`, `Fleet.tsx`)**:
+  - Continuous soft RTT heartbeat loop (`tunnel:rtt_ping` / `tunnel:rtt_pong` every 15 seconds) over active multiplexed WebSocket reverse tunnels.
+  - Live RTT latency badges (`⚡ 12ms`, color-coded green `<50ms`, amber `<150ms`, red `>150ms`) in the Fleet Overview table and Peer Detail inspector modal.
+  - Real-time `last_seen` timestamp updates and active tunnel health tracking without relying solely on passive HTTP polling.
+- **Bidirectional Provisioning Acknowledgment (ACK) Loop (`fleet-tunnel.ts`, `local-registry-server.ts`)**:
+  - Spoke nodes stream `provisioning:ack` confirmations back over the WebSocket tunnel upon applying bundle pushes (`probes`, `applications`, `custom_tcp`, `security`, `pcap_profiles`).
+  - Tracks spoke revision state, module sync health, and human-readable `appliedAt` timestamps in the Leader's fleet registry.
+- **Debounced Fleet Auto-Sync for Probes & Applications Catalogue (`server.ts`, `Settings.tsx`)**:
+  - Automatically synchronizes synthetic probe configurations and custom application catalogues to all connected spoke nodes with a 2.5-second debounce timer upon any create, update, or delete action.
+  - Added centralized `Auto-Sync: ON/OFF` toggle in the Target Controller header banner (`Settings.tsx`) backed by `auto_sync_probes_to_fleet` configuration.
+- **Human-Readable Provisioning Sync Timestamps (`Settings.tsx`)**:
+  - Displays localized absolute time (`HH:mm:ss`) alongside relative elapsed time (`Xm ago`) on all provisioning module cards (`updatedAt` on Leader, `appliedAt` on Spoke peers), eliminating guesswork about bundle synchronization status.
+- **PCAP Replay Timing Engine Selector & Profiles Fleet Sync (`PcapReplayModal.tsx`, `fleet-tunnel.ts`)**:
+  - Added Replay Timing Engine selector (`Fastest Execution / Zero Delay` vs `Original PCAP Delays`) in the Edit Profile modal.
+  - Enabled automatic bundle push and pull for `.stx-replay` profiles across spoke nodes via `pcap-profiles` tunnel channel.
+  - Added Section 9 to PCAP User Guide on Plaintext vs Encrypted captures & Zero Trust inspection validation.
+
+### Fixed
+- **DEM Score on Target Outage & Timeout (`server.ts`)**:
+  - Fixed Digital Experience Monitoring (DEM) scoring engine to strictly return a score of `0` when a target is completely unreachable or times out, preventing misleading fallback scores of `50`.
+- **Speedtest UI Sequence Label & Congestion Window Formatting (`Speedtest.tsx`)**:
+  - Fixed `Analyzing sequence undefined` subtitle display in the Multi-Path Speedtest UI.
+  - Added `formatCwnd()` helper to convert raw TCP congestion window bytes into human-readable `KB` / `MB` formatting.
+- **PCAP Scraper & Replay Execution Stability (`pcap-routes.ts`, `pcap_replay_runtime.py`)**:
+  - Resolved active replay jobs polling order and immediate job tracking upon launching client replays.
+  - Enhanced application heuristics (`guess_app_id`) with L7 payload signatures and candidate flow prioritization.
+
 ## [2.1.0] - 2026-10-06 — Major Milestone Release
 
 ### Added

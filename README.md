@@ -1,9 +1,9 @@
-> **Last Updated:** 2026-10-06 | **Created:** 2026-01-25 (v1.0.0)
+> **Last Updated:** 2026-10-08 | **Created:** 2026-01-25 (v1.0.0)
 
 # 🕸️ Stigix — Advanced Networking & Security Simulation Environment
 
-[![Version](https://img.shields.io/badge/Version-2.1.0-blue.svg)](https://github.com/jsuzanne/stigix/releases)
-[![Last Updated](https://img.shields.io/badge/Updated-2026--10--06-brightgreen.svg)](CHANGELOG_V2.md)
+[![Version](https://img.shields.io/badge/Version-2.1.1-blue.svg)](https://github.com/jsuzanne/stigix/releases)
+[![Last Updated](https://img.shields.io/badge/Updated-2026--10--08-brightgreen.svg)](CHANGELOG_V2.md)
 [![Docker Pulls](https://img.shields.io/docker/pulls/jlsuzanne/stigix)](https://hub.docker.com/r/jlsuzanne/stigix)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
@@ -123,6 +123,15 @@ This project is my way to turn all that lab and demo experience into an open-sou
 ## 🆕 What's New
 
 The project is evolving rapidly with major features, engines, and UX refinements in every release.
+
+### ⚡ Stigix 2.1.1 — Control Plane Heartbeats, Live RTT & Fleet Auto-Sync *(v2.1.1)*
+
+- **💓 WebSocket Control Plane RTT Heartbeat** ⚡ — Continuous 15-second soft RTT ping/pong loop (`tunnel:rtt_ping`) measuring precise sub-millisecond reverse tunnel latency across all remote spoke nodes (DC1, BR1, BR2, BR5, BR8).
+- **📊 Real-Time Fleet Latency Badges** 🟢 — Dynamic color-coded latency tags (`⚡ 12ms`, `⚡ 45ms`) in the Fleet Overview and node details for instant control plane link quality assessment.
+- **🔄 Bidirectional Provisioning ACKs & Sync Timestamps** ⏱️ — Real-time `provisioning:ack` stream from spoke nodes with human-readable timestamps (`updatedAt` on Leader, `appliedAt` on Spokes) across all 10 configuration modules.
+- **🚀 Debounced Fleet Auto-Sync** 📡 — Automatic 2.5s debounced push of Synthetic Probes and Applications Catalogue upon any modification on the Leader, with a 1-click header toggle switch.
+- **🎯 Accurate DEM Outage Scoring** 🛡️ — Digital Experience Monitoring scores strictly drop to `0` upon packet timeout or connection blackout, preventing false-positive operational health reports.
+- **📈 Multi-Path Speedtest Polish** ⚡ — Fixed sequence labeling and added human-readable TCP congestion window (`cwnd`) formatting in KB/MB.
 
 ### 🌟 Stigix 2.1 — Major Milestone Release *(v2.1.0)*
 
