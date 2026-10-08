@@ -10,6 +10,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - **WebSocket Tunnel Directionality Badges (`Fleet.tsx`, `Settings.tsx`, `fleet-tunnel.ts`)**:
   - Added explicit `↘️ INBOUND WS` and `↗️ OUTBOUND WS` badges in Fleet Overview and Peer Detail modal on Leader, and `↗️ OUTBOUND WS SYNCED` / `↘️ INBOUND LEADER DIAL` in Target Controller header on Peers.
+- **Dynamic Auto-Mesh Client Runtime & Smart Offline Pausing (`tcp-client-runtime.ts`, `fleet-tunnel.ts`, `CustomApps.tsx`)**:
+  - Client runtime subscribes in real-time to `custom_app:mesh_update` announcements from the Leader.
+  - When a remote server listener goes offline (e.g. `DC2-Ubuntu`), active client streams targeting that peer transition cleanly to `⏸️ PAUSED (Server Offline)` without spamming infinite TCP reconnect loops.
+  - Automatically and instantly resumes connection sessions with zero latency when the remote server restarts.
 - **Dynamic Custom TCP Apps EICAR Threat Correlation (`server.ts`, `Security.tsx`, `local-registry-server.ts`)**:
   - Integrated active Custom TCP/HTTP application listeners in EICAR responder mode into the Security Threat test suite.
   - SASE/Firewall testers can execute threat prevention tests against custom listener ports (`:8098`, `:8083`) with verified live active listeners (zero false positives).

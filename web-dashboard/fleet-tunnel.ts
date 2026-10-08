@@ -63,6 +63,8 @@ export class FleetTunnelManager {
     private targetsManager?: TargetsManager;
     private localRegistryServer?: LocalRegistryServer;
     private provisioningManager?: ProvisioningManager;
+    private tcpAppManager?: any;
+    private cachedCustomAppMesh: any[] = [];
     private telemetryProvider?: () => Promise<any> | any;
     private secretKey: string;
     private localPort: number;
@@ -119,6 +121,14 @@ export class FleetTunnelManager {
 
     public setLocalRegistryServer(localRegistryServer: LocalRegistryServer): void {
         this.localRegistryServer = localRegistryServer;
+    }
+
+    public setTcpAppManager(tcpAppManager: any): void {
+        this.tcpAppManager = tcpAppManager;
+    }
+
+    public getCachedCustomAppMesh(): any[] {
+        return this.cachedCustomAppMesh;
     }
 
     public setProvisioningManager(provisioningManager: ProvisioningManager): void {
@@ -349,6 +359,7 @@ export class FleetTunnelManager {
 
     public broadcastCustomAppMesh(): void {
         const mesh = this.localRegistryServer?.getCustomAppMesh() || [];
+        if (this.tcpAppManager) this.tcpAppManager.handleMeshUpdate(mesh);
         for (const [, entry] of this.activeTunnels.entries()) {
             if (entry.socket && (entry.socket as any).connected) {
                 entry.socket.emit('custom_app:mesh_update', mesh);

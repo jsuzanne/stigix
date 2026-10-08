@@ -1358,10 +1358,11 @@ const secs = seconds % 60;
                                                     <div className="flex items-center gap-1.5 flex-wrap">
                                                         <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider ${
                                                             s.state === 'connected' ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30' :
+                                                            s.state === 'paused_offline' ? 'bg-purple-500/15 text-purple-700 dark:text-purple-300 border border-purple-500/30 font-mono' :
                                                             s.state === 'reconnecting' ? 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/30 animate-pulse' :
                                                             'bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/30'
-                                                        }`}>
-                                                            {s.state}
+                                                        }`} title={s.state === 'paused_offline' ? (s.serverStatusReason || 'Remote server listener is stopped. Client is paused.') : undefined}>
+                                                            {s.state === 'paused_offline' ? '⏸️ PAUSED (Server Off)' : s.state}
                                                         </span>
                                                         {(s.reconnects ?? 0) > 0 && (
                                                             <span className="text-[9px] text-amber-500 font-mono font-semibold" title={`${s.reconnects} reconnect(s)`}>

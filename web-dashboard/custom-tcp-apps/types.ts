@@ -32,6 +32,7 @@ export type SessionState =
     | 'delayed'
     | 'timed_out'
     | 'reconnecting'
+    | 'paused_offline'
     | 'rejected'
     | 'closing'
     | 'closed'
@@ -337,6 +338,7 @@ export interface OutgoingSessionState {
     tps?: number;
     tcpConnectMs?: number;
     eicarReceivedCount: number; // EICAR string received by client = SASE did NOT block it
+    serverStatusReason?: string;
 }
 
 export interface AppRuntimeMetrics {

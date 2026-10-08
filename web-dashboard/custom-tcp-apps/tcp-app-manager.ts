@@ -511,6 +511,17 @@ export class TcpAppManager extends EventEmitter {
         return ctx.clientRuntime.testPeerHandshake(peer);
     }
 
+    public handleMeshUpdate(activeServers: any[]): void {
+        const servers = Array.isArray(activeServers) ? activeServers : [];
+        for (const [appId, ctx] of this.appInstances.entries()) {
+            const matching = servers.filter((s: any) => s.app_id === appId);
+            if (ctx.clientRuntime) {
+                ctx.clientRuntime.updateMeshServers(matching);
+            }
+        }
+        this.emit('mesh_updated', { count: servers.length });
+    }
+
     public getAppStatus(appId: string): AppRuntimeMetrics {
         const ctx = this.getAppContext(appId);
         if (!ctx) throw new Error(`Application ${appId} not found`);

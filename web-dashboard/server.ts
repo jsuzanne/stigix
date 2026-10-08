@@ -12632,6 +12632,7 @@ registryManager.setProvisioningManager(provisioningManager);
 fleetTunnelManager.setTargetsManager(targetsManager);
 fleetTunnelManager.setLocalRegistryServer(localRegistryServer);
 fleetTunnelManager.setProvisioningManager(provisioningManager);
+fleetTunnelManager.setTcpAppManager(tcpAppManager);
 // Hook Custom TCP Manager state changes into Fleet Tunnel Mesh
 tcpAppManager.on('state_changed', ({ appId }: { appId: string }) => {
     try {
