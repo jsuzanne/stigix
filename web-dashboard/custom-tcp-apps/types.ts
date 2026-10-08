@@ -251,6 +251,12 @@ export interface CustomTcpApplicationConfig {
     serverBehavior: ServerBehaviorConfig;
     clientDefaults: ClientDefaultsConfig;
     peers: PeerConfig[];
+    serverNodes?: string[]; // Array of node names / IDs assigned to host server listener (e.g. ['DC1-Ubuntu', 'DC2-Ubuntu'] or ['all'])
+    targetMode?: 'auto_mesh' | 'specific'; // Auto-Mesh: dynamic discovery of active servers; Specific: static peer list
+    manualOverride?: {
+        listenerStopped?: boolean;
+        clientStopped?: boolean;
+    };
     startup: {
         startListener: boolean;
         startClientWorkload: boolean;

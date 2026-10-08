@@ -10668,6 +10668,23 @@ app.get('/api/security/cloud-eicar-url', authenticateToken, (req, res) => {
 app.get('/api/security/eicar-targets', authenticateToken, (req, res) => {
     const targets: Array<{name: string; target: string; type: string; url: string; app_id?: string; port?: number; is_custom_app?: boolean}> = [];
 
+    const regStatus = registryManager.getStatus();
+    const localNodeId = (regStatus.instance_id || '').trim().toLowerCase();
+    const localSiteName = (regStatus.site_name || '').trim().toLowerCase();
+    const localIp = (regStatus.ip_private || (typeof detectedIp !== 'undefined' ? detectedIp : '') || '127.0.0.1').trim().toLowerCase();
+
+    const isSelf = (hostOrIp: string, name?: string, nodeId?: string): boolean => {
+        const h = (hostOrIp || '').trim().toLowerCase();
+        const n = (name || '').trim().toLowerCase();
+        const id = (nodeId || '').trim().toLowerCase();
+
+        if (h === '127.0.0.1' || h === 'localhost' || h === '::1' || h === '0.0.0.0') return true;
+        if (localIp && (h === localIp || h.startsWith(localIp + ':'))) return true;
+        if (localNodeId && (id === localNodeId || h === localNodeId || n === localNodeId || n.startsWith(localNodeId))) return true;
+        if (localSiteName && (n === localSiteName || n.startsWith(localSiteName + ' ') || n.startsWith(localSiteName + '-'))) return true;
+        return false;
+    };
+
     // 1. Cloud EICAR target (same as Security.tsx cloud-eicar-url fetch)
     const { url: cloudUrl } = targetManager.getEffectiveUrl('advanced-custom#{"mode":"eicar"}');
     let hasKey = false;
@@ -10680,64 +10697,41 @@ app.get('/api/security/eicar-targets', authenticateToken, (req, res) => {
         targets.push({ name: 'Stigix Cloud', target: cloudUrl, type: 'cloud', url: cloudUrl });
     }
 
-    // 2. Fabric targets with security capability — Standard Port 8082 HTTP daemon:
+    // 2. Fabric targets with security capability — Standard Port 8082 HTTP daemon (Filtered to remote only)
     try {
         const allTargets = targetsManager.getMergedTargets();
         const secTargets = allTargets.filter((t: any) => t.enabled && t.capabilities?.security);
         for (const t of secTargets) {
+            if (isSelf(t.host, t.name, t.id)) continue;
             const httpPort = (t.ports?.http && t.ports.http !== 8080 && t.ports.http !== 80) ? t.ports.http : 8082;
             const url = `http://${t.host}:${httpPort}/eicar.com.txt`;
             targets.push({ name: t.name || t.host, target: url, type: 'direct', url });
         }
     } catch (_) {}
 
-    // 3. Dynamic Live Custom TCP/HTTP Apps in EICAR Responder mode (Zero False Positives)
+    // 3. Dynamic Live Remote Custom TCP/HTTP Apps in EICAR Responder mode (Zero False Positives, Strictly Remote)
     try {
-        // A. Local Node Custom TCP Manager
-        if (tcpAppManager) {
-            const file = tcpAppManager.getConfig();
-            for (const app of file.applications) {
-                const isEicar = app.serverBehavior?.mode === 'eicar_response'
-                    || app.name?.toLowerCase().includes('eicar')
-                    || (app as any).is_eicar_responder === true;
-                if (isEicar) {
-                    const status = tcpAppManager.getAppStatus(app.id);
-                    if (status.listenerState === 'listening') {
-                        const regStatus = registryManager.getStatus();
-                        const nodeName = regStatus.site_name || 'Local Node';
-                        const nodeIp = regStatus.ip_private || '127.0.0.1';
-                        const url = `http://${nodeIp}:${app.listener.port}/`;
-                        targets.push({
-                            name: `[Custom App] ${nodeName} - ${app.name}`,
-                            target: url,
-                            type: 'custom_app',
-                            url,
-                            app_id: app.id,
-                            port: app.listener.port,
-                            is_custom_app: true
-                        });
-                    }
-                }
-            }
+        let meshServers: any[] = [];
+        if (localRegistryServer) {
+            meshServers = localRegistryServer.getCustomAppMesh();
+        } else if (fleetTunnelManager) {
+            meshServers = (fleetTunnelManager as any).getCachedCustomAppMesh?.() || [];
         }
 
-        // B. Remote Spokes / Leader from Fleet Mesh Registry
-        if (localRegistryServer) {
-            const meshServers = localRegistryServer.getCustomAppMesh();
-            for (const s of meshServers) {
-                if (s.is_eicar_responder && s.status === 'running') {
-                    const url = `http://${s.ip}:${s.port}/`;
-                    if (!targets.some(t => t.url === url)) {
-                        targets.push({
-                            name: `[Custom App] ${s.node_name || s.node_id} - ${s.app_name}`,
-                            target: url,
-                            type: 'custom_app',
-                            url,
-                            app_id: s.app_id,
-                            port: s.port,
-                            is_custom_app: true
-                        });
-                    }
+        for (const s of meshServers) {
+            if (s.is_eicar_responder && s.status === 'running') {
+                if (isSelf(s.ip, s.node_name, s.node_id)) continue;
+                const url = `http://${s.ip}:${s.port}/`;
+                if (!targets.some(t => t.url === url)) {
+                    targets.push({
+                        name: `[Custom App] ${s.node_name || s.node_id} - ${s.app_name}`,
+                        target: url,
+                        type: 'custom_app',
+                        url,
+                        app_id: s.app_id,
+                        port: s.port,
+                        is_custom_app: true
+                    });
                 }
             }
         }

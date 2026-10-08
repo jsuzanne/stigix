@@ -377,6 +377,9 @@ export class TcpAppManager extends EventEmitter {
                 startListener: true,
                 startClientWorkload: ctx.config.startup?.startClientWorkload ?? false
             };
+            if (ctx.config.manualOverride) {
+                ctx.config.manualOverride.listenerStopped = false;
+            }
             await this.persistAppStartupState(ctx.config.id);
         }
 
@@ -392,6 +395,10 @@ export class TcpAppManager extends EventEmitter {
             ctx.config.startup = {
                 startListener: false,
                 startClientWorkload: ctx.config.startup?.startClientWorkload ?? false
+            };
+            ctx.config.manualOverride = {
+                ...ctx.config.manualOverride,
+                listenerStopped: true
             };
             await this.persistAppStartupState(ctx.config.id);
         }
