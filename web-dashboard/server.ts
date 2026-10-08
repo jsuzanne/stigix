@@ -4120,7 +4120,12 @@ const calculateDEMScore = (
 ): number => {
     if (!reachable) return 0;
 
-    if (httpCode !== undefined && httpCode > 0) {
+    const lat = metrics.total_ms || 0;
+
+    if (type === 'HTTP' || type === 'HTTPS') {
+        // Outage, connection failure or timeout -> Score 0
+        if (!httpCode || httpCode <= 0 || lat >= 5000) return 0;
+
         const allowed = (Array.isArray(expectedStatusCodes) && expectedStatusCodes.length > 0)
             ? expectedStatusCodes
             : [200, 201, 202, 204, 301, 302, 304, 307, 308];
@@ -4130,13 +4135,12 @@ const calculateDEMScore = (
             if (httpCode >= 400) return 20;
             return 20;
         }
-    }
 
-    const lat = metrics.total_ms || 0;
+        // If connection dropped before TTFB was recorded -> Score 0
+        if ((metrics.ttfb_ms || 0) <= 0 && lat > 0) return 0;
 
-    if (type === 'HTTP' || type === 'HTTPS') {
         const total_norm = Math.min(lat / 2000, 1.0);
-        const ttfb_norm = Math.min(metrics.ttfb_ms / 1000, 1.0);
+        const ttfb_norm = Math.min((metrics.ttfb_ms || 0) / 1000, 1.0);
         const tls_norm = Math.min((metrics.tls_ms || 0) / 800, 1.0);
 
         let score = 100 - (30 * total_norm + 35 * ttfb_norm + 25 * tls_norm);
@@ -4246,9 +4250,10 @@ const performConnectivityCheck = async (endpoint: any): Promise<ConnectivityResu
                 });
 
                 const total_ms = parseFloat(curlData.time_total) * 1000;
-                if (total_ms > 0 || (curlData.http_code && parseInt(curlData.http_code) > 0)) {
+                const parsedHttpCode = parseInt(curlData.http_code) || 0;
+                if (parsedHttpCode > 0) {
                     result.reachable = true;
-                    result.httpCode = parseInt(curlData.http_code);
+                    result.httpCode = parsedHttpCode;
                     result.remoteIp = curlData.remote_ip;
                     result.remotePort = parseInt(curlData.remote_port);
                     result.metrics = {
@@ -4257,12 +4262,18 @@ const performConnectivityCheck = async (endpoint: any): Promise<ConnectivityResu
                         tls_ms: parseFloat(curlData.time_appconnect) > 0 ? (parseFloat(curlData.time_appconnect) - parseFloat(curlData.time_connect)) * 1000 : 0,
                         ttfb_ms: (parseFloat(curlData.time_starttransfer) - Math.max(parseFloat(curlData.time_appconnect), parseFloat(curlData.time_connect))) * 1000,
                         total_ms: total_ms,
-                        size_bytes: parseInt(curlData.size_download),
-                        speed_bps: parseFloat(curlData.speed_download),
-                        ssl_verify: parseInt(curlData.ssl_verify_result)
+                        size_bytes: parseInt(curlData.size_download) || 0,
+                        speed_bps: parseFloat(curlData.speed_download) || 0,
+                        ssl_verify: parseInt(curlData.ssl_verify_result) || 0
                     };
                     const baseScore = calculateDEMScore(result.endpointType, result.reachable, result.httpCode, result.metrics, endpoint.expectedStatusCodes || endpoint.expected_status_codes);
                     result.score = Math.max(0, baseScore - httpRetries * 20);
+                } else {
+                    result.reachable = false;
+                    result.httpCode = undefined;
+                    result.metrics = { dns_ms: 0, tcp_ms: 0, tls_ms: 0, ttfb_ms: 0, total_ms: total_ms || 0 };
+                    result.score = 0;
+                }
 
                     // ── Optional content match (separate bounded curl, timings unaffected) ──
                     const cm = (endpoint as any).content_match;
