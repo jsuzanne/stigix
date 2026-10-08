@@ -2391,27 +2391,30 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
                                         {customAppEicarTargets.map((ca, idx) => {
                                             const isSelected = selectedEicarTargets.includes(ca.url);
                                             const lastResult = getEicarResult(ca.url);
+                                            const cleanName = (ca.name || '').replace(/^\[Custom App\]\s*/i, '').replace(/\s*-\s*Eicar Provider APP$/i, '');
 
                                             return (
                                                 <div
                                                     key={`custom-app-eicar-${idx}-${ca.url}`}
                                                     onClick={() => toggleEicarTarget(ca.url)}
-                                                    className={`bg-card border px-4 py-3 rounded-xl group cursor-pointer transition-all flex items-center gap-3 shadow-sm hover:shadow-md ${
-                                                        isSelected ? 'border-amber-500/50 bg-amber-500/5' : 'border-border'
+                                                    className={`border px-4 py-3 rounded-xl group cursor-pointer transition-all flex items-center gap-3 shadow-sm hover:shadow-md ${
+                                                        isSelected 
+                                                            ? 'border-amber-500/60 bg-amber-500/10 ring-1 ring-amber-500/20' 
+                                                            : 'bg-amber-500/[0.04] border-amber-500/20 hover:border-amber-500/40'
                                                     }`}
                                                 >
                                                     <div className={`w-4 h-4 rounded border flex items-center justify-center transition-all shrink-0 ${
-                                                        isSelected ? 'bg-amber-600 border-amber-500' : 'bg-card-secondary border-border'
+                                                        isSelected ? 'bg-amber-500 border-amber-400' : 'bg-card-secondary border-amber-500/30'
                                                     }`}>
-                                                        {isSelected && <Check size={11} className="text-white" strokeWidth={3} />}
+                                                        {isSelected && <Check size={11} className="text-black font-black" strokeWidth={3} />}
                                                     </div>
                                                     <div className="flex flex-col min-w-0 flex-1">
                                                         <div className="flex items-center gap-2">
-                                                            <h4 className={`text-xs font-bold transition-colors tracking-tight truncate ${isSelected ? 'text-amber-500' : 'text-text-secondary'}`}>
-                                                                {ca.name}
+                                                            <h4 className={`text-xs font-bold transition-colors tracking-tight truncate ${isSelected ? 'text-amber-400' : 'text-text-primary'}`}>
+                                                                {cleanName}
                                                             </h4>
-                                                            <span className="text-[9px] font-mono font-bold px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30">
-                                                                ⚡ Custom App (Port {ca.port})
+                                                            <span className="text-[9px] font-mono font-bold px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-500 border border-amber-500/30">
+                                                                ⚡ Custom App
                                                             </span>
                                                         </div>
                                                         <p className="text-[9px] text-text-muted font-mono mt-0.5 truncate">{ca.url}</p>
@@ -2467,7 +2470,12 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
                                                         {isSelected && <Check size={11} className="text-white" strokeWidth={3} />}
                                                     </div>
                                                     <div className="flex flex-col min-w-0 flex-1">
-                                                        <h4 className={`text-xs font-bold transition-colors tracking-tight truncate ${isSelected ? 'text-blue-500' : 'text-text-secondary'}`}>{t.name}</h4>
+                                                        <div className="flex items-center gap-2">
+                                                            <h4 className={`text-xs font-bold transition-colors tracking-tight truncate ${isSelected ? 'text-blue-500' : 'text-text-secondary'}`}>{t.name}</h4>
+                                                            <span className="text-[9px] font-mono font-medium px-1.5 py-0.5 rounded bg-blue-500/10 text-blue-400 border border-blue-500/20">
+                                                                Fabric Node
+                                                            </span>
+                                                        </div>
                                                         <p className="text-[9px] text-text-muted font-mono mt-0.5 truncate">{url}</p>
                                                     </div>
                                                     <div className="flex items-center gap-1.5 ml-2 border-l border-border/50 pl-3">

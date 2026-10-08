@@ -10736,7 +10736,7 @@ app.get('/api/security/eicar-targets', authenticateToken, (req, res) => {
                 const url = `http://${effectiveIp}:${s.port}/`;
                 if (!targets.some(t => t.url === url)) {
                     targets.push({
-                        name: `[Custom App] ${s.node_name || s.node_id} - ${s.app_name}`,
+                        name: s.node_name || s.node_id,
                         target: url,
                         type: 'custom_app',
                         url,
