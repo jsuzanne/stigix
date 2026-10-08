@@ -165,6 +165,10 @@ export const PcapReplay: React.FC<PcapReplayProps> = ({ token }) => {
     useEffect(() => {
         if (selectedProfileFile) {
             fetchProfileDetails(selectedProfileFile);
+            if (activeJob && activeJob.status !== 'running' && activeJob.profile_file !== selectedProfileFile) {
+                setActiveJob(null);
+                setTerminalLogs([]);
+            }
         }
     }, [selectedProfileFile, fetchProfileDetails]);
 
@@ -419,6 +423,19 @@ export const PcapReplay: React.FC<PcapReplayProps> = ({ token }) => {
         };
     }, [activeJob, terminalLogs, profileDetails, lastCompletedTurnSeq, isLooping]);
 
+    const handleClearReplayHistory = async () => {
+        try {
+            await gFetch('/api/pcap/replay/clear', {
+                method: 'POST',
+                headers: { Authorization: `Bearer ${token}` }
+            });
+        } catch (_) {}
+        setActiveJob(null);
+        setTerminalLogs([]);
+        setSelectedTurnIndex(0);
+        toast.success('Replay state & execution history cleared');
+    };
+
     // ─── Actions: Profile Management ──────────────────────────────────────────
 
     const handleDownloadProfile = async (fileName: string) => {
@@ -503,6 +520,7 @@ export const PcapReplay: React.FC<PcapReplayProps> = ({ token }) => {
 
         const effectivePort = portOverride ? parseInt(portOverride, 10) : undefined;
         setIsStartingReplay(true);
+        setTerminalLogs([]);
 
         try {
             const payload: any = {
@@ -1189,6 +1207,17 @@ export const PcapReplay: React.FC<PcapReplayProps> = ({ token }) => {
 
                     {/* Right: Primary Action Button */}
                     <div className="flex items-center gap-2">
+                        {activeJob && activeJob.status !== 'running' && (
+                            <button
+                                type="button"
+                                onClick={handleClearReplayHistory}
+                                className="px-3 py-1.5 rounded-xl bg-card-secondary/80 hover:bg-card-secondary text-text-muted hover:text-text-primary border border-border/60 hover:border-border font-bold text-xs flex items-center gap-1.5 transition-all cursor-pointer shadow-sm"
+                                title="Clear previous execution verdict & reset conversation steps"
+                            >
+                                <RotateCcw size={12} />
+                                <span>Reset / Clear</span>
+                            </button>
+                        )}
                         {activeJob?.status === 'running' ? (
                             <button
                                 type="button"
@@ -1888,11 +1917,12 @@ export const PcapReplay: React.FC<PcapReplayProps> = ({ token }) => {
                                 {terminalLogs.length > 0 && (
                                     <button
                                         type="button"
-                                        onClick={() => setTerminalLogs([])}
-                                        className="px-1.5 py-0.5 rounded text-[8px] font-semibold text-text-muted hover:text-red-400 hover:bg-red-500/10 border border-border/40 hover:border-red-500/30 transition-all cursor-pointer"
-                                        title="Clear console"
+                                        onClick={handleClearReplayHistory}
+                                        className="px-1.5 py-0.5 rounded text-[8px] font-semibold text-text-muted hover:text-amber-400 hover:bg-amber-500/10 border border-border/40 hover:border-amber-500/30 transition-all cursor-pointer flex items-center gap-1"
+                                        title="Clear console and reset replay status"
                                     >
-                                        Clear
+                                        <RotateCcw size={9} />
+                                        <span>Reset</span>
                                     </button>
                                 )}
                             </div>
