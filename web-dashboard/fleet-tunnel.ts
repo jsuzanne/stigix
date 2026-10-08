@@ -269,7 +269,7 @@ export class FleetTunnelManager {
                     entry.info.rttMs = rtt;
                     entry.info.lastPong = Date.now();
                     if (this.localRegistryServer) {
-                        this.localRegistryServer.updatePeerTunnelMetrics(instanceId, rtt, Date.now());
+                        this.localRegistryServer.updatePeerTunnelMetrics(instanceId, rtt, Date.now(), entry.info.direction);
                     }
                 }
             });
@@ -347,6 +347,27 @@ export class FleetTunnelManager {
         this.startRttHeartbeatLoop();
     }
 
+    public broadcastCustomAppMesh(): void {
+        const mesh = this.localRegistryServer?.getCustomAppMesh() || [];
+        for (const [, entry] of this.activeTunnels.entries()) {
+            if (entry.socket && (entry.socket as any).connected) {
+                entry.socket.emit('custom_app:mesh_update', mesh);
+            }
+        }
+    }
+
+    public pushCustomAppServerState(state: any): void {
+        const isLeader = this.registryManager.isLeader();
+        if (isLeader) {
+            if (this.localRegistryServer) {
+                this.localRegistryServer.updateCustomAppServer(state);
+                this.broadcastCustomAppMesh();
+            }
+        } else if (this.spokeClientSocket && this.spokeClientSocket.connected) {
+            this.spokeClientSocket.emit('custom_app:server_state', state);
+        }
+    }
+
     private startRttHeartbeatLoop(): void {
         if (this.rttPingInterval) clearInterval(this.rttPingInterval);
         this.rttPingInterval = setInterval(() => {
@@ -358,7 +379,7 @@ export class FleetTunnelManager {
                         entry.info.rttMs = rtt;
                         entry.info.lastPong = Date.now();
                         if (this.localRegistryServer) {
-                            this.localRegistryServer.updatePeerTunnelMetrics(instanceId, rtt, Date.now());
+                            this.localRegistryServer.updatePeerTunnelMetrics(instanceId, rtt, Date.now(), entry.info.direction);
                         }
                     });
                 }

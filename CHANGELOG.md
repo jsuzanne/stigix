@@ -8,6 +8,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [2.1.1] - 2026-10-08
 
 ### Added
+- **WebSocket Tunnel Directionality Badges (`Fleet.tsx`, `Settings.tsx`, `fleet-tunnel.ts`)**:
+  - Added explicit `↘️ INBOUND WS` and `↗️ OUTBOUND WS` badges in Fleet Overview and Peer Detail modal on Leader, and `↗️ OUTBOUND WS SYNCED` / `↘️ INBOUND LEADER DIAL` in Target Controller header on Peers.
+- **Dynamic Custom TCP Apps EICAR Threat Correlation (`server.ts`, `Security.tsx`, `local-registry-server.ts`)**:
+  - Integrated active Custom TCP/HTTP application listeners in EICAR responder mode into the Security Threat test suite.
+  - SASE/Firewall testers can execute threat prevention tests against custom listener ports (`:8098`, `:8083`) with verified live active listeners (zero false positives).
 - **WebSocket Control Plane RTT Heartbeat & Live Latency Monitoring (`fleet-tunnel.ts`, `local-registry-server.ts`, `Fleet.tsx`)**:
   - Continuous soft RTT heartbeat loop (`tunnel:rtt_ping` / `tunnel:rtt_pong` every 15 seconds) over active multiplexed WebSocket reverse tunnels.
   - Live RTT latency badges (`⚡ 12ms`, color-coded green `<50ms`, amber `<150ms`, red `>150ms`) in the Fleet Overview table and Peer Detail inspector modal.

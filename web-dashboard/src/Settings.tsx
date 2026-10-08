@@ -4257,9 +4257,9 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                         </div>
                         <div className="flex items-center gap-2 shrink-0">
                             {isTunnelConnected && (
-                                <span className="px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest bg-cyan-500/10 text-cyan-400 border border-cyan-500/30 shadow-sm flex items-center gap-1.5">
+                                <span className="px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest bg-cyan-500/10 text-cyan-400 border border-cyan-500/30 shadow-sm flex items-center gap-1.5" title={registryStatus?.leader_tunnel_info?.direction === 'inbound_leader_dial' ? 'Connected via Inbound Leader Reverse Dial' : 'Connected via Outbound Reverse WebSocket Tunnel (NAT/Firewall Traversal)'}>
                                     <Zap size={11} className="animate-pulse" />
-                                    WS Tunnel Synced
+                                    {registryStatus?.leader_tunnel_info?.direction === 'inbound_leader_dial' ? '↘️ INBOUND LEADER DIAL' : '↗️ OUTBOUND WS SYNCED'}
                                 </span>
                             )}
                             {!isTunnelConnected && isPeerConnected && (

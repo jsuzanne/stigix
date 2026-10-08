@@ -21,6 +21,7 @@ interface PeerInstance {
     ip_public?: string;
     is_leader?: boolean;
     has_tunnel?: boolean;
+    tunnel_direction?: string;
     status: 'online' | 'offline';
     is_stale: boolean;
     last_seen_seconds_ago: number;
@@ -544,9 +545,15 @@ export default function Fleet({ token, onNavigate: _onNavigate }: FleetProps) {
                                                     </span>
                                                 ) : peer.status === 'online' ? (
                                                     peer.has_tunnel ? (
-                                                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-wider bg-amber-500/15 text-amber-700 dark:text-amber-300 border border-amber-500/30 shadow-sm" title="Connected via Outbound WebSocket Reverse Tunnel (NAT/Firewall Traversal)">
-                                                            ⚡ WS Tunnel
-                                                        </span>
+                                                        peer.tunnel_direction === 'outbound' || peer.tunnel_direction === 'outbound_dial' ? (
+                                                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-wider bg-cyan-500/15 text-cyan-700 dark:text-cyan-300 border border-cyan-500/30 shadow-sm" title="Connected via Outbound WebSocket Tunnel (Leader ➔ Peer)">
+                                                                ↗️ OUTBOUND WS
+                                                            </span>
+                                                        ) : (
+                                                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-wider bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30 shadow-sm" title="Connected via Inbound Reverse WebSocket Tunnel (Peer ➔ Leader, NAT Traversal)">
+                                                                ↘️ INBOUND WS
+                                                            </span>
+                                                        )
                                                     ) : (
                                                         <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-semibold text-text-muted bg-card-secondary/80 border border-border/60" title="Direct LAN HTTP Connection">
                                                             🌐 Direct HTTP

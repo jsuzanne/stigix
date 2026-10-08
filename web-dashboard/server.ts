@@ -10666,7 +10666,7 @@ app.get('/api/security/cloud-eicar-url', authenticateToken, (req, res) => {
 // API: List all configured EICAR test targets — mirrors Security.tsx logic exactly
 // Sources: fabric targets with capabilities.security=true + cloud EICAR if configured
 app.get('/api/security/eicar-targets', authenticateToken, (req, res) => {
-    const targets: Array<{name: string; target: string; type: string; url: string}> = [];
+    const targets: Array<{name: string; target: string; type: string; url: string; app_id?: string; port?: number; is_custom_app?: boolean}> = [];
 
     // 1. Cloud EICAR target (same as Security.tsx cloud-eicar-url fetch)
     const { url: cloudUrl } = targetManager.getEffectiveUrl('advanced-custom#{"mode":"eicar"}');
@@ -10680,9 +10680,7 @@ app.get('/api/security/eicar-targets', authenticateToken, (req, res) => {
         targets.push({ name: 'Stigix Cloud', target: cloudUrl, type: 'cloud', url: cloudUrl });
     }
 
-    // 2. Fabric targets with security capability — identical to Security.tsx:
-    //    fetch('/api/targets').filter(t => t.enabled && t.capabilities?.security)
-    //    url = `http://${t.host}:${t.ports?.http ?? 8082}/eicar.com.txt`
+    // 2. Fabric targets with security capability — Standard Port 8082 HTTP daemon:
     try {
         const allTargets = targetsManager.getMergedTargets();
         const secTargets = allTargets.filter((t: any) => t.enabled && t.capabilities?.security);
@@ -10690,6 +10688,58 @@ app.get('/api/security/eicar-targets', authenticateToken, (req, res) => {
             const httpPort = (t.ports?.http && t.ports.http !== 8080 && t.ports.http !== 80) ? t.ports.http : 8082;
             const url = `http://${t.host}:${httpPort}/eicar.com.txt`;
             targets.push({ name: t.name || t.host, target: url, type: 'direct', url });
+        }
+    } catch (_) {}
+
+    // 3. Dynamic Live Custom TCP/HTTP Apps in EICAR Responder mode (Zero False Positives)
+    try {
+        // A. Local Node Custom TCP Manager
+        if (tcpAppManager) {
+            const file = tcpAppManager.getConfig();
+            for (const app of file.applications) {
+                const isEicar = app.serverBehavior?.mode === 'eicar_response'
+                    || app.name?.toLowerCase().includes('eicar')
+                    || (app as any).is_eicar_responder === true;
+                if (isEicar) {
+                    const status = tcpAppManager.getAppStatus(app.id);
+                    if (status.listenerState === 'listening') {
+                        const regStatus = registryManager.getStatus();
+                        const nodeName = regStatus.site_name || 'Local Node';
+                        const nodeIp = regStatus.ip_private || '127.0.0.1';
+                        const url = `http://${nodeIp}:${app.listener.port}/`;
+                        targets.push({
+                            name: `[Custom App] ${nodeName} - ${app.name}`,
+                            target: url,
+                            type: 'custom_app',
+                            url,
+                            app_id: app.id,
+                            port: app.listener.port,
+                            is_custom_app: true
+                        });
+                    }
+                }
+            }
+        }
+
+        // B. Remote Spokes / Leader from Fleet Mesh Registry
+        if (localRegistryServer) {
+            const meshServers = localRegistryServer.getCustomAppMesh();
+            for (const s of meshServers) {
+                if (s.is_eicar_responder && s.status === 'running') {
+                    const url = `http://${s.ip}:${s.port}/`;
+                    if (!targets.some(t => t.url === url)) {
+                        targets.push({
+                            name: `[Custom App] ${s.node_name || s.node_id} - ${s.app_name}`,
+                            target: url,
+                            type: 'custom_app',
+                            url,
+                            app_id: s.app_id,
+                            port: s.port,
+                            is_custom_app: true
+                        });
+                    }
+                }
+            }
         }
     } catch (_) {}
 
@@ -12588,6 +12638,45 @@ registryManager.setProvisioningManager(provisioningManager);
 fleetTunnelManager.setTargetsManager(targetsManager);
 fleetTunnelManager.setLocalRegistryServer(localRegistryServer);
 fleetTunnelManager.setProvisioningManager(provisioningManager);
+// Hook Custom TCP Manager state changes into Fleet Tunnel Mesh
+tcpAppManager.on('state_changed', ({ appId }: { appId: string }) => {
+    try {
+        const file = tcpAppManager.getConfig();
+        const app = file.applications.find(a => a.id === appId);
+        if (!app) return;
+        const status = tcpAppManager.getAppStatus(appId);
+        const isListening = status.listenerState === 'listening';
+        const isEicar = app.serverBehavior?.mode === 'eicar_response'
+            || app.name?.toLowerCase().includes('eicar')
+            || (app as any).is_eicar_responder === true;
+
+        const regStatus = registryManager.getStatus();
+        const nodeId = regStatus.instance_id || 'node';
+        const nodeName = regStatus.site_name || nodeId;
+        const nodeIp = regStatus.ip_private || '127.0.0.1';
+
+        const serverState = {
+            node_id: nodeId,
+            node_name: nodeName,
+            app_id: app.id,
+            app_name: app.name,
+            role: 'server',
+            status: isListening ? 'running' : 'stopped',
+            port: app.listener.port,
+            protocol: app.protocol || 'stigix_tcp',
+            ip: nodeIp,
+            is_eicar_responder: isEicar,
+            eicar_mode: app.protocol === 'http_1_1' ? 'http' : 'tcp_raw',
+            pid: process.pid,
+            updated_at: Date.now()
+        };
+
+        fleetTunnelManager.pushCustomAppServerState(serverState);
+    } catch (e: any) {
+        log('CUSTOM_TCP', `Error syncing custom app server state to fleet: ${e.message}`, 'warn');
+    }
+});
+
 app.use('/api/registry', (req, res, next) => {
     const mode = process.env.STIGIX_REGISTRY_MODE_CURRENT || process.env.STIGIX_REGISTRY_MODE;
     if (mode === 'leader') {
@@ -13549,6 +13638,19 @@ log('FLEET', `🔍 On-Demand SD-WAN Flow Path Trace mounted at POST /api/fleet/m
 // Timeout: 5 000 ms — returns 504 on unreachable peer.
 // Safe-Mode and HMAC inter-node signing are planned for M4.
 //
+
+// API: Fleet Custom App Live Server Mesh (Active Listeners)
+app.get('/api/fleet/custom-app-mesh', authenticateToken, (req, res) => {
+    let servers: any[] = [];
+    if (localRegistryServer) {
+        servers = localRegistryServer.getCustomAppMesh();
+    }
+    res.json({
+        servers,
+        count: servers.length,
+        generated_at: new Date().toISOString()
+    });
+});
 
 app.get('/api/fleet/tunnels', authenticateToken, (req: any, res: any) => {
     if (!registryManager.isLeader()) {
