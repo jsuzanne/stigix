@@ -514,12 +514,45 @@ export class TcpAppManager extends EventEmitter {
     public handleMeshUpdate(activeServers: any[]): void {
         const servers = Array.isArray(activeServers) ? activeServers : [];
         for (const [appId, ctx] of this.appInstances.entries()) {
-            const matching = servers.filter((s: any) => s.app_id === appId);
+            const matching = servers.filter((s: any) => 
+                s.app_id === appId || 
+                (s.app_name && ctx.config.name && s.app_name.toLowerCase() === ctx.config.name.toLowerCase()) ||
+                s.port === ctx.config.listener?.port
+            );
             if (ctx.clientRuntime) {
-                ctx.clientRuntime.updateMeshServers(matching);
+                ctx.clientRuntime.updateMeshServers(matching.length > 0 ? matching : servers);
             }
         }
         this.emit('mesh_updated', { count: servers.length });
+    }
+
+    public getLocalServerStates(nodeId: string, nodeName: string, nodeIp: string): any[] {
+        const file = this.getConfig();
+        const results: any[] = [];
+        for (const app of file.applications) {
+            const status = this.getAppStatus(app.id);
+            const isListening = status.listenerState === 'listening';
+            const isEicar = app.serverBehavior?.mode === 'eicar_response'
+                || app.name?.toLowerCase().includes('eicar')
+                || (app as any).is_eicar_responder === true;
+
+            results.push({
+                node_id: nodeId,
+                node_name: nodeName,
+                app_id: app.id,
+                app_name: app.name,
+                role: 'server',
+                status: isListening ? 'running' : 'stopped',
+                port: app.listener.port,
+                protocol: app.protocol || 'stigix_tcp',
+                ip: nodeIp,
+                is_eicar_responder: isEicar,
+                eicar_mode: app.protocol === 'http_1_1' ? 'http' : 'tcp_raw',
+                pid: process.pid,
+                updated_at: Date.now()
+            });
+        }
+        return results;
     }
 
     public getAppStatus(appId: string): AppRuntimeMetrics {

@@ -129,8 +129,12 @@ export class TcpClientRuntime extends EventEmitter {
             const sId = (s.node_id || '').trim().toLowerCase();
             const sPort = s.port;
 
-            const portMatches = sPort === peerPort;
-            const hostMatches = sIp === peerHost || sName === peerName || sName === peerSite || sId === peerName || sId.includes(peerName) || peerName.includes(sId);
+            const portMatches = !peerPort || !sPort || sPort === peerPort;
+            const hostMatches = (peerHost && sIp && (sIp === peerHost || peerHost.includes(sIp) || sIp.includes(peerHost))) ||
+                                (peerName && sName && (sName === peerName || sName.includes(peerName) || peerName.includes(sName))) ||
+                                (peerSite && sName && (sName === peerSite || sName.includes(peerSite) || peerSite.includes(sName))) ||
+                                (peerName && sId && (sId === peerName || sId.includes(peerName) || peerName.includes(sId))) ||
+                                (peerSite && sId && (sId === peerSite || sId.includes(peerSite) || peerSite.includes(sId)));
 
             return portMatches && hostMatches;
         }) || null;
@@ -519,6 +523,12 @@ export class TcpClientRuntime extends EventEmitter {
     private connectSession(session: ActiveClientSession): void {
         if (!this.isRunning || session.isStopping) return;
 
+        if (!this.isPeerOnlineInMesh(session.peer)) {
+            session.state.state = 'paused_offline';
+            session.state.serverStatusReason = `Remote server listener stopped on ${session.peer.name || session.peer.host}`;
+            return;
+        }
+
         session.state.state = 'connecting';
         session.handshakeCompleted = false;
         session.parser.removeAllListeners();
@@ -827,6 +837,12 @@ export class TcpClientRuntime extends EventEmitter {
 
         if (!this.isRunning || session.isStopping) {
             session.state.state = 'closed';
+            return;
+        }
+
+        if (!this.isPeerOnlineInMesh(session.peer)) {
+            session.state.state = 'paused_offline';
+            session.state.serverStatusReason = `Remote server listener stopped on ${session.peer.name || session.peer.host}`;
             return;
         }
 

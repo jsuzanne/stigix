@@ -101,6 +101,14 @@ export class LocalRegistryServer {
             this.instances.delete(matchedKey);
         }
         this.instances.set(key, mergedInstance);
+
+        if (Array.isArray((instance as any).custom_app_servers)) {
+            for (const s of (instance as any).custom_app_servers) {
+                if (s && s.app_id) {
+                    this.updateCustomAppServer(s);
+                }
+            }
+        }
     }
 
         public updatePeerTunnelMetrics(instanceId: string, rttMs: number, lastPong: number, direction?: string): void {

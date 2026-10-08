@@ -12672,6 +12672,7 @@ function syncAllLocalCustomAppServers(): void {
         log('CUSTOM_TCP', `Error syncing all local custom app servers: ${e.message}`, 'warn');
     }
 }
+fleetTunnelManager.setOnLeaderConnected(() => syncAllLocalCustomAppServers());
 
 // Hook Custom TCP Manager state changes into Fleet Tunnel Mesh
 tcpAppManager.on('state_changed', ({ appId }: { appId: string }) => {
