@@ -10680,8 +10680,8 @@ app.get('/api/security/eicar-targets', authenticateToken, (req, res) => {
 
         if (h === '127.0.0.1' || h === 'localhost' || h === '::1' || h === '0.0.0.0') return true;
         if (localIp && (h === localIp || h.startsWith(localIp + ':'))) return true;
-        if (localNodeId && (id === localNodeId || h === localNodeId || n === localNodeId || n.startsWith(localNodeId))) return true;
-        if (localSiteName && (n === localSiteName || n.startsWith(localSiteName + ' ') || n.startsWith(localSiteName + '-'))) return true;
+        if (localNodeId && (id === localNodeId || h === localNodeId || n === localNodeId)) return true;
+        if (localSiteName && (n === localSiteName || id === localSiteName)) return true;
         return false;
     };
 
@@ -10712,10 +10712,11 @@ app.get('/api/security/eicar-targets', authenticateToken, (req, res) => {
     // 3. Dynamic Live Remote Custom TCP/HTTP Apps in EICAR Responder mode (Zero False Positives, Strictly Remote)
     try {
         let meshServers: any[] = [];
-        if (localRegistryServer) {
-            meshServers = localRegistryServer.getCustomAppMesh();
-        } else if (fleetTunnelManager) {
-            meshServers = (fleetTunnelManager as any).getCachedCustomAppMesh?.() || [];
+        if (fleetTunnelManager && typeof fleetTunnelManager.getCachedCustomAppMesh === 'function') {
+            meshServers = fleetTunnelManager.getCachedCustomAppMesh() || [];
+        }
+        if (meshServers.length === 0 && localRegistryServer) {
+            meshServers = localRegistryServer.getCustomAppMesh() || [];
         }
 
         for (const s of meshServers) {

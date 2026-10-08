@@ -499,13 +499,26 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
             })
             .catch(() => {});
 
+        const refreshEicarDynamicTargets = () => {
+            gFetch('/api/security/eicar-targets', { headers: authHeaders() })
+                .then(r => r.json())
+                .then(data => {
+                    if (data && Array.isArray(data.targets)) {
+                        const customApps = data.targets.filter((t: any) => t.type === 'custom_app');
+                        setCustomAppEicarTargets(customApps);
+                    }
+                })
+                .catch(() => { });
+        };
+
         // Background polling for statistics and results (picks up scheduled + MCP-launched tests)
         const pollInterval = setInterval(() => {
             fetchConfig();
             fetchHealth();
             fetchResults(); // Refresh results so MCP/scheduled tests appear automatically
             fetchLatestVerdicts();
-        }, 30000); // 30 seconds
+            refreshEicarDynamicTargets();
+        }, 15000); // 15 seconds
 
         return () => clearInterval(pollInterval);
     }, [activePeerId]);

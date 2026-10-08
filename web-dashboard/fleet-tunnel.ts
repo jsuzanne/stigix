@@ -133,7 +133,10 @@ export class FleetTunnelManager {
     }
 
     public getCachedCustomAppMesh(): any[] {
-        return this.cachedCustomAppMesh;
+        if (this.registryManager.isLeader()) {
+            return this.localRegistryServer?.getCustomAppMesh() || this.cachedCustomAppMesh || [];
+        }
+        return this.cachedCustomAppMesh || [];
     }
 
     public setProvisioningManager(provisioningManager: ProvisioningManager): void {
