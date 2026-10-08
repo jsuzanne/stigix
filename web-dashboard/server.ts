@@ -10722,7 +10722,18 @@ app.get('/api/security/eicar-targets', authenticateToken, (req, res) => {
         for (const s of meshServers) {
             if (s.is_eicar_responder && s.status === 'running') {
                 if (isSelf(s.ip, s.node_name, s.node_id)) continue;
-                const url = `http://${s.ip}:${s.port}/`;
+                let effectiveIp = s.ip;
+                if (!effectiveIp || effectiveIp === '127.0.0.1' || effectiveIp === 'localhost') {
+                    const target = targetsManager?.getMergedTargets().find((t: any) => 
+                        t.name === s.node_name || t.id === s.node_id || t.name === s.node_id
+                    );
+                    if (target && target.host && target.host !== '127.0.0.1') {
+                        effectiveIp = target.host;
+                    }
+                }
+                if (!effectiveIp || effectiveIp === '127.0.0.1') continue;
+
+                const url = `http://${effectiveIp}:${s.port}/`;
                 if (!targets.some(t => t.url === url)) {
                     targets.push({
                         name: `[Custom App] ${s.node_name || s.node_id} - ${s.app_name}`,
@@ -12627,7 +12638,31 @@ const provisioningManager = new ProvisioningManager(APP_CONFIG.configDir);
 provisioningManager.setCertificateManager(certificateManager);
 const underlayTopologyManager = new UnderlayTopologyManager(APP_CONFIG.configDir);
 const tcpAppManager = new TcpAppManager(APP_CONFIG.configDir);
+function getLocalNodePrimaryIp(regManager?: any): string {
+    if (regManager && typeof regManager.getStatus === 'function') {
+        const status = regManager.getStatus();
+        if (status.detected_ip && status.detected_ip !== '127.0.0.1' && !status.detected_ip.startsWith('127.')) {
+            return status.detected_ip;
+        }
+        if (status.ip_private && status.ip_private !== '127.0.0.1' && !status.ip_private.startsWith('127.')) {
+            return status.ip_private;
+        }
+    }
+    try {
+        const interfaces = os.networkInterfaces();
+        for (const name of Object.keys(interfaces)) {
+            if (name.startsWith('lo') || name.startsWith('docker') || name.startsWith('veth') || name.startsWith('br-')) continue;
+            for (const iface of interfaces[name] || []) {
+                if (iface.family === 'IPv4' && !iface.internal && iface.address !== '127.0.0.1' && !iface.address.startsWith('127.')) {
+                    return iface.address;
+                }
+            }
+        }
+    } catch {}
+    return '127.0.0.1';
+}
 const localRegistryServer = new LocalRegistryServer();
+localRegistryServer.setTargetsManager(targetsManager);
 registryManager.setLocalRegistryServer(localRegistryServer);
 registryManager.setProvisioningManager(provisioningManager);
 fleetTunnelManager.setTargetsManager(targetsManager);
@@ -12642,7 +12677,7 @@ function syncAllLocalCustomAppServers(): void {
         const regStatus = registryManager.getStatus();
         const nodeId = regStatus.instance_id || 'node';
         const nodeName = regStatus.site_name || nodeId;
-        const nodeIp = regStatus.ip_private || (typeof detectedIp !== 'undefined' && detectedIp ? detectedIp : '') || (typeof primaryIp !== 'undefined' && primaryIp ? primaryIp : '') || '127.0.0.1';
+        const nodeIp = getLocalNodePrimaryIp(registryManager);
 
         for (const app of file.applications) {
             const status = tcpAppManager.getAppStatus(app.id);
@@ -12690,7 +12725,7 @@ tcpAppManager.on('state_changed', ({ appId }: { appId: string }) => {
         const regStatus = registryManager.getStatus();
         const nodeId = regStatus.instance_id || 'node';
         const nodeName = regStatus.site_name || nodeId;
-        const nodeIp = regStatus.ip_private || '127.0.0.1';
+        const nodeIp = getLocalNodePrimaryIp(registryManager);
 
         const serverState = {
             node_id: nodeId,

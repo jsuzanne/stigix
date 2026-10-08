@@ -1293,7 +1293,23 @@ export class FleetTunnelManager {
 
         const nodeId = regStatus.instance_id || 'node';
         const nodeName = regStatus.site_name || nodeId;
-        const nodeIp = regStatus.ip_private || regStatus.detected_ip || '127.0.0.1';
+        let nodeIp = regStatus.detected_ip && regStatus.detected_ip !== '127.0.0.1' ? regStatus.detected_ip : (regStatus.ip_private && regStatus.ip_private !== '127.0.0.1' ? regStatus.ip_private : '');
+        if (!nodeIp || nodeIp === '127.0.0.1') {
+            try {
+                const ifaces = os.networkInterfaces();
+                for (const name of Object.keys(ifaces)) {
+                    if (name.startsWith('lo') || name.startsWith('docker') || name.startsWith('veth') || name.startsWith('br-')) continue;
+                    for (const iface of ifaces[name] || []) {
+                        if (iface.family === 'IPv4' && !iface.internal && iface.address !== '127.0.0.1') {
+                            nodeIp = iface.address;
+                            break;
+                        }
+                    }
+                    if (nodeIp && nodeIp !== '127.0.0.1') break;
+                }
+            } catch {}
+        }
+        if (!nodeIp) nodeIp = '127.0.0.1';
         let customAppServers: any[] = [];
         if (this.tcpAppManager && typeof this.tcpAppManager.getLocalServerStates === 'function') {
             try {

@@ -26,12 +26,34 @@ export interface ActiveCustomAppServer {
 export class LocalRegistryServer {
     private instances: Map<string, RegistryInstance> = new Map();
     private activeCustomAppServers: Map<string, ActiveCustomAppServer> = new Map();
+    private targetsManager: any = null;
     private ttlSeconds: number = 600; // 10 minutes TTL
 
+    public setTargetsManager(targetsManager: any): void {
+        this.targetsManager = targetsManager;
+    }
+
     public updateCustomAppServer(server: ActiveCustomAppServer): void {
-        const key = `${server.node_id}:${server.app_id}`;
+        if (!server || !server.app_id) return;
+        
+        // Auto-heal IP if 127.0.0.1 or empty
+        if (!server.ip || server.ip === '127.0.0.1' || server.ip === 'localhost') {
+            const inst = this.instances.get(server.node_id);
+            if (inst && inst.ip_private && inst.ip_private !== '127.0.0.1') {
+                server.ip = inst.ip_private;
+            } else if (this.targetsManager) {
+                const target = this.targetsManager.getMergedTargets().find((t: any) => 
+                    t.name === server.node_name || t.id === server.node_id || t.name === server.node_id
+                );
+                if (target && target.host && target.host !== '127.0.0.1') {
+                    server.ip = target.host;
+                }
+            }
+        }
+
+        const key = `${server.node_id || server.ip}:${server.app_id}`;
         this.activeCustomAppServers.set(key, { ...server, updated_at: Date.now() });
-        log('LOCAL-REGISTRY', `Custom App Server ${server.status}: ${server.app_name} on ${server.node_id} (port ${server.port})`);
+        log('LOCAL-REGISTRY', `Custom App Server ${server.status}: ${server.app_name} on ${server.node_id} (ip: ${server.ip}, port ${server.port})`);
     }
 
     public removeCustomAppServersForNode(nodeId: string): void {
