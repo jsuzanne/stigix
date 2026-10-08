@@ -3782,15 +3782,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                                         hasConfig: voiceHasConfig,
                                         noConfigMsg: 'Add a Voice server first',
                                     },
-                                    {
-                                        key: 'auto_sync_probes_to_fleet' as const,
-                                        label: 'Auto-Sync to Fleet',
-                                        desc: 'Auto-broadcasts probe & application edits to peers with 2.5s debounce.',
-                                        icon: '⚡',
-                                        color: 'amber',
-                                        hasConfig: true,
-                                        noConfigMsg: '',
-                                    },
+
                                 ] as const).map(({ key, label, desc, icon, color, hasConfig, noConfigMsg }) => {
                                     const active = systemSettings[key];
                                     const isLoading = hasConfig === null;
@@ -4345,18 +4337,33 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                                             <p className="text-[10px] text-text-muted mt-0.5 opacity-70">Modifications to probes or applications auto-replicate to all connected peers with a 2.5s safety debounce</p>
                                         </div>
                                     </div>
-                                    <button
-                                        onClick={() => handleToggleProvisioning(!provisioningData?.state?.enabled)}
-                                        disabled={provisioningToggling}
-                                        className={`px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-widest transition-all flex items-center gap-1.5 border shadow-sm ${
-                                            provisioningData?.state?.enabled
-                                                ? "bg-emerald-600/20 text-emerald-400 border-emerald-500/30 hover:bg-emerald-600/30"
-                                                : "bg-card-secondary text-text-muted border-border hover:border-emerald-500/30"
-                                        }`}
-                                    >
-                                        {provisioningToggling ? <RefreshCw size={10} className="animate-spin" /> : <Power size={10} />}
-                                        {provisioningData?.state?.enabled ? 'Mesh Publisher Active' : 'Mesh Publisher Disabled'}
-                                    </button>
+                                    <div className="flex items-center gap-2">
+                                        <button
+                                            onClick={() => saveSystemSetting('auto_sync_probes_to_fleet', !(systemSettings.auto_sync_probes_to_fleet !== false))}
+                                            disabled={savingSystemSettings}
+                                            title="When enabled, any edit to probes or applications is automatically published and synced to all peers after 2.5s"
+                                            className={`px-3 py-1.5 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all flex items-center gap-1.5 border shadow-sm ${
+                                                systemSettings.auto_sync_probes_to_fleet !== false
+                                                    ? "bg-blue-600/20 text-blue-400 border-blue-500/30 hover:bg-blue-600/30"
+                                                    : "bg-card-secondary text-text-muted border-border hover:border-blue-500/30"
+                                            }`}
+                                        >
+                                            <Zap size={11} className={systemSettings.auto_sync_probes_to_fleet !== false ? "text-blue-400" : "text-text-muted"} />
+                                            {systemSettings.auto_sync_probes_to_fleet !== false ? 'Auto-Sync: ON' : 'Auto-Sync: OFF'}
+                                        </button>
+                                        <button
+                                            onClick={() => handleToggleProvisioning(!provisioningData?.state?.enabled)}
+                                            disabled={provisioningToggling}
+                                            className={`px-3 py-1.5 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all flex items-center gap-1.5 border shadow-sm ${
+                                                provisioningData?.state?.enabled
+                                                    ? "bg-emerald-600/20 text-emerald-400 border-emerald-500/30 hover:bg-emerald-600/30"
+                                                    : "bg-card-secondary text-text-muted border-border hover:border-emerald-500/30"
+                                            }`}
+                                        >
+                                            {provisioningToggling ? <RefreshCw size={10} className="animate-spin" /> : <Power size={10} />}
+                                            {provisioningData?.state?.enabled ? 'Mesh Publisher Active' : 'Mesh Publisher Disabled'}
+                                        </button>
+                                    </div>
                                 </div>
 
                                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
