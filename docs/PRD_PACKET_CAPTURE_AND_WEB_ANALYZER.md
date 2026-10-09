@@ -137,15 +137,65 @@ The user interface provides a clean, modern 3-pane layout inspired by standard p
 
 ---
 
-## 5. Security & Safety Guardrails
+## 5. Performance, Safety & Resource Guardrails
 
-1. **Storage Safety:**
-   * Strict 50 MB quota per capture file; maximum 5 capture sessions retained on disk (FIFO cleanup).
-2. **Process Priority:**
-   * The capture process runs with lower CPU priority (`nice`) to prevent any interference with active traffic generation or the MCP server.
-3. **Data Privacy:**
-   * Clear UI disclaimer alerting users that captured packets may contain sensitive payload data.
-   * Default option to capture headers only (`snaplen 128` bytes).
+### 5.1 Performance Risk Profile
+Capturing network traffic in a multi-gigabit environment introduces potential contention:
+* **Low-to-Medium Flows (90% of use cases):** Synthetic DEM probes, Custom TCP apps (Telnet, APIs), Voice RTP, and Security validation generate between 10 to 5,000 pps (packets per second). In this operating envelope, `tcpdump` resource overhead is **completely negligible (< 1-2% CPU, < 10 MB RAM)**.
+* **High-Throughput Collision (High Risk):** During full-rate Bandwidth Tests (XFR / iPerf3 at 500 Mbps – 1 Gbps), packet arrival rates can reach **80,000+ pps**, equivalent to **~125 MB/s of raw disk I/O**. Without strict safeguards, an unconstrained capture could introduce CPU throttling, saturate disk I/O, and artificially skew speedtest results.
+
+---
+
+### 5.2 The 5 Non-Negotiable Performance Guardrails
+
+```
++-----------------------------------------------------------------------------------------+
+|                              PACKET CAPTURE SAFETY PIPELINE                             |
++-----------------------------------------------------------------------------------------+
+| [NIC Interface]                                                                         |
+|        │                                                                                |
+|        ▼                                                                                |
+| 1. KERNEL BPF FILTER  ─── (Drop unwanted bulk flows e.g. 'not port 9000' in kernel)    |
+|        │                                                                                |
+|        ▼                                                                                |
+| 2. SNAPLEN TRUNCATION ─── (Truncate to 128B headers: cuts 93% of disk & CPU load)       |
+|        │                                                                                |
+|        ▼                                                                                |
+| 3. NICE / IONICE      ─── (Process priority nice -n 10, ionice -c 3: Zero traffic impact)|
+|        │                                                                                |
+|        ▼                                                                                |
+| 4. HARD LIMITS        ─── (Auto-stop at 30s or 50 MB ceiling: Zero disk exhaustion)     |
+|        │                                                                                |
+|        ▼                                                                                |
+| 5. DECOUPLED STREAM   ─── (Throttled UI preview at 50 pps max; full dissection on-demand) |
++-----------------------------------------------------------------------------------------+
+```
+
+#### 🛡️ Guardrail 1: Default Header-Only Snaplen (`snaplen = 128 bytes`)
+* **Policy:** By default, all captures automatically enforce `-s 128` (or `-s 96` for standard IP/TCP).
+* **Benefit:** Retains 100% of crucial diagnostic headers (Ethernet, VLAN 802.1Q, IPv4/IPv6, TCP/UDP ports, TCP sequence/ACK numbers, flags, window sizes, and ToS/DSCP QoS markings) while discarding bulky application payloads.
+* **Impact:** Reduces disk I/O and memory throughput by **90% to 95%** compared to full-frame capture. Full payload capture requires an explicit, intentional toggle in the UI.
+
+#### 🛡️ Guardrail 2: In-Kernel BPF Filtering (Pre-Copy Drop)
+* **Policy:** Capture filters are compiled and evaluated directly within the Linux kernel socket filter engine (`cBPF`/`eBPF`).
+* **Benefit:** Unmatching packets (e.g. background traffic or other ports) are discarded inside the network driver/kernel ring buffer **before** any memory copy to userspace occurs, consuming zero disk and near-zero CPU.
+
+#### 🛡️ Guardrail 3: XFR / High-Speed Test Collision Avoidance
+* **Policy:**
+  * When capturing on an interface where Stigix XFR (Port 9000) or high-speed bandwidth testing is running, the capture engine automatically appends `and not port 9000` to general captures unless the user explicitly checks "Include High-Speed Bandwidth Traffic".
+  * The Web UI displays a clear visual badge: `⚠️ Bandwidth Test Active — High-speed ports excluded to protect test accuracy`.
+
+#### 🛡️ Guardrail 4: Decoupled Two-Stage Dissection Pipeline
+* **Policy:**
+  * **During Capture:** The backend process writes raw binary `.pcap` to disk without running real-time heavy protocol dissection on every packet.
+  * **Live UI Preview:** The WebSocket/SSE stream feeds a sampled summary to the browser (capped at **50 packets/sec** for smooth 60 FPS UI rendering, regardless of line rate).
+  * **Full Dissection:** Exhaustive packet-by-packet dissection is performed only on-demand when the user pauses/stops capture or clicks a specific frame.
+
+#### 🛡️ Guardrail 5: Strict Operational & Storage Quotas
+* **Time Guard:** Default hard timeout of **30 seconds** (configurable up to a maximum ceiling of 300 seconds).
+* **File Quota:** Emergency auto-stop triggered immediately if the file size reaches **50 MB** or packet count hits **5,000 frames**.
+* **Disk Retention (FIFO):** Automatic rotation keeping a maximum of **5 capture sessions** (maximum total footprint: 250 MB). Oldest traces are purged automatically.
+* **Process Scheduling:** The capture worker process is executed with `nice -n 10` (lower CPU priority) and `ionice -c 3` (idle I/O priority), ensuring that the primary Stigix traffic generation engines and MCP server always retain 100% scheduling priority.
 
 ---
 
