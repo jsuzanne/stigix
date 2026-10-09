@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { 
-    Radio, Play, Square, Download, RefreshCw, Search, Trash2, 
+    Radio, Play, Square, Download, Loader2, RefreshCw, Search, Trash2, 
     Clock, HardDrive, Filter, Layers, Binary, CheckCircle2, 
     AlertCircle, ChevronRight, ChevronDown, Copy, Check, 
     FileText, ArrowRight, Zap, X, ShieldAlert, Cpu
@@ -89,6 +89,7 @@ export default function PacketCapture({ token, onNavigateToReplay }: PacketCaptu
     const [showHistoryModal, setShowHistoryModal] = useState<boolean>(false);
     const [savedCaptures, setSavedCaptures] = useState<SavedCapture[]>([]);
     const [loadingHistory, setLoadingHistory] = useState<boolean>(false);
+    const [downloadingFile, setDownloadingFile] = useState<string | null>(null);
 
     // Copy indicator
     const [copiedHex, setCopiedHex] = useState<boolean>(false);
@@ -354,6 +355,45 @@ export default function PacketCapture({ token, onNavigateToReplay }: PacketCaptu
         }
     };
 
+    const handleDownloadCapture = async (filename: string) => {
+        if (!filename) return;
+        setDownloadingFile(filename);
+        try {
+            const downloadUrl = `/api/capture/download/${encodeURIComponent(filename)}?token=${encodeURIComponent(token)}`;
+            const res = await fetch(downloadUrl, {
+                credentials: 'include',
+                headers: {
+                    'Authorization': `Bearer ${token}`
+                }
+            });
+            if (!res.ok) {
+                let errMsg = `Download failed with status ${res.status}`;
+                try {
+                    const errJson = await res.json();
+                    if (errJson?.error) errMsg = errJson.error;
+                } catch {
+                    // Ignore non-json body
+                }
+                throw new Error(errMsg);
+            }
+            const blob = await res.blob();
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            window.URL.revokeObjectURL(url);
+            document.body.removeChild(a);
+            toast.success(`Downloaded ${filename}`);
+        } catch (e: any) {
+            console.error('Download capture error:', e);
+            toast.error(e.message || 'Download failed');
+        } finally {
+            setDownloadingFile(null);
+        }
+    };
+
     const handleSelectPreset = (preset: PresetItem) => {
         setSelectedPreset(preset.id);
         setBpfFilter(preset.bpf);
@@ -476,15 +516,19 @@ export default function PacketCapture({ token, onNavigateToReplay }: PacketCaptu
 
                         {activePcapFile && (
                             <>
-                                <a
-                                    href={`/api/capture/download/${encodeURIComponent(activePcapFile)}`}
-                                    download={activePcapFile}
-                                    className="px-3.5 py-2.5 bg-card-secondary hover:bg-card-hover border border-border rounded-xl text-xs font-black uppercase tracking-wider text-text-muted hover:text-text-primary transition-all flex items-center gap-1.5 cursor-pointer"
+                                <button
+                                    onClick={() => handleDownloadCapture(activePcapFile)}
+                                    disabled={downloadingFile === activePcapFile}
+                                    className="px-3.5 py-2.5 bg-card-secondary hover:bg-card-hover border border-border rounded-xl text-xs font-black uppercase tracking-wider text-text-muted hover:text-text-primary transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
                                     title="Download raw .pcap for local Wireshark"
                                 >
-                                    <Download size={13} />
+                                    {downloadingFile === activePcapFile ? (
+                                        <Loader2 size={13} className="animate-spin text-cyan-400" />
+                                    ) : (
+                                        <Download size={13} />
+                                    )}
                                     Download .pcap
-                                </a>
+                                </button>
 
                                 <button
                                     onClick={handleSendToReplay}
@@ -851,14 +895,18 @@ export default function PacketCapture({ token, onNavigateToReplay }: PacketCaptu
                                             >
                                                 Inspect
                                             </button>
-                                            <a
-                                                href={`/api/capture/download/${encodeURIComponent(c.filename)}`}
-                                                download={c.filename}
-                                                className="p-1.5 text-text-muted hover:text-text-primary bg-card-secondary hover:bg-card-hover rounded-xl border border-border transition-colors cursor-pointer"
+                                            <button
+                                                onClick={() => handleDownloadCapture(c.filename)}
+                                                disabled={downloadingFile === c.filename}
+                                                className="p-1.5 text-text-muted hover:text-text-primary bg-card-secondary hover:bg-card-hover rounded-xl border border-border transition-colors cursor-pointer disabled:opacity-50"
                                                 title="Download .pcap"
                                             >
-                                                <Download size={14} />
-                                            </a>
+                                                {downloadingFile === c.filename ? (
+                                                    <Loader2 size={14} className="animate-spin text-cyan-400" />
+                                                ) : (
+                                                    <Download size={14} />
+                                                )}
+                                            </button>
                                             <button
                                                 onClick={() => handleDeleteCapture(c.filename)}
                                                 className="p-1.5 text-rose-400 hover:text-rose-300 bg-rose-500/10 hover:bg-rose-500/20 rounded-xl border border-rose-500/20 transition-colors cursor-pointer"
