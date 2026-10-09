@@ -47,6 +47,7 @@ import {
     Router,
     GitBranch,
     ShieldCheck,
+    Shield,
     HelpCircle,
     AlertTriangle,
     Table,
@@ -889,11 +890,78 @@ const UnderlayGatewayNode = ({ data }: any) => {
     );
 };
 
+const SasePopNode = ({ data }: any) => {
+    const isPrisma = data.provider === 'Prisma Access';
+    const isHealthy = data.status === 'healthy';
+
+    return (
+        <div className={cn(
+            "px-6 py-4 rounded-3xl border-2 transition-all shadow-2xl backdrop-blur-2xl flex flex-col items-center gap-2.5 min-w-[260px] cursor-pointer hover:scale-105 duration-200",
+            isPrisma
+                ? (isHealthy ? "bg-purple-950/40 border-purple-500/50 shadow-purple-500/20" : "bg-purple-950/20 border-purple-500/30")
+                : (isHealthy ? "bg-blue-950/40 border-blue-500/50 shadow-blue-500/20" : "bg-rose-950/30 border-rose-500/40 shadow-rose-500/10")
+        )}>
+            <Handle type="target" position={Position.Top} id="target-top" className="!opacity-0" />
+            <Handle type="target" position={Position.Bottom} id="target-bottom" className="!opacity-0" />
+
+            {/* Provider & Health Header */}
+            <div className="flex items-center justify-between w-full gap-2">
+                <span className={cn(
+                    "px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider border",
+                    isPrisma ? "bg-purple-500/20 text-purple-300 border-purple-500/30" : "bg-blue-500/20 text-blue-300 border-blue-500/30"
+                )}>
+                    {data.provider}
+                </span>
+                <div className="flex items-center gap-1.5">
+                    <span className={cn("w-2 h-2 rounded-full", isHealthy ? "bg-emerald-400 animate-pulse" : "bg-rose-400")} />
+                    <span className="text-[10px] font-mono font-bold text-text-muted">
+                        {data.tunnels_up || 0}/{data.tunnels_total || 0} Up
+                    </span>
+                </div>
+            </div>
+
+            {/* Center Icon & Title */}
+            <div className="flex items-center gap-3 w-full my-0.5">
+                <div className={cn(
+                    "p-3 rounded-2xl shadow-inner shrink-0",
+                    isPrisma ? "bg-purple-600 text-white shadow-purple-900/50" : "bg-blue-600 text-white shadow-blue-900/50"
+                )}>
+                    <Shield size={22} />
+                </div>
+                <div className="min-w-0 flex-1">
+                    <div className="text-sm font-black text-text-primary tracking-tight truncate leading-tight">
+                        {data.short_name || data.name}
+                    </div>
+                    {data.spn_name && (
+                        <div className="text-[10px] text-text-muted font-mono truncate">
+                            SPN: {data.spn_name}
+                        </div>
+                    )}
+                </div>
+            </div>
+
+            {/* IP & Telemetry Footer */}
+            <div className="w-full pt-2 border-t border-border/60 flex items-center justify-between text-[10px] font-mono">
+                <div className="flex items-center gap-1 text-cyan-400 font-bold">
+                    <span>GW:</span>
+                    <span>{data.primary_peer_ip || 'Anycast'}</span>
+                </div>
+                {data.liveliness_probe_ip && (
+                    <div className="text-text-muted text-[9px]" title="Liveliness ICMP probe">
+                        Probe: {data.liveliness_probe_ip}
+                    </div>
+                )}
+            </div>
+        </div>
+    );
+};
+
 const nodeTypes = {
     site: SiteNode,
     cloud: CloudNode,
     vyosRouter: VyOSRouterNode,
     underlayGateway: UnderlayGatewayNode,
+    sasePop: SasePopNode,
 };
 
 const edgeTypes = {
@@ -946,7 +1014,7 @@ function TopologyContent({ token }: TopologyProps) {
     const [fleetNodes, setFleetNodes] = useState<any[]>([]);
 
     // View & Underlay state
-    const [topologyViewMode, setTopologyViewMode] = useState<'overlay' | 'underlay'>('overlay');
+    const [topologyViewMode, setTopologyViewMode] = useState<'overlay' | 'underlay' | 'sase'>('overlay');
     const [underlayData, setUnderlayData] = useState<UnderlayPayload | null>(null);
     const [underlayMode, setUnderlayMode] = useState<'off' | 'badges'>('off');
     const [showUnderlayPanel, setShowUnderlayPanel] = useState(false);
@@ -1538,6 +1606,29 @@ function TopologyContent({ token }: TopologyProps) {
                         data: { name: 'EXTERNAL / UNMAPPED' }
                     });
                 }
+            } else if (topologyViewMode === 'sase') {
+                // SASE MODE MIDDLE TIER: SASE Security Cloud PoPs
+                const sasePops = topology?.sase_infrastructure?.pops || [
+                    { id: 'prisma-france-south', name: 'Prisma Access France South (Paris Lime)', short_name: 'France South', provider: 'Prisma Access', primary_peer_ip: '130.41.124.164', liveliness_probe_ip: '192.168.255.254', status: 'healthy', tunnels_up: 4, tunnels_total: 8 },
+                    { id: 'prisma-ireland', name: 'Prisma Access Ireland (Elderberry)', short_name: 'Ireland', provider: 'Prisma Access', primary_peer_ip: '74.221.137.55', liveliness_probe_ip: '192.168.255.254', status: 'healthy', tunnels_up: 4, tunnels_total: 8 },
+                    { id: 'zscaler-cloud', name: 'Zscaler Internet Access (ZIA)', short_name: 'Zscaler Cloud', provider: 'Zscaler', primary_peer_ip: '165.225.72.39', status: 'healthy', tunnels_up: 3, tunnels_total: 9 },
+                ];
+
+                const POP_GAP = 320;
+                const totalPopsWidth = (sasePops.length - 1) * POP_GAP;
+                sasePops.forEach((pop: any, idx: number) => {
+                    const x = -totalPopsWidth / 2 + idx * POP_GAP;
+                    newNodes.push({
+                        id: `cloud:${pop.id}`,
+                        type: 'sasePop',
+                        position: { x, y: CLOUD_Y },
+                        origin: [0.5, 0.5],
+                        data: {
+                            ...pop,
+                            isSasePop: true
+                        }
+                    });
+                });
             } else {
                 const INTERNET_X = -200;
                 if (publicWanNetworks.size > 0) {
@@ -1669,6 +1760,61 @@ function TopologyContent({ token }: TopologyProps) {
                                 hideLabel: true,
                                 resolution: res,
                                 isUnderlayEdge: true
+                            }
+                        });
+                    });
+                });
+            });
+        } else if (topologyViewMode === 'sase') {
+            // mode SASE: Draw ServiceLink IPsec tunnels from Branches to SASE PoPs
+            filteredSites.forEach((site: any) => {
+                const isHub = hubs.includes(site);
+                site.devices?.forEach((device: any) => {
+                    device.service_links?.forEach((sl: any) => {
+                        let targetPopId = 'cloud:prisma-france-south';
+                        const seName = (sl.service_endpoint_name || sl.name || '').toLowerCase();
+                        if (seName.includes('ireland') || seName.includes('eu-west-1')) {
+                            targetPopId = 'cloud:prisma-ireland';
+                        } else if (sl.provider === 'Zscaler' || seName.includes('zscaler')) {
+                            targetPopId = 'cloud:zscaler-cloud';
+                        }
+
+                        const isUp = sl.operational_state === 'up';
+                        const isAct = sl.role === 'active';
+                        // Active = emerald #10b981, Backup = cyan #06b6d4, Down = red #ef4444
+                        const strokeColor = isUp ? (isAct ? '#10b981' : '#06b6d4') : '#ef4444';
+
+                        let sourceHandle = `circuit:${device.device_name}:${sl.name}`;
+                        const matchingWan = (device.wan_interfaces || []).find((w: any) => 
+                            sl.name.toLowerCase().includes(w.name.toLowerCase()) || 
+                            (w.name.toLowerCase().includes('cable') && sl.name.toLowerCase().includes('cable')) ||
+                            (w.name.toLowerCase().includes('ethernet') && sl.name.toLowerCase().includes('ethernet'))
+                        );
+                        if (matchingWan) {
+                            sourceHandle = `circuit:${device.device_name}:${matchingWan.name}`;
+                        } else if (device.wan_interfaces?.length > 0) {
+                            sourceHandle = `circuit:${device.device_name}:${device.wan_interfaces[0].name}`;
+                        }
+
+                        newEdges.push({
+                            id: `sase-edge:${site.site_id}:${device.device_name}:${sl.id}`,
+                            type: 'site',
+                            source: `site:${site.site_id}`,
+                            target: targetPopId,
+                            sourceHandle: sourceHandle,
+                            targetHandle: isHub ? 'target-top' : 'target-bottom',
+                            animated: isUp,
+                            style: {
+                                stroke: strokeColor,
+                                strokeWidth: isAct ? 3 : 2,
+                                strokeDasharray: isAct ? undefined : (isUp ? '5 5' : '3 3')
+                            },
+                            data: {
+                                ...sl,
+                                site_name: site.site_name,
+                                device_name: device.device_name,
+                                hideLabel: true,
+                                isSaseEdge: true
                             }
                         });
                     });
@@ -2030,6 +2176,29 @@ function TopologyContent({ token }: TopologyProps) {
                                 </div>
                                 <button onClick={() => setShowFilter(false)} className="p-1 hover:bg-card-secondary rounded-lg transition-colors text-text-muted">
                                     <X size={18} />
+                                </button>
+                                <button
+                                    onClick={() => setTopologyViewMode('sase')}
+                                    className={cn(
+                                        "w-full px-3 py-2 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all flex items-center justify-between gap-2 cursor-pointer",
+                                        topologyViewMode === 'sase'
+                                            ? "bg-purple-600 text-white shadow-md shadow-purple-500/25"
+                                            : "text-text-muted hover:text-purple-400 hover:bg-card-secondary"
+                                    )}
+                                    title="Full SASE Security Fabric View (Branches <-> Prisma Access PoPs)"
+                                >
+                                    <div className="flex items-center gap-1.5">
+                                        <Shield size={12} />
+                                        <span>SASE Fabric</span>
+                                    </div>
+                                    {topology?.sase_infrastructure?.up_service_links !== undefined ? (
+                                        <span className={cn(
+                                            "px-1.5 py-0.5 rounded-full text-[8px] font-mono font-black",
+                                            topologyViewMode === 'sase' ? "bg-white/20 text-white" : "bg-purple-500/20 text-purple-300"
+                                        )}>
+                                            {topology.sase_infrastructure.up_service_links} Up
+                                        </span>
+                                    ) : null}
                                 </button>
                             </div>
 
@@ -2472,16 +2641,24 @@ function TopologyContent({ token }: TopologyProps) {
                                     <div className="flex items-center gap-3">
                                         <div className={cn(
                                             "p-2.5 rounded-xl",
-                                            selectedObject.type === 'node' ? "bg-blue-500 text-white" : "bg-purple-500 text-white"
+                                            selectedObject.isSaseEdge || selectedObject.isSasePop
+                                                ? "bg-purple-600 text-white shadow-lg shadow-purple-500/30"
+                                                : (selectedObject.type === 'node' ? "bg-blue-500 text-white" : "bg-purple-500 text-white")
                                         )}>
-                                            {selectedObject.role === 'HUB' ? <Server size={18} /> : <Home size={18} />}
+                                            {selectedObject.isSaseEdge || selectedObject.isSasePop ? (
+                                                <Shield size={18} />
+                                            ) : (selectedObject.role === 'HUB' ? <Server size={18} /> : <Home size={18} />)}
                                         </div>
                                         <div>
                                             <h3 className="text-lg font-black text-text-primary tracking-tight">{selectedObject.name || selectedObject.label}</h3>
                                             <p className="text-[10px] text-text-muted font-bold tracking-widest uppercase">
-                                                {selectedObject.type === 'node'
-                                                    ? (selectedObject.site_id ? 'Site Entity' : 'WAN Network')
-                                                    : 'Circuit Link'}
+                                                {selectedObject.isSasePop
+                                                    ? 'SASE Security Cloud PoP'
+                                                    : (selectedObject.isSaseEdge
+                                                        ? 'ServiceLink IPsec Tunnel'
+                                                        : (selectedObject.type === 'node'
+                                                            ? (selectedObject.site_id ? 'Site Entity' : 'WAN Network')
+                                                            : 'Circuit Link'))}
                                             </p>
                                         </div>
                                     </div>
@@ -2538,6 +2715,54 @@ function TopologyContent({ token }: TopologyProps) {
                                                             )}
                                                         </div>
                                                     </div>
+
+                                                    {/* SASE ServiceLinks Section */}
+                                                    {selectedObject.devices?.some((d: any) => (d.service_links || []).length > 0) && (
+                                                        <div className="space-y-3">
+                                                            <div className="text-[10px] font-black text-text-muted uppercase tracking-widest flex items-center justify-between">
+                                                                <span className="flex items-center gap-2"><Shield size={12} className="text-purple-400" /> SASE ServiceLinks</span>
+                                                                <span className="text-[9px] font-mono font-bold text-purple-400">
+                                                                    {selectedObject.devices.reduce((acc: number, d: any) => acc + (d.service_links?.filter((s: any) => s.operational_state === 'up').length || 0), 0)} Up
+                                                                </span>
+                                                            </div>
+                                                            <div className="grid gap-2">
+                                                                {selectedObject.devices.map((d: any) =>
+                                                                    (d.service_links || []).map((sl: any, slIdx: number) => {
+                                                                        const isUp = sl.operational_state === 'up';
+                                                                        const isAct = sl.role === 'active';
+                                                                        return (
+                                                                            <div key={slIdx} className="bg-card-secondary/40 border border-border/60 p-3 rounded-xl flex items-center justify-between group hover:border-purple-500/40 transition-all">
+                                                                                <div className="min-w-0 flex-1 pr-2">
+                                                                                    <div className="flex items-center gap-1.5">
+                                                                                        <span className={cn(
+                                                                                            "w-1.5 h-1.5 rounded-full",
+                                                                                            isUp ? "bg-emerald-400 animate-pulse" : "bg-rose-400"
+                                                                                        )} />
+                                                                                        <span className="text-xs font-bold text-text-primary truncate">
+                                                                                            {sl.name}
+                                                                                        </span>
+                                                                                    </div>
+                                                                                    <div className="text-[10px] text-text-secondary font-mono truncate mt-0.5">
+                                                                                        {sl.provider} · {sl.role?.toUpperCase()} · GW: <span className="text-cyan-400 font-bold">{sl.remote_ip || 'Anycast'}</span>
+                                                                                    </div>
+                                                                                </div>
+                                                                                <div className="shrink-0 flex items-center gap-1.5">
+                                                                                    <span className={cn(
+                                                                                        "px-2 py-0.5 rounded text-[8px] font-black uppercase tracking-tighter border",
+                                                                                        isUp
+                                                                                            ? (isAct ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20" : "bg-cyan-500/10 text-cyan-400 border-cyan-500/20")
+                                                                                            : "bg-rose-500/10 text-rose-400 border-rose-500/20"
+                                                                                    )}>
+                                                                                        {sl.extended_state || sl.operational_state}
+                                                                                    </span>
+                                                                                </div>
+                                                                            </div>
+                                                                        );
+                                                                    })
+                                                                )}
+                                                            </div>
+                                                        </div>
+                                                    )}
 
                                                     <div className="space-y-3">
                                                         <div className="flex justify-between items-center">
@@ -2688,6 +2913,123 @@ function TopologyContent({ token }: TopologyProps) {
                                             )}
                                         </>
                                     ) : (
+                                        selectedObject.isSaseEdge ? (
+                                        <div className="space-y-5">
+                                            {/* SASE Tunnel Header Banner */}
+                                            <div className="bg-purple-950/20 border border-purple-500/30 p-5 rounded-2xl flex flex-col items-center gap-3">
+                                                <div className="p-3 bg-purple-600 rounded-2xl text-white shadow-lg shadow-purple-900/50">
+                                                    <Shield size={24} />
+                                                </div>
+                                                <div className="text-center">
+                                                    <div className="text-base font-black text-text-primary tracking-tight">{selectedObject.name}</div>
+                                                    <div className="text-[10px] text-purple-400 font-bold tracking-[0.15em] mt-1.5 uppercase">
+                                                        {selectedObject.provider} · {selectedObject.role?.toUpperCase()} PATH
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            {/* Status Badge */}
+                                            <div className={cn(
+                                                "p-3 rounded-xl border flex items-center justify-between text-xs font-bold",
+                                                selectedObject.operational_state === 'up'
+                                                    ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-400"
+                                                    : "bg-rose-500/10 border-rose-500/30 text-rose-400"
+                                            )}>
+                                                <div className="flex items-center gap-2">
+                                                    <span className={cn("w-2 h-2 rounded-full", selectedObject.operational_state === 'up' ? "bg-emerald-400 animate-pulse" : "bg-rose-400")} />
+                                                    <span>STATUS: {selectedObject.extended_state || selectedObject.operational_state}</span>
+                                                </div>
+                                                <span className="font-mono text-[10px] px-2 py-0.5 rounded bg-black/20">
+                                                    Device: {selectedObject.device}
+                                                </span>
+                                            </div>
+
+                                            {/* Key Specs Grid */}
+                                            <div className="grid grid-cols-2 gap-3">
+                                                <div className="bg-card-secondary/40 p-3.5 rounded-xl border border-border/60 space-y-1">
+                                                    <div className="text-[9px] font-black text-text-muted uppercase tracking-widest">Remote Gateway (SPN)</div>
+                                                    <div className="text-xs font-mono font-bold text-cyan-400">{selectedObject.remote_ip || 'N/A'}</div>
+                                                </div>
+                                                <div className="bg-card-secondary/40 p-3.5 rounded-xl border border-border/60 space-y-1">
+                                                    <div className="text-[9px] font-black text-text-muted uppercase tracking-widest">Local Tunnel IP</div>
+                                                    <div className="text-xs font-mono font-bold text-text-primary">{selectedObject.local_ip || 'N/A'}</div>
+                                                </div>
+                                                <div className="bg-card-secondary/40 p-3.5 rounded-xl border border-border/60 space-y-1">
+                                                    <div className="text-[9px] font-black text-text-muted uppercase tracking-widest">Inside Subnet (/31)</div>
+                                                    <div className="text-xs font-mono font-bold text-amber-400">{selectedObject.inside_ip || 'N/A'}</div>
+                                                </div>
+                                                <div className="bg-card-secondary/40 p-3.5 rounded-xl border border-border/60 space-y-1">
+                                                    <div className="text-[9px] font-black text-text-muted uppercase tracking-widest">Liveliness Probe</div>
+                                                    <div className="text-xs font-mono font-bold text-emerald-400">{selectedObject.liveliness_probe_ip || 'None'}</div>
+                                                </div>
+                                            </div>
+
+                                            {/* Endpoint / Routing Info */}
+                                            <div className="bg-card-secondary/30 rounded-xl p-3.5 border border-border/50 space-y-2 text-xs">
+                                                <div className="flex justify-between items-center py-0.5 border-b border-border/40">
+                                                    <span className="text-text-muted">Target PoP</span>
+                                                    <span className="font-semibold text-text-primary truncate max-w-[220px]" title={selectedObject.service_endpoint_name}>
+                                                        {selectedObject.service_endpoint_name}
+                                                    </span>
+                                                </div>
+                                                <div className="flex justify-between items-center py-0.5 border-b border-border/40">
+                                                    <span className="text-text-muted">Source Site</span>
+                                                    <span className="font-bold text-indigo-400">{selectedObject.site_name} ({selectedObject.device_name})</span>
+                                                </div>
+                                                {selectedObject.routes && selectedObject.routes.length > 0 && (
+                                                    <div className="flex justify-between items-center py-0.5">
+                                                        <span className="text-text-muted">Installed Route</span>
+                                                        <span className="font-mono text-text-secondary text-[11px]">
+                                                            {selectedObject.routes[0].destination} via {selectedObject.routes[0].via}
+                                                        </span>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </div>
+                                    ) : selectedObject.isSasePop ? (
+                                        <div className="space-y-5">
+                                            {/* SASE PoP Banner */}
+                                            <div className="bg-purple-950/20 border border-purple-500/30 p-5 rounded-2xl flex flex-col items-center gap-3">
+                                                <div className="p-3 bg-purple-600 rounded-2xl text-white shadow-lg shadow-purple-900/50">
+                                                    <Shield size={26} />
+                                                </div>
+                                                <div className="text-center">
+                                                    <div className="text-lg font-black text-text-primary tracking-tight">{selectedObject.name}</div>
+                                                    <div className="text-[10px] text-purple-400 font-bold tracking-[0.15em] mt-1.5 uppercase">
+                                                        {selectedObject.provider} · POP CLUSTER
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            {/* Specs */}
+                                            <div className="grid grid-cols-2 gap-3">
+                                                <div className="bg-card-secondary/40 p-3.5 rounded-xl border border-border/60 space-y-1">
+                                                    <div className="text-[9px] font-black text-text-muted uppercase tracking-widest">Gateway Anycast/SPN IP</div>
+                                                    <div className="text-xs font-mono font-bold text-cyan-400">{selectedObject.primary_peer_ip || 'N/A'}</div>
+                                                </div>
+                                                <div className="bg-card-secondary/40 p-3.5 rounded-xl border border-border/60 space-y-1">
+                                                    <div className="text-[9px] font-black text-text-muted uppercase tracking-widest">Health / Tunnels</div>
+                                                    <div className="text-xs font-mono font-bold text-emerald-400">
+                                                        {selectedObject.tunnels_up || 0}/{selectedObject.tunnels_total || 0} Up
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            {/* Connected Sites List */}
+                                            <div className="space-y-2">
+                                                <div className="text-[10px] font-black text-text-muted uppercase tracking-widest flex items-center gap-1.5">
+                                                    <Network size={12} /> Connected Branch Sites
+                                                </div>
+                                                <div className="flex flex-wrap gap-1.5">
+                                                    {(selectedObject.connected_sites || []).map((s: string) => (
+                                                        <span key={s} className="px-2.5 py-1 rounded-lg text-xs font-bold font-mono bg-card-secondary border border-border text-text-primary">
+                                                            {s}
+                                                        </span>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        </div>
+                                    ) : (
                                         <div className="space-y-6">
                                             <div className="bg-blue-500/5 border border-blue-500/20 p-5 rounded-2xl flex flex-col items-center gap-3">
                                                 <div className="p-3 bg-blue-500 rounded-2xl text-white shadow-lg">
@@ -2743,7 +3085,7 @@ function TopologyContent({ token }: TopologyProps) {
                                                 </div>
                                             </div>
                                         </div>
-                                    )}
+                                    ))}
                                 </div>
 
                                 <div className="p-6 bg-card-secondary/50 border-t border-border mt-auto">

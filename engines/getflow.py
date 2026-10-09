@@ -1079,6 +1079,40 @@ def build_full_topology(sdk: API, sites_data: dict, debug: bool = False, debug_t
 
     # Fetch all WAN networks to map network_id to name (ISP)
     wan_net_id_to_name = {}
+    
+    # --- SASE Step 1: Pre-fetch Service Endpoints & SASE Connections ---
+    se_map = {}
+    try:
+        if debug:
+            print(" [TOPO] Fetching Service Endpoints for SASE...", file=sys.stderr)
+        se_resp = sdk.get.serviceendpoints()
+        if se_resp.cgx_status:
+            for item in se_resp.cgx_content.get('items', []) or []:
+                se_map[item['id']] = item
+            if debug:
+                print(f" [TOPO] Found {len(se_map)} service endpoints", file=sys.stderr)
+    except Exception as e:
+        if debug:
+            print(f" [TOPO] Error fetching service endpoints: {e}", file=sys.stderr)
+
+    sase_conns_by_site = {}
+    def _fetch_site_sase(sid):
+        try:
+            r = sdk.get.prismasase_connections(site_id=sid)
+            return (sid, r.cgx_content.get('items', []) if r.cgx_status else [])
+        except Exception:
+            return (sid, [])
+
+    try:
+        if debug:
+            print(" [TOPO] Fetching Prisma SASE site connections...", file=sys.stderr)
+        with concurrent.futures.ThreadPoolExecutor(max_workers=15) as ex:
+            for sid, conns in ex.map(_fetch_site_sase, all_site_ids):
+                if conns:
+                    sase_conns_by_site[sid] = conns
+    except Exception as e:
+        if debug:
+            print(f" [TOPO] Error fetching SASE connections: {e}", file=sys.stderr)
     try:
         if debug:
             print(" [TOPO] Fetching WAN networks...", file=sys.stderr)
@@ -1136,16 +1170,18 @@ def build_full_topology(sdk: API, sites_data: dict, debug: bool = False, debug_t
     if debug:
         print(f" [TOPO] Building global WAN/IP-to-element mapping for all elements...", file=sys.stderr)
     
+    el_interfaces_map = {}
     def fetch_el_data(el):
         eid = el.get('id')
         sid = el.get('site_id')
         ename = el.get('name') or el.get('hostname') or 'ION'
-        if not eid or not sid: return []
+        if not eid or not sid: return (eid, [], [])
         try:
             resp = sdk.get.interfaces(site_id=sid, element_id=eid)
             if resp.cgx_status:
+                items = resp.cgx_content.get('items', []) or []
                 data_list = []
-                for item in resp.cgx_content.get('items', []) or []:
+                for item in items:
                     swi_ids = item.get('site_wan_interface_ids') or []
                     ipv4_addr = item.get('ipv4_address') # Static IP
                     # Also try to find IP from dynamic config if static is None
@@ -1154,14 +1190,15 @@ def build_full_topology(sdk: API, sites_data: dict, debug: bool = False, debug_t
                         ipv4_addr = ipv4_config.get('ip')
                     
                     data_list.append((ename, swi_ids, ipv4_addr))
-                return data_list
+                return (eid, items, data_list)
         except Exception:
             pass
-        return []
+        return (eid, [], [])
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=30) as executor:
         results = list(executor.map(fetch_el_data, all_elements))
-        for res_list in results:
+        for eid, items, res_list in results:
+            el_interfaces_map[eid] = items
             for ename, swi_ids, ip_addr in res_list:
                 # Map WAN IDs
                 for swid in swi_ids:
@@ -1171,6 +1208,36 @@ def build_full_topology(sdk: API, sites_data: dict, debug: bool = False, debug_t
                 if ip_addr:
                     clean_ip = ip_addr.split('/')[0]
                     ip_to_el_name[clean_ip] = ename
+
+    # --- SASE Step 2.6: Pre-fetch Operational Status for all ServiceLink interfaces ---
+    all_sl_tasks = []
+    for el in all_elements:
+        eid = el.get('id')
+        sid = el.get('site_id')
+        if not eid or not sid: continue
+        for intf in el_interfaces_map.get(eid, []):
+            if intf.get('type') == 'service_link':
+                all_sl_tasks.append((sid, eid, intf.get('id')))
+
+    sl_status_map = {}
+    def _fetch_sl_status(task):
+        tsid, teid, sl_id = task
+        try:
+            st_resp = sdk.get.interfaces_status(site_id=tsid, element_id=teid, interface_id=sl_id)
+            return (sl_id, st_resp.cgx_content if st_resp.cgx_status else {})
+        except Exception:
+            return (sl_id, {})
+
+    if all_sl_tasks:
+        try:
+            if debug:
+                print(f" [TOPO] Fetching operational status for {len(all_sl_tasks)} service links...", file=sys.stderr)
+            with concurrent.futures.ThreadPoolExecutor(max_workers=20) as executor:
+                for sl_id, st in executor.map(_fetch_sl_status, all_sl_tasks):
+                    sl_status_map[sl_id] = st
+        except Exception as e:
+            if debug:
+                print(f" [TOPO] Error fetching ServiceLink statuses: {e}", file=sys.stderr)
 
     # --- Step 3: All WAN interfaces per site ---
     wan_if_by_site = {}   # site_id -> list of waninterface objects
@@ -1213,12 +1280,14 @@ def build_full_topology(sdk: API, sites_data: dict, debug: bool = False, debug_t
             lan_interfaces = []
             wan_interface_details = []
 
-            # --- LAN interfaces for this element ---
-            try:
-                intf_resp = sdk.get.interfaces(site_id=site_id, element_id=el_id)
-                interfaces = intf_resp.cgx_content.get('items', []) if intf_resp.cgx_status else []
-            except Exception:
-                interfaces = []
+            # --- LAN & ServiceLink interfaces for this element ---
+            interfaces = el_interfaces_map.get(el_id, [])
+            if not interfaces:
+                try:
+                    intf_resp = sdk.get.interfaces(site_id=site_id, element_id=el_id)
+                    interfaces = intf_resp.cgx_content.get('items', []) if intf_resp.cgx_status else []
+                except Exception:
+                    interfaces = []
 
             # Collect site_wan_interface_ids seen on this element to map WAN IFs
             element_wan_if_ids = set()
@@ -1471,6 +1540,60 @@ def build_full_topology(sdk: API, sites_data: dict, debug: bool = False, debug_t
             elif not el_reachable and element.get('state') != 'bound':
                 is_shell = True
 
+            # --- Service Links for this element ---
+            service_links_out = []
+            for intf in interfaces:
+                if intf.get('type') == 'service_link':
+                    sl_id = intf.get('id')
+                    st = sl_status_map.get(sl_id, {})
+                    sl_cfg = intf.get('service_link_config') or {}
+                    se_id = sl_cfg.get('service_endpoint_id')
+                    se_obj = se_map.get(se_id) or {}
+                    se_name = se_obj.get('name', 'Unknown SASE Endpoint')
+
+                    name_lower = intf.get('name', '').lower()
+                    se_lower = se_name.lower()
+                    if 'prisma' in se_lower or 'prisma' in name_lower or 'auto_pa' in str(sl_cfg).lower():
+                        provider = 'Prisma Access'
+                        provider_type = 'prisma_access'
+                    elif 'zscaler' in se_lower or 'zscaler' in name_lower:
+                        provider = 'Zscaler'
+                        provider_type = 'zscaler'
+                    else:
+                        provider = 'Third-Party SASE'
+                        provider_type = 'third_party'
+
+                    role = 'active' if '_ACT' in intf.get('name', '').upper() else ('backup' if '_BKP' in intf.get('name', '').upper() else 'primary')
+
+                    probe_ip = None
+                    lp = se_obj.get('liveliness_probe') or {}
+                    icmp = lp.get('icmp_ping') or []
+                    if icmp and icmp[0].get('ip_addresses'):
+                        probe_ip = icmp[0]['ip_addresses'][0]
+
+                    cfg_peers = (sl_cfg.get('peer') or {}).get('ip_addresses', [])
+                    remote_ip = st.get('remote_v4_addr') or (cfg_peers[0] if cfg_peers else None)
+
+                    service_links_out.append({
+                        'id': sl_id,
+                        'name': intf.get('name'),
+                        'device': st.get('device', 'sl'),
+                        'provider': provider,
+                        'provider_type': provider_type,
+                        'role': role,
+                        'service_endpoint_id': se_id,
+                        'service_endpoint_name': se_name,
+                        'admin_up': intf.get('admin_up', True),
+                        'operational_state': st.get('operational_state', 'down'),
+                        'extended_state': st.get('extended_state', 'unknown'),
+                        'remote_ip': remote_ip,
+                        'local_ip': (st.get('service_link') or {}).get('local_tunnel_v4_addr'),
+                        'inside_ip': (st.get('ipv4_addresses') or [None])[0],
+                        'routes': st.get('routes', []),
+                        'liveliness_probe_ip': probe_ip,
+                        'last_state_change': st.get('last_state_change')
+                    })
+
             devices_out.append({
                 'device_id': el_id,
                 'device_name': el_name,
@@ -1481,6 +1604,7 @@ def build_full_topology(sdk: API, sites_data: dict, debug: bool = False, debug_t
                 'connected': el_reachable,
                 'lan_interfaces': lan_interfaces,
                 'wan_interfaces': wan_interface_details,
+                'service_links': service_links_out,
             })
 
         # --- Site filtering: Exclude sites with NO devices or ONLY SHELL devices ---
@@ -1497,6 +1621,7 @@ def build_full_topology(sdk: API, sites_data: dict, debug: bool = False, debug_t
                 'post_code': address.get('post_code'),
             },
             'devices': devices_out,
+            'sase_connections': sase_conns_by_site.get(site_id, []),
         }
         
         has_live_device = any(not d.get('is_shell', False) for d in devices_out)
@@ -1506,7 +1631,80 @@ def build_full_topology(sdk: API, sites_data: dict, debug: bool = False, debug_t
         elif debug:
              print(f" [TOPO] Filtering out site {site_name} (ID: {site_id}): No live devices found.", file=sys.stderr)
 
-    return result_sites
+    # Build global SASE infrastructure summary and PoP catalog
+    pops_dict = {}
+    total_sl = 0
+    total_sl_up = 0
+    total_sl_down = 0
+
+    for site in result_sites:
+        for dev in site.get('devices', []):
+            for sl in dev.get('service_links', []):
+                total_sl += 1
+                is_up = sl.get('operational_state') == 'up'
+                if is_up:
+                    total_sl_up += 1
+                else:
+                    total_sl_down += 1
+
+                se_name = sl.get('service_endpoint_name') or sl.get('name', '')
+                remote_ip = sl.get('remote_ip')
+                provider = sl.get('provider')
+
+                if 'france-south' in se_name.lower():
+                    pop_id = 'prisma-france-south'
+                    pop_name = 'Prisma Access France South (Paris Lime)'
+                    pop_region = 'france-south'
+                    spn = 'europe-northwest-paris-lime'
+                elif 'ireland' in se_name.lower() or 'eu-west-1' in se_name.lower():
+                    pop_id = 'prisma-ireland'
+                    pop_name = 'Prisma Access Ireland (Elderberry)'
+                    pop_region = 'eu-west-1'
+                    spn = 'ireland-elderberry'
+                elif 'zscaler' in provider.lower():
+                    pop_id = 'zscaler-cloud'
+                    pop_name = 'Zscaler Internet Access (ZIA)'
+                    pop_region = 'global'
+                    spn = None
+                else:
+                    pop_id = sl.get('service_endpoint_id') or 'other-sase'
+                    pop_name = se_name
+                    pop_region = 'global'
+                    spn = None
+
+                if pop_id not in pops_dict:
+                    pops_dict[pop_id] = {
+                        'id': pop_id,
+                        'name': pop_name,
+                        'region': pop_region,
+                        'spn_name': spn,
+                        'provider': provider,
+                        'primary_peer_ip': remote_ip,
+                        'liveliness_probe_ip': sl.get('liveliness_probe_ip'),
+                        'connected_sites': set(),
+                        'tunnels_total': 0,
+                        'tunnels_up': 0
+                    }
+
+                pops_dict[pop_id]['connected_sites'].add(site.get('site_name'))
+                pops_dict[pop_id]['tunnels_total'] += 1
+                if is_up:
+                    pops_dict[pop_id]['tunnels_up'] += 1
+
+    sase_pops = []
+    for p in pops_dict.values():
+        p['connected_sites'] = sorted(list(p['connected_sites']))
+        p['status'] = 'healthy' if p['tunnels_up'] > 0 else 'degraded'
+        sase_pops.append(p)
+
+    sase_infrastructure = {
+        'total_service_links': total_sl,
+        'up_service_links': total_sl_up,
+        'down_service_links': total_sl_down,
+        'pops': sase_pops
+    }
+
+    return (result_sites, sase_infrastructure)
 
 
 def main():
@@ -1645,12 +1843,19 @@ def main():
     # Build full topology
     if args.build_topology:
         log_output("\n🌐 Building full site topology (this may take a minute)...", json_mode)
-        topo_sites = build_full_topology(sdk, sites, debug=args.debug, debug_topo=args.debug_topo)
+        topo_res = build_full_topology(sdk, sites, debug=args.debug, debug_topo=args.debug_topo)
+        if isinstance(topo_res, tuple):
+            topo_sites, sase_infra = topo_res
+        else:
+            topo_sites, sase_infra = topo_res, None
+
         output = {
             "generated_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
             "site_count": len(topo_sites),
             "sites": topo_sites
         }
+        if sase_infra:
+            output["sase_infrastructure"] = sase_infra
         print(json.dumps(output, indent=2))
         log_output("\n" + "=" * 60, json_mode)
         sys.exit(0)
