@@ -12147,7 +12147,12 @@ app.get('/api/admin/maintenance/status', authenticateToken, (req, res) => {
             const currentSession = (sessions[sessions.length - 1] || '').trim();
             const sessionLines = currentSession.split('\n').map(l => l.trim()).filter(Boolean);
             if (sessionLines.length > 0) {
-                G_UPGRADE_STATUS.logs = sessionLines;
+                // Do not overwrite live pull logs during pulling stage
+                if (G_UPGRADE_STATUS.inProgress && G_UPGRADE_STATUS.stage === 'pulling') {
+                    // Keep in-memory live pulling logs
+                } else {
+                    G_UPGRADE_STATUS.logs = sessionLines;
+                }
             }
         }
     } catch {}
@@ -12344,6 +12349,13 @@ app.post('/api/admin/maintenance/upgrade', authenticateToken, async (req, res) =
         startTime: Date.now()
     };
     saveUpgradeStatusToDisk();
+
+    // Start fresh session in updater log so disk never serves previous upgrade's logs
+    try {
+        const updaterLogFile = path.join(PROJECT_ROOT, 'config', 'stigix_updater.log');
+        const sessionHeader = `\n=================================================\n[${new Date().toISOString()}] [UPDATER] Upgrade session initialized for target version: ${targetVersion}\n[${new Date().toISOString()}] 🚀 Upgrade initiated towards image: ${pullImage}\n`;
+        fs.appendFileSync(updaterLogFile, sessionHeader, 'utf8');
+    } catch {}
 
     res.json({ success: true, message: 'Upgrade started in background' });
 

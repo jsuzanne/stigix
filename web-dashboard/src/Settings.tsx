@@ -433,13 +433,17 @@ const formatSyncTime = (isoString?: string): { rel: string; time: string } | nul
     }
 };
 
-const getSessionLogs = (logs?: string[]): string[] => {
+const getSessionLogs = (logs?: string[], targetVer?: string | null): string[] => {
     if (!logs || !logs.length) return [];
     const delimIdx = logs.map(l => l.includes('=================================================')).lastIndexOf(true);
-    if (delimIdx !== -1) {
-        return logs.slice(delimIdx + 1);
+    let sessionLines = delimIdx !== -1 ? logs.slice(delimIdx + 1) : logs;
+    if (targetVer) {
+        const targetIdx = sessionLines.findIndex(l => l.includes(targetVer));
+        if (targetIdx !== -1) {
+            sessionLines = sessionLines.slice(targetIdx);
+        }
     }
-    return logs;
+    return sessionLines;
 };
 
 export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCopilotConfig, initialTab }: { 
@@ -1251,14 +1255,17 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                 });
                 if (res.ok) {
                     const data = await res.json();
+                    // Guard against stale status from a previous upgrade if the target version doesn't match
+                    const isTargetMatch = !data.version || !remoteUpgradeModal.version || data.version === remoteUpgradeModal.version;
+
                     if (data.inProgress) {
                         setRemoteUpgradeModal(prev => ({
                             ...prev,
                             phase: data.stage === 'restarting' ? 'restarting' : 'pulling',
-                            logs: data.logs && data.logs.length > 0 ? data.logs : prev.logs,
+                            logs: isTargetMatch && data.logs && data.logs.length > 0 ? data.logs : prev.logs,
                             reconnectAttempts: 0
                         }));
-                    } else if (data.stage === 'complete') {
+                    } else if (data.stage === 'complete' && isTargetMatch) {
                         setRemoteUpgradeModal(prev => ({
                             ...prev,
                             phase: 'complete',
@@ -1267,7 +1274,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                         }));
                         fetchPeerMaintStatus(peerId, true);
                         apiFetch(`/api/gateway/${peerId}/api/admin/maintenance/dismiss`, { method: 'POST', headers: authHeaders }).catch(() => {});
-                    } else if (data.stage === 'failed') {
+                    } else if (data.stage === 'failed' && isTargetMatch) {
                         setRemoteUpgradeModal(prev => ({
                             ...prev,
                             phase: 'failed',
@@ -7228,10 +7235,10 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                             <div className="space-y-1.5">
                                 <div className="flex justify-between items-center text-[10px] font-mono text-text-muted px-1">
                                     <span>REMOTE NODE LOG STREAM</span>
-                                    <span>{getSessionLogs(remoteUpgradeModal.logs).length} events</span>
+                                    <span>{getSessionLogs(remoteUpgradeModal.logs, remoteUpgradeModal.version).length} events</span>
                                 </div>
                                 <div className="bg-black/60 border border-border/60 rounded-2xl p-4 h-48 overflow-y-auto font-mono text-[10px] leading-relaxed text-text-muted scrollbar-thin scrollbar-thumb-border">
-                                    {getSessionLogs(remoteUpgradeModal.logs).length > 0 ? (
+                                    {getSessionLogs(remoteUpgradeModal.logs, remoteUpgradeModal.version).length > 0 ? (
                                         getSessionLogs(remoteUpgradeModal.logs).map((log: string, idx: number) => (
                                             <div key={idx} className="mb-0.5 opacity-90 hover:opacity-100 transition-opacity">
                                                 {log}
