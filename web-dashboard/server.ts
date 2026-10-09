@@ -1204,8 +1204,7 @@ try {
                     try {
                         const updaterLogFile = path.join(PROJECT_ROOT, 'config', 'stigix_updater.log');
                         if (fs.existsSync(updaterLogFile)) {
-                            updaterLogs = fs.readFileSync(updaterLogFile, 'utf8').split('
-').filter(Boolean).slice(-50);
+                            updaterLogs = fs.readFileSync(updaterLogFile, 'utf8').split('\n').filter(Boolean).slice(-50);
                         }
                     } catch {}
 
@@ -12142,8 +12141,7 @@ app.get('/api/admin/maintenance/status', authenticateToken, (req, res) => {
         const updaterLogFile = path.join(PROJECT_ROOT, 'config', 'stigix_updater.log');
         if (fs.existsSync(updaterLogFile)) {
             const fileContent = fs.readFileSync(updaterLogFile, 'utf8');
-            const lines = fileContent.split('
-').filter(Boolean).slice(-50);
+            const lines = fileContent.split('\n').filter(Boolean).slice(-50);
             if (lines.length > 0) {
                 G_UPGRADE_STATUS.logs = lines;
             }
