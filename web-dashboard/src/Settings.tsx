@@ -485,6 +485,37 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
         error: null
     });
 
+    // Peer Maintenance & Remote Upgrade State (Leader Orchestrated)
+    const [peerMaintStatus, setPeerMaintStatus] = useState<Record<string, {
+        current?: string;
+        latest?: string;
+        channel?: string;
+        updateAvailable?: boolean;
+        dockerReady?: boolean;
+        loading?: boolean;
+        error?: string | null;
+    }>>({});
+
+    const [remoteUpgradeModal, setRemoteUpgradeModal] = useState<{
+        open: boolean;
+        peerId: string | null;
+        peerName: string | null;
+        phase: 'pulling' | 'restarting' | 'reconnecting' | 'complete' | 'failed';
+        version: string | null;
+        reconnectAttempts: number;
+        error: string | null;
+        logs: string[];
+    }>({
+        open: false,
+        peerId: null,
+        peerName: null,
+        phase: 'pulling',
+        version: null,
+        reconnectAttempts: 0,
+        error: null,
+        logs: []
+    });
+
     // System Info State
     const [systemInfo, setSystemInfo] = useState<any>(null);
     const [targetServiceStatus, setTargetServiceStatus] = useState<TargetServiceStatus | null>(null);
@@ -1122,6 +1153,161 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
             return () => clearTimeout(timer);
         }
     }, [upgradeModal.open, upgradeModal.phase, upgradeModal.countdown]);
+
+    // Leader-Orchestrated Peer Maintenance Handlers
+    const fetchPeerMaintStatus = useCallback(async (peerId: string, _force = false) => {
+        setPeerMaintStatus(prev => ({
+            ...prev,
+            [peerId]: { ...prev[peerId], loading: true, error: null }
+        }));
+        try {
+            const res = await apiFetch(`/api/gateway/${peerId}/api/admin/maintenance/version`, {
+                headers: authHeaders
+            });
+            if (res.ok) {
+                const data = await res.json();
+                setPeerMaintStatus(prev => ({
+                    ...prev,
+                    [peerId]: {
+                        current: data.current,
+                        latest: data.latest,
+                        channel: data.channel,
+                        updateAvailable: data.updateAvailable,
+                        dockerReady: data.dockerReady,
+                        loading: false,
+                        error: null
+                    }
+                }));
+            } else {
+                setPeerMaintStatus(prev => ({
+                    ...prev,
+                    [peerId]: { ...prev[peerId], loading: false, error: 'Unreachable' }
+                }));
+            }
+        } catch (e: any) {
+            setPeerMaintStatus(prev => ({
+                ...prev,
+                [peerId]: { ...prev[peerId], loading: false, error: e.message || 'Error' }
+            }));
+        }
+    }, [token]);
+
+    const checkAllPeersVersions = useCallback(() => {
+        if (!registryStatus?.local_instances) return;
+        registryStatus.local_instances.forEach((inst: any) => {
+            if (inst.instance_id) {
+                fetchPeerMaintStatus(inst.instance_id, true);
+            }
+        });
+    }, [registryStatus?.local_instances, fetchPeerMaintStatus]);
+
+    // Auto-fetch peer versions when viewing registry tab as leader
+    useEffect(() => {
+        if (activeTab === 'registry' && registryStatus?.mode === 'leader' && Array.isArray(registryStatus?.local_instances)) {
+            registryStatus.local_instances.forEach((inst: any) => {
+                if (inst.instance_id && !peerMaintStatus[inst.instance_id]) {
+                    fetchPeerMaintStatus(inst.instance_id);
+                }
+            });
+        }
+    }, [activeTab, registryStatus?.local_instances, registryStatus?.mode, fetchPeerMaintStatus]);
+
+    // Polling loop for remote peer upgrade
+    useEffect(() => {
+        if (!remoteUpgradeModal.open || ['complete', 'failed'].includes(remoteUpgradeModal.phase) || !remoteUpgradeModal.peerId) {
+            return;
+        }
+        const peerId = remoteUpgradeModal.peerId;
+        const pollTimer = setInterval(async () => {
+            try {
+                const res = await apiFetch(`/api/gateway/${peerId}/api/admin/maintenance/status`, {
+                    headers: authHeaders
+                });
+                if (res.ok) {
+                    const data = await res.json();
+                    if (data.inProgress) {
+                        setRemoteUpgradeModal(prev => ({
+                            ...prev,
+                            phase: data.stage === 'restarting' ? 'restarting' : 'pulling',
+                            logs: data.logs && data.logs.length > 0 ? data.logs : prev.logs,
+                            reconnectAttempts: 0
+                        }));
+                    } else if (data.stage === 'complete') {
+                        setRemoteUpgradeModal(prev => ({
+                            ...prev,
+                            phase: 'complete',
+                            version: data.version || prev.version,
+                            logs: data.logs && data.logs.length > 0 ? data.logs : prev.logs
+                        }));
+                        fetchPeerMaintStatus(peerId, true);
+                        apiFetch(`/api/gateway/${peerId}/api/admin/maintenance/dismiss`, { method: 'POST', headers: authHeaders }).catch(() => {});
+                    } else if (data.stage === 'failed') {
+                        setRemoteUpgradeModal(prev => ({
+                            ...prev,
+                            phase: 'failed',
+                            error: data.error || 'Remote upgrade failed',
+                            logs: data.logs && data.logs.length > 0 ? data.logs : prev.logs
+                        }));
+                        apiFetch(`/api/gateway/${peerId}/api/admin/maintenance/dismiss`, { method: 'POST', headers: authHeaders }).catch(() => {});
+                    }
+                } else if (res.status === 502 || res.status === 504) {
+                    setRemoteUpgradeModal(prev => ({
+                        ...prev,
+                        phase: 'reconnecting',
+                        reconnectAttempts: prev.reconnectAttempts + 1
+                    }));
+                }
+            } catch (e) {
+                setRemoteUpgradeModal(prev => ({
+                    ...prev,
+                    phase: 'reconnecting',
+                    reconnectAttempts: prev.reconnectAttempts + 1
+                }));
+            }
+        }, 2500);
+
+        return () => clearInterval(pollTimer);
+    }, [remoteUpgradeModal.open, remoteUpgradeModal.phase, remoteUpgradeModal.peerId, fetchPeerMaintStatus]);
+
+    const handleRemotePeerUpgrade = async (peerId: string, peerIp: string) => {
+        const peerInfo = peerMaintStatus[peerId];
+        const targetVer = peerInfo?.latest || 'latest';
+        const msg = `Trigger 1-click remote upgrade of node "${peerId}" (${peerIp}) to build "${targetVer}"?\n\nThe remote node will pull the new image and recreate its container on its host machine.\nMesh connectivity will automatically resume once the node is healthy. Continue?`;
+        if (!confirm(msg)) return;
+
+        setRemoteUpgradeModal({
+            open: true,
+            peerId,
+            peerName: peerId,
+            phase: 'pulling',
+            version: targetVer,
+            reconnectAttempts: 0,
+            error: null,
+            logs: [`[${new Date().toISOString()}] Upgrade command dispatched from Leader to node ${peerId}`]
+        });
+
+        try {
+            const res = await apiFetch(`/api/gateway/${peerId}/api/admin/maintenance/upgrade`, {
+                method: 'POST',
+                headers: authHeaders,
+                body: JSON.stringify({ version: targetVer })
+            });
+            if (!res.ok) {
+                const data = await res.json().catch(() => ({}));
+                setRemoteUpgradeModal(prev => ({
+                    ...prev,
+                    phase: 'failed',
+                    error: data.error || data.message || `Failed to initiate upgrade on ${peerId}`
+                }));
+            }
+        } catch (e: any) {
+            setRemoteUpgradeModal(prev => ({
+                ...prev,
+                phase: 'failed',
+                error: e.message || `Failed to dispatch upgrade command to ${peerId}`
+            }));
+        }
+    };
 
     useEffect(() => {
         if (registryStatus?.static_leader_url && !staticLeaderUrl) {
@@ -4830,11 +5016,22 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                                         </div>
                                     </div>
                                     <div className="flex items-center gap-2">
+                                        <button
+                                            onClick={checkAllPeersVersions}
+                                            className="px-3 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-wider bg-card-secondary hover:bg-card-hover border border-border text-text-muted hover:text-text-primary transition-all flex items-center gap-1.5"
+                                            title="Check Docker Hub updates for all registered nodes"
+                                        >
+                                            <RefreshCw size={11} />
+                                            Check Fleet Updates
+                                        </button>
                                         <span className="text-[10px] font-mono font-bold text-text-muted bg-card-secondary px-2.5 py-1 rounded-lg border border-border">
                                             {registryStatus?.local_instances?.length ?? 0} registered
                                         </span>
                                         <button
-                                            onClick={() => apiFetch('/api/registry/status', { headers: authHeaders }).then(r => r.json()).then(setRegistryStatus)}
+                                            onClick={() => {
+                                                apiFetch('/api/registry/status', { headers: authHeaders }).then(r => r.json()).then(setRegistryStatus);
+                                                checkAllPeersVersions();
+                                            }}
                                             className="p-2 hover:bg-card-hover rounded-xl text-text-muted transition-all"
                                             title="Refresh"
                                         >
@@ -4859,7 +5056,9 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                                                     <th className="pb-3 pt-4 px-5 text-[9px] font-black text-text-muted uppercase tracking-[0.2em]">Target</th>
                                                     <th className="pb-3 pt-4 px-5 text-[9px] font-black text-text-muted uppercase tracking-[0.2em]">IP</th>
                                                     <th className="pb-3 pt-4 px-5 text-[9px] font-black text-text-muted uppercase tracking-[0.2em]">Capabilities</th>
+                                                    <th className="pb-3 pt-4 px-5 text-[9px] font-black text-text-muted uppercase tracking-[0.2em]">Version</th>
                                                     <th className="pb-3 pt-4 px-5 text-[9px] font-black text-text-muted uppercase tracking-[0.2em]">Last Seen</th>
+                                                    <th className="pb-3 pt-4 px-5 text-[9px] font-black text-text-muted uppercase tracking-[0.2em] text-right">Actions</th>
                                                 </tr>
                                             </thead>
                                             <tbody>
@@ -4882,6 +5081,28 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                                                                 {inst.capabilities?.security && <div className="w-2 h-2 rounded-full bg-red-500 shadow-[0_0_6px_rgba(239,68,68,0.5)]" title="Security" />}
                                                             </div>
                                                         </td>
+                                                        <td className="py-3.5 px-5">
+                                                            <div className="flex flex-col gap-0.5">
+                                                                <div className="flex items-center gap-1.5">
+                                                                    <span className="font-mono text-[10px] font-bold text-text-primary">
+                                                                        {peerMaintStatus[inst.instance_id]?.current || inst.meta?.version || 'v2'}
+                                                                    </span>
+                                                                    {peerMaintStatus[inst.instance_id]?.loading && (
+                                                                        <RefreshCw size={10} className="animate-spin text-text-muted" />
+                                                                    )}
+                                                                </div>
+                                                                {peerMaintStatus[inst.instance_id]?.updateAvailable ? (
+                                                                    <span className="inline-flex items-center gap-1 text-[9px] font-black text-amber-500 bg-amber-500/10 px-1.5 py-0.5 rounded border border-amber-500/20 w-fit">
+                                                                        <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
+                                                                        Update: {peerMaintStatus[inst.instance_id]?.latest}
+                                                                    </span>
+                                                                ) : peerMaintStatus[inst.instance_id]?.current ? (
+                                                                    <span className="inline-flex items-center gap-1 text-[9px] font-bold text-emerald-500 opacity-80">
+                                                                        <CheckCircle2 size={10} /> Up to date
+                                                                    </span>
+                                                                ) : null}
+                                                            </div>
+                                                        </td>
                                                         <td className="py-3.5 px-5 text-[10px] text-text-muted font-bold whitespace-nowrap">
                                                             {(() => {
                                                                 const fmt = formatTargetTimestamp(inst.last_seen);
@@ -4892,6 +5113,37 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                                                                     </span>
                                                                 );
                                                             })()}
+                                                        </td>
+                                                        <td className="py-3.5 px-5 text-right whitespace-nowrap">
+                                                            <div className="flex items-center justify-end gap-1.5">
+                                                                {peerMaintStatus[inst.instance_id]?.dockerReady === false ? (
+                                                                    <span className="text-[9px] font-bold text-rose-400 bg-rose-500/10 px-2 py-1 rounded border border-rose-500/20" title="Docker socket not mounted on remote host">
+                                                                        No Docker Sock
+                                                                    </span>
+                                                                ) : (
+                                                                    <button
+                                                                        onClick={() => handleRemotePeerUpgrade(inst.instance_id, inst.ip_private)}
+                                                                        disabled={remoteUpgradeModal.open && remoteUpgradeModal.peerId === inst.instance_id}
+                                                                        title={peerMaintStatus[inst.instance_id]?.updateAvailable ? `Upgrade ${inst.instance_id} to ${peerMaintStatus[inst.instance_id]?.latest}` : `Force pull & upgrade ${inst.instance_id}`}
+                                                                        className={cn(
+                                                                            "px-3 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-wider transition-all flex items-center gap-1.5 border shadow-sm cursor-pointer",
+                                                                            peerMaintStatus[inst.instance_id]?.updateAvailable
+                                                                                ? "bg-blue-600 hover:bg-blue-500 text-white border-blue-500/30 shadow-blue-900/30"
+                                                                                : "bg-card-secondary hover:bg-card-hover border-border text-text-muted hover:text-text-primary"
+                                                                        )}
+                                                                    >
+                                                                        <Download size={11} className={cn(remoteUpgradeModal.open && remoteUpgradeModal.peerId === inst.instance_id && "animate-spin")} />
+                                                                        {peerMaintStatus[inst.instance_id]?.updateAvailable ? "Upgrade" : "Force Upgrade"}
+                                                                    </button>
+                                                                )}
+                                                                <button
+                                                                    onClick={() => fetchPeerMaintStatus(inst.instance_id, true)}
+                                                                    title="Check version on remote node"
+                                                                    className="p-1.5 hover:bg-card-hover rounded-lg text-text-muted hover:text-text-primary transition-all border border-transparent hover:border-border cursor-pointer"
+                                                                >
+                                                                    <RefreshCw size={11} className={peerMaintStatus[inst.instance_id]?.loading ? "animate-spin" : ""} />
+                                                                </button>
+                                                            </div>
                                                         </td>
                                                     </tr>
                                                 ))}
@@ -6730,6 +6982,150 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                                         <span>Upgrade running, please do not close window...</span>
                                     </div>
                                 )}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* ─── Remote Peer Upgrade Progress & Success Modal (Leader Orchestrated) ─── */}
+            {remoteUpgradeModal.open && (
+                <div className="fixed inset-0 z-[210] flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-300">
+                    <div className={cn(
+                        "bg-card/95 border rounded-3xl w-full max-w-2xl shadow-2xl overflow-hidden backdrop-blur-xl transition-all duration-300 scale-in-center",
+                        remoteUpgradeModal.phase === 'complete' ? "border-emerald-500/40 shadow-emerald-950/40" :
+                        remoteUpgradeModal.phase === 'failed' ? "border-rose-500/40 shadow-rose-950/40" :
+                        remoteUpgradeModal.phase === 'reconnecting' ? "border-cyan-500/40 shadow-cyan-950/40" :
+                        "border-purple-500/30 shadow-purple-950/30"
+                    )}>
+                        {/* Header */}
+                        <div className="p-6 border-b border-border/80 flex items-center justify-between bg-card-secondary/30">
+                            <div className="flex items-center gap-3">
+                                <div className={cn(
+                                    "p-2.5 rounded-2xl border flex items-center justify-center shadow-inner",
+                                    remoteUpgradeModal.phase === 'complete' ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/30" :
+                                    remoteUpgradeModal.phase === 'failed' ? "bg-rose-500/10 text-rose-400 border-rose-500/30" :
+                                    remoteUpgradeModal.phase === 'reconnecting' ? "bg-cyan-500/10 text-cyan-400 border-cyan-500/30" :
+                                    remoteUpgradeModal.phase === 'restarting' ? "bg-purple-500/10 text-purple-400 border-purple-500/30" :
+                                    "bg-blue-500/10 text-blue-400 border-blue-500/30"
+                                )}>
+                                    {remoteUpgradeModal.phase === 'complete' ? <CheckCircle2 size={24} className="animate-bounce" /> :
+                                     remoteUpgradeModal.phase === 'failed' ? <AlertCircle size={24} /> :
+                                     remoteUpgradeModal.phase === 'reconnecting' ? <Radio size={24} className="animate-pulse" /> :
+                                     remoteUpgradeModal.phase === 'restarting' ? <Cpu size={24} className="animate-pulse" /> :
+                                     <RefreshCw size={24} className="animate-spin" />}
+                                </div>
+                                <div>
+                                    <div className="flex items-center gap-2">
+                                        <h3 className="text-base font-black text-text-primary tracking-tight">
+                                            {remoteUpgradeModal.phase === 'complete' ? "Remote Node Upgrade Succeeded!" :
+                                             remoteUpgradeModal.phase === 'failed' ? "Remote Node Upgrade Failed" :
+                                             remoteUpgradeModal.phase === 'reconnecting' ? `Reconnecting to ${remoteUpgradeModal.peerName}...` :
+                                             remoteUpgradeModal.phase === 'restarting' ? `Recreating Container on ${remoteUpgradeModal.peerName}...` :
+                                             `Pulling Image on ${remoteUpgradeModal.peerName}...`}
+                                        </h3>
+                                        <span className="px-2 py-0.5 rounded-full bg-purple-500/10 border border-purple-500/20 text-purple-400 font-mono text-[10px] font-bold">
+                                            {remoteUpgradeModal.peerName}
+                                        </span>
+                                    </div>
+                                    <p className="text-[11px] font-bold text-text-muted opacity-80 mt-0.5">
+                                        {remoteUpgradeModal.phase === 'complete' ? `Target node ${remoteUpgradeModal.peerName} is now healthy and running ${remoteUpgradeModal.version || 'latest'}.` :
+                                         remoteUpgradeModal.phase === 'failed' ? "The update process was aborted safely. Running instance remains operational." :
+                                         remoteUpgradeModal.phase === 'reconnecting' ? `Waiting for remote healthcheck on port 8080 (ping #${remoteUpgradeModal.reconnectAttempts})...` :
+                                         remoteUpgradeModal.phase === 'restarting' ? "Remote ephemeral updater container is recreating the stack..." :
+                                         "Remote node is pulling Docker image layers in background..."}
+                                    </p>
+                                </div>
+                            </div>
+                            <button
+                                onClick={() => setRemoteUpgradeModal(prev => ({ ...prev, open: false }))}
+                                className="p-1.5 text-text-muted hover:text-text-primary rounded-xl hover:bg-card-hover transition-colors cursor-pointer"
+                                title="Close"
+                            >
+                                <X size={18} />
+                            </button>
+                        </div>
+
+                        {/* Progress Stepper */}
+                        <div className="px-6 py-4 border-b border-border/40 bg-black/10">
+                            <div className="grid grid-cols-4 gap-2 text-center">
+                                {[
+                                    { label: '1. Remote Pull', active: remoteUpgradeModal.phase === 'pulling', done: ['restarting', 'reconnecting', 'complete'].includes(remoteUpgradeModal.phase) },
+                                    { label: '2. Recreate', active: remoteUpgradeModal.phase === 'restarting', done: ['reconnecting', 'complete'].includes(remoteUpgradeModal.phase) },
+                                    { label: '3. Healthcheck', active: remoteUpgradeModal.phase === 'reconnecting', done: remoteUpgradeModal.phase === 'complete' },
+                                    { label: '4. Ready', active: remoteUpgradeModal.phase === 'complete', done: remoteUpgradeModal.phase === 'complete' }
+                                ].map((step, idx) => (
+                                    <div key={idx} className={cn(
+                                        "p-2 rounded-xl text-[10px] font-black uppercase tracking-wider border transition-all",
+                                        step.done ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-400" :
+                                        step.active ? "bg-purple-500/10 border-purple-500/40 text-purple-400 shadow-sm" :
+                                        "bg-card-secondary/20 border-border/40 text-text-muted/60"
+                                    )}>
+                                        {step.label}
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+
+                        {/* Content */}
+                        <div className="p-6 space-y-4">
+                            {remoteUpgradeModal.phase === 'complete' ? (
+                                <div className="p-6 bg-emerald-500/10 border border-emerald-500/30 rounded-2xl text-center space-y-3 animate-in zoom-in-95 duration-200">
+                                    <div className="inline-flex p-3 rounded-2xl bg-emerald-500/20 text-emerald-400 mb-1">
+                                        <CheckCircle2 size={32} />
+                                    </div>
+                                    <h4 className="text-base font-black text-emerald-400 tracking-tight">
+                                        {remoteUpgradeModal.peerName} Updated to {remoteUpgradeModal.version || 'Latest'}!
+                                    </h4>
+                                    <p className="text-xs text-text-primary/90 font-medium max-w-md mx-auto">
+                                        The remote node recreated its container and passed internal healthcheck. Mesh tunnels and monitoring probes have automatically re-established.
+                                    </p>
+                                </div>
+                            ) : remoteUpgradeModal.phase === 'failed' ? (
+                                <div className="p-4 bg-rose-500/10 border border-rose-500/30 rounded-2xl space-y-2">
+                                    <div className="flex items-center gap-2 text-rose-400 font-bold text-xs uppercase tracking-wider">
+                                        <AlertCircle size={16} />
+                                        <span>Remote Upgrade Error</span>
+                                    </div>
+                                    <p className="text-xs font-mono text-rose-300 leading-relaxed">
+                                        {remoteUpgradeModal.error || 'Unknown error on remote node'}
+                                    </p>
+                                </div>
+                            ) : null}
+
+                            {/* Live Console Output */}
+                            <div className="space-y-1.5">
+                                <div className="flex justify-between items-center text-[10px] font-mono text-text-muted px-1">
+                                    <span>REMOTE NODE LOG STREAM</span>
+                                    <span>{remoteUpgradeModal.logs?.length || 0} events</span>
+                                </div>
+                                <div className="bg-black/60 border border-border/60 rounded-2xl p-4 h-48 overflow-y-auto font-mono text-[10px] leading-relaxed text-text-muted scrollbar-thin scrollbar-thumb-border">
+                                    {remoteUpgradeModal.logs && remoteUpgradeModal.logs.length > 0 ? (
+                                        remoteUpgradeModal.logs.map((log: string, idx: number) => (
+                                            <div key={idx} className="mb-0.5 opacity-90 hover:opacity-100 transition-opacity">
+                                                {log}
+                                            </div>
+                                        ))
+                                    ) : (
+                                        <div className="opacity-50 italic">Connecting to remote updater stream...</div>
+                                    )}
+                                    <div className="animate-pulse inline-block w-1.5 h-3 bg-purple-500 ml-1" />
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Footer */}
+                        <div className="p-6 border-t border-border/80 bg-card-secondary/20 flex items-center justify-between">
+                            <span className="text-[10px] font-mono text-text-muted">
+                                Orchestrated from Leader
+                            </span>
+                            <div className="flex gap-3">
+                                <button
+                                    onClick={() => setRemoteUpgradeModal(prev => ({ ...prev, open: false }))}
+                                    className="px-6 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider bg-card hover:bg-card-hover border border-border text-text-primary transition-all cursor-pointer"
+                                >
+                                    {remoteUpgradeModal.phase === 'complete' ? "Done" : "Close"}
+                                </button>
                             </div>
                         </div>
                     </div>
