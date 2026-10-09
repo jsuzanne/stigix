@@ -904,23 +904,28 @@ const UnderlayGatewayNode = ({ data }: any) => {
 };
 
 // Helper to format ServiceLink names into clean human-friendly labels
-function formatServiceLinkDetails(rawName: string, role?: string, provider?: string) {
+function formatServiceLinkDetails(rawName: string, role?: string, provider?: string, circuitName?: string) {
     if (!rawName) return { title: 'ServiceLink Tunnel', subtitle: '', techName: '' };
     const isZscaler = provider === 'Zscaler' || rawName.toLowerCase().includes('zscaler');
     if (isZscaler) {
         const isPri = role === 'active' || rawName.toLowerCase().includes('primary') || rawName.toLowerCase().includes('pri');
+        const roleLabel = isPri ? 'Primary' : 'Backup';
+        const prefix = circuitName ? `${circuitName} · ` : '';
         return {
-            title: `Zscaler ${isPri ? 'Primary' : 'Backup'} Path`,
+            title: `${prefix}Zscaler ${roleLabel} Path`,
             subtitle: 'Direct ZIA Secure Cloud Gateway',
             techName: rawName
         };
     }
     const n = rawName.toUpperCase();
-    let medium = 'Internet';
-    if (n.includes('ETHERNET')) medium = 'Ethernet WAN';
-    else if (n.includes('CABLE')) medium = 'Cable Broadband';
-    else if (n.includes('LTE') || n.includes('4G')) medium = 'Cellular LTE';
-    else if (n.includes('MPLS')) medium = 'Private MPLS';
+    let medium = circuitName || '';
+    if (!medium) {
+        if (n.includes('ETHERNET')) medium = 'Ethernet WAN';
+        else if (n.includes('CABLE')) medium = 'Cable Broadband';
+        else if (n.includes('LTE') || n.includes('4G')) medium = 'Cellular LTE';
+        else if (n.includes('MPLS')) medium = 'Private MPLS';
+        else medium = 'Internet';
+    }
 
     const isAct = role === 'active' || n.includes('_ACT');
     const isBkp = role === 'backup' || n.includes('_BKP');
@@ -1880,12 +1885,12 @@ function TopologyContent({ token }: TopologyProps) {
                     device.service_links?.forEach((sl: any) => {
                         let targetPopId = 'cloud:prisma-france-south';
                         const seName = (sl.service_endpoint_name || sl.name || '').toLowerCase();
-                        if (seName.includes('ireland') || seName.includes('eu-west-1')) {
+                        if (sl.remote_ip === '74.221.137.55' || seName.includes('ireland') || seName.includes('eu-west-1')) {
                             targetPopId = 'cloud:prisma-ireland';
+                        } else if (sl.remote_ip === '130.41.124.164' || seName.includes('france-south') || seName.includes('paris') || seName.includes('france')) {
+                            targetPopId = 'cloud:prisma-france-south';
                         } else if (seName.includes('france-central') || seName.includes('france north') || seName.includes('france-north')) {
                             targetPopId = 'cloud:prisma-france-central';
-                        } else if (seName.includes('france') || seName.includes('paris')) {
-                            targetPopId = 'cloud:prisma-france-south';
                         } else if (sl.provider === 'Zscaler' || seName.includes('zscaler')) {
                             targetPopId = 'cloud:zscaler-cloud';
                         }
@@ -1906,14 +1911,26 @@ function TopologyContent({ token }: TopologyProps) {
                         const isAct = isZscaler ? isUp : (sl.role === 'active' || (sl.name || '').toUpperCase().includes('_ACT'));
                         const isStandby = sl.extended_state === 'standby_spoke';
 
+                        // Match service link to specific WAN circuit (e.g. BR8-INET1 vs BR8-INET2)
                         let sourceHandle = `circuit:${device.device_name}:${sl.name}`;
-                        const matchingWan = (device.wan_interfaces || []).find((w: any) => 
-                            sl.name.toLowerCase().includes(w.name.toLowerCase()) || 
-                            (w.name.toLowerCase().includes('cable') && sl.name.toLowerCase().includes('cable')) ||
-                            (w.name.toLowerCase().includes('ethernet') && sl.name.toLowerCase().includes('ethernet'))
-                        );
-                        if (matchingWan) {
-                            sourceHandle = `circuit:${device.device_name}:${matchingWan.name}`;
+                        const matchingWan = (device.wan_interfaces || []).find((w: any) => {
+                            if (sl.circuit_name && (w.name === sl.circuit_name || w.wan_if_id === sl.wan_interface_id)) return true;
+                            if (sl.wan_interface_name && w.name === sl.wan_interface_name) return true;
+                            const cleanWanIp = (w.ip || '').split('/')[0];
+                            if (cleanWanIp && sl.local_ip && cleanWanIp === sl.local_ip) return true;
+                            const slNameLower = (sl.name || '').toLowerCase();
+                            const wNameLower = (w.name || '').toLowerCase();
+                            const wLabelLower = (w.circuit_label || w.label_name || '').toLowerCase();
+                            if (slNameLower.includes(wNameLower)) return true;
+                            if (slNameLower.includes('cable') && (wNameLower.includes('cable') || wLabelLower.includes('cable') || wNameLower.includes('inet2') || wNameLower.endsWith('2'))) return true;
+                            if (slNameLower.includes('ethernet') && (wNameLower.includes('ethernet') || wLabelLower.includes('ethernet') || wNameLower.includes('inet1') || wNameLower.endsWith('1'))) return true;
+                            return false;
+                        });
+
+                        const resolvedCircuitName = matchingWan?.name || sl.circuit_name || sl.wan_interface_name || (device.wan_interfaces?.[0]?.name);
+
+                        if (resolvedCircuitName) {
+                            sourceHandle = `circuit:${device.device_name}:${resolvedCircuitName}`;
                         } else if (device.wan_interfaces?.length > 0) {
                             sourceHandle = `circuit:${device.device_name}:${device.wan_interfaces[0].name}`;
                         }
@@ -1932,6 +1949,7 @@ function TopologyContent({ token }: TopologyProps) {
                                 effectiveAct: isAct,
                                 site_name: site.site_name,
                                 device_name: device.device_name,
+                                circuit_name: resolvedCircuitName,
                                 hideLabel: true,
                                 isSaseEdge: true
                             }
@@ -2908,7 +2926,7 @@ function TopologyContent({ token }: TopologyProps) {
                                                 {selectedObject.isSasePop
                                                     ? 'SASE Security Cloud PoP'
                                                     : (selectedObject.isSaseEdge
-                                                        ? 'ServiceLink IPsec Tunnel'
+                                                        ? (selectedObject.circuit_name ? `${selectedObject.circuit_name} · ServiceLink IPsec Tunnel` : 'ServiceLink IPsec Tunnel')
                                                         : (selectedObject.type === 'node'
                                                             ? (selectedObject.site_id ? 'Site Entity' : 'WAN Network')
                                                             : 'Circuit Link'))}
@@ -3191,7 +3209,7 @@ function TopologyContent({ token }: TopologyProps) {
                                                             <div className="text-[10px] font-black text-text-muted uppercase tracking-widest flex items-center justify-between">
                                                                 <span className="flex items-center gap-2"><Shield size={12} className="text-purple-400" /> SASE ServiceLinks</span>
                                                                 <span className="text-[9px] font-mono font-bold text-purple-400">
-                                                                    {selectedObject.devices.reduce((acc: number, d: any) => acc + (d.service_links?.filter((s: any) => s.operational_state === 'up').length || 0), 0)} Up
+                                                                    {selectedObject.devices.reduce((acc: number, d: any) => acc + (d.service_links?.filter((s: any) => s.operational_state === 'up').length || 0), 0)} Up / {selectedObject.devices.reduce((acc: number, d: any) => acc + (d.service_links || []).length, 0)} Total
                                                                 </span>
                                                             </div>
                                                             <div className="grid gap-2">
@@ -3208,6 +3226,9 @@ function TopologyContent({ token }: TopologyProps) {
                                                                                             isUp ? "bg-emerald-400 animate-pulse" : "bg-rose-400"
                                                                                         )} />
                                                                                         <span className="text-xs font-bold text-text-primary truncate">
+                                                                                            {(sl.circuit_name || sl.wan_interface_name) ? (
+                                                                                                <span className="text-emerald-400 mr-1.5 font-mono text-[11px]">[{sl.circuit_name || sl.wan_interface_name}]</span>
+                                                                                            ) : null}
                                                                                             {sl.name}
                                                                                         </span>
                                                                                     </div>
@@ -3386,7 +3407,7 @@ function TopologyContent({ token }: TopologyProps) {
                                         <div className="space-y-5">
                                             {/* SASE Tunnel Header Banner with Human-Friendly Name & Brand Logo */}
                                             {(() => {
-                                                const info = formatServiceLinkDetails(selectedObject.name, selectedObject.role, selectedObject.provider);
+                                                const info = formatServiceLinkDetails(selectedObject.name, selectedObject.role, selectedObject.provider, selectedObject.circuit_name);
                                                 const isPrisma = selectedObject.provider === 'Prisma Access';
                                                 return (
                                                     <div className={cn(
@@ -3475,6 +3496,12 @@ function TopologyContent({ token }: TopologyProps) {
 
                                             {/* Endpoint / Routing Info */}
                                             <div className="bg-card-secondary/30 rounded-xl p-3.5 border border-border/50 space-y-2 text-xs">
+                                                {selectedObject.circuit_name && (
+                                                    <div className="flex justify-between items-center py-0.5 border-b border-border/40">
+                                                        <span className="text-text-muted">Origin Circuit</span>
+                                                        <span className="font-mono font-bold text-emerald-400">{selectedObject.circuit_name}</span>
+                                                    </div>
+                                                )}
                                                 <div className="flex justify-between items-center py-0.5 border-b border-border/40">
                                                     <span className="text-text-muted">Target PoP</span>
                                                     <span className="font-semibold text-text-primary truncate max-w-[220px]" title={selectedObject.service_endpoint_name}>

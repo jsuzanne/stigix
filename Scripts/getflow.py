@@ -1541,6 +1541,19 @@ def build_full_topology(sdk: API, sites_data: dict, debug: bool = False, debug_t
                 is_shell = True
 
             # --- Service Links for this element ---
+            # Build SASE tunnel name -> wan_interface_id lookup for this site from prismasase_connections
+            sase_tunnel_to_wan_id = {}
+            for sase_c in sase_conns_by_site.get(site_id, []):
+                for rng in sase_c.get('remote_network_groups', []):
+                    for ipt in rng.get('ipsec_tunnels', []):
+                        tname = ipt.get('name')
+                        twid = ipt.get('wan_interface_id')
+                        if tname and twid:
+                            sase_tunnel_to_wan_id[tname] = twid
+                            sase_tunnel_to_wan_id[f"{tname}_SL"] = twid
+                            sase_tunnel_to_wan_id[tname.lower()] = twid
+                            sase_tunnel_to_wan_id[f"{tname.lower()}_sl"] = twid
+
             service_links_out = []
             for intf in interfaces:
                 if intf.get('type') == 'service_link':
@@ -1573,8 +1586,66 @@ def build_full_topology(sdk: API, sites_data: dict, debug: bool = False, debug_t
 
                     cfg_peers = (sl_cfg.get('peer') or {}).get('ip_addresses', [])
                     remote_ip = st.get('remote_v4_addr') or (cfg_peers[0] if cfg_peers else None)
+                    sl_local_ip = (st.get('service_link') or {}).get('local_tunnel_v4_addr')
+                    sl_raw_name = intf.get('name', '')
+
+                    # --- Match ServiceLink to originating WAN Circuit (e.g. BR8-INET1 vs BR8-INET2) ---
+                    # 1. Direct match from Prisma SASE connection IPsec tunnel configuration
+                    matched_wan_id = sase_tunnel_to_wan_id.get(sl_raw_name) or sase_tunnel_to_wan_id.get(sl_raw_name.lower())
+                    if not matched_wan_id:
+                        for tprefix, twid in sase_tunnel_to_wan_id.items():
+                            if tprefix in sl_raw_name or sl_raw_name in tprefix:
+                                matched_wan_id = twid
+                                break
+
+                    matched_wan = None
+                    if matched_wan_id:
+                        matched_wan = next((w for w in wan_interface_details if w.get('wan_if_id') == matched_wan_id), None)
+
+                    # 2. Match by local tunnel endpoint IPv4 with WAN interface IP
+                    if not matched_wan and sl_local_ip:
+                        for w in wan_interface_details:
+                            w_ip = (w.get('ip') or '').split('/')[0]
+                            w_only = w.get('wan_ip_only')
+                            if (w_ip and w_ip == sl_local_ip) or (w_only and w_only == sl_local_ip):
+                                matched_wan = w
+                                break
+
+                    # 3. For Zscaler, match bound physical interface ID in SL name (e.g. sl-zscaler-<intf_id>)
+                    if not matched_wan and 'zscaler' in sl_raw_name.lower():
+                        for p_intf in interfaces:
+                            p_id = p_intf.get('id')
+                            if p_id and str(p_id) in sl_raw_name:
+                                swi_ids = p_intf.get('site_wan_interface_ids') or []
+                                if swi_ids:
+                                    matched_wan = next((w for w in wan_interface_details if w.get('wan_if_id') in swi_ids), None)
+                                break
+
+                    # 4. Match by label keywords (Cable vs Ethernet) or WAN interface name
+                    if not matched_wan:
+                        sl_n_upper = sl_raw_name.upper()
+                        for w in wan_interface_details:
+                            lbl = (w.get('circuit_label') or w.get('name') or '').upper()
+                            if 'CABLE' in sl_n_upper and ('CABLE' in lbl or 'INET2' in lbl or lbl.endswith('2')):
+                                matched_wan = w
+                                break
+                            elif 'ETHERNET' in sl_n_upper and ('ETHERNET' in lbl or 'INET1' in lbl or lbl.endswith('1')):
+                                matched_wan = w
+                                break
+
+                    # 5. Fallback: If single WAN interface, default to it
+                    if not matched_wan and len(wan_interface_details) == 1:
+                        matched_wan = wan_interface_details[0]
+
+                    circuit_name = matched_wan.get('name') if matched_wan else None
+                    circuit_label = matched_wan.get('circuit_label') if matched_wan else circuit_name
+                    wan_if_id_res = matched_wan.get('wan_if_id') if matched_wan else matched_wan_id
 
                     service_links_out.append({
+                        'circuit_name': circuit_name,
+                        'circuit_label': circuit_label,
+                        'wan_interface_id': wan_if_id_res,
+                        'wan_interface_name': circuit_name,
                         'id': sl_id,
                         'name': intf.get('name'),
                         'device': st.get('device', 'sl'),
@@ -1653,7 +1724,7 @@ def build_full_topology(sdk: API, sites_data: dict, debug: bool = False, debug_t
                 remote_ip = sl.get('remote_ip')
                 provider = sl.get('provider')
 
-                if 'france-south' in se_name.lower():
+                if 'france-south' in se_name.lower() or remote_ip == '130.41.124.164':
                     pop_id = 'prisma-france-south'
                     pop_name = 'Prisma Access France South (Paris Lime)'
                     pop_region = 'france-south'
@@ -1663,7 +1734,7 @@ def build_full_topology(sdk: API, sites_data: dict, debug: bool = False, debug_t
                     pop_name = 'Prisma Access France Central / North'
                     pop_region = 'france-central'
                     spn = 'europe-northwest-paris'
-                elif 'ireland' in se_name.lower() or 'eu-west-1' in se_name.lower():
+                elif 'ireland' in se_name.lower() or 'eu-west-1' in se_name.lower() or remote_ip == '74.221.137.55':
                     pop_id = 'prisma-ireland'
                     pop_name = 'Prisma Access Ireland (Elderberry)'
                     pop_region = 'eu-west-1'
