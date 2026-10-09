@@ -3604,7 +3604,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                                     <span className="text-sm font-mono text-blue-600 font-bold">{status?.current}</span>
                                 </div>
                                 <div className="flex justify-between items-center p-4 bg-card-secondary/50 rounded-xl border border-border">
-                                    <span className="text-[10px] text-text-muted font-black tracking-widest">Latest Stable</span>
+                                    <span className="text-[10px] text-text-muted font-black tracking-widest">{status?.channel === "v2" ? "Latest v2 Build" : "Latest Stable"}</span>
                                     <span className="text-sm font-mono text-green-600 font-bold">{status?.latest}</span>
                                 </div>
                             </div>
@@ -3612,8 +3612,10 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                             <div className="bg-blue-600/5 border border-blue-500/20 rounded-2xl p-6 flex flex-col justify-between gap-4">
                                 <p className="text-[11px] font-bold text-text-primary leading-relaxed">
                                     {status?.updateAvailable
-                                        ? `A newer version (v${status.latest}) is available on GitHub and ready to pull.`
-                                        : "Your system is currently running the latest stable release of the Stigix platform."}
+                                        ? `A newer build (${status.latest}) is available on Docker Hub and ready to pull.`
+                                        : status?.channel === "v2"
+                                            ? `Your system is currently running the latest development build (${status?.current}) on branch v2.`
+                                            : "Your system is currently running the latest stable release of the Stigix platform."}
                                 </p>
                                 <div className="flex flex-col sm:flex-row gap-3">
                                     <button
@@ -3626,8 +3628,8 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                                                 : "bg-blue-600 hover:bg-blue-500 text-white shadow-lg shadow-blue-900/40"
                                         )}
                                     >
-                                        {upgrading ? <RefreshCw className="animate-spin" size={14} /> : <Download size={14} />}
-                                        {upgrading ? 'Upgrading...' : `Update To ${status?.latest ? (status.latest.startsWith('v') ? status.latest : `v${status.latest}`) : 'Latest'}`}
+                                        {upgrading ? <RefreshCw className="animate-spin" size={14} /> : (status?.updateAvailable ? <Download size={14} /> : <CheckCircle2 size={14} className="text-green-500" />)}
+                                        {upgrading ? 'Upgrading...' : (status?.updateAvailable ? `Update To ${status?.latest || 'Latest'}` : 'Up to Date')}
                                     </button>
                                     <button
                                         onClick={() => handleUpgrade(true)}
@@ -3828,8 +3830,8 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                                             : "bg-blue-600 hover:bg-blue-500 text-white shadow-blue-900/40"
                                     )}
                                 >
-                                    {upgrading ? <RefreshCw className="animate-spin" size={14} /> : <Download size={14} />}
-                                    {upgrading ? 'Upgrading...' : `Update To ${status?.latest ? (status.latest.startsWith('v') ? status.latest : `v${status.latest}`) : 'Latest'}`}
+                                    {upgrading ? <RefreshCw className="animate-spin" size={14} /> : (status?.updateAvailable ? <Download size={14} /> : <CheckCircle2 size={14} className="text-green-500" />)}
+                                    {upgrading ? 'Upgrading...' : (status?.updateAvailable ? `Update To ${status?.latest || 'Latest'}` : 'Up to Date')}
                                 </button>
                                 <button
                                     onClick={() => handleUpgrade(true)}
