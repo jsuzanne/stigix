@@ -3,7 +3,8 @@ import {
     Radio, Play, Square, Download, Loader2, RefreshCw, Search, Trash2, 
     Clock, HardDrive, Filter, Layers, Binary, CheckCircle2, 
     AlertCircle, ChevronRight, ChevronDown, Copy, Check, 
-    FileText, ArrowRight, Zap, X, ShieldAlert, Cpu
+    FileText, ArrowRight, Zap, X, ShieldAlert, Cpu,
+    BookmarkPlus, Sparkles, BookOpen, Plus, SlidersHorizontal, Terminal, Info
 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 
@@ -50,6 +51,152 @@ interface SavedCapture {
     modified_at: string;
 }
 
+interface CustomBpfPreset {
+    id: string;
+    name: string;
+    bpf: string;
+    description?: string;
+}
+
+interface BpfRecipe {
+    name: string;
+    category: string;
+    bpf: string;
+    description: string;
+}
+
+const DEFAULT_CUSTOM_PRESETS: CustomBpfPreset[] = [
+    {
+        id: 'cust_tcp_syn_fin',
+        name: 'TCP SYN or FIN Handshakes',
+        bpf: 'tcp[tcpflags] & (tcp-syn|tcp-fin) != 0',
+        description: 'Track connection setups (SYN) and teardowns (FIN)'
+    },
+    {
+        id: 'cust_wan_isolate',
+        name: 'WAN Traffic (Exclude Local LAN)',
+        bpf: 'not (src net 192.168.0.0/16 and dst net 192.168.0.0/16)',
+        description: 'Filter out local LAN chatter to inspect external WAN or overlay traffic'
+    },
+    {
+        id: 'cust_jumbo_mtu',
+        name: 'Jumbo Frames (> 1400 Bytes)',
+        bpf: 'len > 1400',
+        description: 'Examine high-throughput data transfer bursts and MTU payload sizes'
+    },
+    {
+        id: 'cust_dns_encrypted',
+        name: 'DNS Queries & Answers (Port 53 & 853)',
+        bpf: 'port 53 or port 853',
+        description: 'Capture standard DNS and DNS-over-TLS lookups'
+    }
+];
+
+const BPF_RECIPES: BpfRecipe[] = [
+    {
+        category: 'TCP Handshake & Flags',
+        name: 'TCP SYN Only (New Connections)',
+        bpf: 'tcp[tcpflags] & (tcp-syn) != 0 and tcp[tcpflags] & (tcp-ack) == 0',
+        description: 'Filter new outgoing or incoming TCP connection attempts (SYN scan detection)'
+    },
+    {
+        category: 'TCP Handshake & Flags',
+        name: 'TCP SYN-ACK (Server Accepts)',
+        bpf: 'tcp[tcpflags] & (tcp-syn|tcp-ack) == (tcp-syn|tcp-ack)',
+        description: 'Filter successful connection acknowledgments from remote servers or peers'
+    },
+    {
+        category: 'TCP Handshake & Flags',
+        name: 'TCP RST (Connection Resets)',
+        bpf: 'tcp[tcpflags] & (tcp-rst) != 0',
+        description: 'Detect aborted connections, firewall resets, or closed port rejections'
+    },
+    {
+        category: 'TCP Handshake & Flags',
+        name: 'TCP FIN or NULL Scans',
+        bpf: 'tcp[tcpflags] & (tcp-fin) != 0 or tcp[13] == 0',
+        description: 'Identify stealth port scans (XMAS, NULL, or FIN scans)'
+    },
+    {
+        category: 'TCP Handshake & Flags',
+        name: 'Zero Window (Buffer Saturation)',
+        bpf: 'tcp[14:2] == 0 and not (tcp[tcpflags] & (tcp-rst) != 0)',
+        description: 'Track TCP Zero Window advertisements indicating receiver buffer exhaustion'
+    },
+    {
+        category: 'Network & Subnets',
+        name: 'WAN Traffic Only (Exclude RFC1918 LAN)',
+        bpf: 'not (src net 192.168.0.0/16 and dst net 192.168.0.0/16)',
+        description: 'Filter out local LAN chatter to inspect external WAN or overlay traffic'
+    },
+    {
+        category: 'Network & Subnets',
+        name: 'Specific Subnet Cross-Talk',
+        bpf: 'net 192.168.122.0/24 or net 10.0.0.0/8',
+        description: 'Filter packets with either source or destination in designated subnets'
+    },
+    {
+        category: 'Network & Subnets',
+        name: 'Broadcast & Multicast Chatter',
+        bpf: 'ether broadcast or ether multicast',
+        description: 'Capture ARP, mDNS, LLDP, and routing broadcast announcements'
+    },
+    {
+        category: 'Payload, MTU & Anomalies',
+        name: 'Jumbo / Max MTU Packets (>1400B)',
+        bpf: 'len > 1400',
+        description: 'Examine high-throughput data transfer bursts and maximum segment sizes'
+    },
+    {
+        category: 'Payload, MTU & Anomalies',
+        name: 'Small Frames / Keepalives (<80B)',
+        bpf: 'len < 80',
+        description: 'Isolate pure ACKs, keepalives, and small control frames'
+    },
+    {
+        category: 'Payload, MTU & Anomalies',
+        name: 'Low TTL (< 5 Hops, Traceroute)',
+        bpf: 'ip[8] < 5',
+        description: 'Detect traceroutes, routing loops, or near-expiry transit packets'
+    },
+    {
+        category: 'Payload, MTU & Anomalies',
+        name: 'IP Fragmented Packets',
+        bpf: 'ip[6:2] & 0x1fff != 0',
+        description: 'Filter packets fragmented by intermediate MTU bottlenecks'
+    },
+    {
+        category: 'Services & Protocols',
+        name: 'DNS Queries & Answers (Port 53 & 853)',
+        bpf: 'port 53 or port 853',
+        description: 'Domain name resolution queries and DNS over TLS security flows'
+    },
+    {
+        category: 'Services & Protocols',
+        name: 'Web HTTP & HTTPS (80, 443, 8080)',
+        bpf: 'tcp and (port 80 or port 443 or port 8080)',
+        description: 'Unencrypted and TLS-encrypted web transactions'
+    },
+    {
+        category: 'Services & Protocols',
+        name: 'VoIP RTP & SIP Signaling',
+        bpf: 'udp and (port 5060 or portrange 6000-6500)',
+        description: 'Voice telephony session control and RTP audio streaming'
+    },
+    {
+        category: 'Services & Protocols',
+        name: 'ICMP Errors (Unreachable / Expired)',
+        bpf: 'icmp and (icmp[0] == 3 or icmp[0] == 11)',
+        description: 'Destination unreachable and Time-to-Live exceeded notifications'
+    },
+    {
+        category: 'Services & Protocols',
+        name: 'Network Infrastructure (DHCP & NTP)',
+        bpf: 'udp and (port 67 or port 68 or port 123)',
+        description: 'Address allocation and network time synchronization probes'
+    }
+];
+
 export default function PacketCapture({ token, onNavigateToReplay }: PacketCaptureProps) {
     const authHeaders = useMemo(() => ({
         'Authorization': `Bearer ${token}`,
@@ -85,6 +232,97 @@ export default function PacketCapture({ token, onNavigateToReplay }: PacketCaptu
 
     // Accordion tree expansion
     const [expandedLayers, setExpandedLayers] = useState<Record<string, boolean>>({});
+
+    // Custom BPF Presets
+    const [customBpfPresets, setCustomBpfPresets] = useState<CustomBpfPreset[]>(() => {
+        try {
+            const stored = localStorage.getItem('stigix_custom_bpf_presets');
+            if (stored) {
+                const parsed = JSON.parse(stored);
+                if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+            }
+        } catch {}
+        return DEFAULT_CUSTOM_PRESETS;
+    });
+
+    // Custom BPF Modals
+    const [showSavePresetModal, setShowSavePresetModal] = useState<boolean>(false);
+    const [newPresetName, setNewPresetName] = useState<string>('');
+    const [newPresetDesc, setNewPresetDesc] = useState<string>('');
+    const [newPresetBpf, setNewPresetBpf] = useState<string>('');
+
+    const [showBpfLibraryModal, setShowBpfLibraryModal] = useState<boolean>(false);
+    const [recipeSearch, setRecipeSearch] = useState<string>('');
+    const [selectedRecipeCategory, setSelectedRecipeCategory] = useState<string>('All');
+
+    // Sync custom presets to localStorage
+    useEffect(() => {
+        try {
+            localStorage.setItem('stigix_custom_bpf_presets', JSON.stringify(customBpfPresets));
+        } catch {}
+    }, [customBpfPresets]);
+
+    const handlePresetSelect = (presetId: string) => {
+        setSelectedPreset(presetId);
+        if (presetId === 'custom') return;
+        const builtIn = presets.find(p => p.id === presetId);
+        if (builtIn) {
+            setBpfFilter(builtIn.bpf);
+            return;
+        }
+        const custom = customBpfPresets.find(p => p.id === presetId);
+        if (custom) {
+            setBpfFilter(custom.bpf);
+            return;
+        }
+    };
+
+    const isCustomPresetSelected = useMemo(() => {
+        return customBpfPresets.some(p => p.id === selectedPreset);
+    }, [customBpfPresets, selectedPreset]);
+
+    const handleOpenSaveCustomBpfModal = () => {
+        setNewPresetBpf(bpfFilter);
+        setNewPresetName('');
+        setNewPresetDesc('');
+        setShowSavePresetModal(true);
+    };
+
+    const handleSaveCustomPreset = (e?: React.FormEvent) => {
+        if (e) e.preventDefault();
+        if (!newPresetName.trim() || !newPresetBpf.trim()) {
+            toast.error('Preset name and BPF expression are required');
+            return;
+        }
+        const newId = `cust_${Date.now()}`;
+        const newPreset: CustomBpfPreset = {
+            id: newId,
+            name: newPresetName.trim(),
+            bpf: newPresetBpf.trim(),
+            description: newPresetDesc.trim() || 'Custom user-defined BPF expression'
+        };
+        setCustomBpfPresets(prev => [...prev, newPreset]);
+        setSelectedPreset(newId);
+        setBpfFilter(newPreset.bpf);
+        setShowSavePresetModal(false);
+        toast.success(`Custom BPF filter "${newPreset.name}" saved!`);
+    };
+
+    const handleDeleteCustomPreset = (presetId: string) => {
+        const p = customBpfPresets.find(cp => cp.id === presetId);
+        if (!p) return;
+        setCustomBpfPresets(prev => prev.filter(cp => cp.id !== presetId));
+        setSelectedPreset('all');
+        setBpfFilter('');
+        toast.success(`Deleted preset "${p.name}"`);
+    };
+
+    const handleApplyRecipe = (recipe: BpfRecipe) => {
+        setBpfFilter(recipe.bpf);
+        setSelectedPreset('custom');
+        setShowBpfLibraryModal(false);
+        toast.success(`Applied BPF filter: ${recipe.name}`);
+    };
 
     // History modal
     const [showHistoryModal, setShowHistoryModal] = useState<boolean>(false);
@@ -586,16 +824,16 @@ export default function PacketCapture({ token, onNavigateToReplay }: PacketCaptu
                     </div>
                 </div>
 
-                {/* Configuration Controls Bar */}
-                <div className="mt-5 pt-4 border-t border-border/60 grid grid-cols-1 md:grid-cols-4 lg:grid-cols-6 gap-3">
+                {/* Configuration Controls Bar - Ultra Compact 1-Row Grid */}
+                <div className="mt-4 pt-3.5 border-t border-border/60 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-3 items-end">
                     {/* Interface */}
-                    <div className="space-y-1">
+                    <div className="lg:col-span-2 space-y-1">
                         <label className="text-[10px] font-black uppercase tracking-wider text-text-muted">Interface</label>
                         <select
                             value={selectedInterface}
                             onChange={(e) => setSelectedInterface(e.target.value)}
                             disabled={capturing}
-                            className="w-full bg-card-secondary border border-border rounded-xl px-3 py-1.5 text-xs text-text-primary font-mono focus:outline-none focus:border-cyan-500"
+                            className="w-full bg-card-secondary border border-border rounded-xl px-3 py-1.5 text-xs text-text-primary font-mono focus:outline-none focus:border-cyan-500 h-9"
                         >
                             {interfaces.map(i => (
                                 <option key={i.name} value={i.name}>{i.label}</option>
@@ -603,52 +841,105 @@ export default function PacketCapture({ token, onNavigateToReplay }: PacketCaptu
                         </select>
                     </div>
 
-                    {/* Presets */}
-                    <div className="md:col-span-2 space-y-1">
-                        <label className="text-[10px] font-black uppercase tracking-wider text-text-muted">BPF Filter Presets</label>
-                        <div className="flex gap-1.5 flex-wrap">
-                            {presets.map(p => (
+                    {/* Presets Dropdown */}
+                    <div className="lg:col-span-3 space-y-1">
+                        <div className="flex items-center justify-between">
+                            <label className="text-[10px] font-black uppercase tracking-wider text-text-muted">BPF Preset</label>
+                            {isCustomPresetSelected && (
                                 <button
-                                    key={p.id}
-                                    onClick={() => handleSelectPreset(p)}
+                                    type="button"
+                                    onClick={() => handleDeleteCustomPreset(selectedPreset)}
                                     disabled={capturing}
-                                    className={`px-2 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all border cursor-pointer ${
-                                        selectedPreset === p.id 
-                                            ? 'bg-cyan-500/20 text-cyan-300 border-cyan-500/40 shadow-sm'
-                                            : 'bg-card-secondary/60 text-text-muted hover:text-text-primary border-border/60'
-                                    }`}
-                                    title={p.description}
+                                    className="text-[10px] text-rose-400 hover:text-rose-300 font-bold flex items-center gap-0.5 cursor-pointer disabled:opacity-50 transition-colors"
+                                    title="Delete selected custom preset"
                                 >
-                                    {p.name}
+                                    <Trash2 size={10} />
+                                    <span>Delete</span>
                                 </button>
-                            ))}
+                            )}
+                        </div>
+                        <select
+                            value={selectedPreset}
+                            onChange={(e) => handlePresetSelect(e.target.value)}
+                            disabled={capturing}
+                            className="w-full bg-card-secondary border border-border rounded-xl px-3 py-1.5 text-xs text-text-primary font-mono focus:outline-none focus:border-cyan-500 truncate h-9"
+                        >
+                            <optgroup label="⚡ Built-in Presets">
+                                {presets.map(p => (
+                                    <option key={p.id} value={p.id}>{p.name}</option>
+                                ))}
+                            </optgroup>
+                            {customBpfPresets.length > 0 && (
+                                <optgroup label="⭐ Custom BPF Filters">
+                                    {customBpfPresets.map(cp => (
+                                        <option key={cp.id} value={cp.id}>{cp.name}</option>
+                                    ))}
+                                </optgroup>
+                            )}
+                            <option value="custom">✍️ Custom BPF Expression</option>
+                        </select>
+                    </div>
+
+                    {/* Kernel BPF Filter */}
+                    <div className="lg:col-span-4 space-y-1">
+                        <div className="flex items-center justify-between">
+                            <label className="text-[10px] font-black uppercase tracking-wider text-text-muted">Kernel BPF Filter</label>
+                            <div className="flex items-center gap-2 text-[10px]">
+                                <button
+                                    type="button"
+                                    onClick={() => setShowBpfLibraryModal(true)}
+                                    className="text-cyan-400 hover:text-cyan-300 font-bold flex items-center gap-1 cursor-pointer transition-colors"
+                                    title="Browse complex BPF recipes and recipes"
+                                >
+                                    <Sparkles size={11} />
+                                    <span>Recipes</span>
+                                </button>
+                                <span className="text-border">|</span>
+                                <button
+                                    type="button"
+                                    onClick={handleOpenSaveCustomBpfModal}
+                                    disabled={!bpfFilter.trim() || capturing}
+                                    className="text-emerald-400 hover:text-emerald-300 font-bold flex items-center gap-1 cursor-pointer transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                                    title="Save this filter as a custom preset"
+                                >
+                                    <BookmarkPlus size={11} />
+                                    <span>Save Preset</span>
+                                </button>
+                            </div>
+                        </div>
+                        <div className="relative">
+                            <input
+                                type="text"
+                                value={bpfFilter}
+                                onChange={(e) => {
+                                    setBpfFilter(e.target.value);
+                                    setSelectedPreset('custom');
+                                }}
+                                disabled={capturing}
+                                placeholder="e.g. tcp[tcpflags] & (tcp-syn) != 0 or port 53"
+                                className="w-full bg-card-secondary border border-border rounded-xl px-3 py-1.5 text-xs text-text-primary font-mono focus:outline-none focus:border-cyan-500 pr-7 h-9"
+                            />
+                            {bpfFilter && !capturing && (
+                                <button
+                                    type="button"
+                                    onClick={() => { setBpfFilter(''); setSelectedPreset('all'); }}
+                                    className="absolute right-2 top-1/2 -translate-y-1/2 text-text-muted hover:text-text-primary p-0.5 cursor-pointer"
+                                    title="Clear filter"
+                                >
+                                    <X size={12} />
+                                </button>
+                            )}
                         </div>
                     </div>
 
-                    {/* BPF Custom Filter */}
-                    <div className="space-y-1">
-                        <label className="text-[10px] font-black uppercase tracking-wider text-text-muted">Kernel BPF Filter</label>
-                        <input
-                            type="text"
-                            value={bpfFilter}
-                            onChange={(e) => {
-                                setBpfFilter(e.target.value);
-                                setSelectedPreset('custom');
-                            }}
-                            disabled={capturing}
-                            placeholder="e.g. tcp port 8080"
-                            className="w-full bg-card-secondary border border-border rounded-xl px-3 py-1.5 text-xs text-text-primary font-mono focus:outline-none focus:border-cyan-500"
-                        />
-                    </div>
-
                     {/* Duration Limit */}
-                    <div className="space-y-1">
-                        <label className="text-[10px] font-black uppercase tracking-wider text-text-muted">Duration (sec)</label>
+                    <div className="lg:col-span-1.5 space-y-1">
+                        <label className="text-[10px] font-black uppercase tracking-wider text-text-muted">Duration</label>
                         <select
                             value={durationSec}
                             onChange={(e) => setDurationSec(parseInt(e.target.value, 10))}
                             disabled={capturing}
-                            className="w-full bg-card-secondary border border-border rounded-xl px-3 py-1.5 text-xs text-text-primary font-mono focus:outline-none focus:border-cyan-500"
+                            className="w-full bg-card-secondary border border-border rounded-xl px-3 py-1.5 text-xs text-text-primary font-mono focus:outline-none focus:border-cyan-500 h-9"
                         >
                             <option value={10}>10s</option>
                             <option value={30}>30s (Default)</option>
@@ -658,14 +949,14 @@ export default function PacketCapture({ token, onNavigateToReplay }: PacketCaptu
                         </select>
                     </div>
 
-                    {/* Max Packets */}
-                    <div className="space-y-1">
+                    {/* Packet Limit */}
+                    <div className="lg:col-span-1.5 space-y-1">
                         <label className="text-[10px] font-black uppercase tracking-wider text-text-muted">Packet Limit</label>
                         <select
                             value={maxPackets}
                             onChange={(e) => setMaxPackets(parseInt(e.target.value, 10))}
                             disabled={capturing}
-                            className="w-full bg-card-secondary border border-border rounded-xl px-3 py-1.5 text-xs text-text-primary font-mono focus:outline-none focus:border-cyan-500"
+                            className="w-full bg-card-secondary border border-border rounded-xl px-3 py-1.5 text-xs text-text-primary font-mono focus:outline-none focus:border-cyan-500 h-9"
                         >
                             <option value={500}>500 pkts</option>
                             <option value={2000}>2,000 pkts</option>
@@ -930,6 +1221,190 @@ export default function PacketCapture({ token, onNavigateToReplay }: PacketCaptu
                     </div>
                 </div>
             </div>
+
+            {/* Save Custom BPF Preset Modal */}
+            {showSavePresetModal && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
+                    <div className="bg-card border border-border rounded-3xl w-full max-w-lg overflow-hidden shadow-2xl p-6 space-y-4">
+                        <div className="flex items-center justify-between pb-3 border-b border-border/60">
+                            <div className="flex items-center gap-3">
+                                <div className="p-2 bg-emerald-600/10 rounded-xl text-emerald-400">
+                                    <BookmarkPlus size={20} />
+                                </div>
+                                <div>
+                                    <h3 className="text-base font-black text-text-primary">Save Custom BPF Filter</h3>
+                                    <p className="text-xs text-text-muted">Create a reusable kernel packet filter preset</p>
+                                </div>
+                            </div>
+                            <button
+                                onClick={() => setShowSavePresetModal(false)}
+                                className="p-1 text-text-muted hover:text-text-primary rounded-lg cursor-pointer"
+                            >
+                                <X size={18} />
+                            </button>
+                        </div>
+
+                        <form onSubmit={handleSaveCustomPreset} className="space-y-4">
+                            <div className="space-y-1">
+                                <label className="text-[10px] font-black uppercase tracking-wider text-text-muted">Preset Name *</label>
+                                <input
+                                    type="text"
+                                    required
+                                    value={newPresetName}
+                                    onChange={(e) => setNewPresetName(e.target.value)}
+                                    placeholder="e.g. TCP SYN Flood & Scans"
+                                    className="w-full bg-card-secondary border border-border rounded-xl px-3 py-2 text-xs text-text-primary focus:outline-none focus:border-cyan-500 font-bold"
+                                />
+                            </div>
+
+                            <div className="space-y-1">
+                                <label className="text-[10px] font-black uppercase tracking-wider text-text-muted">Kernel BPF Filter Expression *</label>
+                                <textarea
+                                    required
+                                    rows={3}
+                                    value={newPresetBpf}
+                                    onChange={(e) => setNewPresetBpf(e.target.value)}
+                                    placeholder="e.g. tcp[tcpflags] & (tcp-syn) != 0 and not src net 192.168.0.0/16"
+                                    className="w-full bg-card-secondary border border-border rounded-xl p-3 text-xs text-cyan-300 font-mono focus:outline-none focus:border-cyan-500"
+                                />
+                            </div>
+
+                            <div className="space-y-1">
+                                <label className="text-[10px] font-black uppercase tracking-wider text-text-muted">Description (Optional)</label>
+                                <input
+                                    type="text"
+                                    value={newPresetDesc}
+                                    onChange={(e) => setNewPresetDesc(e.target.value)}
+                                    placeholder="e.g. Filter inbound SYN packets outside internal subnets"
+                                    className="w-full bg-card-secondary border border-border rounded-xl px-3 py-2 text-xs text-text-primary focus:outline-none focus:border-cyan-500"
+                                />
+                            </div>
+
+                            <div className="pt-2 flex items-center justify-end gap-2 border-t border-border/60">
+                                <button
+                                    type="button"
+                                    onClick={() => setShowSavePresetModal(false)}
+                                    className="px-4 py-2 text-xs font-bold text-text-muted hover:text-text-primary bg-card-secondary hover:bg-card-hover rounded-xl border border-border transition-colors cursor-pointer"
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    type="submit"
+                                    className="px-5 py-2 text-xs font-black uppercase tracking-wider text-white bg-emerald-600 hover:bg-emerald-500 rounded-xl transition-all cursor-pointer shadow-lg shadow-emerald-950/40"
+                                >
+                                    Save Preset
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            )}
+
+            {/* BPF Recipe Library & Syntax Builder Modal */}
+            {showBpfLibraryModal && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
+                    <div className="bg-card border border-border rounded-3xl w-full max-w-4xl max-h-[85vh] flex flex-col overflow-hidden shadow-2xl p-6 space-y-4">
+                        <div className="flex items-center justify-between pb-3 border-b border-border/60 shrink-0">
+                            <div className="flex items-center gap-3">
+                                <div className="p-2 bg-cyan-600/10 rounded-xl text-cyan-400">
+                                    <Sparkles size={20} />
+                                </div>
+                                <div>
+                                    <h3 className="text-base font-black text-text-primary">Kernel BPF Recipe Library</h3>
+                                    <p className="text-xs text-text-muted">Wireshark & tcpdump-grade complex Berkeley Packet Filter recipes</p>
+                                </div>
+                            </div>
+                            <button
+                                onClick={() => setShowBpfLibraryModal(false)}
+                                className="p-1 text-text-muted hover:text-text-primary rounded-lg cursor-pointer"
+                            >
+                                <X size={18} />
+                            </button>
+                        </div>
+
+                        {/* Search & Category Filter */}
+                        <div className="flex flex-col sm:flex-row items-center justify-between gap-3 shrink-0">
+                            <div className="relative w-full sm:w-72">
+                                <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-text-muted" />
+                                <input
+                                    type="text"
+                                    value={recipeSearch}
+                                    onChange={(e) => setRecipeSearch(e.target.value)}
+                                    placeholder="Search recipes (e.g. syn, rst, ttl, jumbo)..."
+                                    className="w-full bg-card-secondary border border-border rounded-xl pl-9 pr-3 py-1.5 text-xs text-text-primary placeholder:text-text-muted/60 focus:outline-none focus:border-cyan-500 font-mono"
+                                />
+                            </div>
+
+                            <div className="flex items-center gap-1.5 flex-wrap w-full sm:w-auto">
+                                {['All', 'TCP Handshake & Flags', 'Network & Subnets', 'Payload, MTU & Anomalies', 'Services & Protocols'].map(cat => (
+                                    <button
+                                        key={cat}
+                                        onClick={() => setSelectedRecipeCategory(cat)}
+                                        className={`px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all border cursor-pointer ${
+                                            selectedRecipeCategory === cat
+                                                ? 'bg-cyan-500/20 text-cyan-300 border-cyan-500/40 shadow-sm'
+                                                : 'bg-card-secondary/60 text-text-muted hover:text-text-primary border-border/60'
+                                        }`}
+                                    >
+                                        {cat === 'All' ? 'All Recipes' : cat}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+
+                        {/* Recipe Grid */}
+                        <div className="flex-1 overflow-y-auto space-y-2.5 pr-1 scrollbar-thin scrollbar-thumb-border">
+                            {BPF_RECIPES
+                                .filter(r => {
+                                    if (selectedRecipeCategory !== 'All' && r.category !== selectedRecipeCategory) return false;
+                                    if (recipeSearch.trim()) {
+                                        const q = recipeSearch.toLowerCase();
+                                        return r.name.toLowerCase().includes(q) || r.bpf.toLowerCase().includes(q) || r.description.toLowerCase().includes(q);
+                                    }
+                                    return true;
+                                })
+                                .map((recipe, idx) => (
+                                    <div
+                                        key={idx}
+                                        className="p-3 bg-card-secondary/30 hover:bg-card-secondary/60 border border-border/60 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 transition-colors"
+                                    >
+                                        <div className="space-y-1 flex-1 min-w-0">
+                                            <div className="flex items-center gap-2">
+                                                <span className="text-[9px] font-black uppercase px-2 py-0.5 rounded bg-cyan-500/10 text-cyan-400 border border-cyan-500/20">
+                                                    {recipe.category}
+                                                </span>
+                                                <h4 className="text-xs font-bold text-text-primary truncate">{recipe.name}</h4>
+                                            </div>
+                                            <p className="text-[11px] text-text-muted">{recipe.description}</p>
+                                            <div className="p-1.5 bg-black/40 border border-border/40 rounded-lg font-mono text-[11px] text-cyan-300 select-all overflow-x-auto">
+                                                {recipe.bpf}
+                                            </div>
+                                        </div>
+
+                                        <div className="flex items-center gap-2 shrink-0 sm:self-center">
+                                            <button
+                                                onClick={() => {
+                                                    navigator.clipboard.writeText(recipe.bpf);
+                                                    toast.success('Copied BPF expression');
+                                                }}
+                                                className="p-2 text-text-muted hover:text-text-primary bg-card-secondary hover:bg-card-hover rounded-xl border border-border transition-colors cursor-pointer"
+                                                title="Copy BPF expression"
+                                            >
+                                                <Copy size={13} />
+                                            </button>
+                                            <button
+                                                onClick={() => handleApplyRecipe(recipe)}
+                                                className="px-3 py-2 bg-cyan-600 hover:bg-cyan-500 text-white rounded-xl text-xs font-black uppercase tracking-wider transition-all cursor-pointer shadow-md shadow-cyan-950/40"
+                                            >
+                                                Apply Filter
+                                            </button>
+                                        </div>
+                                    </div>
+                                ))}
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {/* History Modal */}
             {showHistoryModal && (

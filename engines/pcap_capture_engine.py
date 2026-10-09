@@ -13,6 +13,7 @@ import signal
 import socket
 import struct
 import base64
+import shlex
 import argparse
 import subprocess
 import glob
@@ -213,7 +214,25 @@ def start_capture(interface: str = "any", bpf: str = "", duration: int = 30, max
 
     cmd = ["tcpdump", "-i", interface, "-U", "-s", str(snaplen), "-c", str(max_packets), "-w", pcap_path]
     if bpf and bpf.strip():
-        cmd.extend(bpf.strip().split())
+        bpf_clean = bpf.strip()
+        try:
+            val_tokens = shlex.split(bpf_clean)
+        except Exception as e:
+            return {"error": f"Invalid BPF quotes/syntax: {str(e)}"}
+
+        # Pre-validate BPF filter expression with tcpdump -d
+        try:
+            val_res = subprocess.run(["tcpdump", "-i", interface, "-d"] + val_tokens, capture_output=True, text=True)
+            if val_res.returncode != 0:
+                err_clean = val_res.stderr.strip()
+                if any(k in err_clean.lower() for k in ["syntax error", "can't parse", "parse error", "illegal token", "unknown protocol"]):
+                    err_lines = [l for l in err_clean.splitlines() if not l.startswith("tcpdump: WARNING")]
+                    err_msg = " ".join(err_lines).strip() or "Syntax error in BPF filter expression"
+                    return {"error": f"Invalid BPF filter syntax: {err_msg}"}
+        except Exception:
+            pass
+
+        cmd.extend(val_tokens)
 
     try:
         proc = subprocess.Popen(
