@@ -124,6 +124,17 @@ This project is my way to turn all that lab and demo experience into an open-sou
 
 The project is evolving rapidly with major features, engines, and UX refinements in every release.
 
+### 🚀 Stigix 2.1.2 — Leader-Orchestrated Remote Upgrades, SASE Fabric Topology & Resilient In-Place Maintenance *(v2.1.2)*
+
+- **🚀 Leader-Orchestrated 1-Click Remote Peer Upgrades** 🌐 — Discover remote node versions across the entire fleet via the Fleet Gateway (`/api/gateway/:peerId/api/admin/maintenance/version`). Trigger seamless 1-click upgrades on remote spoke nodes directly from the Leader dashboard in both **Registered Targets** and **Maintenance & Updates** tabs.
+- **📡 Real-Time Remote Upgrade Stepper & Log Stream** 💻 — Dedicated remote upgrade modal with 4-phase visual progress tracking (`Remote Pull` ➔ `Recreate` ➔ `Healthcheck` ➔ `Ready`), live console log streaming from remote ephemeral updaters, and healthcheck reconnect radar pinging port 8080 until the node reports healthy.
+- **🛡️ Ephemeral Detached In-Place Self-Upgrade** ⚙️ — Self-contained detached updater container (`docker run --rm -d --network host -v /var/run/docker.sock...`) executing pull, recreate, healthcheck, and auto-prune out-of-process without process suicide. Protected by pre-upgrade Docker socket verification (`/var/run/docker.sock`).
+- **🧹 Automated Docker Image Pruning** 🧼 — Automatically reclaims disk space after every upgrade via `docker image prune -f`, with an on-demand Prune button in the Maintenance tab.
+- **🗺️ SASE Fabric Topology Overhaul** 🌐 — Dedicated **SASE Fabric** view switcher dock alongside Overlay and Underlay topologies. Features official Palo Alto Prisma Access & Zscaler branded logos, dynamic PoP matching (France North, France Central, Europe West), interactive tunnel breakdown drawer with uptime & latency telemetry, and instant 0ms edge spotlighting.
+- **🔄 Dynamic Auto-Mesh Client Pausing & Zero-Latency Resume** ⏸️ — Custom TCP client streams automatically pause (`⏸️ PAUSED (Server Offline)`) when a remote server listener goes down and instantly resume the moment it restarts, eliminating connection retry floods.
+- **🛡️ Custom TCP Apps EICAR Threat Correlation** 🎯 — Active Custom TCP/HTTP app listeners dynamically register as verified EICAR threat responders, enabling false-positive-free security testing with target category filters (All, Custom Apps, Fabric, Cloud).
+- **⏱️ Automated Daily Resource Housekeeping** 🧹 — Daily 2 AM cron and boot-time cleanup routine that automatically purges orphaned worker stats files and expired logs.
+
 ### ⚡ Stigix 2.1.1 — Control Plane Heartbeats, Live RTT & Fleet Auto-Sync *(v2.1.1)*
 
 - **💓 WebSocket Control Plane RTT Heartbeat** ⚡ — Continuous 15-second soft RTT ping/pong loop (`tunnel:rtt_ping`) measuring precise sub-millisecond reverse tunnel latency across all remote spoke nodes (DC1, BR1, BR2, BR5, BR8).

@@ -5,6 +5,38 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.1.2] - 2026-10-09
+
+### Added
+- **Leader-Orchestrated 1-Click Remote Peer Upgrades (`Settings.tsx`, `server.ts`, `fleet-tunnel.ts`)**:
+  - Leader node discovers remote peer engine versions across the entire cluster via Fleet Gateway (`/api/gateway/:peerId/api/admin/maintenance/version`).
+  - Added 1-click upgrade button for remote peers in the Registered Targets table (`Target Controller`) and in the dedicated **Fleet Nodes Maintenance** section in **Maintenance & Updates**.
+  - Interactive Remote Upgrade modal with 4-phase visual stepper (`1. Remote Pull`, `2. Recreate`, `3. Healthcheck`, `4. Ready`), live log terminal streaming from the remote node's ephemeral updater, and an automatic reconnect radar pinging `:8080` until the remote node passes internal healthchecks.
+- **Resilient Ephemeral In-Place Container Upgrades & Auto-Prune (`server.ts`, `Settings.tsx`)**:
+  - Detached ephemeral updater container (`docker run --rm -d --network host -v /var/run/docker.sock...`) safely recreates the Stigix stack out-of-process, preventing container self-termination mid-upgrade.
+  - Safe Docker socket pre-flight check (`/var/run/docker.sock`) preventing broken upgrades if the socket is not mounted into the container.
+  - Automatic post-upgrade Docker image pruning (`docker image prune -f`) to reclaim disk space, plus on-demand `POST /api/admin/maintenance/prune`.
+  - Upgraded in-place modal with live 4-step progress stepper, real-time log output, reconnect radar with retry counter, and 3-second auto-reload countdown once the updated container is operational.
+  - Disk-backed status synchronization (`.upgrade_status.json`, `stigix_updater.log`) allowing client fast-polling to survive container reboot seamlessly.
+- **SASE Fabric Topology Overhaul (`Topology.tsx`, `server.ts`)**:
+  - Integrated SASE Fabric into the main view switcher dock alongside Overlay and Underlay topologies.
+  - Official brand logos for Palo Alto Prisma Access and Zscaler ServiceLinks.
+  - Dynamic PoP matching with support for regional PoPs (France North, France Central, Europe West), PoP focus mode, and interactive tunnel drawer displaying latency, uptime, and SLA compliance.
+  - Instant 0ms edge spotlighting on click and SASE path filter ribbon.
+- **Dynamic Custom TCP Apps Auto-Mesh & Threat Correlation (`CustomApps.tsx`, `Security.tsx`, `tcp-client-runtime.ts`)**:
+  - Client runtime subscribes in real-time to mesh state; when a remote server goes offline, active client sessions cleanly transition to `⏸️ PAUSED (Server Offline)` and instantly resume with zero latency upon server recovery.
+  - Added ultra-compact global fleet telemetry ribbon in Custom Apps displaying consolidated fleet-wide TX/RX traffic metrics.
+  - Integrated active Custom App listeners into the Security Threat test suite as verified EICAR responders with category filtering (All, Custom Apps, Fabric, Cloud).
+  - Standard persistent TCP behavior: removed arbitrary 60s idle timeout and cleared connect timeouts upon socket establishment.
+- **Automated Resource Housekeeping (`server.ts`)**:
+  - Scheduled daily 2 AM cron and boot-time maintenance routines that automatically purge orphaned worker stats files and expired logs.
+
+### Fixed
+- **Upgrade Modal Auto-Dismiss (`Settings.tsx`, `server.ts`)**:
+  - Synchronized `/api/admin/maintenance/status` with `.upgrade_status.json` and `stigix_updater.log` on disk, treating `restarting` as completed after boot, and ensuring the modal close button is always accessible.
+- **Web-UI Build & Transpilation (`server.ts`)**:
+  - Fixed unescaped literal newlines in `split('\n')` statements on lines 1207 and 12146, eliminating esbuild TransformErrors that crashed the web service.
+
 ## [2.1.1] - 2026-10-08
 
 ### Added

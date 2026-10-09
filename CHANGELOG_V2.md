@@ -2,6 +2,25 @@
 
 All notable changes made specifically on the `v2` branch are documented in this file.
 
+## [v2.1.2] - 2026-10-09 — Leader-Orchestrated Remote Upgrades, SASE Fabric Topology & In-Place Maintenance
+
+- **feat(fleet-maintenance)**: Added Leader-orchestrated 1-click remote peer upgrades (`Settings.tsx`, `server.ts`, `fleet-tunnel.ts`). Leader nodes query spoke engine versions via the Fleet Gateway (`/api/gateway/:peerId/api/admin/maintenance/version`) and trigger remote upgrades with real-time log streaming.
+- **feat(settings-ui)**: Added dedicated **Fleet Nodes Maintenance** section directly in the `Maintenance & Updates` tab on Leader nodes, complementing the Registered Targets table in `Target Controller`.
+- **feat(remote-modal)**: Built interactive Remote Node Upgrade modal with 4-phase visual progress tracker (`1. Remote Pull` ➔ `2. Recreate` ➔ `3. Healthcheck` ➔ `4. Ready`), live console stream, and healthcheck reconnect radar pinging port 8080 until the remote node reports operational.
+- **feat(maintenance-engine)**: Architected detached ephemeral updater container (`docker run --rm -d --network host -v /var/run/docker.sock...`) enabling completely decoupled, self-healing container recreation without process suicide.
+- **feat(docker-guardrail)**: Added pre-flight Docker socket verification (`/var/run/docker.sock`) in `server.ts` and `Settings.tsx` to prevent destructive upgrade attempts in environments where the socket is unmounted.
+- **feat(docker-prune)**: Implemented automated post-upgrade Docker image pruning (`docker image prune -f`) and added an on-demand `POST /api/admin/maintenance/prune` API endpoint and UI action button.
+- **feat(upgrade-modal)**: Overhauled local in-place upgrade overlay with real-time stepper, live logs streaming terminal, reconnect radar with retry counter, and 3-second auto-reload countdown.
+- **fix(maintenance-status)**: Synchronized `/api/admin/maintenance/status` dynamically with `.upgrade_status.json` and `stigix_updater.log` on disk, ensuring fast-polling recognizes reboot completion cleanly and making modal dismiss always available.
+- **feat(sase-topology)**: Integrated **SASE Fabric** as a first-class view switcher dock alongside Overlay and Underlay topologies in `Topology.tsx`.
+- **feat(sase-branding)**: Added official brand logos for Palo Alto Prisma Access and Zscaler ServiceLinks.
+- **feat(sase-pop)**: Implemented dynamic PoP matching (France North, France Central, Europe West), dedicated PoP focus mode, interactive tunnel drawer with real-time latency and uptime telemetry, and instant 0ms edge spotlighting.
+- **feat(custom-apps-ribbon)**: Added ultra-compact global fleet telemetry ribbon in Custom Apps (`CustomApps.tsx`) showing fleet-wide TX/RX rates.
+- **feat(security-filters)**: Added category filter tabs (All, Custom Apps, Fabric, Cloud) to the EICAR test suite in `Security.tsx`.
+- **fix(tcp-timeout)**: Removed arbitrary 60s idle timeout on Custom TCP server listener to support persistent TCP streams, and cleared connect timeout on established sockets.
+- **feat(housekeeping)**: Added daily 2 AM cron and boot-time maintenance routines in `server.ts` that automatically purge orphaned worker stats files and expired logs.
+- **fix(server-transpile)**: Fixed unescaped literal newlines in `split('\n')` in `server.ts` resolving esbuild TransformError during web-ui startup.
+
 ## [v2.1.1] - 2026-10-08 — Control Plane RTT Heartbeats, Provisioning ACKs, Auto-Sync & DEM Outage Fix
 
 - **feat(fleet-ui)**: Added explicit WebSocket tunnel directionality indicators (`↘️ INBOUND WS` and `↗️ OUTBOUND WS`) in `Fleet.tsx` overview table and `Settings.tsx` Target Controller banner.

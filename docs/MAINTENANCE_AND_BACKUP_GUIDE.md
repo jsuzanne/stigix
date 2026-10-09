@@ -17,7 +17,12 @@ This guide provides an exhaustive operational reference for all capabilities fou
 4. [Section 3: Configuration Backup & Restore](#4-section-3-configuration-backup--restore)
    - [Export Engine State (What is Included vs Excluded)](#export-engine-state-what-is-included-vs-excluded)
    - [Restore State & Pre-Import Safety Snapshot](#restore-state--pre-import-safety-snapshot)
-5. [Summary Matrix: Operational Impact & Downtime](#5-summary-matrix-operational-impact--downtime)
+5. [Section 4: Leader-Orchestrated Fleet Maintenance & Remote Upgrades](#5-section-4-leader-orchestrated-fleet-maintenance--remote-upgrades)
+   - [Remote Version Detection & Fleet Gateway](#remote-version-detection--fleet-gateway)
+   - [1-Click Remote Upgrade Flow](#1-click-remote-upgrade-flow)
+   - [Remote Healthcheck Radar & Reconnect Handshake](#remote-healthcheck-radar--reconnect-handshake)
+   - [Docker Socket Guardrail & Auto-Pruning](#docker-socket-guardrail--auto-pruning)
+6. [Summary Matrix: Operational Impact & Downtime](#6-summary-matrix-operational-impact--downtime)
 
 ---
 
@@ -167,11 +172,67 @@ Once imported files are written to disk, Stigix gracefully exits its Node proces
 
 ---
 
-## 5. Summary Matrix: Operational Impact & Downtime
+## 5. Section 4: Leader-Orchestrated Fleet Maintenance & Remote Upgrades
+
+In multi-node Stigix clusters, the Leader node (e.g. `DC1`) provides centralized orchestration for updates across all registered remote spoke nodes (`BR1`, `BR2`, `BR5`, `BR8`, `DC2`, etc.) without requiring SSH access or manual host logins.
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    LEADER NODE (e.g. DC1)                   │
+│                                                             │
+│  [Fleet Nodes Table] ── 1-Click Upgrade ──> [Remote Modal]  │
+└──────────────────────────────┬──────────────────────────────┘
+                               │ WebSocket Reverse Tunnel /
+                               │ Fleet Gateway Proxy
+                               ▼
+┌─────────────────────────────────────────────────────────────┐
+│                   REMOTE SPOKE (e.g. BR8)                   │
+│                                                             │
+│  [API Gateway] ──> [Ephemeral Updater] ──> [Docker Recreate]│
+│        ▲                                           │        │
+│        └────── Healthcheck Radar (:8080) ──────────┘        │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### Remote Version Detection & Fleet Gateway
+
+When an administrator navigates to **Settings ➔ Maintenance & Updates** or **Settings ➔ Target Controller** on the Leader node:
+1. The Leader initiates lightweight version queries over the multiplexed WebSocket reverse control plane:
+   `GET /api/gateway/:peerId/api/admin/maintenance/version`
+2. Each remote peer inspects its `/app/VERSION`, Docker socket availability, and upgrade status.
+3. The Leader renders remote peer versions alongside real-time upgrade action buttons (`[ 🚀 Upgrade Node ]` or `[ 🔄 Force Pull ]`).
+
+### 1-Click Remote Upgrade Flow
+
+Clicking **Upgrade Node** on a remote peer triggers a fully automated 4-phase upgrade:
+
+1. **Phase 1: Remote Pull (`pulling`)**
+   The Leader commands the remote peer to pull the target image tag via `POST /api/gateway/:peerId/api/admin/maintenance/upgrade`. The remote node pulls Docker image layers in the background with resilient retries.
+2. **Phase 2: Recreate (`restarting`)**
+   The remote peer spawns an out-of-process ephemeral updater container (`stigix_updater_<timestamp>`), ensuring the stack recreates safely without breaking process execution.
+3. **Phase 3: Healthcheck Radar (`reconnecting`)**
+   The remote updater waits for the new container to become healthy, and the Leader’s remote upgrade modal runs an active reconnect radar pinging `http://<peer-ip>:8080/api/admin/maintenance/status` with an exponential backoff retry counter.
+4. **Phase 4: Ready (`complete`)**
+   Once the remote node is healthy, the modal displays a success banner confirming the target node version, and tunnels automatically resume.
+
+### Remote Healthcheck Radar & Reconnect Handshake
+
+The Remote Upgrade modal features an interactive terminal window streaming live output directly from the remote updater container (`stigix_updater.log`), giving administrators complete operational visibility into every Docker pull layer, compose recreate step, and container startup log.
+
+### Docker Socket Guardrail & Auto-Pruning
+
+- **🛡️ Socket Mount Guardrail**: Before any upgrade attempt (local or remote), Stigix verifies that `/var/run/docker.sock` is actively mounted. If missing, the upgrade action is safely disabled with an informative advisory, preventing container failures.
+- **🧹 Automated Image Pruning**: After recreation, the ephemeral updater automatically executes `docker image prune -f` to purge dangling images and keep disk usage minimal. Administrators can also trigger on-demand cleanup via **Settings ➔ Maintenance ➔ Prune Docker Images**.
+
+---
+
+## 6. Summary Matrix: Operational Impact & Downtime
 
 | Action | Execution Mechanism | Expected Downtime | Traffic Impact | Risk Level |
 | :--- | :--- | :--- | :--- | :--- |
-| **Update To Latest** | Background `docker pull` ➔ Ephemeral Compose recreate | 3 to 6 seconds | Brief socket pause during handover | **Very Low** (Aborts if pull fails) |
+| **Local Update** | Background `docker pull` ➔ Ephemeral Compose recreate | 3 to 6 seconds | Brief socket pause during handover | **Very Low** (Aborts if pull fails) |
+| **Remote Peer Upgrade** | Fleet Gateway proxy ➔ Remote Ephemeral Compose recreate | 3 to 6 seconds | Remote node socket handover | **Very Low** (Orchestrated from Leader) |
+| **Prune Images** | `docker image prune -f` in background | **0 seconds** | None | **None** (Reclaims disk space) |
 | **Force Pull** | Forced `docker pull` ➔ Ephemeral Compose recreate | 3 to 6 seconds | Brief socket pause during handover | **Very Low** (Preserves active channel) |
 | **Service Restart** | Internal `supervisorctl restart all` | 1 to 2 seconds | Micro-pause on traffic generators | **None** (Docker stays up) |
 | **System Redeploy** | Out-of-process Compose `--force-recreate` | 5 to 10 seconds | Complete container restart | **Low** (Reloads `.env` and Compose) |
