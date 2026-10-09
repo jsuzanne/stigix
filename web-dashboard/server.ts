@@ -11829,6 +11829,55 @@ function startLogStreaming() {
 setTimeout(startLogStreaming, 2000);
 
 
+
+async function detectLocalDockerChannel(): Promise<{ channel: string; fullImage: string; createdDate: string | null }> {
+    let image = '';
+    let createdDate: string | null = null;
+    const execPromise = promisify(exec);
+
+    try {
+        const { stdout } = await execPromise('docker inspect stigix --format "{{.Config.Image}}|||{{.Created}}"');
+        const parts = stdout.trim().split('|||');
+        image = parts[0] || '';
+        createdDate = parts[1] || null;
+    } catch (e) {
+        try {
+            const hostname = os.hostname();
+            const { stdout } = await execPromise(`docker inspect ${hostname} --format "{{.Config.Image}}|||{{.Created}}"`);
+            const parts = stdout.trim().split('|||');
+            image = parts[0] || '';
+            createdDate = parts[1] || null;
+        } catch (e2) {}
+    }
+
+    // Check version file for dev markers
+    let currentVer = '';
+    try {
+        const vPath = fs.existsSync('/app/VERSION') ? '/app/VERSION' : path.join(PROJECT_ROOT, 'VERSION');
+        if (fs.existsSync(vPath)) currentVer = fs.readFileSync(vPath, 'utf8').trim();
+    } catch (e) {}
+
+    const envTag = process.env.TAG || '';
+    if (!image) {
+        if (envTag) image = `jsuzanne/stigix:${envTag}`;
+        else if (currentVer.includes('dev') || currentVer.startsWith('2.')) image = 'jsuzanne/stigix:v2';
+        else image = 'jsuzanne/stigix:stable';
+    }
+
+    // Extract tag from image (e.g. jsuzanne/stigix:v2 -> v2)
+    const tagMatch = image.match(/:([^:]+)$/);
+    let channel = tagMatch ? tagMatch[1] : (envTag || 'latest');
+
+    // Map dev commits and v2 indicators to 'v2' channel
+    if (channel === 'v2' || channel.includes('.dev') || channel.startsWith('2.') || currentVer.includes('.dev')) {
+        channel = 'v2';
+    } else if (channel === 'stable' || envTag === 'stable') {
+        channel = 'stable';
+    }
+
+    return { channel, fullImage: `jsuzanne/stigix:${channel}`, createdDate };
+}
+
 app.get('/api/admin/maintenance/version', authenticateToken, async (req, res) => {
     try {
         const versionPaths = [
@@ -11838,87 +11887,71 @@ app.get('/api/admin/maintenance/version', authenticateToken, async (req, res) =>
             '/app/VERSION'
         ];
 
-        let currentVersion = '1.2.1-patch.56';
-
-        let foundPath = 'none (fallback)';
-
+        let currentVersion = '2.1.0';
         for (const vPath of versionPaths) {
             if (fs.existsSync(vPath)) {
                 currentVersion = fs.readFileSync(vPath, 'utf8').trim();
-                foundPath = vPath;
                 break;
             }
         }
 
-        let latestVersion = currentVersion;
+        // Detect local channel (v2 vs stable vs latest)
+        const { channel, fullImage, createdDate } = await detectLocalDockerChannel();
+
+        let latestVersion = channel;
         let updateAvailable = false;
         let dockerReady = true;
+        let remoteBuildDate: string | null = null;
 
         const execPromise = promisify(exec);
 
+        // Query Docker Hub for the specific active channel tag
         try {
-            let stdout = '';
-            let retries = 2;
-            while (retries > 0) {
-                try {
-                    const res = await execPromise('curl -sL --connect-timeout 10 https://api.github.com/repos/jsuzanne/stigix/tags');
-                    stdout = res.stdout;
-                    if (stdout.trim()) break;
-                } catch (e) {
-                    retries--;
-                    if (retries === 0) throw e;
-                    await new Promise(r => setTimeout(r, 2000));
+            const dockerHubUrl = `https://hub.docker.com/v2/repositories/jsuzanne/stigix/tags/${channel}/`;
+            const { stdout: hubOut } = await execPromise(`curl -sL --connect-timeout 6 "${dockerHubUrl}"`);
+            const hubData = JSON.parse(hubOut);
+
+            if (hubData && hubData.last_updated) {
+                remoteBuildDate = hubData.last_updated;
+                if (createdDate) {
+                    const localCreatedTime = new Date(createdDate).getTime();
+                    const hubUpdatedTime = new Date(remoteBuildDate).getTime();
+                    // If Docker Hub image is newer than local container creation by > 60s
+                    if (hubUpdatedTime > (localCreatedTime + 60000)) {
+                        updateAvailable = true;
+                        latestVersion = `${channel} (New build available)`;
+                    } else {
+                        latestVersion = channel;
+                    }
                 }
             }
-
-            const tagsData = JSON.parse(stdout);
-            if (Array.isArray(tagsData) && tagsData.length > 0) {
-                const sortedTags = tagsData.map((t: any) => t.name).sort((a: string, b: string) => {
-                    const aPatch = a.includes('-patch.');
-                    const bPatch = b.includes('-patch.');
-                    if (aPatch && !bPatch) return -1;
-                    if (!aPatch && bPatch) return 1;
-                    const aParts = a.split(/[-.]/);
-                    const bParts = b.split(/[-.]/);
-                    for (let i = 0; i < Math.max(aParts.length, bParts.length); i++) {
-                        const aP = aParts[i] || '';
-                        const bP = bParts[i] || '';
-                        const aNum = parseInt(aP.replace(/^\D+/, ''));
-                        const bNum = parseInt(bP.replace(/^\D+/, ''));
-                        if (!isNaN(aNum) && !isNaN(bNum)) {
-                            if (bNum !== aNum) return bNum - aNum;
-                        } else if (bP !== aP) return bP.localeCompare(aP);
-                    }
-                    return 0;
-                });
-                const latestTag = sortedTags[0];
-                latestVersion = latestTag.replace(/^v/, '');
-                // Normalize currentVersion for comparison (if it has 'v' prefix)
-                const normalizedCurrent = currentVersion.replace(/^v/, '');
-                updateAvailable = (latestVersion !== normalizedCurrent);
-            }
-        } catch (e) {
-            if (!githubFetchErrorLogged) {
-                log('MAINTENANCE', '⚠️ Failed to fetch latest version from GitHub tags (after retries)', 'warn');
-                githubFetchErrorLogged = true;
-            }
+        } catch (hubErr: any) {
+            console.warn('[MAINTENANCE] Docker Hub check for channel tag failed, fallback to GitHub release check:', hubErr.message);
         }
 
-        if (updateAvailable) {
+        // For stable channel: also check GitHub releases/tags
+        if (channel === 'stable' && !updateAvailable) {
             try {
-                const dockerRepo = 'jsuzanne/sdwan-traffic-gen';
-                const { stdout: dockerStatus } = await execPromise(`curl -s -o /dev/null -w "%{http_code}" https://hub.docker.com/v2/repositories/${dockerRepo}/tags/v${latestVersion}/`);
-                dockerReady = (dockerStatus.trim() === '200' || dockerStatus.trim() === '403');
-            } catch (e) {
-                console.warn('[MAINTENANCE] ⚠️ Docker Hub verification failed, assuming ready.');
-            }
+                const res = await execPromise('curl -sL --connect-timeout 8 https://api.github.com/repos/jsuzanne/stigix/tags');
+                const tagsData = JSON.parse(res.stdout);
+                if (Array.isArray(tagsData) && tagsData.length > 0) {
+                    const firstTag = tagsData[0].name.replace(/^v/, '');
+                    if (firstTag && !currentVersion.includes(firstTag)) {
+                        latestVersion = firstTag;
+                        updateAvailable = true;
+                    }
+                }
+            } catch (e) {}
         }
 
         res.json({
             current: currentVersion,
             latest: latestVersion,
+            channel,
+            targetImage: fullImage,
             updateAvailable,
-            dockerReady
+            dockerReady: true,
+            remoteBuildDate
         });
     } catch (e: any) {
         console.error('[MAINTENANCE] ❌ Version check error:', e);
@@ -12172,7 +12205,8 @@ app.post('/api/admin/maintenance/upgrade', authenticateToken, async (req, res) =
         return res.status(400).json({ error: 'Upgrade already in progress' });
     }
 
-    const targetVersion = (version || 'latest').trim();
+    const { channel } = await detectLocalDockerChannel();
+    const targetVersion = (version && version !== 'latest' && version !== channel ? version : channel).trim();
     const pullImage = targetVersion.includes('/') ? targetVersion : `jsuzanne/stigix:${targetVersion}`;
 
     // Initialize status
