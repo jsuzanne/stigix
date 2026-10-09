@@ -12512,21 +12512,14 @@ async function pruneLogFile(filePath: string, maxLines: number) {
 }
 
 // Schedule daily log cleanup (runs at 2 AM)
-const scheduleLogCleanup = () => {
-    const now = new Date();
-    const tomorrow2AM = new Date(now);
-    tomorrow2AM.setDate(tomorrow2AM.getDate() + 1);
-    tomorrow2AM.setHours(2, 0, 0, 0);
-
-    const msUntil2AM = tomorrow2AM.getTime() - now.getTime();
-
-    setTimeout(async () => {
-        console.log('[LOG_CLEANUP] Running daily log cleanup...');
+const runLogCleanup = async () => {
+    try {
+        console.log('[LOG_CLEANUP] 🧹 Starting log cleanup routine...');
         const deletedCount = await testLogger.cleanup();
-        console.log(`[LOG_CLEANUP] Deleted ${deletedCount} old test-results log files`);
+        if (deletedCount > 0) console.log(`[LOG_CLEANUP] Deleted ${deletedCount} old test-results log files`);
 
         const deletedConnCount = await connectivityLogger.cleanup();
-        console.log(`[LOG_CLEANUP] Deleted ${deletedConnCount} old connectivity-results log files`);
+        if (deletedConnCount > 0) console.log(`[LOG_CLEANUP] Deleted ${deletedConnCount} old connectivity-results log files`);
 
         const filesToPrune10k = ['security-history.jsonl', 'traffic-history.jsonl', 'vyos-history.jsonl', 'score-history.jsonl', 'convergence-history.jsonl'];
         for (const file of filesToPrune10k) {
@@ -12538,10 +12531,59 @@ const scheduleLogCleanup = () => {
             await pruneLogFile(path.join(APP_CONFIG.logDir, file), 1000);
         }
 
+        // Purge orphaned stats-client-*.json (> 1h old) and legacy rotated logs
+        try {
+            if (fs.existsSync(APP_CONFIG.logDir)) {
+                const logFiles = fs.readdirSync(APP_CONFIG.logDir);
+                const oneHourAgo = Date.now() - (60 * 60 * 1000);
+                const maxRetentionCutoff = Date.now() - (LOG_RETENTION_DAYS * 24 * 60 * 60 * 1000);
+                let deletedStats = 0;
+                let deletedRotated = 0;
+
+                for (const f of logFiles) {
+                    const fp = path.join(APP_CONFIG.logDir, f);
+                    try {
+                        const mtime = fs.statSync(fp).mtimeMs;
+                        if (f.startsWith('stats-client-') && f.endsWith('.json') && mtime < oneHourAgo) {
+                            fs.unlinkSync(fp);
+                            deletedStats++;
+                        } else if (/^app\.log\.\d+$/.test(f) && mtime < maxRetentionCutoff) {
+                            fs.unlinkSync(fp);
+                            deletedRotated++;
+                        }
+                    } catch {}
+                }
+                if (deletedStats > 0) console.log(`[LOG_CLEANUP] Deleted ${deletedStats} stale stats-client-*.json files`);
+                if (deletedRotated > 0) console.log(`[LOG_CLEANUP] Deleted ${deletedRotated} expired rotated app.log.* files`);
+            }
+        } catch (e: any) {
+            console.warn('[LOG_CLEANUP] Warning during stale worker stats purge:', e.message);
+        }
+        console.log('[LOG_CLEANUP] ✅ Log cleanup routine complete.');
+    } catch (e: any) {
+        console.error('[LOG_CLEANUP] ❌ Error during log cleanup:', e);
+    }
+};
+
+const scheduleLogCleanup = () => {
+    const now = new Date();
+    const tomorrow2AM = new Date(now);
+    tomorrow2AM.setDate(tomorrow2AM.getDate() + 1);
+    tomorrow2AM.setHours(2, 0, 0, 0);
+
+    const msUntil2AM = tomorrow2AM.getTime() - now.getTime();
+
+    // Run once shortly after startup (15s delay) to clean existing stale files
+    setTimeout(() => {
+        runLogCleanup().catch(() => {});
+    }, 15000);
+
+    setTimeout(async () => {
+        await runLogCleanup();
         // Schedule next cleanup
         scheduleLogCleanup();
     }, msUntil2AM);
-    console.log(`[LOG_CLEANUP] Next cleanup scheduled for ${tomorrow2AM.toISOString()}`);
+    console.log(`[LOG_CLEANUP] Next daily cleanup scheduled for ${tomorrow2AM.toISOString()}`);
 };
 
 
