@@ -12359,6 +12359,18 @@ app.post('/api/admin/maintenance/upgrade', authenticateToken, async (req, res) =
             const hostComposeFile = hostDir ? path.join(hostDir, 'docker-compose.yml') : null;
             const hostConfigDir = hostDir ? path.join(hostDir, 'config') : path.join(rootDir, 'config');
 
+            // Retag target image to the channel tag (e.g. jsuzanne/stigix:v2.1.0.dev2203 -> jsuzanne/stigix:v2)
+            // This guarantees that docker-compose files with hardcoded 'image: jsuzanne/stigix:v2' ALSO get updated!
+            const channelImage = `jsuzanne/stigix:${channel}`;
+            if (pullImage !== channelImage) {
+                try {
+                    await promisify(exec)(`docker tag ${pullImage} ${channelImage}`);
+                    G_UPGRADE_STATUS.logs.push(`[${new Date().toISOString()}] Retagged ${pullImage} -> ${channelImage}`);
+                } catch (tagErr: any) {
+                    G_UPGRADE_STATUS.logs.push(`[WARN] Retag warning: ${tagErr.message}`);
+                }
+            }
+
             G_UPGRADE_STATUS.stage = 'restarting';
             G_UPGRADE_STATUS.logs.push(`[${new Date().toISOString()}] Pull validated. Preparing detached ephemeral updater...`);
             saveUpgradeStatusToDisk();
@@ -12374,6 +12386,11 @@ echo "[$(date -u)] [UPDATER] Ephemeral updater started for target version: ${tar
 echo "[$(date -u)] [UPDATER] Host project directory: ${hostDir || 'unknown'}" >> "$LOG_FILE"
 
 sleep 3
+
+# Ensure channel tag is mapped to the pulled image
+if [ "${pullImage}" != "${channelImage}" ]; then
+    docker tag "${pullImage}" "${channelImage}" >> "$LOG_FILE" 2>&1 || true
+fi
 
 # Step 1: Recreate Stigix Container
 if [ -n "${hostComposeFile}" ] && [ -f "${hostComposeFile}" ]; then
