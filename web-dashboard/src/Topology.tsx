@@ -173,16 +173,29 @@ const SiteEdge = ({
         targetPosition,
     });
 
-    // Determine color based on network
-    const isMpls = data?.wan_network?.toLowerCase().includes('mpls');
-    const color = isMpls ? '#a855f7' : (data?.ip && !data?.ip.includes('Pending') ? '#3b82f6' : '#94a3b8');
+    const isMpls = Boolean(data?.wan_network?.toLowerCase().includes('mpls'));
+
+    // Determine color based on edge type
+    let strokeColor = style?.stroke;
+    if (!strokeColor) {
+        if (data?.isSaseEdge) {
+            const isUp = data?.operational_state === 'up';
+            const isAct = data?.role === 'active';
+            strokeColor = isUp ? (isAct ? '#10b981' : '#06b6d4') : '#ef4444';
+        } else if (data?.isUnderlayEdge) {
+            strokeColor = data?.resolution?.status === 'matched' ? '#f59e0b' : '#64748b';
+        } else {
+            const isMpls = data?.wan_network?.toLowerCase().includes('mpls');
+            strokeColor = isMpls ? '#a855f7' : (data?.ip && !data?.ip.includes('Pending') ? '#3b82f6' : '#94a3b8');
+        }
+    }
 
     // Determine if we should show the label - ONLY if hideLabel is not set
     const showLabel = !data?.hideLabel;
 
     return (
         <>
-            <BaseEdge path={edgePath} markerEnd={markerEnd} style={{ ...style, stroke: color }} />
+            <BaseEdge path={edgePath} markerEnd={markerEnd} style={{ ...style, stroke: strokeColor }} />
             {showLabel && (
                 <EdgeLabelRenderer>
                     <div
@@ -890,28 +903,36 @@ const UnderlayGatewayNode = ({ data }: any) => {
     );
 };
 
-const SasePopNode = ({ data }: any) => {
+const SasePopNode = ({ data, selected }: any) => {
     const isPrisma = data.provider === 'Prisma Access';
     const isHealthy = data.status === 'healthy';
 
     return (
         <div className={cn(
-            "px-6 py-4 rounded-3xl border-2 transition-all shadow-2xl backdrop-blur-2xl flex flex-col items-center gap-2.5 min-w-[260px] cursor-pointer hover:scale-105 duration-200",
+            "px-5 py-4 rounded-3xl border-2 transition-all shadow-2xl backdrop-blur-2xl flex flex-col items-center gap-2.5 w-[330px] max-w-[330px] cursor-pointer hover:scale-105 duration-200 select-none",
             isPrisma
-                ? (isHealthy ? "bg-purple-950/40 border-purple-500/50 shadow-purple-500/20" : "bg-purple-950/20 border-purple-500/30")
-                : (isHealthy ? "bg-blue-950/40 border-blue-500/50 shadow-blue-500/20" : "bg-rose-950/30 border-rose-500/40 shadow-rose-500/10")
+                ? (isHealthy ? "bg-purple-950/40 border-purple-500/50 shadow-purple-500/20 hover:border-purple-400" : "bg-purple-950/20 border-purple-500/30")
+                : (isHealthy ? "bg-blue-950/40 border-blue-500/50 shadow-blue-500/20 hover:border-blue-400" : "bg-rose-950/30 border-rose-500/40 shadow-rose-500/10"),
+            selected && (isPrisma ? "ring-4 ring-purple-400 shadow-purple-500/50" : "ring-4 ring-blue-400 shadow-blue-500/50")
         )}>
             <Handle type="target" position={Position.Top} id="target-top" className="!opacity-0" />
             <Handle type="target" position={Position.Bottom} id="target-bottom" className="!opacity-0" />
 
             {/* Provider & Health Header */}
             <div className="flex items-center justify-between w-full gap-2">
-                <span className={cn(
-                    "px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider border",
-                    isPrisma ? "bg-purple-500/20 text-purple-300 border-purple-500/30" : "bg-blue-500/20 text-blue-300 border-blue-500/30"
-                )}>
-                    {data.provider}
-                </span>
+                <div className="flex items-center gap-1.5">
+                    {isPrisma ? (
+                        <span className="px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider border bg-purple-500/20 text-purple-300 border-purple-500/30 flex items-center gap-1">
+                            <span className="w-1.5 h-1.5 rounded-full bg-orange-400 inline-block" />
+                            Palo Alto · Prisma
+                        </span>
+                    ) : (
+                        <span className="px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider border bg-blue-500/20 text-blue-300 border-blue-500/30 flex items-center gap-1">
+                            <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 inline-block" />
+                            Zscaler · ZIA
+                        </span>
+                    )}
+                </div>
                 <div className="flex items-center gap-1.5">
                     <span className={cn("w-2 h-2 rounded-full", isHealthy ? "bg-emerald-400 animate-pulse" : "bg-rose-400")} />
                     <span className="text-[10px] font-mono font-bold text-text-muted">
@@ -932,9 +953,13 @@ const SasePopNode = ({ data }: any) => {
                     <div className="text-sm font-black text-text-primary tracking-tight truncate leading-tight">
                         {data.short_name || data.name}
                     </div>
-                    {data.spn_name && (
+                    {data.spn_name ? (
                         <div className="text-[10px] text-text-muted font-mono truncate">
                             SPN: {data.spn_name}
+                        </div>
+                    ) : (
+                        <div className="text-[10px] text-text-muted font-mono truncate">
+                            Region: {data.region || 'global'}
                         </div>
                     )}
                 </div>
@@ -942,13 +967,17 @@ const SasePopNode = ({ data }: any) => {
 
             {/* IP & Telemetry Footer */}
             <div className="w-full pt-2 border-t border-border/60 flex items-center justify-between text-[10px] font-mono">
-                <div className="flex items-center gap-1 text-cyan-400 font-bold">
+                <div className="flex items-center gap-1 text-cyan-400 font-bold truncate">
                     <span>GW:</span>
-                    <span>{data.primary_peer_ip || 'Anycast'}</span>
+                    <span className="truncate">{data.primary_peer_ip || 'Anycast'}</span>
                 </div>
-                {data.liveliness_probe_ip && (
-                    <div className="text-text-muted text-[9px]" title="Liveliness ICMP probe">
+                {data.liveliness_probe_ip ? (
+                    <div className="text-text-muted text-[9px] shrink-0" title="Liveliness ICMP probe">
                         Probe: {data.liveliness_probe_ip}
+                    </div>
+                ) : (
+                    <div className="text-text-muted text-[9px] shrink-0">
+                        {data.connected_sites?.length || 0} Sites
                     </div>
                 )}
             </div>
@@ -1025,6 +1054,7 @@ function TopologyContent({ token }: TopologyProps) {
     const [diagnosticsFilter, setDiagnosticsFilter] = useState<'ALL' | 'matched' | 'no_match' | 'ambiguous' | 'wan_ip_unavailable'>('ALL');
     const [diagnosticsSearch, setDiagnosticsSearch] = useState('');
     const [tracerouteTarget, setTracerouteTarget] = useState<string | null>(null);
+    const [popTunnelFilter, setPopTunnelFilter] = useState<'ALL' | 'ACTIVE' | 'BACKUP' | 'DOWN'>('ALL');
 
     // VyOS Direct Action State (Interactive Topology Controls)
     const [isVyosExecuting, setIsVyosExecuting] = useState(false);
@@ -1608,16 +1638,26 @@ function TopologyContent({ token }: TopologyProps) {
                 }
             } else if (topologyViewMode === 'sase') {
                 // SASE MODE MIDDLE TIER: SASE Security Cloud PoPs
-                const sasePops = topology?.sase_infrastructure?.pops || [
+                // Symmetrical & spacious separation: Prisma Access (Palo Alto) on the LEFT, Zscaler on the RIGHT
+                const rawPops = topology?.sase_infrastructure?.pops || [
                     { id: 'prisma-france-south', name: 'Prisma Access France South (Paris Lime)', short_name: 'France South', provider: 'Prisma Access', primary_peer_ip: '130.41.124.164', liveliness_probe_ip: '192.168.255.254', status: 'healthy', tunnels_up: 4, tunnels_total: 8 },
                     { id: 'prisma-ireland', name: 'Prisma Access Ireland (Elderberry)', short_name: 'Ireland', provider: 'Prisma Access', primary_peer_ip: '74.221.137.55', liveliness_probe_ip: '192.168.255.254', status: 'healthy', tunnels_up: 4, tunnels_total: 8 },
                     { id: 'zscaler-cloud', name: 'Zscaler Internet Access (ZIA)', short_name: 'Zscaler Cloud', provider: 'Zscaler', primary_peer_ip: '165.225.72.39', status: 'healthy', tunnels_up: 3, tunnels_total: 9 },
                 ];
 
-                const POP_GAP = 320;
-                const totalPopsWidth = (sasePops.length - 1) * POP_GAP;
-                sasePops.forEach((pop: any, idx: number) => {
-                    const x = -totalPopsWidth / 2 + idx * POP_GAP;
+                const prismaPops = rawPops.filter((p: any) => p.provider === 'Prisma Access' || p.id.includes('prisma'));
+                const zscalerPops = rawPops.filter((p: any) => p.provider === 'Zscaler' || p.id.includes('zscaler'));
+                const otherPops = rawPops.filter((p: any) => !prismaPops.includes(p) && !zscalerPops.includes(p));
+
+                const POP_STEP = 420; // 420px center-to-center for 330px cards ensures 90px clear gap between nodes
+                const CARD_WIDTH = 330;
+                const CLUSTER_GAP = 280; // 280px clean space between rightmost Prisma card and leftmost Zscaler card
+                const MIN_CENTER_DIST = CARD_WIDTH + CLUSTER_GAP; // 610px center-to-center separation
+
+                // Left wing: Prisma Access (Palo Alto Networks)
+                prismaPops.forEach((pop: any, idx: number) => {
+                    const offsetFromRight = (prismaPops.length - 1 - idx) * POP_STEP;
+                    const x = -(MIN_CENTER_DIST / 2) - offsetFromRight;
                     newNodes.push({
                         id: `cloud:${pop.id}`,
                         type: 'sasePop',
@@ -1625,7 +1665,40 @@ function TopologyContent({ token }: TopologyProps) {
                         origin: [0.5, 0.5],
                         data: {
                             ...pop,
-                            isSasePop: true
+                            isSasePop: true,
+                            cluster: 'prisma'
+                        }
+                    });
+                });
+
+                // Right wing: Zscaler
+                zscalerPops.forEach((pop: any, idx: number) => {
+                    const x = (MIN_CENTER_DIST / 2) + idx * POP_STEP;
+                    newNodes.push({
+                        id: `cloud:${pop.id}`,
+                        type: 'sasePop',
+                        position: { x, y: CLOUD_Y },
+                        origin: [0.5, 0.5],
+                        data: {
+                            ...pop,
+                            isSasePop: true,
+                            cluster: 'zscaler'
+                        }
+                    });
+                });
+
+                // Other providers (if any)
+                otherPops.forEach((pop: any, idx: number) => {
+                    const x = (MIN_CENTER_DIST / 2) + (zscalerPops.length + idx) * POP_STEP;
+                    newNodes.push({
+                        id: `cloud:${pop.id}`,
+                        type: 'sasePop',
+                        position: { x, y: CLOUD_Y },
+                        origin: [0.5, 0.5],
+                        data: {
+                            ...pop,
+                            isSasePop: true,
+                            cluster: 'other'
                         }
                     });
                 });
@@ -1767,6 +1840,8 @@ function TopologyContent({ token }: TopologyProps) {
             });
         } else if (topologyViewMode === 'sase') {
             // mode SASE: Draw ServiceLink IPsec tunnels from Branches to SASE PoPs
+            const hasPopSelection = Boolean(selectedObject?.isSasePop);
+
             filteredSites.forEach((site: any) => {
                 const isHub = hubs.includes(site);
                 site.devices?.forEach((device: any) => {
@@ -1795,8 +1870,26 @@ function TopologyContent({ token }: TopologyProps) {
 
                         const isUp = sl.operational_state === 'up';
                         const isAct = sl.role === 'active';
-                        // Active = emerald #10b981, Backup = cyan #06b6d4, Down = red #ef4444
-                        const strokeColor = isUp ? (isAct ? '#10b981' : '#06b6d4') : '#ef4444';
+                        const isStandby = sl.extended_state === 'standby_spoke';
+
+                        // Focus Dimming Effect: when a PoP is clicked, spotlight its tunnels and dim the others
+                        const isSelectedPopEdge = hasPopSelection && (
+                            targetPopId === `cloud:${selectedObject.id}` ||
+                            (selectedObject.primary_peer_ip && sl.remote_ip === selectedObject.primary_peer_ip)
+                        );
+                        const isDimmed = hasPopSelection && !isSelectedPopEdge;
+
+                        // Vibrant Color Coding:
+                        // Active UP: Emerald Green (#10b981)
+                        // Backup UP: Electric Cyan (#06b6d4)
+                        // Standby: Amber (#f59e0b)
+                        // Down / Retransmit: Neon Red (#ef4444)
+                        let strokeColor = '#ef4444';
+                        if (isUp) {
+                            strokeColor = isAct ? '#10b981' : '#06b6d4';
+                        } else if (isStandby) {
+                            strokeColor = '#f59e0b';
+                        }
 
                         let sourceHandle = `circuit:${device.device_name}:${sl.name}`;
                         const matchingWan = (device.wan_interfaces || []).find((w: any) => 
@@ -1817,11 +1910,16 @@ function TopologyContent({ token }: TopologyProps) {
                             target: targetPopId,
                             sourceHandle: sourceHandle,
                             targetHandle: isHub ? 'target-top' : 'target-bottom',
-                            animated: isUp,
+                            animated: isUp && !isDimmed,
                             style: {
                                 stroke: strokeColor,
-                                strokeWidth: isAct ? 3 : 2,
-                                strokeDasharray: isAct ? undefined : (isUp ? '5 5' : '3 3')
+                                strokeWidth: isDimmed ? 1 : (isAct ? 3 : 2.2),
+                                strokeDasharray: isAct && isUp ? undefined : (isUp ? '6 6' : '4 4'),
+                                opacity: isDimmed ? 0.12 : 1,
+                                filter: isSelectedPopEdge 
+                                    ? (isAct ? 'drop-shadow(0 0 8px rgba(16,185,129,0.8))' : 'drop-shadow(0 0 8px rgba(6,182,212,0.8))')
+                                    : (isUp && isAct ? 'drop-shadow(0 0 5px rgba(16,185,129,0.5))' : undefined),
+                                transition: 'all 0.3s ease'
                             },
                             data: {
                                 ...sl,
@@ -2624,6 +2722,25 @@ function TopologyContent({ token }: TopologyProps) {
                                             <div className="w-6 h-1 bg-red-500 rounded-full" /> Overlay: Down
                                         </div>
                                     </>
+                                ) : topologyViewMode === 'sase' ? (
+                                    <>
+                                        <div className="flex items-center gap-2 text-[10px] font-bold text-emerald-400">
+                                            <div className="w-5 h-1 bg-emerald-500 rounded-full shadow-[0_0_8px_rgba(16,185,129,0.5)]" /> Active SASE Tunnel (UP)
+                                        </div>
+                                        <div className="flex items-center gap-2 text-[10px] font-bold text-cyan-400">
+                                            <div className="w-5 h-1 border-t-2 border-dashed border-cyan-400" /> Backup SASE Tunnel (UP)
+                                        </div>
+                                        <div className="flex items-center gap-2 text-[10px] font-bold text-amber-400">
+                                            <div className="w-5 h-1 border-t-2 border-dashed border-amber-400" /> Standby Spoke Path
+                                        </div>
+                                        <div className="flex items-center gap-2 text-[10px] font-bold text-rose-400">
+                                            <div className="w-5 h-1 border-t-2 border-dashed border-rose-500" /> Down / Retransmission
+                                        </div>
+                                        <div className="pt-1 mt-1 border-t border-border/50 flex items-center justify-between text-[9px] text-text-muted font-mono">
+                                            <span className="text-purple-400 font-bold">LEFT: Prisma Access</span>
+                                            <span className="text-blue-400 font-bold">RIGHT: Zscaler</span>
+                                        </div>
+                                    </>
                                 ) : (
                                     <>
                                         <div className="flex items-center gap-2 text-[10px] font-bold text-text-secondary">
@@ -3003,45 +3120,193 @@ function TopologyContent({ token }: TopologyProps) {
                                     ) : selectedObject.isSasePop ? (
                                         <div className="space-y-5">
                                             {/* SASE PoP Banner */}
-                                            <div className="bg-purple-950/20 border border-purple-500/30 p-5 rounded-2xl flex flex-col items-center gap-3">
-                                                <div className="p-3 bg-purple-600 rounded-2xl text-white shadow-lg shadow-purple-900/50">
+                                            <div className={cn(
+                                                "border p-5 rounded-2xl flex flex-col items-center gap-3",
+                                                selectedObject.provider === 'Prisma Access'
+                                                    ? "bg-purple-950/20 border-purple-500/30"
+                                                    : "bg-blue-950/20 border-blue-500/30"
+                                            )}>
+                                                <div className={cn(
+                                                    "p-3 rounded-2xl text-white shadow-lg",
+                                                    selectedObject.provider === 'Prisma Access'
+                                                        ? "bg-purple-600 shadow-purple-900/50"
+                                                        : "bg-blue-600 shadow-blue-900/50"
+                                                )}>
                                                     <Shield size={26} />
                                                 </div>
                                                 <div className="text-center">
                                                     <div className="text-lg font-black text-text-primary tracking-tight">{selectedObject.name}</div>
-                                                    <div className="text-[10px] text-purple-400 font-bold tracking-[0.15em] mt-1.5 uppercase">
-                                                        {selectedObject.provider} · POP CLUSTER
+                                                    <div className={cn(
+                                                        "text-[10px] font-bold tracking-[0.15em] mt-1.5 uppercase",
+                                                        selectedObject.provider === 'Prisma Access' ? "text-purple-400" : "text-cyan-400"
+                                                    )}>
+                                                        {selectedObject.provider === 'Prisma Access' ? 'PALO ALTO NETWORKS · PRISMA ACCESS' : 'ZSCALER INC · CLOUD SECURITY (ZIA)'}
                                                     </div>
                                                 </div>
                                             </div>
 
-                                            {/* Specs */}
+                                            {/* Key Specs */}
                                             <div className="grid grid-cols-2 gap-3">
-                                                <div className="bg-card-secondary/40 p-3.5 rounded-xl border border-border/60 space-y-1">
+                                                <div className="bg-card-secondary/40 p-3 rounded-xl border border-border/60 space-y-1">
                                                     <div className="text-[9px] font-black text-text-muted uppercase tracking-widest">Gateway Anycast/SPN IP</div>
                                                     <div className="text-xs font-mono font-bold text-cyan-400">{selectedObject.primary_peer_ip || 'N/A'}</div>
                                                 </div>
-                                                <div className="bg-card-secondary/40 p-3.5 rounded-xl border border-border/60 space-y-1">
-                                                    <div className="text-[9px] font-black text-text-muted uppercase tracking-widest">Health / Tunnels</div>
-                                                    <div className="text-xs font-mono font-bold text-emerald-400">
-                                                        {selectedObject.tunnels_up || 0}/{selectedObject.tunnels_total || 0} Up
-                                                    </div>
+                                                <div className="bg-card-secondary/40 p-3 rounded-xl border border-border/60 space-y-1">
+                                                    <div className="text-[9px] font-black text-text-muted uppercase tracking-widest">Liveliness Probe</div>
+                                                    <div className="text-xs font-mono font-bold text-emerald-400">{selectedObject.liveliness_probe_ip || 'None'}</div>
                                                 </div>
                                             </div>
 
-                                            {/* Connected Sites List */}
-                                            <div className="space-y-2">
-                                                <div className="text-[10px] font-black text-text-muted uppercase tracking-widest flex items-center gap-1.5">
-                                                    <Network size={12} /> Connected Branch Sites
-                                                </div>
-                                                <div className="flex flex-wrap gap-1.5">
-                                                    {(selectedObject.connected_sites || []).map((s: string) => (
-                                                        <span key={s} className="px-2.5 py-1 rounded-lg text-xs font-bold font-mono bg-card-secondary border border-border text-text-primary">
-                                                            {s}
-                                                        </span>
-                                                    ))}
-                                                </div>
-                                            </div>
+                                            {/* Tunnel Telemetry Breakdown & Dynamic Filtering */}
+                                            {(() => {
+                                                const tunnels: any[] = [];
+                                                (topology?.sites || []).forEach((site: any) => {
+                                                    site.devices?.forEach((dev: any) => {
+                                                        dev.service_links?.forEach((sl: any) => {
+                                                            const seName = (sl.service_endpoint_name || sl.name || '').toLowerCase();
+                                                            let match = false;
+                                                            if (selectedObject.id === 'prisma-france-south' && (seName.includes('france-south') || seName.includes('paris') || sl.remote_ip === '130.41.124.164')) {
+                                                                match = true;
+                                                            } else if (selectedObject.id === 'prisma-ireland' && (seName.includes('ireland') || seName.includes('eu-west-1') || sl.remote_ip === '74.221.137.55')) {
+                                                                match = true;
+                                                            } else if (selectedObject.id === 'prisma-france-central' && (seName.includes('france-central') || seName.includes('france north') || seName.includes('france-north'))) {
+                                                                match = true;
+                                                            } else if (selectedObject.provider === 'Zscaler' && (sl.provider === 'Zscaler' || seName.includes('zscaler'))) {
+                                                                match = true;
+                                                            } else if (sl.remote_ip && sl.remote_ip === selectedObject.primary_peer_ip) {
+                                                                match = true;
+                                                            }
+                                                            if (match) {
+                                                                tunnels.push({
+                                                                    ...sl,
+                                                                    site_name: site.site_name,
+                                                                    device_name: dev.device_name
+                                                                });
+                                                            }
+                                                        });
+                                                    });
+                                                });
+
+                                                const activeUp = tunnels.filter(t => t.role === 'active' && t.operational_state === 'up');
+                                                const backupUp = tunnels.filter(t => t.role === 'backup' && t.operational_state === 'up');
+                                                const downOrStandby = tunnels.filter(t => t.operational_state !== 'up');
+
+                                                const displayed = tunnels.filter(t => {
+                                                    if (popTunnelFilter === 'ACTIVE') return t.role === 'active' && t.operational_state === 'up';
+                                                    if (popTunnelFilter === 'BACKUP') return t.role === 'backup' && t.operational_state === 'up';
+                                                    if (popTunnelFilter === 'DOWN') return t.operational_state !== 'up';
+                                                    return true;
+                                                });
+
+                                                return (
+                                                    <div className="space-y-3">
+                                                        {/* KPI Filter Ribbon */}
+                                                        <div className="grid grid-cols-3 gap-2">
+                                                            <button
+                                                                onClick={() => setPopTunnelFilter(popTunnelFilter === 'ACTIVE' ? 'ALL' : 'ACTIVE')}
+                                                                className={cn(
+                                                                    "p-2.5 rounded-xl border text-left transition-all cursor-pointer flex flex-col",
+                                                                    popTunnelFilter === 'ACTIVE'
+                                                                        ? "bg-emerald-500/20 border-emerald-500 text-white shadow-md shadow-emerald-500/20"
+                                                                        : "bg-card-secondary/40 border-border/60 hover:bg-card-secondary"
+                                                                )}
+                                                            >
+                                                                <span className="text-[9px] font-black uppercase text-emerald-400">Active UP</span>
+                                                                <span className="text-base font-black text-text-primary mt-0.5">{activeUp.length}</span>
+                                                            </button>
+
+                                                            <button
+                                                                onClick={() => setPopTunnelFilter(popTunnelFilter === 'BACKUP' ? 'ALL' : 'BACKUP')}
+                                                                className={cn(
+                                                                    "p-2.5 rounded-xl border text-left transition-all cursor-pointer flex flex-col",
+                                                                    popTunnelFilter === 'BACKUP'
+                                                                        ? "bg-cyan-500/20 border-cyan-500 text-white shadow-md shadow-cyan-500/20"
+                                                                        : "bg-card-secondary/40 border-border/60 hover:bg-card-secondary"
+                                                                )}
+                                                            >
+                                                                <span className="text-[9px] font-black uppercase text-cyan-400">Backup UP</span>
+                                                                <span className="text-base font-black text-text-primary mt-0.5">{backupUp.length}</span>
+                                                            </button>
+
+                                                            <button
+                                                                onClick={() => setPopTunnelFilter(popTunnelFilter === 'DOWN' ? 'ALL' : 'DOWN')}
+                                                                className={cn(
+                                                                    "p-2.5 rounded-xl border text-left transition-all cursor-pointer flex flex-col",
+                                                                    popTunnelFilter === 'DOWN'
+                                                                        ? "bg-rose-500/20 border-rose-500 text-white shadow-md shadow-rose-500/20"
+                                                                        : "bg-card-secondary/40 border-border/60 hover:bg-card-secondary"
+                                                                )}
+                                                            >
+                                                                <span className="text-[9px] font-black uppercase text-rose-400">Down / Stdby</span>
+                                                                <span className="text-base font-black text-text-primary mt-0.5">{downOrStandby.length}</span>
+                                                            </button>
+                                                        </div>
+
+                                                        {/* Tunnel list header */}
+                                                        <div className="flex items-center justify-between pt-1">
+                                                            <div className="text-[10px] font-black text-text-muted uppercase tracking-widest flex items-center gap-1.5">
+                                                                <Network size={12} /> Branch Tunnels ({displayed.length}/{tunnels.length})
+                                                            </div>
+                                                            {popTunnelFilter !== 'ALL' && (
+                                                                <button
+                                                                    onClick={() => setPopTunnelFilter('ALL')}
+                                                                    className="text-[9px] font-black text-indigo-400 hover:underline uppercase tracking-wider cursor-pointer"
+                                                                >
+                                                                    Show All
+                                                                </button>
+                                                            )}
+                                                        </div>
+
+                                                        {/* Tunnels Detailed Cards */}
+                                                        <div className="space-y-2 max-h-[360px] overflow-y-auto pr-1">
+                                                            {displayed.map((t: any, idx: number) => {
+                                                                const isUp = t.operational_state === 'up';
+                                                                const isAct = t.role === 'active';
+                                                                const isStandby = t.extended_state === 'standby_spoke';
+
+                                                                return (
+                                                                    <div key={`${t.site_name}-${t.name}-${idx}`} className="p-3 rounded-xl bg-card-secondary/50 border border-border/60 hover:border-border transition-all space-y-1.5">
+                                                                        <div className="flex items-center justify-between gap-2">
+                                                                            <div className="flex items-center gap-1.5 min-w-0">
+                                                                                <span className="font-bold text-xs text-text-primary truncate">{t.site_name}</span>
+                                                                                <span className="text-[10px] font-mono text-text-muted truncate">({t.device_name})</span>
+                                                                            </div>
+                                                                            <div className="flex items-center gap-1.5 shrink-0">
+                                                                                <span className={cn(
+                                                                                    "px-1.5 py-0.5 rounded text-[8px] font-black uppercase tracking-wider",
+                                                                                    isAct ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30" : "bg-cyan-500/20 text-cyan-400 border border-cyan-500/30"
+                                                                                )}>
+                                                                                    {t.role || 'TUNNEL'}
+                                                                                </span>
+                                                                                <span className={cn(
+                                                                                    "px-1.5 py-0.5 rounded text-[8px] font-black uppercase tracking-wider font-mono",
+                                                                                    isUp ? "bg-emerald-500/20 text-emerald-400" : (isStandby ? "bg-amber-500/20 text-amber-400" : "bg-rose-500/20 text-rose-400")
+                                                                                )}>
+                                                                                    {t.extended_state || t.operational_state}
+                                                                                </span>
+                                                                            </div>
+                                                                        </div>
+
+                                                                        <div className="text-[10px] font-mono text-text-secondary truncate flex items-center justify-between">
+                                                                            <span className="truncate">{t.name}</span>
+                                                                            <span className="text-text-muted font-bold shrink-0">{t.device}</span>
+                                                                        </div>
+
+                                                                        <div className="grid grid-cols-2 gap-2 pt-1 border-t border-border/40 text-[9px] font-mono text-text-muted">
+                                                                            <div>
+                                                                                Local: <span className="text-text-primary font-bold">{t.local_ip || 'N/A'}</span>
+                                                                            </div>
+                                                                            <div className="truncate">
+                                                                                /31: <span className="text-amber-400 font-bold">{t.inside_ip || 'N/A'}</span>
+                                                                            </div>
+                                                                        </div>
+                                                                    </div>
+                                                                );
+                                                            })}
+                                                        </div>
+                                                    </div>
+                                                );
+                                            })()}
                                         </div>
                                     ) : (
                                         <div className="space-y-6">
