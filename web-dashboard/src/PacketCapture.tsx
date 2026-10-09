@@ -77,6 +77,7 @@ export default function PacketCapture({ token, onNavigateToReplay }: PacketCaptu
     const [activePcapFile, setActivePcapFile] = useState<string>('');
     const [fileSizeBytes, setFileSizeBytes] = useState<number>(0);
     const [loadingPackets, setLoadingPackets] = useState<boolean>(false);
+    const [loadingMore, setLoadingMore] = useState<boolean>(false);
     const [autoScroll, setAutoScroll] = useState<boolean>(true);
 
     // Display filtering
@@ -204,32 +205,69 @@ export default function PacketCapture({ token, onNavigateToReplay }: PacketCaptu
 
     const loadDissectedPackets = async (filename?: string) => {
         setLoadingPackets(true);
+        setPackets([]);
+        setSelectedPacketNo(null);
+        if (filename) setActivePcapFile(filename);
+        const displayName = filename ? filename.split('/').pop() : 'capture';
+        const toastId = toast.loading(`Dissecting ${displayName}...`);
+
         try {
-            const fileQuery = filename ? `?file=${encodeURIComponent(filename)}&limit=1000` : '?limit=1000';
+            const fileQuery = filename ? `?file=${encodeURIComponent(filename)}&limit=150` : '?limit=150';
             const res = await fetch(`/api/capture/packets${fileQuery}`, { credentials: 'include', headers: authHeaders });
-            if (res.ok) {
-                const data = await res.json();
-                if (Array.isArray(data.packets)) {
-                    setPackets(data.packets);
-                    setTotalPackets(data.total_packets || data.packets.length);
-                    setFileSizeBytes(data.file_size_bytes || 0);
-                    if (data.file) setActivePcapFile(data.file);
-                    if (data.packets.length > 0) {
-                        setSelectedPacketNo(data.packets[0].no);
-                        // Expand top two layers by default
-                        setExpandedLayers({
-                            'Frame': true,
-                            'Internet Protocol Version 4': true,
-                            'Transmission Control Protocol': true,
-                            'User Datagram Protocol': true
-                        });
-                    }
+            if (!res.ok) {
+                const errData = await res.json().catch(() => ({}));
+                throw new Error(errData.error || `HTTP ${res.status}`);
+            }
+            const data = await res.json();
+            if (data.error) {
+                throw new Error(data.error);
+            }
+            if (Array.isArray(data.packets)) {
+                setPackets(data.packets);
+                setTotalPackets(data.total_packets || data.packets.length);
+                setFileSizeBytes(data.file_size_bytes || 0);
+                if (data.file) setActivePcapFile(data.file);
+                if (data.packets.length > 0) {
+                    setSelectedPacketNo(data.packets[0].no);
+                    // Expand top two layers by default
+                    setExpandedLayers({
+                        'Frame': true,
+                        'Internet Protocol Version 4': true,
+                        'Transmission Control Protocol': true,
+                        'User Datagram Protocol': true
+                    });
                 }
+                toast.success(`Loaded ${data.packets.length} packets from ${displayName} (Total: ${data.total_packets || data.packets.length})`, { id: toastId });
+            } else {
+                toast.dismiss(toastId);
             }
         } catch (e: any) {
-            toast.error(`Failed to load packets: ${e.message}`);
+            toast.error(`Failed to load packets: ${e.message}`, { id: toastId });
         } finally {
             setLoadingPackets(false);
+        }
+    };
+
+    const handleLoadMorePackets = async () => {
+        if (loadingMore || !activePcapFile || packets.length >= totalPackets) return;
+        setLoadingMore(true);
+        try {
+            const fileQuery = `?file=${encodeURIComponent(activePcapFile)}&offset=${packets.length}&limit=150`;
+            const res = await fetch(`/api/capture/packets${fileQuery}`, { credentials: 'include', headers: authHeaders });
+            if (!res.ok) {
+                const errData = await res.json().catch(() => ({}));
+                throw new Error(errData.error || `HTTP ${res.status}`);
+            }
+            const data = await res.json();
+            if (data.error) throw new Error(data.error);
+            if (Array.isArray(data.packets) && data.packets.length > 0) {
+                setPackets(prev => [...prev, ...data.packets]);
+                toast.success(`Loaded +${data.packets.length} packets (${packets.length + data.packets.length}/${totalPackets})`);
+            }
+        } catch (e: any) {
+            toast.error(`Failed to load more packets: ${e.message}`);
+        } finally {
+            setLoadingMore(false);
         }
     };
 
@@ -473,9 +511,14 @@ export default function PacketCapture({ token, onNavigateToReplay }: PacketCaptu
                                         <span className="w-2 h-2 rounded-full bg-rose-500 animate-ping" />
                                         RECORDING ({elapsedSeconds}s / {durationSec}s)
                                     </span>
+                                ) : loadingPackets ? (
+                                    <span className="flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-cyan-500/15 text-cyan-400 border border-cyan-500/30 animate-pulse">
+                                        <Loader2 size={11} className="animate-spin" />
+                                        DISSECTING {activePcapFile ? activePcapFile.split('/').pop() : 'PCAP'}...
+                                    </span>
                                 ) : activePcapFile ? (
                                     <span className="px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold bg-card-secondary text-text-muted border border-border">
-                                        {activePcapFile} ({(fileSizeBytes / 1024).toFixed(1)} KB)
+                                        {activePcapFile} {fileSizeBytes ? `(${(fileSizeBytes / 1024).toFixed(1)} KB)` : ''}
                                     </span>
                                 ) : null}
                             </div>
@@ -668,8 +711,26 @@ export default function PacketCapture({ token, onNavigateToReplay }: PacketCaptu
                         ))}
                     </div>
                     <span className="hidden sm:inline border-l border-border/60 pl-2">
-                        {filteredPackets.length} / {totalPackets} frames
+                        {loadingPackets ? (
+                            <span className="flex items-center gap-1.5 text-cyan-400">
+                                <Loader2 size={11} className="animate-spin" />
+                                Dissecting...
+                            </span>
+                        ) : (
+                            `${filteredPackets.length} / ${totalPackets} frames`
+                        )}
                     </span>
+                    {activePcapFile && packets.length < totalPackets && !loadingPackets && (
+                        <button
+                            onClick={handleLoadMorePackets}
+                            disabled={loadingMore}
+                            className="px-2 py-0.5 rounded text-[9px] font-black uppercase bg-cyan-500/15 hover:bg-cyan-500/25 border border-cyan-500/30 text-cyan-300 flex items-center gap-1 transition-all cursor-pointer disabled:opacity-50"
+                            title="Load next batch of packets"
+                        >
+                            {loadingMore ? <Loader2 size={10} className="animate-spin" /> : null}
+                            + More ({totalPackets - packets.length})
+                        </button>
+                    )}
                 </div>
             </div>
 
@@ -691,7 +752,21 @@ export default function PacketCapture({ token, onNavigateToReplay }: PacketCaptu
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-border/20">
-                                {filteredPackets.length === 0 ? (
+                                {loadingPackets ? (
+                                    <tr>
+                                        <td colSpan={7} className="py-20 text-center text-text-muted">
+                                            <div className="space-y-3">
+                                                <Loader2 size={32} className="animate-spin mx-auto text-cyan-400" />
+                                                <p className="text-xs font-bold text-text-primary">
+                                                    Dissecting packets with Scapy engine...
+                                                </p>
+                                                <p className="text-[10px] text-text-muted">
+                                                    Decoding OSI protocols, packet headers, and hex dumps
+                                                </p>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                ) : filteredPackets.length === 0 ? (
                                     <tr>
                                         <td colSpan={7} className="py-16 text-center text-text-muted">
                                             {capturing ? (
@@ -766,7 +841,12 @@ export default function PacketCapture({ token, onNavigateToReplay }: PacketCaptu
                         </div>
 
                         <div className="flex-1 overflow-y-auto mt-2 font-mono text-[11px] space-y-1.5 scrollbar-thin scrollbar-thumb-border">
-                            {!activePacket || !activePacket.tree ? (
+                            {loadingPackets ? (
+                                <div className="h-full flex flex-col items-center justify-center gap-2 text-text-muted text-xs">
+                                    <Loader2 size={20} className="animate-spin text-cyan-400" />
+                                    <span>Decoding protocol layers...</span>
+                                </div>
+                            ) : !activePacket || !activePacket.tree ? (
                                 <div className="h-full flex items-center justify-center text-text-muted text-xs italic">
                                     Select a packet above to inspect its protocol layers
                                 </div>
@@ -828,7 +908,12 @@ export default function PacketCapture({ token, onNavigateToReplay }: PacketCaptu
                         </div>
 
                         <div className="flex-1 overflow-y-auto mt-2 bg-black/60 border border-border/40 rounded-xl p-3 font-mono text-[10px] leading-relaxed text-text-muted scrollbar-thin scrollbar-thumb-border">
-                            {!activePacket || !activePacket.hex_dump || activePacket.hex_dump.length === 0 ? (
+                            {loadingPackets ? (
+                                <div className="h-full flex flex-col items-center justify-center gap-2 text-text-muted text-xs">
+                                    <Loader2 size={20} className="animate-spin text-purple-400" />
+                                    <span>Generating hex & ASCII stream...</span>
+                                </div>
+                            ) : !activePacket || !activePacket.hex_dump || activePacket.hex_dump.length === 0 ? (
                                 <div className="h-full flex items-center justify-center text-text-muted text-xs italic">
                                     No byte stream available
                                 </div>
@@ -891,8 +976,12 @@ export default function PacketCapture({ token, onNavigateToReplay }: PacketCaptu
                                                     setShowHistoryModal(false);
                                                     loadDissectedPackets(c.filename);
                                                 }}
-                                                className="px-3 py-1.5 bg-cyan-600/15 hover:bg-cyan-600/25 border border-cyan-500/30 text-cyan-300 rounded-xl text-xs font-black uppercase transition-all cursor-pointer"
+                                                disabled={loadingPackets}
+                                                className="px-3 py-1.5 bg-cyan-600/15 hover:bg-cyan-600/25 border border-cyan-500/30 text-cyan-300 rounded-xl text-xs font-black uppercase transition-all cursor-pointer disabled:opacity-50 flex items-center gap-1.5"
                                             >
+                                                {loadingPackets && activePcapFile === c.filename ? (
+                                                    <Loader2 size={12} className="animate-spin" />
+                                                ) : null}
                                                 Inspect
                                             </button>
                                             <button
