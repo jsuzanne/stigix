@@ -1295,12 +1295,11 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
         return () => clearInterval(pollTimer);
     }, [remoteUpgradeModal.phase, remoteUpgradeModal.peerId, fetchPeerMaintStatus]);
 
-    const handleRemotePeerUpgrade = async (peerId: string, peerIp: string) => {
+    const handleRemotePeerUpgrade = async (peerId: string, _peerIp: string) => {
         const peerInfo = peerMaintStatus[peerId];
         const targetVer = peerInfo?.latest || 'latest';
-        const msg = `Trigger 1-click remote upgrade of node "${peerId}" (${peerIp}) to build "${targetVer}"?\n\nThe remote node will pull the new image and recreate its container on its host machine.\nMesh connectivity will automatically resume once the node is healthy. Continue?`;
-        if (!confirm(msg)) return;
 
+        // Go directly to the premium dark mode upgrade window
         setRemoteUpgradeModal({
             open: true,
             peerId,
