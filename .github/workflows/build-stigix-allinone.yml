@@ -1,3 +1,4 @@
+# Workflow Version: 2.1.2 (Resilient Docker Hub DNS & Retry)
 name: Build and Push Stigix All-in-One
 run-name: >-
   ${{ github.event_name == 'push' && (
