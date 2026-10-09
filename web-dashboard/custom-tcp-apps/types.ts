@@ -187,7 +187,7 @@ export interface CustomTcpListenerConfig {
     bindAddress: string;           // "0.0.0.0"
     port: number;                  // 1024 - 65535
     maxConnections: number;        // default: 100
-    idleTimeoutMs: number;         // default: 60000 (60s)
+    idleTimeoutMs: number;         // default: 0 (disabled / persistent TCP session)
     maxPayloadBytes: number;       // default: 1048576 (1 MiB)
     tcpKeepalive: boolean;         // default: true
     allowCidrs: string[];          // e.g. ["10.0.0.0/8", "192.168.0.0/16"]

@@ -206,7 +206,7 @@ export class TcpAppManager extends EventEmitter {
                     bindAddress: rawListener.bindAddress || '0.0.0.0',
                     port: Number(rawListener.port) || 8443,
                     maxConnections: Number(rawListener.maxConnections) || 100,
-                    idleTimeoutMs: Number(rawListener.idleTimeoutMs) || 60000,
+                    idleTimeoutMs: Number(rawListener.idleTimeoutMs) || 0,
                     maxPayloadBytes: Number(rawListener.maxPayloadBytes) || 1048576,
                     tcpKeepalive: rawListener.tcpKeepalive !== false,
                     allowCidrs: Array.isArray(rawListener.allowCidrs) ? rawListener.allowCidrs : [],

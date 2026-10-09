@@ -167,7 +167,7 @@ export class CustomTcpConfigStore {
                 bindAddress: '0.0.0.0',
                 port: 8443,
                 maxConnections: 100,
-                idleTimeoutMs: 60000,
+                idleTimeoutMs: 0,
                 maxPayloadBytes: 1048576,
                 tcpKeepalive: true,
                 allowCidrs: [],

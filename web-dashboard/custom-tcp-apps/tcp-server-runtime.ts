@@ -669,7 +669,10 @@ export class TcpServerRuntime extends EventEmitter {
 
     private resetIdleTimer(client: TrackedIncomingClient): void {
         if (client.idleTimer) clearTimeout(client.idleTimer);
-        const idleMs = this.appConfig.listener.idleTimeoutMs || 60000;
+        const idleMs = this.appConfig.listener.idleTimeoutMs;
+        // Standard persistent TCP sessions (Telnet, SSH, DB pools, ERP) must remain open during idle periods.
+        // We only enforce an idle timeout if explicitly configured (> 0) and not the legacy 60s hardcoded default.
+        if (!idleMs || idleMs <= 0 || idleMs === 60000) return;
         client.idleTimer = setTimeout(() => {
             client.state.state = 'idle';
             client.socket.destroy();
