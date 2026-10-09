@@ -4036,6 +4036,31 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                                     </div>
                                 </div>
 
+                                {/* Floating Live Banner if modal was closed during active upgrade */}
+                                {!remoteUpgradeModal.open && ['pulling', 'restarting', 'reconnecting'].includes(remoteUpgradeModal.phase) && (
+                                    <div className="p-4 bg-purple-500/10 border border-purple-500/30 rounded-2xl flex items-center justify-between gap-4 animate-in fade-in">
+                                        <div className="flex items-center gap-3">
+                                            <div className="p-2 bg-purple-500/20 text-purple-400 rounded-xl">
+                                                <RefreshCw size={16} className="animate-spin" />
+                                            </div>
+                                            <div>
+                                                <p className="text-xs font-black text-purple-300">
+                                                    Upgrade in progress on node <strong>{remoteUpgradeModal.peerName}</strong> ({remoteUpgradeModal.phase})
+                                                </p>
+                                                <p className="text-[10px] text-text-muted">
+                                                    {remoteUpgradeModal.logs?.[remoteUpgradeModal.logs.length - 1] || 'Running ephemeral updater container in background...'}
+                                                </p>
+                                            </div>
+                                        </div>
+                                        <button
+                                            onClick={() => setRemoteUpgradeModal(prev => ({ ...prev, open: true }))}
+                                            className="px-4 py-2 bg-purple-600 hover:bg-purple-500 text-white rounded-xl text-xs font-black tracking-wider uppercase transition-all shadow-md cursor-pointer shrink-0"
+                                        >
+                                            View Live Terminal →
+                                        </button>
+                                    </div>
+                                )}
+
                                 {!registryStatus?.local_instances?.length ? (
                                     <div className="p-8 text-center bg-card-secondary/20 border border-border rounded-2xl">
                                         <p className="text-xs text-text-muted font-bold">No remote nodes currently registered with this Leader.</p>
@@ -4082,10 +4107,18 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                                                                 <span className="text-[9px] font-bold text-rose-400 bg-rose-500/10 px-2 py-1 rounded border border-rose-500/20">
                                                                     No Docker Sock
                                                                 </span>
+                                                            ) : remoteUpgradeModal.peerId === inst.instance_id && ['pulling', 'restarting', 'reconnecting'].includes(remoteUpgradeModal.phase) ? (
+                                                                <button
+                                                                    onClick={() => setRemoteUpgradeModal(prev => ({ ...prev, open: true }))}
+                                                                    className="px-3 py-1.5 rounded-xl text-[9px] font-black uppercase tracking-wider bg-purple-600/20 hover:bg-purple-600/30 text-purple-300 border border-purple-500/40 flex items-center gap-1.5 shadow-sm ml-auto cursor-pointer"
+                                                                >
+                                                                    <RefreshCw size={11} className="animate-spin text-purple-400" />
+                                                                    Upgrading ({remoteUpgradeModal.phase})
+                                                                </button>
                                                             ) : (
                                                                 <button
                                                                     onClick={() => handleRemotePeerUpgrade(inst.instance_id, inst.ip_private)}
-                                                                    disabled={remoteUpgradeModal.open && remoteUpgradeModal.peerId === inst.instance_id}
+                                                                    disabled={['pulling', 'restarting', 'reconnecting'].includes(remoteUpgradeModal.phase)}
                                                                     className={cn(
                                                                         "px-3 py-1.5 rounded-xl text-[9px] font-black uppercase tracking-wider transition-all flex items-center gap-1.5 border shadow-sm ml-auto cursor-pointer",
                                                                         peerMaintStatus[inst.instance_id]?.updateAvailable
@@ -4093,7 +4126,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                                                                             : "bg-card-secondary hover:bg-card-hover border-border text-text-muted hover:text-text-primary"
                                                                     )}
                                                                 >
-                                                                    <Download size={11} className={cn(remoteUpgradeModal.open && remoteUpgradeModal.peerId === inst.instance_id && "animate-spin")} />
+                                                                    <Download size={11} />
                                                                     {peerMaintStatus[inst.instance_id]?.updateAvailable ? "Upgrade Node" : "Force Upgrade"}
                                                                 </button>
                                                             )}
@@ -5154,8 +5187,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                                                     <th className="pb-3 pt-4 px-5 text-[9px] font-black text-text-muted uppercase tracking-[0.2em]">IP</th>
                                                     <th className="pb-3 pt-4 px-5 text-[9px] font-black text-text-muted uppercase tracking-[0.2em]">Capabilities</th>
                                                     <th className="pb-3 pt-4 px-5 text-[9px] font-black text-text-muted uppercase tracking-[0.2em]">Version</th>
-                                                    <th className="pb-3 pt-4 px-5 text-[9px] font-black text-text-muted uppercase tracking-[0.2em]">Last Seen</th>
-                                                    <th className="pb-3 pt-4 px-5 text-[9px] font-black text-text-muted uppercase tracking-[0.2em] text-right">Actions</th>
+                                                    <th className="pb-3 pt-4 px-5 text-[9px] font-black text-text-muted uppercase tracking-[0.2em] text-right">Last Seen</th>
                                                 </tr>
                                             </thead>
                                             <tbody>
@@ -5189,10 +5221,14 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                                                                     )}
                                                                 </div>
                                                                 {peerMaintStatus[inst.instance_id]?.updateAvailable ? (
-                                                                    <span className="inline-flex items-center gap-1 text-[9px] font-black text-amber-500 bg-amber-500/10 px-1.5 py-0.5 rounded border border-amber-500/20 w-fit">
+                                                                    <button
+                                                                        onClick={() => setActiveTab('maintenance')}
+                                                                        title="Update available — click to manage in Maintenance & Updates"
+                                                                        className="inline-flex items-center gap-1 text-[9px] font-black text-amber-500 bg-amber-500/10 px-1.5 py-0.5 rounded border border-amber-500/20 hover:bg-amber-500/20 transition-all cursor-pointer w-fit"
+                                                                    >
                                                                         <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
-                                                                        Update: {peerMaintStatus[inst.instance_id]?.latest}
-                                                                    </span>
+                                                                        Update v{peerMaintStatus[inst.instance_id]?.latest} →
+                                                                    </button>
                                                                 ) : peerMaintStatus[inst.instance_id]?.current ? (
                                                                     <span className="inline-flex items-center gap-1 text-[9px] font-bold text-emerald-500 opacity-80">
                                                                         <CheckCircle2 size={10} /> Up to date
@@ -5200,7 +5236,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                                                                 ) : null}
                                                             </div>
                                                         </td>
-                                                        <td className="py-3.5 px-5 text-[10px] text-text-muted font-bold whitespace-nowrap">
+                                                        <td className="py-3.5 px-5 text-[10px] text-text-muted font-bold whitespace-nowrap text-right">
                                                             {(() => {
                                                                 const fmt = formatTargetTimestamp(inst.last_seen);
                                                                 if (!fmt) return <span className="opacity-50">—</span>;
@@ -5210,37 +5246,6 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                                                                     </span>
                                                                 );
                                                             })()}
-                                                        </td>
-                                                        <td className="py-3.5 px-5 text-right whitespace-nowrap">
-                                                            <div className="flex items-center justify-end gap-1.5">
-                                                                {peerMaintStatus[inst.instance_id]?.dockerReady === false ? (
-                                                                    <span className="text-[9px] font-bold text-rose-400 bg-rose-500/10 px-2 py-1 rounded border border-rose-500/20" title="Docker socket not mounted on remote host">
-                                                                        No Docker Sock
-                                                                    </span>
-                                                                ) : (
-                                                                    <button
-                                                                        onClick={() => handleRemotePeerUpgrade(inst.instance_id, inst.ip_private)}
-                                                                        disabled={remoteUpgradeModal.open && remoteUpgradeModal.peerId === inst.instance_id}
-                                                                        title={peerMaintStatus[inst.instance_id]?.updateAvailable ? `Upgrade ${inst.instance_id} to ${peerMaintStatus[inst.instance_id]?.latest}` : `Force pull & upgrade ${inst.instance_id}`}
-                                                                        className={cn(
-                                                                            "px-3 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-wider transition-all flex items-center gap-1.5 border shadow-sm cursor-pointer",
-                                                                            peerMaintStatus[inst.instance_id]?.updateAvailable
-                                                                                ? "bg-blue-600 hover:bg-blue-500 text-white border-blue-500/30 shadow-blue-900/30"
-                                                                                : "bg-card-secondary hover:bg-card-hover border-border text-text-muted hover:text-text-primary"
-                                                                        )}
-                                                                    >
-                                                                        <Download size={11} className={cn(remoteUpgradeModal.open && remoteUpgradeModal.peerId === inst.instance_id && "animate-spin")} />
-                                                                        {peerMaintStatus[inst.instance_id]?.updateAvailable ? "Upgrade" : "Force Upgrade"}
-                                                                    </button>
-                                                                )}
-                                                                <button
-                                                                    onClick={() => fetchPeerMaintStatus(inst.instance_id, true)}
-                                                                    title="Check version on remote node"
-                                                                    className="p-1.5 hover:bg-card-hover rounded-lg text-text-muted hover:text-text-primary transition-all border border-transparent hover:border-border cursor-pointer"
-                                                                >
-                                                                    <RefreshCw size={11} className={peerMaintStatus[inst.instance_id]?.loading ? "animate-spin" : ""} />
-                                                                </button>
-                                                            </div>
                                                         </td>
                                                     </tr>
                                                 ))}
