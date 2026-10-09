@@ -7,6 +7,7 @@ import {
     BookmarkPlus, Sparkles, BookOpen, Plus, SlidersHorizontal, Terminal, Info
 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
+import { usePeerContext } from './PeerContext';
 
 interface PacketCaptureProps {
     token: string;
@@ -47,6 +48,8 @@ interface PacketItem {
 interface SavedCapture {
     filename: string;
     size_bytes: number;
+    total_packets?: number;
+    duration_seconds?: number;
     created_at: string;
     modified_at: string;
 }
@@ -198,6 +201,8 @@ const BPF_RECIPES: BpfRecipe[] = [
 ];
 
 export default function PacketCapture({ token, onNavigateToReplay }: PacketCaptureProps) {
+    const { gFetch, activePeerId } = usePeerContext();
+
     const authHeaders = useMemo(() => ({
         'Authorization': `Bearer ${token}`,
         'Content-Type': 'application/json'
@@ -223,6 +228,7 @@ export default function PacketCapture({ token, onNavigateToReplay }: PacketCaptu
     const [selectedPacketNo, setSelectedPacketNo] = useState<number | null>(null);
     const [activePcapFile, setActivePcapFile] = useState<string>('');
     const [fileSizeBytes, setFileSizeBytes] = useState<number>(0);
+    const [durationSeconds, setDurationSeconds] = useState<number>(0);
     const [loadingPackets, setLoadingPackets] = useState<boolean>(false);
     const [loadingMore, setLoadingMore] = useState<boolean>(false);
     const [autoScroll, setAutoScroll] = useState<boolean>(true);
@@ -344,7 +350,7 @@ export default function PacketCapture({ token, onNavigateToReplay }: PacketCaptu
 
     const fetchInterfaces = async () => {
         try {
-            const res = await fetch('/api/capture/interfaces', { credentials: 'include', headers: authHeaders });
+            const res = await gFetch('/api/capture/interfaces', { credentials: 'include', headers: authHeaders });
             if (res.ok) {
                 const data = await res.json();
                 if (Array.isArray(data)) {
@@ -360,7 +366,7 @@ export default function PacketCapture({ token, onNavigateToReplay }: PacketCaptu
 
     const fetchPresets = async () => {
         try {
-            const res = await fetch('/api/capture/presets', { credentials: 'include', headers: authHeaders });
+            const res = await gFetch('/api/capture/presets', { credentials: 'include', headers: authHeaders });
             if (res.ok) {
                 const data = await res.json();
                 if (Array.isArray(data)) setPresets(data);
@@ -372,7 +378,7 @@ export default function PacketCapture({ token, onNavigateToReplay }: PacketCaptu
 
     const checkActiveStatus = async () => {
         try {
-            const res = await fetch('/api/capture/status', { credentials: 'include', headers: authHeaders });
+            const res = await gFetch('/api/capture/status', { credentials: 'include', headers: authHeaders });
             if (res.ok) {
                 const data = await res.json();
                 if (data.active) {
@@ -396,7 +402,7 @@ export default function PacketCapture({ token, onNavigateToReplay }: PacketCaptu
         if (capturing) {
             interval = setInterval(async () => {
                 try {
-                    const res = await fetch('/api/capture/status', { credentials: 'include', headers: authHeaders });
+                    const res = await gFetch('/api/capture/status', { credentials: 'include', headers: authHeaders });
                     if (res.ok) {
                         const status = await res.json();
                         setElapsedSeconds(status.elapsed_seconds || 0);
@@ -427,7 +433,7 @@ export default function PacketCapture({ token, onNavigateToReplay }: PacketCaptu
 
     const fetchLivePackets = async () => {
         try {
-            const res = await fetch(`/api/capture/packets?limit=500`, { credentials: 'include', headers: authHeaders });
+            const res = await gFetch(`/api/capture/packets?limit=500`, { credentials: 'include', headers: authHeaders });
             if (res.ok) {
                 const data = await res.json();
                 if (Array.isArray(data.packets) && data.packets.length > 0) {
@@ -450,8 +456,8 @@ export default function PacketCapture({ token, onNavigateToReplay }: PacketCaptu
         const toastId = toast.loading(`Dissecting ${displayName}...`);
 
         try {
-            const fileQuery = filename ? `?file=${encodeURIComponent(filename)}&limit=150` : '?limit=150';
-            const res = await fetch(`/api/capture/packets${fileQuery}`, { credentials: 'include', headers: authHeaders });
+            const fileQuery = filename ? `?file=${encodeURIComponent(filename)}&limit=250` : '?limit=250';
+            const res = await gFetch(`/api/capture/packets${fileQuery}`, { credentials: 'include', headers: authHeaders });
             if (!res.ok) {
                 const errData = await res.json().catch(() => ({}));
                 throw new Error(errData.error || `HTTP ${res.status}`);
@@ -464,6 +470,7 @@ export default function PacketCapture({ token, onNavigateToReplay }: PacketCaptu
                 setPackets(data.packets);
                 setTotalPackets(data.total_packets || data.packets.length);
                 setFileSizeBytes(data.file_size_bytes || 0);
+                setDurationSeconds(data.duration_seconds || 0);
                 if (data.file) setActivePcapFile(data.file);
                 if (data.packets.length > 0) {
                     setSelectedPacketNo(data.packets[0].no);
@@ -491,7 +498,7 @@ export default function PacketCapture({ token, onNavigateToReplay }: PacketCaptu
         setLoadingMore(true);
         try {
             const fileQuery = `?file=${encodeURIComponent(activePcapFile)}&offset=${packets.length}&limit=150`;
-            const res = await fetch(`/api/capture/packets${fileQuery}`, { credentials: 'include', headers: authHeaders });
+            const res = await gFetch(`/api/capture/packets${fileQuery}`, { credentials: 'include', headers: authHeaders });
             if (!res.ok) {
                 const errData = await res.json().catch(() => ({}));
                 throw new Error(errData.error || `HTTP ${res.status}`);
@@ -516,7 +523,7 @@ export default function PacketCapture({ token, onNavigateToReplay }: PacketCaptu
         setElapsedSeconds(0);
 
         try {
-            const res = await fetch('/api/capture/start', {
+            const res = await gFetch('/api/capture/start', {
                 method: 'POST',
                 credentials: 'include',
                 headers: authHeaders,
@@ -545,7 +552,7 @@ export default function PacketCapture({ token, onNavigateToReplay }: PacketCaptu
 
     const handleStopCapture = async () => {
         try {
-            const res = await fetch('/api/capture/stop', {
+            const res = await gFetch('/api/capture/stop', {
                 method: 'POST',
                 credentials: 'include',
                 headers: authHeaders
@@ -573,7 +580,7 @@ export default function PacketCapture({ token, onNavigateToReplay }: PacketCaptu
         }
 
         try {
-            const res = await fetch('/api/capture/send-to-replay', {
+            const res = await gFetch('/api/capture/send-to-replay', {
                 method: 'POST',
                 credentials: 'include',
                 headers: authHeaders,
@@ -597,7 +604,7 @@ export default function PacketCapture({ token, onNavigateToReplay }: PacketCaptu
         setShowHistoryModal(true);
         setLoadingHistory(true);
         try {
-            const res = await fetch('/api/capture/history', { credentials: 'include', headers: authHeaders });
+            const res = await gFetch('/api/capture/history', { credentials: 'include', headers: authHeaders });
             if (res.ok) {
                 const data = await res.json();
                 if (Array.isArray(data)) setSavedCaptures(data);
@@ -612,7 +619,7 @@ export default function PacketCapture({ token, onNavigateToReplay }: PacketCaptu
     const handleDeleteCapture = async (filename: string) => {
         if (!confirm(`Permanently delete capture "${filename}"?`)) return;
         try {
-            const res = await fetch(`/api/capture/${encodeURIComponent(filename)}`, {
+            const res = await gFetch(`/api/capture/${encodeURIComponent(filename)}`, {
                 method: 'DELETE',
                 credentials: 'include',
                 headers: authHeaders
@@ -636,7 +643,7 @@ export default function PacketCapture({ token, onNavigateToReplay }: PacketCaptu
         setDownloadingFile(filename);
         try {
             const downloadUrl = `/api/capture/download/${encodeURIComponent(filename)}?token=${encodeURIComponent(token)}`;
-            const res = await fetch(downloadUrl, {
+            const res = await gFetch(downloadUrl, {
                 credentials: 'include',
                 headers: {
                     'Authorization': `Bearer ${token}`
@@ -755,8 +762,21 @@ export default function PacketCapture({ token, onNavigateToReplay }: PacketCaptu
                                         DISSECTING {activePcapFile ? activePcapFile.split('/').pop() : 'PCAP'}...
                                     </span>
                                 ) : activePcapFile ? (
-                                    <span className="px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold bg-card-secondary text-text-muted border border-border">
-                                        {activePcapFile} {fileSizeBytes ? `(${(fileSizeBytes / 1024).toFixed(1)} KB)` : ''}
+                                    <span className="px-2.5 py-1 rounded-full text-[10px] font-mono font-bold bg-card-secondary text-text-muted border border-border flex items-center gap-2">
+                                        <span className="text-text-primary font-bold">{activePcapFile.split('/').pop()}</span>
+                                        <span className="text-cyan-400 font-bold flex items-center gap-0.5">
+                                            <Binary size={11} />
+                                            {totalPackets.toLocaleString()} pkts
+                                        </span>
+                                        {durationSeconds > 0 && (
+                                            <span className="text-amber-400 font-bold flex items-center gap-0.5">
+                                                <Clock size={11} />
+                                                {durationSeconds}s
+                                            </span>
+                                        )}
+                                        <span className="text-text-muted">
+                                            {fileSizeBytes ? `(${(fileSizeBytes / 1024).toFixed(1)} KB)` : ''}
+                                        </span>
                                     </span>
                                 ) : null}
                             </div>
@@ -962,6 +982,7 @@ export default function PacketCapture({ token, onNavigateToReplay }: PacketCaptu
                             <option value={2000}>2,000 pkts</option>
                             <option value={5000}>5,000 pkts</option>
                             <option value={10000}>10,000 pkts</option>
+                            <option value={100000}>No limit (Time only)</option>
                         </select>
                     </div>
                 </div>
@@ -1439,11 +1460,23 @@ export default function PacketCapture({ token, onNavigateToReplay }: PacketCaptu
                                         key={c.filename}
                                         className="p-3 bg-card-secondary/30 border border-border/60 rounded-2xl flex items-center justify-between gap-4 hover:border-cyan-500/40 transition-colors"
                                     >
-                                        <div className="space-y-0.5">
-                                            <p className="font-bold text-text-primary">{c.filename}</p>
-                                            <p className="text-[10px] text-text-muted">
-                                                {(c.size_bytes / 1024).toFixed(1)} KB • Created {c.created_at}
-                                            </p>
+                                        <div className="space-y-1">
+                                            <p className="font-bold text-text-primary text-xs">{c.filename}</p>
+                                            <div className="flex items-center gap-2 text-[10px] text-text-muted font-mono flex-wrap">
+                                                <span className="flex items-center gap-1 bg-cyan-500/10 text-cyan-300 px-1.5 py-0.5 rounded border border-cyan-500/20 font-bold">
+                                                    <Binary size={10} />
+                                                    {(c.total_packets || 0).toLocaleString()} pkts
+                                                </span>
+                                                {c.duration_seconds !== undefined && c.duration_seconds > 0 && (
+                                                    <span className="flex items-center gap-1 bg-amber-500/10 text-amber-300 px-1.5 py-0.5 rounded border border-amber-500/20 font-bold">
+                                                        <Clock size={10} />
+                                                        {c.duration_seconds}s
+                                                    </span>
+                                                )}
+                                                <span>{(c.size_bytes / 1024).toFixed(1)} KB</span>
+                                                <span>•</span>
+                                                <span>{c.created_at}</span>
+                                            </div>
                                         </div>
                                         <div className="flex items-center gap-2">
                                             <button

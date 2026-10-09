@@ -234,11 +234,13 @@ def start_capture(interface: str = "any", bpf: str = "", duration: int = 30, max
 
         cmd.extend(val_tokens)
 
+    log_path = os.path.join(CAPTURES_DIR, f"{session_id}.log")
     try:
+        log_f = open(log_path, "w")
         proc = subprocess.Popen(
             cmd,
             stdout=subprocess.DEVNULL,
-            stderr=subprocess.PIPE,
+            stderr=log_f,
             preexec_fn=os.setsid
         )
     except Exception as e:
@@ -594,10 +596,12 @@ def dissect_pcap_file(file_path: str, offset: int = 0, limit: int = 500) -> Dict
                 if total_count >= offset + limit + 5000:
                     break
 
+        pkt_count, dur_sec = get_pcap_stats(file_path)
         return {
             "file": os.path.basename(file_path),
             "file_size_bytes": os.path.getsize(file_path),
-            "total_packets": total_count,
+            "total_packets": pkt_count if pkt_count > 0 else total_count,
+            "duration_seconds": dur_sec,
             "offset": offset,
             "limit": limit,
             "count": len(packets),
@@ -607,16 +611,53 @@ def dissect_pcap_file(file_path: str, offset: int = 0, limit: int = 500) -> Dict
         return {"error": f"Failed to dissect PCAP: {str(e)}", "packets": []}
 
 
+def get_pcap_stats(file_path: str) -> tuple:
+    """Fast binary parser to extract packet count and exact duration in milliseconds without Scapy overhead."""
+    if not os.path.exists(file_path) or os.path.getsize(file_path) < 24:
+        return 0, 0.0
+    try:
+        with open(file_path, "rb") as f:
+            magic = f.read(4)
+            if magic in (b"\xd4\xc3\xb2\xa1", b"\x4d\x3c\xb2\xa1"):
+                endian = "<"
+            elif magic in (b"\xa1\xb2\xc3\xd4", b"\xa1\xb2\x3c\x4d"):
+                endian = ">"
+            else:
+                return 0, 0.0
+            f.seek(24) # Skip 24-byte pcap header
+            count = 0
+            t0 = None
+            t_last = None
+            while True:
+                hdr = f.read(16)
+                if len(hdr) < 16:
+                    break
+                sec, usec, incl_len, _ = struct.unpack(endian + "IIII", hdr)
+                pkt_t = sec + usec / 1e6
+                if t0 is None:
+                    t0 = pkt_t
+                t_last = pkt_t
+                count += 1
+                f.seek(incl_len, 1) # Jump over payload
+            duration = round(t_last - t0, 2) if (t0 and t_last) else 0.0
+            return count, duration
+    except Exception:
+        return 0, 0.0
+
+
 def list_saved_captures() -> List[Dict[str, Any]]:
-    """List all saved PCAP files in the captures directory."""
+    """List all saved PCAP files in the captures directory with total packet count and duration."""
     ensure_dirs()
     pcap_files = glob.glob(os.path.join(CAPTURES_DIR, "*.pcap"))
     results = []
     for f in sorted(pcap_files, key=os.path.getmtime, reverse=True):
         basename = os.path.basename(f)
+        pkt_count, dur_sec = get_pcap_stats(f)
         results.append({
             "filename": basename,
             "size_bytes": os.path.getsize(f),
+            "total_packets": pkt_count,
+            "duration_seconds": dur_sec,
             "created_at": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(os.path.getctime(f))),
             "modified_at": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(os.path.getmtime(f)))
         })
@@ -705,3 +746,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+
+# Alias for compatibility
+dissect_pcap = dissect_pcap_file
