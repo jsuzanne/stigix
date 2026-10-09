@@ -11940,7 +11940,7 @@ app.get('/api/admin/maintenance/version', authenticateToken, async (req, res) =>
 
         let latestVersion = channel;
         let updateAvailable = false;
-        let dockerReady = true;
+        const dockerReady = fs.existsSync('/var/run/docker.sock');
         let remoteBuildDate: string | null = null;
 
         const execPromise = promisify(exec);
@@ -12007,7 +12007,8 @@ app.get('/api/admin/maintenance/version', authenticateToken, async (req, res) =>
             channel,
             targetImage: fullImage,
             updateAvailable,
-            dockerReady: true,
+            dockerReady,
+            dockerError: dockerReady ? null : 'Docker socket (/var/run/docker.sock) is not mounted into container. Add it to volumes in docker-compose.yml to enable 1-click updates.',
             remoteBuildDate
         });
     } catch (e: any) {
@@ -12288,6 +12289,12 @@ const runCommandAndLog = (cmd: string, cwd: string, stage: string): Promise<numb
 app.post('/api/admin/maintenance/upgrade', authenticateToken, async (req, res) => {
     const { version } = req.body;
 
+    if (!fs.existsSync('/var/run/docker.sock')) {
+        return res.status(400).json({ 
+            error: 'Docker socket (/var/run/docker.sock) is not mounted into this container. To enable 1-click self-upgrade, add "- /var/run/docker.sock:/var/run/docker.sock" under volumes in docker-compose.yml.' 
+        });
+    }
+
     if (G_UPGRADE_STATUS.inProgress) {
         return res.status(400).json({ error: 'Upgrade already in progress' });
     }
@@ -12479,6 +12486,12 @@ rm -f /config/stigix_ephemeral_updater.sh
 
 app.post('/api/admin/maintenance/restart', authenticateToken, async (req, res) => {
     const { type } = req.body; // 'restart' or 'redeploy'
+
+    if (type === 'redeploy' && !fs.existsSync('/var/run/docker.sock')) {
+        return res.status(400).json({ 
+            error: 'Docker socket (/var/run/docker.sock) is not mounted into this container. System redeploy requires Docker socket access.' 
+        });
+    }
 
     if (G_UPGRADE_STATUS.inProgress) {
         return res.status(400).json({ error: 'Maintenance in progress' });
