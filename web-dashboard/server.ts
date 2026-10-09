@@ -11947,8 +11947,8 @@ app.get('/api/admin/maintenance/version', authenticateToken, async (req, res) =>
 
         // 1. Query Docker Hub for the specific active channel tag
         try {
-            const dockerHubUrl = `https://hub.docker.com/v2/repositories/jsuzanne/stigix/tags/\${channel}/`;
-            const { stdout: hubOut } = await execPromise(`curl -sL --connect-timeout 6 "\${dockerHubUrl}"`);
+            const dockerHubUrl = `https://hub.docker.com/v2/repositories/jsuzanne/stigix/tags/${channel}/`;
+            const { stdout: hubOut } = await execPromise(`curl -sL --connect-timeout 6 "${dockerHubUrl}"`);
             const hubData = JSON.parse(hubOut);
 
             if (hubData && hubData.last_updated) {
@@ -11970,7 +11970,7 @@ app.get('/api/admin/maintenance/version', authenticateToken, async (req, res) =>
         if (channel === 'v2') {
             try {
                 const tagsListUrl = 'https://hub.docker.com/v2/repositories/jsuzanne/stigix/tags/?page_size=10&page=1';
-                const { stdout: listOut } = await execPromise(`curl -sL --connect-timeout 6 "\${tagsListUrl}"`);
+                const { stdout: listOut } = await execPromise(`curl -sL --connect-timeout 6 "${tagsListUrl}"`);
                 const listData = JSON.parse(listOut);
                 const latestDevItem = listData?.results?.find((r: any) =>
                     r.name && r.name.startsWith('v2.') && r.name.includes('.dev')
@@ -11981,7 +11981,9 @@ app.get('/api/admin/maintenance/version', authenticateToken, async (req, res) =>
                         updateAvailable = true;
                     }
                 }
-            } catch (e) {}
+            } catch (e: any) {
+                console.warn('[MAINTENANCE] Failed to resolve latest v2 dev build from Docker Hub:', e.message);
+            }
         } else if (channel === 'stable') {
             try {
                 const res = await execPromise('curl -sL --connect-timeout 8 https://api.github.com/repos/jsuzanne/stigix/tags');
@@ -12180,18 +12182,30 @@ async function getHostProjectDir(): Promise<string | null> {
         if (inspectOut) {
             const inspectData = JSON.parse(inspectOut);
             if (Array.isArray(inspectData) && inspectData.length > 0) {
+                // 1. Check official Docker Compose labels first (most reliable)
+                const labels = inspectData[0].Config?.Labels || {};
+                const composeWorkingDir = labels['com.docker.compose.project.working_dir'];
+                if (composeWorkingDir) {
+                    return composeWorkingDir;
+                }
+
+                // 2. Check bind mounts
                 const mounts = inspectData[0].Mounts || [];
                 const composeMount = mounts.find((m: any) => 
                     m.Destination === '/app/docker-compose.yml' || 
                     m.Destination === '/app' ||
-                    m.Destination === '/app/config'
+                    m.Destination === '/app/config' ||
+                    m.Destination === '/config' ||
+                    (m.Source && m.Source.includes('/stigix'))
                 );
                 if (composeMount) {
                     const hostPath = composeMount.Source;
-                    if (composeMount.Destination === '/app/config') {
+                    if (composeMount.Destination === '/app/config' || composeMount.Destination === '/config') {
                         return path.dirname(hostPath);
                     } else if (composeMount.Destination === '/app/docker-compose.yml') {
                         return path.dirname(hostPath);
+                    } else if (hostPath.endsWith('/stigix')) {
+                        return hostPath;
                     } else {
                         return hostPath;
                     }
@@ -12364,11 +12378,15 @@ sleep 3
 # Step 1: Recreate Stigix Container
 if [ -n "${hostComposeFile}" ] && [ -f "${hostComposeFile}" ]; then
     echo "[$(date -u)] [UPDATER] Executing Docker Compose up with TAG=${targetVersion}..." >> "$LOG_FILE"
-    (TAG="${targetVersion}" docker compose -f "${hostComposeFile}" up -d --force-recreate >> "$LOG_FILE" 2>&1) || \
-    (TAG="${targetVersion}" docker-compose -f "${hostComposeFile}" up -d --force-recreate >> "$LOG_FILE" 2>&1)
+    (TAG="${targetVersion}" docker compose -f "${hostComposeFile}" up -d --force-recreate 2>&1 || \
+     TAG="${targetVersion}" docker-compose -f "${hostComposeFile}" up -d --force-recreate 2>&1) | while IFS= read -r line; do
+        echo "[$(date -u)] [COMPOSE] $line" >> "$LOG_FILE"
+    done
 else
     echo "[$(date -u)] [UPDATER] No docker-compose.yml found on host. Restarting stigix container directly..." >> "$LOG_FILE"
-    docker restart stigix >> "$LOG_FILE" 2>&1
+    docker restart stigix 2>&1 | while IFS= read -r line; do
+        echo "[$(date -u)] [DOCKER] $line" >> "$LOG_FILE"
+    done
 fi
 
 # Step 2: Healthcheck Loop (wait up to 60s for /api/health or /api/status)
@@ -12477,6 +12495,13 @@ app.post('/api/admin/maintenance/restart', authenticateToken, async (req, res) =
 
             if (type === 'restart') {
                 cmd = 'supervisorctl restart all';
+            } else if (type === 'redeploy' && hostDir) {
+                const { channel } = await detectLocalDockerChannel();
+                const runImage = `jsuzanne/stigix:${channel}`;
+                const hostComposeFile = path.join(hostDir, 'docker-compose.yml');
+                const hostConfigDir = path.join(hostDir, 'config');
+                const redeployScript = `echo "=================================================" >> /config/stigix_updater.log && echo "[$(date -u)] [REDEPLOY] System Redeploy initiated for channel ${channel}" >> /config/stigix_updater.log && sleep 2 && (TAG="${channel}" docker compose -f ${hostComposeFile} pull 2>&1 || true) | while IFS= read -r l; do echo "[$(date -u)] [PULL] $l" >> /config/stigix_updater.log; done && (TAG="${channel}" docker compose -f ${hostComposeFile} up -d --force-recreate 2>&1 || TAG="${channel}" docker-compose -f ${hostComposeFile} up -d --force-recreate 2>&1) | while IFS= read -r l; do echo "[$(date -u)] [COMPOSE] $l" >> /config/stigix_updater.log; done && echo "[$(date -u)] [REDEPLOY] Redeploy finished cleanly." >> /config/stigix_updater.log`;
+                cmd = `docker run -d --name stigix-upgrader-${Date.now()} --rm --network host --entrypoint /bin/sh -v /var/run/docker.sock:/var/run/docker.sock -v ${hostDir}:${hostDir} -v ${hostConfigDir}:/config -w ${hostDir} ${runImage} -c '${redeployScript}'`;
             } else if (composeFile) {
                 let baseCmd = 'docker compose';
                 try {
@@ -12488,17 +12513,9 @@ app.post('/api/admin/maintenance/restart', authenticateToken, async (req, res) =
                 if (baseCmd === 'docker') {
                     cmd = 'docker restart stigix';
                 } else {
-                    if (type === 'redeploy' && hostDir) {
-                        const { channel } = await detectLocalDockerChannel();
-                        const runImage = `jsuzanne/stigix:${channel}`;
-                        const hostComposeFile = path.join(hostDir, 'docker-compose.yml');
-                        // Run the redeploy command inside a detached helper container with --entrypoint /bin/sh so it executes shell correctly
-                        cmd = `docker run -d --name stigix-upgrader-${Date.now()} --rm --network host --entrypoint /bin/sh -v /var/run/docker.sock:/var/run/docker.sock -v ${hostDir}:${hostDir} -w ${hostDir} ${runImage} -c "sleep 2 && (docker compose -f ${hostComposeFile} pull && docker compose -f ${hostComposeFile} up -d --force-recreate || docker-compose -f ${hostComposeFile} up -d --force-recreate); exit 0"`;
-                    } else {
-                        cmd = type === 'redeploy'
-                            ? `${baseCmd} ${projDirFlag} -f ${composeFile} up -d --force-recreate`.replace(/\s+/g, ' ').trim()
-                            : `${baseCmd} ${projDirFlag} -f ${composeFile} restart`.replace(/\s+/g, ' ').trim();
-                    }
+                    cmd = type === 'redeploy'
+                        ? `${baseCmd} ${projDirFlag} -f ${composeFile} up -d --force-recreate`.replace(/\s+/g, ' ').trim()
+                        : `${baseCmd} ${projDirFlag} -f ${composeFile} restart`.replace(/\s+/g, ' ').trim();
                 }
             } else {
                 cmd = 'docker restart stigix';
