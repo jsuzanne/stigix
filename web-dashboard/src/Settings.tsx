@@ -1634,7 +1634,8 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
 
     const handleUpgrade = async (forceLatest = false) => {
         const detectedChannel = status?.channel || ((status?.current?.startsWith('v2') || status?.current?.includes('dev')) ? 'v2' : 'stable');
-        const targetVer = forceLatest ? detectedChannel : (status?.latest || detectedChannel);
+        const cleanLatest = (status?.latest || '').replace(/\s*\(.*?\)/g, '').trim();
+        const targetVer = forceLatest ? detectedChannel : (cleanLatest || detectedChannel);
         const confirmMsg = forceLatest 
             ? `This will force docker pull of jsuzanne/stigix:${targetVer} and recreate the container. Proceed?`
             : `This will pull v${targetVer} images and restart the dashboard. Proceed?`;
