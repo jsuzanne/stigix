@@ -739,50 +739,42 @@ export default function PacketCapture({ token, onNavigateToReplay }: PacketCaptu
     return (
         <div className="space-y-4 animate-in fade-in duration-300 w-full">
             {/* Top Header Card */}
-            <div className="bg-card border border-border p-5 rounded-2xl shadow-sm">
+            <div className="bg-card border border-border p-4 rounded-2xl shadow-sm">
                 <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
                     <div className="flex items-center gap-3">
-                        <div className="p-3 bg-cyan-600/10 rounded-xl text-cyan-400 border border-cyan-500/20">
-                            <Radio size={24} className={capturing ? "animate-pulse text-rose-400" : ""} />
+                        <div className="p-2.5 bg-cyan-600/10 rounded-xl text-cyan-400 border border-cyan-500/20 shrink-0">
+                            <Radio size={22} className={capturing ? "animate-pulse text-rose-400" : ""} />
                         </div>
-                        <div>
-                            <div className="flex items-center gap-2.5">
-                                <h2 className="text-xl font-black text-text-primary tracking-tight">Live Packet Capture & Web Analyzer</h2>
-                                <span className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-cyan-500/10 text-cyan-400 border border-cyan-500/20">
-                                    BPF Kernel Sniffer
+                        <div className="flex items-center gap-3 flex-wrap">
+                            <h2 className="text-lg font-black text-text-primary tracking-tight whitespace-nowrap">Packet Capture</h2>
+                            {capturing ? (
+                                <span className="flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-rose-500/15 text-rose-400 border border-rose-500/30 animate-pulse whitespace-nowrap">
+                                    <span className="w-2 h-2 rounded-full bg-rose-500 animate-ping" />
+                                    RECORDING ({elapsedSeconds}s / {durationSec}s)
                                 </span>
-                                {capturing ? (
-                                    <span className="flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-rose-500/15 text-rose-400 border border-rose-500/30 animate-pulse">
-                                        <span className="w-2 h-2 rounded-full bg-rose-500 animate-ping" />
-                                        RECORDING ({elapsedSeconds}s / {durationSec}s)
+                            ) : loadingPackets ? (
+                                <span className="flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-cyan-500/15 text-cyan-400 border border-cyan-500/30 animate-pulse whitespace-nowrap">
+                                    <Loader2 size={11} className="animate-spin" />
+                                    DISSECTING {activePcapFile ? activePcapFile.split('/').pop() : 'PCAP'}...
+                                </span>
+                            ) : activePcapFile ? (
+                                <span className="px-2.5 py-1 rounded-full text-[10px] font-mono font-bold bg-card-secondary text-text-muted border border-border flex items-center gap-2 whitespace-nowrap">
+                                    <span className="text-text-primary font-bold">{activePcapFile.split('/').pop()}</span>
+                                    <span className="text-cyan-400 font-bold flex items-center gap-0.5">
+                                        <Binary size={11} />
+                                        {totalPackets.toLocaleString()} pkts
                                     </span>
-                                ) : loadingPackets ? (
-                                    <span className="flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-cyan-500/15 text-cyan-400 border border-cyan-500/30 animate-pulse">
-                                        <Loader2 size={11} className="animate-spin" />
-                                        DISSECTING {activePcapFile ? activePcapFile.split('/').pop() : 'PCAP'}...
-                                    </span>
-                                ) : activePcapFile ? (
-                                    <span className="px-2.5 py-1 rounded-full text-[10px] font-mono font-bold bg-card-secondary text-text-muted border border-border flex items-center gap-2">
-                                        <span className="text-text-primary font-bold">{activePcapFile.split('/').pop()}</span>
-                                        <span className="text-cyan-400 font-bold flex items-center gap-0.5">
-                                            <Binary size={11} />
-                                            {totalPackets.toLocaleString()} pkts
+                                    {durationSeconds > 0 && (
+                                        <span className="text-amber-400 font-bold flex items-center gap-0.5">
+                                            <Clock size={11} />
+                                            {durationSeconds}s
                                         </span>
-                                        {durationSeconds > 0 && (
-                                            <span className="text-amber-400 font-bold flex items-center gap-0.5">
-                                                <Clock size={11} />
-                                                {durationSeconds}s
-                                            </span>
-                                        )}
-                                        <span className="text-text-muted">
-                                            {fileSizeBytes ? `(${(fileSizeBytes / 1024).toFixed(1)} KB)` : ''}
-                                        </span>
+                                    )}
+                                    <span className="text-text-muted">
+                                        {fileSizeBytes ? `(${(fileSizeBytes / 1024).toFixed(1)} KB)` : ''}
                                     </span>
-                                ) : null}
-                            </div>
-                            <p className="text-xs text-text-muted mt-0.5">
-                                Wireshark-grade 3-pane packet inspection, BPF kernel filtering, and 1-click injection into the PCAP Replay engine
-                            </p>
+                                </span>
+                            ) : null}
                         </div>
                     </div>
 
