@@ -2027,7 +2027,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
         { id: 'custom-tcp', label: 'Custom TCP Apps', isNew: true },
         { id: 'convergence', label: 'Failover' },
         { id: 'system', label: 'System Info' },
-        ...(systemInfo?.beta ? [{ id: 'maintenance', label: 'System Maintenance', beta: true }] : []),
+        { id: 'maintenance', label: 'Maintenance & Updates' },
         { id: 'targets', label: 'Stigix Targets' },
         { id: 'registry', label: 'Target Controller' },
         ...(copilotConfig?.featureEnabled ? [{ id: 'mcp', label: 'AI & Copilot', beta: true }] : []),
@@ -3791,6 +3791,59 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
 
                 {activeTab === 'system' && (
                     <div className="bg-card border border-border rounded-2xl p-8 shadow-sm space-y-12 animate-in fade-in duration-500">
+
+                        {/* ── System Version & Quick Upgrade Banner ──────────────── */}
+                        <div className="rounded-2xl border border-blue-500/20 bg-gradient-to-r from-blue-900/10 via-card-secondary/40 to-card p-6 flex flex-col md:flex-row md:items-center justify-between gap-6 shadow-sm">
+                            <div className="flex items-center gap-4">
+                                <div className="p-3 bg-blue-600/10 rounded-xl text-blue-500 border border-blue-500/20">
+                                    <RefreshCw size={22} className={upgrading ? "animate-spin" : ""} />
+                                </div>
+                                <div>
+                                    <div className="flex items-center gap-2">
+                                        <h3 className="text-base font-black text-text-primary tracking-tight">Stigix Engine Version</h3>
+                                        <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-blue-500/15 text-blue-400 border border-blue-500/30">
+                                            {status?.current || 'v2.1.0'}
+                                        </span>
+                                    </div>
+                                    <p className="text-xs text-text-muted mt-1">
+                                        {status?.updateAvailable
+                                            ? `New version available: v${status.latest} on Docker Hub / GitHub.`
+                                            : `Running latest stable release (${status?.current || 'up to date'}).`}
+                                    </p>
+                                </div>
+                            </div>
+
+                            <div className="flex items-center gap-3">
+                                <button
+                                    onClick={() => handleUpgrade(false)}
+                                    disabled={upgrading || !status?.updateAvailable}
+                                    className={cn(
+                                        "px-5 py-2.5 rounded-xl text-xs font-black tracking-wider transition-all flex items-center gap-2 shadow-lg",
+                                        (upgrading || !status?.updateAvailable)
+                                            ? "bg-card-secondary text-text-muted border border-border cursor-not-allowed opacity-50"
+                                            : "bg-blue-600 hover:bg-blue-500 text-white shadow-blue-900/40"
+                                    )}
+                                >
+                                    {upgrading ? <RefreshCw className="animate-spin" size={14} /> : <Download size={14} />}
+                                    {upgrading ? 'Upgrading...' : `Update To v${status?.latest || 'Latest'}`}
+                                </button>
+                                <button
+                                    onClick={() => handleUpgrade(true)}
+                                    disabled={upgrading}
+                                    title="Force docker pull of latest image and recreate container"
+                                    className="px-4 py-2.5 bg-card-secondary hover:bg-card-hover border border-border rounded-xl text-xs font-black tracking-wider text-text-muted hover:text-text-primary transition-all flex items-center gap-1.5"
+                                >
+                                    <RefreshCw size={12} className={cn(upgrading && "animate-spin text-blue-400")} />
+                                    Force Pull
+                                </button>
+                                <button
+                                    onClick={() => setActiveTab('maintenance')}
+                                    className="px-4 py-2.5 bg-card-secondary hover:bg-card-hover border border-border rounded-xl text-xs font-black tracking-wider text-text-muted hover:text-text-primary transition-all"
+                                >
+                                    Manage →
+                                </button>
+                            </div>
+                        </div>
 
                         {/* ── Startup Behaviour — global, prominent ──────────────── */}
                         <div className="rounded-2xl border border-border bg-card-secondary/40 overflow-hidden">
