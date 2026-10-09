@@ -546,6 +546,7 @@ export class TcpClientRuntime extends EventEmitter {
 
         const startConnectTs = Date.now();
         socket.connect(session.peer.port, session.peer.host, () => {
+            socket.setTimeout(0); // Clear connect timeout now that connection is established
             session.state.connectedAt = Date.now();
             session.state.tcpConnectMs = Math.max(1, Date.now() - startConnectTs);
             session.reconnectAttempts = 0; // Reset backoff upon successful TCP connect
