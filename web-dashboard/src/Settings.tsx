@@ -1201,9 +1201,9 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
         });
     }, [registryStatus?.local_instances, fetchPeerMaintStatus]);
 
-    // Auto-fetch peer versions when viewing registry tab as leader
+    // Auto-fetch peer versions when viewing registry or maintenance tab as leader
     useEffect(() => {
-        if (activeTab === 'registry' && registryStatus?.mode === 'leader' && Array.isArray(registryStatus?.local_instances)) {
+        if ((activeTab === 'registry' || activeTab === 'maintenance') && registryStatus?.mode === 'leader' && Array.isArray(registryStatus?.local_instances)) {
             registryStatus.local_instances.forEach((inst: any) => {
                 if (inst.instance_id && !peerMaintStatus[inst.instance_id]) {
                     fetchPeerMaintStatus(inst.instance_id);
@@ -4007,6 +4007,103 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                                     ))}
                                     <div className="animate-pulse inline-block w-1.5 h-3 bg-blue-600 ml-1" />
                                 </div>
+                            </div>
+                        )}
+
+                        {/* Leader-Orchestrated Fleet Nodes Maintenance Card */}
+                        {registryStatus?.mode === 'leader' && (
+                            <div className="pt-8 border-t border-border/50 space-y-6">
+                                <div className="flex items-center justify-between">
+                                    <div className="flex items-center gap-3">
+                                        <div className="p-2 bg-purple-600/10 rounded-lg text-purple-400 font-bold">
+                                            <Users size={24} />
+                                        </div>
+                                        <div>
+                                            <h2 className="text-lg font-black text-text-primary tracking-tight">Fleet Nodes Maintenance</h2>
+                                            <p className="text-[10px] font-bold text-text-muted tracking-widest mt-0.5 opacity-70">
+                                                Manage and upgrade remote Stigix instances registered with this Leader
+                                            </p>
+                                        </div>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                        <button
+                                            onClick={checkAllPeersVersions}
+                                            className="px-3 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-wider bg-card-secondary hover:bg-card-hover border border-border text-text-muted hover:text-text-primary transition-all flex items-center gap-1.5 cursor-pointer"
+                                        >
+                                            <RefreshCw size={11} />
+                                            Check Fleet Updates
+                                        </button>
+                                    </div>
+                                </div>
+
+                                {!registryStatus?.local_instances?.length ? (
+                                    <div className="p-8 text-center bg-card-secondary/20 border border-border rounded-2xl">
+                                        <p className="text-xs text-text-muted font-bold">No remote nodes currently registered with this Leader.</p>
+                                    </div>
+                                ) : (
+                                    <div className="overflow-hidden border border-border rounded-2xl bg-card">
+                                        <table className="w-full text-left">
+                                            <thead>
+                                                <tr className="border-b border-border/50 bg-card-secondary/30">
+                                                    <th className="py-3 px-5 text-[9px] font-black text-text-muted uppercase tracking-[0.2em]">Node</th>
+                                                    <th className="py-3 px-5 text-[9px] font-black text-text-muted uppercase tracking-[0.2em]">IP Address</th>
+                                                    <th className="py-3 px-5 text-[9px] font-black text-text-muted uppercase tracking-[0.2em]">Installed Build</th>
+                                                    <th className="py-3 px-5 text-[9px] font-black text-text-muted uppercase tracking-[0.2em]">Docker Hub Status</th>
+                                                    <th className="py-3 px-5 text-[9px] font-black text-text-muted uppercase tracking-[0.2em] text-right">Action</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {registryStatus.local_instances.map((inst: any) => (
+                                                    <tr key={inst.instance_id} className="border-b border-border/20 last:border-0 hover:bg-card-hover/40 transition-colors">
+                                                        <td className="py-3.5 px-5 font-black text-xs text-text-primary flex items-center gap-2">
+                                                            <Server size={14} className="text-purple-400" />
+                                                            {inst.instance_id}
+                                                        </td>
+                                                        <td className="py-3.5 px-5 font-mono text-[10px] text-text-muted">{inst.ip_private}</td>
+                                                        <td className="py-3.5 px-5 font-mono text-xs text-blue-400 font-bold">
+                                                            {peerMaintStatus[inst.instance_id]?.current || inst.meta?.version || 'v2'}
+                                                        </td>
+                                                        <td className="py-3.5 px-5">
+                                                            {peerMaintStatus[inst.instance_id]?.updateAvailable ? (
+                                                                <span className="inline-flex items-center gap-1.5 text-[9px] font-black text-amber-500 bg-amber-500/10 px-2 py-0.5 rounded-full border border-amber-500/20">
+                                                                    <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-ping" />
+                                                                    Update: {peerMaintStatus[inst.instance_id]?.latest}
+                                                                </span>
+                                                            ) : peerMaintStatus[inst.instance_id]?.current ? (
+                                                                <span className="inline-flex items-center gap-1 text-[9px] font-bold text-emerald-500 bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/20">
+                                                                    <CheckCircle2 size={10} /> Up to date
+                                                                </span>
+                                                            ) : (
+                                                                <span className="text-[10px] text-text-muted italic">Checking...</span>
+                                                            )}
+                                                        </td>
+                                                        <td className="py-3.5 px-5 text-right">
+                                                            {peerMaintStatus[inst.instance_id]?.dockerReady === false ? (
+                                                                <span className="text-[9px] font-bold text-rose-400 bg-rose-500/10 px-2 py-1 rounded border border-rose-500/20">
+                                                                    No Docker Sock
+                                                                </span>
+                                                            ) : (
+                                                                <button
+                                                                    onClick={() => handleRemotePeerUpgrade(inst.instance_id, inst.ip_private)}
+                                                                    disabled={remoteUpgradeModal.open && remoteUpgradeModal.peerId === inst.instance_id}
+                                                                    className={cn(
+                                                                        "px-3 py-1.5 rounded-xl text-[9px] font-black uppercase tracking-wider transition-all flex items-center gap-1.5 border shadow-sm ml-auto cursor-pointer",
+                                                                        peerMaintStatus[inst.instance_id]?.updateAvailable
+                                                                            ? "bg-blue-600 hover:bg-blue-500 text-white border-blue-500/30 shadow-blue-900/30"
+                                                                            : "bg-card-secondary hover:bg-card-hover border-border text-text-muted hover:text-text-primary"
+                                                                    )}
+                                                                >
+                                                                    <Download size={11} className={cn(remoteUpgradeModal.open && remoteUpgradeModal.peerId === inst.instance_id && "animate-spin")} />
+                                                                    {peerMaintStatus[inst.instance_id]?.updateAvailable ? "Upgrade Node" : "Force Upgrade"}
+                                                                </button>
+                                                            )}
+                                                        </td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                )}
                             </div>
                         )}
 
