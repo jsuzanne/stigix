@@ -1775,8 +1775,22 @@ function TopologyContent({ token }: TopologyProps) {
                         const seName = (sl.service_endpoint_name || sl.name || '').toLowerCase();
                         if (seName.includes('ireland') || seName.includes('eu-west-1')) {
                             targetPopId = 'cloud:prisma-ireland';
+                        } else if (seName.includes('france-central') || seName.includes('france north') || seName.includes('france-north')) {
+                            targetPopId = 'cloud:prisma-france-central';
+                        } else if (seName.includes('france') || seName.includes('paris')) {
+                            targetPopId = 'cloud:prisma-france-south';
                         } else if (sl.provider === 'Zscaler' || seName.includes('zscaler')) {
                             targetPopId = 'cloud:zscaler-cloud';
+                        }
+
+                        // Dynamic fallback: match with any detected SASE PoP from topology
+                        const detectedPops = topology?.sase_infrastructure?.pops || [];
+                        const matchedPop = detectedPops.find((p: any) =>
+                            p.id === targetPopId.replace('cloud:', '') ||
+                            (p.primary_peer_ip && p.primary_peer_ip === sl.remote_ip)
+                        );
+                        if (matchedPop) {
+                            targetPopId = `cloud:${matchedPop.id}`;
                         }
 
                         const isUp = sl.operational_state === 'up';

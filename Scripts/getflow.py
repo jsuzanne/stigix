@@ -1656,6 +1656,11 @@ def build_full_topology(sdk: API, sites_data: dict, debug: bool = False, debug_t
                     pop_name = 'Prisma Access France South (Paris Lime)'
                     pop_region = 'france-south'
                     spn = 'europe-northwest-paris-lime'
+                elif 'france-central' in se_name.lower() or 'france north' in se_name.lower() or 'france-north' in se_name.lower():
+                    pop_id = 'prisma-france-central'
+                    pop_name = 'Prisma Access France Central / North'
+                    pop_region = 'france-central'
+                    spn = 'europe-northwest-paris'
                 elif 'ireland' in se_name.lower() or 'eu-west-1' in se_name.lower():
                     pop_id = 'prisma-ireland'
                     pop_name = 'Prisma Access Ireland (Elderberry)'
