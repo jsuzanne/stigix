@@ -11843,7 +11843,7 @@ async function detectLocalDockerChannel(): Promise<{ channel: string; fullImage:
     } catch (e) {
         try {
             const hostname = os.hostname();
-            const { stdout } = await execPromise(\`docker inspect \${hostname} --format "{{.Config.Image}}|||{{.Created}}"\`);
+            const { stdout } = await execPromise(`docker inspect \${hostname} --format "{{.Config.Image}}|||{{.Created}}"`);
             const parts = stdout.trim().split('|||');
             image = parts[0] || '';
             createdDate = parts[1] || null;
@@ -11856,7 +11856,23 @@ async function detectLocalDockerChannel(): Promise<{ channel: string; fullImage:
         if (fs.existsSync(vPath)) currentVer = fs.readFileSync(vPath, 'utf8').trim();
     } catch (e) {}
 
-    const envTag = (process.env.TAG || '').trim();
+    // Read .env on disk if available
+    let envFileTag = '';
+    const envPaths = ['/app/.env', path.join(PROJECT_ROOT, '.env'), path.resolve(process.cwd(), '.env')];
+    for (const ep of envPaths) {
+        if (fs.existsSync(ep)) {
+            try {
+                const envContent = fs.readFileSync(ep, 'utf8');
+                const m = envContent.match(/^(?:STIGIX_TAG|TAG)\s*=\s*(.+)$/m);
+                if (m && m[1]) {
+                    envFileTag = m[1].trim().replace(/['"]/g, '');
+                    break;
+                }
+            } catch (e) {}
+        }
+    }
+
+    const envTag = (process.env.TAG || envFileTag || '').trim();
     const tagMatch = image.match(/:([^:]+)$/);
     const rawTag = (tagMatch ? tagMatch[1] : envTag).trim();
 
@@ -11876,7 +11892,7 @@ async function detectLocalDockerChannel(): Promise<{ channel: string; fullImage:
         channel = currentVer.includes('dev') ? 'v2' : 'stable';
     }
 
-    return { channel, fullImage: \`jsuzanne/stigix:\${channel}\`, createdDate };
+    return { channel, fullImage: `jsuzanne/stigix:\${channel}`, createdDate };
 }
 
 app.get('/api/admin/maintenance/version', authenticateToken, async (req, res) => {
@@ -11908,8 +11924,8 @@ app.get('/api/admin/maintenance/version', authenticateToken, async (req, res) =>
 
         // 1. Query Docker Hub for the specific active channel tag
         try {
-            const dockerHubUrl = \`https://hub.docker.com/v2/repositories/jsuzanne/stigix/tags/\${channel}/\`;
-            const { stdout: hubOut } = await execPromise(\`curl -sL --connect-timeout 6 "\${dockerHubUrl}"\`);
+            const dockerHubUrl = `https://hub.docker.com/v2/repositories/jsuzanne/stigix/tags/\${channel}/`;
+            const { stdout: hubOut } = await execPromise(`curl -sL --connect-timeout 6 "\${dockerHubUrl}"`);
             const hubData = JSON.parse(hubOut);
 
             if (hubData && hubData.last_updated) {
@@ -11931,7 +11947,7 @@ app.get('/api/admin/maintenance/version', authenticateToken, async (req, res) =>
         if (channel === 'v2') {
             try {
                 const tagsListUrl = 'https://hub.docker.com/v2/repositories/jsuzanne/stigix/tags/?page_size=10&page=1';
-                const { stdout: listOut } = await execPromise(\`curl -sL --connect-timeout 6 "\${tagsListUrl}"\`);
+                const { stdout: listOut } = await execPromise(`curl -sL --connect-timeout 6 "\${tagsListUrl}"`);
                 const listData = JSON.parse(listOut);
                 const latestDevItem = listData?.results?.find((r: any) =>
                     r.name && r.name.startsWith('v2.') && r.name.includes('.dev')
