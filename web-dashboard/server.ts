@@ -1178,22 +1178,45 @@ try {
     const upgradeStatusFile = path.join(PROJECT_ROOT, 'config', '.upgrade_status.json');
     if (fs.existsSync(upgradeStatusFile)) {
         const raw = fs.readFileSync(upgradeStatusFile, 'utf8');
-        const saved = JSON.parse(raw);
-        if (saved && (saved.stage === 'complete' || saved.stage === 'failed')) {
-            console.log(`[MAINTENANCE-BOOT] Found persisted upgrade status (${saved.stage}).`);
-            // Clean up ephemeral script if still present
-            try {
-                const helperScript = path.join(PROJECT_ROOT, 'config', 'stigix_ephemeral_updater.sh');
-                if (fs.existsSync(helperScript)) fs.unlinkSync(helperScript);
-            } catch (ce) {}
-            G_UPGRADE_STATUS = {
-                inProgress: false,
-                version: saved.version || null,
-                stage: saved.stage,
-                logs: saved.logs || [`[${new Date().toISOString()}] 🚀 Container successfully upgraded and running Stigix ${saved.version || 'latest'}.`],
-                error: saved.error || null,
-                startTime: saved.startTime || Date.now()
-            };
+        try {
+            const saved = JSON.parse(raw);
+            if (saved && (saved.stage === 'complete' || saved.stage === 'failed')) {
+                console.log(`[MAINTENANCE-BOOT] Found persisted upgrade status (${saved.stage}).`);
+                // Clean up ephemeral script if still present
+                try {
+                    const helperScript = path.join(PROJECT_ROOT, 'config', 'stigix_ephemeral_updater.sh');
+                    if (fs.existsSync(helperScript)) fs.unlinkSync(helperScript);
+                } catch (ce) {}
+
+                if (saved.stage === 'failed') {
+                    // Stigix is now running! An older failure (from an earlier pull error or manual upgrade)
+                    // must not pollute the running instance forever. Purge it so it doesn't pop up repeatedly.
+                    console.log('[MAINTENANCE-BOOT] Stigix is running. Purging stale failure status marker from disk.');
+                    try { fs.unlinkSync(upgradeStatusFile); } catch (e) {}
+                    G_UPGRADE_STATUS = {
+                        inProgress: false,
+                        version: null,
+                        stage: 'idle',
+                        logs: [],
+                        error: null,
+                        startTime: null
+                    };
+                } else {
+                    G_UPGRADE_STATUS = {
+                        inProgress: false,
+                        version: saved.version || null,
+                        stage: 'complete',
+                        logs: saved.logs || [`[${new Date().toISOString()}] 🚀 Container successfully upgraded and running Stigix ${saved.version || 'latest'}.`],
+                        error: null,
+                        startTime: saved.startTime || Date.now()
+                    };
+                    // Unlink file so subsequent restarts don't keep resurrecting this completion event
+                    try { fs.unlinkSync(upgradeStatusFile); } catch (e) {}
+                }
+            }
+        } catch (parseErr: any) {
+            console.warn('[MAINTENANCE-BOOT] Invalid or corrupt upgrade status file, deleting:', parseErr.message);
+            try { fs.unlinkSync(upgradeStatusFile); } catch (e) {}
         }
     }
 
@@ -12097,6 +12120,24 @@ app.get('/api/admin/maintenance/status', authenticateToken, (req, res) => {
     res.json(G_UPGRADE_STATUS);
 });
 
+app.post('/api/admin/maintenance/dismiss', authenticateToken, (req, res) => {
+    try {
+        const upgradeStatusFile = path.join(PROJECT_ROOT, 'config', '.upgrade_status.json');
+        if (fs.existsSync(upgradeStatusFile)) {
+            fs.unlinkSync(upgradeStatusFile);
+        }
+    } catch (e: any) {}
+    G_UPGRADE_STATUS = {
+        inProgress: false,
+        version: null,
+        stage: 'idle',
+        logs: [],
+        error: null,
+        startTime: null
+    };
+    res.json({ success: true, message: 'Maintenance status dismissed' });
+});
+
 async function getHostProjectDir(): Promise<string | null> {
     try {
         // 1. Try to inspect by hostname (container ID in bridge mode)
@@ -12342,15 +12383,16 @@ for i in $(seq 1 30); do
     fi
 done
 
+NOW=$(date +%s000 2>/dev/null || date +%s)
 if [ "$HEALTHY" -eq 1 ]; then
     echo "[$(date -u)] [UPDATER] 🚀 Upgrade successfully finalized!" >> "$LOG_FILE"
-    cat << 'EOF' > "$STATUS_FILE"
-{"inProgress":false,"version":"${targetVersion}","stage":"complete","error":null,"completedAt":$(date +%s000)}
+    cat << EOF > "$STATUS_FILE"
+{"inProgress":false,"version":"${targetVersion}","stage":"complete","error":null,"completedAt":$NOW}
 EOF
 else
     echo "[$(date -u)] [UPDATER] ⚠️ Healthcheck timed out after 60 seconds." >> "$LOG_FILE"
-    cat << 'EOF' > "$STATUS_FILE"
-{"inProgress":false,"version":"${targetVersion}","stage":"failed","error":"New container failed healthcheck within 60 seconds after upgrade.","completedAt":$(date +%s000)}
+    cat << EOF > "$STATUS_FILE"
+{"inProgress":false,"version":"${targetVersion}","stage":"failed","error":"New container failed healthcheck within 60 seconds after upgrade.","completedAt":$NOW}
 EOF
 fi
 
@@ -12369,9 +12411,9 @@ rm -f /config/stigix_ephemeral_updater.sh
             // CRITICAL: Must use --entrypoint /bin/sh to prevent supervisord / entrypoint.sh from taking over!
             let spawnCmd = '';
             if (hostDir) {
-                spawnCmd = `docker run -d --name stigix-updater-${Date.now()} --rm --entrypoint /bin/sh -v /var/run/docker.sock:/var/run/docker.sock -v ${hostDir}:${hostDir} -v ${hostConfigDir}:/config -w ${hostDir} ${pullImage} /config/stigix_ephemeral_updater.sh`;
+                spawnCmd = `docker run -d --name stigix-updater-${Date.now()} --rm --network host --entrypoint /bin/sh -v /var/run/docker.sock:/var/run/docker.sock -v ${hostDir}:${hostDir} -v ${hostConfigDir}:/config -w ${hostDir} ${pullImage} /config/stigix_ephemeral_updater.sh`;
             } else {
-                spawnCmd = `docker run -d --name stigix-updater-${Date.now()} --rm --entrypoint /bin/sh -v /var/run/docker.sock:/var/run/docker.sock ${pullImage} -c "sleep 3 && docker restart stigix"`;
+                spawnCmd = `docker run -d --name stigix-updater-${Date.now()} --rm --network host --entrypoint /bin/sh -v /var/run/docker.sock:/var/run/docker.sock ${pullImage} -c "sleep 3 && docker restart stigix"`;
             }
 
             G_UPGRADE_STATUS.logs.push(`[${new Date().toISOString()}] Delegating execution to detached ephemeral container: ${spawnCmd}`);
@@ -12451,7 +12493,7 @@ app.post('/api/admin/maintenance/restart', authenticateToken, async (req, res) =
                         const runImage = `jsuzanne/stigix:${channel}`;
                         const hostComposeFile = path.join(hostDir, 'docker-compose.yml');
                         // Run the redeploy command inside a detached helper container with --entrypoint /bin/sh so it executes shell correctly
-                        cmd = `docker run -d --name stigix-upgrader-${Date.now()} --rm --entrypoint /bin/sh -v /var/run/docker.sock:/var/run/docker.sock -v ${hostDir}:${hostDir} -w ${hostDir} ${runImage} -c "sleep 2 && (docker compose -f ${hostComposeFile} pull && docker compose -f ${hostComposeFile} up -d --force-recreate || docker-compose -f ${hostComposeFile} up -d --force-recreate); exit 0"`;
+                        cmd = `docker run -d --name stigix-upgrader-${Date.now()} --rm --network host --entrypoint /bin/sh -v /var/run/docker.sock:/var/run/docker.sock -v ${hostDir}:${hostDir} -w ${hostDir} ${runImage} -c "sleep 2 && (docker compose -f ${hostComposeFile} pull && docker compose -f ${hostComposeFile} up -d --force-recreate || docker-compose -f ${hostComposeFile} up -d --force-recreate); exit 0"`;
                     } else {
                         cmd = type === 'redeploy'
                             ? `${baseCmd} ${projDirFlag} -f ${composeFile} up -d --force-recreate`.replace(/\s+/g, ' ').trim()

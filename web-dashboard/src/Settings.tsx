@@ -987,12 +987,6 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                     setUpgradeStatus(data);
                     if (data.inProgress) {
                         setUpgrading(true);
-                    } else if (data.stage === 'complete') {
-                        showSuccess("Upgrade complete! System is restarting...");
-                        setUpgrading(false);
-                    } else if (data.stage === 'failed') {
-                        setErrorMsg(data.error || 'Upgrade failed');
-                        setUpgrading(false);
                     }
                 }
             } catch (e) {
@@ -1035,6 +1029,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                     if (!data.inProgress && data.stage === 'complete') {
                         showSuccess("Upgrade complete! System is running the updated version.");
                         setUpgrading(false);
+                        apiFetch('/api/admin/maintenance/dismiss', { method: 'POST', headers: { 'Authorization': `Bearer ${token}` } }).catch(() => {});
                         apiFetch('/api/admin/maintenance/version', { headers: { 'Authorization': `Bearer ${token}` } })
                             .then(r => r.json())
                             .then(m => setStatus(m))
@@ -1042,6 +1037,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                     } else if (!data.inProgress && data.stage === 'failed') {
                         setErrorMsg(data.error || 'Upgrade failed');
                         setUpgrading(false);
+                        apiFetch('/api/admin/maintenance/dismiss', { method: 'POST', headers: { 'Authorization': `Bearer ${token}` } }).catch(() => {});
                     }
                 }
             } catch (e) {
@@ -2086,8 +2082,18 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
             )}
             {errorMsg && (
                 <div className="fixed top-24 right-8 bg-red-600/10 border border-red-500/20 text-red-600 dark:text-red-400 px-6 py-3.5 rounded-2xl flex items-center gap-3 shadow-2xl backdrop-blur-md animate-in fade-in slide-in-from-top-4 z-50">
-                    <AlertCircle size={18} />
+                    <AlertCircle size={18} className="flex-shrink-0" />
                     <span className="text-[10px] font-black tracking-[0.15em]">{errorMsg}</span>
+                    <button
+                        onClick={() => {
+                            setErrorMsg(null);
+                            apiFetch('/api/admin/maintenance/dismiss', { method: 'POST', headers: { 'Authorization': `Bearer ${token}` } }).catch(() => {});
+                        }}
+                        className="ml-2 hover:opacity-100 opacity-60 transition-opacity p-0.5 rounded cursor-pointer"
+                        title="Dismiss"
+                    >
+                        <X size={14} />
+                    </button>
                 </div>
             )}
 
