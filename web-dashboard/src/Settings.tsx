@@ -1018,6 +1018,37 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
         return () => clearInterval(interval);
     }, [token, activePeerId]);
 
+    // Active fast-polling when upgrade is in progress (2s interval, tolerant to container recreation)
+    useEffect(() => {
+        if (!upgrading) return;
+        const fastPoll = async () => {
+            try {
+                const res = await apiFetch('/api/admin/maintenance/status', {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                if (res.ok) {
+                    const data = await res.json();
+                    setUpgradeStatus(data);
+                    if (!data.inProgress && data.stage === 'complete') {
+                        showSuccess("Upgrade complete! System is running the updated version.");
+                        setUpgrading(false);
+                        apiFetch('/api/admin/maintenance/version', { headers: { 'Authorization': `Bearer ${token}` } })
+                            .then(r => r.json())
+                            .then(m => setStatus(m))
+                            .catch(() => {});
+                    } else if (!data.inProgress && data.stage === 'failed') {
+                        setErrorMsg(data.error || 'Upgrade failed');
+                        setUpgrading(false);
+                    }
+                }
+            } catch (e) {
+                // Expected connection refusal while the container is restarting
+            }
+        };
+        const fastTimer = setInterval(fastPoll, 2000);
+        return () => clearInterval(fastTimer);
+    }, [upgrading, token]);
+
     useEffect(() => {
         if (registryStatus?.static_leader_url && !staticLeaderUrl) {
             setStaticLeaderUrl(registryStatus.static_leader_url);
@@ -1598,19 +1629,22 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
         } catch (e) { alert('Import failed: ' + (e as Error).message); }
     };
 
-    const handleUpgrade = async () => {
-        if (!status?.latest) return;
-        if (!confirm(`This will pull v${status.latest} images and restart the dashboard. Proceed?`)) return;
+    const handleUpgrade = async (forceLatest = false) => {
+        const targetVer = forceLatest ? 'latest' : (status?.latest || 'latest');
+        const confirmMsg = forceLatest 
+            ? `This will force docker pull of jsuzanne/stigix:${targetVer} and recreate the container. Proceed?`
+            : `This will pull v${targetVer} images and restart the dashboard. Proceed?`;
+        if (!confirm(confirmMsg)) return;
         setUpgrading(true);
         setErrorMsg(null);
         try {
             const res = await apiFetch('/api/admin/maintenance/upgrade', {
                 method: 'POST',
                 headers: authHeaders,
-                body: JSON.stringify({ version: status.latest })
+                body: JSON.stringify({ version: targetVer })
             });
             if (res.ok) {
-                showSuccess(`Upgrade to v${status.latest} started in background.`);
+                showSuccess(`Upgrade to ${targetVer} started in background.`);
             } else {
                 const data = await res.json();
                 setErrorMsg(data.details || data.error || 'Upgrade failed');
@@ -3577,28 +3611,48 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                                         ? `A newer version (v${status.latest}) is available on GitHub and ready to pull.`
                                         : "Your system is currently running the latest stable release of the Stigix platform."}
                                 </p>
-                                <button
-                                    onClick={handleUpgrade}
-                                    disabled={upgrading || !status?.updateAvailable}
-                                    className={cn(
-                                        "w-full flex items-center justify-center gap-2 py-3 rounded-xl text-[10px] font-black tracking-[0.2em] transition-all",
-                                        (upgrading || !status?.updateAvailable)
-                                            ? "bg-card-secondary text-text-muted border border-border cursor-not-allowed"
-                                            : "bg-blue-600 hover:bg-blue-500 text-white shadow-lg shadow-blue-900/40"
-                                    )}
-                                >
-                                    {upgrading ? <RefreshCw className="animate-spin" size={14} /> : <Download size={14} />}
-                                    {upgrading ? 'Upgrading...' : 'Update To Latest'}
-                                </button>
+                                <div className="flex flex-col sm:flex-row gap-3">
+                                    <button
+                                        onClick={() => handleUpgrade(false)}
+                                        disabled={upgrading || !status?.updateAvailable}
+                                        className={cn(
+                                            "flex-1 flex items-center justify-center gap-2 py-3 rounded-xl text-[10px] font-black tracking-[0.2em] transition-all",
+                                            (upgrading || !status?.updateAvailable)
+                                                ? "bg-card-secondary text-text-muted border border-border cursor-not-allowed"
+                                                : "bg-blue-600 hover:bg-blue-500 text-white shadow-lg shadow-blue-900/40"
+                                        )}
+                                    >
+                                        {upgrading ? <RefreshCw className="animate-spin" size={14} /> : <Download size={14} />}
+                                        {upgrading ? 'Upgrading...' : `Update To v${status?.latest || 'Latest'}`}
+                                    </button>
+                                    <button
+                                        onClick={() => handleUpgrade(true)}
+                                        disabled={upgrading}
+                                        title="Force docker pull of latest image and recreate container even if current version matches"
+                                        className="px-4 py-3 bg-card-secondary hover:bg-card-hover border border-border rounded-xl text-[10px] font-black tracking-widest text-text-muted hover:text-text-primary transition-all flex items-center justify-center gap-1.5"
+                                    >
+                                        <RefreshCw size={12} className={cn(upgrading && "animate-spin text-blue-400")} />
+                                        Force Pull
+                                    </button>
+                                </div>
                             </div>
                         </div>
 
                         {upgrading && upgradeStatus && (
                             <div className="space-y-4">
                                 <div className="flex items-center justify-between">
-                                    <span className="text-[10px] font-black tracking-widest text-blue-600">Upgrade Monitor</span>
+                                    <span className="text-[10px] font-black tracking-widest text-blue-500 flex items-center gap-2">
+                                        <span className="w-2 h-2 rounded-full bg-blue-500 animate-ping" />
+                                        Upgrade Monitor ({upgradeStatus.stage?.toUpperCase() || 'RUNNING'})
+                                    </span>
                                     <span className="text-[10px] font-mono opacity-50">{upgradeStatus.logs.length} events logged</span>
                                 </div>
+                                {upgradeStatus.stage === 'restarting' && (
+                                    <div className="p-3 bg-blue-500/10 border border-blue-500/30 rounded-xl flex items-center gap-3 text-xs text-blue-300">
+                                        <RefreshCw size={14} className="animate-spin text-blue-400 shrink-0" />
+                                        <span>Ephemeral updater active. Container recreation in progress — the UI will automatically reconnect once healthy...</span>
+                                    </div>
+                                )}
                                 <div className="bg-black/20 rounded-2xl border border-border p-4 h-64 overflow-y-auto font-mono text-[10px] leading-relaxed scrollbar-thin scrollbar-thumb-border">
                                     {upgradeStatus.logs.map((log, i) => (
                                         <div key={i} className="mb-1 opacity-80">{log}</div>

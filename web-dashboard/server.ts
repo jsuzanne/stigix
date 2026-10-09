@@ -1163,9 +1163,35 @@ let G_UPGRADE_STATUS: UpgradeStatus = {
     startTime: null
 };
 
-// --- PERSISTENT REDEPLOY STATUS ---
-// Check if we just came back from a redeploy
+// --- PERSISTENT UPGRADE / REDEPLOY STATUS ---
+function saveUpgradeStatusToDisk() {
+    try {
+        const upgradeStatusFile = path.join(PROJECT_ROOT, 'config', '.upgrade_status.json');
+        fs.writeFileSync(upgradeStatusFile, JSON.stringify(G_UPGRADE_STATUS, null, 2), 'utf8');
+    } catch (e: any) {
+        console.warn('[MAINTENANCE] Failed to persist upgrade status to disk:', e.message);
+    }
+}
+
+// Check if we just came back from an upgrade or redeploy
 try {
+    const upgradeStatusFile = path.join(PROJECT_ROOT, 'config', '.upgrade_status.json');
+    if (fs.existsSync(upgradeStatusFile)) {
+        const raw = fs.readFileSync(upgradeStatusFile, 'utf8');
+        const saved = JSON.parse(raw);
+        if (saved && (saved.stage === 'complete' || saved.stage === 'failed')) {
+            console.log(`[MAINTENANCE-BOOT] Found persisted upgrade status (${saved.stage}).`);
+            G_UPGRADE_STATUS = {
+                inProgress: false,
+                version: saved.version || null,
+                stage: saved.stage,
+                logs: saved.logs || [`[${new Date().toISOString()}] 🚀 Container successfully upgraded and running Stigix ${saved.version || 'latest'}.`],
+                error: saved.error || null,
+                startTime: saved.startTime || Date.now()
+            };
+        }
+    }
+
     const redeployPendingFile = path.join(PROJECT_ROOT, 'config', '.redeploy_pending');
     if (fs.existsSync(redeployPendingFile)) {
         console.log('[MAINTENANCE-BOOT] Found .redeploy_pending marker. Setting status to complete.');
@@ -1179,8 +1205,8 @@ try {
         };
         fs.unlinkSync(redeployPendingFile);
     }
-} catch (e) {
-    console.error('[MAINTENANCE-BOOT] Failed to check/clear redeploy marker:', e);
+} catch (e: any) {
+    console.error('[MAINTENANCE-BOOT] Failed to check persistent upgrade status:', e.message);
 }
 
 const getInterface = (): string => {
@@ -3643,6 +3669,16 @@ const aggregateStats = () => {
 };
 
 // API: Get Status
+// Lightweight unauthenticated health check for docker healthchecks and ephemeral updater verification
+app.get('/api/health', (req, res) => {
+    res.json({
+        status: 'healthy',
+        uptime: process.uptime(),
+        version: typeof STIGIX_VERSION !== 'undefined' ? STIGIX_VERSION : (process.env.STIGIX_VERSION || '2.0.0'),
+        timestamp: Date.now()
+    });
+});
+
 app.get('/api/status', (req, res) => {
     // In Docker/Cross-container, checks via systemctl don't work.
     // We check if any stats-*.json has been updated recently (heartbeat).
@@ -12131,115 +12167,153 @@ app.post('/api/admin/maintenance/upgrade', authenticateToken, async (req, res) =
         return res.status(400).json({ error: 'Upgrade already in progress' });
     }
 
+    const targetVersion = (version || 'latest').trim();
+    const pullImage = targetVersion.includes('/') ? targetVersion : `jsuzanne/stigix:${targetVersion}`;
+
     // Initialize status
     G_UPGRADE_STATUS = {
         inProgress: true,
-        version: version || 'latest',
+        version: targetVersion,
         stage: 'pulling',
-        logs: [`[${new Date().toISOString()}] Upgrade requested to ${version || 'latest'}`],
+        logs: [`[${new Date().toISOString()}] 🚀 Upgrade initiated towards image: ${pullImage}`],
         error: null,
         startTime: Date.now()
     };
+    saveUpgradeStatusToDisk();
 
     res.json({ success: true, message: 'Upgrade started in background' });
 
     const runUpgrade = async () => {
         try {
             const rootDir = PROJECT_ROOT;
-            const hasAppCompose = fs.existsSync('/app/docker-compose.yml');
-            const hasRootCompose = fs.existsSync(path.join(rootDir, 'docker-compose.yml'));
-            const composeFile = hasAppCompose ? '/app/docker-compose.yml' : (hasRootCompose ? path.join(rootDir, 'docker-compose.yml') : null);
-            const workingDir = hasAppCompose ? '/app' : rootDir;
+            const workingDir = fs.existsSync('/app') ? '/app' : rootDir;
 
-            // 1. Detect docker compose command
-            let baseCmd = 'docker compose';
-            try {
-                baseCmd = await detectDockerComposeCmd();
-            } catch (err: any) {
-                G_UPGRADE_STATUS.logs.push(`[WARN] Docker compose detection failed: ${err.message}. Defaulting to 'docker compose'`);
-            }
+            // 1. Resilient Pull Phase with Retries (Max 3 attempts)
+            // CRITICAL: We NEVER touch or stop the running container until the pull is 100% successful!
+            let pullSucceeded = false;
+            const maxRetries = 3;
 
-            const hostDir = await getHostProjectDir();
-            const projDirFlag = hostDir ? `--project-directory ${hostDir}` : '';
+            for (let attempt = 1; attempt <= maxRetries; attempt++) {
+                G_UPGRADE_STATUS.logs.push(`[${new Date().toISOString()}] [PULL] Attempt ${attempt}/${maxRetries}: docker pull ${pullImage}`);
+                saveUpgradeStatusToDisk();
 
-            // 2. Prune stage (Purge)
-            try {
-                // Run system prune to clean up unused layers/containers
-                const pruneExit = await runCommandAndLog('docker system prune -a -f', workingDir, 'pruning');
-                if (pruneExit !== 0) {
-                    G_UPGRADE_STATUS.logs.push(`[WARN] Prune returned exit code ${pruneExit}. Continuing...`);
-                }
-            } catch (e: any) {
-                G_UPGRADE_STATUS.logs.push(`[WARN] Prune failed: ${e.message}. Continuing...`);
-            }
-
-            // 3. Pull stage
-            const pullTarget = version || 'latest';
-            let pullCmd = '';
-            if (composeFile) {
-                const tagPrefix = version ? `TAG=${version} ` : '';
-                pullCmd = `${tagPrefix}${baseCmd} ${projDirFlag} -f ${composeFile} pull`.replace(/\s+/g, ' ').trim();
-            } else {
-                pullCmd = `docker pull jsuzanne/stigix:${pullTarget}`;
-            }
-
-            const pullExit = await runCommandAndLog(pullCmd, workingDir, 'pulling');
-            if (pullExit !== 0) {
-                throw new Error(`Pull failed with exit code ${pullExit}`);
-            }
-
-            // 4. Recreate/Up stage (Restarting)
-            G_UPGRADE_STATUS.stage = 'restarting';
-            
-            // Short delay to allow client to read pull completion log
-            setTimeout(async () => {
                 try {
-                    if (composeFile) {
-                        const tagPrefix = version ? `TAG=${version} ` : '';
-                        let upCmd = '';
-                        if (hostDir) {
-                            const hostComposeFile = path.join(hostDir, 'docker-compose.yml');
-                            const runImage = version ? `jsuzanne/stigix:${version}` : 'jsuzanne/stigix:latest';
-                            // Run the compose up command inside a detached helper container so it survives the restart
-                            upCmd = `docker run -d --name stigix-upgrader-${Date.now()} --rm -v /var/run/docker.sock:/var/run/docker.sock -v ${hostDir}:${hostDir} -w ${hostDir} ${runImage} sh -c "sleep 2 && (${tagPrefix}docker compose -f ${hostComposeFile} up -d --force-recreate || ${tagPrefix}docker-compose -f ${hostComposeFile} up -d --force-recreate); exit 0"`;
-                        } else {
-                            // Fallback to direct execution if hostDir is not resolved
-                            upCmd = `${tagPrefix}${baseCmd} ${projDirFlag} -f ${composeFile} up -d --force-recreate`.replace(/\s+/g, ' ').trim();
-                        }
-                        
-                        const upExit = await runCommandAndLog(upCmd, workingDir, 'restarting');
-                        if (upExit !== 0) {
-                            G_UPGRADE_STATUS.logs.push(`[WARN] Up command invocation failed (exit ${upExit}). Falling back to simple up...`);
-                            // Fallback to simple up without force-recreate
-                            const fallbackUpCmd = hostDir
-                                ? `docker run -d --name stigix-upgrader-${Date.now()} --rm -v /var/run/docker.sock:/var/run/docker.sock -v ${hostDir}:${hostDir} -w ${hostDir} ${version ? `jsuzanne/stigix:${version}` : 'jsuzanne/stigix:latest'} sh -c "sleep 2 && (${tagPrefix}docker compose -f ${path.join(hostDir, 'docker-compose.yml')} up -d || ${tagPrefix}docker-compose -f ${path.join(hostDir, 'docker-compose.yml')} up -d); exit 0"`
-                                : `${tagPrefix}${baseCmd} ${projDirFlag} -f ${composeFile} up -d`.replace(/\s+/g, ' ').trim();
-                            
-                            const fallbackExit = await runCommandAndLog(fallbackUpCmd, workingDir, 'restarting');
-                            if (fallbackExit !== 0) {
-                                throw new Error(`Up failed with exit code ${fallbackExit}`);
-                            }
-                        }
+                    const exitCode = await runCommandAndLog(`docker pull ${pullImage}`, workingDir, 'pulling');
+                    if (exitCode === 0) {
+                        pullSucceeded = true;
+                        G_UPGRADE_STATUS.logs.push(`[${new Date().toISOString()}] ✅ [PULL] Image ${pullImage} successfully downloaded on attempt ${attempt}.`);
+                        saveUpgradeStatusToDisk();
+                        break;
                     } else {
-                        // Fallback to docker restart stigix if no compose file
-                        const restartCmd = 'docker restart stigix';
-                        const restartExit = await runCommandAndLog(restartCmd, workingDir, 'restarting');
-                        if (restartExit !== 0) {
-                            throw new Error(`Fallback restart failed with exit code ${restartExit}`);
-                        }
+                        G_UPGRADE_STATUS.logs.push(`[WARN] [PULL] Attempt ${attempt} returned exit code ${exitCode}.`);
                     }
-
-                    G_UPGRADE_STATUS.stage = 'complete';
-                    G_UPGRADE_STATUS.logs.push(`[${new Date().toISOString()}] ✅ Upgrade complete. Restarting backend...`);
-                    setTimeout(() => process.exit(0), 1000);
-
-                } catch (upErr: any) {
-                    G_UPGRADE_STATUS.stage = 'failed';
-                    G_UPGRADE_STATUS.error = upErr.message;
-                    G_UPGRADE_STATUS.inProgress = false;
-                    G_UPGRADE_STATUS.logs.push(`[ERROR] ${upErr.message}`);
+                } catch (pullErr: any) {
+                    G_UPGRADE_STATUS.logs.push(`[WARN] [PULL] Attempt ${attempt} error: ${pullErr.message}`);
                 }
-            }, 2000);
+
+                if (attempt < maxRetries) {
+                    G_UPGRADE_STATUS.logs.push(`[INFO] Network retry scheduled in 5 seconds...`);
+                    saveUpgradeStatusToDisk();
+                    await new Promise(r => setTimeout(r, 5000));
+                }
+            }
+
+            // If all pull attempts failed, ABORT SAFELY without stopping or modifying the current container
+            if (!pullSucceeded) {
+                G_UPGRADE_STATUS.inProgress = false;
+                G_UPGRADE_STATUS.stage = 'failed';
+                G_UPGRADE_STATUS.error = `Docker pull failed after ${maxRetries} attempts. Upgrade aborted safely. Your running instance remains 100% operational with zero disruption.`;
+                G_UPGRADE_STATUS.logs.push(`[${new Date().toISOString()}] ❌ ${G_UPGRADE_STATUS.error}`);
+                saveUpgradeStatusToDisk();
+                return;
+            }
+
+            // 2. Resolve Host Paths & Environment for Compose
+            const hostDir = await getHostProjectDir();
+            const hostComposeFile = hostDir ? path.join(hostDir, 'docker-compose.yml') : null;
+            const hostConfigDir = hostDir ? path.join(hostDir, 'config') : path.join(rootDir, 'config');
+
+            G_UPGRADE_STATUS.stage = 'restarting';
+            G_UPGRADE_STATUS.logs.push(`[${new Date().toISOString()}] Pull validated. Preparing detached ephemeral updater...`);
+            saveUpgradeStatusToDisk();
+
+            // 3. Write Ephemeral Updater Shell Script into persistent config volume
+            const updaterScriptContent = `#!/bin/sh
+set -e
+LOG_FILE="/config/stigix_updater.log"
+STATUS_FILE="/config/.upgrade_status.json"
+
+echo "=================================================" >> "$LOG_FILE"
+echo "[$(date -u)] [UPDATER] Ephemeral updater started for target version: ${targetVersion}" >> "$LOG_FILE"
+echo "[$(date -u)] [UPDATER] Host project directory: ${hostDir || 'unknown'}" >> "$LOG_FILE"
+
+sleep 3
+
+# Step 1: Recreate Stigix Container
+if [ -n "${hostComposeFile}" ] && [ -f "${hostComposeFile}" ]; then
+    echo "[$(date -u)] [UPDATER] Executing Docker Compose up with TAG=${targetVersion}..." >> "$LOG_FILE"
+    (TAG="${targetVersion}" docker compose -f "${hostComposeFile}" up -d --force-recreate >> "$LOG_FILE" 2>&1) || \
+    (TAG="${targetVersion}" docker-compose -f "${hostComposeFile}" up -d --force-recreate >> "$LOG_FILE" 2>&1)
+else
+    echo "[$(date -u)] [UPDATER] No docker-compose.yml found on host. Restarting stigix container directly..." >> "$LOG_FILE"
+    docker restart stigix >> "$LOG_FILE" 2>&1
+fi
+
+# Step 2: Healthcheck Loop (wait up to 60s for /api/health or /api/status)
+echo "[$(date -u)] [UPDATER] Waiting for new container healthcheck..." >> "$LOG_FILE"
+HEALTHY=0
+for i in $(seq 1 30); do
+    sleep 2
+    if curl -sf http://127.0.0.1:8080/api/health >/dev/null 2>&1 || curl -sf http://localhost:8080/api/health >/dev/null 2>&1 || curl -sf http://127.0.0.1:8080/api/status >/dev/null 2>&1; then
+        HEALTHY=1
+        echo "[$(date -u)] [UPDATER] ✅ Healthcheck passed on attempt $i!" >> "$LOG_FILE"
+        break
+    fi
+done
+
+if [ "$HEALTHY" -eq 1 ]; then
+    echo "[$(date -u)] [UPDATER] 🚀 Upgrade successfully finalized!" >> "$LOG_FILE"
+    cat << 'EOF' > "$STATUS_FILE"
+{"inProgress":false,"version":"${targetVersion}","stage":"complete","error":null,"completedAt":$(date +%s000)}
+EOF
+else
+    echo "[$(date -u)] [UPDATER] ⚠️ Healthcheck timed out after 60 seconds." >> "$LOG_FILE"
+    cat << 'EOF' > "$STATUS_FILE"
+{"inProgress":false,"version":"${targetVersion}","stage":"failed","error":"New container failed healthcheck within 60 seconds after upgrade.","completedAt":$(date +%s000)}
+EOF
+fi
+
+echo "[$(date -u)] [UPDATER] Ephemeral updater terminated cleanly." >> "$LOG_FILE"
+`;
+
+            const localScriptPath = path.join(rootDir, 'config', 'stigix_ephemeral_updater.sh');
+            try {
+                fs.writeFileSync(localScriptPath, updaterScriptContent, { mode: 0o755 });
+            } catch (err: any) {
+                G_UPGRADE_STATUS.logs.push(`[WARN] Could not write script to config: ${err.message}`);
+            }
+
+            // 4. Launch Detached Ephemeral Helper Container
+            // CRITICAL: Must use --entrypoint /bin/sh to prevent supervisord / entrypoint.sh from taking over!
+            let spawnCmd = '';
+            if (hostDir) {
+                spawnCmd = `docker run -d --name stigix-updater-${Date.now()} --rm --entrypoint /bin/sh -v /var/run/docker.sock:/var/run/docker.sock -v ${hostDir}:${hostDir} -v ${hostConfigDir}:/config -w ${hostDir} ${pullImage} /config/stigix_ephemeral_updater.sh`;
+            } else {
+                spawnCmd = `docker run -d --name stigix-updater-${Date.now()} --rm --entrypoint /bin/sh -v /var/run/docker.sock:/var/run/docker.sock ${pullImage} -c "sleep 3 && docker restart stigix"`;
+            }
+
+            G_UPGRADE_STATUS.logs.push(`[${new Date().toISOString()}] Delegating execution to detached ephemeral container: ${spawnCmd}`);
+            saveUpgradeStatusToDisk();
+
+            const spawnExit = await runCommandAndLog(spawnCmd, workingDir, 'restarting');
+            if (spawnExit === 0) {
+                G_UPGRADE_STATUS.logs.push(`[${new Date().toISOString()}] ✅ Ephemeral updater container launched. Yielding process for restart...`);
+                saveUpgradeStatusToDisk();
+                // Graceful delay allowing HTTP response to complete before process exits
+                setTimeout(() => process.exit(0), 1200);
+            } else {
+                throw new Error(`Failed to spawn ephemeral updater container (exit code ${spawnExit})`);
+            }
 
         } catch (e: any) {
             console.error('[MAINTENANCE] Upgrade failed:', e);
@@ -12247,6 +12321,7 @@ app.post('/api/admin/maintenance/upgrade', authenticateToken, async (req, res) =
             G_UPGRADE_STATUS.stage = 'failed';
             G_UPGRADE_STATUS.error = e.message;
             G_UPGRADE_STATUS.logs.push(`[ERROR] ${e.message}`);
+            saveUpgradeStatusToDisk();
         }
     };
 
