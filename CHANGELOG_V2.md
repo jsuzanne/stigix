@@ -2,8 +2,9 @@
 
 All notable changes made specifically on the `v2` branch are documented in this file.
 
-## [v2.1.2] - 2026-10-09 — Leader-Orchestrated Remote Upgrades, SASE Fabric Topology & In-Place Maintenance
+## [v2.1.2] - 2026-10-09 — Live Packet Capture, Remote Upgrades, SASE Fabric Topology & In-Place Maintenance
 
+- **feat(packet-capture)**: Built complete Live Packet Capture & Web Analyzer (`PacketCapture.tsx`, `packet-capture-routes.ts`, `engines/pcap_capture_engine.py`). Features BPF kernel filtering with 1-click presets, Wireshark-grade 3-pane inspector (virtual packet table, OSI layer tree, and hex/ASCII dump), display filter bar, and 1-click bridge to the PCAP Replay Engine.
 - **feat(fleet-maintenance)**: Added Leader-orchestrated 1-click remote peer upgrades (`Settings.tsx`, `server.ts`, `fleet-tunnel.ts`). Leader nodes query spoke engine versions via the Fleet Gateway (`/api/gateway/:peerId/api/admin/maintenance/version`) and trigger remote upgrades with real-time log streaming.
 - **feat(settings-ui)**: Added dedicated **Fleet Nodes Maintenance** section directly in the `Maintenance & Updates` tab on Leader nodes, complementing the Registered Targets table in `Target Controller`.
 - **feat(remote-modal)**: Built interactive Remote Node Upgrade modal with 4-phase visual progress tracker (`1. Remote Pull` ➔ `2. Recreate` ➔ `3. Healthcheck` ➔ `4. Ready`), live console stream, and healthcheck reconnect radar pinging port 8080 until the remote node reports operational.

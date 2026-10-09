@@ -8,6 +8,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [2.1.2] - 2026-10-09
 
 ### Added
+- **Live Packet Capture & Web Analyzer (`PacketCapture.tsx`, `packet-capture-routes.ts`, `pcap_capture_engine.py`)**:
+  - Live in-browser packet capture engine running kernel BPF filters via `tcpdump -U` across any host interface (`any`, `ens3`, `docker0`, etc.).
+  - 1-Click BPF presets for Custom TCP Apps (`8083-8099`), Synthetic Probes, Voice RTP (`6100-6200`), Security EICAR (`8082`), DNS, and Speedtest.
+  - Wireshark-grade 3-pane responsive layout: Virtual Packet Table (with protocol syntax coloring), Collapsible OSI Protocol Dissection Tree, and synchronized 16-byte Hex/ASCII dump viewer with instant copy.
+  - Native display search and filter bar supporting protocol (`tcp`, `udp`, `icmp`, `dns`), port, IP, and TCP flag anomalies (`rst`, `syn`, `ack`).
+  - 1-Click **« Send to PCAP Replay »** bridging live captures directly into the L7 PCAP Replay engine catalog without manual file manipulation.
 - **Leader-Orchestrated 1-Click Remote Peer Upgrades (`Settings.tsx`, `server.ts`, `fleet-tunnel.ts`)**:
   - Leader node discovers remote peer engine versions across the entire cluster via Fleet Gateway (`/api/gateway/:peerId/api/admin/maintenance/version`).
   - Added 1-click upgrade button for remote peers in the Registered Targets table (`Target Controller`) and in the dedicated **Fleet Nodes Maintenance** section in **Maintenance & Updates**.

@@ -32,6 +32,7 @@ import { UnderlayTopologyManager } from './underlay-topology-manager.js';
 import { TcpAppManager } from './custom-tcp-apps/tcp-app-manager.js';
 import { createCustomTcpApiRouter } from './custom-tcp-apps/api-routes.js';
 import { createPcapApiRouter } from './custom-tcp-apps/pcap-routes.js';
+import { createCaptureApiRouter } from './packet-capture-routes.js';
 import { createApiStudioRouter } from './api-studio-routes.js';
 import { apiLogBuffer } from './api-logger.js';
 import { AiManager } from './ai-copilot/ai-manager.js';
@@ -14518,6 +14519,9 @@ const syncFleetPcapProfiles = () => {
 // --- PCAP Stateful Replay Engine API ---
 const getPcapAutoSyncThresholdMb = () => Math.min(50, Math.max(1, getSystemSettings().pcap_max_auto_sync_mb || 10));
 app.use('/api/pcap', authenticateToken, createPcapApiRouter(APP_CONFIG.configDir, PROJECT_ROOT, PYTHON_PATH, syncFleetPcapProfiles, getPcapAutoSyncThresholdMb));
+// --- Live Packet Capture & Web Analyzer API ---
+app.use('/api/capture', authenticateToken, createCaptureApiRouter(APP_CONFIG.configDir, PROJECT_ROOT, PYTHON_PATH));
+log('CAPTURE', '📡 Live Packet Capture API mounted at /api/capture');
 log('PCAP', `📦 PCAP Stateful Replay API mounted at /api/pcap (Auto-sync threshold: ${getPcapAutoSyncThresholdMb()}MB, Feature Flag: ENABLE_PCAP_REPLAY=${process.env.ENABLE_PCAP_REPLAY === 'true'})`);
 
 // --- Stigix API Studio & Telemetry Routes ---
