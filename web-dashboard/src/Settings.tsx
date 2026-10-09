@@ -468,6 +468,22 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
     const [status, setStatus] = useState<MaintenanceStatus | null>(null);
     const [upgradeStatus, setUpgradeStatus] = useState<UpgradeStatus | null>(null);
     const [upgrading, setUpgrading] = useState(false);
+    const [isPruning, setIsPruning] = useState(false);
+    const [upgradeModal, setUpgradeModal] = useState<{
+        open: boolean;
+        phase: 'pulling' | 'restarting' | 'reconnecting' | 'complete' | 'failed';
+        version: string | null;
+        reconnectAttempts: number;
+        countdown: number;
+        error: string | null;
+    }>({
+        open: false,
+        phase: 'pulling',
+        version: null,
+        reconnectAttempts: 0,
+        countdown: 3,
+        error: null
+    });
 
     // System Info State
     const [systemInfo, setSystemInfo] = useState<any>(null);
@@ -1015,6 +1031,23 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
         return () => clearInterval(interval);
     }, [token, activePeerId]);
 
+    // Restore upgrade modal if page was refreshed during container recreation
+    useEffect(() => {
+        const active = sessionStorage.getItem('stigix_upgrade_active');
+        const ver = sessionStorage.getItem('stigix_upgrade_version');
+        if (active === 'true') {
+            setUpgrading(true);
+            setUpgradeModal({
+                open: true,
+                phase: 'reconnecting',
+                version: ver,
+                reconnectAttempts: 1,
+                countdown: 3,
+                error: null
+            });
+        }
+    }, []);
+
     // Active fast-polling when upgrade is in progress (2s interval, tolerant to container recreation)
     useEffect(() => {
         if (!upgrading) return;
@@ -1026,27 +1059,69 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                 if (res.ok) {
                     const data = await res.json();
                     setUpgradeStatus(data);
-                    if (!data.inProgress && data.stage === 'complete') {
-                        showSuccess("Upgrade complete! System is running the updated version.");
+                    if (data.inProgress) {
+                        setUpgradeModal(prev => ({
+                            ...prev,
+                            open: true,
+                            phase: data.stage === 'restarting' ? 'restarting' : 'pulling',
+                            version: data.version || prev.version,
+                            reconnectAttempts: 0
+                        }));
+                    } else if (data.stage === 'complete') {
                         setUpgrading(false);
+                        setUpgradeModal(prev => ({
+                            ...prev,
+                            open: true,
+                            phase: 'complete',
+                            version: data.version || prev.version || 'latest',
+                            countdown: 3
+                        }));
+                        sessionStorage.removeItem('stigix_upgrade_active');
+                        sessionStorage.removeItem('stigix_upgrade_version');
                         apiFetch('/api/admin/maintenance/dismiss', { method: 'POST', headers: { 'Authorization': `Bearer ${token}` } }).catch(() => {});
-                        apiFetch('/api/admin/maintenance/version', { headers: { 'Authorization': `Bearer ${token}` } })
-                            .then(r => r.json())
-                            .then(m => setStatus(m))
-                            .catch(() => {});
-                    } else if (!data.inProgress && data.stage === 'failed') {
-                        setErrorMsg(data.error || 'Upgrade failed');
+                    } else if (data.stage === 'failed') {
                         setUpgrading(false);
+                        setErrorMsg(data.error || 'Upgrade failed');
+                        setUpgradeModal(prev => ({
+                            ...prev,
+                            open: true,
+                            phase: 'failed',
+                            error: data.error || 'Upgrade failed'
+                        }));
+                        sessionStorage.removeItem('stigix_upgrade_active');
+                        sessionStorage.removeItem('stigix_upgrade_version');
                         apiFetch('/api/admin/maintenance/dismiss', { method: 'POST', headers: { 'Authorization': `Bearer ${token}` } }).catch(() => {});
                     }
                 }
             } catch (e) {
                 // Expected connection refusal while the container is restarting
+                setUpgradeModal(prev => {
+                    if (!prev.open) return prev;
+                    return {
+                        ...prev,
+                        phase: 'reconnecting',
+                        reconnectAttempts: prev.reconnectAttempts + 1
+                    };
+                });
             }
         };
         const fastTimer = setInterval(fastPoll, 2000);
         return () => clearInterval(fastTimer);
     }, [upgrading, token]);
+
+    // Countdown and automatic reload on complete
+    useEffect(() => {
+        if (upgradeModal.open && upgradeModal.phase === 'complete') {
+            if (upgradeModal.countdown <= 0) {
+                window.location.reload();
+                return;
+            }
+            const timer = setTimeout(() => {
+                setUpgradeModal(prev => ({ ...prev, countdown: prev.countdown - 1 }));
+            }, 1000);
+            return () => clearTimeout(timer);
+        }
+    }, [upgradeModal.open, upgradeModal.phase, upgradeModal.countdown]);
 
     useEffect(() => {
         if (registryStatus?.static_leader_url && !staticLeaderUrl) {
@@ -1629,6 +1704,10 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
     };
 
     const handleUpgrade = async (forceLatest = false) => {
+        if (status?.dockerReady === false) {
+            setErrorMsg("Docker socket (/var/run/docker.sock) is not mounted into this container. Self-upgrade cannot proceed.");
+            return;
+        }
         const detectedChannel = status?.channel || ((status?.current?.startsWith('v2') || status?.current?.includes('dev')) ? 'v2' : 'stable');
         const cleanLatest = (status?.latest || '').replace(/\s*\(.*?\)/g, '').trim();
         const targetVer = forceLatest ? detectedChannel : (cleanLatest || detectedChannel);
@@ -1636,8 +1715,18 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
             ? `This will force docker pull of jsuzanne/stigix:${targetVer} and recreate the container. Proceed?`
             : `This will pull v${targetVer} images and restart the dashboard. Proceed?`;
         if (!confirm(confirmMsg)) return;
+        sessionStorage.setItem('stigix_upgrade_active', 'true');
+        sessionStorage.setItem('stigix_upgrade_version', targetVer);
         setUpgrading(true);
         setErrorMsg(null);
+        setUpgradeModal({
+            open: true,
+            phase: 'pulling',
+            version: targetVer,
+            reconnectAttempts: 0,
+            countdown: 3,
+            error: null
+        });
         try {
             const res = await apiFetch('/api/admin/maintenance/upgrade', {
                 method: 'POST',
@@ -1650,14 +1739,24 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                 const data = await res.json();
                 setErrorMsg(data.details || data.error || 'Upgrade failed');
                 setUpgrading(false);
+                setUpgradeModal(prev => ({ ...prev, open: false }));
+                sessionStorage.removeItem('stigix_upgrade_active');
+                sessionStorage.removeItem('stigix_upgrade_version');
             }
         } catch (e) {
             setErrorMsg('Connection lost during upgrade initiation');
             setUpgrading(false);
+            setUpgradeModal(prev => ({ ...prev, open: false }));
+            sessionStorage.removeItem('stigix_upgrade_active');
+            sessionStorage.removeItem('stigix_upgrade_version');
         }
     };
 
     const handleRestart = async (type: 'restart' | 'redeploy') => {
+        if (type === 'redeploy' && status?.dockerReady === false) {
+            setErrorMsg("Docker socket (/var/run/docker.sock) is not mounted into this container. System redeploy cannot proceed.");
+            return;
+        }
         const msg = type === 'restart'
             ? 'Are you sure you want to restart all services? The dashboard will be briefly unavailable.'
             : 'This will recreate containers and reload configuration. Are you sure?';
@@ -1670,6 +1769,31 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                 body: JSON.stringify({ type })
             });
         } catch (e) { setUpgrading(false); }
+    };
+
+    const handlePruneImages = async () => {
+        if (status?.dockerReady === false) {
+            setErrorMsg("Docker socket (/var/run/docker.sock) is not mounted into this container.");
+            return;
+        }
+        if (!confirm("This will clean up unused and dangling Docker images to reclaim host disk space. Currently running containers will not be affected. Continue?")) return;
+        setIsPruning(true);
+        try {
+            const res = await apiFetch('/api/admin/maintenance/prune', {
+                method: 'POST',
+                headers: authHeaders
+            });
+            const data = await res.json();
+            if (res.ok) {
+                showSuccess(data.message || 'Docker images pruned successfully.');
+            } else {
+                setErrorMsg(data.error || 'Failed to prune Docker images.');
+            }
+        } catch (e: any) {
+            setErrorMsg(e.message || 'Failed to prune images');
+        } finally {
+            setIsPruning(false);
+        }
     };
 
     const saveConvergenceThresholds = async () => {
@@ -3604,6 +3728,21 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                             </div>
                         </div>
 
+                        {status?.dockerReady === false && (
+                            <div className="p-4 bg-amber-500/10 border border-amber-500/30 rounded-2xl flex items-start gap-3 text-amber-500">
+                                <AlertTriangle size={20} className="shrink-0 mt-0.5" />
+                                <div className="space-y-1">
+                                    <h4 className="text-xs font-black tracking-wider uppercase">Docker Socket Not Mounted</h4>
+                                    <p className="text-[11px] opacity-90 leading-relaxed text-text-primary">
+                                        The Docker socket (<code className="bg-black/30 px-1 py-0.5 rounded font-mono text-[10px]">/var/run/docker.sock</code>) is not mounted into this container. Self-upgrade and stack redeploy are disabled.
+                                    </p>
+                                    <p className="text-[10px] font-mono opacity-80 text-amber-400">
+                                        To enable 1-click self-upgrade, add <code className="bg-black/30 px-1 py-0.5 rounded">- /var/run/docker.sock:/var/run/docker.sock</code> under <code className="bg-black/30 px-1 py-0.5 rounded">volumes:</code> in your docker-compose.yml.
+                                    </p>
+                                </div>
+                            </div>
+                        )}
+
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                             <div className="space-y-4">
                                 <div className="flex justify-between items-center p-4 bg-card-secondary/50 rounded-xl border border-border">
@@ -3627,10 +3766,11 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                                 <div className="flex flex-col sm:flex-row gap-3">
                                     <button
                                         onClick={() => handleUpgrade(false)}
-                                        disabled={upgrading || !status?.updateAvailable}
+                                        disabled={upgrading || !status?.updateAvailable || status?.dockerReady === false}
+                                        title={status?.dockerReady === false ? "Docker socket not mounted" : undefined}
                                         className={cn(
                                             "flex-1 flex items-center justify-center gap-2 py-3 rounded-xl text-[10px] font-black tracking-[0.2em] transition-all",
-                                            (upgrading || !status?.updateAvailable)
+                                            (upgrading || !status?.updateAvailable || status?.dockerReady === false)
                                                 ? "bg-card-secondary text-text-muted border border-border cursor-not-allowed"
                                                 : "bg-blue-600 hover:bg-blue-500 text-white shadow-lg shadow-blue-900/40"
                                         )}
@@ -3640,12 +3780,21 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                                     </button>
                                     <button
                                         onClick={() => handleUpgrade(true)}
-                                        disabled={upgrading}
-                                        title="Force docker pull of latest image and recreate container even if current version matches"
-                                        className="px-4 py-3 bg-card-secondary hover:bg-card-hover border border-border rounded-xl text-[10px] font-black tracking-widest text-text-muted hover:text-text-primary transition-all flex items-center justify-center gap-1.5"
+                                        disabled={upgrading || status?.dockerReady === false}
+                                        title={status?.dockerReady === false ? "Docker socket not mounted" : "Force docker pull of latest image and recreate container even if current version matches"}
+                                        className="px-4 py-3 bg-card-secondary hover:bg-card-hover border border-border rounded-xl text-[10px] font-black tracking-widest text-text-muted hover:text-text-primary transition-all flex items-center justify-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
                                     >
                                         <RefreshCw size={12} className={cn(upgrading && "animate-spin text-blue-400")} />
                                         Force Pull
+                                    </button>
+                                    <button
+                                        onClick={handlePruneImages}
+                                        disabled={upgrading || isPruning || status?.dockerReady === false}
+                                        title={status?.dockerReady === false ? "Docker socket not mounted" : "Clean up unused and dangling Docker images to reclaim host disk space"}
+                                        className="px-4 py-3 bg-card-secondary hover:bg-card-hover border border-border rounded-xl text-[10px] font-black tracking-widest text-text-muted hover:text-text-primary transition-all flex items-center justify-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
+                                    >
+                                        <Trash2 size={12} className={cn(isPruning && "animate-spin text-amber-400")} />
+                                        {isPruning ? 'Pruning...' : 'Prune Images'}
                                     </button>
                                 </div>
                             </div>
@@ -3711,7 +3860,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                                     <p className="text-xs text-text-muted font-bold italic opacity-60">Applies docker-compose and environment changes. Temporary downtime.</p>
                                     <button
                                         onClick={() => handleRestart('redeploy')}
-                                        disabled={upgrading}
+                                        disabled={upgrading || status?.dockerReady === false}
                                         className="w-full py-4 bg-red-600/10 hover:bg-red-600/20 border border-red-500/30 text-red-600 rounded-xl text-[10px] font-black tracking-widest transition-all shadow-sm"
                                     >
                                         <Power size={16} className="inline mr-2" />
@@ -6418,6 +6567,172 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
             {activeTab === 'api-studio' && (
                 <div className="pt-2">
                     <ApiStudio token={token} />
+                </div>
+            )}
+
+            {/* ─── Self-Upgrade Progress & Success Modal ─── */}
+            {upgradeModal.open && (
+                <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-300">
+                    <div className={cn(
+                        "bg-card/95 border rounded-3xl w-full max-w-2xl shadow-2xl overflow-hidden backdrop-blur-xl transition-all duration-300 scale-in-center",
+                        upgradeModal.phase === 'complete' ? "border-emerald-500/40 shadow-emerald-950/40" :
+                        upgradeModal.phase === 'failed' ? "border-rose-500/40 shadow-rose-950/40" :
+                        upgradeModal.phase === 'reconnecting' ? "border-cyan-500/40 shadow-cyan-950/40" :
+                        "border-blue-500/30 shadow-blue-950/30"
+                    )}>
+                        {/* Header */}
+                        <div className="p-6 border-b border-border/80 flex items-center justify-between bg-card-secondary/30">
+                            <div className="flex items-center gap-3">
+                                <div className={cn(
+                                    "p-2.5 rounded-2xl border flex items-center justify-center shadow-inner",
+                                    upgradeModal.phase === 'complete' ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/30" :
+                                    upgradeModal.phase === 'failed' ? "bg-rose-500/10 text-rose-400 border-rose-500/30" :
+                                    upgradeModal.phase === 'reconnecting' ? "bg-cyan-500/10 text-cyan-400 border-cyan-500/30" :
+                                    "bg-blue-500/10 text-blue-400 border-blue-500/30"
+                                )}>
+                                    {upgradeModal.phase === 'complete' ? <CheckCircle2 size={24} className="animate-bounce" /> :
+                                     upgradeModal.phase === 'failed' ? <AlertCircle size={24} /> :
+                                     upgradeModal.phase === 'reconnecting' ? <Radio size={24} className="animate-pulse" /> :
+                                     upgradeModal.phase === 'restarting' ? <Cpu size={24} className="animate-pulse" /> :
+                                     <RefreshCw size={24} className="animate-spin" />}
+                                </div>
+                                <div>
+                                    <div className="flex items-center gap-2">
+                                        <h3 className="text-base font-black text-text-primary tracking-tight">
+                                            {upgradeModal.phase === 'complete' ? "Upgrade Successful!" :
+                                             upgradeModal.phase === 'failed' ? "Upgrade Failed" :
+                                             upgradeModal.phase === 'reconnecting' ? "Reconnecting to Container..." :
+                                             upgradeModal.phase === 'restarting' ? "Recreating Stigix Container..." :
+                                             "Pulling Stigix Image..."}
+                                        </h3>
+                                        <span className="px-2 py-0.5 rounded-full bg-blue-500/10 border border-blue-500/20 text-blue-400 font-mono text-[10px] font-bold">
+                                            {upgradeModal.version || 'v2'}
+                                        </span>
+                                    </div>
+                                    <p className="text-[11px] font-bold text-text-muted opacity-80 mt-0.5">
+                                        {upgradeModal.phase === 'complete' ? "All services verified healthy. Preparing automatic reload..." :
+                                         upgradeModal.phase === 'failed' ? "An error occurred during the update process." :
+                                         upgradeModal.phase === 'reconnecting' ? `Awaiting healthcheck on port 8080 (attempt #${upgradeModal.reconnectAttempts})...` :
+                                         upgradeModal.phase === 'restarting' ? "Ephemeral updater is recreating the container on host..." :
+                                         "Downloading layers from Docker Hub..."}
+                                    </p>
+                                </div>
+                            </div>
+                            {upgradeModal.phase === 'failed' && (
+                                <button
+                                    onClick={() => setUpgradeModal(prev => ({ ...prev, open: false }))}
+                                    className="p-1.5 text-text-muted hover:text-text-primary rounded-xl hover:bg-card-hover transition-colors"
+                                >
+                                    <X size={18} />
+                                </button>
+                            )}
+                        </div>
+
+                        {/* Progress Stepper */}
+                        <div className="px-6 py-4 border-b border-border/40 bg-black/10">
+                            <div className="grid grid-cols-4 gap-2 text-center">
+                                {[
+                                    { label: '1. Pull Image', active: upgradeModal.phase === 'pulling', done: ['restarting', 'reconnecting', 'complete'].includes(upgradeModal.phase) },
+                                    { label: '2. Recreate', active: upgradeModal.phase === 'restarting', done: ['reconnecting', 'complete'].includes(upgradeModal.phase) },
+                                    { label: '3. Healthcheck', active: upgradeModal.phase === 'reconnecting', done: upgradeModal.phase === 'complete' },
+                                    { label: '4. Ready', active: upgradeModal.phase === 'complete', done: upgradeModal.phase === 'complete' }
+                                ].map((step, idx) => (
+                                    <div key={idx} className={cn(
+                                        "p-2 rounded-xl text-[10px] font-black uppercase tracking-wider border transition-all",
+                                        step.done ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-400" :
+                                        step.active ? "bg-blue-500/10 border-blue-500/40 text-blue-400 shadow-sm" :
+                                        "bg-card-secondary/20 border-border/40 text-text-muted/60"
+                                    )}>
+                                        {step.label}
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+
+                        {/* Terminal Logs & Content */}
+                        <div className="p-6 space-y-4">
+                            {upgradeModal.phase === 'complete' ? (
+                                <div className="p-6 bg-emerald-500/10 border border-emerald-500/30 rounded-2xl text-center space-y-3 animate-in zoom-in-95 duration-200">
+                                    <div className="inline-flex p-3 rounded-2xl bg-emerald-500/20 text-emerald-400 mb-1">
+                                        <CheckCircle2 size={32} />
+                                    </div>
+                                    <h4 className="text-base font-black text-emerald-400 tracking-tight">
+                                        Stigix Updated to {upgradeModal.version || 'Latest'}!
+                                    </h4>
+                                    <p className="text-xs text-text-primary/90 font-medium max-w-md mx-auto">
+                                        The application container was recreated and passed internal healthcheck. Dangling Docker images were pruned from the host.
+                                    </p>
+                                    <div className="pt-2 flex items-center justify-center gap-2 text-xs font-mono text-emerald-300">
+                                        <RefreshCw size={14} className="animate-spin" />
+                                        <span>Reloading dashboard in <strong className="text-emerald-400 font-bold text-sm">{upgradeModal.countdown}</strong> second{upgradeModal.countdown !== 1 ? 's' : ''}...</span>
+                                    </div>
+                                </div>
+                            ) : upgradeModal.phase === 'failed' ? (
+                                <div className="p-4 bg-rose-500/10 border border-rose-500/30 rounded-2xl space-y-2">
+                                    <div className="flex items-center gap-2 text-rose-400 font-bold text-xs uppercase tracking-wider">
+                                        <AlertCircle size={16} />
+                                        <span>Upgrade Halted</span>
+                                    </div>
+                                    <p className="text-xs font-mono text-rose-300 leading-relaxed">
+                                        {upgradeModal.error || 'Unknown error occurred'}
+                                    </p>
+                                    <p className="text-[11px] text-text-muted">
+                                        Your previous running instance was preserved. Check logs below for details.
+                                    </p>
+                                </div>
+                            ) : null}
+
+                            {/* Live Console Output */}
+                            <div className="space-y-1.5">
+                                <div className="flex justify-between items-center text-[10px] font-mono text-text-muted px-1">
+                                    <span>CONSOLE EVENT LOG</span>
+                                    <span>{upgradeStatus?.logs?.length || 0} events</span>
+                                </div>
+                                <div className="bg-black/60 border border-border/60 rounded-2xl p-4 h-48 overflow-y-auto font-mono text-[10px] leading-relaxed text-text-muted scrollbar-thin scrollbar-thumb-border">
+                                    {upgradeStatus?.logs && upgradeStatus.logs.length > 0 ? (
+                                        upgradeStatus.logs.map((log: string, idx: number) => (
+                                            <div key={idx} className="mb-0.5 opacity-90 hover:opacity-100 transition-opacity">
+                                                {log}
+                                            </div>
+                                        ))
+                                    ) : (
+                                        <div className="opacity-50 italic">Waiting for updater output...</div>
+                                    )}
+                                    <div className="animate-pulse inline-block w-1.5 h-3 bg-blue-500 ml-1" />
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Footer Controls */}
+                        <div className="p-6 border-t border-border/80 bg-card-secondary/20 flex items-center justify-between">
+                            <span className="text-[10px] font-mono text-text-muted">
+                                {upgradeModal.phase === 'complete' ? "Auto-refresh active" : "Safe-Abort protected"}
+                            </span>
+                            <div className="flex gap-3">
+                                {upgradeModal.phase === 'complete' ? (
+                                    <button
+                                        onClick={() => window.location.reload()}
+                                        className="px-6 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider bg-emerald-600 hover:bg-emerald-500 text-white shadow-lg shadow-emerald-950/50 flex items-center gap-2 transition-all cursor-pointer"
+                                    >
+                                        <RefreshCw size={14} className="animate-spin" />
+                                        Reload Dashboard Now
+                                    </button>
+                                ) : upgradeModal.phase === 'failed' ? (
+                                    <button
+                                        onClick={() => setUpgradeModal(prev => ({ ...prev, open: false }))}
+                                        className="px-5 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider bg-card hover:bg-card-hover border border-border text-text-primary transition-all cursor-pointer"
+                                    >
+                                        Close
+                                    </button>
+                                ) : (
+                                    <div className="flex items-center gap-2 text-xs font-mono text-blue-400">
+                                        <RefreshCw size={12} className="animate-spin" />
+                                        <span>Upgrade running, please do not close window...</span>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    </div>
                 </div>
             )}
             </div>

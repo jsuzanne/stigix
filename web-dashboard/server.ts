@@ -12428,6 +12428,10 @@ done
 NOW=$(date +%s000 2>/dev/null || date +%s)
 if [ "$HEALTHY" -eq 1 ]; then
     echo "[$(date -u)] [UPDATER] 🚀 Upgrade successfully finalized!" >> "$LOG_FILE"
+    echo "[$(date -u)] [UPDATER] 🧹 Auto-pruning old dangling images to reclaim disk space..." >> "$LOG_FILE"
+    (docker image prune -f 2>&1 || true) | while IFS= read -r line; do
+        echo "[$(date -u)] [PRUNE] $line" >> "$LOG_FILE"
+    done
     cat << EOF > "$STATUS_FILE"
 {"inProgress":false,"version":"${targetVersion}","stage":"complete","error":null,"completedAt":$NOW}
 EOF
@@ -12484,6 +12488,29 @@ rm -f /config/stigix_ephemeral_updater.sh
     runUpgrade();
 });
 
+app.post('/api/admin/maintenance/prune', authenticateToken, async (req, res) => {
+    if (!fs.existsSync('/var/run/docker.sock')) {
+        return res.status(400).json({ 
+            error: 'Docker socket (/var/run/docker.sock) is not mounted into this container. Image prune requires Docker socket access.' 
+        });
+    }
+
+    try {
+        const execPromise = promisify(exec);
+        const { stdout, stderr } = await execPromise('docker image prune -f');
+        const output = ((stdout || '') + (stderr ? `\n${stderr}` : '')).trim();
+        log('MAINTENANCE', `Docker image prune executed: ${output || "no dangling images removed"}`);
+        return res.json({ 
+            success: true, 
+            message: 'Unused dangling Docker images pruned successfully.', 
+            output 
+        });
+    } catch (err: any) {
+        console.error('[MAINTENANCE] Image prune failed:', err);
+        return res.status(500).json({ error: err.message || 'Failed to prune Docker images' });
+    }
+});
+
 app.post('/api/admin/maintenance/restart', authenticateToken, async (req, res) => {
     const { type } = req.body; // 'restart' or 'redeploy'
 
@@ -12530,7 +12557,7 @@ app.post('/api/admin/maintenance/restart', authenticateToken, async (req, res) =
                 const runImage = `jsuzanne/stigix:${channel}`;
                 const hostComposeFile = path.join(hostDir, 'docker-compose.yml');
                 const hostConfigDir = path.join(hostDir, 'config');
-                const redeployScript = `echo "=================================================" >> /config/stigix_updater.log && echo "[$(date -u)] [REDEPLOY] System Redeploy initiated for channel ${channel}" >> /config/stigix_updater.log && sleep 2 && (TAG="${channel}" docker compose -f ${hostComposeFile} pull 2>&1 || true) | while IFS= read -r l; do echo "[$(date -u)] [PULL] $l" >> /config/stigix_updater.log; done && (TAG="${channel}" docker compose -f ${hostComposeFile} up -d --force-recreate 2>&1 || TAG="${channel}" docker-compose -f ${hostComposeFile} up -d --force-recreate 2>&1) | while IFS= read -r l; do echo "[$(date -u)] [COMPOSE] $l" >> /config/stigix_updater.log; done && echo "[$(date -u)] [REDEPLOY] Redeploy finished cleanly." >> /config/stigix_updater.log`;
+                const redeployScript = `echo "=================================================" >> /config/stigix_updater.log && echo "[$(date -u)] [REDEPLOY] System Redeploy initiated for channel ${channel}" >> /config/stigix_updater.log && sleep 2 && (TAG="${channel}" docker compose -f ${hostComposeFile} pull 2>&1 || true) | while IFS= read -r l; do echo "[$(date -u)] [PULL] $l" >> /config/stigix_updater.log; done && (TAG="${channel}" docker compose -f ${hostComposeFile} up -d --force-recreate 2>&1 || TAG="${channel}" docker-compose -f ${hostComposeFile} up -d --force-recreate 2>&1) | while IFS= read -r l; do echo "[$(date -u)] [COMPOSE] $l" >> /config/stigix_updater.log; done && (docker image prune -f 2>&1 || true) | while IFS= read -r l; do echo "[$(date -u)] [PRUNE] $l" >> /config/stigix_updater.log; done && echo "[$(date -u)] [REDEPLOY] Redeploy finished cleanly." >> /config/stigix_updater.log`;
                 cmd = `docker run -d --name stigix-upgrader-${Date.now()} --rm --network host --entrypoint /bin/sh -v /var/run/docker.sock:/var/run/docker.sock -v ${hostDir}:${hostDir} -v ${hostConfigDir}:/config -w ${hostDir} ${runImage} -c '${redeployScript}'`;
             } else if (composeFile) {
                 let baseCmd = 'docker compose';
