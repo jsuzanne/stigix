@@ -76,6 +76,9 @@ interface MaintenanceStatus {
     latest: string;
     updateAvailable: boolean;
     dockerReady?: boolean;
+    channel?: string;
+    targetImage?: string;
+    remoteBuildDate?: string | null;
 }
 
 interface UpgradeStatus {
