@@ -1181,6 +1181,11 @@ try {
         const saved = JSON.parse(raw);
         if (saved && (saved.stage === 'complete' || saved.stage === 'failed')) {
             console.log(`[MAINTENANCE-BOOT] Found persisted upgrade status (${saved.stage}).`);
+            // Clean up ephemeral script if still present
+            try {
+                const helperScript = path.join(PROJECT_ROOT, 'config', 'stigix_ephemeral_updater.sh');
+                if (fs.existsSync(helperScript)) fs.unlinkSync(helperScript);
+            } catch (ce) {}
             G_UPGRADE_STATUS = {
                 inProgress: false,
                 version: saved.version || null,
@@ -12284,6 +12289,7 @@ EOF
 fi
 
 echo "[$(date -u)] [UPDATER] Ephemeral updater terminated cleanly." >> "$LOG_FILE"
+rm -f /config/stigix_ephemeral_updater.sh
 `;
 
             const localScriptPath = path.join(rootDir, 'config', 'stigix_ephemeral_updater.sh');
