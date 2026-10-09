@@ -1630,7 +1630,8 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
     };
 
     const handleUpgrade = async (forceLatest = false) => {
-        const targetVer = forceLatest ? 'latest' : (status?.latest || 'latest');
+        const detectedChannel = status?.channel || ((status?.current?.startsWith('v2') || status?.current?.includes('dev')) ? 'v2' : 'stable');
+        const targetVer = forceLatest ? detectedChannel : (status?.latest || detectedChannel);
         const confirmMsg = forceLatest 
             ? `This will force docker pull of jsuzanne/stigix:${targetVer} and recreate the container. Proceed?`
             : `This will pull v${targetVer} images and restart the dashboard. Proceed?`;
@@ -3623,7 +3624,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                                         )}
                                     >
                                         {upgrading ? <RefreshCw className="animate-spin" size={14} /> : <Download size={14} />}
-                                        {upgrading ? 'Upgrading...' : `Update To v${status?.latest || 'Latest'}`}
+                                        {upgrading ? 'Upgrading...' : `Update To ${status?.latest ? (status.latest.startsWith('v') ? status.latest : `v${status.latest}`) : 'Latest'}`}
                                     </button>
                                     <button
                                         onClick={() => handleUpgrade(true)}
@@ -3825,7 +3826,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                                     )}
                                 >
                                     {upgrading ? <RefreshCw className="animate-spin" size={14} /> : <Download size={14} />}
-                                    {upgrading ? 'Upgrading...' : `Update To v${status?.latest || 'Latest'}`}
+                                    {upgrading ? 'Upgrading...' : `Update To ${status?.latest ? (status.latest.startsWith('v') ? status.latest : `v${status.latest}`) : 'Latest'}`}
                                 </button>
                                 <button
                                     onClick={() => handleUpgrade(true)}
