@@ -2177,29 +2177,6 @@ function TopologyContent({ token }: TopologyProps) {
                                 <button onClick={() => setShowFilter(false)} className="p-1 hover:bg-card-secondary rounded-lg transition-colors text-text-muted">
                                     <X size={18} />
                                 </button>
-                                <button
-                                    onClick={() => setTopologyViewMode('sase')}
-                                    className={cn(
-                                        "w-full px-3 py-2 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all flex items-center justify-between gap-2 cursor-pointer",
-                                        topologyViewMode === 'sase'
-                                            ? "bg-purple-600 text-white shadow-md shadow-purple-500/25"
-                                            : "text-text-muted hover:text-purple-400 hover:bg-card-secondary"
-                                    )}
-                                    title="Full SASE Security Fabric View (Branches <-> Prisma Access PoPs)"
-                                >
-                                    <div className="flex items-center gap-1.5">
-                                        <Shield size={12} />
-                                        <span>SASE Fabric</span>
-                                    </div>
-                                    {topology?.sase_infrastructure?.up_service_links !== undefined ? (
-                                        <span className={cn(
-                                            "px-1.5 py-0.5 rounded-full text-[8px] font-mono font-black",
-                                            topologyViewMode === 'sase' ? "bg-white/20 text-white" : "bg-purple-500/20 text-purple-300"
-                                        )}>
-                                            {topology.sase_infrastructure.up_service_links} Up
-                                        </span>
-                                    ) : null}
-                                </button>
                             </div>
 
                             <div className="p-4 space-y-4 flex-1 overflow-hidden flex flex-col">
@@ -2358,6 +2335,29 @@ function TopologyContent({ token }: TopologyProps) {
                                             topologyViewMode === 'underlay' ? "bg-slate-950/20 text-slate-950" : "bg-amber-500/20 text-amber-300"
                                         )}>
                                             {underlayData.summary.matched}
+                                        </span>
+                                    ) : null}
+                                </button>
+                                <button
+                                    onClick={() => setTopologyViewMode('sase')}
+                                    className={cn(
+                                        "w-full px-3 py-2 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all flex items-center justify-between gap-2 cursor-pointer",
+                                        topologyViewMode === 'sase'
+                                            ? "bg-purple-600 text-white shadow-md shadow-purple-500/25"
+                                            : "text-text-muted hover:text-purple-400 hover:bg-card-secondary"
+                                    )}
+                                    title="Full SASE Security Fabric View (Branches <-> Prisma Access PoPs)"
+                                >
+                                    <div className="flex items-center gap-2">
+                                        <Shield size={14} />
+                                        <span>SASE Fabric</span>
+                                    </div>
+                                    {topology?.sase_infrastructure?.up_service_links !== undefined ? (
+                                        <span className={cn(
+                                            "px-1.5 py-0.5 rounded-full text-[8px] font-mono font-black",
+                                            topologyViewMode === 'sase' ? "bg-white/20 text-white" : "bg-purple-500/20 text-purple-300"
+                                        )}>
+                                            {topology.sase_infrastructure.up_service_links}
                                         </span>
                                     ) : null}
                                 </button>
