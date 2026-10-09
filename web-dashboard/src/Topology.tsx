@@ -1874,8 +1874,6 @@ function TopologyContent({ token }: TopologyProps) {
             });
         } else if (topologyViewMode === 'sase') {
             // mode SASE: Draw ServiceLink IPsec tunnels from Branches to SASE PoPs
-            const hasPopSelection = Boolean(selectedObject?.isSasePop);
-
             filteredSites.forEach((site: any) => {
                 const isHub = hubs.includes(site);
                 site.devices?.forEach((device: any) => {
@@ -1903,33 +1901,10 @@ function TopologyContent({ token }: TopologyProps) {
                         }
 
                         const isUp = sl.operational_state === 'up';
-                        const isAct = sl.role === 'active';
+                        const isZscaler = sl.provider === 'Zscaler' || (sl.name || '').toLowerCase().includes('zscaler');
+                        // On Zscaler, all UP tunnels are ACTIVE (no active/backup distinction)
+                        const isAct = isZscaler ? isUp : (sl.role === 'active' || (sl.name || '').toUpperCase().includes('_ACT'));
                         const isStandby = sl.extended_state === 'standby_spoke';
-
-                        // Global Tunnel Type Filter on canvas
-                        let isFilteredOut = false;
-                        if (saseTunnelTypeFilter === 'ACTIVE' && (!isAct || !isUp)) isFilteredOut = true;
-                        else if (saseTunnelTypeFilter === 'BACKUP' && (!isUp || isAct)) isFilteredOut = true;
-                        else if (saseTunnelTypeFilter === 'DOWN' && isUp) isFilteredOut = true;
-
-                        // Focus Dimming Effect: when a PoP is clicked, spotlight its tunnels and dim the others
-                        const isSelectedPopEdge = hasPopSelection && (
-                            targetPopId === `cloud:${selectedObject.id}` ||
-                            (selectedObject.primary_peer_ip && sl.remote_ip === selectedObject.primary_peer_ip)
-                        );
-                        const isDimmed = (hasPopSelection && !isSelectedPopEdge) || isFilteredOut;
-
-                        // Vibrant Color Coding:
-                        // Active UP: Emerald Green (#10b981)
-                        // Backup UP: Electric Cyan (#06b6d4)
-                        // Standby: Amber (#f59e0b)
-                        // Down / Retransmit: Neon Red (#ef4444)
-                        let strokeColor = '#ef4444';
-                        if (isUp) {
-                            strokeColor = isAct ? '#10b981' : '#06b6d4';
-                        } else if (isStandby) {
-                            strokeColor = '#f59e0b';
-                        }
 
                         let sourceHandle = `circuit:${device.device_name}:${sl.name}`;
                         const matchingWan = (device.wan_interfaces || []).find((w: any) => 
@@ -1950,19 +1925,11 @@ function TopologyContent({ token }: TopologyProps) {
                             target: targetPopId,
                             sourceHandle: sourceHandle,
                             targetHandle: isHub ? 'target-top' : 'target-bottom',
-                            animated: isUp && !isDimmed,
-                            style: {
-                                stroke: strokeColor,
-                                strokeWidth: isDimmed ? 1 : (isAct ? 3 : 2.2),
-                                strokeDasharray: isAct && isUp ? undefined : (isUp ? '6 6' : '4 4'),
-                                opacity: isDimmed ? 0.12 : 1,
-                                filter: isSelectedPopEdge 
-                                    ? (isAct ? 'drop-shadow(0 0 8px rgba(16,185,129,0.8))' : 'drop-shadow(0 0 8px rgba(6,182,212,0.8))')
-                                    : (isUp && isAct ? 'drop-shadow(0 0 5px rgba(16,185,129,0.5))' : undefined),
-                                transition: 'all 0.3s ease'
-                            },
+                            animated: isUp,
                             data: {
                                 ...sl,
+                                isZscaler,
+                                effectiveAct: isAct,
                                 site_name: site.site_name,
                                 device_name: device.device_name,
                                 hideLabel: true,
@@ -2192,15 +2159,71 @@ function TopologyContent({ token }: TopologyProps) {
 
 
     const filteredEdges = useMemo(() => {
-        if (!searchQuery) return edges;
+        const hasPopSelection = Boolean(selectedObject?.isSasePop);
+        const selectedPopId = selectedObject?.isSasePop ? selectedObject.id : null;
+        const selectedPopPeer = selectedObject?.isSasePop ? selectedObject.primary_peer_ip : null;
+
         return edges.map(e => {
-            const nodeMatch = e.id.toLowerCase().includes(searchQuery.toLowerCase());
-            return {
-                ...e,
-                style: { ...e.style, opacity: nodeMatch ? 1 : 0.1 }
-            };
+            const edgeData = e.data as any;
+            let currentEdge = e;
+
+            if (edgeData?.isSaseEdge) {
+                const isUp = edgeData.operational_state === 'up';
+                const isZscaler = edgeData.isZscaler || edgeData.provider === 'Zscaler' || (edgeData.name || '').toLowerCase().includes('zscaler');
+                // On Zscaler, all UP tunnels are ACTIVE
+                const isAct = isZscaler ? isUp : (edgeData.effectiveAct ?? (edgeData.role === 'active' || (edgeData.name || '').toUpperCase().includes('_ACT')));
+                const isStandby = edgeData.extended_state === 'standby_spoke';
+
+                // 1. Global SASE Path Type Filter
+                let isFilteredOut = false;
+                if (saseTunnelTypeFilter === 'ACTIVE' && (!isAct || !isUp)) isFilteredOut = true;
+                else if (saseTunnelTypeFilter === 'BACKUP' && (!isUp || isAct)) isFilteredOut = true;
+                else if (saseTunnelTypeFilter === 'DOWN' && isUp) isFilteredOut = true;
+
+                // 2. Instantaneous Focus Spotlight by selected PoP
+                const isTargetingSelectedPop = Boolean(hasPopSelection && (
+                    e.target === `cloud:${selectedPopId}` ||
+                    (selectedPopPeer && edgeData.remote_ip === selectedPopPeer)
+                ));
+                const isDimmed = isFilteredOut || (hasPopSelection && !isTargetingSelectedPop);
+
+                // Vibrant stroke color: Zscaler UP is ALWAYS Green (#10b981)
+                let stroke = '#ef4444';
+                if (isUp) {
+                    stroke = isAct ? '#10b981' : '#06b6d4';
+                } else if (isStandby) {
+                    stroke = '#f59e0b';
+                }
+
+                currentEdge = {
+                    ...e,
+                    animated: isUp && !isDimmed,
+                    style: {
+                        ...e.style,
+                        stroke: stroke,
+                        strokeWidth: isDimmed ? 1 : (isAct ? 3 : 2.2),
+                        strokeDasharray: isAct && isUp ? undefined : (isUp ? '6 6' : '4 4'),
+                        opacity: isDimmed ? 0.08 : 1,
+                        filter: isTargetingSelectedPop 
+                            ? (isAct ? 'drop-shadow(0 0 8px rgba(16,185,129,0.8))' : 'drop-shadow(0 0 8px rgba(6,182,212,0.8))')
+                            : (isUp && isAct && !isDimmed ? 'drop-shadow(0 0 5px rgba(16,185,129,0.5))' : undefined),
+                        pointerEvents: isDimmed ? 'none' : 'all',
+                        transition: 'opacity 0.1s ease, stroke-width 0.1s ease'
+                    }
+                };
+            }
+
+            if (searchQuery) {
+                const nodeMatch = currentEdge.id.toLowerCase().includes(searchQuery.toLowerCase());
+                return {
+                    ...currentEdge,
+                    style: { ...currentEdge.style, opacity: nodeMatch ? (currentEdge.style?.opacity ?? 1) : 0.1 }
+                };
+            }
+
+            return currentEdge;
         });
-    }, [edges, searchQuery]);
+    }, [edges, searchQuery, selectedObject, saseTunnelTypeFilter]);
 
     useEffect(() => {
         if (filteredNodes.length > 0) {
@@ -2985,13 +3008,21 @@ function TopologyContent({ token }: TopologyProps) {
                                                     });
                                                 });
 
-                                                const activeUp = tunnels.filter(t => t.role === 'active' && t.operational_state === 'up');
-                                                const backupUp = tunnels.filter(t => t.role === 'backup' && t.operational_state === 'up');
+                                                const isZscalerPop = selectedObject.provider === 'Zscaler';
+                                                const isActTunnel = (t: any) => isZscalerPop 
+                                                    ? t.operational_state === 'up' 
+                                                    : (t.role === 'active' || (t.name || '').toUpperCase().includes('_ACT'));
+                                                const isBkpTunnel = (t: any) => isZscalerPop 
+                                                    ? false 
+                                                    : (t.role === 'backup' || (t.name || '').toUpperCase().includes('_BKP'));
+
+                                                const activeUp = tunnels.filter(t => isActTunnel(t) && t.operational_state === 'up');
+                                                const backupUp = tunnels.filter(t => isBkpTunnel(t) && t.operational_state === 'up');
                                                 const downOrStandby = tunnels.filter(t => t.operational_state !== 'up');
 
                                                 const displayed = tunnels.filter(t => {
-                                                    if (popTunnelFilter === 'ACTIVE') return t.role === 'active' && t.operational_state === 'up';
-                                                    if (popTunnelFilter === 'BACKUP') return t.role === 'backup' && t.operational_state === 'up';
+                                                    if (popTunnelFilter === 'ACTIVE') return isActTunnel(t) && t.operational_state === 'up';
+                                                    if (popTunnelFilter === 'BACKUP') return isBkpTunnel(t) && t.operational_state === 'up';
                                                     if (popTunnelFilter === 'DOWN') return t.operational_state !== 'up';
                                                     return true;
                                                 });
@@ -3059,7 +3090,7 @@ function TopologyContent({ token }: TopologyProps) {
                                                         <div className="space-y-2 max-h-[360px] overflow-y-auto pr-1">
                                                             {displayed.map((t: any, idx: number) => {
                                                                 const isUp = t.operational_state === 'up';
-                                                                const isAct = t.role === 'active';
+                                                                const isAct = isActTunnel(t);
                                                                 const isStandby = t.extended_state === 'standby_spoke';
 
                                                                 return (
