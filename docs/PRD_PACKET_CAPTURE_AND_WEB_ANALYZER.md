@@ -1,71 +1,71 @@
 # Product Requirements Document (PRD)
 ## Stigix Live Packet Capture & Web Analyzer
 
-* **Produit :** Stigix (The Engine for SASE & SD-WAN Validation)
-* **Composant :** Module d'observabilité réseau & capture de paquets
-* **Statut :** Spécification / Draft v1.0
-* **Date :** Octobre 2026
-* **Auteur :** Antigravity AI & Ingénierie Stigix
+* **Product:** Stigix (The Engine for SASE & SD-WAN Validation)
+* **Component:** Network Observability & Packet Capture Module
+* **Status:** Specification / Draft v1.0
+* **Date:** October 2026
+* **Author:** Antigravity AI & Stigix Engineering Team
 
 ---
 
-## 1. Vision & Résumé Exécutif
+## 1. Vision & Executive Summary
 
-### 1.1 Contexte & Problématique
-Stigix excelle aujourd'hui dans la **génération active** de trafic (Voix, Vidéo, Transferts de fichiers lourds, sondes DEM, Custom TCP Apps) et dans le **rejeu de traces** (PCAP Replay). Cependant, lorsqu'une anomalie survient en lab ou en production (perte de paquets, augmentation de gigue, rupture de session TCP à 300s, blocage par un pare-feu SASE Prisma/Palo Alto) :
-* L'ingénieur doit ouvrir un terminal SSH séparé sur l'hôte.
-* Lancer manuellement une commande `tcpdump` avec des arguments complexes.
-* Récupérer le fichier via SCP ou SFTP sur son poste de travail.
-* Ouvrir Wireshark en local pour analyser les trames.
+### 1.1 Context & Problem Statement
+Today, Stigix excels at **active traffic generation** (Voice, Video, bulk transfers, synthetic DEM probes, Custom TCP Apps) and **trace replay** (PCAP Replay). However, whenever an anomaly occurs in a lab or customer deployment (packet loss, jitter spike, TCP connection drop after 300s, SASE firewall blocking by Prisma/Palo Alto):
+* Network engineers are forced to open an SSH terminal directly to the host machine.
+* Manually run complex `tcpdump` commands with specific CLI flags.
+* Copy the output capture file back to their local workstation via SCP/SFTP.
+* Open the `.pcap` in Wireshark locally to diagnose issues.
 
-### 1.2 Objectif Produit
-Fournir une fonctionnalité intégrée de **Packet Capture & Web Inspector** native dans Stigix permettant de :
-1. **Capturer** le trafic à la volée sur l'interface d'émission/réception active directement depuis l'interface Web.
-2. **Visualiser et filtrer** les paquets capturés directement dans le navigateur avec un inspecteur ergonomique (type Wireshark Web réactif).
-3. **Boucler la boucle** avec l'écosystème Stigix : télécharger le `.pcap`, ou l'injecter en **1 clic dans le moteur de PCAP Replay**.
+### 1.2 Product Goal
+Provide an integrated **Packet Capture & Web Inspector** natively inside the Stigix Web Dashboard allowing users to:
+1. **Capture** traffic on the active transmit/receive network interface directly from the Web UI.
+2. **Inspect and filter** captured packets in-browser with a responsive, modern Wireshark-like 3-pane inspector.
+3. **Close the operational loop** with the Stigix ecosystem: download `.pcap` files or inject them in **1 click into the PCAP Replay Engine**.
 
 ```mermaid
 graph LR
-    A[Stigix Traffic Engine] -->|Trafic émis/reçu| B(Interface Réseau Hôte)
+    A[Stigix Traffic Engine] -->|Ingress / Egress Traffic| B(Host Network Interface)
     B -->|tcpdump / ring buffer| C[Capture Service]
-    C -->|Stream / NDJSON| D[Web Packet Analyzer]
-    C -->|Export .pcap| E[Wireshark Local]
+    C -->|Stream / NDJSON| D[Web Packet Analyzer UI]
+    C -->|Export .pcap| E[Local Wireshark]
     C -->|1-Click Inject| F[Stigix PCAP Replay Engine]
 ```
 
 ---
 
-## 2. Personas & Cas d'Usage Principaux
+## 2. Personas & Core Use Cases
 
-| Persona | Rôle | Besoin métier |
+| Persona | Role | Core Value Proposition |
 |---|---|---|
-| **Architecte SASE / SD-WAN** | Qualification & Benchmarking | Prouver qu'un firewall Cloud (Prisma Access, Zscaler, FortiGate) réécrit ou bloque un flux spécifique (TCP RST, ToS DSCP modifié). |
-| **Ingénieur Support Réseau** | Troubleshooting d'incident | Comprendre pourquoi une session longue s'interrompt (ex: idle timeout 300s, absence de Keepalive, MTU / fragmentation ICMP). |
-| **Testeur QA / Automatisation** | Validation continue | Déclencher une capture automatique lorsqu'une sonde DEM franchit un seuil critique de SLA. |
+| **SASE / SD-WAN Architect** | Qualification & Benchmarking | Unambiguously prove whether a cloud security gateway (Prisma Access, Zscaler, FortiGate) drops or resets a flow (TCP RST, ToS/DSCP rewrite). |
+| **Network Support Engineer** | Incident Troubleshooting | Quickly understand why a persistent session drops (e.g., 300-second firewall idle timeout, missing keepalives, MTU path fragmentation). |
+| **QA / Automation Engineer** | Continuous Validation | Trigger automatic captures when a synthetic DEM probe breaches its SLA threshold. |
 
 ---
 
-## 3. Spécifications Fonctionnelles
+## 3. Functional Specifications
 
-Le module se divise en trois composants majeurs :
+The module consists of three major components:
 
-### 3.1 Module de Capture (Backend Orchestrator)
-1. **Sélection de l'Interface :**
-   * Auto-détection des interfaces physiques et virtuelles disponibles (`interfaces.txt` et introspection système).
-   * Par défaut : sélection automatique de l'interface associée au générateur de trafic.
-2. **Filtres de Capture (BPF - Berkeley Packet Filter) :**
-   * Champ de saisie libre BPF (ex: `tcp port 80 or tcp port 443`, `host 192.168.122.51`).
-   * Raccourcis en un clic ("Traffic Gen Only", "Custom TCP Apps Only", "DNS Only", "Voice RTP/SIP Only").
-3. **Garde-fous de Sécurité & Performance (Safety Guardrails) :**
-   * **Limite de temps :** Arrêt automatique paramétrable (par défaut : 30 secondes, max : 300 secondes).
-   * **Limite de paquets :** Arrêt automatique (ex: 5 000 paquets max).
-   * **Limite de taille disque :** Arrêt immédiat si le fichier dépasse 50 Mo.
-   * **Snaplen optionnel :** Possibilité de tronquer les paquets aux 128 premiers octets (headers seuls) pour préserver la vie privée et économiser le CPU/disque.
+### 3.1 Backend Capture Orchestrator
+1. **Interface Selection:**
+   * Auto-discovery of available physical and virtual interfaces (`interfaces.txt` and system introspection).
+   * Default selection: the active interface configured for traffic generation.
+2. **Capture Filters (BPF - Berkeley Packet Filter):**
+   * Free-form BPF input field (e.g., `tcp port 80 or tcp port 443`, `host 192.168.122.51`).
+   * 1-Click Quick Presets ("Traffic Gen Only", "Custom TCP Apps Only", "DNS Only", "Voice RTP/SIP Only").
+3. **Safety Guardrails & Resource Limits:**
+   * **Duration Limit:** Configurable auto-stop (default: 30 seconds, maximum: 300 seconds).
+   * **Packet Limit:** Automatic stop upon reaching a threshold (e.g., 5,000 packets max).
+   * **Disk Quota:** Immediate abort if the capture file exceeds 50 MB.
+   * **Optional Snaplen:** Option to truncate packets to the first 128 bytes (headers only) to preserve bandwidth, CPU, and user privacy.
 
 ---
 
-### 3.2 Visualiseur & Inspecteur Web (In-Browser Packet Analyzer)
-L'interface utilisateur proposera une vue inspirée des standards de l'analyse réseau (disposition 3 volets épurée et moderne) :
+### 3.2 In-Browser Packet Inspector
+The user interface provides a clean, modern 3-pane layout inspired by standard protocol analyzers:
 
 ```
 +---------------------------------------------------------------------------------------+
@@ -87,81 +87,81 @@ L'interface utilisateur proposera une vue inspirée des standards de l'analyse r
 +---------------------------------------------------------------------------------------+
 ```
 
-1. **Tableau des Paquets (Virtual Table) :**
-   * Affichage paginé ou virtualisé (support de milliers de trames sans freeze du navigateur).
-   * Coloration syntaxique par protocole (TCP en bleu/vert, UDP/RTP en jaune/orange, ICMP/Errors/RST en rose/rouge).
-2. **Arborescence de Dissection (Protocol Tree) :**
-   * Dépliage/repliage par couche OSI : Frame, Ethernet, IPv4/IPv6, TCP/UDP, Payload.
-   * Affichage clair des flags TCP, fenêtres d'accusé, options et ToS/DSCP.
-3. **Hex/ASCII Dump Viewer :**
-   * Synchronisation au clic sur un champ de l'arborescence (surbrillance des octets correspondants).
+1. **Virtual Packet Table:**
+   * High-performance virtualized rendering (handles thousands of frames smoothly without browser lag).
+   * Protocol-based syntax highlighting (TCP in blue/green, UDP/RTP in yellow/orange, ICMP/Errors/RST in rose/red).
+2. **Protocol Tree Dissection:**
+   * Expandable OSI layers: Frame, Ethernet, IPv4/IPv6, TCP/UDP, Application Payload.
+   * Clear display of TCP flags, acknowledgment numbers, window sizing, and ToS/DSCP headers.
+3. **Hex/ASCII Dump Viewer:**
+   * Synchronized byte highlighting when selecting fields in the protocol tree.
 
 ---
 
-### 3.3 Moteur de Filtrage Évolué (Display Filters)
-* Filtrage dynamique côté client sans avoir à relancer une capture :
-  * Par IP : `ip.addr == 192.168.203.100` ou `ip.src == ...`
-  * Par Port : `tcp.port == 2323`
-  * Par Anomalie : `tcp.flags.reset == 1`, `tcp.analysis.retransmission`
-  * Par Protocole : `dns`, `icmp`, `tls`, `http`
+### 3.3 Dynamic Display Filtering
+* Client-side dynamic filtering without needing to re-capture:
+  * By IP: `ip.addr == 192.168.203.100` or `ip.src == ...`
+  * By Port: `tcp.port == 2323`
+  * By Anomaly: `tcp.flags.reset == 1`, `tcp.analysis.retransmission`
+  * By Protocol: `dns`, `icmp`, `tls`, `http`
 
 ---
 
-### 3.4 Synergie avec l'Écosystème Stigix
-* **Bouton "Send to PCAP Replay" :** Envoie directement la capture dans le catalogue `/app/config/pcapsamples/` pour pouvoir la rejouer instantanément via le moteur stateful replay.
-* **Auto-Capture sur incident SLA (Phase future) :** Option "Trigger on SLA Breach" : garde un ring buffer circulaire de 10 Mo en mémoire ; si la sonde DEM remonte un score < 40% ou une perte > 10%, la trace des 30 dernières secondes est figée et attachée à l'événement de santé.
+### 3.4 Ecosystem Synergies
+* **1-Click "Send to Replay":** Automatically exports the captured trace into `/app/config/pcapsamples/` to replay it instantly across other sites via the stateful L7 replay engine.
+* **Auto-Trigger on SLA Breach (Phase 3):** Option to maintain a 10 MB in-memory ring buffer. If a DEM probe drops below critical thresholds (< 40% score or > 10% packet loss), the preceding 30 seconds are frozen into a downloadable `.pcap` linked to the incident event.
 
 ---
 
-## 4. Architecture Technique
+## 4. Technical Architecture
 
-### 4.1 Backend (Node.js & Linux Native)
-* **Collecte :** Exécution contrôlée de `tcpdump` en processus enfant avec streaming standard :
+### 4.1 Backend Engine (Node.js & Linux Native)
+* **Packet Capture:** Controlled execution of `tcpdump` / `dumpcap` child process:
   ```bash
   tcpdump -i <iface> -U -s 1500 -w - [BPF_FILTER]
   ```
-* **Dissection & Streaming :**
-  * Approche ultra-performante : pipe direct vers `tshark -T ek` (format JSON Elasticsearch ligne par ligne) ou NDJSON vers un WebSocket / Server-Sent Events (SSE).
-  * Génération simultanée du fichier brut `.pcap` dans `/var/log/sdwan-traffic-gen/captures/`.
-* **API Endpoints :**
-  * `POST /api/capture/start` : Démarre une session de capture avec options.
-  * `POST /api/capture/stop` : Interrompt la session courante.
-  * `GET /api/capture/stream` : WebSocket / SSE pour afficher les paquets en live.
-  * `GET /api/capture/download/:id` : Télécharge le fichier `.pcap` horodaté.
-  * `POST /api/capture/send-to-replay` : Copie le fichier dans le dossier de replay.
+* **Dissection & Streaming:**
+  * Real-time packet parsing via piped `tshark -T ek` (Elasticsearch NDJSON format) or native NDJSON streaming over WebSocket / Server-Sent Events (SSE).
+  * Concurrent writing of raw binary `.pcap` to `/var/log/sdwan-traffic-gen/captures/`.
+* **API Endpoints:**
+  * `POST /api/capture/start` : Initiates a capture session with specified options.
+  * `POST /api/capture/stop` : Gracefully halts the active capture session.
+  * `GET /api/capture/stream` : WebSocket / SSE stream providing dissected packets.
+  * `GET /api/capture/download/:id` : Downloads the raw `.pcap` file.
+  * `POST /api/capture/send-to-replay` : Copies the trace into the PCAP replay catalog.
 
-### 4.2 Frontend (React & TypeScript)
-* Utilisation de composants React virtualisés (`@tanstack/react-virtual` ou table CSS virtualisée déjà présente dans Stigix).
-* Parseur de flux NDJSON léger en temps réel.
-* Prise en charge du thème sombre natif de Stigix avec accents Tailwind et glassmorphism.
-
----
-
-## 5. Contraintes & Mesures de Sécurité
-
-1. **Isolation disque :**
-   * Quota strict : 50 Mo max par capture, max 5 captures conservées (auto-nettoyage LIFO).
-2. **CPU & Mémoire :**
-   * Le process de capture doit être plafonné (nice priority) pour ne jamais impacter la génération de trafic ou le MCP server.
-3. **Confidentialité :**
-   * Avertissement UI clair rappelant que les paquets peuvent contenir des en-têtes ou payloads sensibles.
-   * Option par défaut de tronquage payload (`snaplen 128` octets).
+### 4.2 Frontend Architecture (React & TypeScript)
+* Virtualized table component for low memory footprint and 60 FPS scrolling.
+* Lightweight client-side NDJSON parser.
+* Consistent dark mode theme adhering to Stigix glassmorphism and Tailwind tokens.
 
 ---
 
-## 6. Feuille de Route d'Implémentation (Roadmap)
+## 5. Security & Safety Guardrails
 
-### 🚀 Phase 1 : Core Capture & Téléchargement (Quick Win - 1 à 2 jours)
-* Ajout de l'onglet / composant **Packet Capture** dans Stigix.
-* Sélecteur d'interface, champ BPF, timer de capture (30s).
-* Déclenchement de `tcpdump`, arrêt propre, et téléchargement immédiat du fichier `.pcap`.
+1. **Storage Safety:**
+   * Strict 50 MB quota per capture file; maximum 5 capture sessions retained on disk (FIFO cleanup).
+2. **Process Priority:**
+   * The capture process runs with lower CPU priority (`nice`) to prevent any interference with active traffic generation or the MCP server.
+3. **Data Privacy:**
+   * Clear UI disclaimer alerting users that captured packets may contain sensitive payload data.
+   * Default option to capture headers only (`snaplen 128` bytes).
 
-### 🔍 Phase 2 : In-Browser Inspector & Filtres (2 à 3 jours)
-* Affichage du tableau des paquets en temps réel via WebSocket / SSE.
-* Volet de dissection (Ethernet / IP / TCP / UDP).
-* Moteur de filtres display (IP, port, protocole, flag).
-* Bouton "Export to PCAP Replay".
+---
 
-### ⚡ Phase 3 : Capture Automatique sur Alerte DEM (Avancé)
-* Buffer tournant (Ring Buffer) de 10 Mo en tâche de fond.
-* Déclencheur automatique lors des chutes de SLA du Failover Monitoring / Synthetic Probes.
+## 6. Implementation Roadmap
+
+### 🚀 Phase 1: Core Capture & Download (Quick Win - 1 to 2 days)
+* Add the **Live Capture** interface to the dashboard.
+* Interface dropdown, BPF filter input, 30s timer, Start/Stop controls.
+* Backend `tcpdump` execution, clean termination, and direct `.pcap` download.
+
+### 🔍 Phase 2: In-Browser Inspector & Display Filters (2 to 3 days)
+* Live packet table rendering via WebSocket / SSE.
+* Protocol dissection tree (Ethernet / IP / TCP / UDP).
+* Client-side display filter engine.
+* 1-Click "Send to PCAP Replay" button.
+
+### ⚡ Phase 3: Automated Capture on DEM SLA Breach (Advanced)
+* Background circular ring buffer (10 MB).
+* Automated freeze and archive triggered upon synthetic probe health degradation.
