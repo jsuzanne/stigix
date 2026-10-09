@@ -1098,7 +1098,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                             version: data.version || prev.version,
                             reconnectAttempts: 0
                         }));
-                    } else if (data.stage === 'complete') {
+                    } else if (data.stage === 'complete' || (!data.inProgress && data.stage === 'idle')) {
                         setUpgrading(false);
                         setUpgradeModal(prev => ({
                             ...prev,
@@ -6870,14 +6870,17 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                                     </p>
                                 </div>
                             </div>
-                            {upgradeModal.phase === 'failed' && (
-                                <button
-                                    onClick={() => setUpgradeModal(prev => ({ ...prev, open: false }))}
-                                    className="p-1.5 text-text-muted hover:text-text-primary rounded-xl hover:bg-card-hover transition-colors"
-                                >
-                                    <X size={18} />
-                                </button>
-                            )}
+                            <button
+                                onClick={() => {
+                                    setUpgradeModal(prev => ({ ...prev, open: false }));
+                                    setUpgrading(false);
+                                    sessionStorage.removeItem('stigix_upgrade_active');
+                                }}
+                                className="p-1.5 text-text-muted hover:text-text-primary rounded-xl hover:bg-card-hover transition-colors cursor-pointer"
+                                title="Close dialog"
+                            >
+                                <X size={18} />
+                            </button>
                         </div>
 
                         {/* Progress Stepper */}

@@ -1180,7 +1180,7 @@ try {
         const raw = fs.readFileSync(upgradeStatusFile, 'utf8');
         try {
             const saved = JSON.parse(raw);
-            if (saved && (saved.stage === 'complete' || saved.stage === 'failed')) {
+            if (saved && (saved.stage === 'complete' || saved.stage === 'restarting' || saved.stage === 'failed')) {
                 console.log(`[MAINTENANCE-BOOT] Found persisted upgrade status (${saved.stage}).`);
                 // Clean up ephemeral script if still present
                 try {
@@ -1189,8 +1189,6 @@ try {
                 } catch (ce) {}
 
                 if (saved.stage === 'failed') {
-                    // Stigix is now running! An older failure (from an earlier pull error or manual upgrade)
-                    // must not pollute the running instance forever. Purge it so it doesn't pop up repeatedly.
                     console.log('[MAINTENANCE-BOOT] Stigix is running. Purging stale failure status marker from disk.');
                     try { fs.unlinkSync(upgradeStatusFile); } catch (e) {}
                     G_UPGRADE_STATUS = {
@@ -1202,11 +1200,20 @@ try {
                         startTime: null
                     };
                 } else {
+                    let updaterLogs = saved.logs;
+                    try {
+                        const updaterLogFile = path.join(PROJECT_ROOT, 'config', 'stigix_updater.log');
+                        if (fs.existsSync(updaterLogFile)) {
+                            updaterLogs = fs.readFileSync(updaterLogFile, 'utf8').split('
+').filter(Boolean).slice(-50);
+                        }
+                    } catch {}
+
                     G_UPGRADE_STATUS = {
                         inProgress: false,
                         version: saved.version || null,
                         stage: 'complete',
-                        logs: saved.logs || [`[${new Date().toISOString()}] 🚀 Container successfully upgraded and running Stigix ${saved.version || 'latest'}.`],
+                        logs: (updaterLogs && updaterLogs.length > 0) ? updaterLogs : [`[${new Date().toISOString()}] 🚀 Container successfully upgraded and running Stigix ${saved.version || 'latest'}.`],
                         error: null,
                         startTime: saved.startTime || Date.now()
                     };
@@ -12120,6 +12127,28 @@ app.post('/api/admin/config/import', authenticateToken, async (req, res) => {
 });
 
 app.get('/api/admin/maintenance/status', authenticateToken, (req, res) => {
+    try {
+        const upgradeStatusFile = path.join(PROJECT_ROOT, 'config', '.upgrade_status.json');
+        if (fs.existsSync(upgradeStatusFile)) {
+            const raw = fs.readFileSync(upgradeStatusFile, 'utf8');
+            const saved = JSON.parse(raw);
+            if (saved && (saved.stage === 'complete' || saved.stage === 'restarting' || saved.stage === 'failed')) {
+                G_UPGRADE_STATUS.inProgress = saved.inProgress || false;
+                G_UPGRADE_STATUS.stage = saved.stage === 'restarting' ? 'complete' : saved.stage;
+                if (saved.version) G_UPGRADE_STATUS.version = saved.version;
+                if (saved.error) G_UPGRADE_STATUS.error = saved.error;
+            }
+        }
+        const updaterLogFile = path.join(PROJECT_ROOT, 'config', 'stigix_updater.log');
+        if (fs.existsSync(updaterLogFile)) {
+            const fileContent = fs.readFileSync(updaterLogFile, 'utf8');
+            const lines = fileContent.split('
+').filter(Boolean).slice(-50);
+            if (lines.length > 0) {
+                G_UPGRADE_STATUS.logs = lines;
+            }
+        }
+    } catch {}
     res.json(G_UPGRADE_STATUS);
 });
 
