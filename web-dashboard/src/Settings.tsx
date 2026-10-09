@@ -433,6 +433,15 @@ const formatSyncTime = (isoString?: string): { rel: string; time: string } | nul
     }
 };
 
+const getSessionLogs = (logs?: string[]): string[] => {
+    if (!logs || !logs.length) return [];
+    const delimIdx = logs.map(l => l.includes('=================================================')).lastIndexOf(true);
+    if (delimIdx !== -1) {
+        return logs.slice(delimIdx + 1);
+    }
+    return logs;
+};
+
 export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCopilotConfig, initialTab }: { 
     token: string, 
     uiConfig?: { maxCaptures: number; globalScoreTypes?: string[] },
@@ -500,7 +509,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
         open: boolean;
         peerId: string | null;
         peerName: string | null;
-        phase: 'pulling' | 'restarting' | 'reconnecting' | 'complete' | 'failed';
+        phase: 'idle' | 'pulling' | 'restarting' | 'reconnecting' | 'complete' | 'failed';
         version: string | null;
         reconnectAttempts: number;
         error: string | null;
@@ -509,7 +518,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
         open: false,
         peerId: null,
         peerName: null,
-        phase: 'pulling',
+        phase: 'idle',
         version: null,
         reconnectAttempts: 0,
         error: null,
@@ -1212,9 +1221,26 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
         }
     }, [activeTab, registryStatus?.local_instances, registryStatus?.mode, fetchPeerMaintStatus]);
 
+    const handleCloseRemoteUpgradeModal = () => {
+        if (['complete', 'failed'].includes(remoteUpgradeModal.phase)) {
+            setRemoteUpgradeModal({
+                open: false,
+                peerId: null,
+                peerName: null,
+                phase: 'idle',
+                version: null,
+                reconnectAttempts: 0,
+                error: null,
+                logs: []
+            });
+        } else {
+            setRemoteUpgradeModal(prev => ({ ...prev, open: false }));
+        }
+    };
+
     // Polling loop for remote peer upgrade
     useEffect(() => {
-        if (!remoteUpgradeModal.open || ['complete', 'failed'].includes(remoteUpgradeModal.phase) || !remoteUpgradeModal.peerId) {
+        if (!remoteUpgradeModal.peerId || ['idle', 'complete', 'failed'].includes(remoteUpgradeModal.phase)) {
             return;
         }
         const peerId = remoteUpgradeModal.peerId;
@@ -1267,7 +1293,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
         }, 2500);
 
         return () => clearInterval(pollTimer);
-    }, [remoteUpgradeModal.open, remoteUpgradeModal.phase, remoteUpgradeModal.peerId, fetchPeerMaintStatus]);
+    }, [remoteUpgradeModal.phase, remoteUpgradeModal.peerId, fetchPeerMaintStatus]);
 
     const handleRemotePeerUpgrade = async (peerId: string, peerIp: string) => {
         const peerInfo = peerMaintStatus[peerId];
@@ -4037,7 +4063,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                                 </div>
 
                                 {/* Floating Live Banner if modal was closed during active upgrade */}
-                                {!remoteUpgradeModal.open && ['pulling', 'restarting', 'reconnecting'].includes(remoteUpgradeModal.phase) && (
+                                {!remoteUpgradeModal.open && ['pulling', 'restarting', 'reconnecting'].includes(remoteUpgradeModal.phase) && remoteUpgradeModal.peerId && (
                                     <div className="p-4 bg-purple-500/10 border border-purple-500/30 rounded-2xl flex items-center justify-between gap-4 animate-in fade-in">
                                         <div className="flex items-center gap-3">
                                             <div className="p-2 bg-purple-500/20 text-purple-400 rounded-xl">
@@ -4118,12 +4144,13 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                                                             ) : (
                                                                 <button
                                                                     onClick={() => handleRemotePeerUpgrade(inst.instance_id, inst.ip_private)}
-                                                                    disabled={['pulling', 'restarting', 'reconnecting'].includes(remoteUpgradeModal.phase)}
+                                                                    disabled={remoteUpgradeModal.phase !== 'idle' && remoteUpgradeModal.peerId !== inst.instance_id}
                                                                     className={cn(
                                                                         "px-3 py-1.5 rounded-xl text-[9px] font-black uppercase tracking-wider transition-all flex items-center gap-1.5 border shadow-sm ml-auto cursor-pointer",
                                                                         peerMaintStatus[inst.instance_id]?.updateAvailable
                                                                             ? "bg-blue-600 hover:bg-blue-500 text-white border-blue-500/30 shadow-blue-900/30"
-                                                                            : "bg-card-secondary hover:bg-card-hover border-border text-text-muted hover:text-text-primary"
+                                                                            : "bg-card-secondary hover:bg-card-hover border-border text-text-muted hover:text-text-primary",
+                                                                        remoteUpgradeModal.phase !== 'idle' && remoteUpgradeModal.peerId !== inst.instance_id && "opacity-50 cursor-not-allowed"
                                                                     )}
                                                                 >
                                                                     <Download size={11} />
@@ -7043,11 +7070,11 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                             <div className="space-y-1.5">
                                 <div className="flex justify-between items-center text-[10px] font-mono text-text-muted px-1">
                                     <span>CONSOLE EVENT LOG</span>
-                                    <span>{upgradeStatus?.logs?.length || 0} events</span>
+                                    <span>{getSessionLogs(upgradeStatus?.logs).length} events</span>
                                 </div>
                                 <div className="bg-black/60 border border-border/60 rounded-2xl p-4 h-48 overflow-y-auto font-mono text-[10px] leading-relaxed text-text-muted scrollbar-thin scrollbar-thumb-border">
-                                    {upgradeStatus?.logs && upgradeStatus.logs.length > 0 ? (
-                                        upgradeStatus.logs.map((log: string, idx: number) => (
+                                    {getSessionLogs(upgradeStatus?.logs).length > 0 ? (
+                                        getSessionLogs(upgradeStatus?.logs).map((log: string, idx: number) => (
                                             <div key={idx} className="mb-0.5 opacity-90 hover:opacity-100 transition-opacity">
                                                 {log}
                                             </div>
@@ -7143,7 +7170,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                                 </div>
                             </div>
                             <button
-                                onClick={() => setRemoteUpgradeModal(prev => ({ ...prev, open: false }))}
+                                onClick={handleCloseRemoteUpgradeModal}
                                 className="p-1.5 text-text-muted hover:text-text-primary rounded-xl hover:bg-card-hover transition-colors cursor-pointer"
                                 title="Close"
                             >
@@ -7202,11 +7229,11 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                             <div className="space-y-1.5">
                                 <div className="flex justify-between items-center text-[10px] font-mono text-text-muted px-1">
                                     <span>REMOTE NODE LOG STREAM</span>
-                                    <span>{remoteUpgradeModal.logs?.length || 0} events</span>
+                                    <span>{getSessionLogs(remoteUpgradeModal.logs).length} events</span>
                                 </div>
                                 <div className="bg-black/60 border border-border/60 rounded-2xl p-4 h-48 overflow-y-auto font-mono text-[10px] leading-relaxed text-text-muted scrollbar-thin scrollbar-thumb-border">
-                                    {remoteUpgradeModal.logs && remoteUpgradeModal.logs.length > 0 ? (
-                                        remoteUpgradeModal.logs.map((log: string, idx: number) => (
+                                    {getSessionLogs(remoteUpgradeModal.logs).length > 0 ? (
+                                        getSessionLogs(remoteUpgradeModal.logs).map((log: string, idx: number) => (
                                             <div key={idx} className="mb-0.5 opacity-90 hover:opacity-100 transition-opacity">
                                                 {log}
                                             </div>
@@ -7226,7 +7253,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                             </span>
                             <div className="flex gap-3">
                                 <button
-                                    onClick={() => setRemoteUpgradeModal(prev => ({ ...prev, open: false }))}
+                                    onClick={handleCloseRemoteUpgradeModal}
                                     className="px-6 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider bg-card hover:bg-card-hover border border-border text-text-primary transition-all cursor-pointer"
                                 >
                                     {remoteUpgradeModal.phase === 'complete' ? "Done" : "Close"}

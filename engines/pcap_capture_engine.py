@@ -285,6 +285,15 @@ def stop_capture() -> Dict[str, Any]:
         return {"error": f"Error stopping capture: {str(e)}"}
 
 
+def safe_hex(val: Any, width: int = 4) -> str:
+    """Format an integer or hex string safely, handling None gracefully."""
+    if val is None:
+        return f"0x{'0'*width}"
+    try:
+        return f"0x{int(val):0{width}x}"
+    except (ValueError, TypeError):
+        return str(val)
+
 def format_hex_dump(raw_bytes: bytes) -> List[Dict[str, str]]:
     """Format raw packet bytes into 16-byte hex dump rows with ASCII representation."""
     lines = []
@@ -334,7 +343,7 @@ def dissect_packet(pkt: Any, pkt_idx: int, t0: float) -> Dict[str, Any]:
         tree["Ethernet II"] = {
             "Source MAC": eth.src,
             "Destination MAC": eth.dst,
-            "Type": f"0x{eth.type:04x}"
+            "Type": safe_hex(getattr(eth, "type", 0), 4)
         }
     elif CookedLinux and pkt.haslayer(CookedLinux):
         sll = pkt[CookedLinux]
@@ -342,13 +351,13 @@ def dissect_packet(pkt: Any, pkt_idx: int, t0: float) -> Dict[str, Any]:
             "Packet Type": sll.pkttype,
             "Link-Layer Address Type": sll.lladdrtype,
             "Link-Layer Address Length": sll.lladdrlen,
-            "Protocol": f"0x{sll.proto:04x}"
+            "Protocol": safe_hex(getattr(sll, "proto", 0), 4)
         }
     elif CookedLinuxV2 and pkt.haslayer(CookedLinuxV2):
         sll2 = pkt[CookedLinuxV2]
         tree["Linux Cooked Capture v2 (SLL2)"] = {
             "Packet Type": getattr(sll2, 'pkttype', '-'),
-            "Protocol": f"0x{getattr(sll2, 'proto', 0):04x}",
+            "Protocol": safe_hex(getattr(sll2, "proto", 0), 4),
             "Interface Index": getattr(sll2, 'ifindex', '-')
         }
 
@@ -362,7 +371,7 @@ def dissect_packet(pkt: Any, pkt_idx: int, t0: float) -> Dict[str, Any]:
         info = f"ARP: {op_str}"
         tree["Address Resolution Protocol"] = {
             "Hardware Type": arp.hwtype,
-            "Protocol Type": f"0x{arp.ptype:04x}",
+            "Protocol Type": safe_hex(getattr(arp, "ptype", 0), 4),
             "Hardware Size": arp.hwlen,
             "Protocol Size": arp.plen,
             "Opcode": "Request (1)" if arp.op == 1 else f"Reply ({arp.op})",
@@ -378,22 +387,26 @@ def dissect_packet(pkt: Any, pkt_idx: int, t0: float) -> Dict[str, Any]:
         src_addr = ip.src
         dst_addr = ip.dst
         protocol = "IPv4"
-        dscp_val = ip.tos >> 2
-        ecn_val = ip.tos & 0x03
+        tos_val = ip.tos if ip.tos is not None else 0
+        dscp_val = tos_val >> 2
+        ecn_val = tos_val & 0x03
         flags_str = []
-        if ip.flags & 2: flags_str.append("Don't Fragment (DF)")
-        if ip.flags & 1: flags_str.append("More Fragments (MF)")
+        try:
+            if ip.flags is not None and int(ip.flags) & 2: flags_str.append("Don't Fragment (DF)")
+            if ip.flags is not None and int(ip.flags) & 1: flags_str.append("More Fragments (MF)")
+        except (ValueError, TypeError):
+            pass
 
         tree["Internet Protocol Version 4"] = {
             "Version": 4,
-            "Header Length": f"{ip.ihl * 4} bytes ({ip.ihl})",
-            "Differentiated Services Field": f"0x{ip.tos:02x} (DSCP: {dscp_val}, ECN: {ecn_val})",
-            "Total Length": ip.len,
-            "Identification": f"0x{ip.id:04x} ({ip.id})",
+            "Header Length": f"{(ip.ihl or 5) * 4} bytes ({ip.ihl})",
+            "Differentiated Services Field": f"{safe_hex(tos_val, 2)} (DSCP: {dscp_val}, ECN: {ecn_val})",
+            "Total Length": ip.len if ip.len is not None else 0,
+            "Identification": f"{safe_hex(ip.id, 4)} ({ip.id if ip.id is not None else 0})",
             "Flags": ", ".join(flags_str) if flags_str else "None",
-            "Time to Live (TTL)": ip.ttl,
+            "Time to Live (TTL)": ip.ttl if ip.ttl is not None else 64,
             "Protocol": f"{ip.proto}",
-            "Header Checksum": f"0x{ip.chksum:04x}",
+            "Header Checksum": safe_hex(ip.chksum, 4),
             "Source Address": ip.src,
             "Destination Address": ip.dst
         }
@@ -406,8 +419,8 @@ def dissect_packet(pkt: Any, pkt_idx: int, t0: float) -> Dict[str, Any]:
         protocol = "IPv6"
         tree["Internet Protocol Version 6"] = {
             "Version": 6,
-            "Traffic Class": f"0x{ip6.tc:02x}",
-            "Flow Label": f"0x{ip6.fl:05x}",
+            "Traffic Class": safe_hex(getattr(ip6, "tc", 0), 2),
+            "Flow Label": safe_hex(getattr(ip6, "fl", 0), 5),
             "Payload Length": ip6.plen,
             "Next Header": ip6.nh,
             "Hop Limit": ip6.hlim,
@@ -420,11 +433,15 @@ def dissect_packet(pkt: Any, pkt_idx: int, t0: float) -> Dict[str, Any]:
         icmp = pkt[ICMP]
         protocol = "ICMP"
         type_str = "Echo (ping) request" if icmp.type == 8 else ("Echo (ping) reply" if icmp.type == 0 else f"Type {icmp.type}")
-        info = f"{type_str} id=0x{getattr(icmp, 'id', 0):04x} seq={getattr(icmp, 'seq', 0)}"
+        icmp_id = getattr(icmp, 'id', None)
+        icmp_seq = getattr(icmp, 'seq', None)
+        id_part = f" id={safe_hex(icmp_id, 4)}" if icmp_id is not None else ""
+        seq_part = f" seq={icmp_seq}" if icmp_seq is not None else ""
+        info = f"{type_str}{id_part}{seq_part}"
         tree["Internet Control Message Protocol"] = {
             "Type": f"{icmp.type} ({type_str})",
             "Code": icmp.code,
-            "Checksum": f"0x{icmp.chksum:04x}"
+            "Checksum": safe_hex(getattr(icmp, 'chksum', None), 4)
         }
 
     # TCP Layer
@@ -447,16 +464,23 @@ def dissect_packet(pkt: Any, pkt_idx: int, t0: float) -> Dict[str, Any]:
         payload_len = len(tcp.payload) if tcp.payload else 0
         info = f"{sport} → {dport} {flags_display} Seq={tcp.seq} Ack={tcp.ack} Win={tcp.window} Len={payload_len}"
 
+        tcp_flags_int = 0
+        try:
+            if getattr(tcp, 'flags', None) is not None:
+                tcp_flags_int = int(tcp.flags)
+        except (ValueError, TypeError):
+            pass
+
         tree["Transmission Control Protocol"] = {
             "Source Port": sport,
             "Destination Port": dport,
-            "Sequence Number": tcp.seq,
-            "Acknowledgment Number": tcp.ack,
-            "Header Length": f"{tcp.dataofs * 4} bytes",
-            "Flags": f"0x{int(tcp.flags):03x} ({', '.join(flag_names)})",
-            "Window Size": tcp.window,
-            "Checksum": f"0x{tcp.chksum:04x}",
-            "Urgent Pointer": tcp.urgptr
+            "Sequence Number": tcp.seq if tcp.seq is not None else 0,
+            "Acknowledgment Number": tcp.ack if tcp.ack is not None else 0,
+            "Header Length": f"{(tcp.dataofs or 5) * 4} bytes",
+            "Flags": f"{safe_hex(tcp_flags_int, 3)} ({', '.join(flag_names)})",
+            "Window Size": tcp.window if tcp.window is not None else 0,
+            "Checksum": safe_hex(getattr(tcp, 'chksum', None), 4),
+            "Urgent Pointer": tcp.urgptr if tcp.urgptr is not None else 0
         }
 
         # HTTP / TLS application hints
@@ -488,7 +512,7 @@ def dissect_packet(pkt: Any, pkt_idx: int, t0: float) -> Dict[str, Any]:
             "Source Port": sport,
             "Destination Port": dport,
             "Length": udp.len,
-            "Checksum": f"0x{udp.chksum:04x}"
+            "Checksum": safe_hex(getattr(udp, "chksum", None), 4)
         }
 
         # DNS detection (Port 53)

@@ -12142,9 +12142,12 @@ app.get('/api/admin/maintenance/status', authenticateToken, (req, res) => {
         const updaterLogFile = path.join(PROJECT_ROOT, 'config', 'stigix_updater.log');
         if (fs.existsSync(updaterLogFile)) {
             const fileContent = fs.readFileSync(updaterLogFile, 'utf8');
-            const lines = fileContent.split('\n').filter(Boolean).slice(-50);
-            if (lines.length > 0) {
-                G_UPGRADE_STATUS.logs = lines;
+            // Preserve full log history on disk, but only stream the active session to the UI console
+            const sessions = fileContent.split(/={20,}/);
+            const currentSession = (sessions[sessions.length - 1] || '').trim();
+            const sessionLines = currentSession.split('\n').map(l => l.trim()).filter(Boolean);
+            if (sessionLines.length > 0) {
+                G_UPGRADE_STATUS.logs = sessionLines;
             }
         }
     } catch {}
