@@ -220,6 +220,71 @@ const SiteEdge = ({
     );
 };
 
+// --- Custom Arched Bridge Edge Component (Spoke-to-Spoke Celestial Arches) ---
+const ArchedBridgeEdge = ({
+    sourceX,
+    sourceY,
+    targetX,
+    targetY,
+    style = {},
+    markerEnd,
+    data,
+}: any) => {
+    const deltaX = Math.abs(targetX - sourceX);
+    const isTopRow = sourceY < 0 && targetY < 0;
+    // Dynamic arch peak based on span distance
+    // Shorter spans rise ~100px, longer spans gracefully rise up to ~280px into the open central canvas
+    const archHeight = Math.min(280, Math.max(90, deltaX * 0.22));
+    const peakY = isTopRow
+        ? Math.max(sourceY, targetY) + archHeight
+        : Math.min(sourceY, targetY) - archHeight;
+
+    const edgePath = `M ${sourceX} ${sourceY} C ${sourceX} ${peakY}, ${targetX} ${peakY}, ${targetX} ${targetY}`;
+    const midX = (sourceX + targetX) / 2;
+    const midY = peakY + (isTopRow ? -14 : 14);
+
+    const isMpls = Boolean(data?.wan_network?.toLowerCase().includes('mpls') || data?.isMplsCircuit);
+    let strokeColor = style?.stroke;
+    if (!strokeColor) {
+        if (data?.active) {
+            strokeColor = isMpls ? '#c084fc' : '#22c55e';
+        } else if (data?.usable) {
+            strokeColor = isMpls ? '#9333ea' : '#3b82f6';
+        } else if (data?.status === 'DOWN') {
+            strokeColor = '#ef4444';
+        } else {
+            strokeColor = '#64748b';
+        }
+    }
+
+    const showLabel = !data?.hideLabel && data?.circuit_label;
+
+    return (
+        <>
+            <BaseEdge path={edgePath} markerEnd={markerEnd} style={{ ...style, stroke: strokeColor }} />
+            {showLabel && (
+                <EdgeLabelRenderer>
+                    <div
+                        style={{
+                            position: 'absolute',
+                            transform: `translate(-50%, -50%) translate(${midX}px,${midY}px)`,
+                            pointerEvents: 'all',
+                        }}
+                        className="animate-in fade-in zoom-in duration-500"
+                    >
+                        <div className={cn(
+                            "px-2 py-0.5 rounded-full border shadow-xl backdrop-blur-md text-[9px] font-black uppercase tracking-tighter whitespace-nowrap",
+                            isMpls ? "bg-purple-500/10 border-purple-500/40 text-purple-400" : "bg-blue-500/10 border-blue-500/40 text-blue-400"
+                        )}>
+                            {data?.circuit_label}
+                        </div>
+                    </div>
+                </EdgeLabelRenderer>
+            )}
+        </>
+    );
+};
+
 // --- Custom Port Marker component ---
 const Port = ({
     num,
@@ -302,6 +367,7 @@ function isExactSiteMatch(siteName?: string | null, nodeName?: string | null): b
 // --- Custom Site Node Component (The "Physical" Schematic) ---
 const SiteNode = ({ data }: any) => {
     const isHub = data.role === 'HUB';
+    const isGateway = data.role === 'GATEWAY';
     const devices = data.devices || [];
 
     // Map circuit data for the "Circuit Blocks" (intermediaries to clouds)
@@ -406,65 +472,71 @@ const SiteNode = ({ data }: any) => {
 
     return (
         <div className={cn(
-            "flex flex-col items-center w-full gap-5",
-            isHub ? "flex-col-reverse" : "flex-col"
+            "flex items-center",
+            isGateway ? "flex-row gap-5" : (isHub ? "flex-col-reverse items-center w-full gap-5" : "flex-col items-center w-full gap-5")
         )}>
 
-            {/* Circuit Blocks Section */}
-            <div className="flex gap-4 z-10 relative">
-                {wanCircuits.map((w: any, idx: number) => {
-                    const badge = getUnderlayBadge(w);
-                    return (
-                        <div key={idx} className="relative flex flex-col items-center">
-                            <div
-                                className={cn(
-                                    "px-3.5 py-1.5 rounded-xl border shadow-2xl backdrop-blur-md flex flex-col items-center justify-center gap-0.5 min-w-[120px] h-[48px] transition-all hover:scale-105 hover:border-white/40 group",
-                                    w.wan_network?.toLowerCase().includes('mpls')
-                                        ? "bg-purple-500/10 border-purple-500/30 text-purple-400"
-                                        : "bg-blue-500/10 border-blue-500/30 text-blue-400",
-                                    badge && onInspectUnderlayCircuit ? "cursor-pointer" : ""
-                                )}
-                                onClick={badge && onInspectUnderlayCircuit ? (e) => { e.stopPropagation(); onInspectUnderlayCircuit(badge.r); } : undefined}
-                            >
-                                <div className="text-[10px] font-black uppercase tracking-tight overflow-hidden text-ellipsis whitespace-nowrap max-w-[105px]">
-                                    {w.circuit_label || w.name}
-                                </div>
-                                <div className="text-[9px] font-mono text-text-muted opacity-60">
-                                    {w.ip || 'DHCP...'}
-                                </div>
-                                <Handle
-                                    type="source"
-                                    position={isHub ? Position.Bottom : Position.Top}
-                                    id={`circuit:${w.devName}:${w.name}`}
-                                    className="!w-full !h-1 !opacity-0"
-                                />
-                                {/* Hidden target handle for direct site-to-site overlay edges. Terminate at BOTTOM for Hubs too. */}
-                                <Handle
-                                    type="target"
-                                    position={isHub ? Position.Bottom : Position.Top}
-                                    id={`target-circuit:${w.devName}:${w.name}`}
-                                    className="!w-full !h-1 !opacity-0"
-                                />
-                                {/* Underlay status badge */}
-                                {badge && (
-                                    <div className={cn(
-                                        "absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full border flex items-center justify-center text-[9px] font-black shadow-md z-30 transition-transform group-hover:scale-110",
-                                        badge.c.cls
-                                    )}>
-                                        {badge.c.label}
+            {/* Circuit Blocks Section: Top (Spoke) or Bottom (Hub) */}
+            {!isGateway && (
+                <div className="flex gap-4 z-10 relative">
+                    {wanCircuits.map((w: any, idx: number) => {
+                        const badge = getUnderlayBadge(w);
+                        return (
+                            <div key={idx} className="relative flex flex-col items-center">
+                                <div
+                                    className={cn(
+                                        "px-3.5 py-1.5 rounded-xl border shadow-2xl backdrop-blur-md flex flex-col items-center justify-center gap-0.5 min-w-[120px] h-[48px] transition-all hover:scale-105 hover:border-white/40 group",
+                                        w.wan_network?.toLowerCase().includes('mpls')
+                                            ? "bg-purple-500/10 border-purple-500/30 text-purple-400"
+                                            : "bg-blue-500/10 border-blue-500/30 text-blue-400",
+                                        badge && onInspectUnderlayCircuit ? "cursor-pointer" : ""
+                                    )}
+                                    onClick={badge && onInspectUnderlayCircuit ? (e) => { e.stopPropagation(); onInspectUnderlayCircuit(badge.r); } : undefined}
+                                >
+                                    <div className="text-[10px] font-black uppercase tracking-tight overflow-hidden text-ellipsis whitespace-nowrap max-w-[105px]">
+                                        {w.circuit_label || w.name}
                                     </div>
-                                )}
+                                    <div className="text-[9px] font-mono text-text-muted opacity-60">
+                                        {w.ip || 'DHCP...'}
+                                    </div>
+                                    <Handle
+                                        type="source"
+                                        position={isHub ? Position.Bottom : Position.Top}
+                                        id={`circuit:${w.devName}:${w.name}`}
+                                        className="!w-full !h-1 !opacity-0"
+                                    />
+                                    {/* Hidden target handle for direct site-to-site overlay edges. Terminate at BOTTOM for Hubs too. */}
+                                    <Handle
+                                        type="target"
+                                        position={isHub ? Position.Bottom : Position.Top}
+                                        id={`target-circuit:${w.devName}:${w.name}`}
+                                        className="!w-full !h-1 !opacity-0"
+                                    />
+                                    {/* Underlay status badge */}
+                                    {badge && (
+                                        <div className={cn(
+                                            "absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full border flex items-center justify-center text-[9px] font-black shadow-md z-30 transition-transform group-hover:scale-110",
+                                            badge.c.cls
+                                        )}>
+                                            {badge.c.label}
+                                        </div>
+                                    )}
+                                </div>
                             </div>
-                        </div>
-                    );
-                })}
-            </div>
+                        );
+                    })}
+                </div>
+            )}
 
 
             {/* Site Rectangle (Physical Box) */}
             <div className={cn(
-                "px-8 py-7 rounded-[36px] border-2 transition-all shadow-2xl backdrop-blur-3xl bg-card/40 flex flex-col relative w-full",
-                isHub ? "border-blue-500/30 shadow-blue-500/5 shadow-[0_0_50px_-12px_rgba(59,130,246,0.15)]" : "border-border shadow-black/40 shadow-[0_40px_100px_-20px_rgba(0,0,0,0.5)]"
+                "px-8 py-7 rounded-[36px] border-2 transition-all shadow-2xl backdrop-blur-3xl bg-card/40 flex flex-col relative",
+                isGateway
+                    ? "border-amber-500/35 shadow-amber-500/10 shadow-[0_0_50px_-12px_rgba(245,158,11,0.2)]"
+                    : isHub
+                        ? "border-blue-500/30 shadow-blue-500/5 shadow-[0_0_50px_-12px_rgba(59,130,246,0.15)] w-full"
+                        : "border-border shadow-black/40 shadow-[0_40px_100px_-20px_rgba(0,0,0,0.5)] w-full"
             )}>
 
                 {/* SVG Layer for ALL internal wiring (1:1 Exact Math Coordinates) */}
@@ -475,8 +547,8 @@ const SiteNode = ({ data }: any) => {
 
                         return (
                             <React.Fragment key={dIdx}>
-                                {/* WAN Wiring (Port -> Circuit Block) */}
-                                {dev.wan_interfaces?.map((wan: any, wIdx: number) => {
+                                {/* WAN Wiring (Port -> Circuit Block) - only for Hub and Spoke */}
+                                {!isGateway && dev.wan_interfaces?.map((wan: any, wIdx: number) => {
                                     const isMpls = wan.wan_network?.toLowerCase().includes('mpls');
                                     const globalIdx = wanCircuits.findIndex((c: any) => c.devName === dev.device_name && c.name === wan.name);
                                     if (globalIdx === -1) return null;
@@ -517,13 +589,13 @@ const SiteNode = ({ data }: any) => {
                                         strokeDasharray="4 4"
                                     />
                                 ) : (
-                                    // Spoke: LAN Port 3 (Y=248) down to Shared LAN Box (Y=274)
+                                    // Spoke & Gateway: LAN Port 3 (Y=248) down to Shared LAN Box (Y=274)
                                     <path
                                         d={deviceCount === 1
                                             ? `M 0 248 L 0 274`
                                             : `M ${devX} 248 L ${devX} 262 L 0 262 M 0 262 L 0 274`
                                         }
-                                        stroke="rgba(34, 197, 94, 0.45)"
+                                        stroke={isGateway ? "rgba(245, 158, 11, 0.45)" : "rgba(34, 197, 94, 0.45)"}
                                         strokeWidth="2"
                                         fill="none"
                                         strokeLinejoin="round"
@@ -549,6 +621,21 @@ const SiteNode = ({ data }: any) => {
                     </div>
                 )}
 
+                {/* Gateway-Specific Header */}
+                {isGateway && (
+                    <div className="flex flex-col items-center justify-center mb-5 relative z-10">
+                        <div className="flex items-center gap-2 mb-1.5">
+                            <span className="px-2.5 py-0.5 rounded-full bg-amber-500/15 border border-amber-500/40 text-[9px] font-black uppercase tracking-widest text-amber-400 shadow-sm flex items-center gap-1.5">
+                                <GitBranch size={11} className="text-amber-400" />
+                                Branch Gateway
+                            </span>
+                        </div>
+                        <div className="text-[19px] font-black text-text-primary uppercase tracking-[0.35em] opacity-90 drop-shadow-lg">
+                            {data.name}
+                        </div>
+                    </div>
+                )}
+
                 {/* Horizontal Device Clusters */}
                 <div className="flex items-center justify-center gap-16 relative z-10 w-full mb-8">
                     {devices.map((dev: any, dIdx: number) => (
@@ -556,8 +643,12 @@ const SiteNode = ({ data }: any) => {
 
                             {/* Router Block (Fixed Height h-[220px]) */}
                             <div className={cn(
-                                "w-52 h-[220px] rounded-[40px] border-2 flex flex-col items-center justify-center gap-4 transition-all group-hover:scale-105 group-hover:border-blue-500/50 group-hover:shadow-[0_20px_50px_-10px_rgba(59,130,246,0.3)] relative z-10",
-                                isHub ? "bg-blue-600/10 border-blue-500/30 shadow-blue-500/10" : "bg-card-secondary/40 border-border/80"
+                                "w-52 h-[220px] rounded-[40px] border-2 flex flex-col items-center justify-center gap-4 transition-all group-hover:scale-105 relative z-10",
+                                isGateway
+                                    ? "bg-amber-500/10 border-amber-500/35 shadow-amber-500/10 group-hover:border-amber-400/60 group-hover:shadow-[0_20px_50px_-10px_rgba(245,158,11,0.25)]"
+                                    : isHub
+                                        ? "bg-blue-600/10 border-blue-500/30 shadow-blue-500/10 group-hover:border-blue-500/50 group-hover:shadow-[0_20px_50px_-10px_rgba(59,130,246,0.3)]"
+                                        : "bg-card-secondary/40 border-border/80 group-hover:border-blue-500/50 group-hover:shadow-[0_20px_50px_-10px_rgba(59,130,246,0.3)]"
                             )}>
 
                                 {/* HUB: LAN Port Top */}
@@ -567,7 +658,7 @@ const SiteNode = ({ data }: any) => {
                                     </div>
                                 )}
 
-                                {/* SPOKE: WAN Ports Top */}
+                                {/* SPOKE & GATEWAY: WAN Ports Top */}
                                 {!isHub && (
                                     <div className="absolute -top-[10px] w-full flex justify-center gap-4 z-20">
                                         {dev.wan_interfaces?.map((wan: any, wIdx: number) => (
@@ -579,9 +670,13 @@ const SiteNode = ({ data }: any) => {
                                 {/* Icon */}
                                 <div className={cn(
                                     "p-4 rounded-2xl shadow-xl transition-transform group-hover:rotate-12",
-                                    isHub ? "bg-blue-500 text-white shadow-blue-500/40" : "bg-card text-blue-500 shadow-black/20"
-                                    )}>
-                                    {isHub ? <Server size={28} /> : <Home size={28} />}
+                                    isGateway
+                                        ? "bg-amber-500 text-white shadow-amber-500/40"
+                                        : isHub
+                                            ? "bg-blue-500 text-white shadow-blue-500/40"
+                                            : "bg-card text-blue-500 shadow-black/20"
+                                )}>
+                                    {isGateway ? <GitBranch size={28} /> : (isHub ? <Server size={28} /> : <Home size={28} />)}
                                 </div>
 
                                 {/* Text */}
@@ -599,7 +694,7 @@ const SiteNode = ({ data }: any) => {
                                     </div>
                                 )}
 
-                                {/* SPOKE: LAN Port Bottom */}
+                                {/* SPOKE & GATEWAY: LAN Port Bottom */}
                                 {!isHub && (
                                     <div className="absolute -bottom-[10px] w-full flex justify-center z-20">
                                         <Port num="3" label={shortIp(dev.lan_interfaces?.[0]?.ip)} status={getStatus(dev.lan_interfaces?.[0])} labelPosition="top" />
@@ -611,7 +706,7 @@ const SiteNode = ({ data }: any) => {
                 </div>
 
                 {/* Spoke-Specific: Shared LAN Block at the Bottom */}
-                {!isHub && (
+                {!isHub && !isGateway && (
                     <div className="flex flex-col items-center relative z-20 w-full mb-2">
                         <div className="flex gap-2.5 items-center justify-center flex-wrap max-w-full">
                             {uniqueSubeNets.map((subnet, sIdx) => renderSubnetPill(subnet, sIdx))}
@@ -622,10 +717,68 @@ const SiteNode = ({ data }: any) => {
                         <div className="text-[20px] font-black text-text-primary uppercase tracking-[0.4em] opacity-85 mt-4 drop-shadow-lg relative z-10">{data.name}</div>
                     </div>
                 )}
+
+                {/* Gateway-Specific: LAN Subnets at the Bottom */}
+                {isGateway && (
+                    <div className="flex flex-col items-center relative z-20 w-full mb-1">
+                        <div className="flex gap-2.5 items-center justify-center flex-wrap max-w-full">
+                            {uniqueSubeNets.map((subnet, sIdx) => renderSubnetPill(subnet, sIdx))}
+                        </div>
+                    </div>
+                )}
             </div>
+
+            {/* Right-Side Circuit Blocks Column for Gateway */}
+            {isGateway && (
+                <div className="flex flex-col justify-center gap-3.5 z-10 relative">
+                    {wanCircuits.map((w: any, idx: number) => {
+                        const badge = getUnderlayBadge(w);
+                        return (
+                            <div key={idx} className="relative flex items-center">
+                                <div
+                                    className={cn(
+                                        "px-3.5 py-2 rounded-2xl border shadow-2xl backdrop-blur-md flex flex-col items-center justify-center gap-0.5 min-w-[125px] h-[52px] transition-all hover:scale-105 hover:border-amber-400/80 group",
+                                        w.wan_network?.toLowerCase().includes('mpls')
+                                            ? "bg-purple-500/10 border-purple-500/35 text-purple-400"
+                                            : "bg-blue-500/10 border-blue-500/35 text-blue-400",
+                                        badge && onInspectUnderlayCircuit ? "cursor-pointer" : ""
+                                    )}
+                                    onClick={badge && onInspectUnderlayCircuit ? (e) => { e.stopPropagation(); onInspectUnderlayCircuit(badge.r); } : undefined}
+                                >
+                                    <div className="text-[10px] font-black uppercase tracking-tight overflow-hidden text-ellipsis whitespace-nowrap max-w-[110px]">
+                                        {w.circuit_label || w.name}
+                                    </div>
+                                    <div className="text-[9px] font-mono text-text-muted opacity-60">
+                                        {w.ip || 'DHCP...'}
+                                    </div>
+                                    <Handle
+                                        type="source"
+                                        position={Position.Right}
+                                        id={`circuit:${w.devName}:${w.name}`}
+                                        className="!opacity-0 !w-2 !h-2"
+                                    />
+                                    <Handle
+                                        type="target"
+                                        position={Position.Right}
+                                        id={`target-circuit:${w.devName}:${w.name}`}
+                                        className="!opacity-0 !w-2 !h-2"
+                                    />
+                                    {badge && (
+                                        <div className={cn(
+                                            "absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full border flex items-center justify-center text-[9px] font-black shadow-md z-30 transition-transform group-hover:scale-110",
+                                            badge.c.cls
+                                        )}>
+                                            {badge.c.label}
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        );
+                    })}
+                </div>
+            )}
         </div>
     );
-
 };
 
 const CloudNode = ({ data }: any) => {
@@ -1057,7 +1210,8 @@ const nodeTypes = {
 };
 
 const edgeTypes = {
-    site: SiteEdge
+    site: SiteEdge,
+    archedBridge: ArchedBridgeEdge,
 };
 
 // --- Main Topology Component ---
@@ -1084,7 +1238,8 @@ function TopologyContent({ token }: TopologyProps) {
     const [searchQuery, setSearchQuery] = useState('');
     const [pathFilter, setPathFilter] = useState<'ALL' | 'ACTIVE' | 'BACKUP' | 'DOWN' | 'HUB'>('ALL');
     const [logicalViewSiteId, setLogicalViewSiteId] = useState<string | null>(null);
-    const [bgAsHub, setBgAsHub] = useState(true);
+    const [bgLayout, setBgLayout] = useState<'flank' | 'top'>('flank');
+    const [showBranchMesh, setShowBranchMesh] = useState<boolean>(false);
 
     // Filter state
     const [visibleSiteIds, setVisibleSiteIds] = useState<string[] | null>(() => {
@@ -1484,7 +1639,20 @@ function TopologyContent({ token }: TopologyProps) {
         }
     }, [visibleSiteIds]);
     
-    // Helper to identify Hub-like sites (HUB role, Branch Gateway, or specific naming)
+    // Helper to detect if any pure Datacenter / Cloud Hubs exist
+    const hasPureHubs = useMemo(() => {
+        if (!topology?.sites) return false;
+        return topology.sites.some((s: any) => {
+            const role = (s.element_cluster_role || s.site_role || '').toUpperCase();
+            const isBG = s.branch_gateway === true || s.branch_gateway === 'true';
+            return role === 'HUB' && !isBG;
+        });
+    }, [topology]);
+
+    // When pure hubs exist and bgLayout is 'flank', Branch Gateway sits on the flank.
+    // When no pure hubs exist (Case B), or user forces top, Branch Gateway acts as top hub.
+    const effectiveBgAsHub = !hasPureHubs || bgLayout === 'top';
+
     // Map site names to their hub status for quick lookup in PathFilter
     const siteHubStatus = useMemo(() => {
         const map = new Map<string, boolean>();
@@ -1492,10 +1660,10 @@ function TopologyContent({ token }: TopologyProps) {
         topology.sites.forEach((s: any) => {
             const role = (s.element_cluster_role || s.site_role || '').toUpperCase();
             const isBG = s.branch_gateway === true || s.branch_gateway === 'true';
-            map.set(s.site_name, role === 'HUB' || (isBG && bgAsHub));
+            map.set(s.site_name, role === 'HUB' || (isBG && effectiveBgAsHub));
         });
         return map;
-    }, [topology, bgAsHub]);
+    }, [topology, effectiveBgAsHub]);
 
     const isHubLike = useCallback((s: any) => {
         if (!s) return false;
@@ -1505,8 +1673,8 @@ function TopologyContent({ token }: TopologyProps) {
         }
         const role = (s.element_cluster_role || s.site_role || '').toUpperCase();
         const isBG = s.branch_gateway === true || s.branch_gateway === 'true';
-        return role === 'HUB' || (isBG && bgAsHub);
-    }, [siteHubStatus, bgAsHub]);
+        return role === 'HUB' || (isBG && effectiveBgAsHub);
+    }, [siteHubStatus, effectiveBgAsHub]);
 
     const processTopology = useCallback((data: any) => {
         if (!data.sites) return;
@@ -1519,8 +1687,27 @@ function TopologyContent({ token }: TopologyProps) {
         const newNodes: Node[] = [];
         const newEdges: Edge[] = [];
 
-        const hubs = filteredSites.filter(isHubLike);
-        const spokes = filteredSites.filter((s: any) => !isHubLike(s));
+        const isBGSite = (s: any) => Boolean(s.branch_gateway === true || s.branch_gateway === 'true');
+
+        const pureHubs = filteredSites.filter((s: any) => {
+            const role = (s.element_cluster_role || s.site_role || '').toUpperCase();
+            return role === 'HUB' && !isBGSite(s);
+        });
+
+        const branchGateways = filteredSites.filter(isBGSite);
+
+        const standardSpokes = filteredSites.filter((s: any) => {
+            return !pureHubs.includes(s) && !branchGateways.includes(s);
+        });
+
+        // Case A vs Case B:
+        // Case A (pure hubs exist and flank requested): keep pure hubs on top, branch gateways on left flank
+        // Case B (no pure hubs exist, or top requested): promote branch gateways to top tier as root hubs
+        const promoteBgToTop = !hasPureHubs || bgLayout === 'top';
+        const hubsToLayout = promoteBgToTop ? [...pureHubs, ...branchGateways] : pureHubs;
+        const spokesToLayout = standardSpokes;
+        const gatewaysToLayout = promoteBgToTop ? [] : branchGateways;
+        const hubs = hubsToLayout;
 
         // Identify unique WAN Networks (Clouds)
         const publicWanNetworks = new Set<string>();
@@ -1568,7 +1755,10 @@ function TopologyContent({ token }: TopologyProps) {
             const subnetsCount = Math.max(1, allSubnets.size);
             const subnetsWidth = subnetsCount * 145 + Math.max(0, subnetsCount - 1) * 12;
 
-            const contentWidth = Math.max(devicesWidth, circuitsWidth, subnetsWidth);
+            const isBG = site.branch_gateway === true || site.branch_gateway === 'true';
+            const extraGwWidth = (isBG && bgLayout !== 'top' && hasPureHubs) ? 160 : 0;
+
+            const contentWidth = Math.max(devicesWidth, circuitsWidth, subnetsWidth) + extraGwWidth;
             return Math.max(340, contentWidth + 96);
         };
 
@@ -1591,13 +1781,21 @@ function TopologyContent({ token }: TopologyProps) {
                     type: 'site',
                     position: { x, y: yPos },
                     origin: [0.5, 0.5],
-                    data: { ...site, name: site.site_name, role, fleetNodes },
+                    data: {
+                        ...site,
+                        name: site.site_name,
+                        role,
+                        fleetNodes,
+                        underlayMode: topologyViewMode === 'underlay' ? 'badges' : 'off',
+                        underlayResolutionMap,
+                        onInspectUnderlayCircuit: (res: any) => setUnderlayDrawerResolution(res)
+                    },
                 });
             });
         };
 
         // --- NODES ARE ALWAYS IN THE SAME POSITION ---
-        layoutRow(hubs, HUB_Y, 'HUB');
+        layoutRow(hubsToLayout, HUB_Y, 'HUB');
 
         // Middle Tier:
         // - Underlay Mode: Active VyOS Routers + External Cloud
@@ -1828,7 +2026,46 @@ function TopologyContent({ token }: TopologyProps) {
             });
         }
 
-        layoutRow(spokes, SPOKE_Y, 'SPOKE');
+        layoutRow(spokesToLayout, SPOKE_Y, 'SPOKE');
+
+        // Flank Left Layout for Branch Gateways (Mid-tier Left Flank at Y=0)
+        if (gatewaysToLayout.length > 0) {
+            const hubLeftEdges = hubsToLayout.map((s: any) => (sitePositions.get(s.site_id) || 0) - getSiteWidth(s) / 2);
+            const spokeLeftEdges = spokesToLayout.map((s: any) => (sitePositions.get(s.site_id) || 0) - getSiteWidth(s) / 2);
+            let minLeftX = Math.min(0, ...hubLeftEdges, ...spokeLeftEdges);
+
+            if (topologyViewMode === 'sase') {
+                minLeftX = Math.min(minLeftX, -760);
+            } else if (topologyViewMode === 'physical') {
+                minLeftX = Math.min(minLeftX, -380);
+            }
+
+            gatewaysToLayout.forEach((gw: any, gIdx: number) => {
+                const gwWidth = getSiteWidth(gw);
+                const gwX = minLeftX - (gwWidth / 2) - 150;
+                const totalGws = gatewaysToLayout.length;
+                const gwY = totalGws === 1 ? 0 : (gIdx - (totalGws - 1) / 2) * 440;
+
+                sitePositions.set(gw.site_id, gwX);
+                sitePositions.set(gw.site_name, gwX);
+
+                newNodes.push({
+                    id: `site:${gw.site_id}`,
+                    type: 'site',
+                    position: { x: gwX, y: gwY },
+                    origin: [0.5, 0.5],
+                    data: {
+                        ...gw,
+                        name: gw.site_name,
+                        role: 'GATEWAY',
+                        fleetNodes,
+                        underlayMode: topologyViewMode === 'underlay' ? 'badges' : 'off',
+                        underlayResolutionMap,
+                        onInspectUnderlayCircuit: (res: any) => setUnderlayDrawerResolution(res)
+                    },
+                });
+            });
+        }
 
         // --- EDGES CHANGE BASED ON MODE ---
         if (topologyViewMode === 'overlay') {
@@ -1859,17 +2096,37 @@ function TopologyContent({ token }: TopologyProps) {
                             const isPeerVisible = !visibleSiteIds || visibleSiteIds.includes(c.peer_site_id);
                             if (!isPeerVisible && c.peer_site_id !== logicalViewSiteId) return;
 
-                            const isSiteHub = isHubLike(site);
-                            const peerSite = data.sites.find((s: any) => s.site_id === c.peer_site_id);
-                            const isPeerHub = peerSite && isHubLike(peerSite);
+                            const isSourceGateway = gatewaysToLayout.some((g: any) => g.site_id === site.site_id);
+                            const isTargetGateway = gatewaysToLayout.some((g: any) => g.site_id === c.peer_site_id);
 
-                            // Prevent duplicate reverse edges in global view:
+                            const isSourceHub = hubsToLayout.some((h: any) => h.site_id === site.site_id);
+                            const isTargetHub = hubsToLayout.some((h: any) => h.site_id === c.peer_site_id);
+
+                            const isSourceSpoke = spokesToLayout.some((s: any) => s.site_id === site.site_id);
+                            const isTargetSpoke = spokesToLayout.some((s: any) => s.site_id === c.peer_site_id);
+
+                            const isSpokeToSpoke = isSourceSpoke && isTargetSpoke;
+                            const isHubToHub = isSourceHub && isTargetHub;
+
+                            // Branch-to-Branch (Spoke to Spoke) arched bridges:
+                            if (isSpokeToSpoke) {
+                                // In global view, hide spoke-to-spoke tunnels unless mesh toggle is ON
+                                if (!logicalViewSiteId && !showBranchMesh) return;
+                                // In global view, prevent duplicate reverse edge
+                                if (!logicalViewSiteId && site.site_id > c.peer_site_id) return;
+                            }
+
+                            // Hub to Hub duplicate prevention in global view
+                            if (isHubToHub && !logicalViewSiteId && site.site_id > c.peer_site_id) return;
+
+                            // Gateway duplicate prevention in global view: always draw from Gateway outwards
                             if (!logicalViewSiteId) {
-                                if (isSiteHub && !isPeerHub) return;
-                                if (isSiteHub && isPeerHub && site.site_id > c.peer_site_id) return;
+                                if (isSourceHub && isTargetGateway) return;
+                                if (isSourceSpoke && isTargetGateway) return;
+                                if (isSourceHub && isTargetSpoke) return;
                             } else {
                                 if (!isSelectedSiteHub) {
-                                    if (!isPeerHub) return;
+                                    if (!isTargetHub && !isTargetGateway && !isTargetSpoke) return;
                                 }
                                 if (!isSourceSelected && !isSelectedSiteHub) return;
                             }
@@ -1890,13 +2147,15 @@ function TopologyContent({ token }: TopologyProps) {
                                 strokeColor = '#ef4444';
                             }
 
+                            const edgeType = (isSpokeToSpoke || isHubToHub) ? 'archedBridge' : 'default';
+
                             newEdges.push({
                                 id: `logical-edge-${site.site_id}-${c.peer_site_id}-${d.device_name}-${w.name}-${cIdx}`,
                                 source: `site:${site.site_id}`,
                                 target: `site:${c.peer_site_id}`,
                                 sourceHandle: `circuit:${d.device_name}:${w.name}`,
                                 targetHandle: `target-circuit:${c.peer_device_name}:${c.peer_wan_interface}`,
-                                type: 'default',
+                                type: edgeType,
                                 animated,
                                 style: {
                                     stroke: strokeColor,
@@ -2086,7 +2345,7 @@ function TopologyContent({ token }: TopologyProps) {
 
         setNodes(newNodes);
         setEdges(newEdges);
-    }, [logicalViewSiteId, selectedNetwork, setNodes, setEdges, visibleSiteIds, isHubLike, siteHubStatus, topologyViewMode, underlayData, fleetNodes, pathFilter, bgAsHub, getVyosInterfaceStatus]);
+    }, [logicalViewSiteId, selectedNetwork, setNodes, setEdges, visibleSiteIds, isHubLike, siteHubStatus, topologyViewMode, underlayData, fleetNodes, pathFilter, bgLayout, showBranchMesh, hasPureHubs, effectiveBgAsHub, getVyosInterfaceStatus]);
 
     const fetchTopology = useCallback(async () => {
         setLoading(true);
@@ -2137,7 +2396,7 @@ function TopologyContent({ token }: TopologyProps) {
         } else {
             processTopology(topology);
         }
-    }, [topology, logicalViewSiteId, selectedNetwork, fetchTopology, processTopology, visibleSiteIds, topologyViewMode, underlayData, fleetNodes]);
+    }, [topology, logicalViewSiteId, selectedNetwork, fetchTopology, processTopology, visibleSiteIds, topologyViewMode, underlayData, fleetNodes, bgLayout, showBranchMesh]);
 
     const onNodeClick = useCallback((_: any, node: Node) => {
         const nodeData = node.data as any;
@@ -2603,6 +2862,7 @@ function TopologyContent({ token }: TopologyProps) {
                                     {topology.sites
                                         .filter((s: any) => s.site_name.toLowerCase().includes(filterSearch.toLowerCase()))
                                         .map((site: any) => {
+                                            const isBG = site.branch_gateway === true || site.branch_gateway === 'true';
                                             const isHub = isHubLike(site);
                                             const isVisible = visibleSiteIds === null || visibleSiteIds.includes(site.site_id);
 
@@ -2627,13 +2887,17 @@ function TopologyContent({ token }: TopologyProps) {
                                                     <div className="flex items-center gap-3">
                                                         <div className={cn(
                                                             "w-8 h-8 rounded-lg flex items-center justify-center",
-                                                            isHub ? "bg-blue-500/20 text-blue-500" : "bg-card-secondary text-text-secondary"
+                                                            isBG 
+                                                                ? "bg-amber-500/20 text-amber-400" 
+                                                                : (isHub ? "bg-blue-500/20 text-blue-500" : "bg-card-secondary text-text-secondary")
                                                         )}>
-                                                            {isHub ? <Server size={14} /> : <Home size={14} />}
+                                                            {isBG ? <GitBranch size={14} /> : (isHub ? <Server size={14} /> : <Home size={14} />)}
                                                         </div>
                                                         <div className="text-left">
                                                             <div className="text-xs font-black uppercase tracking-tight">{site.site_name}</div>
-                                                            <div className="text-[9px] font-bold opacity-60 tracking-widest uppercase">{isHub ? 'Hub Site' : 'Branch Site'}</div>
+                                                            <div className="text-[9px] font-bold opacity-60 tracking-widest uppercase">
+                                                                {isBG ? 'Branch Gateway' : (isHub ? 'Hub Site' : 'Branch Site')}
+                                                            </div>
                                                         </div>
                                                     </div>
                                                     <div className={cn(
@@ -2915,23 +3179,37 @@ function TopologyContent({ token }: TopologyProps) {
                                 <button
                                     onClick={handleFitView}
                                     className="w-9 h-9 rounded-xl transition-all flex items-center justify-center hover:bg-card-secondary text-text-muted hover:text-sky-400 cursor-pointer"
-                                    title="Recadrer la topologie (Auto-fit)"
+                                    title="Recenter topology (Auto-fit)"
                                 >
                                     <Maximize size={16} />
                                 </button>
 
-                                {/* BG as Hub Toggle */}
+                                {/* Branch Gateway Layout Toggle */}
                                 <button
-                                    onClick={() => setBgAsHub(prev => !prev)}
+                                    onClick={() => setBgLayout(prev => prev === 'flank' ? 'top' : 'flank')}
                                     className={cn(
                                         "w-9 h-9 rounded-xl transition-all flex items-center justify-center cursor-pointer",
-                                        bgAsHub 
-                                            ? "bg-blue-500/20 text-blue-500 hover:bg-blue-500/30 border border-blue-500/30 shadow-sm" 
+                                        bgLayout === 'flank' 
+                                            ? "bg-amber-500/20 text-amber-400 hover:bg-amber-500/30 border border-amber-500/30 shadow-sm" 
+                                            : "bg-blue-500/20 text-blue-400 hover:bg-blue-500/30 border border-blue-500/30 shadow-sm"
+                                    )}
+                                    title={bgLayout === 'flank' ? "Branch Gateway: Flank Left (click to place as Top Hub)" : "Branch Gateway: Top Hub (click to place on Left Flank)"}
+                                >
+                                    <GitBranch size={16} />
+                                </button>
+
+                                {/* Branch-to-Branch Mesh Toggle */}
+                                <button
+                                    onClick={() => setShowBranchMesh(prev => !prev)}
+                                    className={cn(
+                                        "w-9 h-9 rounded-xl transition-all flex items-center justify-center cursor-pointer",
+                                        showBranchMesh 
+                                            ? "bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30 border border-emerald-500/30 shadow-sm" 
                                             : "hover:bg-card-secondary text-text-muted hover:text-text-primary"
                                     )}
-                                    title="Toggle whether Branch Gateways appear as Hubs (top) or regular Branches (bottom)"
+                                    title={showBranchMesh ? "Hide Branch-to-Branch Mesh Tunnels" : "Show Branch-to-Branch Mesh Tunnels (Arched Bridges)"}
                                 >
-                                    <Server size={16} />
+                                    <Route size={16} />
                                 </button>
 
                                 {/* Filter Button */}
