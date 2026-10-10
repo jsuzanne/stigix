@@ -481,17 +481,31 @@ const SiteNode = ({ data }: any) => {
                 <div className="flex gap-4 z-10 relative">
                     {wanCircuits.map((w: any, idx: number) => {
                         const badge = getUnderlayBadge(w);
+                        const isSelectedCircuit = data.selectedCircuitKey === `${data.site_id || data.id}:${w.devName}:${w.name}`;
                         return (
                             <div key={idx} className="relative flex flex-col items-center">
                                 <div
                                     className={cn(
-                                        "px-3.5 py-1.5 rounded-xl border shadow-2xl backdrop-blur-md flex flex-col items-center justify-center gap-0.5 min-w-[120px] h-[48px] transition-all hover:scale-105 hover:border-white/40 group",
-                                        w.wan_network?.toLowerCase().includes('mpls')
-                                            ? "bg-purple-500/10 border-purple-500/30 text-purple-400"
-                                            : "bg-blue-500/10 border-blue-500/30 text-blue-400",
-                                        badge && onInspectUnderlayCircuit ? "cursor-pointer" : ""
+                                        "px-3.5 py-1.5 rounded-xl border shadow-2xl backdrop-blur-md flex flex-col items-center justify-center gap-0.5 min-w-[120px] h-[48px] transition-all hover:scale-105 group cursor-pointer",
+                                        isSelectedCircuit
+                                            ? "ring-2 ring-blue-400 bg-blue-500/25 border-blue-400 shadow-lg shadow-blue-500/30 scale-105"
+                                            : (w.wan_network?.toLowerCase().includes('mpls')
+                                                ? "bg-purple-500/10 border-purple-500/30 text-purple-400 hover:border-purple-400/60"
+                                                : "bg-blue-500/10 border-blue-500/30 text-blue-400 hover:border-blue-400/60")
                                     )}
-                                    onClick={badge && onInspectUnderlayCircuit ? (e) => { e.stopPropagation(); onInspectUnderlayCircuit(badge.r); } : undefined}
+                                    title={`Click to inspect tunnels for ${w.circuit_label || w.name}`}
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        if (data.onSelectCircuit) {
+                                            data.onSelectCircuit({
+                                                siteId: data.site_id || data.id,
+                                                siteName: data.site_name || data.name,
+                                                wan: w,
+                                                devName: w.devName,
+                                                circuitKey: `${data.site_id || data.id}:${w.devName}:${w.name}`
+                                            });
+                                        }
+                                    }}
                                 >
                                     <div className="text-[10px] font-black uppercase tracking-tight overflow-hidden text-ellipsis whitespace-nowrap max-w-[105px]">
                                         {w.circuit_label || w.name}
@@ -514,10 +528,19 @@ const SiteNode = ({ data }: any) => {
                                     />
                                     {/* Underlay status badge */}
                                     {badge && (
-                                        <div className={cn(
-                                            "absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full border flex items-center justify-center text-[9px] font-black shadow-md z-30 transition-transform group-hover:scale-110",
-                                            badge.c.cls
-                                        )}>
+                                        <div
+                                            className={cn(
+                                                "absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full border flex items-center justify-center text-[9px] font-black shadow-md z-30 transition-transform hover:scale-125 cursor-pointer",
+                                                badge.c.cls
+                                            )}
+                                            title="Inspect Underlay Mapping (VyOS)"
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                if (onInspectUnderlayCircuit) {
+                                                    onInspectUnderlayCircuit(badge.r);
+                                                }
+                                            }}
+                                        >
                                             {badge.c.label}
                                         </div>
                                     )}
@@ -733,17 +756,31 @@ const SiteNode = ({ data }: any) => {
                 <div className="flex flex-col justify-center gap-3.5 z-10 relative">
                     {wanCircuits.map((w: any, idx: number) => {
                         const badge = getUnderlayBadge(w);
+                        const isSelectedCircuit = data.selectedCircuitKey === `${data.site_id || data.id}:${w.devName}:${w.name}`;
                         return (
                             <div key={idx} className="relative flex items-center">
                                 <div
                                     className={cn(
-                                        "px-3.5 py-2 rounded-2xl border shadow-2xl backdrop-blur-md flex flex-col items-center justify-center gap-0.5 min-w-[125px] h-[52px] transition-all hover:scale-105 hover:border-amber-400/80 group",
-                                        w.wan_network?.toLowerCase().includes('mpls')
-                                            ? "bg-purple-500/10 border-purple-500/35 text-purple-400"
-                                            : "bg-blue-500/10 border-blue-500/35 text-blue-400",
-                                        badge && onInspectUnderlayCircuit ? "cursor-pointer" : ""
+                                        "px-3.5 py-2 rounded-2xl border shadow-2xl backdrop-blur-md flex flex-col items-center justify-center gap-0.5 min-w-[125px] h-[52px] transition-all hover:scale-105 group cursor-pointer",
+                                        isSelectedCircuit
+                                            ? "ring-2 ring-blue-400 bg-blue-500/25 border-blue-400 shadow-lg shadow-blue-500/30 scale-105"
+                                            : (w.wan_network?.toLowerCase().includes('mpls')
+                                                ? "bg-purple-500/10 border-purple-500/35 text-purple-400 hover:border-purple-400/60"
+                                                : "bg-blue-500/10 border-blue-500/35 text-blue-400 hover:border-blue-400/60")
                                     )}
-                                    onClick={badge && onInspectUnderlayCircuit ? (e) => { e.stopPropagation(); onInspectUnderlayCircuit(badge.r); } : undefined}
+                                    title={`Click to inspect tunnels for ${w.circuit_label || w.name}`}
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        if (data.onSelectCircuit) {
+                                            data.onSelectCircuit({
+                                                siteId: data.site_id || data.id,
+                                                siteName: data.site_name || data.name,
+                                                wan: w,
+                                                devName: w.devName,
+                                                circuitKey: `${data.site_id || data.id}:${w.devName}:${w.name}`
+                                            });
+                                        }
+                                    }}
                                 >
                                     <div className="text-[10px] font-black uppercase tracking-tight overflow-hidden text-ellipsis whitespace-nowrap max-w-[110px]">
                                         {w.circuit_label || w.name}
@@ -764,10 +801,19 @@ const SiteNode = ({ data }: any) => {
                                         className="!opacity-0 !w-2 !h-2"
                                     />
                                     {badge && (
-                                        <div className={cn(
-                                            "absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full border flex items-center justify-center text-[9px] font-black shadow-md z-30 transition-transform group-hover:scale-110",
-                                            badge.c.cls
-                                        )}>
+                                        <div
+                                            className={cn(
+                                                "absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full border flex items-center justify-center text-[9px] font-black shadow-md z-30 transition-transform hover:scale-125 cursor-pointer",
+                                                badge.c.cls
+                                            )}
+                                            title="Inspect Underlay Mapping (VyOS)"
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                if (onInspectUnderlayCircuit) {
+                                                    onInspectUnderlayCircuit(badge.r);
+                                                }
+                                            }}
+                                        >
                                             {badge.c.label}
                                         </div>
                                     )}
@@ -1278,6 +1324,30 @@ function TopologyContent({ token }: TopologyProps) {
     const [inspectedLink, setInspectedLink] = useState<any | null>(null);
     const [popTunnelFilter, setPopTunnelFilter] = useState<'ALL' | 'ACTIVE' | 'BACKUP' | 'DOWN'>('ALL');
     const [saseTunnelTypeFilter, setSaseTunnelTypeFilter] = useState<'ALL' | 'ACTIVE' | 'BACKUP' | 'DOWN'>('ALL');
+    const [selectedCircuit, setSelectedCircuit] = useState<any | null>(null);
+    const [circuitTunnelFilter, setCircuitTunnelFilter] = useState<'ALL' | 'ACTIVE' | 'BACKUP' | 'DOWN'>('ALL');
+    const [circuitTunnelSearch, setCircuitTunnelSearch] = useState('');
+
+    const handleSelectCircuit = useCallback((circuitInfo: any) => {
+        if (selectedCircuit?.circuitKey === circuitInfo.circuitKey) {
+            setSelectedCircuit(null);
+            setSelectedObject(null);
+        } else {
+            setSelectedCircuit(circuitInfo);
+            setSelectedObject({
+                type: 'circuit_tunnels',
+                siteId: circuitInfo.siteId,
+                siteName: circuitInfo.siteName,
+                devName: circuitInfo.devName,
+                circuitKey: circuitInfo.circuitKey,
+                wan: circuitInfo.wan,
+                name: `${circuitInfo.siteName} · ${circuitInfo.wan?.circuit_label || circuitInfo.wan?.name}`,
+                circuitName: circuitInfo.wan?.circuit_label || circuitInfo.wan?.name,
+            });
+            setCircuitTunnelFilter('ALL');
+            setCircuitTunnelSearch('');
+        }
+    }, [selectedCircuit]);
 
     // VyOS Direct Action State (Interactive Topology Controls)
     const [isVyosExecuting, setIsVyosExecuting] = useState(false);
@@ -2405,6 +2475,7 @@ function TopologyContent({ token }: TopologyProps) {
     const onNodeClick = useCallback((_: any, node: Node) => {
         const nodeData = node.data as any;
         setInspectedLink(null);
+        setSelectedCircuit(null);
 
         if (node.type === 'cloud') {
             const netName = (nodeData.name || '').toUpperCase();
@@ -2445,6 +2516,7 @@ function TopologyContent({ token }: TopologyProps) {
         const edgeData = edge.data as any;
         setInspectedLink(edgeData);
         setSelectedObject(null);
+        setSelectedCircuit(null);
         if (edgeData?.resolution) {
             setUnderlayDrawerResolution(edgeData.resolution);
         }
@@ -2536,8 +2608,8 @@ function TopologyContent({ token }: TopologyProps) {
     const filteredNodes = useMemo(() => {
         return nodes.map(n => {
             const nodeData = n.data as any;
-            // Inject underlay data into site nodes
-            const enriched = (n.type === 'site' && underlayData)
+            // Inject underlay data & circuit selection handlers into site nodes
+            const enriched = (n.type === 'site')
                 ? {
                     ...n,
                     data: {
@@ -2547,7 +2619,9 @@ function TopologyContent({ token }: TopologyProps) {
                         onInspectUnderlayCircuit: (resolution: UnderlayResolution) => {
                             setUnderlayPanelResolution(resolution);
                             setShowUnderlayPanel(true);
-                        }
+                        },
+                        selectedCircuitKey: selectedCircuit?.circuitKey,
+                        onSelectCircuit: handleSelectCircuit,
                     }
                 }
                 : n;
@@ -2561,13 +2635,14 @@ function TopologyContent({ token }: TopologyProps) {
                 }
             };
         });
-    }, [nodes, searchQuery, underlayMode, underlayResolutionMap, underlayData]);
+    }, [nodes, searchQuery, underlayMode, underlayResolutionMap, underlayData, selectedCircuit, handleSelectCircuit]);
 
 
     const filteredEdges = useMemo(() => {
         const hasPopSelection = Boolean(selectedObject?.isSasePop);
         const selectedPopId = selectedObject?.isSasePop ? selectedObject.id : null;
         const selectedPopPeer = selectedObject?.isSasePop ? selectedObject.primary_peer_ip : null;
+        const hasCircuitSelection = Boolean(selectedCircuit);
 
         return edges.map(e => {
             const edgeData = e.data as any;
@@ -2591,7 +2666,18 @@ function TopologyContent({ token }: TopologyProps) {
                     e.target === `cloud:${selectedPopId}` ||
                     (selectedPopPeer && edgeData.remote_ip === selectedPopPeer)
                 ));
-                const isDimmed = isFilteredOut || (hasPopSelection && !isTargetingSelectedPop);
+                let isDimmed = isFilteredOut || (hasPopSelection && !isTargetingSelectedPop);
+
+                // 3. Instantaneous Focus Spotlight by selected Circuit
+                if (hasCircuitSelection) {
+                    const isCircuitSaseMatch = Boolean(
+                        (e.source === `site:${selectedCircuit.siteId}` || edgeData.site_name === selectedCircuit.siteName) &&
+                        (edgeData.circuit_name === selectedCircuit.wan?.name ||
+                         edgeData.circuit_name === selectedCircuit.wan?.circuit_label ||
+                         e.sourceHandle?.includes(selectedCircuit.wan?.name))
+                    );
+                    if (!isCircuitSaseMatch) isDimmed = true;
+                }
 
                 // Vibrant stroke color: Zscaler UP is ALWAYS Green (#10b981)
                 let stroke = '#ef4444';
@@ -2617,6 +2703,57 @@ function TopologyContent({ token }: TopologyProps) {
                         transition: 'opacity 0.1s ease, stroke-width 0.1s ease'
                     }
                 };
+            } else if (hasCircuitSelection) {
+                // Instantaneous Circuit Spotlight for SD-WAN Mesh Overlay, Physical WAN, and Underlay edges
+                let isCircuitMatch = false;
+
+                if (edgeData?.isOverlayTunnel) {
+                    const isSourceMatch = (edgeData.sourceSiteName === selectedCircuit.siteName || e.source === `site:${selectedCircuit.siteId}`) &&
+                                          (edgeData.sourceCircuitName === selectedCircuit.wan?.name || edgeData.sourceCircuitName === selectedCircuit.wan?.circuit_label || e.sourceHandle === `circuit:${selectedCircuit.devName}:${selectedCircuit.wan?.name}`);
+                    const isTargetMatch = (edgeData.peer_site_name === selectedCircuit.siteName || edgeData.peer_site_id === selectedCircuit.siteId) &&
+                                          (edgeData.peer_wan_interface === selectedCircuit.wan?.name || edgeData.peer_wan_interface === selectedCircuit.wan?.circuit_label);
+                    isCircuitMatch = Boolean(isSourceMatch || isTargetMatch);
+                } else if (edgeData?.isPhysicalWanEdge) {
+                    isCircuitMatch = Boolean(
+                        (e.source === `site:${selectedCircuit.siteId}` || edgeData.site_name === selectedCircuit.siteName) &&
+                        (edgeData.name === selectedCircuit.wan?.name || edgeData.circuit_label === selectedCircuit.wan?.name)
+                    );
+                } else if (edgeData?.isUnderlayEdge) {
+                    isCircuitMatch = Boolean(
+                        (e.source === `site:${selectedCircuit.siteId}` || edgeData.site_name === selectedCircuit.siteName) &&
+                        (edgeData.name === selectedCircuit.wan?.name || edgeData.circuit_label === selectedCircuit.wan?.name)
+                    );
+                }
+
+                if (isCircuitMatch) {
+                    const isUp = edgeData?.status === 'UP' || edgeData?.active || edgeData?.usable || edgeData?.link_up;
+                    currentEdge = {
+                        ...e,
+                        animated: Boolean(edgeData?.active || isUp),
+                        zIndex: 50,
+                        style: {
+                            ...e.style,
+                            strokeWidth: edgeData?.active ? 4.5 : 3,
+                            opacity: 1,
+                            filter: 'drop-shadow(0 0 8px rgba(59,130,246,0.8))',
+                            pointerEvents: 'all',
+                            transition: 'opacity 0.1s ease, stroke-width 0.1s ease'
+                        }
+                    };
+                } else {
+                    currentEdge = {
+                        ...e,
+                        animated: false,
+                        zIndex: 1,
+                        style: {
+                            ...e.style,
+                            strokeWidth: 1,
+                            opacity: 0.08,
+                            pointerEvents: 'none',
+                            transition: 'opacity 0.1s ease, stroke-width 0.1s ease'
+                        }
+                    };
+                }
             }
 
             if (searchQuery) {
@@ -2629,7 +2766,7 @@ function TopologyContent({ token }: TopologyProps) {
 
             return currentEdge;
         });
-    }, [edges, searchQuery, selectedObject, saseTunnelTypeFilter]);
+    }, [edges, searchQuery, selectedObject, saseTunnelTypeFilter, selectedCircuit]);
 
     const handleFitView = useCallback(() => {
         fitView({ padding: 0.12, duration: 450, minZoom: 0.12 });
@@ -3180,6 +3317,7 @@ function TopologyContent({ token }: TopologyProps) {
                         onEdgeClick={onEdgeClick}
                         onPaneClick={() => {
                             setSelectedObject(null);
+                            setSelectedCircuit(null);
                             setSelectedNetwork(null);
                             setLogicalViewSiteId(null);
                             setShowUnderlayPanel(false);
@@ -3598,40 +3736,473 @@ function TopologyContent({ token }: TopologyProps) {
                                     <div className="flex items-center gap-2.5 min-w-0">
                                         <div className={cn(
                                             "p-2 rounded-xl shrink-0",
-                                            selectedObject.type === 'network'
-                                                ? (selectedObject.network === 'INTERNET' ? "bg-sky-500 text-white shadow-lg shadow-sky-500/30" : "bg-purple-600 text-white shadow-lg shadow-purple-500/30")
-                                                : selectedObject.isSaseEdge || selectedObject.isSasePop
+                                            selectedObject.type === 'circuit_tunnels'
+                                                ? ((selectedObject.wan?.wan_network || '').toUpperCase().includes('MPLS')
                                                     ? "bg-purple-600 text-white shadow-lg shadow-purple-500/30"
-                                                    : (selectedObject.type === 'node' ? "bg-blue-500 text-white" : "bg-purple-500 text-white")
+                                                    : "bg-blue-600 text-white shadow-lg shadow-blue-500/30")
+                                                : selectedObject.type === 'network'
+                                                    ? (selectedObject.network === 'INTERNET' ? "bg-sky-500 text-white shadow-lg shadow-sky-500/30" : "bg-purple-600 text-white shadow-lg shadow-purple-500/30")
+                                                    : selectedObject.isSaseEdge || selectedObject.isSasePop
+                                                        ? "bg-purple-600 text-white shadow-lg shadow-purple-500/30"
+                                                        : (selectedObject.type === 'node' ? "bg-blue-500 text-white" : "bg-purple-500 text-white")
                                         )}>
-                                            {selectedObject.type === 'network' ? (
+                                            {selectedObject.type === 'circuit_tunnels' ? (
+                                                <Layers size={16} />
+                                            ) : selectedObject.type === 'network' ? (
                                                 <Cloud size={16} />
                                             ) : selectedObject.isSaseEdge || selectedObject.isSasePop ? (
                                                 <Shield size={16} />
                                             ) : (selectedObject.role === 'HUB' ? <Server size={16} /> : <Home size={16} />)}
                                         </div>
                                         <div className="min-w-0">
-                                            <h3 className="text-sm font-black text-text-primary tracking-tight truncate">{selectedObject.name || selectedObject.label}</h3>
+                                            <h3 className="text-sm font-black text-text-primary tracking-tight truncate">
+                                                {selectedObject.type === 'circuit_tunnels' ? (selectedObject.circuitName || selectedObject.name) : (selectedObject.name || selectedObject.label)}
+                                            </h3>
                                             <p className="text-[9px] text-text-muted font-bold tracking-widest uppercase truncate">
-                                                {selectedObject.type === 'network'
-                                                    ? 'SD-WAN Transport Carrier'
-                                                    : selectedObject.isSasePop
-                                                        ? 'SASE Security Cloud PoP'
-                                                        : (selectedObject.isSaseEdge
-                                                            ? (selectedObject.circuit_name ? `${selectedObject.circuit_name} · ServiceLink IPsec Tunnel` : 'ServiceLink IPsec Tunnel')
-                                                            : (selectedObject.type === 'node'
-                                                                ? (selectedObject.site_id ? 'Site Entity' : 'WAN Network')
-                                                                : 'Circuit Link'))}
+                                                {selectedObject.type === 'circuit_tunnels'
+                                                    ? `${selectedObject.siteName} · WAN Circuit (${selectedObject.wan?.wan_network || 'INTERNET'})`
+                                                    : selectedObject.type === 'network'
+                                                        ? 'SD-WAN Transport Carrier'
+                                                        : selectedObject.isSasePop
+                                                            ? 'SASE Security Cloud PoP'
+                                                            : (selectedObject.isSaseEdge
+                                                                ? (selectedObject.circuit_name ? `${selectedObject.circuit_name} · ServiceLink IPsec Tunnel` : 'ServiceLink IPsec Tunnel')
+                                                                : (selectedObject.type === 'node'
+                                                                    ? (selectedObject.site_id ? 'Site Entity' : 'WAN Network')
+                                                                    : 'Circuit Link'))}
                                             </p>
                                         </div>
                                     </div>
-                                    <button onClick={() => setSelectedObject(null)} className="p-1 hover:bg-card-secondary rounded-lg text-text-muted transition-colors shrink-0">
+                                    <button onClick={() => { setSelectedObject(null); setSelectedCircuit(null); }} className="p-1 hover:bg-card-secondary rounded-lg text-text-muted transition-colors shrink-0">
                                         <X size={18} />
                                     </button>
                                 </div>
 
                                 <div className="flex-1 overflow-y-auto p-4 space-y-4 scrollbar-thin scrollbar-thumb-border min-h-0">
-                                    {selectedObject.isSasePop ? (
+                                    {selectedObject.type === 'circuit_tunnels' ? (
+                                        (() => {
+                                            const circuitWan = selectedObject.wan;
+                                            const siteId = selectedObject.siteId;
+                                            const siteName = selectedObject.siteName;
+                                            const circuitName = circuitWan?.name;
+                                            const isMpls = (circuitWan?.wan_network || '').toUpperCase().includes('MPLS') || (circuitName || '').toUpperCase().includes('MPLS');
+
+                                            // Collect all tunnels attached to this circuit
+                                            const tunnelsMap = new Map<string, any>();
+
+                                            // 1. Outbound tunnels from this WAN interface
+                                            (circuitWan?.connections || []).forEach((c: any) => {
+                                                const peerKey = `${c.peer_site_name || c.peer_site_id}:${c.peer_wan_interface || 'WAN'}`;
+                                                tunnelsMap.set(peerKey, {
+                                                    direction: 'outbound',
+                                                    sourceSite: siteName,
+                                                    sourceSiteId: siteId,
+                                                    sourceDevice: selectedObject.devName,
+                                                    sourceCircuit: circuitWan?.circuit_label || circuitWan?.name,
+                                                    sourceNetwork: circuitWan?.wan_network || (isMpls ? 'MPLS' : 'INTERNET'),
+                                                    peerSite: c.peer_site_name,
+                                                    peerSiteId: c.peer_site_id,
+                                                    peerDevice: c.peer_device_name || 'ION',
+                                                    peerCircuit: c.peer_wan_interface || 'WAN',
+                                                    vpnId: c.debug_vpn_id,
+                                                    srcIp: c.debug_source_ip || circuitWan?.ip,
+                                                    dstIp: c.debug_peer_ip,
+                                                    isRoutingActive: Boolean(c.active),
+                                                    isRoutingUsable: Boolean(c.usable),
+                                                    isLinkUp: Boolean(c.link_up),
+                                                    status: c.status || (c.active || c.usable ? 'UP' : 'DOWN'),
+                                                    vpState: c.vpState,
+                                                    latency: c.latency ?? c.delay_ms,
+                                                    loss: c.loss_pct ?? c.packet_loss,
+                                                    raw: c
+                                                });
+                                            });
+
+                                            // 2. Discover any matching inbound tunnels across topology.sites
+                                            (topology?.sites || []).forEach((s: any) => {
+                                                if (s.site_id === siteId || s.site_name === siteName) return;
+                                                (s.devices || []).forEach((d: any) => {
+                                                    (d.wan_interfaces || []).forEach((w: any) => {
+                                                        (w.connections || []).forEach((c: any) => {
+                                                            const isTargetingThisCircuit =
+                                                                (c.peer_site_id === siteId || c.peer_site_name === siteName) &&
+                                                                (c.peer_wan_interface === circuitName || c.peer_wan_interface === circuitWan?.circuit_label);
+                                                            if (isTargetingThisCircuit) {
+                                                                const peerKey = `${s.site_name || s.site_id}:${w.circuit_label || w.name}`;
+                                                                if (!tunnelsMap.has(peerKey)) {
+                                                                    tunnelsMap.set(peerKey, {
+                                                                        direction: 'inbound',
+                                                                        sourceSite: siteName,
+                                                                        sourceSiteId: siteId,
+                                                                        sourceDevice: selectedObject.devName,
+                                                                        sourceCircuit: circuitWan?.circuit_label || circuitWan?.name,
+                                                                        sourceNetwork: circuitWan?.wan_network || (isMpls ? 'MPLS' : 'INTERNET'),
+                                                                        peerSite: s.site_name,
+                                                                        peerSiteId: s.site_id,
+                                                                        peerDevice: d.device_name || 'ION',
+                                                                        peerCircuit: w.circuit_label || w.name,
+                                                                        vpnId: c.debug_vpn_id,
+                                                                        srcIp: c.debug_peer_ip || circuitWan?.ip,
+                                                                        dstIp: c.debug_source_ip,
+                                                                        isRoutingActive: Boolean(c.active),
+                                                                        isRoutingUsable: Boolean(c.usable),
+                                                                        isLinkUp: Boolean(c.link_up),
+                                                                        status: c.status || (c.active || c.usable ? 'UP' : 'DOWN'),
+                                                                        vpState: c.vpState,
+                                                                        latency: c.latency ?? c.delay_ms,
+                                                                        loss: c.loss_pct ?? c.packet_loss,
+                                                                        raw: c
+                                                                    });
+                                                                }
+                                                            }
+                                                        });
+                                                    });
+                                                });
+                                            });
+
+                                            // 3. Find any SASE ServiceLinks originating from this circuit
+                                            const saseLinks: any[] = [];
+                                            (topology?.sites || []).forEach((s: any) => {
+                                                if (s.site_id === siteId || s.site_name === siteName) {
+                                                    (s.devices || []).forEach((d: any) => {
+                                                        (d.service_links || []).forEach((sl: any) => {
+                                                            const matchName = sl.circuit_name === circuitWan?.name || sl.circuit_name === circuitWan?.circuit_label;
+                                                            const matchId = sl.source_wan_if_id && sl.source_wan_if_id === circuitWan?.id;
+                                                            const matchIp = sl.local_ip && circuitWan?.ip && sl.local_ip === circuitWan.ip.split('/')[0];
+                                                            if (matchName || matchId || matchIp) {
+                                                                saseLinks.push({ ...sl, device_name: d.device_name });
+                                                            }
+                                                        });
+                                                    });
+                                                }
+                                            });
+
+                                            const allTunnels = Array.from(tunnelsMap.values());
+                                            const totalCount = allTunnels.length;
+                                            const activeCount = allTunnels.filter(t => t.isRoutingActive).length;
+                                            const backupCount = allTunnels.filter(t => !t.isRoutingActive && (t.isRoutingUsable || t.isLinkUp)).length;
+                                            const downCount = allTunnels.filter(t => !t.isRoutingActive && !t.isRoutingUsable && !t.isLinkUp).length;
+
+                                            const filteredTunnels = allTunnels.filter(t => {
+                                                if (circuitTunnelFilter === 'ACTIVE' && !t.isRoutingActive) return false;
+                                                if (circuitTunnelFilter === 'BACKUP' && (t.isRoutingActive || (!t.isRoutingUsable && !t.isLinkUp))) return false;
+                                                if (circuitTunnelFilter === 'DOWN' && (t.isRoutingActive || t.isRoutingUsable || t.isLinkUp)) return false;
+
+                                                if (circuitTunnelSearch) {
+                                                    const q = circuitTunnelSearch.toLowerCase();
+                                                    const matchPeer = (t.peerSite || '').toLowerCase().includes(q);
+                                                    const matchDevice = (t.peerDevice || '').toLowerCase().includes(q);
+                                                    const matchCircuit = (t.peerCircuit || '').toLowerCase().includes(q);
+                                                    const matchSrc = (t.srcIp || '').toLowerCase().includes(q);
+                                                    const matchDst = (t.dstIp || '').toLowerCase().includes(q);
+                                                    const matchVpn = String(t.vpnId || '').toLowerCase().includes(q);
+                                                    return matchPeer || matchDevice || matchCircuit || matchSrc || matchDst || matchVpn;
+                                                }
+                                                return true;
+                                            });
+
+                                            filteredTunnels.sort((a, b) => {
+                                                if (a.isRoutingActive !== b.isRoutingActive) return a.isRoutingActive ? -1 : 1;
+                                                return (a.peerSite || '').localeCompare(b.peerSite || '');
+                                            });
+
+                                            const isCircuitUp = circuitWan?.ip && !circuitWan.ip.includes('Pending') && circuitWan?.link_up !== false;
+
+                                            return (
+                                                <div className="space-y-4">
+                                                    {/* Circuit Hero Card */}
+                                                    <div className={cn(
+                                                        "p-4 rounded-2xl border shadow-lg relative overflow-hidden backdrop-blur-md",
+                                                        isMpls
+                                                            ? "bg-purple-950/20 border-purple-500/30 shadow-purple-500/10"
+                                                            : "bg-blue-950/20 border-blue-500/30 shadow-blue-500/10"
+                                                    )}>
+                                                        <div className="flex items-start justify-between gap-2 mb-3">
+                                                            <div className="min-w-0">
+                                                                <div className="flex items-center gap-2">
+                                                                    <span className={cn(
+                                                                        "px-2.5 py-0.5 rounded-lg text-xs font-black uppercase tracking-wider",
+                                                                        isMpls ? "bg-purple-500/20 text-purple-300 border border-purple-500/40" : "bg-blue-500/20 text-blue-300 border border-blue-500/40"
+                                                                    )}>
+                                                                        {circuitWan?.circuit_label || circuitWan?.name}
+                                                                    </span>
+                                                                    <span className={cn(
+                                                                        "px-2 py-0.5 rounded-full text-[10px] font-bold flex items-center gap-1",
+                                                                        isCircuitUp ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30" : "bg-rose-500/20 text-rose-400 border border-rose-500/30"
+                                                                    )}>
+                                                                        <span className={cn("w-1.5 h-1.5 rounded-full", isCircuitUp ? "bg-emerald-400 animate-pulse" : "bg-rose-400")}></span>
+                                                                        {isCircuitUp ? 'OPERATIONAL' : 'DOWN'}
+                                                                    </span>
+                                                                </div>
+                                                                <div className="text-[11px] text-text-muted font-mono mt-1">
+                                                                    Node: <span className="text-text-primary font-bold">{siteName}</span> ({selectedObject.devName})
+                                                                </div>
+                                                            </div>
+                                                            <div className={cn(
+                                                                "px-2.5 py-1 rounded-xl text-[10px] font-mono font-bold uppercase",
+                                                                isMpls ? "bg-purple-500/30 text-purple-200 border border-purple-400/50" : "bg-sky-500/30 text-sky-200 border border-sky-400/50"
+                                                            )}>
+                                                                {circuitWan?.wan_network || (isMpls ? 'MPLS' : 'INTERNET')}
+                                                            </div>
+                                                        </div>
+
+                                                        {/* Circuit Specs Grid */}
+                                                        <div className="grid grid-cols-2 gap-2 text-xs font-mono">
+                                                            <div className="bg-card-secondary/40 p-2.5 rounded-xl border border-border/40">
+                                                                <div className="text-[8px] font-black text-text-muted uppercase">Interface IP</div>
+                                                                <div className="text-[11px] font-bold text-text-primary truncate">{circuitWan?.ip || 'DHCP...'}</div>
+                                                            </div>
+                                                            <div className="bg-card-secondary/40 p-2.5 rounded-xl border border-border/40">
+                                                                <div className="text-[8px] font-black text-text-muted uppercase">Default Gateway</div>
+                                                                <div className="text-[11px] font-bold text-emerald-400 truncate">{circuitWan?.gateway || 'Auto / Default'}</div>
+                                                            </div>
+                                                            <div className="bg-card-secondary/40 p-2.5 rounded-xl border border-border/40">
+                                                                <div className="text-[8px] font-black text-text-muted uppercase">Device Port</div>
+                                                                <div className="text-[11px] font-bold text-text-secondary truncate">{circuitWan?.name || 'eth0'}</div>
+                                                            </div>
+                                                            <div className="bg-card-secondary/40 p-2.5 rounded-xl border border-border/40">
+                                                                <div className="text-[8px] font-black text-text-muted uppercase">Bandwidth</div>
+                                                                <div className="text-[11px] font-bold text-cyan-400 truncate">
+                                                                    {circuitWan?.bw_up_kbps ? `${Math.round(circuitWan.bw_up_kbps / 1000)} Mbps` : 'Adaptive'}
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+
+                                                    {/* KPI Filter Tabs */}
+                                                    <div className="flex gap-1.5 p-1 bg-card-secondary/50 rounded-xl border border-border/60 text-xs">
+                                                        <button
+                                                            onClick={() => setCircuitTunnelFilter('ALL')}
+                                                            className={cn(
+                                                                "flex-1 py-1.5 rounded-lg font-bold text-[11px] transition-all flex items-center justify-center gap-1",
+                                                                circuitTunnelFilter === 'ALL'
+                                                                    ? "bg-card text-text-primary shadow-sm border border-border/60"
+                                                                    : "text-text-muted hover:text-text-primary"
+                                                            )}
+                                                        >
+                                                            <span>All</span>
+                                                            <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-card-secondary border border-border/40 font-mono">
+                                                                {totalCount}
+                                                            </span>
+                                                        </button>
+                                                        <button
+                                                            onClick={() => setCircuitTunnelFilter('ACTIVE')}
+                                                            className={cn(
+                                                                "flex-1 py-1.5 rounded-lg font-bold text-[11px] transition-all flex items-center justify-center gap-1",
+                                                                circuitTunnelFilter === 'ACTIVE'
+                                                                    ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 shadow-sm"
+                                                                    : "text-text-muted hover:text-emerald-400"
+                                                            )}
+                                                        >
+                                                            <span>Active</span>
+                                                            <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 font-mono">
+                                                                {activeCount}
+                                                            </span>
+                                                        </button>
+                                                        <button
+                                                            onClick={() => setCircuitTunnelFilter('BACKUP')}
+                                                            className={cn(
+                                                                "flex-1 py-1.5 rounded-lg font-bold text-[11px] transition-all flex items-center justify-center gap-1",
+                                                                circuitTunnelFilter === 'BACKUP'
+                                                                    ? "bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 shadow-sm"
+                                                                    : "text-text-muted hover:text-cyan-400"
+                                                            )}
+                                                        >
+                                                            <span>Backup</span>
+                                                            <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 font-mono">
+                                                                {backupCount}
+                                                            </span>
+                                                        </button>
+                                                        <button
+                                                            onClick={() => setCircuitTunnelFilter('DOWN')}
+                                                            className={cn(
+                                                                "flex-1 py-1.5 rounded-lg font-bold text-[11px] transition-all flex items-center justify-center gap-1",
+                                                                circuitTunnelFilter === 'DOWN'
+                                                                    ? "bg-rose-500/20 text-rose-300 border border-rose-500/40 shadow-sm"
+                                                                    : "text-text-muted hover:text-rose-400"
+                                                            )}
+                                                        >
+                                                            <span>Down</span>
+                                                            <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-rose-500/20 text-rose-300 border border-rose-500/30 font-mono">
+                                                                {downCount}
+                                                            </span>
+                                                        </button>
+                                                    </div>
+
+                                                    {/* Tunnel Search Filter */}
+                                                    <div className="relative">
+                                                        <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-text-muted" />
+                                                        <input
+                                                            type="text"
+                                                            placeholder="Search peers, IPs, VPN IDs..."
+                                                            value={circuitTunnelSearch}
+                                                            onChange={(e) => setCircuitTunnelSearch(e.target.value)}
+                                                            className="w-full bg-card border border-border rounded-xl pl-9 pr-8 py-1.5 text-xs focus:outline-none focus:border-blue-500 text-text-primary placeholder:text-text-muted/60 transition-colors"
+                                                        />
+                                                        {circuitTunnelSearch && (
+                                                            <button
+                                                                onClick={() => setCircuitTunnelSearch('')}
+                                                                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-text-muted hover:text-text-primary"
+                                                            >
+                                                                <X size={12} />
+                                                            </button>
+                                                        )}
+                                                    </div>
+
+                                                    {/* Tunnel Cards List */}
+                                                    <div className="space-y-2.5">
+                                                        <div className="flex items-center justify-between text-[11px] font-bold text-text-muted px-1">
+                                                            <span>ESTABLISHED OVERLAY TUNNELS</span>
+                                                            <span>{filteredTunnels.length} of {totalCount}</span>
+                                                        </div>
+
+                                                        {filteredTunnels.length === 0 ? (
+                                                            <div className="text-center py-8 px-4 border border-dashed border-border rounded-2xl bg-card-secondary/20">
+                                                                <Activity size={24} className="mx-auto text-text-muted/40 mb-2" />
+                                                                <div className="text-xs font-bold text-text-muted">No overlay tunnels found</div>
+                                                                <div className="text-[10px] text-text-muted/60 mt-0.5">
+                                                                    {totalCount === 0 ? "This circuit currently has no active overlay peer connections." : "Try adjusting your filter or search query."}
+                                                                </div>
+                                                            </div>
+                                                        ) : (
+                                                            filteredTunnels.map((t: any, idx: number) => {
+                                                                const isPeerHub = siteHubStatus.get(t.peerSite) === true;
+                                                                return (
+                                                                    <div
+                                                                        key={idx}
+                                                                        className={cn(
+                                                                            "p-3 rounded-xl border transition-all hover:border-blue-400/60 bg-card/70 backdrop-blur-sm group relative",
+                                                                            t.isRoutingActive
+                                                                                ? "border-emerald-500/30 hover:shadow-lg hover:shadow-emerald-500/10"
+                                                                                : (t.isRoutingUsable || t.isLinkUp)
+                                                                                    ? "border-cyan-500/30 hover:shadow-lg hover:shadow-cyan-500/10"
+                                                                                    : "border-rose-500/30 opacity-70"
+                                                                        )}
+                                                                    >
+                                                                        {/* Top Row: Peer Node & Status */}
+                                                                        <div className="flex items-center justify-between gap-2 mb-2">
+                                                                            <div className="flex items-center gap-2 min-w-0">
+                                                                                <div className={cn(
+                                                                                    "p-1.5 rounded-lg shrink-0",
+                                                                                    isPeerHub ? "bg-purple-500/20 text-purple-300" : "bg-blue-500/20 text-blue-300"
+                                                                                )}>
+                                                                                    {isPeerHub ? <Server size={13} /> : <Home size={13} />}
+                                                                                </div>
+                                                                                <div className="min-w-0">
+                                                                                    <div className="text-xs font-black text-text-primary truncate flex items-center gap-1.5">
+                                                                                        <span>{t.peerSite}</span>
+                                                                                        <span className="text-[9px] font-mono text-text-muted font-normal">({t.peerCircuit})</span>
+                                                                                    </div>
+                                                                                    <div className="text-[9px] text-text-muted font-mono truncate">
+                                                                                        Device: {t.peerDevice}
+                                                                                    </div>
+                                                                                </div>
+                                                                            </div>
+
+                                                                            <div className="shrink-0 flex items-center gap-1.5">
+                                                                                {t.isRoutingActive ? (
+                                                                                    <span className="px-2 py-0.5 rounded-full text-[9px] font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 flex items-center gap-1">
+                                                                                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+                                                                                        ACTIVE
+                                                                                    </span>
+                                                                                ) : (t.isRoutingUsable || t.isLinkUp) ? (
+                                                                                    <span className="px-2 py-0.5 rounded-full text-[9px] font-bold bg-cyan-500/15 text-cyan-400 border border-cyan-500/30">
+                                                                                        BACKUP
+                                                                                    </span>
+                                                                                ) : (
+                                                                                    <span className="px-2 py-0.5 rounded-full text-[9px] font-bold bg-rose-500/15 text-rose-400 border border-rose-500/30">
+                                                                                        DOWN
+                                                                                    </span>
+                                                                                )}
+                                                                            </div>
+                                                                        </div>
+
+                                                                        {/* Tech details grid */}
+                                                                        <div className="grid grid-cols-2 gap-1.5 text-[10px] font-mono bg-card-secondary/40 p-2 rounded-lg border border-border/30 mb-2">
+                                                                            <div>
+                                                                                <span className="text-text-muted text-[8px] uppercase block font-sans">Peer IP</span>
+                                                                                <span className="font-bold text-text-primary truncate block">{t.dstIp || 'N/A'}</span>
+                                                                            </div>
+                                                                            <div>
+                                                                                <span className="text-text-muted text-[8px] uppercase block font-sans">Local IP</span>
+                                                                                <span className="font-bold text-text-secondary truncate block">{t.srcIp || circuitWan?.ip || 'N/A'}</span>
+                                                                            </div>
+                                                                            <div>
+                                                                                <span className="text-text-muted text-[8px] uppercase block font-sans">Tunnel Path</span>
+                                                                                <span className="text-cyan-400 truncate block">{t.vpnId ? `#${t.vpnId}` : 'Mesh VPN'}</span>
+                                                                            </div>
+                                                                            <div>
+                                                                                <span className="text-text-muted text-[8px] uppercase block font-sans">Latency / Loss</span>
+                                                                                <span className="text-emerald-400 truncate block">
+                                                                                    {t.latency ? `${t.latency} ms` : 'Optimal'} {t.loss ? `· ${t.loss}%` : ''}
+                                                                                </span>
+                                                                            </div>
+                                                                        </div>
+
+                                                                        {/* Action row */}
+                                                                        <div className="flex items-center justify-between pt-1 border-t border-border/20 text-[10px]">
+                                                                            <button
+                                                                                onClick={() => setInspectedLink(t.raw || t)}
+                                                                                className="px-2 py-1 rounded-md bg-card-secondary hover:bg-card-secondary/80 text-text-primary font-bold flex items-center gap-1 transition-colors cursor-pointer"
+                                                                                title="Inspect Link details"
+                                                                            >
+                                                                                <Activity size={11} className="text-blue-400" />
+                                                                                <span>Inspect Link</span>
+                                                                            </button>
+
+                                                                            {t.peerSiteId && (
+                                                                                <button
+                                                                                    onClick={() => setLogicalViewSiteId(t.peerSiteId)}
+                                                                                    className="px-2 py-1 rounded-md bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 font-bold flex items-center gap-1 transition-colors cursor-pointer"
+                                                                                    title={`Focus topology on ${t.peerSite}`}
+                                                                                >
+                                                                                    <span>Focus Peer</span>
+                                                                                    <ArrowRight size={11} />
+                                                                                </button>
+                                                                            )}
+                                                                        </div>
+                                                                    </div>
+                                                                );
+                                                            })
+                                                        )}
+                                                    </div>
+
+                                                    {/* SASE ServiceLink section (if configured on this circuit) */}
+                                                    {saseLinks.length > 0 && (
+                                                        <div className="space-y-2 pt-2 border-t border-border/40">
+                                                            <div className="flex items-center justify-between text-[11px] font-bold text-purple-400 px-1">
+                                                                <span className="flex items-center gap-1.5">
+                                                                    <Shield size={12} />
+                                                                    SASE CLOUD SERVICELINKS
+                                                                </span>
+                                                                <span>{saseLinks.length}</span>
+                                                            </div>
+                                                            {saseLinks.map((sl: any, idx: number) => {
+                                                                const isUp = sl.operational_state === 'up';
+                                                                return (
+                                                                    <div key={idx} className="p-2.5 rounded-xl border border-purple-500/30 bg-purple-950/15 text-xs font-mono">
+                                                                        <div className="flex items-center justify-between mb-1">
+                                                                            <span className="font-bold text-purple-200">{sl.name}</span>
+                                                                            <span className={cn(
+                                                                                "px-2 py-0.2 rounded-full text-[9px] font-bold",
+                                                                                isUp ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30" : "bg-rose-500/20 text-rose-400 border border-rose-500/30"
+                                                                            )}>
+                                                                                {isUp ? 'UP' : 'DOWN'}
+                                                                            </span>
+                                                                        </div>
+                                                                        <div className="text-[10px] text-text-muted flex justify-between">
+                                                                            <span>PoP IP: {sl.remote_ip || 'Anycast'}</span>
+                                                                            <span>Device: {sl.device_name}</span>
+                                                                        </div>
+                                                                    </div>
+                                                                );
+                                                            })}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            );
+                                        })()
+                                    ) : selectedObject.isSasePop ? (
 <div className="space-y-5">
                                             {/* SASE PoP Banner with Official Brand Logo */}
                                             <div className={cn(
