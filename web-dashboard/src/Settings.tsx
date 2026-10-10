@@ -616,6 +616,9 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
     const [showTargetPorts, setShowTargetPorts] = useState(false);
     const [registryStatus, setRegistryStatus] = useState<any>(null);
     const [staticLeaderUrl, setStaticLeaderUrl] = useState<string>('');
+    const [joinTokenInput, setJoinTokenInput] = useState('');
+    const [isJoiningToken, setIsJoiningToken] = useState(false);
+    const [showManualLeaderInput, setShowManualLeaderInput] = useState(false);
     const [isTestingConnectivity, setIsTestingConnectivity] = useState(false);
     const [connectivityResult, setConnectivityResult] = useState<{ success?: boolean; error?: string; leaderInfo?: string } | null>(null);
     // Peer installation card state
@@ -1636,6 +1639,56 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                 setErrorMsg("Failed to save static leader");
             }
         } catch (e) {
+            setErrorMsg(String(e));
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    const handleJoinWithToken = async () => {
+        if (!joinTokenInput.trim()) return;
+        setIsJoiningToken(true);
+        try {
+            const res = await apiFetch('/api/registry/join-with-token', {
+                method: 'POST',
+                headers: authHeaders,
+                body: JSON.stringify({ token: joinTokenInput.trim() })
+            });
+            const data = await res.json();
+            if (res.ok && (data.success || data.status === 'ok')) {
+                showSuccess("Successfully joined cluster! Leader connected via WebSocket.");
+                setJoinTokenInput('');
+                const sres = await apiFetch('/api/registry/status', { headers: authHeaders });
+                const sdata = await sres.json();
+                setRegistryStatus(sdata);
+            } else {
+                setErrorMsg(data.message || data.error || "Failed to join cluster with token");
+            }
+        } catch (e: any) {
+            setErrorMsg(String(e));
+        } finally {
+            setIsJoiningToken(false);
+        }
+    };
+
+    const handleUnenroll = async () => {
+        if (!window.confirm("Are you sure you want to disconnect this node from the cluster?")) return;
+        setSaving(true);
+        try {
+            const res = await apiFetch('/api/registry/unenroll', {
+                method: 'POST',
+                headers: authHeaders
+            });
+            if (res.ok) {
+                showSuccess("Node unenrolled from cluster.");
+                setStaticLeaderUrl('');
+                const sres = await apiFetch('/api/registry/status', { headers: authHeaders });
+                const sdata = await sres.json();
+                setRegistryStatus(sdata);
+            } else {
+                setErrorMsg("Failed to unenroll from cluster");
+            }
+        } catch (e: any) {
             setErrorMsg(String(e));
         } finally {
             setSaving(false);
@@ -5839,72 +5892,161 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
 
                     {/* ════════ PEER VIEW ════════ */}
                     {!isLeader && (
-                        <div className="bg-card border border-border rounded-2xl p-6 shadow-sm space-y-6">
-                            <div className="flex items-center gap-3">
-                                <div className="p-2 bg-blue-600/10 rounded-lg text-blue-500">
-                                    <Network size={18} />
-                                </div>
-                                <div>
-                                    <h3 className="text-sm font-black text-text-primary tracking-tight">Leader Connection</h3>
-                                    <p className="text-[10px] text-text-muted mt-0.5 opacity-70">Enter the IP or FQDN of your Stigix Leader. Targets will sync automatically once connected.</p>
-                                </div>
-                            </div>
-
-                            <div className="space-y-4">
-                                <div className="space-y-2">
-                                    <label className="text-[10px] font-extrabold text-text-muted uppercase tracking-widest pl-1">Leader IP / FQDN / URL</label>
-                                    <div className="relative group">
-                                        <input
-                                            type="text"
-                                            placeholder={isTunnelConnected ? `⚡ Managed via Fleet Gateway Tunnel (Leader: ${registryStatus?.leader_tunnel_info?.siteName || 'Connected'})` : "e.g. 192.168.1.50 or stigix-leader.local"}
-                                            value={staticLeaderUrl}
-                                            onChange={(e) => setStaticLeaderUrl(e.target.value)}
-                                            onKeyDown={(e) => e.key === 'Enter' && handleTestConnectivity()}
-                                            className="w-full bg-card hover:bg-card-hover border border-border focus:border-blue-500/50 rounded-xl px-4 py-2.5 text-xs font-mono transition-all pr-28"
-                                        />
-                                        {connectivityResult && (
-                                            <div className={`absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-1.5 px-2 py-0.5 rounded text-[8px] font-black uppercase tracking-widest border ${
-                                                connectivityResult.success
-                                                    ? "bg-emerald-500/10 text-emerald-500 border-emerald-500/20"
-                                                    : "bg-red-500/10 text-red-500 border-red-500/20"
-                                            }`}>
-                                                {connectivityResult.success ? <><CheckCircle size={10} /> {connectivityResult.leaderInfo ? `Reachable: ${connectivityResult.leaderInfo}` : 'Reachable'}</> : <><XCircle size={10} /> {connectivityResult.error || 'Failed'}</>}
+                        <div className="space-y-6">
+                            {/* If node is enrolled in a cluster, show Read-Only Lock Status */}
+                            {registryStatus?.is_cluster_enrolled ? (
+                                <div className="bg-emerald-500/5 border border-emerald-500/20 rounded-2xl p-6 shadow-sm space-y-4">
+                                    <div className="flex items-center justify-between">
+                                        <div className="flex items-center gap-3">
+                                            <div className="p-2.5 bg-emerald-500/10 rounded-xl text-emerald-400 border border-emerald-500/20">
+                                                <Lock size={18} />
                                             </div>
-                                        )}
-                                    </div>
-                                    {staticLeaderUrl && (
-                                        <p className="text-[9px] text-text-muted pl-1 font-mono opacity-50">→ {previewControllerUrl(staticLeaderUrl)}</p>
-                                    )}
-                                </div>
-
-                                <div className="flex items-center justify-end gap-3 pt-1">
-                                    {registryStatus?.is_static_leader && (
+                                            <div>
+                                                <div className="flex items-center gap-2">
+                                                    <h3 className="text-sm font-black text-text-primary tracking-tight">Cluster Enrolled</h3>
+                                                    <span className="text-[9px] font-black uppercase tracking-wider bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 px-2 py-0.5 rounded-full flex items-center gap-1">
+                                                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                                                        Active Spoke
+                                                    </span>
+                                                </div>
+                                                <p className="text-[10px] text-text-muted mt-0.5 opacity-80">
+                                                    This node is enrolled into the Stigix cluster via signed token. Topology and telemetry stream automatically to the Leader.
+                                                </p>
+                                            </div>
+                                        </div>
                                         <button
-                                            onClick={() => { setStaticLeaderUrl(''); handleSaveStaticLeader(null); }}
-                                            className="px-3.5 py-2 bg-card hover:bg-red-500/10 border border-border hover:border-red-500/30 rounded-xl text-text-muted hover:text-red-500 transition-all flex items-center gap-1.5 text-[10px] font-black uppercase tracking-widest"
-                                            title="Reset to Auto-Discovery"
+                                            onClick={handleUnenroll}
+                                            disabled={saving}
+                                            className="px-3.5 py-1.5 bg-card hover:bg-red-500/10 border border-border hover:border-red-500/30 rounded-xl text-text-muted hover:text-red-400 text-[10px] font-black uppercase tracking-wider transition-all flex items-center gap-1.5"
+                                            title="Disconnect from Cluster Leader"
                                         >
                                             <Trash2 size={13} />
-                                            <span>Reset</span>
+                                            <span>Disconnect</span>
                                         </button>
-                                    )}
-                                    <button
-                                        onClick={handleTestConnectivity}
-                                        disabled={isTestingConnectivity || (!staticLeaderUrl && !isTunnelConnected)}
-                                        className="bg-card hover:bg-card-hover border border-border rounded-xl px-5 py-2 text-[10px] font-black uppercase tracking-widest transition-all hover:border-blue-500/30 disabled:opacity-50 flex items-center justify-center gap-2"
-                                    >
-                                        {isTestingConnectivity ? <RefreshCw className="animate-spin" size={12} /> : <Zap size={12} className="text-blue-500" />}
-                                        Test
-                                    </button>
-                                    <button
-                                        onClick={() => handleSaveStaticLeader(staticLeaderUrl)}
-                                        disabled={saving || !staticLeaderUrl}
-                                        className="bg-blue-600 hover:bg-blue-500 text-white rounded-xl px-6 py-2 text-[10px] font-black uppercase tracking-widest transition-all shadow-[0_0_20px_rgba(37,99,235,0.2)] disabled:opacity-50 flex items-center justify-center gap-2"
-                                    >
-                                        {saving ? <RefreshCw size={12} className="animate-spin" /> : 'Save'}
-                                    </button>
+                                    </div>
+
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-2">
+                                        <div className="bg-card/50 border border-border rounded-xl p-3">
+                                            <label className="text-[9px] font-extrabold text-text-muted uppercase tracking-widest block mb-1">Enrolled Join Token</label>
+                                            <div className="flex items-center justify-between font-mono text-xs text-text-muted">
+                                                <span className="flex items-center gap-1.5 text-emerald-400 font-bold">
+                                                    <Lock size={12} />
+                                                    {registryStatus?.enrolled_token_prefix || 'STX-••••••••••••'}
+                                                </span>
+                                                <span className="text-[9px] uppercase tracking-wider px-2 py-0.5 rounded bg-muted/40 text-text-muted">READONLY</span>
+                                            </div>
+                                        </div>
+
+                                        <div className="bg-card/50 border border-border rounded-xl p-3">
+                                            <label className="text-[9px] font-extrabold text-text-muted uppercase tracking-widest block mb-1">Cluster Leader Controller</label>
+                                            <div className="font-mono text-xs text-blue-400 font-bold truncate">
+                                                {registryStatus?.enrolled_leader_url || registryStatus?.static_leader_url || registryStatus?.leader_info?.ip || 'Managed via Leader'}
+                                            </div>
+                                        </div>
+                                    </div>
                                 </div>
-                            </div>
+                            ) : (
+                                /* When not enrolled, provide Single-Token Join UX */
+                                <div className="bg-card border border-border rounded-2xl p-6 shadow-sm space-y-5">
+                                    <div className="flex items-center gap-3">
+                                        <div className="p-2.5 bg-blue-600/10 rounded-xl text-blue-500 border border-blue-500/20">
+                                            <Zap size={18} />
+                                        </div>
+                                        <div>
+                                            <h3 className="text-sm font-black text-text-primary tracking-tight">Join Stigix Cluster</h3>
+                                            <p className="text-[10px] text-text-muted mt-0.5 opacity-70">
+                                                Paste the single Join Token (<span className="font-mono text-blue-400">STX-...</span>) generated on your Leader node (<span className="text-blue-400 font-bold">+ Add Node</span>). Leader URL and authentication sync automatically.
+                                            </p>
+                                        </div>
+                                    </div>
+
+                                    <div className="space-y-3">
+                                        <div className="space-y-1.5">
+                                            <label className="text-[10px] font-extrabold text-text-muted uppercase tracking-widest pl-1">Cluster Join Token</label>
+                                            <div className="relative group">
+                                                <input
+                                                    type="text"
+                                                    placeholder="Paste token: STX-eyJhbGciOiJIUzI1NiIsInR5cCI6IlNUWC1KT0lOIn0..."
+                                                    value={joinTokenInput}
+                                                    onChange={(e) => setJoinTokenInput(e.target.value)}
+                                                    onKeyDown={(e) => e.key === 'Enter' && handleJoinWithToken()}
+                                                    className="w-full bg-card hover:bg-card-hover border border-border focus:border-blue-500/50 rounded-xl px-4 py-2.5 text-xs font-mono transition-all pr-24"
+                                                />
+                                                <div className="absolute right-2 top-1/2 -translate-y-1/2">
+                                                    <button
+                                                        onClick={handleJoinWithToken}
+                                                        disabled={isJoiningToken || !joinTokenInput.trim().startsWith('STX-')}
+                                                        className="bg-blue-600 hover:bg-blue-500 text-white rounded-lg px-3.5 py-1.5 text-[10px] font-black uppercase tracking-wider transition-all disabled:opacity-40 flex items-center gap-1.5 shadow-sm"
+                                                    >
+                                                        {isJoiningToken ? <RefreshCw size={11} className="animate-spin" /> : <Zap size={11} />}
+                                                        Join
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        {/* Auto-decoded token hint */}
+                                        {(() => {
+                                            if (!joinTokenInput.trim().startsWith('STX-')) return null;
+                                            try {
+                                                const parts = joinTokenInput.trim().slice(4).split('.');
+                                                if (parts.length >= 2) {
+                                                    const payload = JSON.parse(atob(parts[1]));
+                                                    const ep = payload.endpoints?.[0];
+                                                    return (
+                                                        <div className="px-3 py-2 bg-blue-500/10 border border-blue-500/20 rounded-xl text-[10px] text-blue-300 flex items-center justify-between">
+                                                            <span className="font-mono">🎯 Resolved Leader: <strong>{ep || 'Auto-Detected'}</strong></span>
+                                                            <span className="text-[9px] uppercase tracking-wider opacity-70">{payload.site_hint ? `Site: ${payload.site_hint}` : 'Valid STX Token'}</span>
+                                                        </div>
+                                                    );
+                                                }
+                                            } catch {}
+                                            return null;
+                                        })()}
+
+                                        {/* Secondary: Manual Leader IP configuration */}
+                                        <div className="pt-2 border-t border-border/50">
+                                            <button
+                                                type="button"
+                                                onClick={() => setShowManualLeaderInput(!showManualLeaderInput)}
+                                                className="text-[10px] font-bold text-text-muted hover:text-text-primary transition-colors flex items-center gap-1.5"
+                                            >
+                                                <span>{showManualLeaderInput ? '▾ Hide manual IP configuration' : '▸ Or configure manual Leader IP / URL'}</span>
+                                            </button>
+
+                                            {showManualLeaderInput && (
+                                                <div className="mt-3 space-y-3 p-4 bg-muted/20 border border-border/60 rounded-xl">
+                                                    <label className="text-[9px] font-extrabold text-text-muted uppercase tracking-widest">Manual Leader IP / FQDN / URL</label>
+                                                    <div className="flex gap-2">
+                                                        <input
+                                                            type="text"
+                                                            placeholder="e.g. 192.168.1.50 or stigix-leader.local"
+                                                            value={staticLeaderUrl}
+                                                            onChange={(e) => setStaticLeaderUrl(e.target.value)}
+                                                            className="flex-1 bg-card border border-border rounded-xl px-3 py-2 text-xs font-mono"
+                                                        />
+                                                        <button
+                                                            onClick={handleTestConnectivity}
+                                                            disabled={isTestingConnectivity || !staticLeaderUrl}
+                                                            className="px-3.5 py-2 bg-card hover:bg-card-hover border border-border rounded-xl text-[10px] font-black uppercase tracking-wider disabled:opacity-50 flex items-center gap-1"
+                                                        >
+                                                            {isTestingConnectivity ? <RefreshCw size={11} className="animate-spin" /> : <Zap size={11} />}
+                                                            Test
+                                                        </button>
+                                                        <button
+                                                            onClick={() => handleSaveStaticLeader(staticLeaderUrl)}
+                                                            disabled={saving || !staticLeaderUrl}
+                                                            className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-[10px] font-black uppercase tracking-wider disabled:opacity-50"
+                                                        >
+                                                            Save
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
 
                             {/* Connection status card */}
                             {isPeerConnected && (

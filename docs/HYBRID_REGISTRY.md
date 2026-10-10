@@ -1,4 +1,4 @@
-> **Last Updated:** 2026-09-27 | **Created:** 2026-03-12 (v1.2.1-patch.180)
+> **Last Updated:** 2026-10-10 | **Created:** 2026-03-12 (v1.2.1-patch.180)
 
 # Stigix Hybrid Registry: Architecture & Logic
 
@@ -70,6 +70,12 @@ When a new Stigix instance joins the site:
 For full details on **Direct Controller Peer Onboarding** (`curl | bash`), **Mesh Configuration Provisioning** (Applications & Connectivity Probes), **Pull-Mode Revision Distribution**, and **Local Field Overrides**, see the dedicated guide:
 👉 **[Mesh Provisioning & Peer Onboarding Guide](GLOBAL_PROVISIONING_AND_PEER_ONBOARDING.md)**
 
+### Single-Token Enrollment & Cluster Pairing
+For zero-touch cryptographic pairing without manual URL input or security key mismatches, Stigix v2 supports single-token enrollment:
+* Operators can paste an `STX-...` token directly into **Settings ➔ Target Controller** on any standalone peer.
+* Alternatively, run `stigix-cli join <STX-TOKEN>`.
+* Both methods dynamically negotiate endpoints, sync the cluster `JWT_SECRET`, and mount live WebSocket tunnels (`⚡ WS TUNNEL`). See **[Magic Join & Multi-Tenancy Architecture](MAGIC_JOIN_AND_MULTI_TENANCY.md)** for architecture details.
+
 ## Troubleshooting
 - **Local Leader Unreachable**: If a Peer shows "Falling back to Cloudflare", it means it found a Leader IP but could not reach port `8080` (check Firewalls/Security Groups on the Hub).
 - **Manual Forced Role**: You can instantly force a node's role via the **Target Controller** tab in the Web UI without restarting any containers. This overrides any `.env` configuration.
@@ -81,5 +87,6 @@ For full details on **Direct Controller Peer Onboarding** (`curl | bash`), **Mes
 
 | Date | Stigix Version | Author / Trigger | Summary of Changes |
 |---|---|---|---|
+| 2026-10-10 | `v2.2.8` | Stigix Core Team | Documented single-token cluster pairing via Web UI and `stigix-cli join` for secure WebSocket tunnel mounting. |
 | 2026-09-27 | `v2.0.66` | Stigix Core Team | Standardized terminology: Node Role, Mesh Provisioning, Leader/Peer roles. |
 | 2026-03-12 | `v1.2.1-patch.180` | Stigix Core Team | Initial document creation |

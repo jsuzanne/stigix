@@ -1,4 +1,4 @@
-> **Last Updated:** 2026-10-01 | **Created:** 2026-06-02 (v1.4.0-patch.145)
+> **Last Updated:** 2026-10-10 | **Created:** 2026-06-02 (v1.4.0-patch.145)
 
 # Stigix Deployment Guide
 
@@ -127,6 +127,22 @@ Generate a token on the Leader and paste it on the Cloud VPS:
 curl -fsSL https://raw.githubusercontent.com/jsuzanne/stigix/v2/install.sh | sudo bash -s -- STX-eyJhbGciOi...
 ```
 
+#### Alternative: Onboarding an Existing Standalone Node (Web UI or CLI)
+If your node is already deployed and running in standalone mode (e.g. installed via standard `curl ... | bash` without a token):
+
+* **Option A: Web Dashboard (Zero Reboot)**
+  1. Copy the raw `STX-...` token from the Leader's **[ + Add Node ]** modal.
+  2. On your Peer's dashboard, go to **Settings ➔ Target Controller**.
+  3. Paste the token into **Cluster Join Token** and click **Join**.
+  4. The node automatically discovers the Leader endpoint, synchronizes `JWT_SECRET`, updates `.env`, and establishes the live WebSocket reverse tunnel (`⚡ WS TUNNEL`).
+  5. The token field locks to **ReadOnly** (`🔒 Cluster Enrolled`) to protect the cluster association.
+* **Option B: Stigix CLI (SSH / Terminal)**
+  Run directly on the node host:
+  ```bash
+  stigix-cli join STX-eyJhbGciOi...
+  ```
+  The CLI instructs the local running daemon to redeem the token and hot-connect the WebSocket tunnel instantly.
+
 ---
 
 ## ⚡ Post-Deployment Operations
@@ -160,6 +176,7 @@ docker exec -it stigix stigix-cli
 
 | Date | Stigix Version | Author / Trigger | Summary of Changes |
 |---|---|---|---|
+| 2026-10-10 | `v2.2.8` | Stigix Core Team | Added existing standalone node enrollment workflows via Web Dashboard (Settings > Target Controller) and `stigix-cli join`. |
 | 2026-10-01 | `v2.0.138` | Stigix Core Team | Added annotated UI screenshots (Figures 1–3): Magic Join dialog, Fleet Mesh Overview, and Remote Node detail card. |
 | 2026-10-01 | `v2.0.137` | Stigix Core Team | Rewrote deployment guide to focus on 100% zero-touch 1-line installation, Magic Join token onboarding, port auto-selection, and Remote View fleet workflows. |
 | 2026-06-02 | `v1.4.0-patch.145` | Stigix Core Team | Initial document creation. |

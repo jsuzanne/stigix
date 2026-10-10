@@ -1,4 +1,4 @@
-> **Last Updated:** 2026-10-01 | **Created:** 2026-10-01 (v2.0.120)
+> **Last Updated:** 2026-10-10 | **Created:** 2026-10-01 (v2.0.120)
 
 # Stigix « Magic Join » & Multi-Tenant Security Architecture
 
@@ -124,8 +124,91 @@ curl -s https://registry.stigix.io/health
 
 ---
 
+## 7. Universal Onboarding Workflows: Token Architecture & Deployment Modes
+
+### The Self-Contained Join Token (`STX-...`)
+Stigix Join Tokens use a compact, URL-safe envelope:
+$$\text{STX-}[\text{header}]_{B64u}.[\text{payload}]_{B64u}.[\text{signature}]_{B64u}$$
+
+* **No Leader IP entry required**: The payload directly contains candidate Leader LAN/WAN endpoints (`endpoints: ["http://192.168.203.100:8080", ...]`), realm hash, expiration timestamp, and optional site hint.
+* **Autonomous resolution**: Whether consumed by an installer script, the interactive Web UI, or the Python CLI, the client automatically extracts the Leader endpoints and selects the fastest reachable route.
+
+---
+
+### Deployment Pathway Comparison
+
+| Onboarding Pathway | Target Environment | User Action | Telemetry Time |
+|---|---|---|---|
+| **Mode 1: Zero-Touch Script** | Fresh Linux VM / Server | Run `curl -fsSL https://.../install.sh \| sudo bash -s -- <STX-TOKEN>` | **~15s** (pulls container & mounts tunnel) |
+| **Mode 2: Interactive Web UI** | Existing Standalone Node (Docker already up) | Copy token from Leader, paste into **Settings ➔ Target Controller**, click **Join** | **~2s** (instant hot-reload, no container restart) |
+| **Mode 3: Stigix CLI** | Existing Standalone Node (Terminal / SSH) | Run `stigix-cli join <STX-TOKEN>` | **~2s** (instant live daemon sync) |
+
+---
+
+### Mode 2: Interactive Web Dashboard Workflow
+For nodes originally installed in standalone mode (e.g. without passing a token at install time) or migrating between Leaders:
+
+1. **On Leader Node**:
+   * Click **[ 🔗 + Add Node ]** in the top navigation or Mesh view.
+   * Copy the raw `STX-...` token (or click *Copy Token*).
+2. **On Peer (Spoke) Dashboard**:
+   * Open **Settings ➔ Target Controller**.
+   * Under the **Join Stigix Cluster** card, paste the single `STX-...` token into the **Cluster Join Token** input.
+   * The dashboard instantly decodes the candidate endpoint in the browser and displays a preview badge: `🎯 Resolved Leader: http://<leader_ip>:8080`.
+   * Click **Join**.
+3. **Hot Credential Synchronization**:
+   * The spoke backend invokes `/api/registry/join-with-token`.
+   * It redeems the token with the Leader (`POST /api/fleet/join-redeem`), receives the cluster `JWT_SECRET`, updates its runtime memory, writes persistent `.env` credentials, and forces an immediate reconnect of the outbound Fleet Tunnel WebSocket spoke (`/fleet-tunnel`).
+4. **ReadOnly Protection State**:
+   * Upon successful enrollment, the token field converts to **ReadOnly**:
+     ```text
+     🔒 Cluster Enrolled  [ Active Spoke ]
+     Enrolled Join Token: STX-•••••••••••• [READONLY]
+     Cluster Leader Controller: http://192.168.203.100:8080
+     ```
+   * A **[ Disconnect ]** button allows administrators to cleanly unenroll the node and revert to standalone discovery if topology changes require it.
+
+---
+
+### Mode 3: Terminal / CLI Workflow (`stigix-cli join`)
+For operators working directly over SSH or in automated orchestration environments:
+
+```bash
+# Basic join using copied token
+stigix-cli join STX-eyJhbGciOiJIUzI1NiIsInR5cCI6IlNUWC1KT0lOIn0...
+
+# Join with explicit site name override
+stigix-cli join STX-eyJhbGciOiJIUzI1NiIsInR5cCI6IlNUWC1KT0lOIn0... --site BR5
+```
+
+**Execution Pipeline:**
+1. **Token Inspection**: Decodes JTI, realm, and candidate Leader IPs.
+2. **Local Daemon Delegation**: Probes `http://localhost:8080/api/version`. If the local Stigix container is running, it dispatches `POST /api/registry/join-with-token`.
+3. **Live Reconnection**: The local container adopts the Leader's `JWT_SECRET`, synchronizes targets, and establishes the WebSocket tunnel without restarting Docker.
+4. **Output Confirmation**:
+   ```text
+   ━━ STIGIX MAGIC JOIN — NODE ONBOARDING ━━━━━━━━━━━━━━━━━━━
+   → Inspecting Join Token: STX-eyJhbGciOiJIUzI...
+     Token ID (JTI)   : stx_tok_b79869680c1d
+     Target Site Name : BR5
+     Realm Hash       : a89f214...
+     Candidate Paths  : http://192.168.203.100:8080
+
+   → Connected to local Stigix node at http://localhost:8080. Executing live cluster enrollment...
+   ✓ Node successfully joined Stigix cluster!
+     Leader Controller : http://192.168.203.100:8080
+     Node ID           : peer-b892a01f
+     Site Name         : BR5
+     Tunnel Status     : 🟢 Online [ ⚡ WS TUNNEL ]
+   → Hot-sync and real-time telemetry streaming are now active (no reboot needed).
+   ```
+
+---
+
 ## 📜 Revision History
 
 | Date | Stigix Version | Author / Trigger | Summary of Changes |
 |---|---|---|---|
+| 2026-10-10 | `v2.2.8` | Stigix Core Team | Documented single-token copy/paste enrollment across Web UI and CLI (`stigix-cli join`), ReadOnly locked view, and live WebSocket hot-reload without container restart. |
 | 2026-10-01 | `v2.0.120` | Stigix Core Team | Initial documentation of Magic Join zero-touch onboarding, multi-tenant realm isolation, and Cloudflare SSE rendezvous relay. |
+

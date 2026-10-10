@@ -1,4 +1,4 @@
-> **Last Updated:** 2026-09-26 | **Created:** 2026-05-28 (v1.4.0-patch.41)
+> **Last Updated:** 2026-10-10 | **Created:** 2026-05-28 (v1.4.0-patch.41)
 
 # Stigix CLI Reference Guide
 
@@ -309,6 +309,18 @@ Enable and manage Central Global Provisioning to synchronize application catalog
 
 ---
 
+### 15. Magic Join & Cluster Onboarding (`join`)
+Manage Stigix Magic Join zero-touch onboarding, single-use signed tokens, and dynamic peer cluster enrollment.
+
+*   `join <STX-TOKEN>` — Join this node to an existing Stigix cluster using a signed token (`STX-...`). Automatically extracts candidate Leader endpoints, redeems the token with the Leader, updates local `JWT_SECRET` in `.env` and runtime memory, and mounts the live `/fleet-tunnel` WebSocket without needing a container restart.
+*   `join <STX-TOKEN> --site <name>` — Join with an explicit custom site name override (e.g. `--site BR5`).
+*   `join token generate [--ttl <sec>] [--site <name>]` — (Run on Leader) Generate a new signed single-use Magic Join token.
+*   `join token list` — (Run on Leader) List all active, redeemed, expired, and revoked join tokens.
+*   `join token revoke <token_id_or_jti>` — (Run on Leader) Invalidate an active token immediately.
+*(Note: `magic-join` is supported as an alias for `join`)*
+
+---
+
 ## 📊 Command Output Examples
 
 Here are some examples of CLI commands run via Docker against a live Stigix instance:
@@ -408,6 +420,7 @@ docker exec -it stigix stigix-cli --exec "flows query --site BR8 --protocol tcp 
 
 | Date | Stigix Version | Author / Trigger | Summary of Changes |
 |---|---|---|---|
+| 2026-10-10 | `v2.2.8` | Stigix Core Team | Added `join` command reference for token onboarding, token generation, list, and revocation. |
 | 2026-09-26 | `v2.0.66` | Stigix Core Team | Added `tech-support` diagnostic bundle command documentation |
 | 2026-09-02 | `v1.4.0-patch.41` | Stigix Core Team | Initial Stigix CLI documentation |
 

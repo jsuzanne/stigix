@@ -399,6 +399,10 @@ export class StigixRegistryClient {
     setLocalRegistry(leaderIp: string, port?: number) {
         const targetPort = port || process.env.STIGIX_REGISTRY_PORT || 8080;
         this.config.registryUrl = `http://${leaderIp}:${targetPort}/api/registry`;
+        this.config.enabled = true;
+        if (!this.config.pocId) {
+            this.config.pocId = 'cluster-peer';
+        }
         log('REGISTRY', `Switched to Local Leader: ${this.config.registryUrl}`);
     }
 
@@ -412,6 +416,10 @@ export class StigixRegistryClient {
             cleanUrl = cleanUrl.replace(/\/$/, '') + '/api/registry';
         }
         this.config.registryUrl = cleanUrl;
+        this.config.enabled = true;
+        if (!this.config.pocId) {
+            this.config.pocId = 'cluster-peer';
+        }
         log('REGISTRY', `Switched to Static Controller: ${this.config.registryUrl}`);
     }
 

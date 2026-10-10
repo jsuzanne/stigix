@@ -13,6 +13,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Implemented concurrent remote upgrade orchestration with the new `⚡ Upgrade All Remote Nodes` header button.
   - Replaced misleading percentage progress bars with live 3-stage visual indicators: `1/3 Pulling...`, `2/3 Restarting...`, and `3/3 Reconnecting...`.
   - Added unified polling loop tracking per-spoke upgrade state (`fleetUpgradingPeers`) and individual 1-click access to remote console log streams.
+- **Single Join Token Peer Enrollment & ReadOnly State (`Settings.tsx`, `server.ts`, `registry-manager.ts`, `stigix-cli.py`)**:
+  - Direct token enrollment: Standalone peers can now pair with a cluster Leader simply by pasting the single `STX-...` token into `Settings > Target Controller` without manually entering the Leader IP/port.
+  - Automatic Leader endpoint resolution: Token payload is decoded in real time to extract candidate Leader endpoints, negotiate credentials via `POST /api/registry/join-with-token`, synchronize `JWT_SECRET`, and mount the outbound WebSocket tunnel immediately without requiring a container restart.
+  - ReadOnly locked display: Once enrolled, the Join Token field is locked into a read-only view (`🔒 Cluster Enrolled`) with active member badges and a dedicated Disconnect button.
+  - CLI parity (`stigix-cli join <STX-TOKEN>`): Supports the identical zero-reboot flow from terminal/SSH, talking to the local running Stigix daemon.
 - **Interactive Circuit Tunnel Inspection & Canvas Spotlighting (`Topology.tsx`)**:
   - Added 1-click circuit link inspection on the topology canvas with real-time tunnel endpoint, IPsec, and QoS telemetry details.
   - Implemented edge spotlighting and dimmed background effects to focus on selected circuits without layout displacement.

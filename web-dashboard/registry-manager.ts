@@ -161,6 +161,29 @@ export class RegistryManager {
         }
     }
 
+    public getClusterEnrollment(): { enrolled: boolean; tokenPrefix?: string; leaderUrl?: string; siteName?: string; enrolledAt?: string } | null {
+        try {
+            const f = path.join(this.configDir, 'cluster-enrollment.json');
+            if (fs.existsSync(f)) {
+                return JSON.parse(fs.readFileSync(f, 'utf8'));
+            }
+        } catch {}
+        return null;
+    }
+
+    public saveClusterEnrollment(data: any | null) {
+        try {
+            const f = path.join(this.configDir, 'cluster-enrollment.json');
+            if (data) {
+                fs.writeFileSync(f, JSON.stringify(data, null, 2), 'utf8');
+            } else if (fs.existsSync(f)) {
+                fs.unlinkSync(f);
+            }
+        } catch (e: any) {
+            log('REGISTRY', `Failed to write cluster-enrollment.json: ${e.message}`, 'warn');
+        }
+    }
+
     /**
      * Updates the site name (STIGIX_SITE_NAME) at runtime.
      * - Updates process.env so any future fromEnv() calls pick it up
@@ -719,6 +742,9 @@ export class RegistryManager {
         const mode = this.directMode
             ? 'direct'
             : (process.env.STIGIX_REGISTRY_MODE_CURRENT || 'peer');
+        const enrollment = this.getClusterEnrollment();
+        const isClusterEnrolled = !!enrollment?.enrolled || process.env.STIGIX_MAGIC_JOIN === 'true';
+
         return {
             enabled: config.enabled,
             poc_id: config.pocId,
@@ -740,7 +766,12 @@ export class RegistryManager {
             static_leader_url: this.staticLeaderUrl,
             is_static_leader: !!this.staticLeaderUrl,
             site_name: this.getSiteName(),
-            stats: this.stats
+            stats: this.stats,
+            // Cluster Enrollment fields
+            is_cluster_enrolled: isClusterEnrolled,
+            enrolled_token_prefix: enrollment?.tokenPrefix || (process.env.STIGIX_JOIN_TOKEN ? (process.env.STIGIX_JOIN_TOKEN.slice(0, 12) + '...') : null),
+            enrolled_at: enrollment?.enrolledAt || null,
+            enrolled_leader_url: enrollment?.leaderUrl || this.staticLeaderUrl
         };
     }
 

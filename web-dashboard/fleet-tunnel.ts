@@ -124,6 +124,24 @@ export class FleetTunnelManager {
         this.targetsManager = targetsManager;
     }
 
+    public setSecretKey(key: string): void {
+        this.secretKey = key;
+        process.env.JWT_SECRET = key;
+        log('TUNNEL', '🔒 Secret key dynamically updated for Fleet Tunnel');
+    }
+
+    public reconnectSpoke(): void {
+        if (this.spokeClientSocket) {
+            log('TUNNEL', 'Force reconnecting Spoke outbound tunnel with updated credentials');
+            try {
+                this.spokeClientSocket.disconnect();
+            } catch {}
+            this.spokeClientSocket = null;
+        }
+        this.spokeCurrentLeaderUrl = null;
+        this.syncSpokeOutboundTunnel();
+    }
+
     public setLocalRegistryServer(localRegistryServer: LocalRegistryServer): void {
         this.localRegistryServer = localRegistryServer;
     }

@@ -2799,6 +2799,37 @@ def cmd_join(args):
         print(f"  Candidate Paths  : {c('1;33', ', '.join(endpoints) if endpoints else 'Auto Cloudflare Relay')}")
         print()
 
+        # Check if local Stigix service is accessible; if so, trigger live server enrollment
+        local_online = False
+        try:
+            ping_res = requests.get(f"{STIGIX_URL}/api/version", timeout=1.5)
+            if ping_res.status_code == 200:
+                local_online = True
+        except Exception:
+            pass
+
+        if local_online:
+            info(f"Connected to local Stigix node at {STIGIX_URL}. Executing live cluster enrollment...")
+            join_res = api_post("/api/registry/join-with-token", {
+                "token": token_candidate,
+                "site_name": site_hint
+            }, timeout=15)
+
+            if join_res and (join_res.get("success") or join_res.get("status") == "ok"):
+                leader_ep = join_res.get("leader_url")
+                node_id = join_res.get("node_id")
+                print()
+                ok(c("1;32", "🎉 Node successfully joined Stigix cluster!"))
+                print(f"  Leader Controller : {c('1;36', leader_ep or 'Configured')}")
+                print(f"  Node ID           : {c('1;37', node_id or 'Auto')}")
+                print(f"  Site Name         : {c('1;36', site_hint)}")
+                print(f"  Tunnel Status     : {c('1;32', '🟢 Online [ ⚡ WS TUNNEL ]')}")
+                info("Hot-sync and real-time telemetry streaming are now active (no reboot needed).")
+                return
+            else:
+                err_msg = join_res.get("message") if isinstance(join_res, dict) else "Live enrollment failed"
+                warn(f"Live enrollment via local daemon failed ({err_msg}). Falling back to standalone bootstrap...")
+
         # Step 1: Probe candidate endpoints
         winning_ep = None
         info("Probing Leader connectivity across candidate endpoints...")
