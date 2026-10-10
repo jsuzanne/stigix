@@ -132,7 +132,7 @@ function PeerStatusSync({
     };
 
     poll();
-    const ms = view === 'failover' ? 500 : 3000;
+    const ms = (view === 'failover' || view === 'convergence') ? 500 : 3000;
     const interval = setInterval(poll, ms);
     return () => clearInterval(interval);
   }, [token, activePeerId, view]);
@@ -932,9 +932,16 @@ export default function App() {
 
   // Failover fast polling — separate effect so it doesn't disrupt other intervals
   useEffect(() => {
-    if (!token || view !== 'failover') return;
-    const fastInterval = setInterval(() => {
-      fetchDashboardData();
+    if (!token || (view !== 'failover' && view !== 'convergence')) return;
+    const fastInterval = setInterval(async () => {
+      if (isRemoteViewRef.current) return;
+      try {
+        const res = await fetch('/api/convergence/status', { headers: authHeaders() });
+        if (res.ok) {
+          const data = await res.json();
+          setGlobalConvStatus(data);
+        }
+      } catch {}
     }, 500);
     return () => clearInterval(fastInterval);
   }, [token, view]);

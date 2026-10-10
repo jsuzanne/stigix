@@ -107,6 +107,13 @@ export default function Failover(props: FailoverProps) {
         }
     };
 
+    // Dedicated fast polling for live test metrics (every 500ms while Failover Lab is mounted)
+    useEffect(() => {
+        fetchStatus();
+        const intv = setInterval(fetchStatus, 500);
+        return () => clearInterval(intv);
+    }, [activePeerId]);
+
     useEffect(() => {
         if (externalStatus) {
             setActiveTests(externalStatus.filter((t: any) => t.running !== false));
@@ -152,8 +159,15 @@ export default function Failover(props: FailoverProps) {
                     loss
                 };
 
-                const newArr = [...arr, newPoint];
-                if (newArr.length > 3600) newArr.shift(); // Keep up to 1 hour of live history
+                const lastPoint = arr[arr.length - 1];
+                let newArr = [...arr];
+                if (lastPoint && lastPoint.elapsedSec === elapsedSec) {
+                    // Update latest sample in the current 1-second slot
+                    newArr[newArr.length - 1] = newPoint;
+                } else {
+                    newArr.push(newPoint);
+                    if (newArr.length > 3600) newArr.shift(); // Keep up to 1 hour of live history
+                }
                 next[t.testId] = newArr;
             });
             return next;
