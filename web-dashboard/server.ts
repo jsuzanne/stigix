@@ -340,6 +340,9 @@ const dbg = (...args: any[]) => {
     }
 };
 
+let activeGetflowCount = 0;
+const MAX_CONCURRENT_GETFLOW = 2;
+
 /**
  * Spawn getflow.py and return parsed JSON, or null on any error.
  * Fire-and-forget safe: never throws, always resolves.
@@ -352,6 +355,21 @@ async function runGetflow(
 ): Promise<any> {
     return new Promise((resolve) => {
         try {
+            // Memory guard: prevent spawning Python during critical RAM starvation (< 80MB)
+            const freeMem = os.freemem();
+            if (freeMem < 80 * 1024 * 1024) {
+                log('CONV', `runGetflow skipped due to severe host memory pressure (${Math.round(freeMem / 1024 / 1024)}MB free)`, 'warn');
+                resolve(null);
+                return;
+            }
+
+            // Concurrency guard: avoid launching multiple heavy Python processes simultaneously
+            if (activeGetflowCount >= MAX_CONCURRENT_GETFLOW) {
+                log('CONV', `runGetflow skipped: max concurrent getflow instances reached (${activeGetflowCount}/${MAX_CONCURRENT_GETFLOW})`, 'warn');
+                resolve(null);
+                return;
+            }
+
             const opts = typeof siteNameOrOpts === 'object'
                 ? siteNameOrOpts
                 : {
@@ -413,6 +431,7 @@ async function runGetflow(
             }
 
             dbg('CONV', `Spawning: python3 ${args.join(' ')}`);
+            activeGetflowCount++;
             const proc = spawn(PYTHON_PATH, args, {
                 cwd: path.join(PROJECT_ROOT, 'engines'),
                 timeout: 45_000,
@@ -427,11 +446,13 @@ async function runGetflow(
             proc.stdout.on('data', (d: Buffer) => { stdout += d.toString(); });
             proc.stderr.on('data', (d: Buffer) => { stderr += d.toString(); });
             proc.on('close', (code) => {
+                activeGetflowCount = Math.max(0, activeGetflowCount - 1);
                 dbg('CONV', `getflow exited code=${code} stdout_len=${stdout.length} stderr=${stderr.slice(0, 200)}`);
                 try { resolve(JSON.parse(stdout)); }
                 catch { resolve(null); }
             });
             proc.on('error', (e) => {
+                activeGetflowCount = Math.max(0, activeGetflowCount - 1);
                 dbg('CONV', `getflow spawn error: ${e.message}`);
                 resolve(null);
             });
@@ -3179,17 +3200,10 @@ app.post('/api/siteinfo/refresh', authenticateToken, async (req, res) => {
 // --- Topology API ---
 let topologyCache: { data: any, timestamp: number } | null = null;
 const TOPO_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+let inFlightTopologyPromise: Promise<any> | null = null;
 
-app.get('/api/topology', authenticateToken, async (req, res) => {
-    const now = Date.now();
-    const force = req.query.force === 'true';
-
-    if (!force && topologyCache && (now - topologyCache.timestamp < TOPO_CACHE_TTL)) {
-        dbg(`[TOPO] Returning cached topology (${Math.round((now - topologyCache.timestamp) / 1000)}s old)`);
-        return res.json(topologyCache.data);
-    }
-
-    try {
+async function executeTopologyBuild(): Promise<any> {
+    return new Promise((resolve, reject) => {
         const scriptPath = path.join(PROJECT_ROOT, 'engines', 'getflow.py');
         const enginesDir = path.join(PROJECT_ROOT, 'engines');
 
@@ -3232,27 +3246,60 @@ app.get('/api/topology', authenticateToken, async (req, res) => {
                     }
                     const enrichedData = underlay ? { ...data, underlay } : data;
                     topologyCache = { data: enrichedData, timestamp: Date.now() };
-                    res.json(enrichedData);
-                } catch (e) {
+                    resolve(enrichedData);
+                } catch (e: any) {
                     console.error('[TOPO] Failed to parse JSON:', e, 'STDOUT length:', stdout.length);
-                    res.status(500).json({ error: 'Failed to parse topology data' });
+                    reject(new Error('Failed to parse topology data'));
                 }
             } else {
                 console.error(`[TOPO] getflow.py exited with code ${code}. Stderr: ${stderr}`);
-                res.status(500).json({
-                    error: 'Failed to build topology',
-                    details: stderr || 'Check server logs for silent failure'
-                });
+                reject(new Error(`Failed to build topology (exit code ${code}): ${stderr || 'Unknown error'}`));
             }
         });
 
         proc.on('error', (err) => {
             console.error('[TOPO] Failed to spawn process:', err);
-            res.status(500).json({ error: 'Internal server error spawning topology builder' });
+            reject(err);
+        });
+    });
+}
+
+app.get('/api/topology', authenticateToken, async (req, res) => {
+    const now = Date.now();
+    const force = req.query.force === 'true';
+
+    if (!force && topologyCache && (now - topologyCache.timestamp < TOPO_CACHE_TTL)) {
+        dbg(`[TOPO] Returning cached topology (${Math.round((now - topologyCache.timestamp) / 1000)}s old)`);
+        return res.json(topologyCache.data);
+    }
+
+    // Reuse in-flight topology build promise if already running
+    if (inFlightTopologyPromise) {
+        dbg('[TOPO] Piggybacking on active in-flight topology build');
+        try {
+            const data = await inFlightTopologyPromise;
+            return res.json(data);
+        } catch (e: any) {
+            return res.status(500).json({ error: e.message });
+        }
+    }
+
+    // Memory protection: if free memory is severely depleted (< 100MB), return cache or guard
+    const freeMemBytes = os.freemem();
+    if (freeMemBytes < 100 * 1024 * 1024 && !force && topologyCache) {
+        log('TOPO', `Severe host memory pressure (${Math.round(freeMemBytes / 1024 / 1024)}MB free). Serving cached topology safely.`, 'warn');
+        return res.json(topologyCache.data);
+    }
+
+    inFlightTopologyPromise = executeTopologyBuild()
+        .finally(() => {
+            inFlightTopologyPromise = null;
         });
 
+    try {
+        const data = await inFlightTopologyPromise;
+        res.json(data);
     } catch (err: any) {
-        console.error('[TOPO] Exception:', err);
         res.status(500).json({ error: err.message });
     }
 });
@@ -10979,12 +11026,146 @@ app.post('/api/security/threat-test', authenticateToken, async (req, res) => {
 // Serve frontend in production
 // --- Phase 17: Maintenance & System Upgrades ---
 
+// ── Host Resource Telemetry & CPU Sampling ─────────────────────────────────
+export interface SystemMetricPoint {
+    timestamp: number;
+    cpuPercent: number;
+    memUsedBytes: number;
+    memTotalBytes: number;
+    memPercent: number;
+    processRssBytes: number;
+    loadAvg: number;
+}
+
+const SYSTEM_METRICS_MAX_POINTS = 120; // 120 points @ 30s interval = 60 minutes rolling history
+const SYSTEM_METRICS_HISTORY: SystemMetricPoint[] = [];
+
+interface CpuTicks {
+    idle: number;
+    total: number;
+}
+
+let prevCpuTicks: CpuTicks | null = null;
+let lastCpuPercent = 0;
+
+function getCpuTicks(): CpuTicks {
+    const cpus = os.cpus();
+    let idle = 0;
+    let total = 0;
+    for (const cpu of cpus) {
+        for (const t in cpu.times) {
+            total += (cpu.times as any)[t];
+        }
+        idle += cpu.times.idle;
+    }
+    return { idle, total };
+}
+
+function sampleCpuPercent(): number {
+    try {
+        const current = getCpuTicks();
+        if (!prevCpuTicks) {
+            prevCpuTicks = current;
+            const load = os.loadavg()[0];
+            const cores = Math.max(1, os.cpus().length);
+            lastCpuPercent = Math.min(100, Math.max(0, Math.round((load / cores) * 100)));
+            return lastCpuPercent;
+        }
+        const deltaTotal = current.total - prevCpuTicks.total;
+        const deltaIdle = current.idle - prevCpuTicks.idle;
+        prevCpuTicks = current;
+        if (deltaTotal <= 0) return lastCpuPercent;
+        const used = deltaTotal - deltaIdle;
+        lastCpuPercent = Math.min(100, Math.max(0, Math.round((used / deltaTotal) * 100)));
+        return lastCpuPercent;
+    } catch {
+        return lastCpuPercent;
+    }
+}
+
+function recordSystemMetricPoint() {
+    try {
+        const cpuPercent = sampleCpuPercent();
+        const totalMem = os.totalmem();
+        const freeMem = os.freemem();
+        const usedMem = totalMem - freeMem;
+        const memPercent = totalMem > 0 ? Math.round((usedMem / totalMem) * 100) : 0;
+        const memUsage = process.memoryUsage();
+        const loadAvg = parseFloat((os.loadavg()[0] || 0).toFixed(2));
+
+        const point: SystemMetricPoint = {
+            timestamp: Date.now(),
+            cpuPercent,
+            memUsedBytes: usedMem,
+            memTotalBytes: totalMem,
+            memPercent,
+            processRssBytes: memUsage.rss,
+            loadAvg
+        };
+
+        SYSTEM_METRICS_HISTORY.push(point);
+        if (SYSTEM_METRICS_HISTORY.length > SYSTEM_METRICS_MAX_POINTS) {
+            SYSTEM_METRICS_HISTORY.shift();
+        }
+    } catch (err: any) {
+        console.error('[Telemetry] Error recording system metric:', err?.message || err);
+    }
+}
+
+// Initial sampling tick
+recordSystemMetricPoint();
+const systemMetricInterval = setInterval(recordSystemMetricPoint, 30000);
+if (systemMetricInterval.unref) systemMetricInterval.unref();
+
+// GET /api/admin/system/metrics-history - Rolling 60min CPU and Memory telemetry
+app.get('/api/admin/system/metrics-history', authenticateToken, (req, res) => {
+    try {
+        const cpus = os.cpus();
+        const totalMem = os.totalmem();
+        const freeMem = os.freemem();
+        const usedMem = totalMem - freeMem;
+        const currentCpu = sampleCpuPercent();
+        const memUsage = process.memoryUsage();
+
+        const latestPoint = SYSTEM_METRICS_HISTORY.length > 0
+            ? SYSTEM_METRICS_HISTORY[SYSTEM_METRICS_HISTORY.length - 1]
+            : {
+                timestamp: Date.now(),
+                cpuPercent: currentCpu,
+                memUsedBytes: usedMem,
+                memTotalBytes: totalMem,
+                memPercent: totalMem > 0 ? Math.round((usedMem / totalMem) * 100) : 0,
+                processRssBytes: memUsage.rss,
+                loadAvg: parseFloat((os.loadavg()[0] || 0).toFixed(2))
+            };
+
+        res.json({
+            success: true,
+            history: SYSTEM_METRICS_HISTORY,
+            current: latestPoint,
+            specs: {
+                cores: cpus.length,
+                model: cpus[0]?.model || 'Generic Host CPU',
+                totalMemoryBytes: totalMem,
+                platform: `${os.type()} ${os.release()}`,
+                nodeVersion: process.version
+            }
+        });
+    } catch (e: any) {
+        console.error('[API] /api/admin/system/metrics-history error:', e.message);
+        res.status(500).json({ error: 'Failed to retrieve telemetry history' });
+    }
+});
+
 app.get('/api/admin/system/info', authenticateToken, async (req, res) => {
     try {
         // 1. Memory
         const totalMem = os.totalmem();
         const freeMem = os.freemem();
         const usedMem = totalMem - freeMem;
+        const currentCpu = sampleCpuPercent();
+        const memUsage = process.memoryUsage();
+        const cpus = os.cpus();
 
         // 2. Disk
         let disk = { total: 0, used: 0, free: 0, usagePercent: 0 };
@@ -11040,6 +11221,17 @@ app.get('/api/admin/system/info', authenticateToken, async (req, res) => {
 
         res.json({
             memory: { total: totalMem, used: usedMem, free: freeMem },
+            cpu: {
+                cores: cpus.length,
+                usagePercent: currentCpu,
+                loadAvg: os.loadavg(),
+                model: cpus[0]?.model || 'Generic CPU'
+            },
+            processMemory: {
+                rss: memUsage.rss,
+                heapTotal: memUsage.heapTotal,
+                heapUsed: memUsage.heapUsed
+            },
             disk,
             network,
             mode,
@@ -11369,7 +11561,7 @@ app.get('/api/system/health-matrix', authenticateToken, async (req, res) => {
             hostname: os.hostname(),
             platform: `${os.type()} ${os.release()}`,
             cpu_cores: cpus.length,
-            cpu_load_percent: Math.min(100, Math.round((loadAvg[0] / Math.max(1, cpus.length)) * 100)),
+            cpu_load_percent: sampleCpuPercent(),
             memory: {
                 total_bytes: totalMem,
                 used_bytes: usedMem,
@@ -11377,7 +11569,8 @@ app.get('/api/system/health-matrix', authenticateToken, async (req, res) => {
                 total: totalMem,
                 used: usedMem,
                 free: freeMem,
-                usage_percent: Math.round((usedMem / totalMem) * 100)
+                usage_percent: Math.round((usedMem / totalMem) * 100),
+                node_rss_bytes: process.memoryUsage().rss
             },
             disk,
             uptime_process: Math.round(process.uptime()),

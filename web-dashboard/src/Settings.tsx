@@ -538,6 +538,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
     }>>({});
 
     const [systemInfo, setSystemInfo] = useState<any>(null);
+    const [telemetryData, setTelemetryData] = useState<{ history: any[]; current: any; specs: any } | null>(null);
     const [targetServiceStatus, setTargetServiceStatus] = useState<TargetServiceStatus | null>(null);
 
     // Fetch Target Service Status
@@ -891,6 +892,20 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
         fetchSystemInfo();
         const sysInfoInterval = setInterval(fetchSystemInfo, 5000);
 
+        // Fetch Telemetry History (CPU & RAM ring buffer)
+        const fetchTelemetryHistory = () => {
+            apiFetch('/api/admin/system/metrics-history', { headers: { 'Authorization': `Bearer ${token}` } })
+                .then(r => r.json())
+                .then(data => {
+                    if (data && data.success) {
+                        setTelemetryData(data);
+                    }
+                })
+                .catch(() => { });
+        };
+        fetchTelemetryHistory();
+        const telemetryInterval = setInterval(fetchTelemetryHistory, 15000);
+
         // Fetch Live Container Stats
         const fetchContainerStats = () => {
             apiFetch('/api/containers/stats', { headers: authHeaders })
@@ -997,6 +1012,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
             clearInterval(coreConfigInterval);
             clearInterval(targetsInterval);
             clearInterval(sysInfoInterval);
+            clearInterval(telemetryInterval);
             clearInterval(mcpInterval);
             clearInterval(mcpHistoryInterval);
             clearInterval(egressInterval);
@@ -4995,31 +5011,90 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                                         </div>
                                     </div>
 
-                                    {/* Memory */}
-                                    <div className="bg-card border border-border rounded-2xl p-6 space-y-6 shadow-sm md:col-span-2">
+                                    {/* CPU Utilization */}
+                                    <div className="bg-card border border-border rounded-2xl p-6 space-y-5 shadow-sm md:col-span-2">
                                         <div className="flex items-center justify-between">
                                             <div className="flex items-center gap-3">
-                                                <div className="w-8 h-8 rounded-lg bg-indigo-500/10 text-indigo-500 flex items-center justify-center">
+                                                <div className="w-8 h-8 rounded-lg bg-amber-500/10 text-amber-500 flex items-center justify-center">
                                                     <Cpu size={16} />
                                                 </div>
-                                                <div className="text-[11px] font-black text-text-primary tracking-widest uppercase">System Memory (RAM)</div>
+                                                <div>
+                                                    <div className="text-[11px] font-black text-text-primary tracking-widest uppercase">System CPU Utilization</div>
+                                                    <div className="text-[9px] font-bold text-text-muted mt-0.5">
+                                                        {systemInfo.cpu?.model || 'Host CPU'} • {systemInfo.cpu?.cores || 1} Cores
+                                                    </div>
+                                                </div>
                                             </div>
                                             <div className="text-right">
-                                                <div className="font-mono text-sm font-black text-indigo-400">
-                                                    {((systemInfo.memory?.used || 0) / 1024 / 1024 / 1024).toFixed(1)} GB / {((systemInfo.memory?.total || 0) / 1024 / 1024 / 1024).toFixed(1)} GB
+                                                <div className={cn(
+                                                    "font-mono text-base font-black",
+                                                    (systemInfo.cpu?.usagePercent || 0) >= 85 ? "text-rose-400"
+                                                        : (systemInfo.cpu?.usagePercent || 0) >= 70 ? "text-amber-400"
+                                                            : "text-emerald-400"
+                                                )}>
+                                                    {(systemInfo.cpu?.usagePercent || 0)}%
+                                                </div>
+                                                <div className="text-[9px] font-mono text-text-muted">
+                                                    Load Avg: {Array.isArray(systemInfo.cpu?.loadAvg) ? systemInfo.cpu.loadAvg.map((l: number) => l.toFixed(2)).join(', ') : '0.00'}
                                                 </div>
                                             </div>
                                         </div>
                                         <div className="h-3 w-full bg-card-secondary rounded-full overflow-hidden border border-border">
                                             <div
-                                                className="h-full bg-indigo-500 transition-all duration-1000 shadow-[0_0_10px_rgba(99,102,241,0.5)]"
+                                                className={cn(
+                                                    "h-full transition-all duration-700",
+                                                    (systemInfo.cpu?.usagePercent || 0) >= 85 ? "bg-rose-500 shadow-[0_0_10px_rgba(244,63,94,0.5)]"
+                                                        : (systemInfo.cpu?.usagePercent || 0) >= 70 ? "bg-amber-500 shadow-[0_0_10px_rgba(245,158,11,0.5)]"
+                                                            : "bg-emerald-500 shadow-[0_0_10px_rgba(16,185,129,0.5)]"
+                                                )}
+                                                style={{ width: `${Math.min(100, Math.max(3, systemInfo.cpu?.usagePercent || 0))}%` }}
+                                            />
+                                        </div>
+                                    </div>
+
+                                    {/* Memory */}
+                                    <div className="bg-card border border-border rounded-2xl p-6 space-y-5 shadow-sm md:col-span-2">
+                                        <div className="flex items-center justify-between">
+                                            <div className="flex items-center gap-3">
+                                                <div className="w-8 h-8 rounded-lg bg-indigo-500/10 text-indigo-500 flex items-center justify-center">
+                                                    <Layers size={16} />
+                                                </div>
+                                                <div>
+                                                    <div className="text-[11px] font-black text-text-primary tracking-widest uppercase">System Memory (RAM)</div>
+                                                    <div className="text-[9px] font-bold text-text-muted mt-0.5">
+                                                        Node Engine: {((systemInfo.processMemory?.rss || 0) / 1024 / 1024).toFixed(0)} MB RSS
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div className="text-right">
+                                                <div className={cn(
+                                                    "font-mono text-base font-black",
+                                                    (((systemInfo.memory?.used || 0) / (systemInfo.memory?.total || 1)) * 100) >= 85 ? "text-rose-400"
+                                                        : (((systemInfo.memory?.used || 0) / (systemInfo.memory?.total || 1)) * 100) >= 75 ? "text-amber-400"
+                                                            : "text-indigo-400"
+                                                )}>
+                                                    {((systemInfo.memory?.used || 0) / 1024 / 1024 / 1024).toFixed(1)} GB / {((systemInfo.memory?.total || 0) / 1024 / 1024 / 1024).toFixed(1)} GB
+                                                </div>
+                                                <div className="text-[9px] font-mono text-text-muted">
+                                                    {Math.round(((systemInfo.memory?.used || 0) / (systemInfo.memory?.total || 1)) * 100)}% Used • Free: {((systemInfo.memory?.free || 0) / 1024 / 1024 / 1024).toFixed(1)} GB
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div className="h-3 w-full bg-card-secondary rounded-full overflow-hidden border border-border">
+                                            <div
+                                                className={cn(
+                                                    "h-full transition-all duration-1000",
+                                                    (((systemInfo.memory?.used || 0) / (systemInfo.memory?.total || 1)) * 100) >= 85 ? "bg-rose-500 shadow-[0_0_10px_rgba(244,63,94,0.5)]"
+                                                        : (((systemInfo.memory?.used || 0) / (systemInfo.memory?.total || 1)) * 100) >= 75 ? "bg-amber-500 shadow-[0_0_10px_rgba(245,158,11,0.5)]"
+                                                            : "bg-indigo-500 shadow-[0_0_10px_rgba(99,102,241,0.5)]"
+                                                )}
                                                 style={{ width: `${Math.min(100, ((systemInfo.memory?.used || 0) / (systemInfo.memory?.total || 1)) * 100)}%` }}
                                             />
                                         </div>
                                     </div>
 
                                     {/* Disk */}
-                                    <div className="bg-card border border-border rounded-2xl p-6 space-y-6 shadow-sm md:col-span-2">
+                                    <div className="bg-card border border-border rounded-2xl p-6 space-y-5 shadow-sm md:col-span-2">
                                         <div className="flex items-center justify-between">
                                             <div className="flex items-center gap-3">
                                                 <div className="w-8 h-8 rounded-lg bg-pink-500/10 text-pink-500 flex items-center justify-center">
@@ -5028,7 +5103,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                                                 <div className="text-[11px] font-black text-text-primary tracking-widest uppercase">Host Disk Space</div>
                                             </div>
                                             <div className="text-right">
-                                                <div className="font-mono text-sm font-black text-pink-400">
+                                                <div className="font-mono text-base font-black text-pink-400">
                                                     {((systemInfo.disk?.used || 0) / 1024 / 1024 / 1024).toFixed(1)} GB / {((systemInfo.disk?.total || 0) / 1024 / 1024 / 1024).toFixed(1)} GB
                                                 </div>
                                             </div>
@@ -5043,6 +5118,148 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                                             <span>Used: {systemInfo.disk?.usagePercent || 0}%</span>
                                             <span>Free: {((systemInfo.disk?.free || 0) / 1024 / 1024 / 1024).toFixed(1)} GB</span>
                                         </div>
+                                    </div>
+
+                                    {/* ── Host Resource Telemetry History (Last 60 Minutes) ────────────────── */}
+                                    <div className="bg-card border border-border rounded-2xl p-6 space-y-4 shadow-sm md:col-span-2">
+                                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-border/50">
+                                            <div className="flex items-center gap-3">
+                                                <div className="w-8 h-8 rounded-lg bg-purple-500/10 text-purple-400 flex items-center justify-center">
+                                                    <Activity size={16} />
+                                                </div>
+                                                <div>
+                                                    <div className="flex items-center gap-2">
+                                                        <h4 className="text-[11px] font-black text-text-primary tracking-widest uppercase">Host Resource Telemetry History</h4>
+                                                        <span className="px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 flex items-center gap-1">
+                                                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                                                            Live 30s
+                                                        </span>
+                                                    </div>
+                                                    <p className="text-[9px] font-bold text-text-muted mt-0.5">
+                                                        Rolling in-memory telemetry buffer (Last 60 Minutes • {telemetryData?.history?.length || 0}/120 points • Zero disk I/O)
+                                                    </p>
+                                                </div>
+                                            </div>
+
+                                            {telemetryData?.current && (
+                                                <div className="flex items-center gap-2 font-mono text-[10px]">
+                                                    <span className="px-2.5 py-1 rounded-lg bg-card-secondary border border-border text-pink-400 font-bold">
+                                                        CPU: {telemetryData.current.cpuPercent}%
+                                                    </span>
+                                                    <span className="px-2.5 py-1 rounded-lg bg-card-secondary border border-border text-indigo-400 font-bold">
+                                                        RAM: {telemetryData.current.memPercent}%
+                                                    </span>
+                                                    <span className="px-2.5 py-1 rounded-lg bg-card-secondary border border-border text-purple-300 font-bold hidden sm:inline-block">
+                                                        Node RSS: {Math.round(telemetryData.current.processRssBytes / 1024 / 1024)} MB
+                                                    </span>
+                                                </div>
+                                            )}
+                                        </div>
+
+                                        {(!telemetryData?.history || telemetryData.history.length === 0) ? (
+                                            <div className="text-center text-text-muted text-xs font-bold py-10 animate-pulse">
+                                                Collecting initial system telemetry points...
+                                            </div>
+                                        ) : (
+                                            <div className="w-full h-56 pt-2">
+                                                <ResponsiveContainer width="100%" height="100%">
+                                                    <AreaChart
+                                                        data={telemetryData.history.map((pt: any) => ({
+                                                            time: new Date(pt.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+                                                            cpu: pt.cpuPercent,
+                                                            ram: pt.memPercent,
+                                                            rssMb: Math.round(pt.processRssBytes / 1024 / 1024),
+                                                            rawTime: pt.timestamp
+                                                        }))}
+                                                        margin={{ top: 10, right: 10, left: -20, bottom: 0 }}
+                                                    >
+                                                        <defs>
+                                                            <linearGradient id="colorCpuTelemetry" x1="0" y1="0" x2="0" y2="1">
+                                                                <stop offset="5%" stopColor="#ec4899" stopOpacity={0.4} />
+                                                                <stop offset="95%" stopColor="#ec4899" stopOpacity={0} />
+                                                            </linearGradient>
+                                                            <linearGradient id="colorRamTelemetry" x1="0" y1="0" x2="0" y2="1">
+                                                                <stop offset="5%" stopColor="#6366f1" stopOpacity={0.4} />
+                                                                <stop offset="95%" stopColor="#6366f1" stopOpacity={0} />
+                                                            </linearGradient>
+                                                        </defs>
+                                                        <CartesianGrid strokeDasharray="3 3" stroke="currentColor" className="text-border/40" vertical={false} />
+                                                        <XAxis
+                                                            dataKey="time"
+                                                            stroke="currentColor"
+                                                            className="text-text-muted text-[10px]"
+                                                            tickLine={false}
+                                                            minTickGap={30}
+                                                        />
+                                                        <YAxis
+                                                            domain={[0, 100]}
+                                                            stroke="currentColor"
+                                                            className="text-text-muted text-[10px]"
+                                                            tickLine={false}
+                                                            unit="%"
+                                                        />
+                                                        <ReferenceLine
+                                                            y={85}
+                                                            stroke="#ef4444"
+                                                            strokeDasharray="4 4"
+                                                            strokeWidth={1.5}
+                                                            label={{ value: 'OOM Risk (85%)', fill: '#ef4444', fontSize: 10, position: 'top' }}
+                                                        />
+                                                        <ReTooltip
+                                                            content={({ active, payload, label }) => {
+                                                                if (active && payload && payload.length) {
+                                                                    const item = payload[0].payload;
+                                                                    return (
+                                                                        <div className="bg-card/95 backdrop-blur-md border border-border p-3 rounded-xl shadow-xl text-xs space-y-1 font-mono">
+                                                                            <div className="text-[10px] text-text-muted font-bold border-b border-border/50 pb-1 mb-1">
+                                                                                {label}
+                                                                            </div>
+                                                                            <div className="flex items-center justify-between gap-4 text-pink-400">
+                                                                                <span>CPU Load:</span>
+                                                                                <strong>{item.cpu}%</strong>
+                                                                            </div>
+                                                                            <div className="flex items-center justify-between gap-4 text-indigo-400">
+                                                                                <span>RAM Usage:</span>
+                                                                                <strong>{item.ram}%</strong>
+                                                                            </div>
+                                                                            <div className="flex items-center justify-between gap-4 text-purple-300">
+                                                                                <span>Node RSS:</span>
+                                                                                <strong>{item.rssMb} MB</strong>
+                                                                            </div>
+                                                                        </div>
+                                                                    );
+                                                                }
+                                                                return null;
+                                                            }}
+                                                        />
+                                                        <Legend
+                                                            verticalAlign="top"
+                                                            align="right"
+                                                            wrapperStyle={{ fontSize: '10px', paddingBottom: '10px' }}
+                                                            iconType="circle"
+                                                        />
+                                                        <Area
+                                                            type="monotone"
+                                                            dataKey="cpu"
+                                                            name="CPU Load (%)"
+                                                            stroke="#ec4899"
+                                                            strokeWidth={2}
+                                                            fillOpacity={1}
+                                                            fill="url(#colorCpuTelemetry)"
+                                                        />
+                                                        <Area
+                                                            type="monotone"
+                                                            dataKey="ram"
+                                                            name="Memory (RAM %)"
+                                                            stroke="#6366f1"
+                                                            strokeWidth={2}
+                                                            fillOpacity={1}
+                                                            fill="url(#colorRamTelemetry)"
+                                                        />
+                                                    </AreaChart>
+                                                </ResponsiveContainer>
+                                            </div>
+                                        )}
                                     </div>
                                 </div>
                             )}

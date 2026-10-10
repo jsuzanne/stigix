@@ -287,6 +287,7 @@ export const SystemHealthModal: React.FC<SystemHealthModalProps> = ({
     const totalMemGb = (totalMemBytes / (1024 * 1024 * 1024)).toFixed(1);
     const usedMemGb = (usedMemBytes / (1024 * 1024 * 1024)).toFixed(1);
     const memUsagePercent = host.memory?.usage_percent || (totalMemBytes > 0 ? Math.round((usedMemBytes / totalMemBytes) * 100) : 0);
+    const nodeRssMb = host.memory?.node_rss_bytes ? Math.round(host.memory.node_rss_bytes / 1024 / 1024) : null;
 
     // Host Uptime
     const uptimeSec = host.uptime_process || host.uptime?.process || 0;
@@ -663,9 +664,16 @@ export const SystemHealthModal: React.FC<SystemHealthModalProps> = ({
                                     <span className="text-xs font-bold text-text-primary flex items-center gap-2">
                                         <Layers size={14} className="text-indigo-500" /> Memory (RAM)
                                     </span>
-                                    <span className="font-mono text-xs font-bold text-indigo-600 dark:text-indigo-400">
-                                        {usedMemGb} / {totalMemGb} GB
-                                    </span>
+                                    <div className="text-right">
+                                        <span className="font-mono text-xs font-bold text-indigo-600 dark:text-indigo-400">
+                                            {usedMemGb} / {totalMemGb} GB
+                                        </span>
+                                        {nodeRssMb && (
+                                            <div className="text-[9px] font-mono text-text-muted">
+                                                Node RSS: {nodeRssMb} MB
+                                            </div>
+                                        )}
+                                    </div>
                                 </div>
                                 <div className="h-2 w-full bg-card rounded-full overflow-hidden border border-border/50">
                                     <div
