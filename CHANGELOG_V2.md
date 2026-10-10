@@ -2,6 +2,14 @@
 
 All notable changes made specifically on the `v2` branch are documented in this file.
 
+## [v2.2.6] - 2026-10-10 — Parallel Remote Fleet Upgrades, Leader Isolation & Interactive Circuit Spotlighting
+
+- **feat(settings)**: Dynamically excluded Leader node (`DC1-Ubuntu`) from the Fleet Nodes Maintenance table, avoiding accidental self-restarts while orchestrating remote nodes.
+- **feat(settings)**: Implemented parallel remote fleet upgrades with the new `⚡ Upgrade All Remote Nodes` header action, tracking per-node progress across 3 stages (`1/3 Pulling...`, `2/3 Restarting...`, `3/3 Reconnecting...`).
+- **feat(settings)**: Added unified polling loop and 1-click modal inspection for any active remote node upgrade stream.
+- **feat(topology)**: Added 1-click circuit link inspection on the topology canvas with real-time tunnel endpoint, IPsec, and QoS telemetry details.
+- **feat(topology)**: Implemented edge spotlighting and dimmed background effects to focus on selected circuits without canvas displacement.
+
 ## [v2.2.0] - 2026-10-10 — SD-WAN Overlay Redesign, Real-Time Failover, Viewport Auto-Fit & 2.2 Release
 
 - **feat(topology-overlay)**: Redesigned SD-WAN Overlay module with 4 dedicated view modes (`WAN Transport`, `SD-WAN Mesh`, `SASE Fabric`, `VyOS Ports`) in `Topology.tsx`, set `WAN Transport (physical)` view as the default landing mode, removed central Internet/MPLS carrier blocks from SD-WAN Mesh overlay view to eliminate visual clutter, and enforced strict English localization across all ribbons and drawers.

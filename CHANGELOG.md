@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.2.6] - 2026-10-10
+
+### Added
+- **Fleet Remote Upgrades & Leader Isolation (`Settings.tsx`)**:
+  - Dynamically filtered the local Leader node from the remote Fleet Nodes Maintenance table, avoiding accidental restarts that could disrupt active WebSocket tunnels orchestrating other nodes.
+  - Implemented concurrent remote upgrade orchestration with the new `⚡ Upgrade All Remote Nodes` header button.
+  - Replaced misleading percentage progress bars with live 3-stage visual indicators: `1/3 Pulling...`, `2/3 Restarting...`, and `3/3 Reconnecting...`.
+  - Added unified polling loop tracking per-spoke upgrade state (`fleetUpgradingPeers`) and individual 1-click access to remote console log streams.
+- **Interactive Circuit Tunnel Inspection & Canvas Spotlighting (`Topology.tsx`)**:
+  - Added 1-click circuit link inspection on the topology canvas with real-time tunnel endpoint, IPsec, and QoS telemetry details.
+  - Implemented edge spotlighting and dimmed background effects to focus on selected circuits without layout displacement.
+
 ## [2.2.5] - 2026-10-10
 
 ### Added
