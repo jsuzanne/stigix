@@ -1,5 +1,24 @@
 [
   {
+    "id": "stigix-mcp-scenarios-capabilities",
+    "title": "Stigix MCP: Scenarios & Capabilities",
+    "category": "White Paper",
+    "tags": ["FastMCP", "AI Orchestration", "Claude", "SD-WAN Automation", "Scenarios"],
+    "date": "2026-10-10",
+    "author": "Jean-Louis SUZANNE, Technical Sales Manager, Palo Alto Networks",
+    "summary": "Concrete use cases enabled by the Stigix SD-WAN FastMCP integration with Claude: 12 self-contained, reproducible scenarios triggered in natural language — from automated failover drills and DEM onboarding to QoS load demos and zero-touch branch provisioning.",
+    "highlights": [
+      "12 concrete AI-native SD-WAN & SASE automation scenarios",
+      "Triggered in plain English with Claude Desktop — no CLI or manual scripts required",
+      "Covers failover drills, DEM path correlation, security audits, and zero-touch onboarding",
+      "Fully validated on the Stigix multi-site lab fabric"
+    ],
+    "pdf_file": "Stigix_MCP_Scenarios_and_Capabilities.pdf",
+    "markdown_file": "Stigix_MCP_Scenarios_and_Capabilities.md",
+    "featured": true,
+    "size": "143 KB"
+  },
+  {
     "id": "whitepaper-app-vs-network",
     "title": "Beyond Ping: Separating Application from Network Issues",
     "category": "White Paper",
