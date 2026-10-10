@@ -2,6 +2,53 @@
 
 All notable changes made specifically on the `v2` branch are documented in this file.
 
+## [v2.2.0] - 2026-10-10 — SD-WAN Overlay Redesign, Real-Time Failover, Viewport Auto-Fit & 2.2 Release
+
+- **feat(topology-overlay)**: Redesigned SD-WAN Overlay module with 4 dedicated view modes (`WAN Transport`, `SD-WAN Mesh`, `SASE Fabric`, `VyOS Ports`) in `Topology.tsx`, set `WAN Transport (physical)` view as the default landing mode, removed central Internet/MPLS carrier blocks from SD-WAN Mesh overlay view to eliminate visual clutter, and enforced strict English localization across all ribbons and drawers.
+- **feat(transport-inspection)**: Made Internet and MPLS carrier nodes interactive with live tunnel counters. Clicking a carrier filters SD-WAN overlay tunnels over that transport and opens a detailed tunnel telemetry drawer with active/backup/down states, RTT latency, packet loss, and site search.
+- **feat(site-focus)**: Added instant 1-click focus on any site (Hub or Spoke) to isolate and display only that site's direct SD-WAN tunnels, with canvas unselect and top filter ribbon.
+- **feat(edge-inspection)**: Added dedicated SD-WAN Overlay Tunnel Inspector drawer for clicked links showing source/dest site circuits, IPsec endpoints, routing state (Active/Backup/Down), VPN ID, vpState, RTT latency, and packet loss.
+- **fix(drawer-crash)**: Resolved React render crash (black screen) when clicking on Internet/MPLS carrier nodes or edges. The network drawer branch now correctly handles `type === 'network'`, and all edge and carrier property accesses safely guard against undefined `wan_network`.
+- **fix(viewport-autofit)**: Fixed canvas zoom-out limitations on smaller laptop screens (e.g., MacBook 13") by expanding `minZoom` down to `0.12`, tightening vertical coordinate tiers to 1240px, adding auto-fit on window resize, and adding a 1-click Auto-Fit toolbar button.
+
+## [v2.1.2] - 2026-10-09 — Live Packet Capture, Remote Upgrades, SASE Fabric Topology & In-Place Maintenance
+
+- **feat(packet-capture)**: Built complete Live Packet Capture & Web Analyzer (`PacketCapture.tsx`, `packet-capture-routes.ts`, `engines/pcap_capture_engine.py`). Features BPF kernel filtering with 1-click presets, Wireshark-grade 3-pane inspector (virtual packet table, OSI layer tree, and hex/ASCII dump), display filter bar, and 1-click bridge to the PCAP Replay Engine.
+- **feat(fleet-maintenance)**: Added Leader-orchestrated 1-click remote peer upgrades (`Settings.tsx`, `server.ts`, `fleet-tunnel.ts`). Leader nodes query spoke engine versions via the Fleet Gateway (`/api/gateway/:peerId/api/admin/maintenance/version`) and trigger remote upgrades with real-time log streaming.
+- **feat(settings-ui)**: Added dedicated **Fleet Nodes Maintenance** section directly in the `Maintenance & Updates` tab on Leader nodes, complementing the Registered Targets table in `Target Controller`.
+- **feat(remote-modal)**: Built interactive Remote Node Upgrade modal with 4-phase visual progress tracker (`1. Remote Pull` ➔ `2. Recreate` ➔ `3. Healthcheck` ➔ `4. Ready`), live console stream, and healthcheck reconnect radar pinging port 8080 until the remote node reports operational.
+- **feat(maintenance-engine)**: Architected detached ephemeral updater container (`docker run --rm -d --network host -v /var/run/docker.sock...`) enabling completely decoupled, self-healing container recreation without process suicide.
+- **feat(docker-guardrail)**: Added pre-flight Docker socket verification (`/var/run/docker.sock`) in `server.ts` and `Settings.tsx` to prevent destructive upgrade attempts in environments where the socket is unmounted.
+- **feat(docker-prune)**: Implemented automated post-upgrade Docker image pruning (`docker image prune -f`) and added an on-demand `POST /api/admin/maintenance/prune` API endpoint and UI action button.
+- **feat(upgrade-modal)**: Overhauled local in-place upgrade overlay with real-time stepper, live logs streaming terminal, reconnect radar with retry counter, and 3-second auto-reload countdown.
+- **fix(maintenance-status)**: Synchronized `/api/admin/maintenance/status` dynamically with `.upgrade_status.json` and `stigix_updater.log` on disk, ensuring fast-polling recognizes reboot completion cleanly and making modal dismiss always available.
+- **feat(sase-topology)**: Integrated **SASE Fabric** as a first-class view switcher dock alongside Overlay and Underlay topologies in `Topology.tsx`.
+- **feat(sase-branding)**: Added official brand logos for Palo Alto Prisma Access and Zscaler ServiceLinks.
+- **feat(sase-pop)**: Implemented dynamic PoP matching (France North, France Central, Europe West), dedicated PoP focus mode, interactive tunnel drawer with real-time latency and uptime telemetry, and instant 0ms edge spotlighting.
+- **feat(custom-apps-ribbon)**: Added ultra-compact global fleet telemetry ribbon in Custom Apps (`CustomApps.tsx`) showing fleet-wide TX/RX rates.
+- **feat(security-filters)**: Added category filter tabs (All, Custom Apps, Fabric, Cloud) to the EICAR test suite in `Security.tsx`.
+- **fix(tcp-timeout)**: Removed arbitrary 60s idle timeout on Custom TCP server listener to support persistent TCP streams, and cleared connect timeout on established sockets.
+- **feat(housekeeping)**: Added daily 2 AM cron and boot-time maintenance routines in `server.ts` that automatically purge orphaned worker stats files and expired logs.
+- **fix(server-transpile)**: Fixed unescaped literal newlines in `split('\n')` in `server.ts` resolving esbuild TransformError during web-ui startup.
+
+## [v2.1.1] - 2026-10-08 — Control Plane RTT Heartbeats, Provisioning ACKs, Auto-Sync & DEM Outage Fix
+
+- **feat(fleet-ui)**: Added explicit WebSocket tunnel directionality indicators (`↘️ INBOUND WS` and `↗️ OUTBOUND WS`) in `Fleet.tsx` overview table and `Settings.tsx` Target Controller banner.
+- **feat(security-eicar)**: Added dynamic Custom TCP/HTTP EICAR Responders discovery in `/api/security/eicar-targets` and `Security.tsx`. Threat tests can now validate SASE firewall antivirus enforcement on non-standard custom application ports without false positives.
+- **feat(custom-apps-runtime)**: Added dynamic Auto-Mesh client synchronization in `tcp-client-runtime.ts`. Sessions targeting offline servers transition to `paused_offline` with `⏸️ PAUSED (Server Off)` badge and automatically resume upon listener revival.
+- **feat(custom-apps-mesh)**: Implemented live Custom App Server Mesh telemetry (`custom_app:server_state`, `custom_app:mesh_update`) across Leader and Spokes over the WebSocket Control Plane.
+- **feat(fleet-tunnel)**: Implemented WebSocket Control Plane RTT Heartbeat loop (`fleet-tunnel.ts`). Every 15 seconds, the Leader sends a `tunnel:rtt_ping` timestamp to all connected spokes, which reply immediately with `tunnel:rtt_pong`. Measures exact WebSocket round-trip latency in milliseconds (`rtt_ms`), updates `last_seen` and `last_pong`, and logs warning when latency exceeds 500ms or pong is dropped.
+- **feat(fleet-ui)**: Added live RTT latency badges (`⚡ 12ms`, `⚡ 45ms`, `⚡ 180ms`) in `web-dashboard/src/Fleet.tsx` Fleet Overview table and Peer Detail drawer modal. Latency badges are dynamically color-coded (emerald `<50ms`, amber `<150ms`, rose `>150ms`) for real-time visibility into control plane path quality.
+- **feat(provisioning-ack)**: Implemented bidirectional Provisioning Acknowledgment (`provisioning:ack`) in `fleet-tunnel.ts` and `local-registry-server.ts`. When a spoke node receives and applies a bundle (`probes`, `applications`, `custom_tcp`, `security`, `pcap_profiles`), it acknowledges with its active revision and human timestamp (`appliedAt`), allowing the Leader to track accurate synchronization state per module across the entire fleet.
+- **feat(provisioning-timestamps)**: Displayed explicit human sync timestamps (`Settings.tsx`) on Leader and Spoke module cards (`HH:mm:ss` with relative elapsed time `Xm ago`). Shows `updatedAt` for the Leader and `appliedAt` for Spoke peers, replacing ambiguous revision comparisons with transparent time indicators.
+- **feat(fleet-auto-sync)**: Added automated debounced synchronization (2.5s window) in `web-dashboard/server.ts` for Synthetic Probes & Applications Catalogue (`triggerAutoSyncFleetBundle`). Any addition, edit, or removal on the Leader automatically pushes the updated bundle to all registered fleet spokes.
+- **feat(settings-ui)**: Added `Auto-Sync: ON/OFF` toggle switch in Target Controller header banner (`Settings.tsx`), backed by `auto_sync_probes_to_fleet` configuration field in `system-info.json`.
+- **fix(dem-score)**: Fixed DEM (Digital Experience Monitoring) score calculation in `calculateDEMScore()` (`server.ts`). When a synthetic probe experiences complete outage, packet timeout, connection drop, or HTTP error, the score is strictly forced to `0` (Critical Outage) instead of misleading fallback base scores (`50`).
+- **fix(speedtest-ui)**: Fixed `Analyzing sequence undefined` subtitle display in `web-dashboard/src/Speedtest.tsx`. Added `formatCwnd()` helper function to format TCP congestion window (`cwnd`) in `KB` or `MB` instead of raw byte values.
+- **feat(pcap-timing)**: Added Replay Timing Engine selector (`PcapReplayModal.tsx`) allowing users to choose between `Fastest Execution (Zero Delay)` and `Original PCAP Delays` during profile compilation.
+- **feat(pcap-sync)**: Enabled automatic synchronization of compiled `.stx-replay` profiles across spoke nodes via `pcap-profiles` WebSocket tunnel bundle channel (`fleet-tunnel.ts`).
+- **docs(pcap-guide)**: Added Section 9 to `docs/PCAP_REPLAY_USER_GUIDE.md` covering Plaintext vs Encrypted PCAP handling, TLS inspection requirements, and zero-trust validation patterns.
+
 ## [v2.1.0] - 2026-10-06 — Major Milestone Release: Fleet Onboarding, PCAP Replay, CA Trust & Port Architecture Isolation
 
 - **fix(bandwidth-targets)**: Fixed default port for XFR Bandwidth speedtest to 9000 instead of 5201 across `types/targets.ts`, `targets-manager.ts`, `Settings.tsx`, and `Speedtest.tsx`. Auto-migrated any legacy `5201` on `ports.xfr` to `9000`, strictly keeping 5201 dedicated to iperf3 and 9000 to XFR speedtest.

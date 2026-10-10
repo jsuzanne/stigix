@@ -468,6 +468,16 @@ export function createPcapApiRouter(
         res.json({ success: true, job_id, status: 'stopped' });
     });
 
+    // POST /api/pcap/replay/clear - Clear stopped/finished jobs history
+    router.post('/replay/clear', checkFeatureFlag, (_req: Request, res: Response) => {
+        for (const [id, job] of activeJobs.entries()) {
+            if (job.status !== 'running') {
+                activeJobs.delete(id);
+            }
+        }
+        res.json({ success: true, remaining: activeJobs.size });
+    });
+
     // GET /api/pcap/replay/jobs - Get active and recent replay jobs
     router.get('/replay/jobs', checkFeatureFlag, (_req: Request, res: Response) => {
         const jobsList = Array.from(activeJobs.values())

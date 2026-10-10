@@ -17,6 +17,10 @@ export interface TunnelPeerInfo {
     ip: string;
     connectedAt: number;
     lastPing: number;
+    rttMs?: number;
+    lastPong?: number;
+    syncStatus?: 'synced' | 'syncing' | 'error' | 'pending';
+    activeRevision?: number;
     transport: string;
     direction: 'inbound' | 'outbound_dial';
 }
@@ -59,6 +63,13 @@ export class FleetTunnelManager {
     private targetsManager?: TargetsManager;
     private localRegistryServer?: LocalRegistryServer;
     private provisioningManager?: ProvisioningManager;
+    private tcpAppManager?: any;
+    private onLeaderConnectedCallback?: () => void;
+
+    public setOnLeaderConnected(cb: () => void): void {
+        this.onLeaderConnectedCallback = cb;
+    }
+    private cachedCustomAppMesh: any[] = [];
     private telemetryProvider?: () => Promise<any> | any;
     private secretKey: string;
     private localPort: number;
@@ -87,6 +98,7 @@ export class FleetTunnelManager {
     private isListeningCloudflare: boolean = false;
 
     private backgroundLoopInterval: NodeJS.Timeout | null = null;
+    private rttPingInterval: NodeJS.Timeout | null = null;
 
     constructor(
         ioServer: SocketIOServer,
@@ -114,6 +126,17 @@ export class FleetTunnelManager {
 
     public setLocalRegistryServer(localRegistryServer: LocalRegistryServer): void {
         this.localRegistryServer = localRegistryServer;
+    }
+
+    public setTcpAppManager(tcpAppManager: any): void {
+        this.tcpAppManager = tcpAppManager;
+    }
+
+    public getCachedCustomAppMesh(): any[] {
+        if (this.registryManager.isLeader()) {
+            return this.localRegistryServer?.getCustomAppMesh() || this.cachedCustomAppMesh || [];
+        }
+        return this.cachedCustomAppMesh || [];
     }
 
     public setProvisioningManager(provisioningManager: ProvisioningManager): void {
@@ -217,6 +240,22 @@ export class FleetTunnelManager {
                     }
                 }, 15000);
 
+                socket.on('tunnel:rtt_ping', (data: any, ack?: (res: any) => void) => {
+                    if (typeof ack === 'function') {
+                        ack({ pongTime: Date.now() });
+                    } else {
+                        socket.emit('tunnel:rtt_pong', { pingTime: data?.pingTime, pongTime: Date.now() });
+                    }
+                });
+
+                // Spoke listens for custom apps mesh updates (M6 mode)
+                socket.on('custom_app:mesh_update', (mesh: any[]) => {
+                    this.cachedCustomAppMesh = Array.isArray(mesh) ? mesh : [];
+                    if (this.tcpAppManager) {
+                        this.tcpAppManager.handleMeshUpdate(this.cachedCustomAppMesh);
+                    }
+                });
+
                 // Spoke listens for config updates and triggers initial sync
                 socket.on('peer:bundle_updated', (type?: string) => {
                     this.syncProvisioningOverTunnel(socket, type);
@@ -225,6 +264,8 @@ export class FleetTunnelManager {
             } else {
                 // If this node is Leader receiving Spoke connection (M5), serve Leader provisioning/targets
                 this.registerLeaderHandlers(socket);
+                const mesh = this.localRegistryServer?.getCustomAppMesh() || [];
+                socket.emit('custom_app:mesh_update', mesh);
             }
 
             socket.on('disconnect', (reason: string) => {
@@ -247,6 +288,30 @@ export class FleetTunnelManager {
                 const entry = this.activeTunnels.get(instanceId);
                 if (entry) entry.info.lastPing = Date.now();
                 if (typeof ack === 'function') ack();
+            });
+
+            socket.on('tunnel:rtt_pong', (data: { pingTime: number }) => {
+                const entry = this.activeTunnels.get(instanceId);
+                if (entry && data?.pingTime) {
+                    const rtt = Math.max(1, Date.now() - data.pingTime);
+                    entry.info.rttMs = rtt;
+                    entry.info.lastPong = Date.now();
+                    if (this.localRegistryServer) {
+                        this.localRegistryServer.updatePeerTunnelMetrics(instanceId, rtt, Date.now(), entry.info.direction);
+                    }
+                }
+            });
+
+            socket.on('provisioning:ack', (ackData: { bundleType: string; revision: number; status: string }) => {
+                const entry = this.activeTunnels.get(instanceId);
+                if (entry) {
+                    entry.info.syncStatus = ackData.status === 'applied' ? 'synced' : 'error';
+                    entry.info.activeRevision = ackData.revision;
+                }
+                if (this.localRegistryServer && instanceId) {
+                    this.localRegistryServer.updateInstanceProvisioningAck(instanceId, ackData);
+                }
+                log('PROVISIONING', `✅ [FLEET ACK] Peer ${siteName || instanceId} confirmed bundle '${ackData.bundleType}' (rev ${ackData.revision}) status: ${ackData.status}`);
             });
 
             // Handle telemetry push from remote peer (M6)
@@ -307,9 +372,73 @@ export class FleetTunnelManager {
     public start(): void {
         this.runBackgroundLoop();
         this.backgroundLoopInterval = setInterval(() => this.runBackgroundLoop(), 5000);
+        this.startRttHeartbeatLoop();
+    }
+
+    public broadcastCustomAppMesh(): void {
+        const mesh = this.localRegistryServer?.getCustomAppMesh() || [];
+        if (this.tcpAppManager) this.tcpAppManager.handleMeshUpdate(mesh);
+        for (const [, entry] of this.activeTunnels.entries()) {
+            if (entry.socket && (entry.socket as any).connected) {
+                entry.socket.emit('custom_app:mesh_update', mesh);
+            }
+        }
+    }
+
+    public pushCustomAppServerState(state: any): void {
+        const isLeader = this.registryManager.isLeader();
+        if (isLeader) {
+            if (this.localRegistryServer) {
+                this.localRegistryServer.updateCustomAppServer(state);
+                if (this.tcpAppManager) {
+                    this.tcpAppManager.handleMeshUpdate(this.localRegistryServer.getCustomAppMesh());
+                }
+                this.broadcastCustomAppMesh();
+            }
+        } else {
+            if (this.spokeClientSocket && (this.spokeClientSocket as any).connected) {
+                this.spokeClientSocket.emit('custom_app:server_state', state);
+            }
+            if (this.activeLeaderTunnelSocket && (this.activeLeaderTunnelSocket as any).connected && this.activeLeaderTunnelSocket !== this.spokeClientSocket) {
+                this.activeLeaderTunnelSocket.emit('custom_app:server_state', state);
+            }
+            for (const [, entry] of this.activeTunnels.entries()) {
+                if (entry.socket && (entry.socket as any).connected && entry.socket !== this.spokeClientSocket) {
+                    entry.socket.emit('custom_app:server_state', state);
+                }
+            }
+        }
+    }
+
+    private startRttHeartbeatLoop(): void {
+        if (this.rttPingInterval) clearInterval(this.rttPingInterval);
+        this.rttPingInterval = setInterval(() => {
+            const isLeader = this.registryManager.isLeader();
+            if (isLeader && this.localRegistryServer) {
+                this.broadcastCustomAppMesh();
+            }
+
+            for (const [instanceId, entry] of this.activeTunnels.entries()) {
+                if (entry.socket && (entry.socket as any).connected) {
+                    const pingStart = Date.now();
+                    entry.socket.emit('tunnel:rtt_ping', { pingTime: pingStart }, (ackData?: { pongTime: number }) => {
+                        const rtt = Math.max(1, Date.now() - pingStart);
+                        entry.info.rttMs = rtt;
+                        entry.info.lastPong = Date.now();
+                        if (this.localRegistryServer) {
+                            this.localRegistryServer.updatePeerTunnelMetrics(instanceId, rtt, Date.now(), entry.info.direction);
+                        }
+                    });
+                }
+            }
+        }, 15000);
     }
 
     public stop(): void {
+        if (this.rttPingInterval) {
+            clearInterval(this.rttPingInterval);
+            this.rttPingInterval = null;
+        }
         if (this.backgroundLoopInterval) {
             clearInterval(this.backgroundLoopInterval);
             this.backgroundLoopInterval = null;
@@ -439,6 +568,36 @@ export class FleetTunnelManager {
             this.spokeTelemetryInterval = setInterval(() => {
                 if (socket.connected) this.pushLocalTelemetryToSocket(socket);
             }, 15000);
+
+            // Spoke responds to Leader RTT Heartbeats
+            socket.on('tunnel:rtt_ping', (data: any, ack?: (res: any) => void) => {
+                if (typeof ack === 'function') {
+                    ack({ pongTime: Date.now() });
+                } else {
+                    socket.emit('tunnel:rtt_pong', { pingTime: data?.pingTime, pongTime: Date.now() });
+                }
+            });
+
+            // Spoke listens for custom apps mesh updates from Leader
+            socket.on('custom_app:mesh_update', (mesh: any[]) => {
+                this.cachedCustomAppMesh = Array.isArray(mesh) ? mesh : [];
+                if (this.tcpAppManager) {
+                    this.tcpAppManager.handleMeshUpdate(this.cachedCustomAppMesh);
+                }
+            });
+
+            socket.emit('custom_app:get_mesh', (mesh: any[]) => {
+                if (Array.isArray(mesh)) {
+                    this.cachedCustomAppMesh = mesh;
+                    if (this.tcpAppManager) {
+                        this.tcpAppManager.handleMeshUpdate(mesh);
+                    }
+                }
+            });
+
+            if (this.onLeaderConnectedCallback) {
+                try { this.onLeaderConnectedCallback(); } catch {}
+            }
 
             // Spoke listens for config updates and triggers initial sync
             socket.on('peer:bundle_updated', (type?: string) => {
@@ -955,6 +1114,22 @@ export class FleetTunnelManager {
                 });
             }
         });
+
+        socket.on('custom_app:server_state', (state: any) => {
+            if (this.localRegistryServer && state) {
+                this.localRegistryServer.updateCustomAppServer(state);
+                if (this.tcpAppManager) {
+                    this.tcpAppManager.handleMeshUpdate(this.localRegistryServer.getCustomAppMesh());
+                }
+                this.broadcastCustomAppMesh();
+            }
+        });
+
+        socket.on('custom_app:get_mesh', (ack?: (mesh: any[]) => void) => {
+            if (typeof ack === 'function') {
+                ack(this.localRegistryServer?.getCustomAppMesh() || []);
+            }
+        });
     }
 
     /**
@@ -1000,8 +1175,23 @@ export class FleetTunnelManager {
                         if (bundlePayload !== undefined && bundlePayload !== null) {
                             this.provisioningManager.applyGlobalBundle(bundle.type, bundle.revision, bundle.checksum, bundlePayload);
                             appliedCount++;
+                            socket.emit('provisioning:ack', {
+                                bundleType: bundle.type,
+                                revision: bundle.revision,
+                                checksum: bundle.checksum,
+                                status: 'applied',
+                                appliedAt: new Date().toISOString()
+                            });
                             log('PROVISIONING', `✅ [TUNNEL SYNC] Successfully applied bundle '${bundle.type}' (rev ${bundle.revision}) over Fleet Tunnel`);
                         } else {
+                            socket.emit('provisioning:ack', {
+                                bundleType: bundle.type,
+                                revision: bundle.revision,
+                                checksum: bundle.checksum,
+                                status: 'error',
+                                error: 'pull_timeout',
+                                appliedAt: new Date().toISOString()
+                            });
                             log('PROVISIONING', `⚠️ [TUNNEL SYNC] Bundle '${bundle.type}' (rev ${bundle.revision}) pull timed out after ${pullTimeoutMs/1000}s, skipped safely (tunnel remains healthy)`, 'warn');
                         }
                     } catch (pullErr: any) {
@@ -1101,6 +1291,32 @@ export class FleetTunnelManager {
             }
         } catch {}
 
+        const nodeId = regStatus.instance_id || 'node';
+        const nodeName = regStatus.site_name || nodeId;
+        let nodeIp = regStatus.detected_ip && regStatus.detected_ip !== '127.0.0.1' ? regStatus.detected_ip : (regStatus.ip_private && regStatus.ip_private !== '127.0.0.1' ? regStatus.ip_private : '');
+        if (!nodeIp || nodeIp === '127.0.0.1') {
+            try {
+                const ifaces = os.networkInterfaces();
+                for (const name of Object.keys(ifaces)) {
+                    if (name.startsWith('lo') || name.startsWith('docker') || name.startsWith('veth') || name.startsWith('br-')) continue;
+                    for (const iface of ifaces[name] || []) {
+                        if (iface.family === 'IPv4' && !iface.internal && iface.address !== '127.0.0.1') {
+                            nodeIp = iface.address;
+                            break;
+                        }
+                    }
+                    if (nodeIp && nodeIp !== '127.0.0.1') break;
+                }
+            } catch {}
+        }
+        if (!nodeIp) nodeIp = '127.0.0.1';
+        let customAppServers: any[] = [];
+        if (this.tcpAppManager && typeof this.tcpAppManager.getLocalServerStates === 'function') {
+            try {
+                customAppServers = this.tcpAppManager.getLocalServerStates(nodeId, nodeName, nodeIp);
+            } catch {}
+        }
+
         return {
             instance_id: regStatus.instance_id,
             poc_id: regStatus.poc_id || 'local-leader',
@@ -1114,6 +1330,7 @@ export class FleetTunnelManager {
                 version
             },
             summary,
+            custom_app_servers: customAppServers,
             provisioning_status: summary?.provisioning_status,
             last_seen: new Date().toISOString()
         };

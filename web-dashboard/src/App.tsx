@@ -14,6 +14,7 @@ import Topology from './Topology';
 import LiveEvents from './LiveEvents';
 import { CustomApps } from './CustomApps';
 import { PcapReplay } from './PcapReplay';
+import PacketCapture from './PacketCapture';
 import Copilot from './Copilot';
 import Fleet from './Fleet';
 import { PeerContextProvider, GatewayDropdown, RemoteViewBanner, RemoteViewChip, usePeerContext } from './PeerContext';
@@ -21,7 +22,7 @@ import { SystemHealthBadge } from './components/health/SystemHealthBadge';
 import { SystemHealthModal } from './components/health/SystemHealthModal';
 import { TopLoadingBar } from './components/common/TopLoadingBar';
 import { MagicJoinModal } from './components/MagicJoinModal';
-import { Activity, Server, AlertCircle, LayoutDashboard, Settings, LogOut, Key, UserPlus, BarChart3, Wifi, Shield, ChevronDown, ChevronUp, Clock, CheckCircle, XCircle, Play, Pause, Phone, Gauge, Network, Plus, Zap, Monitor, Cpu, Sun, Moon, Globe, Terminal, Sliders, Layers, Code, Bot, Sparkles, Binary } from 'lucide-react';
+import { Activity, Server, AlertCircle, LayoutDashboard, Settings, LogOut, Key, UserPlus, BarChart3, Wifi, Shield, ChevronDown, ChevronUp, Clock, CheckCircle, XCircle, Play, Pause, Phone, Gauge, Network, Plus, Zap, Monitor, Cpu, Sun, Moon, Globe, Terminal, Sliders, Layers, Code, Bot, Sparkles, Binary, Radio } from 'lucide-react';
 import { clsx } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 import { Toaster } from 'react-hot-toast';
@@ -131,7 +132,7 @@ function PeerStatusSync({
     };
 
     poll();
-    const ms = view === 'failover' ? 500 : 3000;
+    const ms = (view === 'failover' || view === 'convergence') ? 500 : 3000;
     const interval = setInterval(poll, ms);
     return () => clearInterval(interval);
   }, [token, activePeerId, view]);
@@ -225,7 +226,7 @@ interface SiteInfo {
 export default function App() {
   const [token, setToken] = useState<string | null>(localStorage.getItem('token'));
   const [username, setUsername] = useState<string | null>(localStorage.getItem('username'));
-  const [view, setView] = useState<'dashboard' | 'settings' | 'statistics' | 'security' | 'voice' | 'performance' | 'failover' | 'srt' | 'iot' | 'vyos' | 'speedtest' | 'topology' | 'convergence' | 'events' | 'custom_apps' | 'pcap_replay' | 'api_studio' | 'copilot' | 'fleet'>(
+  const [view, setView] = useState<'dashboard' | 'settings' | 'statistics' | 'security' | 'voice' | 'performance' | 'failover' | 'srt' | 'iot' | 'vyos' | 'speedtest' | 'topology' | 'convergence' | 'events' | 'custom_apps' | 'pcap_replay' | 'packet_capture' | 'api_studio' | 'copilot' | 'fleet'>(
     (localStorage.getItem('activeView') as any) || 'performance'
   );
 
@@ -931,9 +932,16 @@ export default function App() {
 
   // Failover fast polling — separate effect so it doesn't disrupt other intervals
   useEffect(() => {
-    if (!token || view !== 'failover') return;
-    const fastInterval = setInterval(() => {
-      fetchDashboardData();
+    if (!token || (view !== 'failover' && view !== 'convergence')) return;
+    const fastInterval = setInterval(async () => {
+      if (isRemoteViewRef.current) return;
+      try {
+        const res = await fetch('/api/convergence/status', { headers: authHeaders() });
+        if (res.ok) {
+          const data = await res.json();
+          setGlobalConvStatus(data);
+        }
+      } catch {}
     }, 500);
     return () => clearInterval(fastInterval);
   }, [token, view]);
@@ -1360,6 +1368,16 @@ export default function App() {
             <span className="absolute top-full left-1/2 -translate-x-1/2 mt-1 px-3 py-1.5 bg-[#0f172a] text-[#f8fafc] text-[10px] font-bold rounded shadow-2xl opacity-0 scale-95 group-hover:opacity-100 group-hover:scale-100 transition-all pointer-events-none z-[100] border border-[#1e293b] whitespace-nowrap">Stateful L7 PCAP Replay Engine with zero-config profiles & SASE verdict validation</span>
           </button>
         )}
+        <button
+          onClick={() => setView('packet_capture')}
+          className={cn(
+            "group relative px-4 py-3 flex items-center gap-2 font-bold tracking-wider text-sm border-b-2 transition-all",
+            view === 'packet_capture' ? "border-cyan-500 text-cyan-600 dark:text-cyan-300" : "border-transparent text-text-muted hover:text-text-primary"
+          )}
+        >
+          <Radio size={18} /> Packet Capture <span className="px-1 py-0.5 rounded text-[8px] font-black uppercase tracking-tighter bg-cyan-600/10 text-cyan-600 dark:text-cyan-400 border border-cyan-500/20 ml-1">New</span>
+          <span className="absolute top-full left-1/2 -translate-x-1/2 mt-1 px-3 py-1.5 bg-[#0f172a] text-[#f8fafc] text-[10px] font-bold rounded shadow-2xl opacity-0 scale-95 group-hover:opacity-100 group-hover:scale-100 transition-all pointer-events-none z-[100] border border-[#1e293b] whitespace-nowrap">Live BPF packet sniffer & Wireshark-grade 3-pane web inspector</span>
+        </button>
         <button
           onClick={() => setView('convergence')}
           className={cn(
@@ -2059,6 +2077,7 @@ export default function App() {
       {view === 'settings' && <SettingsComponent token={token!} uiConfig={uiConfig} onUpdateUIConfig={fetchConfigUi} onUpdateCopilotConfig={fetchCopilotConfig} initialTab={initialSettingsTab} />}
       {view === 'custom_apps' && <CustomApps token={token!} />}
       {view === 'pcap_replay' && isPcapEnabled && <PcapReplay token={token!} />}
+      {view === 'packet_capture' && <PacketCapture token={token!} onNavigateToReplay={() => setView('pcap_replay')} />}
       {view === 'speedtest' && features.xfr_enabled && <Speedtest token={token!} />}
       {view === 'events' && <LiveEvents token={token!} />}
       {copilotConfig?.featureEnabled && copilotConfig?.hasKey && view === 'copilot' && <Copilot token={token!} onOpenSettings={() => { setInitialSettingsTab('mcp'); setView('settings'); }} />}

@@ -66,6 +66,18 @@ interface XfrJob {
     error: string | null;
 }
 
+// Helper to format congestion window
+const formatCwnd = (raw: number | undefined): { val: string; unit: string } => {
+    if (!raw || raw <= 0) return { val: '0', unit: 'KB' };
+    if (raw >= 1048576) {
+        return { val: (raw / 1048576).toFixed(1), unit: 'MB' };
+    }
+    if (raw >= 1024) {
+        return { val: (raw / 1024).toFixed(0), unit: 'KB' };
+    }
+    return { val: raw.toString(), unit: 'B' };
+};
+
 export default function Speedtest({ token }: Props) {
     const [mode, setMode] = useState<'default' | 'custom'>('default');
     const [targetHost, setTargetHost] = useState('');
@@ -727,10 +739,16 @@ export default function Speedtest({ token }: Props) {
                         <div className="flex items-center justify-between mb-8 relative z-10">
                             <div>
                                 <h2 className="text-2xl font-black text-text-primary tracking-tight">
-                                    {isRunning ? 'Live Performance' : 'Session Ready'}
+                                    {isRunning ? 'Live Performance' : (activeJob?.summary ? 'Test Completed' : 'Session Ready')}
                                 </h2>
                                 <p className="text-[10px] font-black text-text-muted tracking-[0.2em] opacity-60">
-                                    {isRunning ? `Analyzing sequence ${activeJob?.sequence_id}` : 'Select target and launch test'}
+                                    {isRunning 
+                                        ? (activeJob?.sequence_id 
+                                            ? `Analyzing sequence #${activeJob.sequence_id}` 
+                                            : `Live Stream • Target: ${activeJob?.params?.target_name || activeJob?.params?.target_ip || 'Active Link'}`)
+                                        : (activeJob?.summary 
+                                            ? `Summary for ${activeJob?.params?.target_name || activeJob?.params?.target_ip || 'Last Run'}` 
+                                            : 'Select target and launch test')}
                                 </p>
                             </div>
                             {isRunning && (
@@ -773,12 +791,20 @@ export default function Speedtest({ token }: Props) {
                                         <Layers size={14} className="text-indigo-500" /> TCP Window
                                     </label>
                                     <div className="flex items-baseline gap-2">
-                                        <span className="text-3xl font-black text-text-primary tracking-tighter text-indigo-500">
-                                            {activeJob?.summary ?
+                                        {(() => {
+                                            const rawVal = activeJob?.summary ?
                                                 (activeJob.summary.cwnd || (chartData.length > 0 ? chartData[chartData.length - 1].cwnd : 0)) :
-                                                (chartData.length > 0 ? chartData[chartData.length - 1].cwnd || 0 : '0')}
-                                        </span>
-                                        <span className="text-[10px] font-black text-text-muted italic opacity-40">KB</span>
+                                                (chartData.length > 0 ? chartData[chartData.length - 1].cwnd || 0 : 0);
+                                            const formatted = formatCwnd(typeof rawVal === 'number' ? rawVal : parseFloat(rawVal) || 0);
+                                            return (
+                                                <>
+                                                    <span className="text-3xl font-black text-text-primary tracking-tighter text-indigo-500">
+                                                        {formatted.val}
+                                                    </span>
+                                                    <span className="text-[10px] font-black text-text-muted italic opacity-40">{formatted.unit}</span>
+                                                </>
+                                            );
+                                        })()}
                                     </div>
                                 </div>
                             ) : (

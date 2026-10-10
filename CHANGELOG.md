@@ -5,6 +5,105 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.2.0] - 2026-10-10 — Major Production Release
+
+### Added
+- **Modernized 4-Mode Topology Experience (`Topology.tsx`)**:
+  - Implemented 4 dedicated view modes: `WAN Transport (physical)` (default), `SD-WAN Mesh (overlay)`, `SASE Fabric`, and `VyOS Ports (underlay)`.
+  - In `SD-WAN Mesh (overlay)` mode, central carrier nodes (`cloud:INTERNET`, `cloud:MPLS`) are cleanly omitted to prioritize uncluttered direct site-to-site overlay tunnels.
+  - Interactive top transport filter ribbon (`All Tunnels / All Links`, `Internet`, `MPLS`, site-focused mesh) active across both Physical and Overlay views.
+  - Interactive Carrier & Tunnel Drawers: Clicking Internet or MPLS opens the SD-WAN Transport Carrier telemetry drawer (KPIs, site search, tunnels table). Clicking an overlay edge opens the SD-WAN Overlay Tunnel Inspector.
+  - Responsive Viewport Auto-Fit: Extended zoom bounds down to `minZoom = 0.12`, compacted vertical coordinate tiers to 1240px, auto-fit on window resize, and added a 1-click Auto-Fit toolbar button for seamless visibility on MacBook 13" and 27" screens.
+  - Enforced strict English UI localization across all ribbons, toolbar actions, and drawers.
+- **High-Precision Real-Time Failover Telemetry (`Failover.tsx`, `App.tsx`)**:
+  - Activated 500ms (2x/sec) fast polling specifically for Failover Lab, querying the lightweight `/api/convergence/status` endpoint directly without shell process spawning.
+  - Real-time in-place metric updates: live packet counts, instantaneous RTT, jitter, loss, and outage counters update smoothly without 3-4s lag.
+  - Deduplicated time-series slots: rolling live metrics update the active 1-second slot in-place, keeping time windows (1m, 5m, 15m) perfectly calibrated while strictly capping chart memory to 3600 points (< 200 KB).
+  - Aligned view state conditions (`view === 'failover' || view === 'convergence'`) across core dashboard and remote peer gateway loops.
+- **Frictionless Local Container Self-Upgrade (`Settings.tsx`)**:
+  - Removed native browser `confirm()` modal on 1-click local Docker upgrades, launching the progress modal (pulling, recreation, auto-prune, and reconnect radar) immediately upon click.
+
+### Removed
+- **Digital Experience (DEM) Automatic Probe Note (`ConnectivityPerformance.tsx`)**:
+  - Suppressed redundant `Probes run automatically every 1 minute.` subtitle banner from the DEM score calculation description.
+
+## [2.1.2] - 2026-10-09
+
+### Added
+- **Live Packet Capture & Web Analyzer (`PacketCapture.tsx`, `packet-capture-routes.ts`, `pcap_capture_engine.py`)**:
+  - Live in-browser packet capture engine running kernel BPF filters via `tcpdump -U` across any host interface (`any`, `ens3`, `docker0`, etc.).
+  - 1-Click BPF presets for Custom TCP Apps (`8083-8099`), Synthetic Probes, Voice RTP (`6100-6200`), Security EICAR (`8082`), DNS, and Speedtest.
+  - Wireshark-grade 3-pane responsive layout: Virtual Packet Table (with protocol syntax coloring), Collapsible OSI Protocol Dissection Tree, and synchronized 16-byte Hex/ASCII dump viewer with instant copy.
+  - Native display search and filter bar supporting protocol (`tcp`, `udp`, `icmp`, `dns`), port, IP, and TCP flag anomalies (`rst`, `syn`, `ack`).
+  - 1-Click **« Send to PCAP Replay »** bridging live captures directly into the L7 PCAP Replay engine catalog without manual file manipulation.
+- **Leader-Orchestrated 1-Click Remote Peer Upgrades (`Settings.tsx`, `server.ts`, `fleet-tunnel.ts`)**:
+  - Leader node discovers remote peer engine versions across the entire cluster via Fleet Gateway (`/api/gateway/:peerId/api/admin/maintenance/version`).
+  - Added 1-click upgrade button for remote peers in the Registered Targets table (`Target Controller`) and in the dedicated **Fleet Nodes Maintenance** section in **Maintenance & Updates**.
+  - Interactive Remote Upgrade modal with 4-phase visual stepper (`1. Remote Pull`, `2. Recreate`, `3. Healthcheck`, `4. Ready`), live log terminal streaming from the remote node's ephemeral updater, and an automatic reconnect radar pinging `:8080` until the remote node passes internal healthchecks.
+- **Resilient Ephemeral In-Place Container Upgrades & Auto-Prune (`server.ts`, `Settings.tsx`)**:
+  - Detached ephemeral updater container (`docker run --rm -d --network host -v /var/run/docker.sock...`) safely recreates the Stigix stack out-of-process, preventing container self-termination mid-upgrade.
+  - Safe Docker socket pre-flight check (`/var/run/docker.sock`) preventing broken upgrades if the socket is not mounted into the container.
+  - Automatic post-upgrade Docker image pruning (`docker image prune -f`) to reclaim disk space, plus on-demand `POST /api/admin/maintenance/prune`.
+  - Upgraded in-place modal with live 4-step progress stepper, real-time log output, reconnect radar with retry counter, and 3-second auto-reload countdown once the updated container is operational.
+  - Disk-backed status synchronization (`.upgrade_status.json`, `stigix_updater.log`) allowing client fast-polling to survive container reboot seamlessly.
+- **SASE Fabric Topology Overhaul (`Topology.tsx`, `server.ts`)**:
+  - Integrated SASE Fabric into the main view switcher dock alongside Overlay and Underlay topologies.
+  - Official brand logos for Palo Alto Prisma Access and Zscaler ServiceLinks.
+  - Dynamic PoP matching with support for regional PoPs (France North, France Central, Europe West), PoP focus mode, and interactive tunnel drawer displaying latency, uptime, and SLA compliance.
+  - Instant 0ms edge spotlighting on click and SASE path filter ribbon.
+- **Dynamic Custom TCP Apps Auto-Mesh & Threat Correlation (`CustomApps.tsx`, `Security.tsx`, `tcp-client-runtime.ts`)**:
+  - Client runtime subscribes in real-time to mesh state; when a remote server goes offline, active client sessions cleanly transition to `⏸️ PAUSED (Server Offline)` and instantly resume with zero latency upon server recovery.
+  - Added ultra-compact global fleet telemetry ribbon in Custom Apps displaying consolidated fleet-wide TX/RX traffic metrics.
+  - Integrated active Custom App listeners into the Security Threat test suite as verified EICAR responders with category filtering (All, Custom Apps, Fabric, Cloud).
+  - Standard persistent TCP behavior: removed arbitrary 60s idle timeout and cleared connect timeouts upon socket establishment.
+- **Automated Resource Housekeeping (`server.ts`)**:
+  - Scheduled daily 2 AM cron and boot-time maintenance routines that automatically purge orphaned worker stats files and expired logs.
+
+### Fixed
+- **Upgrade Modal Auto-Dismiss (`Settings.tsx`, `server.ts`)**:
+  - Synchronized `/api/admin/maintenance/status` with `.upgrade_status.json` and `stigix_updater.log` on disk, treating `restarting` as completed after boot, and ensuring the modal close button is always accessible.
+- **Web-UI Build & Transpilation (`server.ts`)**:
+  - Fixed unescaped literal newlines in `split('\n')` statements on lines 1207 and 12146, eliminating esbuild TransformErrors that crashed the web service.
+
+## [2.1.1] - 2026-10-08
+
+### Added
+- **WebSocket Tunnel Directionality Badges (`Fleet.tsx`, `Settings.tsx`, `fleet-tunnel.ts`)**:
+  - Added explicit `↘️ INBOUND WS` and `↗️ OUTBOUND WS` badges in Fleet Overview and Peer Detail modal on Leader, and `↗️ OUTBOUND WS SYNCED` / `↘️ INBOUND LEADER DIAL` in Target Controller header on Peers.
+- **Dynamic Auto-Mesh Client Runtime & Smart Offline Pausing (`tcp-client-runtime.ts`, `fleet-tunnel.ts`, `CustomApps.tsx`)**:
+  - Client runtime subscribes in real-time to `custom_app:mesh_update` announcements from the Leader.
+  - When a remote server listener goes offline (e.g. `DC2-Ubuntu`), active client streams targeting that peer transition cleanly to `⏸️ PAUSED (Server Offline)` without spamming infinite TCP reconnect loops.
+  - Automatically and instantly resumes connection sessions with zero latency when the remote server restarts.
+- **Dynamic Custom TCP Apps EICAR Threat Correlation (`server.ts`, `Security.tsx`, `local-registry-server.ts`)**:
+  - Integrated active Custom TCP/HTTP application listeners in EICAR responder mode into the Security Threat test suite.
+  - SASE/Firewall testers can execute threat prevention tests against custom listener ports (`:8098`, `:8083`) with verified live active listeners (zero false positives).
+- **WebSocket Control Plane RTT Heartbeat & Live Latency Monitoring (`fleet-tunnel.ts`, `local-registry-server.ts`, `Fleet.tsx`)**:
+  - Continuous soft RTT heartbeat loop (`tunnel:rtt_ping` / `tunnel:rtt_pong` every 15 seconds) over active multiplexed WebSocket reverse tunnels.
+  - Live RTT latency badges (`⚡ 12ms`, color-coded green `<50ms`, amber `<150ms`, red `>150ms`) in the Fleet Overview table and Peer Detail inspector modal.
+  - Real-time `last_seen` timestamp updates and active tunnel health tracking without relying solely on passive HTTP polling.
+- **Bidirectional Provisioning Acknowledgment (ACK) Loop (`fleet-tunnel.ts`, `local-registry-server.ts`)**:
+  - Spoke nodes stream `provisioning:ack` confirmations back over the WebSocket tunnel upon applying bundle pushes (`probes`, `applications`, `custom_tcp`, `security`, `pcap_profiles`).
+  - Tracks spoke revision state, module sync health, and human-readable `appliedAt` timestamps in the Leader's fleet registry.
+- **Debounced Fleet Auto-Sync for Probes & Applications Catalogue (`server.ts`, `Settings.tsx`)**:
+  - Automatically synchronizes synthetic probe configurations and custom application catalogues to all connected spoke nodes with a 2.5-second debounce timer upon any create, update, or delete action.
+  - Added centralized `Auto-Sync: ON/OFF` toggle in the Target Controller header banner (`Settings.tsx`) backed by `auto_sync_probes_to_fleet` configuration.
+- **Human-Readable Provisioning Sync Timestamps (`Settings.tsx`)**:
+  - Displays localized absolute time (`HH:mm:ss`) alongside relative elapsed time (`Xm ago`) on all provisioning module cards (`updatedAt` on Leader, `appliedAt` on Spoke peers), eliminating guesswork about bundle synchronization status.
+- **PCAP Replay Timing Engine Selector & Profiles Fleet Sync (`PcapReplayModal.tsx`, `fleet-tunnel.ts`)**:
+  - Added Replay Timing Engine selector (`Fastest Execution / Zero Delay` vs `Original PCAP Delays`) in the Edit Profile modal.
+  - Enabled automatic bundle push and pull for `.stx-replay` profiles across spoke nodes via `pcap-profiles` tunnel channel.
+  - Added Section 9 to PCAP User Guide on Plaintext vs Encrypted captures & Zero Trust inspection validation.
+
+### Fixed
+- **DEM Score on Target Outage & Timeout (`server.ts`)**:
+  - Fixed Digital Experience Monitoring (DEM) scoring engine to strictly return a score of `0` when a target is completely unreachable or times out, preventing misleading fallback scores of `50`.
+- **Speedtest UI Sequence Label & Congestion Window Formatting (`Speedtest.tsx`)**:
+  - Fixed `Analyzing sequence undefined` subtitle display in the Multi-Path Speedtest UI.
+  - Added `formatCwnd()` helper to convert raw TCP congestion window bytes into human-readable `KB` / `MB` formatting.
+- **PCAP Scraper & Replay Execution Stability (`pcap-routes.ts`, `pcap_replay_runtime.py`)**:
+  - Resolved active replay jobs polling order and immediate job tracking upon launching client replays.
+  - Enhanced application heuristics (`guess_app_id`) with L7 payload signatures and candidate flow prioritization.
+
 ## [2.1.0] - 2026-10-06 — Major Milestone Release
 
 ### Added

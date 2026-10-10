@@ -69,6 +69,85 @@ export class TcpClientRuntime extends EventEmitter {
         this.metricsTracker = metricsTracker;
     }
 
+    private knownMeshServers: any[] = [];
+    private hasReceivedMeshUpdate: boolean = false;
+
+    public updateMeshServers(activeServers: any[]): void {
+        this.knownMeshServers = Array.isArray(activeServers) ? activeServers : [];
+        this.hasReceivedMeshUpdate = true;
+
+        if (!this.isRunning) return;
+
+        for (const [, session] of this.sessions.entries()) {
+            const serverMatch = this.findPeerInMesh(session.peer);
+
+            if (serverMatch) {
+                if (serverMatch.status === 'running') {
+                    if (session.state.state === 'paused_offline') {
+                        console.log(`[CUSTOM_TCP_CLIENT] 🟢 Server on "${session.peer.name || session.peer.host}:${session.peer.port}" is online — resuming session.`);
+                        session.state.state = 'connecting';
+                        session.state.serverStatusReason = undefined;
+                        session.reconnectAttempts = 0;
+                        if (session.reconnectTimer) clearTimeout(session.reconnectTimer);
+                        this.connectSession(session);
+                    }
+                } else if (serverMatch.status === 'stopped') {
+                    if (session.state.state !== 'paused_offline') {
+                        console.log(`[CUSTOM_TCP_CLIENT] ⏸️ Server on "${session.peer.name || session.peer.host}:${session.peer.port}" is stopped in mesh — pausing session.`);
+                        if (session.reconnectTimer) {
+                            clearTimeout(session.reconnectTimer);
+                            session.reconnectTimer = undefined;
+                        }
+                        if (session.workloadTimer) {
+                            clearTimeout(session.workloadTimer);
+                            session.workloadTimer = undefined;
+                        }
+                        session.state.state = 'paused_offline';
+                        session.state.serverStatusReason = `Remote server listener stopped on ${session.peer.name || session.peer.host}`;
+                        if (session.socket && !session.socket.destroyed) {
+                            try { session.socket.destroy(); } catch {}
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    public findPeerInMesh(peer: PeerConfig): any | null {
+        if (!this.hasReceivedMeshUpdate || this.knownMeshServers.length === 0) {
+            return null;
+        }
+
+        const peerHost = (peer.host || '').trim().toLowerCase();
+        const peerName = (peer.name || '').trim().toLowerCase();
+        const peerSite = (peer.siteName || '').trim().toLowerCase();
+        const peerPort = peer.port;
+
+        return this.knownMeshServers.find((s: any) => {
+            const sIp = (s.ip || '').trim().toLowerCase();
+            const sName = (s.node_name || '').trim().toLowerCase();
+            const sId = (s.node_id || '').trim().toLowerCase();
+            const sPort = s.port;
+
+            const portMatches = !peerPort || !sPort || sPort === peerPort;
+            const hostMatches = (peerHost && sIp && (sIp === peerHost || peerHost.includes(sIp) || sIp.includes(peerHost))) ||
+                                (peerName && sName && (sName === peerName || sName.includes(peerName) || peerName.includes(sName))) ||
+                                (peerSite && sName && (sName === peerSite || sName.includes(peerSite) || peerSite.includes(sName))) ||
+                                (peerName && sId && (sId === peerName || sId.includes(peerName) || peerName.includes(sId))) ||
+                                (peerSite && sId && (sId === peerSite || sId.includes(peerSite) || peerSite.includes(sId)));
+
+            return portMatches && hostMatches;
+        }) || null;
+    }
+
+    public isPeerOnlineInMesh(peer: PeerConfig): boolean {
+        const match = this.findPeerInMesh(peer);
+        if (!match) {
+            return true; // No explicit record = allow standard retry
+        }
+        return match.status === 'running';
+    }
+
     public updateConfig(newConfig: CustomTcpApplicationConfig): void {
         this.appConfig = newConfig;
     }
@@ -444,6 +523,12 @@ export class TcpClientRuntime extends EventEmitter {
     private connectSession(session: ActiveClientSession): void {
         if (!this.isRunning || session.isStopping) return;
 
+        if (!this.isPeerOnlineInMesh(session.peer)) {
+            session.state.state = 'paused_offline';
+            session.state.serverStatusReason = `Remote server listener stopped on ${session.peer.name || session.peer.host}`;
+            return;
+        }
+
         session.state.state = 'connecting';
         session.handshakeCompleted = false;
         session.parser.removeAllListeners();
@@ -461,6 +546,7 @@ export class TcpClientRuntime extends EventEmitter {
 
         const startConnectTs = Date.now();
         socket.connect(session.peer.port, session.peer.host, () => {
+            socket.setTimeout(0); // Clear connect timeout now that connection is established
             session.state.connectedAt = Date.now();
             session.state.tcpConnectMs = Math.max(1, Date.now() - startConnectTs);
             session.reconnectAttempts = 0; // Reset backoff upon successful TCP connect
@@ -752,6 +838,12 @@ export class TcpClientRuntime extends EventEmitter {
 
         if (!this.isRunning || session.isStopping) {
             session.state.state = 'closed';
+            return;
+        }
+
+        if (!this.isPeerOnlineInMesh(session.peer)) {
+            session.state.state = 'paused_offline';
+            session.state.serverStatusReason = `Remote server listener stopped on ${session.peer.name || session.peer.host}`;
             return;
         }
 

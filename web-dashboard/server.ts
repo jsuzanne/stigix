@@ -32,6 +32,7 @@ import { UnderlayTopologyManager } from './underlay-topology-manager.js';
 import { TcpAppManager } from './custom-tcp-apps/tcp-app-manager.js';
 import { createCustomTcpApiRouter } from './custom-tcp-apps/api-routes.js';
 import { createPcapApiRouter } from './custom-tcp-apps/pcap-routes.js';
+import { createCaptureApiRouter } from './packet-capture-routes.js';
 import { createApiStudioRouter } from './api-studio-routes.js';
 import { apiLogBuffer } from './api-logger.js';
 import { AiManager } from './ai-copilot/ai-manager.js';
@@ -530,6 +531,7 @@ interface SystemSettings {
     auto_restart_traffic: boolean;
     auto_restart_probes: boolean;
     auto_restart_custom_tcp: boolean;
+    auto_sync_probes_to_fleet?: boolean; // Auto-push configuration bundles (probes, apps) to peers with debounce
     pcap_max_auto_sync_mb?: number;
     registry_mode?: 'auto' | 'leader' | 'peer';
 }
@@ -539,6 +541,7 @@ const DEFAULT_SYSTEM_SETTINGS: SystemSettings = {
     auto_restart_traffic: true,   // retrocompat: traffic was always auto-starting
     auto_restart_probes: true,    // retrocompat: probes were always auto-starting
     auto_restart_custom_tcp: true, // Custom TCP apps state persistence across reboots
+    auto_sync_probes_to_fleet: true, // Default enabled: auto-push changes to fleet with debounce
     pcap_max_auto_sync_mb: 10,     // Auto-sync threshold for PCAP profiles (<= 50MB, safety ratio of WS buffer)
     registry_mode: 'auto',
 };
@@ -1161,9 +1164,69 @@ let G_UPGRADE_STATUS: UpgradeStatus = {
     startTime: null
 };
 
-// --- PERSISTENT REDEPLOY STATUS ---
-// Check if we just came back from a redeploy
+// --- PERSISTENT UPGRADE / REDEPLOY STATUS ---
+function saveUpgradeStatusToDisk() {
+    try {
+        const upgradeStatusFile = path.join(PROJECT_ROOT, 'config', '.upgrade_status.json');
+        fs.writeFileSync(upgradeStatusFile, JSON.stringify(G_UPGRADE_STATUS, null, 2), 'utf8');
+    } catch (e: any) {
+        console.warn('[MAINTENANCE] Failed to persist upgrade status to disk:', e.message);
+    }
+}
+
+// Check if we just came back from an upgrade or redeploy
 try {
+    const upgradeStatusFile = path.join(PROJECT_ROOT, 'config', '.upgrade_status.json');
+    if (fs.existsSync(upgradeStatusFile)) {
+        const raw = fs.readFileSync(upgradeStatusFile, 'utf8');
+        try {
+            const saved = JSON.parse(raw);
+            if (saved && (saved.stage === 'complete' || saved.stage === 'restarting' || saved.stage === 'failed')) {
+                console.log(`[MAINTENANCE-BOOT] Found persisted upgrade status (${saved.stage}).`);
+                // Clean up ephemeral script if still present
+                try {
+                    const helperScript = path.join(PROJECT_ROOT, 'config', 'stigix_ephemeral_updater.sh');
+                    if (fs.existsSync(helperScript)) fs.unlinkSync(helperScript);
+                } catch (ce) {}
+
+                if (saved.stage === 'failed') {
+                    console.log('[MAINTENANCE-BOOT] Stigix is running. Purging stale failure status marker from disk.');
+                    try { fs.unlinkSync(upgradeStatusFile); } catch (e) {}
+                    G_UPGRADE_STATUS = {
+                        inProgress: false,
+                        version: null,
+                        stage: 'idle',
+                        logs: [],
+                        error: null,
+                        startTime: null
+                    };
+                } else {
+                    let updaterLogs = saved.logs;
+                    try {
+                        const updaterLogFile = path.join(PROJECT_ROOT, 'config', 'stigix_updater.log');
+                        if (fs.existsSync(updaterLogFile)) {
+                            updaterLogs = fs.readFileSync(updaterLogFile, 'utf8').split('\n').filter(Boolean).slice(-50);
+                        }
+                    } catch {}
+
+                    G_UPGRADE_STATUS = {
+                        inProgress: false,
+                        version: saved.version || null,
+                        stage: 'complete',
+                        logs: (updaterLogs && updaterLogs.length > 0) ? updaterLogs : [`[${new Date().toISOString()}] 🚀 Container successfully upgraded and running Stigix ${saved.version || 'latest'}.`],
+                        error: null,
+                        startTime: saved.startTime || Date.now()
+                    };
+                    // Unlink file so subsequent restarts don't keep resurrecting this completion event
+                    try { fs.unlinkSync(upgradeStatusFile); } catch (e) {}
+                }
+            }
+        } catch (parseErr: any) {
+            console.warn('[MAINTENANCE-BOOT] Invalid or corrupt upgrade status file, deleting:', parseErr.message);
+            try { fs.unlinkSync(upgradeStatusFile); } catch (e) {}
+        }
+    }
+
     const redeployPendingFile = path.join(PROJECT_ROOT, 'config', '.redeploy_pending');
     if (fs.existsSync(redeployPendingFile)) {
         console.log('[MAINTENANCE-BOOT] Found .redeploy_pending marker. Setting status to complete.');
@@ -1177,8 +1240,8 @@ try {
         };
         fs.unlinkSync(redeployPendingFile);
     }
-} catch (e) {
-    console.error('[MAINTENANCE-BOOT] Failed to check/clear redeploy marker:', e);
+} catch (e: any) {
+    console.error('[MAINTENANCE-BOOT] Failed to check persistent upgrade status:', e.message);
 }
 
 const getInterface = (): string => {
@@ -3641,6 +3704,16 @@ const aggregateStats = () => {
 };
 
 // API: Get Status
+// Lightweight unauthenticated health check for docker healthchecks and ephemeral updater verification
+app.get('/api/health', (req, res) => {
+    res.json({
+        status: 'healthy',
+        uptime: process.uptime(),
+        version: typeof STIGIX_VERSION !== 'undefined' ? STIGIX_VERSION : (process.env.STIGIX_VERSION || '2.0.0'),
+        timestamp: Date.now()
+    });
+});
+
 app.get('/api/status', (req, res) => {
     // In Docker/Cross-container, checks via systemctl don't work.
     // We check if any stats-*.json has been updated recently (heartbeat).
@@ -4120,7 +4193,12 @@ const calculateDEMScore = (
 ): number => {
     if (!reachable) return 0;
 
-    if (httpCode !== undefined && httpCode > 0) {
+    const lat = metrics.total_ms || 0;
+
+    if (type === 'HTTP' || type === 'HTTPS') {
+        // Outage, connection failure or timeout -> Score 0
+        if (!httpCode || httpCode <= 0 || lat >= 5000) return 0;
+
         const allowed = (Array.isArray(expectedStatusCodes) && expectedStatusCodes.length > 0)
             ? expectedStatusCodes
             : [200, 201, 202, 204, 301, 302, 304, 307, 308];
@@ -4130,13 +4208,12 @@ const calculateDEMScore = (
             if (httpCode >= 400) return 20;
             return 20;
         }
-    }
 
-    const lat = metrics.total_ms || 0;
+        // If connection dropped before TTFB was recorded -> Score 0
+        if ((metrics.ttfb_ms || 0) <= 0 && lat > 0) return 0;
 
-    if (type === 'HTTP' || type === 'HTTPS') {
         const total_norm = Math.min(lat / 2000, 1.0);
-        const ttfb_norm = Math.min(metrics.ttfb_ms / 1000, 1.0);
+        const ttfb_norm = Math.min((metrics.ttfb_ms || 0) / 1000, 1.0);
         const tls_norm = Math.min((metrics.tls_ms || 0) / 800, 1.0);
 
         let score = 100 - (30 * total_norm + 35 * ttfb_norm + 25 * tls_norm);
@@ -4246,9 +4323,10 @@ const performConnectivityCheck = async (endpoint: any): Promise<ConnectivityResu
                 });
 
                 const total_ms = parseFloat(curlData.time_total) * 1000;
-                if (total_ms > 0 || (curlData.http_code && parseInt(curlData.http_code) > 0)) {
+                const parsedHttpCode = parseInt(curlData.http_code) || 0;
+                if (parsedHttpCode > 0) {
                     result.reachable = true;
-                    result.httpCode = parseInt(curlData.http_code);
+                    result.httpCode = parsedHttpCode;
                     result.remoteIp = curlData.remote_ip;
                     result.remotePort = parseInt(curlData.remote_port);
                     result.metrics = {
@@ -4257,12 +4335,18 @@ const performConnectivityCheck = async (endpoint: any): Promise<ConnectivityResu
                         tls_ms: parseFloat(curlData.time_appconnect) > 0 ? (parseFloat(curlData.time_appconnect) - parseFloat(curlData.time_connect)) * 1000 : 0,
                         ttfb_ms: (parseFloat(curlData.time_starttransfer) - Math.max(parseFloat(curlData.time_appconnect), parseFloat(curlData.time_connect))) * 1000,
                         total_ms: total_ms,
-                        size_bytes: parseInt(curlData.size_download),
-                        speed_bps: parseFloat(curlData.speed_download),
-                        ssl_verify: parseInt(curlData.ssl_verify_result)
+                        size_bytes: parseInt(curlData.size_download) || 0,
+                        speed_bps: parseFloat(curlData.speed_download) || 0,
+                        ssl_verify: parseInt(curlData.ssl_verify_result) || 0
                     };
                     const baseScore = calculateDEMScore(result.endpointType, result.reachable, result.httpCode, result.metrics, endpoint.expectedStatusCodes || endpoint.expected_status_codes);
                     result.score = Math.max(0, baseScore - httpRetries * 20);
+                } else {
+                    result.reachable = false;
+                    result.httpCode = undefined;
+                    result.metrics = { dns_ms: 0, tcp_ms: 0, tls_ms: 0, ttfb_ms: 0, total_ms: total_ms || 0 };
+                    result.score = 0;
+                }
 
                     // ── Optional content match (separate bounded curl, timings unaffected) ──
                     const cm = (endpoint as any).content_match;
@@ -4308,7 +4392,6 @@ const performConnectivityCheck = async (endpoint: any): Promise<ConnectivityResu
                         if (!cmOk) { result.score = 0; result.reachable = false; }
                         if (DEBUG) log('CONNECTIVITY', `[DEBUG] content_match for ${endpoint.name}: ${cmResult} (ok=${cmOk})`, 'debug');
                     }
-                }
             }
         } else if (endpoint.type.toLowerCase() === 'ping') {
             const iface = getInterface();
@@ -4941,6 +5024,7 @@ const applyCustomConnectivityEndpoints = async (endpoints: any[]): Promise<boole
     // Save field-level local overrides if global provisioning is active
     if (provisioningManager) {
         provisioningManager.handleLocalSave('connectivity-probes', customAndEnvProbes);
+        triggerAutoSyncFleetBundle('connectivity-probes');
     }
 
     if (customSuccess && newProbes.length > 0) {
@@ -5059,6 +5143,7 @@ app.post('/api/probes/promote-app', authenticateToken, async (req, res) => {
         const updated = [...existing, newProbe];
         saveCustomConnectivityEndpoints(updated);
         provisioningManager.handleLocalSave('connectivity-probes', updated);
+        triggerAutoSyncFleetBundle('connectivity-probes');
 
         // Immediate first check
         setImmediate(async () => {
@@ -6743,6 +6828,7 @@ const updateAppsWeigth = (updates: Record<string, number>, res: any) => {
         config.applications = newApps;
         fs.writeFileSync(APPLICATIONS_CONFIG_FILE, JSON.stringify(config, null, 2));
         provisioningManager.handleLocalSave('applications', newApps);
+        triggerAutoSyncFleetBundle('applications');
         res.json({ success: true });
     } catch (err) {
         res.status(500).json({ error: 'Operation failed', details: err });
@@ -6861,6 +6947,10 @@ app.post('/api/config/applications/import', authenticateToken, (req, res) => {
 
         config.applications = applications;
         fs.writeFileSync(APPLICATIONS_CONFIG_FILE, JSON.stringify(config, null, 2));
+        if (provisioningManager) {
+            provisioningManager.handleLocalSave('applications', applications);
+            triggerAutoSyncFleetBundle('applications');
+        }
 
         res.json({ success: true, count: applications.length });
     } catch (err: any) {
@@ -10647,7 +10737,24 @@ app.get('/api/security/cloud-eicar-url', authenticateToken, (req, res) => {
 // API: List all configured EICAR test targets — mirrors Security.tsx logic exactly
 // Sources: fabric targets with capabilities.security=true + cloud EICAR if configured
 app.get('/api/security/eicar-targets', authenticateToken, (req, res) => {
-    const targets: Array<{name: string; target: string; type: string; url: string}> = [];
+    const targets: Array<{name: string; target: string; type: string; url: string; app_id?: string; port?: number; is_custom_app?: boolean}> = [];
+
+    const regStatus = registryManager.getStatus();
+    const localNodeId = (regStatus.instance_id || '').trim().toLowerCase();
+    const localSiteName = (regStatus.site_name || '').trim().toLowerCase();
+    const localIp = (regStatus.ip_private || (typeof detectedIp !== 'undefined' ? detectedIp : '') || '127.0.0.1').trim().toLowerCase();
+
+    const isSelf = (hostOrIp: string, name?: string, nodeId?: string): boolean => {
+        const h = (hostOrIp || '').trim().toLowerCase();
+        const n = (name || '').trim().toLowerCase();
+        const id = (nodeId || '').trim().toLowerCase();
+
+        if (h === '127.0.0.1' || h === 'localhost' || h === '::1' || h === '0.0.0.0') return true;
+        if (localIp && (h === localIp || h.startsWith(localIp + ':'))) return true;
+        if (localNodeId && (id === localNodeId || h === localNodeId || n === localNodeId)) return true;
+        if (localSiteName && (n === localSiteName || id === localSiteName)) return true;
+        return false;
+    };
 
     // 1. Cloud EICAR target (same as Security.tsx cloud-eicar-url fetch)
     const { url: cloudUrl } = targetManager.getEffectiveUrl('advanced-custom#{"mode":"eicar"}');
@@ -10661,16 +10768,55 @@ app.get('/api/security/eicar-targets', authenticateToken, (req, res) => {
         targets.push({ name: 'Stigix Cloud', target: cloudUrl, type: 'cloud', url: cloudUrl });
     }
 
-    // 2. Fabric targets with security capability — identical to Security.tsx:
-    //    fetch('/api/targets').filter(t => t.enabled && t.capabilities?.security)
-    //    url = `http://${t.host}:${t.ports?.http ?? 8082}/eicar.com.txt`
+    // 2. Fabric targets with security capability — Standard Port 8082 HTTP daemon (Filtered to remote only)
     try {
         const allTargets = targetsManager.getMergedTargets();
         const secTargets = allTargets.filter((t: any) => t.enabled && t.capabilities?.security);
         for (const t of secTargets) {
+            if (isSelf(t.host, t.name, t.id)) continue;
             const httpPort = (t.ports?.http && t.ports.http !== 8080 && t.ports.http !== 80) ? t.ports.http : 8082;
             const url = `http://${t.host}:${httpPort}/eicar.com.txt`;
             targets.push({ name: t.name || t.host, target: url, type: 'direct', url });
+        }
+    } catch (_) {}
+
+    // 3. Dynamic Live Remote Custom TCP/HTTP Apps in EICAR Responder mode (Zero False Positives, Strictly Remote)
+    try {
+        let meshServers: any[] = [];
+        if (fleetTunnelManager && typeof fleetTunnelManager.getCachedCustomAppMesh === 'function') {
+            meshServers = fleetTunnelManager.getCachedCustomAppMesh() || [];
+        }
+        if (meshServers.length === 0 && localRegistryServer) {
+            meshServers = localRegistryServer.getCustomAppMesh() || [];
+        }
+
+        for (const s of meshServers) {
+            if (s.is_eicar_responder && s.status === 'running') {
+                if (isSelf(s.ip, s.node_name, s.node_id)) continue;
+                let effectiveIp = s.ip;
+                if (!effectiveIp || effectiveIp === '127.0.0.1' || effectiveIp === 'localhost') {
+                    const target = targetsManager?.getMergedTargets().find((t: any) => 
+                        t.name === s.node_name || t.id === s.node_id || t.name === s.node_id
+                    );
+                    if (target && target.host && target.host !== '127.0.0.1') {
+                        effectiveIp = target.host;
+                    }
+                }
+                if (!effectiveIp || effectiveIp === '127.0.0.1') continue;
+
+                const url = `http://${effectiveIp}:${s.port}/`;
+                if (!targets.some(t => t.url === url)) {
+                    targets.push({
+                        name: s.node_name || s.node_id,
+                        target: url,
+                        type: 'custom_app',
+                        url,
+                        app_id: s.app_id,
+                        port: s.port,
+                        is_custom_app: true
+                    });
+                }
+            }
         }
     } catch (_) {}
 
@@ -11713,6 +11859,72 @@ function startLogStreaming() {
 setTimeout(startLogStreaming, 2000);
 
 
+
+async function detectLocalDockerChannel(): Promise<{ channel: string; fullImage: string; createdDate: string | null }> {
+    let image = '';
+    let createdDate: string | null = null;
+    const execPromise = promisify(exec);
+
+    try {
+        const { stdout } = await execPromise('docker inspect stigix --format "{{.Config.Image}}|||{{.Created}}"');
+        const parts = stdout.trim().split('|||');
+        image = parts[0] || '';
+        createdDate = parts[1] || null;
+    } catch (e) {
+        try {
+            const hostname = os.hostname();
+            const { stdout } = await execPromise(`docker inspect \${hostname} --format "{{.Config.Image}}|||{{.Created}}"`);
+            const parts = stdout.trim().split('|||');
+            image = parts[0] || '';
+            createdDate = parts[1] || null;
+        } catch (e2) {}
+    }
+
+    let currentVer = '';
+    try {
+        const vPath = fs.existsSync('/app/VERSION') ? '/app/VERSION' : path.join(PROJECT_ROOT, 'VERSION');
+        if (fs.existsSync(vPath)) currentVer = fs.readFileSync(vPath, 'utf8').trim();
+    } catch (e) {}
+
+    // Read .env on disk if available
+    let envFileTag = '';
+    const envPaths = ['/app/.env', path.join(PROJECT_ROOT, '.env'), path.resolve(process.cwd(), '.env')];
+    for (const ep of envPaths) {
+        if (fs.existsSync(ep)) {
+            try {
+                const envContent = fs.readFileSync(ep, 'utf8');
+                const m = envContent.match(/^(?:STIGIX_TAG|TAG)\s*=\s*(.+)$/m);
+                if (m && m[1]) {
+                    envFileTag = m[1].trim().replace(/['"]/g, '');
+                    break;
+                }
+            } catch (e) {}
+        }
+    }
+
+    const envTag = (process.env.TAG || envFileTag || '').trim();
+    const tagMatch = image.match(/:([^:]+)$/);
+    const rawTag = (tagMatch ? tagMatch[1] : envTag).trim();
+
+    // Dynamically respect user channel: stable vs latest vs v2 vs custom
+    let channel = 'stable';
+    if (rawTag === 'stable') {
+        channel = 'stable';
+    } else if (rawTag === 'latest') {
+        channel = 'latest';
+    } else if (rawTag === 'v2') {
+        channel = 'v2';
+    } else if (rawTag.includes('.dev') || rawTag.startsWith('sha-')) {
+        channel = 'v2';
+    } else if (rawTag) {
+        channel = rawTag;
+    } else {
+        channel = currentVer.includes('dev') ? 'v2' : 'stable';
+    }
+
+    return { channel, fullImage: `jsuzanne/stigix:\${channel}`, createdDate };
+}
+
 app.get('/api/admin/maintenance/version', authenticateToken, async (req, res) => {
     try {
         const versionPaths = [
@@ -11722,87 +11934,89 @@ app.get('/api/admin/maintenance/version', authenticateToken, async (req, res) =>
             '/app/VERSION'
         ];
 
-        let currentVersion = '1.2.1-patch.56';
-
-        let foundPath = 'none (fallback)';
-
+        let currentVersion = '2.1.0';
         for (const vPath of versionPaths) {
             if (fs.existsSync(vPath)) {
                 currentVersion = fs.readFileSync(vPath, 'utf8').trim();
-                foundPath = vPath;
                 break;
             }
         }
 
-        let latestVersion = currentVersion;
+        // Dynamically detect local channel (stable vs latest vs v2 vs custom)
+        const { channel, fullImage, createdDate } = await detectLocalDockerChannel();
+
+        let latestVersion = channel;
         let updateAvailable = false;
-        let dockerReady = true;
+        const dockerReady = fs.existsSync('/var/run/docker.sock');
+        let remoteBuildDate: string | null = null;
 
         const execPromise = promisify(exec);
 
+        // 1. Query Docker Hub for the specific active channel tag
         try {
-            let stdout = '';
-            let retries = 2;
-            while (retries > 0) {
-                try {
-                    const res = await execPromise('curl -sL --connect-timeout 10 https://api.github.com/repos/jsuzanne/stigix/tags');
-                    stdout = res.stdout;
-                    if (stdout.trim()) break;
-                } catch (e) {
-                    retries--;
-                    if (retries === 0) throw e;
-                    await new Promise(r => setTimeout(r, 2000));
+            const dockerHubUrl = `https://hub.docker.com/v2/repositories/jsuzanne/stigix/tags/${channel}/`;
+            const { stdout: hubOut } = await execPromise(`curl -sL --connect-timeout 6 "${dockerHubUrl}"`);
+            const hubData = JSON.parse(hubOut);
+
+            if (hubData && hubData.last_updated) {
+                remoteBuildDate = hubData.last_updated;
+                if (createdDate) {
+                    const localCreatedTime = new Date(createdDate).getTime();
+                    const hubUpdatedTime = new Date(remoteBuildDate).getTime();
+                    // If Docker Hub image is newer than local container creation by > 60s
+                    if (hubUpdatedTime > (localCreatedTime + 60000)) {
+                        updateAvailable = true;
+                    }
                 }
             }
-
-            const tagsData = JSON.parse(stdout);
-            if (Array.isArray(tagsData) && tagsData.length > 0) {
-                const sortedTags = tagsData.map((t: any) => t.name).sort((a: string, b: string) => {
-                    const aPatch = a.includes('-patch.');
-                    const bPatch = b.includes('-patch.');
-                    if (aPatch && !bPatch) return -1;
-                    if (!aPatch && bPatch) return 1;
-                    const aParts = a.split(/[-.]/);
-                    const bParts = b.split(/[-.]/);
-                    for (let i = 0; i < Math.max(aParts.length, bParts.length); i++) {
-                        const aP = aParts[i] || '';
-                        const bP = bParts[i] || '';
-                        const aNum = parseInt(aP.replace(/^\D+/, ''));
-                        const bNum = parseInt(bP.replace(/^\D+/, ''));
-                        if (!isNaN(aNum) && !isNaN(bNum)) {
-                            if (bNum !== aNum) return bNum - aNum;
-                        } else if (bP !== aP) return bP.localeCompare(aP);
-                    }
-                    return 0;
-                });
-                const latestTag = sortedTags[0];
-                latestVersion = latestTag.replace(/^v/, '');
-                // Normalize currentVersion for comparison (if it has 'v' prefix)
-                const normalizedCurrent = currentVersion.replace(/^v/, '');
-                updateAvailable = (latestVersion !== normalizedCurrent);
-            }
-        } catch (e) {
-            if (!githubFetchErrorLogged) {
-                log('MAINTENANCE', '⚠️ Failed to fetch latest version from GitHub tags (after retries)', 'warn');
-                githubFetchErrorLogged = true;
-            }
+        } catch (hubErr: any) {
+            console.warn('[MAINTENANCE] Docker Hub check for channel tag failed:', hubErr.message);
         }
 
-        if (updateAvailable) {
+        // 2. Channel-specific version tag resolution
+        if (channel === 'v2') {
             try {
-                const dockerRepo = 'jsuzanne/sdwan-traffic-gen';
-                const { stdout: dockerStatus } = await execPromise(`curl -s -o /dev/null -w "%{http_code}" https://hub.docker.com/v2/repositories/${dockerRepo}/tags/v${latestVersion}/`);
-                dockerReady = (dockerStatus.trim() === '200' || dockerStatus.trim() === '403');
-            } catch (e) {
-                console.warn('[MAINTENANCE] ⚠️ Docker Hub verification failed, assuming ready.');
+                const tagsListUrl = 'https://hub.docker.com/v2/repositories/jsuzanne/stigix/tags/?page_size=10&page=1';
+                const { stdout: listOut } = await execPromise(`curl -sL --connect-timeout 6 "${tagsListUrl}"`);
+                const listData = JSON.parse(listOut);
+                const latestDevItem = listData?.results?.find((r: any) =>
+                    r.name && r.name.startsWith('v2.') && r.name.includes('.dev')
+                );
+                if (latestDevItem) {
+                    latestVersion = latestDevItem.name;
+                    if (currentVersion !== latestDevItem.name) {
+                        updateAvailable = true;
+                    }
+                }
+            } catch (e: any) {
+                console.warn('[MAINTENANCE] Failed to resolve latest v2 dev build from Docker Hub:', e.message);
             }
+        } else if (channel === 'stable') {
+            try {
+                const res = await execPromise('curl -sL --connect-timeout 8 https://api.github.com/repos/jsuzanne/stigix/tags');
+                const tagsData = JSON.parse(res.stdout);
+                if (Array.isArray(tagsData) && tagsData.length > 0) {
+                    const firstTag = tagsData[0].name.replace(/^v/, '');
+                    if (firstTag && !currentVersion.includes(firstTag)) {
+                        latestVersion = firstTag;
+                        updateAvailable = true;
+                    }
+                }
+            } catch (e) {}
         }
+
+        // Clean any stray characters to ensure latestVersion is a valid Docker tag
+        latestVersion = latestVersion.replace(/[()]/g, '').trim();
 
         res.json({
             current: currentVersion,
             latest: latestVersion,
+            channel,
+            targetImage: fullImage,
             updateAvailable,
-            dockerReady
+            dockerReady,
+            dockerError: dockerReady ? null : 'Docker socket (/var/run/docker.sock) is not mounted into container. Add it to volumes in docker-compose.yml to enable 1-click updates.',
+            remoteBuildDate
         });
     } catch (e: any) {
         console.error('[MAINTENANCE] ❌ Version check error:', e);
@@ -11913,7 +12127,54 @@ app.post('/api/admin/config/import', authenticateToken, async (req, res) => {
 });
 
 app.get('/api/admin/maintenance/status', authenticateToken, (req, res) => {
+    try {
+        const upgradeStatusFile = path.join(PROJECT_ROOT, 'config', '.upgrade_status.json');
+        if (fs.existsSync(upgradeStatusFile)) {
+            const raw = fs.readFileSync(upgradeStatusFile, 'utf8');
+            const saved = JSON.parse(raw);
+            if (saved && (saved.stage === 'complete' || saved.stage === 'restarting' || saved.stage === 'failed')) {
+                G_UPGRADE_STATUS.inProgress = saved.inProgress || false;
+                G_UPGRADE_STATUS.stage = saved.stage === 'restarting' ? 'complete' : saved.stage;
+                if (saved.version) G_UPGRADE_STATUS.version = saved.version;
+                if (saved.error) G_UPGRADE_STATUS.error = saved.error;
+            }
+        }
+        const updaterLogFile = path.join(PROJECT_ROOT, 'config', 'stigix_updater.log');
+        if (fs.existsSync(updaterLogFile)) {
+            const fileContent = fs.readFileSync(updaterLogFile, 'utf8');
+            // Preserve full log history on disk, but only stream the active session to the UI console
+            const sessions = fileContent.split(/={20,}/);
+            const currentSession = (sessions[sessions.length - 1] || '').trim();
+            const sessionLines = currentSession.split('\n').map(l => l.trim()).filter(Boolean);
+            if (sessionLines.length > 0) {
+                // Do not overwrite live pull logs during pulling stage
+                if (G_UPGRADE_STATUS.inProgress && G_UPGRADE_STATUS.stage === 'pulling') {
+                    // Keep in-memory live pulling logs
+                } else {
+                    G_UPGRADE_STATUS.logs = sessionLines;
+                }
+            }
+        }
+    } catch {}
     res.json(G_UPGRADE_STATUS);
+});
+
+app.post('/api/admin/maintenance/dismiss', authenticateToken, (req, res) => {
+    try {
+        const upgradeStatusFile = path.join(PROJECT_ROOT, 'config', '.upgrade_status.json');
+        if (fs.existsSync(upgradeStatusFile)) {
+            fs.unlinkSync(upgradeStatusFile);
+        }
+    } catch (e: any) {}
+    G_UPGRADE_STATUS = {
+        inProgress: false,
+        version: null,
+        stage: 'idle',
+        logs: [],
+        error: null,
+        startTime: null
+    };
+    res.json({ success: true, message: 'Maintenance status dismissed' });
 });
 
 async function getHostProjectDir(): Promise<string | null> {
@@ -11958,18 +12219,30 @@ async function getHostProjectDir(): Promise<string | null> {
         if (inspectOut) {
             const inspectData = JSON.parse(inspectOut);
             if (Array.isArray(inspectData) && inspectData.length > 0) {
+                // 1. Check official Docker Compose labels first (most reliable)
+                const labels = inspectData[0].Config?.Labels || {};
+                const composeWorkingDir = labels['com.docker.compose.project.working_dir'];
+                if (composeWorkingDir) {
+                    return composeWorkingDir;
+                }
+
+                // 2. Check bind mounts
                 const mounts = inspectData[0].Mounts || [];
                 const composeMount = mounts.find((m: any) => 
                     m.Destination === '/app/docker-compose.yml' || 
                     m.Destination === '/app' ||
-                    m.Destination === '/app/config'
+                    m.Destination === '/app/config' ||
+                    m.Destination === '/config' ||
+                    (m.Source && m.Source.includes('/stigix'))
                 );
                 if (composeMount) {
                     const hostPath = composeMount.Source;
-                    if (composeMount.Destination === '/app/config') {
+                    if (composeMount.Destination === '/app/config' || composeMount.Destination === '/config') {
                         return path.dirname(hostPath);
                     } else if (composeMount.Destination === '/app/docker-compose.yml') {
                         return path.dirname(hostPath);
+                    } else if (hostPath.endsWith('/stigix')) {
+                        return hostPath;
                     } else {
                         return hostPath;
                     }
@@ -12052,119 +12325,198 @@ const runCommandAndLog = (cmd: string, cwd: string, stage: string): Promise<numb
 app.post('/api/admin/maintenance/upgrade', authenticateToken, async (req, res) => {
     const { version } = req.body;
 
+    if (!fs.existsSync('/var/run/docker.sock')) {
+        return res.status(400).json({ 
+            error: 'Docker socket (/var/run/docker.sock) is not mounted into this container. To enable 1-click self-upgrade, add "- /var/run/docker.sock:/var/run/docker.sock" under volumes in docker-compose.yml.' 
+        });
+    }
+
     if (G_UPGRADE_STATUS.inProgress) {
         return res.status(400).json({ error: 'Upgrade already in progress' });
     }
 
+    const { channel } = await detectLocalDockerChannel();
+    const targetVersion = (version && version !== 'latest' && version !== channel ? version : channel).trim();
+    const pullImage = targetVersion.includes('/') ? targetVersion : `jsuzanne/stigix:${targetVersion}`;
+
     // Initialize status
     G_UPGRADE_STATUS = {
         inProgress: true,
-        version: version || 'latest',
+        version: targetVersion,
         stage: 'pulling',
-        logs: [`[${new Date().toISOString()}] Upgrade requested to ${version || 'latest'}`],
+        logs: [`[${new Date().toISOString()}] 🚀 Upgrade initiated towards image: ${pullImage}`],
         error: null,
         startTime: Date.now()
     };
+    saveUpgradeStatusToDisk();
+
+    // Start fresh session in updater log so disk never serves previous upgrade's logs
+    try {
+        const updaterLogFile = path.join(PROJECT_ROOT, 'config', 'stigix_updater.log');
+        const sessionHeader = `\n=================================================\n[${new Date().toISOString()}] [UPDATER] Upgrade session initialized for target version: ${targetVersion}\n[${new Date().toISOString()}] 🚀 Upgrade initiated towards image: ${pullImage}\n`;
+        fs.appendFileSync(updaterLogFile, sessionHeader, 'utf8');
+    } catch {}
 
     res.json({ success: true, message: 'Upgrade started in background' });
 
     const runUpgrade = async () => {
         try {
             const rootDir = PROJECT_ROOT;
-            const hasAppCompose = fs.existsSync('/app/docker-compose.yml');
-            const hasRootCompose = fs.existsSync(path.join(rootDir, 'docker-compose.yml'));
-            const composeFile = hasAppCompose ? '/app/docker-compose.yml' : (hasRootCompose ? path.join(rootDir, 'docker-compose.yml') : null);
-            const workingDir = hasAppCompose ? '/app' : rootDir;
+            const workingDir = fs.existsSync('/app') ? '/app' : rootDir;
 
-            // 1. Detect docker compose command
-            let baseCmd = 'docker compose';
-            try {
-                baseCmd = await detectDockerComposeCmd();
-            } catch (err: any) {
-                G_UPGRADE_STATUS.logs.push(`[WARN] Docker compose detection failed: ${err.message}. Defaulting to 'docker compose'`);
-            }
+            // 1. Resilient Pull Phase with Retries (Max 3 attempts)
+            // CRITICAL: We NEVER touch or stop the running container until the pull is 100% successful!
+            let pullSucceeded = false;
+            const maxRetries = 3;
 
-            const hostDir = await getHostProjectDir();
-            const projDirFlag = hostDir ? `--project-directory ${hostDir}` : '';
+            for (let attempt = 1; attempt <= maxRetries; attempt++) {
+                G_UPGRADE_STATUS.logs.push(`[${new Date().toISOString()}] [PULL] Attempt ${attempt}/${maxRetries}: docker pull ${pullImage}`);
+                saveUpgradeStatusToDisk();
 
-            // 2. Prune stage (Purge)
-            try {
-                // Run system prune to clean up unused layers/containers
-                const pruneExit = await runCommandAndLog('docker system prune -a -f', workingDir, 'pruning');
-                if (pruneExit !== 0) {
-                    G_UPGRADE_STATUS.logs.push(`[WARN] Prune returned exit code ${pruneExit}. Continuing...`);
-                }
-            } catch (e: any) {
-                G_UPGRADE_STATUS.logs.push(`[WARN] Prune failed: ${e.message}. Continuing...`);
-            }
-
-            // 3. Pull stage
-            const pullTarget = version || 'latest';
-            let pullCmd = '';
-            if (composeFile) {
-                const tagPrefix = version ? `TAG=${version} ` : '';
-                pullCmd = `${tagPrefix}${baseCmd} ${projDirFlag} -f ${composeFile} pull`.replace(/\s+/g, ' ').trim();
-            } else {
-                pullCmd = `docker pull jsuzanne/stigix:${pullTarget}`;
-            }
-
-            const pullExit = await runCommandAndLog(pullCmd, workingDir, 'pulling');
-            if (pullExit !== 0) {
-                throw new Error(`Pull failed with exit code ${pullExit}`);
-            }
-
-            // 4. Recreate/Up stage (Restarting)
-            G_UPGRADE_STATUS.stage = 'restarting';
-            
-            // Short delay to allow client to read pull completion log
-            setTimeout(async () => {
                 try {
-                    if (composeFile) {
-                        const tagPrefix = version ? `TAG=${version} ` : '';
-                        let upCmd = '';
-                        if (hostDir) {
-                            const hostComposeFile = path.join(hostDir, 'docker-compose.yml');
-                            const runImage = version ? `jsuzanne/stigix:${version}` : 'jsuzanne/stigix:latest';
-                            // Run the compose up command inside a detached helper container so it survives the restart
-                            upCmd = `docker run -d --name stigix-upgrader-${Date.now()} --rm -v /var/run/docker.sock:/var/run/docker.sock -v ${hostDir}:${hostDir} -w ${hostDir} ${runImage} sh -c "sleep 2 && (${tagPrefix}docker compose -f ${hostComposeFile} up -d --force-recreate || ${tagPrefix}docker-compose -f ${hostComposeFile} up -d --force-recreate); exit 0"`;
-                        } else {
-                            // Fallback to direct execution if hostDir is not resolved
-                            upCmd = `${tagPrefix}${baseCmd} ${projDirFlag} -f ${composeFile} up -d --force-recreate`.replace(/\s+/g, ' ').trim();
-                        }
-                        
-                        const upExit = await runCommandAndLog(upCmd, workingDir, 'restarting');
-                        if (upExit !== 0) {
-                            G_UPGRADE_STATUS.logs.push(`[WARN] Up command invocation failed (exit ${upExit}). Falling back to simple up...`);
-                            // Fallback to simple up without force-recreate
-                            const fallbackUpCmd = hostDir
-                                ? `docker run -d --name stigix-upgrader-${Date.now()} --rm -v /var/run/docker.sock:/var/run/docker.sock -v ${hostDir}:${hostDir} -w ${hostDir} ${version ? `jsuzanne/stigix:${version}` : 'jsuzanne/stigix:latest'} sh -c "sleep 2 && (${tagPrefix}docker compose -f ${path.join(hostDir, 'docker-compose.yml')} up -d || ${tagPrefix}docker-compose -f ${path.join(hostDir, 'docker-compose.yml')} up -d); exit 0"`
-                                : `${tagPrefix}${baseCmd} ${projDirFlag} -f ${composeFile} up -d`.replace(/\s+/g, ' ').trim();
-                            
-                            const fallbackExit = await runCommandAndLog(fallbackUpCmd, workingDir, 'restarting');
-                            if (fallbackExit !== 0) {
-                                throw new Error(`Up failed with exit code ${fallbackExit}`);
-                            }
-                        }
+                    const exitCode = await runCommandAndLog(`docker pull ${pullImage}`, workingDir, 'pulling');
+                    if (exitCode === 0) {
+                        pullSucceeded = true;
+                        G_UPGRADE_STATUS.logs.push(`[${new Date().toISOString()}] ✅ [PULL] Image ${pullImage} successfully downloaded on attempt ${attempt}.`);
+                        saveUpgradeStatusToDisk();
+                        break;
                     } else {
-                        // Fallback to docker restart stigix if no compose file
-                        const restartCmd = 'docker restart stigix';
-                        const restartExit = await runCommandAndLog(restartCmd, workingDir, 'restarting');
-                        if (restartExit !== 0) {
-                            throw new Error(`Fallback restart failed with exit code ${restartExit}`);
-                        }
+                        G_UPGRADE_STATUS.logs.push(`[WARN] [PULL] Attempt ${attempt} returned exit code ${exitCode}.`);
                     }
-
-                    G_UPGRADE_STATUS.stage = 'complete';
-                    G_UPGRADE_STATUS.logs.push(`[${new Date().toISOString()}] ✅ Upgrade complete. Restarting backend...`);
-                    setTimeout(() => process.exit(0), 1000);
-
-                } catch (upErr: any) {
-                    G_UPGRADE_STATUS.stage = 'failed';
-                    G_UPGRADE_STATUS.error = upErr.message;
-                    G_UPGRADE_STATUS.inProgress = false;
-                    G_UPGRADE_STATUS.logs.push(`[ERROR] ${upErr.message}`);
+                } catch (pullErr: any) {
+                    G_UPGRADE_STATUS.logs.push(`[WARN] [PULL] Attempt ${attempt} error: ${pullErr.message}`);
                 }
-            }, 2000);
+
+                if (attempt < maxRetries) {
+                    G_UPGRADE_STATUS.logs.push(`[INFO] Network retry scheduled in 5 seconds...`);
+                    saveUpgradeStatusToDisk();
+                    await new Promise(r => setTimeout(r, 5000));
+                }
+            }
+
+            // If all pull attempts failed, ABORT SAFELY without stopping or modifying the current container
+            if (!pullSucceeded) {
+                G_UPGRADE_STATUS.inProgress = false;
+                G_UPGRADE_STATUS.stage = 'failed';
+                G_UPGRADE_STATUS.error = `Docker pull failed after ${maxRetries} attempts. Upgrade aborted safely. Your running instance remains 100% operational with zero disruption.`;
+                G_UPGRADE_STATUS.logs.push(`[${new Date().toISOString()}] ❌ ${G_UPGRADE_STATUS.error}`);
+                saveUpgradeStatusToDisk();
+                return;
+            }
+
+            // 2. Resolve Host Paths & Environment for Compose
+            const hostDir = await getHostProjectDir();
+            const hostComposeFile = hostDir ? path.join(hostDir, 'docker-compose.yml') : null;
+            const hostConfigDir = hostDir ? path.join(hostDir, 'config') : path.join(rootDir, 'config');
+
+            // Retag target image to the channel tag (e.g. jsuzanne/stigix:v2.1.0.dev2203 -> jsuzanne/stigix:v2)
+            // This guarantees that docker-compose files with hardcoded 'image: jsuzanne/stigix:v2' ALSO get updated!
+            const channelImage = `jsuzanne/stigix:${channel}`;
+            if (pullImage !== channelImage) {
+                try {
+                    await promisify(exec)(`docker tag ${pullImage} ${channelImage}`);
+                    G_UPGRADE_STATUS.logs.push(`[${new Date().toISOString()}] Retagged ${pullImage} -> ${channelImage}`);
+                } catch (tagErr: any) {
+                    G_UPGRADE_STATUS.logs.push(`[WARN] Retag warning: ${tagErr.message}`);
+                }
+            }
+
+            G_UPGRADE_STATUS.stage = 'restarting';
+            G_UPGRADE_STATUS.logs.push(`[${new Date().toISOString()}] Pull validated. Preparing detached ephemeral updater...`);
+            saveUpgradeStatusToDisk();
+
+            // 3. Write Ephemeral Updater Shell Script into persistent config volume
+            const updaterScriptContent = `#!/bin/sh
+set -e
+LOG_FILE="/config/stigix_updater.log"
+STATUS_FILE="/config/.upgrade_status.json"
+
+echo "=================================================" >> "$LOG_FILE"
+echo "[$(date -u)] [UPDATER] Ephemeral updater started for target version: ${targetVersion}" >> "$LOG_FILE"
+echo "[$(date -u)] [UPDATER] Host project directory: ${hostDir || 'unknown'}" >> "$LOG_FILE"
+
+sleep 3
+
+# Ensure channel tag is mapped to the pulled image
+if [ "${pullImage}" != "${channelImage}" ]; then
+    docker tag "${pullImage}" "${channelImage}" >> "$LOG_FILE" 2>&1 || true
+fi
+
+# Step 1: Recreate Stigix Container
+if [ -n "${hostComposeFile}" ] && [ -f "${hostComposeFile}" ]; then
+    echo "[$(date -u)] [UPDATER] Executing Docker Compose up with TAG=${targetVersion}..." >> "$LOG_FILE"
+    (TAG="${targetVersion}" docker compose -f "${hostComposeFile}" up -d --force-recreate 2>&1 || \
+     TAG="${targetVersion}" docker-compose -f "${hostComposeFile}" up -d --force-recreate 2>&1) | while IFS= read -r line; do
+        echo "[$(date -u)] [COMPOSE] $line" >> "$LOG_FILE"
+    done
+else
+    echo "[$(date -u)] [UPDATER] No docker-compose.yml found on host. Restarting stigix container directly..." >> "$LOG_FILE"
+    docker restart stigix 2>&1 | while IFS= read -r line; do
+        echo "[$(date -u)] [DOCKER] $line" >> "$LOG_FILE"
+    done
+fi
+
+# Step 2: Healthcheck Loop (wait up to 60s for /api/health or /api/status)
+echo "[$(date -u)] [UPDATER] Waiting for new container healthcheck..." >> "$LOG_FILE"
+HEALTHY=0
+for i in $(seq 1 30); do
+    sleep 2
+    if curl -sf http://127.0.0.1:8080/api/health >/dev/null 2>&1 || curl -sf http://localhost:8080/api/health >/dev/null 2>&1 || curl -sf http://127.0.0.1:8080/api/status >/dev/null 2>&1; then
+        HEALTHY=1
+        echo "[$(date -u)] [UPDATER] ✅ Healthcheck passed on attempt $i!" >> "$LOG_FILE"
+        break
+    fi
+done
+
+NOW=$(date +%s000 2>/dev/null || date +%s)
+if [ "$HEALTHY" -eq 1 ]; then
+    echo "[$(date -u)] [UPDATER] 🚀 Upgrade successfully finalized!" >> "$LOG_FILE"
+    echo "[$(date -u)] [UPDATER] 🧹 Auto-pruning old dangling images to reclaim disk space..." >> "$LOG_FILE"
+    (docker image prune -f 2>&1 || true) | while IFS= read -r line; do
+        echo "[$(date -u)] [PRUNE] $line" >> "$LOG_FILE"
+    done
+    cat << EOF > "$STATUS_FILE"
+{"inProgress":false,"version":"${targetVersion}","stage":"complete","error":null,"completedAt":$NOW}
+EOF
+else
+    echo "[$(date -u)] [UPDATER] ⚠️ Healthcheck timed out after 60 seconds." >> "$LOG_FILE"
+    cat << EOF > "$STATUS_FILE"
+{"inProgress":false,"version":"${targetVersion}","stage":"failed","error":"New container failed healthcheck within 60 seconds after upgrade.","completedAt":$NOW}
+EOF
+fi
+
+echo "[$(date -u)] [UPDATER] Ephemeral updater terminated cleanly." >> "$LOG_FILE"
+rm -f /config/stigix_ephemeral_updater.sh
+`;
+
+            const localScriptPath = path.join(rootDir, 'config', 'stigix_ephemeral_updater.sh');
+            try {
+                fs.writeFileSync(localScriptPath, updaterScriptContent, { mode: 0o755 });
+            } catch (err: any) {
+                G_UPGRADE_STATUS.logs.push(`[WARN] Could not write script to config: ${err.message}`);
+            }
+
+            // 4. Launch Detached Ephemeral Helper Container
+            // CRITICAL: Must use --entrypoint /bin/sh to prevent supervisord / entrypoint.sh from taking over!
+            let spawnCmd = '';
+            if (hostDir) {
+                spawnCmd = `docker run -d --name stigix-updater-${Date.now()} --rm --network host --entrypoint /bin/sh -v /var/run/docker.sock:/var/run/docker.sock -v ${hostDir}:${hostDir} -v ${hostConfigDir}:/config -w ${hostDir} ${pullImage} /config/stigix_ephemeral_updater.sh`;
+            } else {
+                spawnCmd = `docker run -d --name stigix-updater-${Date.now()} --rm --network host --entrypoint /bin/sh -v /var/run/docker.sock:/var/run/docker.sock ${pullImage} -c "sleep 3 && docker restart stigix"`;
+            }
+
+            G_UPGRADE_STATUS.logs.push(`[${new Date().toISOString()}] Delegating execution to detached ephemeral container: ${spawnCmd}`);
+            saveUpgradeStatusToDisk();
+
+            const spawnExit = await runCommandAndLog(spawnCmd, workingDir, 'restarting');
+            if (spawnExit === 0) {
+                G_UPGRADE_STATUS.logs.push(`[${new Date().toISOString()}] ✅ Ephemeral updater container launched. Yielding process for restart...`);
+                saveUpgradeStatusToDisk();
+                // Graceful delay allowing HTTP response to complete before process exits
+                setTimeout(() => process.exit(0), 1200);
+            } else {
+                throw new Error(`Failed to spawn ephemeral updater container (exit code ${spawnExit})`);
+            }
 
         } catch (e: any) {
             console.error('[MAINTENANCE] Upgrade failed:', e);
@@ -12172,14 +12524,44 @@ app.post('/api/admin/maintenance/upgrade', authenticateToken, async (req, res) =
             G_UPGRADE_STATUS.stage = 'failed';
             G_UPGRADE_STATUS.error = e.message;
             G_UPGRADE_STATUS.logs.push(`[ERROR] ${e.message}`);
+            saveUpgradeStatusToDisk();
         }
     };
 
     runUpgrade();
 });
 
+app.post('/api/admin/maintenance/prune', authenticateToken, async (req, res) => {
+    if (!fs.existsSync('/var/run/docker.sock')) {
+        return res.status(400).json({ 
+            error: 'Docker socket (/var/run/docker.sock) is not mounted into this container. Image prune requires Docker socket access.' 
+        });
+    }
+
+    try {
+        const execPromise = promisify(exec);
+        const { stdout, stderr } = await execPromise('docker image prune -f');
+        const output = ((stdout || '') + (stderr ? `\n${stderr}` : '')).trim();
+        log('MAINTENANCE', `Docker image prune executed: ${output || "no dangling images removed"}`);
+        return res.json({ 
+            success: true, 
+            message: 'Unused dangling Docker images pruned successfully.', 
+            output 
+        });
+    } catch (err: any) {
+        console.error('[MAINTENANCE] Image prune failed:', err);
+        return res.status(500).json({ error: err.message || 'Failed to prune Docker images' });
+    }
+});
+
 app.post('/api/admin/maintenance/restart', authenticateToken, async (req, res) => {
     const { type } = req.body; // 'restart' or 'redeploy'
+
+    if (type === 'redeploy' && !fs.existsSync('/var/run/docker.sock')) {
+        return res.status(400).json({ 
+            error: 'Docker socket (/var/run/docker.sock) is not mounted into this container. System redeploy requires Docker socket access.' 
+        });
+    }
 
     if (G_UPGRADE_STATUS.inProgress) {
         return res.status(400).json({ error: 'Maintenance in progress' });
@@ -12213,6 +12595,13 @@ app.post('/api/admin/maintenance/restart', authenticateToken, async (req, res) =
 
             if (type === 'restart') {
                 cmd = 'supervisorctl restart all';
+            } else if (type === 'redeploy' && hostDir) {
+                const { channel } = await detectLocalDockerChannel();
+                const runImage = `jsuzanne/stigix:${channel}`;
+                const hostComposeFile = path.join(hostDir, 'docker-compose.yml');
+                const hostConfigDir = path.join(hostDir, 'config');
+                const redeployScript = `echo "=================================================" >> /config/stigix_updater.log && echo "[$(date -u)] [REDEPLOY] System Redeploy initiated for channel ${channel}" >> /config/stigix_updater.log && sleep 2 && (TAG="${channel}" docker compose -f ${hostComposeFile} pull 2>&1 || true) | while IFS= read -r l; do echo "[$(date -u)] [PULL] $l" >> /config/stigix_updater.log; done && (TAG="${channel}" docker compose -f ${hostComposeFile} up -d --force-recreate 2>&1 || TAG="${channel}" docker-compose -f ${hostComposeFile} up -d --force-recreate 2>&1) | while IFS= read -r l; do echo "[$(date -u)] [COMPOSE] $l" >> /config/stigix_updater.log; done && (docker image prune -f 2>&1 || true) | while IFS= read -r l; do echo "[$(date -u)] [PRUNE] $l" >> /config/stigix_updater.log; done && echo "[$(date -u)] [REDEPLOY] Redeploy finished cleanly." >> /config/stigix_updater.log`;
+                cmd = `docker run -d --name stigix-upgrader-${Date.now()} --rm --network host --entrypoint /bin/sh -v /var/run/docker.sock:/var/run/docker.sock -v ${hostDir}:${hostDir} -v ${hostConfigDir}:/config -w ${hostDir} ${runImage} -c '${redeployScript}'`;
             } else if (composeFile) {
                 let baseCmd = 'docker compose';
                 try {
@@ -12224,16 +12613,9 @@ app.post('/api/admin/maintenance/restart', authenticateToken, async (req, res) =
                 if (baseCmd === 'docker') {
                     cmd = 'docker restart stigix';
                 } else {
-                    if (type === 'redeploy' && hostDir) {
-                        const runImage = process.env.TAG ? `jsuzanne/stigix:${process.env.TAG}` : 'jsuzanne/stigix:latest';
-                        const hostComposeFile = path.join(hostDir, 'docker-compose.yml');
-                        // Run the redeploy up command inside a detached helper container so it survives the restart
-                        cmd = `docker run -d --name stigix-upgrader-${Date.now()} --rm -v /var/run/docker.sock:/var/run/docker.sock -v ${hostDir}:${hostDir} -w ${hostDir} ${runImage} sh -c "sleep 2 && (docker compose -f ${hostComposeFile} up -d --force-recreate || docker-compose -f ${hostComposeFile} up -d --force-recreate); exit 0"`;
-                    } else {
-                        cmd = type === 'redeploy'
-                            ? `${baseCmd} ${projDirFlag} -f ${composeFile} up -d --force-recreate`.replace(/\s+/g, ' ').trim()
-                            : `${baseCmd} ${projDirFlag} -f ${composeFile} restart`.replace(/\s+/g, ' ').trim();
-                    }
+                    cmd = type === 'redeploy'
+                        ? `${baseCmd} ${projDirFlag} -f ${composeFile} up -d --force-recreate`.replace(/\s+/g, ' ').trim()
+                        : `${baseCmd} ${projDirFlag} -f ${composeFile} restart`.replace(/\s+/g, ' ').trim();
                 }
             } else {
                 cmd = 'docker restart stigix';
@@ -12290,21 +12672,14 @@ async function pruneLogFile(filePath: string, maxLines: number) {
 }
 
 // Schedule daily log cleanup (runs at 2 AM)
-const scheduleLogCleanup = () => {
-    const now = new Date();
-    const tomorrow2AM = new Date(now);
-    tomorrow2AM.setDate(tomorrow2AM.getDate() + 1);
-    tomorrow2AM.setHours(2, 0, 0, 0);
-
-    const msUntil2AM = tomorrow2AM.getTime() - now.getTime();
-
-    setTimeout(async () => {
-        console.log('[LOG_CLEANUP] Running daily log cleanup...');
+const runLogCleanup = async () => {
+    try {
+        console.log('[LOG_CLEANUP] 🧹 Starting log cleanup routine...');
         const deletedCount = await testLogger.cleanup();
-        console.log(`[LOG_CLEANUP] Deleted ${deletedCount} old test-results log files`);
+        if (deletedCount > 0) console.log(`[LOG_CLEANUP] Deleted ${deletedCount} old test-results log files`);
 
         const deletedConnCount = await connectivityLogger.cleanup();
-        console.log(`[LOG_CLEANUP] Deleted ${deletedConnCount} old connectivity-results log files`);
+        if (deletedConnCount > 0) console.log(`[LOG_CLEANUP] Deleted ${deletedConnCount} old connectivity-results log files`);
 
         const filesToPrune10k = ['security-history.jsonl', 'traffic-history.jsonl', 'vyos-history.jsonl', 'score-history.jsonl', 'convergence-history.jsonl'];
         for (const file of filesToPrune10k) {
@@ -12316,10 +12691,59 @@ const scheduleLogCleanup = () => {
             await pruneLogFile(path.join(APP_CONFIG.logDir, file), 1000);
         }
 
+        // Purge orphaned stats-client-*.json (> 1h old) and legacy rotated logs
+        try {
+            if (fs.existsSync(APP_CONFIG.logDir)) {
+                const logFiles = fs.readdirSync(APP_CONFIG.logDir);
+                const oneHourAgo = Date.now() - (60 * 60 * 1000);
+                const maxRetentionCutoff = Date.now() - (LOG_RETENTION_DAYS * 24 * 60 * 60 * 1000);
+                let deletedStats = 0;
+                let deletedRotated = 0;
+
+                for (const f of logFiles) {
+                    const fp = path.join(APP_CONFIG.logDir, f);
+                    try {
+                        const mtime = fs.statSync(fp).mtimeMs;
+                        if (f.startsWith('stats-client-') && f.endsWith('.json') && mtime < oneHourAgo) {
+                            fs.unlinkSync(fp);
+                            deletedStats++;
+                        } else if (/^app\.log\.\d+$/.test(f) && mtime < maxRetentionCutoff) {
+                            fs.unlinkSync(fp);
+                            deletedRotated++;
+                        }
+                    } catch {}
+                }
+                if (deletedStats > 0) console.log(`[LOG_CLEANUP] Deleted ${deletedStats} stale stats-client-*.json files`);
+                if (deletedRotated > 0) console.log(`[LOG_CLEANUP] Deleted ${deletedRotated} expired rotated app.log.* files`);
+            }
+        } catch (e: any) {
+            console.warn('[LOG_CLEANUP] Warning during stale worker stats purge:', e.message);
+        }
+        console.log('[LOG_CLEANUP] ✅ Log cleanup routine complete.');
+    } catch (e: any) {
+        console.error('[LOG_CLEANUP] ❌ Error during log cleanup:', e);
+    }
+};
+
+const scheduleLogCleanup = () => {
+    const now = new Date();
+    const tomorrow2AM = new Date(now);
+    tomorrow2AM.setDate(tomorrow2AM.getDate() + 1);
+    tomorrow2AM.setHours(2, 0, 0, 0);
+
+    const msUntil2AM = tomorrow2AM.getTime() - now.getTime();
+
+    // Run once shortly after startup (15s delay) to clean existing stale files
+    setTimeout(() => {
+        runLogCleanup().catch(() => {});
+    }, 15000);
+
+    setTimeout(async () => {
+        await runLogCleanup();
         // Schedule next cleanup
         scheduleLogCleanup();
     }, msUntil2AM);
-    console.log(`[LOG_CLEANUP] Next cleanup scheduled for ${tomorrow2AM.toISOString()}`);
+    console.log(`[LOG_CLEANUP] Next daily cleanup scheduled for ${tomorrow2AM.toISOString()}`);
 };
 
 
@@ -12563,12 +12987,117 @@ const provisioningManager = new ProvisioningManager(APP_CONFIG.configDir);
 provisioningManager.setCertificateManager(certificateManager);
 const underlayTopologyManager = new UnderlayTopologyManager(APP_CONFIG.configDir);
 const tcpAppManager = new TcpAppManager(APP_CONFIG.configDir);
+function getLocalNodePrimaryIp(regManager?: any): string {
+    if (regManager && typeof regManager.getStatus === 'function') {
+        const status = regManager.getStatus();
+        if (status.detected_ip && status.detected_ip !== '127.0.0.1' && !status.detected_ip.startsWith('127.')) {
+            return status.detected_ip;
+        }
+        if (status.ip_private && status.ip_private !== '127.0.0.1' && !status.ip_private.startsWith('127.')) {
+            return status.ip_private;
+        }
+    }
+    try {
+        const interfaces = os.networkInterfaces();
+        for (const name of Object.keys(interfaces)) {
+            if (name.startsWith('lo') || name.startsWith('docker') || name.startsWith('veth') || name.startsWith('br-')) continue;
+            for (const iface of interfaces[name] || []) {
+                if (iface.family === 'IPv4' && !iface.internal && iface.address !== '127.0.0.1' && !iface.address.startsWith('127.')) {
+                    return iface.address;
+                }
+            }
+        }
+    } catch {}
+    return '127.0.0.1';
+}
 const localRegistryServer = new LocalRegistryServer();
+localRegistryServer.setTargetsManager(targetsManager);
 registryManager.setLocalRegistryServer(localRegistryServer);
 registryManager.setProvisioningManager(provisioningManager);
 fleetTunnelManager.setTargetsManager(targetsManager);
 fleetTunnelManager.setLocalRegistryServer(localRegistryServer);
 fleetTunnelManager.setProvisioningManager(provisioningManager);
+fleetTunnelManager.setTcpAppManager(tcpAppManager);
+// Helper to sync all active local custom app listeners to Fleet Mesh
+function syncAllLocalCustomAppServers(): void {
+    if (!tcpAppManager) return;
+    try {
+        const file = tcpAppManager.getConfig();
+        const regStatus = registryManager.getStatus();
+        const nodeId = regStatus.instance_id || 'node';
+        const nodeName = regStatus.site_name || nodeId;
+        const nodeIp = getLocalNodePrimaryIp(registryManager);
+
+        for (const app of file.applications) {
+            const status = tcpAppManager.getAppStatus(app.id);
+            const isListening = status.listenerState === 'listening';
+            const isEicar = app.serverBehavior?.mode === 'eicar_response'
+                || app.name?.toLowerCase().includes('eicar')
+                || (app as any).is_eicar_responder === true;
+
+            const serverState = {
+                node_id: nodeId,
+                node_name: nodeName,
+                app_id: app.id,
+                app_name: app.name,
+                role: 'server',
+                status: isListening ? 'running' : 'stopped',
+                port: app.listener.port,
+                protocol: app.protocol || 'stigix_tcp',
+                ip: nodeIp,
+                is_eicar_responder: isEicar,
+                eicar_mode: app.protocol === 'http_1_1' ? 'http' : 'tcp_raw',
+                pid: process.pid,
+                updated_at: Date.now()
+            };
+
+            fleetTunnelManager.pushCustomAppServerState(serverState);
+        }
+    } catch (e: any) {
+        log('CUSTOM_TCP', `Error syncing all local custom app servers: ${e.message}`, 'warn');
+    }
+}
+fleetTunnelManager.setOnLeaderConnected(() => syncAllLocalCustomAppServers());
+
+// Hook Custom TCP Manager state changes into Fleet Tunnel Mesh
+tcpAppManager.on('state_changed', ({ appId }: { appId: string }) => {
+    try {
+        const file = tcpAppManager.getConfig();
+        const app = file.applications.find(a => a.id === appId);
+        if (!app) return;
+        const status = tcpAppManager.getAppStatus(appId);
+        const isListening = status.listenerState === 'listening';
+        const isEicar = app.serverBehavior?.mode === 'eicar_response'
+            || app.name?.toLowerCase().includes('eicar')
+            || (app as any).is_eicar_responder === true;
+
+        const regStatus = registryManager.getStatus();
+        const nodeId = regStatus.instance_id || 'node';
+        const nodeName = regStatus.site_name || nodeId;
+        const nodeIp = getLocalNodePrimaryIp(registryManager);
+
+        const serverState = {
+            node_id: nodeId,
+            node_name: nodeName,
+            app_id: app.id,
+            app_name: app.name,
+            role: 'server',
+            status: isListening ? 'running' : 'stopped',
+            port: app.listener.port,
+            protocol: app.protocol || 'stigix_tcp',
+            ip: nodeIp,
+            is_eicar_responder: isEicar,
+            eicar_mode: app.protocol === 'http_1_1' ? 'http' : 'tcp_raw',
+            pid: process.pid,
+            updated_at: Date.now()
+        };
+
+        fleetTunnelManager.pushCustomAppServerState(serverState);
+    } catch (e: any) {
+        log('CUSTOM_TCP', `Error syncing custom app server state to fleet: ${e.message}`, 'warn');
+    }
+});
+
 app.use('/api/registry', (req, res, next) => {
     const mode = process.env.STIGIX_REGISTRY_MODE_CURRENT || process.env.STIGIX_REGISTRY_MODE;
     if (mode === 'leader') {
@@ -13531,6 +14060,19 @@ log('FLEET', `🔍 On-Demand SD-WAN Flow Path Trace mounted at POST /api/fleet/m
 // Safe-Mode and HMAC inter-node signing are planned for M4.
 //
 
+// API: Fleet Custom App Live Server Mesh (Active Listeners)
+app.get('/api/fleet/custom-app-mesh', authenticateToken, (req, res) => {
+    let servers: any[] = [];
+    if (localRegistryServer) {
+        servers = localRegistryServer.getCustomAppMesh();
+    }
+    res.json({
+        servers,
+        count: servers.length,
+        generated_at: new Date().toISOString()
+    });
+});
+
 app.get('/api/fleet/tunnels', authenticateToken, (req: any, res: any) => {
     if (!registryManager.isLeader()) {
         return res.status(403).json({
@@ -13992,6 +14534,9 @@ const syncFleetPcapProfiles = () => {
 // --- PCAP Stateful Replay Engine API ---
 const getPcapAutoSyncThresholdMb = () => Math.min(50, Math.max(1, getSystemSettings().pcap_max_auto_sync_mb || 10));
 app.use('/api/pcap', authenticateToken, createPcapApiRouter(APP_CONFIG.configDir, PROJECT_ROOT, PYTHON_PATH, syncFleetPcapProfiles, getPcapAutoSyncThresholdMb));
+// --- Live Packet Capture & Web Analyzer API ---
+app.use('/api/capture', authenticateToken, createCaptureApiRouter(APP_CONFIG.configDir, PROJECT_ROOT, PYTHON_PATH));
+log('CAPTURE', '📡 Live Packet Capture API mounted at /api/capture');
 log('PCAP', `📦 PCAP Stateful Replay API mounted at /api/pcap (Auto-sync threshold: ${getPcapAutoSyncThresholdMb()}MB, Feature Flag: ENABLE_PCAP_REPLAY=${process.env.ENABLE_PCAP_REPLAY === 'true'})`);
 
 // --- Stigix API Studio & Telemetry Routes ---
@@ -14098,6 +14643,58 @@ const buildConnectivityProbesPayload = () => {
     });
     const pureCustom = rawCustom.filter((p: any) => !envProbes.find(ep => ep.name === p.name));
     return [...mergedEnvProbes, ...pureCustom];
+};
+
+// ── Debounced Auto-Sync Helper (Leader -> Peers) ───────────────────────────
+const autoSyncDebounceTimers: Map<string, NodeJS.Timeout> = new Map();
+
+const triggerAutoSyncFleetBundle = (type: GlobalBundleType, delayMs: number = 2500) => {
+    const isLeader = typeof registryManager?.isLeader === 'function' 
+        ? registryManager.isLeader() 
+        : (registryManager?.getStatus?.()?.mode === 'leader');
+    if (!isLeader) return;
+    if (!getSystemSettings().auto_sync_probes_to_fleet) return;
+    if (!provisioningManager || !fleetTunnelManager) return;
+
+    if (autoSyncDebounceTimers.has(type)) {
+        clearTimeout(autoSyncDebounceTimers.get(type)!);
+    }
+
+    const timer = setTimeout(() => {
+        autoSyncDebounceTimers.delete(type);
+        try {
+            let payload: any = null;
+            if (type === 'applications') {
+                if (fs.existsSync(APPLICATIONS_CONFIG_FILE)) {
+                    try {
+                        const parsed = JSON.parse(fs.readFileSync(APPLICATIONS_CONFIG_FILE, 'utf8'));
+                        payload = parsed.applications || [];
+                    } catch {}
+                }
+                if (!payload) payload = [];
+            } else if (type === 'connectivity-probes') {
+                payload = buildConnectivityProbesPayload();
+            } else if (type === 'pcap-profiles') {
+                payload = buildPcapProfilesPayload();
+            } else {
+                const file = provisioningManager.getActiveConfigFile(type);
+                if (fs.existsSync(file)) {
+                    try { payload = JSON.parse(fs.readFileSync(file, 'utf8')); } catch {}
+                }
+                if (!payload) payload = {};
+            }
+
+            if (provisioningManager.hasUnpublishedChanges(type, payload)) {
+                const pub = provisioningManager.publishBundle(type, payload);
+                fleetTunnelManager.broadcastProvisioningUpdate(type);
+                log('PROVISIONING', `⚡ [AUTO-SYNC] Automatically published & broadcasted bundle '${type}' (rev ${pub.revision}) to fleet`);
+            }
+        } catch (e: any) {
+            log('PROVISIONING', `Auto-sync failed for bundle '${type}': ${e.message}`, 'warn');
+        }
+    }, delayMs);
+
+    autoSyncDebounceTimers.set(type, timer);
 };
 
 // --- Global Provisioning Management APIs ---
@@ -14929,10 +15526,11 @@ app.get('/api/config/system-settings', authenticateToken, (_req, res) => {
 
 app.post('/api/config/system-settings', authenticateToken, async (req, res) => {
     try {
-        const { auto_restart_iot, auto_restart_voice, registry_mode } = req.body;
+        const { auto_restart_iot, auto_restart_voice, auto_sync_probes_to_fleet, registry_mode } = req.body;
         const patch: Partial<SystemSettings> = {};
         if (typeof auto_restart_iot === 'boolean') patch.auto_restart_iot = auto_restart_iot;
         if (typeof auto_restart_voice === 'boolean') patch.auto_restart_voice = auto_restart_voice;
+        if (typeof auto_sync_probes_to_fleet === 'boolean') patch.auto_sync_probes_to_fleet = auto_sync_probes_to_fleet;
         if (registry_mode === 'auto' || registry_mode === 'leader' || registry_mode === 'peer') {
             patch.registry_mode = registry_mode;
         }
@@ -15033,7 +15631,11 @@ httpServer.listen(PORT, '0.0.0.0', async () => {
     // Initialize Custom TCP Applications Manager
     const autoRestartCustomTcp = sysSettings.auto_restart_custom_tcp !== false;
     const initialSiteName = registryManager.getSiteName();
-    tcpAppManager.init(initialSiteName, autoRestartCustomTcp).catch(e => log('CUSTOM_TCP', `Failed to initialize Custom TCP Manager: ${e.message}`, 'error'));
+    tcpAppManager.init(initialSiteName, autoRestartCustomTcp).then(() => {
+        syncAllLocalCustomAppServers();
+        // Periodic resync of local custom app listeners every 30s
+        setInterval(syncAllLocalCustomAppServers, 30000);
+    }).catch(e => log('CUSTOM_TCP', `Failed to initialize Custom TCP Manager: ${e.message}`, 'error'));
 
     // Delayed Prisma SD-WAN auto-discovery sync
     setTimeout(async () => {

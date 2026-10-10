@@ -2,13 +2,71 @@ import { Router } from 'express';
 import { RegistryInstance } from './stigix-registry-client.js';
 import { log } from './utils/logger.js';
 
+export interface ActiveCustomAppServer {
+    node_id: string;
+    node_name?: string;
+    app_id: string;
+    app_name: string;
+    role: 'server';
+    status: 'running' | 'stopped';
+    port: number;
+    protocol?: string;
+    ip: string;
+    is_eicar_responder?: boolean;
+    eicar_mode?: 'http' | 'tcp_raw';
+    pid?: number;
+    updated_at: number;
+}
+
+
 /**
  * LocalRegistryServer - A lightweight in-memory registry for local peer discovery.
  * Replicates the essential Cloudflare Worker API to bypass global quotas.
  */
 export class LocalRegistryServer {
     private instances: Map<string, RegistryInstance> = new Map();
+    private activeCustomAppServers: Map<string, ActiveCustomAppServer> = new Map();
+    private targetsManager: any = null;
     private ttlSeconds: number = 600; // 10 minutes TTL
+
+    public setTargetsManager(targetsManager: any): void {
+        this.targetsManager = targetsManager;
+    }
+
+    public updateCustomAppServer(server: ActiveCustomAppServer): void {
+        if (!server || !server.app_id) return;
+        
+        // Auto-heal IP if 127.0.0.1 or empty
+        if (!server.ip || server.ip === '127.0.0.1' || server.ip === 'localhost') {
+            const inst = this.instances.get(server.node_id);
+            if (inst && inst.ip_private && inst.ip_private !== '127.0.0.1') {
+                server.ip = inst.ip_private;
+            } else if (this.targetsManager) {
+                const target = this.targetsManager.getMergedTargets().find((t: any) => 
+                    t.name === server.node_name || t.id === server.node_id || t.name === server.node_id
+                );
+                if (target && target.host && target.host !== '127.0.0.1') {
+                    server.ip = target.host;
+                }
+            }
+        }
+
+        const key = `${server.node_id || server.ip}:${server.app_id}`;
+        this.activeCustomAppServers.set(key, { ...server, updated_at: Date.now() });
+        log('LOCAL-REGISTRY', `Custom App Server ${server.status}: ${server.app_name} on ${server.node_id} (ip: ${server.ip}, port ${server.port})`);
+    }
+
+    public removeCustomAppServersForNode(nodeId: string): void {
+        for (const [key, server] of this.activeCustomAppServers.entries()) {
+            if (server.node_id === nodeId || server.ip === nodeId) {
+                this.activeCustomAppServers.delete(key);
+            }
+        }
+    }
+
+    public getCustomAppMesh(): ActiveCustomAppServer[] {
+        return Array.from(this.activeCustomAppServers.values());
+    }
 
     constructor() {
         // Periodic cleanup of stale heartbeats
@@ -65,6 +123,60 @@ export class LocalRegistryServer {
             this.instances.delete(matchedKey);
         }
         this.instances.set(key, mergedInstance);
+
+        if (Array.isArray((instance as any).custom_app_servers)) {
+            for (const s of (instance as any).custom_app_servers) {
+                if (s && s.app_id) {
+                    this.updateCustomAppServer(s);
+                }
+            }
+        }
+    }
+
+        public updatePeerTunnelMetrics(instanceId: string, rttMs: number, lastPong: number, direction?: string): void {
+        let inst = this.instances.get(instanceId);
+        if (!inst) {
+            for (const [, v] of this.instances.entries()) {
+                if (v.instance_id === instanceId || v.ip_private === instanceId || v.meta?.site === instanceId) {
+                    inst = v;
+                    break;
+                }
+            }
+        }
+        if (inst) {
+            (inst as any).rtt_ms = rttMs;
+            (inst as any).last_pong = new Date(lastPong).toISOString();
+            if (direction) {
+                (inst as any).tunnel_direction = direction;
+            }
+            if (!inst.meta) inst.meta = {};
+            inst.meta.rtt_ms = rttMs;
+            inst.meta.last_pong = (inst as any).last_pong;
+            if (direction) {
+                inst.meta.tunnel_direction = direction;
+            }
+        }
+    }
+
+    public updateInstanceProvisioningAck(instanceId: string, ack: { bundleType: string; revision: number; status: string }): void {
+        let inst = this.instances.get(instanceId);
+        if (!inst) {
+            for (const [, v] of this.instances.entries()) {
+                if (v.instance_id === instanceId || v.ip_private === instanceId || v.meta?.site === instanceId) {
+                    inst = v;
+                    break;
+                }
+            }
+        }
+        if (inst) {
+            if (!inst.meta) inst.meta = {};
+            inst.meta.sync_ack = {
+                bundleType: ack.bundleType,
+                revision: ack.revision,
+                status: ack.status,
+                ackAt: new Date().toISOString()
+            };
+        }
     }
 
     getRouter(targetsManager?: any, provisioningManager?: any): Router {
@@ -189,6 +301,15 @@ export class LocalRegistryServer {
             return res.json({ status: 'ok' });
         });
 
+        // GET /custom-app-mesh (Live active custom app servers in fleet)
+        router.get('/custom-app-mesh', (req, res) => {
+            return res.json({
+                servers: this.getCustomAppMesh(),
+                count: this.activeCustomAppServers.size,
+                generated_at: new Date().toISOString()
+            });
+        });
+
         // GET /fleet/overview (Federated Fleet Overview)
         router.get('/fleet/overview', (req, res) => {
             return res.json(this.getFleetOverview());
@@ -253,6 +374,9 @@ export class LocalRegistryServer {
 
             return {
                 ...inst,
+                rtt_ms: (inst as any).rtt_ms ?? inst.meta?.rtt_ms,
+                last_pong: (inst as any).last_pong ?? inst.meta?.last_pong,
+                tunnel_direction: (inst as any).tunnel_direction ?? inst.meta?.tunnel_direction ?? (isLeader ? 'leader' : 'inbound'),
                 is_leader: isLeader,
                 status,
                 is_stale: isStale,

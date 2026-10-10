@@ -32,6 +32,7 @@ export type SessionState =
     | 'delayed'
     | 'timed_out'
     | 'reconnecting'
+    | 'paused_offline'
     | 'rejected'
     | 'closing'
     | 'closed'
@@ -186,7 +187,7 @@ export interface CustomTcpListenerConfig {
     bindAddress: string;           // "0.0.0.0"
     port: number;                  // 1024 - 65535
     maxConnections: number;        // default: 100
-    idleTimeoutMs: number;         // default: 60000 (60s)
+    idleTimeoutMs: number;         // default: 0 (disabled / persistent TCP session)
     maxPayloadBytes: number;       // default: 1048576 (1 MiB)
     tcpKeepalive: boolean;         // default: true
     allowCidrs: string[];          // e.g. ["10.0.0.0/8", "192.168.0.0/16"]
@@ -251,6 +252,12 @@ export interface CustomTcpApplicationConfig {
     serverBehavior: ServerBehaviorConfig;
     clientDefaults: ClientDefaultsConfig;
     peers: PeerConfig[];
+    serverNodes?: string[]; // Array of node names / IDs assigned to host server listener (e.g. ['DC1-Ubuntu', 'DC2-Ubuntu'] or ['all'])
+    targetMode?: 'auto_mesh' | 'specific'; // Auto-Mesh: dynamic discovery of active servers; Specific: static peer list
+    manualOverride?: {
+        listenerStopped?: boolean;
+        clientStopped?: boolean;
+    };
     startup: {
         startListener: boolean;
         startClientWorkload: boolean;
@@ -331,6 +338,7 @@ export interface OutgoingSessionState {
     tps?: number;
     tcpConnectMs?: number;
     eicarReceivedCount: number; // EICAR string received by client = SASE did NOT block it
+    serverStatusReason?: string;
 }
 
 export interface AppRuntimeMetrics {

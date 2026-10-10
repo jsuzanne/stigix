@@ -2,12 +2,13 @@
  * Stigix Custom TCP Inter-Site Applications — Operational Control Center
  */
 
-import React, { useState, useEffect, Component, type ErrorInfo, type ReactNode } from 'react';
+import React, { useState, useEffect, useMemo, Component, type ErrorInfo, type ReactNode } from 'react';
 import {
     Play, Square, RefreshCw, Server, Globe, Activity, Plus,
     Copy, Trash2, Edit3, Shield, AlertTriangle, CheckCircle2,
     Clock, Cpu, ArrowDownRight, ArrowUpRight, Zap, ExternalLink,
-    Layers, Cloud, Search, X, Info, ChevronDown, Upload, Download, FileJson
+    Layers, Cloud, Search, X, Info, ChevronDown, Upload, Download, FileJson,
+    Network, RotateCcw, BarChart3, ShieldCheck
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { usePeerContext } from './PeerContext';
@@ -510,6 +511,119 @@ const secs = seconds % 60;
         return `${hours}h ${remMins}m`;
     };
 
+    // Aggregated real-time metrics across all configured applications (low footprint, high density)
+    const globalStats = useMemo(() => {
+        let totalActiveApps = 0;
+        let totalListening = 0;
+        let totalClientsRunning = 0;
+        let totalIncomingSessions = 0;
+        let totalOutgoingSessions = 0;
+        let totalTxBytes = 0;
+        let totalRxBytes = 0;
+        let liveTxBps = 0;
+        let liveRxBps = 0;
+        let totalReconnects = 0;
+        let totalDrops = 0;
+        let totalTimeouts = 0;
+        let totalErrors = 0;
+        let rttSum = 0;
+        let rttCount = 0;
+        let maxP95 = 0;
+        let healthyAppsCount = 0;
+        let degradedAppsCount = 0;
+        let stoppedAppsCount = 0;
+
+        applications.forEach(app => {
+            const isCurrent = app.id === selectedAppId;
+            const sum = allAppSummaries[app.id] || {};
+
+            const isListening = (isCurrent ? metrics?.listenerState : sum.listenerState) === 'listening';
+            const isClient = Boolean(isCurrent ? metrics?.clientWorkloadRunning : sum.clientWorkloadRunning);
+
+            if (isListening) totalListening++;
+            if (isClient) totalClientsRunning++;
+            const isAppActive = isListening || isClient;
+            if (isAppActive) totalActiveApps++;
+
+            const inSess = (isCurrent ? incomingSessions.length : 0) || sum.activeIncomingSessions || 0;
+            const outSess = (isCurrent ? outgoingSessions.filter(s => s.state === 'connected').length : 0) || sum.activeOutgoingSessions || 0;
+            totalIncomingSessions += inSess;
+            totalOutgoingSessions += outSess;
+
+            const txBytes = (isCurrent && metrics?.totalTxBytes !== undefined ? metrics.totalTxBytes : sum.totalTxBytes) || 0;
+            const rxBytes = (isCurrent && metrics?.totalRxBytes !== undefined ? metrics.totalRxBytes : sum.totalRxBytes) || 0;
+            totalTxBytes += txBytes;
+            totalRxBytes += rxBytes;
+
+            const txBps = (isCurrent && metrics?.liveTxBps !== undefined ? metrics.liveTxBps : sum.liveTxBps) || 0;
+            const rxBps = (isCurrent && metrics?.liveRxBps !== undefined ? metrics.liveRxBps : sum.liveRxBps) || 0;
+            liveTxBps += txBps;
+            liveRxBps += rxBps;
+
+            const reconnects = (isCurrent && metrics?.totalReconnects !== undefined ? metrics.totalReconnects : sum.totalReconnects) || 0;
+            const drops = (isCurrent && metrics?.totalSimulatedDrops !== undefined ? metrics.totalSimulatedDrops : sum.totalSimulatedDrops) || 0;
+            const timeouts = (isCurrent && metrics?.totalTimeouts !== undefined ? metrics.totalTimeouts : sum.totalTimeouts) || 0;
+            const errors = (isCurrent && metrics?.totalErrors !== undefined ? metrics.totalErrors : sum.totalErrors) || 0;
+            totalReconnects += reconnects;
+            totalDrops += drops;
+            totalTimeouts += timeouts;
+            totalErrors += errors;
+
+            const avgRtt = (isCurrent && metrics?.avgRttMs !== undefined ? metrics.avgRttMs : sum.avgRttMs) || 0;
+            const p95 = (isCurrent && metrics?.p95RttMs !== undefined ? metrics.p95RttMs : sum.p95RttMs) || 0;
+            if (avgRtt > 0) {
+                rttSum += avgRtt;
+                rttCount++;
+            }
+            if (p95 > maxP95) {
+                maxP95 = p95;
+            }
+
+            if (!isListening && !isClient) {
+                stoppedAppsCount++;
+            } else if (errors > 0 || timeouts > 50 || (isClient && (app.peers || []).length > 0 && outSess === 0)) {
+                degradedAppsCount++;
+            } else {
+                healthyAppsCount++;
+            }
+        });
+
+        const globalAvgRtt = rttCount > 0 ? (rttSum / rttCount).toFixed(1) : '0';
+        const totalSessions = totalIncomingSessions + totalOutgoingSessions;
+        const totalLiveBps = liveTxBps + liveRxBps;
+        const totalBytes = totalTxBytes + totalRxBytes;
+
+        let globalScore = 100;
+        if (applications.length > 0) {
+            const ratio = (healthyAppsCount * 1.0 + degradedAppsCount * 0.5) / applications.length;
+            globalScore = Math.round(ratio * 100);
+        }
+
+        return {
+            totalApps: applications.length,
+            totalActiveApps,
+            totalListening,
+            totalClientsRunning,
+            totalIncomingSessions,
+            totalOutgoingSessions,
+            totalSessions,
+            totalTxBytes,
+            totalRxBytes,
+            totalBytes,
+            totalLiveBps,
+            totalReconnects,
+            totalDrops,
+            totalTimeouts,
+            totalErrors,
+            globalAvgRtt,
+            maxP95: maxP95.toFixed(1),
+            globalScore,
+            healthyAppsCount,
+            degradedAppsCount,
+            stoppedAppsCount
+        };
+    }, [applications, allAppSummaries, metrics, incomingSessions, outgoingSessions, selectedAppId]);
+
     const filteredIncomingSessions = incomingSessions.filter(s => {
         if (!sessionSearch.trim()) return true;
         const q = sessionSearch.toLowerCase().trim();
@@ -787,6 +901,94 @@ const secs = seconds % 60;
                     >
                         <RefreshCw size={13} className={isActionLoading ? 'animate-spin' : ''} />
                     </button>
+                </div>
+            </div>
+
+            {/* Global Fleet Telemetry Ribbon (Low-height, high-density compact bar) */}
+            <div className="bg-card border border-border rounded-xl px-4 py-2 shadow-sm">
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 sm:gap-4 items-center">
+                    {/* KPI 1: Active Fleet Workload */}
+                    <div className="flex items-center gap-2.5 min-w-0">
+                        <div className="w-7 h-7 rounded-lg bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center text-indigo-500 dark:text-indigo-400 shrink-0">
+                            <Layers size={14} />
+                        </div>
+                        <div className="min-w-0">
+                            <div className="text-[10px] font-bold uppercase tracking-wider text-text-muted truncate">Fleet Workload</div>
+                            <div className="flex items-baseline gap-1.5">
+                                <span className="text-sm font-bold font-mono text-text-primary">
+                                    {globalStats.totalActiveApps}<span className="text-xs text-text-muted font-normal">/{globalStats.totalApps}</span>
+                                </span>
+                                <span className="text-[10px] text-text-muted font-mono truncate">apps active</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* KPI 2: Total Active Streams */}
+                    <div className="flex items-center gap-2.5 min-w-0">
+                        <div className="w-7 h-7 rounded-lg bg-cyan-500/10 border border-cyan-500/20 flex items-center justify-center text-cyan-500 dark:text-cyan-400 shrink-0">
+                            <Network size={14} />
+                        </div>
+                        <div className="min-w-0">
+                            <div className="text-[10px] font-bold uppercase tracking-wider text-text-muted truncate">Active Streams</div>
+                            <div className="flex items-baseline gap-1.5">
+                                <span className="text-sm font-bold font-mono text-text-primary">{globalStats.totalSessions}</span>
+                                <span className="text-[10px] text-text-muted font-mono truncate">
+                                    ({globalStats.totalOutgoingSessions} TX • {globalStats.totalIncomingSessions} RX)
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* KPI 3: Aggregated Throughput & Volume */}
+                    <div className="flex items-center gap-2.5 min-w-0">
+                        <div className="w-7 h-7 rounded-lg bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-500 dark:text-emerald-400 shrink-0">
+                            <Zap size={14} />
+                        </div>
+                        <div className="min-w-0">
+                            <div className="text-[10px] font-bold uppercase tracking-wider text-text-muted truncate">Throughput</div>
+                            <div className="flex items-baseline gap-1.5">
+                                <span className="text-sm font-bold font-mono text-emerald-500 dark:text-emerald-400">{formatBitrate(globalStats.totalLiveBps)}</span>
+                                <span className="text-[10px] text-text-muted font-mono truncate">
+                                    • {formatBytes(globalStats.totalBytes)}
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* KPI 4: Fleet Latency (RTT p95) */}
+                    <div className="flex items-center gap-2.5 min-w-0">
+                        <div className="w-7 h-7 rounded-lg bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-500 dark:text-amber-400 shrink-0">
+                            <Clock size={14} />
+                        </div>
+                        <div className="min-w-0">
+                            <div className="text-[10px] font-bold uppercase tracking-wider text-text-muted truncate">Fleet Avg RTT</div>
+                            <div className="flex items-baseline gap-1.5">
+                                <span className="text-sm font-bold font-mono text-text-primary">{globalStats.globalAvgRtt} ms</span>
+                                <span className="text-[10px] text-text-muted font-mono truncate">
+                                    (p95: {globalStats.maxP95} ms)
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* KPI 5: Global Resilience & Failovers */}
+                    <div className="flex items-center gap-2.5 min-w-0 col-span-2 sm:col-span-1">
+                        <div className="w-7 h-7 rounded-lg bg-purple-500/10 border border-purple-500/20 flex items-center justify-center text-purple-500 dark:text-purple-400 shrink-0">
+                            <RotateCcw size={14} />
+                        </div>
+                        <div className="min-w-0">
+                            <div className="text-[10px] font-bold uppercase tracking-wider text-text-muted truncate">Resilience & Failover</div>
+                            <div className="flex items-baseline gap-1.5">
+                                <span className="text-sm font-bold font-mono text-text-primary">{globalStats.totalReconnects}</span>
+                                <span className="text-[10px] text-text-muted truncate">reconnects</span>
+                                {globalStats.totalDrops > 0 ? (
+                                    <span className="text-[10px] font-bold text-rose-500 dark:text-rose-400">({globalStats.totalDrops} drops)</span>
+                                ) : (
+                                    <span className="text-[10px] text-emerald-500/80 dark:text-emerald-400/80 font-mono">(0 drops)</span>
+                                )}
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
 
@@ -1358,10 +1560,11 @@ const secs = seconds % 60;
                                                     <div className="flex items-center gap-1.5 flex-wrap">
                                                         <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider ${
                                                             s.state === 'connected' ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30' :
+                                                            s.state === 'paused_offline' ? 'bg-purple-500/15 text-purple-700 dark:text-purple-300 border border-purple-500/30 font-mono' :
                                                             s.state === 'reconnecting' ? 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/30 animate-pulse' :
                                                             'bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/30'
-                                                        }`}>
-                                                            {s.state}
+                                                        }`} title={s.state === 'paused_offline' ? (s.serverStatusReason || 'Remote server listener is stopped. Client is paused.') : undefined}>
+                                                            {s.state === 'paused_offline' ? '⏸️ PAUSED (Server Off)' : s.state}
                                                         </span>
                                                         {(s.reconnects ?? 0) > 0 && (
                                                             <span className="text-[9px] text-amber-500 font-mono font-semibold" title={`${s.reconnects} reconnect(s)`}>

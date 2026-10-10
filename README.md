@@ -1,9 +1,9 @@
-> **Last Updated:** 2026-10-06 | **Created:** 2026-01-25 (v1.0.0)
+> **Last Updated:** 2026-10-10 | **Created:** 2026-01-25 (v1.0.0)
 
 # 🕸️ Stigix — Advanced Networking & Security Simulation Environment
 
-[![Version](https://img.shields.io/badge/Version-2.1.0-blue.svg)](https://github.com/jsuzanne/stigix/releases)
-[![Last Updated](https://img.shields.io/badge/Updated-2026--10--06-brightgreen.svg)](CHANGELOG_V2.md)
+[![Version](https://img.shields.io/badge/Version-2.2.0-blue.svg)](https://github.com/jsuzanne/stigix/releases)
+[![Last Updated](https://img.shields.io/badge/Updated-2026--10--10-brightgreen.svg)](CHANGELOG_V2.md)
 [![Docker Pulls](https://img.shields.io/docker/pulls/jlsuzanne/stigix)](https://hub.docker.com/r/jlsuzanne/stigix)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
@@ -123,6 +123,34 @@ This project is my way to turn all that lab and demo experience into an open-sou
 ## 🆕 What's New
 
 The project is evolving rapidly with major features, engines, and UX refinements in every release.
+
+### 🚀 Stigix 2.2 — Modernized Topology, Real-Time Failover & Multi-Arch Release *(v2.2.0)*
+
+- **🗺️ Modernized 4-Mode Topology Experience** — Dedicated views for WAN Transport (Physical), SD-WAN Mesh Overlay, SASE Fabric, and VyOS Underlay. Features direct carrier telemetry inspection drawers, responsive MacBook 13"/27" viewport auto-fit, and top transport filter ribbons.
+- **⏱️ High-Precision Real-Time Failover Telemetry** — Ultra-responsive 500ms live polling (2x/sec) for instant RTT, jitter, loss, and packet exchange updates during SD-WAN/SASE failover testing.
+- **⚡ Frictionless Local Container Self-Upgrade** — Streamlined 1-click upgrades without blocking browser confirmation dialogs, backed by detached ephemeral container recreation and auto-prune.
+- **🐳 Multi-Architecture Production Docker Builds** — Official multi-arch (`linux/amd64` + `linux/arm64`) release published with `:latest`, `:stable`, and `:2.2.0` Docker Hub tags.
+
+### 🚀 Stigix 2.1.2 — Leader-Orchestrated Remote Upgrades, SASE Fabric Topology & Resilient In-Place Maintenance *(v2.1.2)*
+
+- **📡 Live Packet Capture & Web Analyzer (Wireshark-Grade 3-Pane Inspector)** 🦈 — Capture live network traffic across any interface (`any`, `ens3`, `docker0`) directly from the Web UI. Features BPF kernel filtering presets (*Custom TCP*, *Synthetic Probes*, *Voice RTP*, *Security EICAR*, *DNS*), full OSI protocol dissection tree, synchronized 16-byte hex/ASCII dump viewer, in-memory streaming, and 1-click **« Send to PCAP Replay »** to turn live packet captures into stateful replay scenarios instantly. [Read more](docs/PRD_PACKET_CAPTURE_AND_WEB_ANALYZER.md)
+- **🚀 Leader-Orchestrated 1-Click Remote Peer Upgrades** 🌐 — Discover remote node versions across the entire fleet via the Fleet Gateway (`/api/gateway/:peerId/api/admin/maintenance/version`). Trigger seamless 1-click upgrades on remote spoke nodes directly from the Leader dashboard in both **Registered Targets** and **Maintenance & Updates** tabs.
+- **📡 Real-Time Remote Upgrade Stepper & Log Stream** 💻 — Dedicated remote upgrade modal with 4-phase visual progress tracking (`Remote Pull` ➔ `Recreate` ➔ `Healthcheck` ➔ `Ready`), live console log streaming from remote ephemeral updaters, and healthcheck reconnect radar pinging port 8080 until the node reports healthy.
+- **🛡️ Ephemeral Detached In-Place Self-Upgrade** ⚙️ — Self-contained detached updater container (`docker run --rm -d --network host -v /var/run/docker.sock...`) executing pull, recreate, healthcheck, and auto-prune out-of-process without process suicide. Protected by pre-upgrade Docker socket verification (`/var/run/docker.sock`).
+- **🧹 Automated Docker Image Pruning** 🧼 — Automatically reclaims disk space after every upgrade via `docker image prune -f`, with an on-demand Prune button in the Maintenance tab.
+- **🗺️ SASE Fabric Topology Overhaul** 🌐 — Dedicated **SASE Fabric** view switcher dock alongside Overlay and Underlay topologies. Features official Palo Alto Prisma Access & Zscaler branded logos, dynamic PoP matching (France North, France Central, Europe West), interactive tunnel breakdown drawer with uptime & latency telemetry, and instant 0ms edge spotlighting.
+- **🔄 Dynamic Auto-Mesh Client Pausing & Zero-Latency Resume** ⏸️ — Custom TCP client streams automatically pause (`⏸️ PAUSED (Server Offline)`) when a remote server listener goes down and instantly resume the moment it restarts, eliminating connection retry floods.
+- **🛡️ Custom TCP Apps EICAR Threat Correlation** 🎯 — Active Custom TCP/HTTP app listeners dynamically register as verified EICAR threat responders, enabling false-positive-free security testing with target category filters (All, Custom Apps, Fabric, Cloud).
+- **⏱️ Automated Daily Resource Housekeeping** 🧹 — Daily 2 AM cron and boot-time cleanup routine that automatically purges orphaned worker stats files and expired logs.
+
+### ⚡ Stigix 2.1.1 — Control Plane Heartbeats, Live RTT & Fleet Auto-Sync *(v2.1.1)*
+
+- **💓 WebSocket Control Plane RTT Heartbeat** ⚡ — Continuous 15-second soft RTT ping/pong loop (`tunnel:rtt_ping`) measuring precise sub-millisecond reverse tunnel latency across all remote spoke nodes (DC1, BR1, BR2, BR5, BR8).
+- **📊 Real-Time Fleet Latency Badges** 🟢 — Dynamic color-coded latency tags (`⚡ 12ms`, `⚡ 45ms`) in the Fleet Overview and node details for instant control plane link quality assessment.
+- **🔄 Bidirectional Provisioning ACKs & Sync Timestamps** ⏱️ — Real-time `provisioning:ack` stream from spoke nodes with human-readable timestamps (`updatedAt` on Leader, `appliedAt` on Spokes) across all 10 configuration modules.
+- **🚀 Debounced Fleet Auto-Sync** 📡 — Automatic 2.5s debounced push of Synthetic Probes and Applications Catalogue upon any modification on the Leader, with a 1-click header toggle switch.
+- **🎯 Accurate DEM Outage Scoring** 🛡️ — Digital Experience Monitoring scores strictly drop to `0` upon packet timeout or connection blackout, preventing false-positive operational health reports.
+- **📈 Multi-Path Speedtest Polish** ⚡ — Fixed sequence labeling and added human-readable TCP congestion window (`cwnd`) formatting in KB/MB.
 
 ### 🌟 Stigix 2.1 — Major Milestone Release *(v2.1.0)*
 

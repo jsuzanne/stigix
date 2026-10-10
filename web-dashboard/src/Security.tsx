@@ -378,6 +378,8 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
     const [customEicarUrl, setCustomEicarUrl] = useState('');
     const [selectedEicarTargets, setSelectedEicarTargets] = useState<string[]>([]);
     const [securityTargets, setSecurityTargets] = useState<any[]>([]);
+    const [customAppEicarTargets, setCustomAppEicarTargets] = useState<any[]>([]);
+    const [eicarFilter, setEicarFilter] = useState<'all' | 'custom_app' | 'fabric' | 'cloud'>('all');
     const [targetReachability, setTargetReachability] = useState<Record<string, boolean | 'loading'>>({});
     const [runningEicarTarget, setRunningEicarTarget] = useState<string | null>(null);
 
@@ -472,6 +474,17 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
             .then(data => setSecurityTargets((Array.isArray(data) ? data : []).filter((t: any) => t.enabled && t.capabilities?.security)))
             .catch(() => { });
 
+        // Fetch live dynamic EICAR targets (including Custom TCP/HTTP apps in EICAR mode)
+        gFetch('/api/security/eicar-targets', { headers: authHeaders() })
+            .then(r => r.json())
+            .then(data => {
+                if (data && Array.isArray(data.targets)) {
+                    const customApps = data.targets.filter((t: any) => t.type === 'custom_app');
+                    setCustomAppEicarTargets(customApps);
+                }
+            })
+            .catch(() => { });
+
         // Fetch cloud eicar url
         gFetch('/api/security/cloud-eicar-url', { headers: authHeaders() })
             .then(r => r.json())
@@ -487,13 +500,26 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
             })
             .catch(() => {});
 
+        const refreshEicarDynamicTargets = () => {
+            gFetch('/api/security/eicar-targets', { headers: authHeaders() })
+                .then(r => r.json())
+                .then(data => {
+                    if (data && Array.isArray(data.targets)) {
+                        const customApps = data.targets.filter((t: any) => t.type === 'custom_app');
+                        setCustomAppEicarTargets(customApps);
+                    }
+                })
+                .catch(() => { });
+        };
+
         // Background polling for statistics and results (picks up scheduled + MCP-launched tests)
         const pollInterval = setInterval(() => {
             fetchConfig();
             fetchHealth();
             fetchResults(); // Refresh results so MCP/scheduled tests appear automatically
             fetchLatestVerdicts();
-        }, 30000); // 30 seconds
+            refreshEicarDynamicTargets();
+        }, 15000); // 15 seconds
 
         return () => clearInterval(pollInterval);
     }, [activePeerId]);
@@ -2260,14 +2286,78 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
 
                             <div className="space-y-3">
                                 <div>
-                                    <label className="text-[10px] font-black text-text-muted tracking-widest mb-3 flex items-center gap-2">
-                                        <ShieldAlert size={14} className="text-red-500" />
-                                        Select Target endpoints to test
-                                    </label>
+                                    <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+                                        <label className="text-[10px] font-black text-text-muted tracking-widest flex items-center gap-2">
+                                            <ShieldAlert size={14} className="text-red-500" />
+                                            Select Target endpoints to test
+                                        </label>
+                                        
+                                        {/* EICAR Target Type Filter Tabs */}
+                                        <div className="flex items-center gap-1 bg-card-secondary/70 border border-border p-1 rounded-lg text-[10px] font-bold">
+                                            <button
+                                                type="button"
+                                                onClick={() => setEicarFilter('all')}
+                                                className={`px-2.5 py-1 rounded-md transition-all flex items-center gap-1.5 ${
+                                                    eicarFilter === 'all'
+                                                        ? 'bg-blue-600 text-white shadow-sm font-black'
+                                                        : 'text-text-muted hover:text-text-primary'
+                                                }`}
+                                            >
+                                                All
+                                                <span className={`text-[9px] px-1.5 py-0.2 rounded-full ${eicarFilter === 'all' ? 'bg-blue-800/80 text-white' : 'bg-card border border-border/50 text-text-muted'}`}>
+                                                    {(cloudEicarUrl ? 1 : 0) + customAppEicarTargets.length + securityTargets.length}
+                                                </span>
+                                            </button>
+
+                                            <button
+                                                type="button"
+                                                onClick={() => setEicarFilter('custom_app')}
+                                                className={`px-2.5 py-1 rounded-md transition-all flex items-center gap-1.5 ${
+                                                    eicarFilter === 'custom_app'
+                                                        ? 'bg-amber-500 text-black font-black shadow-sm'
+                                                        : 'text-text-muted hover:text-amber-500'
+                                                }`}
+                                            >
+                                                ⚡ Custom Apps
+                                                <span className={`text-[9px] px-1.5 py-0.2 rounded-full ${eicarFilter === 'custom_app' ? 'bg-amber-700/40 text-black' : 'bg-amber-500/15 text-amber-500'}`}>
+                                                    {customAppEicarTargets.length}
+                                                </span>
+                                            </button>
+
+                                            <button
+                                                type="button"
+                                                onClick={() => setEicarFilter('fabric')}
+                                                className={`px-2.5 py-1 rounded-md transition-all flex items-center gap-1.5 ${
+                                                    eicarFilter === 'fabric'
+                                                        ? 'bg-blue-500/20 text-blue-400 border border-blue-500/40 font-bold shadow-sm'
+                                                        : 'text-text-muted hover:text-blue-400'
+                                                }`}
+                                            >
+                                                Fabric (8082)
+                                                <span className={`text-[9px] px-1.5 py-0.2 rounded-full ${eicarFilter === 'fabric' ? 'bg-blue-500/30 text-blue-300' : 'bg-blue-500/10 text-blue-400'}`}>
+                                                    {securityTargets.length}
+                                                </span>
+                                            </button>
+
+                                            {cloudEicarUrl && (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setEicarFilter('cloud')}
+                                                    className={`px-2.5 py-1 rounded-md transition-all flex items-center gap-1.5 ${
+                                                        eicarFilter === 'cloud'
+                                                            ? 'bg-indigo-600 text-white shadow-sm font-black'
+                                                            : 'text-text-muted hover:text-indigo-400'
+                                                    }`}
+                                                >
+                                                    Cloud
+                                                </button>
+                                            )}
+                                        </div>
+                                    </div>
                                     
                                     <div className="flex flex-col gap-2 max-h-[350px] overflow-y-auto pr-1">
                                         {/* Cloudflare Worker Target */}
-                                        {cloudEicarUrl && (() => {
+                                        {(eicarFilter === 'all' || eicarFilter === 'cloud') && cloudEicarUrl && (() => {
                                             const isSelected = selectedEicarTargets.includes(cloudEicarUrl);
                                             let host = '';
                                             try { host = new URL(cloudEicarUrl).hostname; } catch {}
@@ -2362,8 +2452,73 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
                                             );
                                         })()}
 
+                                        {/* Dynamic Custom TCP/HTTP App EICAR Responders */}
+                                        {(eicarFilter === 'all' || eicarFilter === 'custom_app') && customAppEicarTargets.map((ca, idx) => {
+                                            const isSelected = selectedEicarTargets.includes(ca.url);
+                                            const lastResult = getEicarResult(ca.url);
+                                            const cleanName = (ca.name || '').replace(/^\[Custom App\]\s*/i, '').replace(/\s*-\s*Eicar Provider APP$/i, '');
+
+                                            return (
+                                                <div
+                                                    key={`custom-app-eicar-${idx}-${ca.url}`}
+                                                    onClick={() => toggleEicarTarget(ca.url)}
+                                                    className={`border px-4 py-3 rounded-xl group cursor-pointer transition-all flex items-center gap-3 shadow-sm hover:shadow-md ${
+                                                        isSelected 
+                                                            ? 'border-amber-500/60 bg-amber-500/10 ring-1 ring-amber-500/20' 
+                                                            : 'bg-amber-500/[0.04] border-amber-500/20 hover:border-amber-500/40'
+                                                    }`}
+                                                >
+                                                    <div className={`w-4 h-4 rounded border flex items-center justify-center transition-all shrink-0 ${
+                                                        isSelected ? 'bg-amber-500 border-amber-400' : 'bg-card-secondary border-amber-500/30'
+                                                    }`}>
+                                                        {isSelected && <Check size={11} className="text-black font-black" strokeWidth={3} />}
+                                                    </div>
+                                                    <div className="flex flex-col min-w-0 flex-1">
+                                                        <div className="flex items-center gap-2">
+                                                            <h4 className={`text-xs font-bold transition-colors tracking-tight truncate ${isSelected ? 'text-amber-400' : 'text-text-primary'}`}>
+                                                                {cleanName}
+                                                            </h4>
+                                                            <span className="text-[9px] font-mono font-bold px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-500 border border-amber-500/30">
+                                                                ⚡ Custom App
+                                                            </span>
+                                                        </div>
+                                                        <p className="text-[9px] text-text-muted font-mono mt-0.5 truncate">{ca.url}</p>
+                                                    </div>
+                                                    <div className="flex items-center gap-1.5 ml-2 border-l border-border/50 pl-3">
+                                                        {lastResult && getStatusBadge(lastResult.result)}
+                                                        {/* Live server indicator */}
+                                                        <div className="relative flex h-2 w-2 items-center justify-center shrink-0" title="Live Active Listener">
+                                                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75" style={{ animationDuration: '3s' }}></span>
+                                                            <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-amber-500 shadow-[0_0_8px_rgba(245,158,11,0.6)]"></span>
+                                                        </div>
+                                                        {/* Copy curl command button */}
+                                                        <button
+                                                            onClick={(e) => { e.stopPropagation(); copyToClipboard(`curl -fsS --max-time 20 "${ca.url}" -o /tmp/eicar.com.txt && rm -f /tmp/eicar.com.txt`); }}
+                                                            title="Copy curl command"
+                                                            className="w-6 h-6 flex items-center justify-center rounded bg-card-hover hover:bg-card-secondary text-text-muted hover:text-text-primary transition-colors shrink-0"
+                                                        >
+                                                            <Copy size={10} />
+                                                        </button>
+                                                        {/* Individual play button */}
+                                                        <button
+                                                            onClick={(e) => runSingleEicarTest(ca.url, e)}
+                                                            disabled={!!runningEicarTarget || loading}
+                                                            title="Run EICAR test on this custom app"
+                                                            className="w-6 h-6 flex items-center justify-center rounded bg-amber-600/10 hover:bg-amber-600/25 text-amber-500 disabled:opacity-30 disabled:cursor-not-allowed transition-colors shrink-0"
+                                                        >
+                                                            {runningEicarTarget === ca.url ? (
+                                                                <span className="w-3 h-3 border-2 border-amber-500 border-t-transparent rounded-full animate-spin" />
+                                                            ) : (
+                                                                <Play size={10} fill="currentColor" />
+                                                            )}
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            );
+                                        })}
+
                                         {/* Dynamic Stigix Targets */}
-                                        {securityTargets.map((t) => {
+                                        {(eicarFilter === 'all' || eicarFilter === 'fabric') && securityTargets.map((t) => {
                                             const httpPort = (t.ports?.http && t.ports.http !== 8080 && t.ports.http !== 80) ? t.ports.http : 8082;
                                             const url = `http://${t.host}:${httpPort}/eicar.com.txt`;
                                             const isSelected = selectedEicarTargets.includes(url);
@@ -2380,7 +2535,12 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
                                                         {isSelected && <Check size={11} className="text-white" strokeWidth={3} />}
                                                     </div>
                                                     <div className="flex flex-col min-w-0 flex-1">
-                                                        <h4 className={`text-xs font-bold transition-colors tracking-tight truncate ${isSelected ? 'text-blue-500' : 'text-text-secondary'}`}>{t.name}</h4>
+                                                        <div className="flex items-center gap-2">
+                                                            <h4 className={`text-xs font-bold transition-colors tracking-tight truncate ${isSelected ? 'text-blue-500' : 'text-text-secondary'}`}>{t.name}</h4>
+                                                            <span className="text-[9px] font-mono font-medium px-1.5 py-0.5 rounded bg-blue-500/10 text-blue-400 border border-blue-500/20">
+                                                                Fabric Node
+                                                            </span>
+                                                        </div>
                                                         <p className="text-[9px] text-text-muted font-mono mt-0.5 truncate">{url}</p>
                                                     </div>
                                                     <div className="flex items-center gap-1.5 ml-2 border-l border-border/50 pl-3">
