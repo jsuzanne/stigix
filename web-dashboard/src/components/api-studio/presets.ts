@@ -8,7 +8,7 @@ export const API_PRESETS: ApiPreset[] = [
         category: 'Prisma SD-WAN',
         description: 'Fetch all ION branch & DC sites on the Prisma SD-WAN tenant',
         method: 'GET',
-        url: '/sdwan/v2.1/api/sites',
+        url: '/sdwan/v4.13/api/sites',
         autoAuth: 'sase'
     },
     {
@@ -17,7 +17,7 @@ export const API_PRESETS: ApiPreset[] = [
         category: 'Prisma SD-WAN',
         description: 'Fetch all hardware and virtual ION appliances with status',
         method: 'GET',
-        url: '/sdwan/v2.1/api/elements',
+        url: '/sdwan/v3.2/api/elements',
         autoAuth: 'sase'
     },
     {
@@ -26,7 +26,7 @@ export const API_PRESETS: ApiPreset[] = [
         category: 'Prisma SD-WAN',
         description: 'Retrieve custom application definitions created in Prisma SD-WAN',
         method: 'GET',
-        url: '/sdwan/v2.1/api/appdefs',
+        url: '/sdwan/v2.6/api/appdefs',
         autoAuth: 'sase'
     },
     {
@@ -35,7 +35,7 @@ export const API_PRESETS: ApiPreset[] = [
         category: 'Prisma SD-WAN',
         description: 'Create a new L7 custom application definition in Prisma SD-WAN',
         method: 'POST',
-        url: '/sdwan/v2.1/api/appdefs',
+        url: '/sdwan/v2.6/api/appdefs',
         autoAuth: 'sase',
         body: {
             name: "STIGIX_CUSTOM_ERP",
@@ -52,19 +52,25 @@ export const API_PRESETS: ApiPreset[] = [
         }
     },
     {
-        id: 'prisma-query-flowmetrics',
-        name: 'Query SD-WAN Flow Metrics',
+        id: 'prisma-query-topology',
+        name: 'Query SD-WAN Topology',
         category: 'Prisma SD-WAN',
-        description: 'Query live and historical flow metrics with path and bandwidth details',
+        description: 'Query active SD-WAN overlay topology nodes, links, and VPN tunnels',
         method: 'POST',
-        url: '/sdwan/v2.1/api/flowmetrics',
+        url: '/sdwan/v3.6/api/topology',
         autoAuth: 'sase',
         body: {
-            metrics: ["bandwidth", "flow_count"],
-            interval: "5min",
-            start_time: new Date(Date.now() - 3600 * 1000).toISOString(),
-            end_time: new Date().toISOString()
+            type: "anynet"
         }
+    },
+    {
+        id: 'prisma-get-profile',
+        name: 'Get Operator & Tenant Profile',
+        category: 'Prisma SD-WAN',
+        description: 'Inspect authenticated user session, tenant ID, and controller roles',
+        method: 'GET',
+        url: '/sdwan/v2.1/api/profile',
+        autoAuth: 'sase'
     },
 
     // --- Palo Alto SCM (Strata Cloud Manager) ---

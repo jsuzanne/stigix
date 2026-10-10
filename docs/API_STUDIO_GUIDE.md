@@ -1,4 +1,4 @@
-> **Last Updated:** 2026-09-13 | **Created:** 2026-09-13 (v2.0.55)
+> **Last Updated:** 2026-10-10 | **Created:** 2026-09-13 (v2.0.55)
 
 # 📡 Stigix API Studio & Live Observability Guide
 
@@ -90,11 +90,12 @@ The API Playground allows NOC engineers to safely query, test, and manipulate re
 The preset selector includes pre-configured templates for common operational tasks:
 
 #### A. Palo Alto Prisma SD-WAN (CloudGenix)
-* **`List All Sites`** (`GET /sdwan/v2.1/api/sites`): Fetches all branch & DC sites on the tenant.
-* **`List ION Elements`** (`GET /sdwan/v2.1/api/elements`): Lists all hardware and virtual ION appliances with serial numbers and software versions.
-* **`List Custom Applications`** (`GET /sdwan/v2.1/api/appdefs`): Inspects all custom L7 applications defined in Prisma SD-WAN.
-* **`Create Custom App Definition`** (`POST /sdwan/v2.1/api/appdefs`): Pre-filled JSON schema to register a new TCP/UDP application definition.
-* **`Query SD-WAN Flow Metrics`** (`POST /sdwan/v2.1/api/flowmetrics`): Queries flow bandwidth and packet metrics across VPN paths.
+* **`List All Sites`** (`GET /sdwan/v4.13/api/sites`): Fetches all branch & DC sites on the tenant.
+* **`List ION Elements`** (`GET /sdwan/v3.2/api/elements`): Lists all hardware and virtual ION appliances with serial numbers and software versions.
+* **`List Custom Applications`** (`GET /sdwan/v2.6/api/appdefs`): Inspects all custom L7 applications defined in Prisma SD-WAN.
+* **`Create Custom App Definition`** (`POST /sdwan/v2.6/api/appdefs`): Pre-filled JSON schema to register a new TCP/UDP application definition.
+* **`Query SD-WAN Topology`** (`POST /sdwan/v3.6/api/topology`): Queries active SD-WAN overlay topology nodes, links, and VPN peer states.
+* **`Get Operator & Tenant Profile`** (`GET /sdwan/v2.1/api/profile`): Inspects authenticated operator identity, tenant ID, and controller roles.
 
 #### B. Palo Alto Strata Cloud Manager & Logging Service (SCM / SLS)
 * **`Query SLS Traffic Logs`** (`POST /logging-service/v2/query`): Live query for recent firewall and security traffic logs.
@@ -110,7 +111,7 @@ The preset selector includes pre-configured templates for common operational tas
 
 ### Auto-Authentication Selector
 You don't need to manually copy OAuth bearer tokens or API keys:
-- **`Prisma SASE OAuth`**: Automatically retrieves your client credentials from Stigix Settings / environment, performs the OAuth2 token exchange with Palo Alto Networks, injects `Authorization: Bearer <token>` and `X-PAN-TSG-ID`, and resolves the regional base URL.
+- **`Prisma SASE OAuth`**: Automatically retrieves your client credentials from Stigix Settings / environment, performs the OAuth2 token exchange with Palo Alto Networks, bootstraps the SD-WAN controller session (`/sdwan/v2.1/api/profile`), injects `Authorization: Bearer <token>`, `X-PAN-TSG-ID`, and SDK `User-Agent`, resolving the regional base URL.
 - **`VyOS API Key`**: Automatically pulls the API key and host configured in Stigix VyOS Control.
 - **`Stigix JWT Token`**: Injects your current dashboard session authentication.
 
@@ -125,7 +126,7 @@ The Topology page shows *"Topology Not Configured"* or *"Authentication Failed"*
 
 **NOC Investigation Steps**:
 1. Open **API Studio** → **Live API Inspector**.
-2. Look for recent requests from `Python (getflow.py)` to `/auth/v1/oauth2/access_token` or `/sdwan/v2.1/api/sites`.
+2. Look for recent requests from `Python (getflow.py)` to `/auth/v1/oauth2/access_token` or `/sdwan/v4.13/api/sites`.
 3. Click the failing transaction row (e.g. `401 Unauthorized` or `403 Forbidden`).
 4. In the drawer, check the **Response Body**:
    - `401 Unauthorized`: Client ID or Client Secret is mistyped or revoked on `apps.paloaltonetworks.com`.

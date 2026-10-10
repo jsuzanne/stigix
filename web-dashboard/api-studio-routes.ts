@@ -8,6 +8,10 @@ import https from 'https';
 export function createApiStudioRouter(appConfigDir: string, projectRoot: string, vyosManager: any): Router {
     const router = express.Router();
 
+    // Cache token to avoid redundant OAuth calls and keep session warm
+    let cachedSaseToken: { token: string; expiresAt: number; tsgId: string; baseUrl: string } | null = null;
+    const SASE_USER_AGENT = 'python-requests/2.34.2 (PRISMA SASE SDK v6.8.1b1)';
+
     /**
      * Resolves Prisma SASE credentials and acquires an OAuth2 bearer token.
      */
@@ -50,9 +54,14 @@ export function createApiStudioRouter(appConfigDir: string, projectRoot: string,
             };
         }
 
+        const now = Date.now();
+        if (cachedSaseToken && cachedSaseToken.expiresAt > now + 60000 && cachedSaseToken.tsgId === tsgId) {
+            return cachedSaseToken;
+        }
+
         const authUrl = 'https://auth.apps.paloaltonetworks.com/auth/v1/oauth2/access_token';
         const auth = Buffer.from(`${clientId}:${clientSecret}`).toString('base64');
-        const scope = `tsg_id:${tsgId}`;
+        const scope = `tsg_id:${tsgId} email profile`;
 
         try {
             const res = await fetch(authUrl, {
@@ -74,7 +83,25 @@ export function createApiStudioRouter(appConfigDir: string, projectRoot: string,
             }
 
             const data = (await res.json()) as any;
-            return { token: data.access_token, tsgId, baseUrl };
+            const token = data.access_token;
+            const expiresIn = Number(data.expires_in) || 900;
+            const expiresAt = now + (expiresIn * 1000);
+
+            // Bootstrap Prisma SD-WAN session (initializes controller session_id for SD-WAN microservices)
+            try {
+                await fetch(`${baseUrl}/sdwan/v2.1/api/profile`, {
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Accept': 'application/json',
+                        'User-Agent': SASE_USER_AGENT
+                    }
+                });
+            } catch (e: any) {
+                log('DEBUG', `[API Studio] Prisma SD-WAN bootstrap profile warning: ${e.message}`);
+            }
+
+            cachedSaseToken = { token, expiresAt, tsgId, baseUrl };
+            return cachedSaseToken;
         } catch (e: any) {
             return { token: null, tsgId, baseUrl, error: `OAuth exception: ${e.message}` };
         }
@@ -202,6 +229,12 @@ export function createApiStudioRouter(appConfigDir: string, projectRoot: string,
             }
             if (saseAuth.tsgId) {
                 finalHeaders['X-PAN-TSG-ID'] = saseAuth.tsgId;
+            }
+            if (!finalHeaders['User-Agent'] && !finalHeaders['user-agent']) {
+                finalHeaders['User-Agent'] = SASE_USER_AGENT;
+            }
+            if (!finalHeaders['Accept'] && !finalHeaders['accept']) {
+                finalHeaders['Accept'] = 'application/json';
             }
             if (targetUrl.startsWith('/')) {
                 targetUrl = `${saseAuth.baseUrl}${targetUrl}`;

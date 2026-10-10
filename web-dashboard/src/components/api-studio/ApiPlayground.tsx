@@ -28,7 +28,7 @@ export const ApiPlayground: React.FC<ApiPlaygroundProps> = ({
 }) => {
     const [selectedPresetId, setSelectedPresetId] = useState<string>('custom');
     const [method, setMethod] = useState<'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH'>('GET');
-    const [url, setUrl] = useState<string>('/sdwan/v2.1/api/sites');
+    const [url, setUrl] = useState<string>('/sdwan/v4.13/api/sites');
     const [autoAuth, setAutoAuth] = useState<AutoAuthType>('sase');
     const [activeTab, setActiveTab] = useState<'body' | 'headers' | 'params' | 'export'>('body');
     const [exportLanguage, setExportLanguage] = useState<'curl' | 'python_sase' | 'python_requests' | 'node'>('curl');
@@ -333,7 +333,7 @@ export const ApiPlayground: React.FC<ApiPlaygroundProps> = ({
                                     handleSendRequest();
                                 }
                             }}
-                            placeholder="/sdwan/v2.1/api/sites or https://..."
+                            placeholder="/sdwan/v4.13/api/sites or https://..."
                             className="w-full px-3 py-2 bg-input border border-input-border rounded-lg text-xs font-mono text-text focus:outline-none focus:ring-1 focus:ring-blue-500"
                         />
                     </div>
