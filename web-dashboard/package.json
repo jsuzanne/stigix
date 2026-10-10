@@ -1,7 +1,7 @@
 {
   "name": "web-dashboard",
   "private": true,
-  "version": "2.2.7",
+  "version": "2.2.8",
   "type": "module",
   "scripts": {
     "dev": "concurrently \"vite\" \"tsx watch --env-file=.env server.ts\"",
