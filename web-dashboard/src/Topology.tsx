@@ -2165,6 +2165,9 @@ function TopologyContent({ token }: TopologyProps) {
                                 },
                                 data: {
                                     ...c,
+                                    ip: w.ip || c.ip,
+                                    interface_ip: w.ip || c.interface_ip,
+                                    gateway: w.gateway || c.gateway,
                                     isMplsCircuit,
                                     sourceSiteName: site.site_name,
                                     sourceCircuitName: w.name,
@@ -3550,6 +3553,12 @@ function TopologyContent({ token }: TopologyProps) {
                                         <div className="text-[11px] font-bold text-text-secondary truncate">{inspectedLink.ip || inspectedLink.interface_ip || 'DHCP'}</div>
                                     </div>
                                 </div>
+                                {inspectedLink.gateway && (
+                                    <div className="bg-card-secondary/30 px-2.5 py-1 mb-2 rounded-lg border border-border/30 flex items-center justify-between text-xs font-mono">
+                                        <span className="text-[8px] font-black text-text-muted uppercase">Default Gateway</span>
+                                        <span className="text-[10px] font-bold text-emerald-400">{inspectedLink.gateway}</span>
+                                    </div>
+                                )}
 
                                 {/* Status Pill & Action */}
                                 <div className="flex items-center justify-between pt-1 border-t border-border/30 text-xs">
@@ -4520,9 +4529,15 @@ function TopologyContent({ token }: TopologyProps) {
                                                             </div>
                                                             <div className="bg-card-secondary/30 p-4 rounded-xl border border-border space-y-1">
                                                                 <div className="text-[9px] font-black text-text-muted uppercase tracking-widest">Interface IP</div>
-                                                                <div className="text-xs font-mono font-bold text-text-secondary">{selectedObject.ip || 'DHCP'}</div>
+                                                                <div className="text-xs font-mono font-bold text-text-secondary">{selectedObject.ip || selectedObject.interface_ip || 'DHCP'}</div>
                                                             </div>
                                                         </div>
+                                                        {selectedObject.gateway && (
+                                                            <div className="bg-card-secondary/30 px-4 py-2.5 rounded-xl border border-border flex items-center justify-between text-xs font-mono">
+                                                                <span className="text-[9px] font-black text-text-muted uppercase tracking-widest">Default Gateway</span>
+                                                                <span className="font-bold text-emerald-400">{selectedObject.gateway}</span>
+                                                            </div>
+                                                        )}
 
                                                         {(selectedObject.public_ip || selectedObject.ip) && (
                                                             <div className="pt-1">

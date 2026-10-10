@@ -1023,42 +1023,115 @@ def get_bulk_topology(sdk, all_site_ids, debug=False, debug_topo=False):
     return deduped
 
 
-def get_operational_ips(sdk, all_site_ids, debug=False):
+def get_operational_ips(sdk, all_site_ids, el_interfaces_map=None, all_elements=None, debug=False):
     """
-    Fetch operational status for all interfaces in bulk.
-    Returns a lookup dict: (element_id, interface_id) -> list of IPs.
+    Fetch operational status for all interfaces.
+    Uses bulk interfaces_status_query first, then targeted parallel
+    interfaces_status queries for any WAN-bound or DHCP interfaces that were
+    missed (e.g. beyond API query pagination limits).
+    Returns a lookup dict: (element_id, interface_name_or_id) -> dict with ips, link_up, admin_up, gateway.
     """
     op_map = {}
     try:
-        # A site_id filter with all IDs is usually supported by the query API
         data = {
             "filters": {"site_id": list(all_site_ids)},
             "limit": 1000
         }
         if debug:
-            print(f" [TOPO] Querying operational interface status for {len(all_site_ids)} sites (limit=1000)...", file=sys.stderr)
+            print(f" [TOPO] Querying operational interface status for {len(all_site_ids)} sites...", file=sys.stderr)
 
         resp = sdk.post.interfaces_status_query(data=data)
         if resp.cgx_status:
             items = resp.cgx_content.get('items', [])
             if debug:
-                print(f" [TOPO] Received {len(items)} operational status entries", file=sys.stderr)
+                print(f" [TOPO] Received {len(items)} operational status entries from query API", file=sys.stderr)
             for item in items:
                 eid = item.get('element_id')
                 name = item.get('name')
-                ips = item.get('ipv4_addresses')
+                iid = item.get('id')
+                ips = item.get('ipv4_addresses') or []
+                routes = item.get('routes') or []
+                gateway = None
+                for rt in routes:
+                    if rt.get('destination') == '0.0.0.0/0':
+                        gateway = rt.get('via')
+                        break
+                entry = {
+                    'ips': ips,
+                    'link_up': item.get('link_up'),
+                    'admin_up': item.get('admin_up'),
+                    'gateway': gateway
+                }
                 if eid and name:
-                    op_map[(eid, name)] = {
-                        'ips': ips or [],
-                        'link_up': item.get('link_up'),
-                        'admin_up': item.get('admin_up')
-                    }
+                    op_map[(eid, name)] = entry
+                if eid and iid:
+                    op_map[(eid, iid)] = entry
         else:
             if debug:
                 print(f" [TOPO] Warning: interfaces_status_query returned {resp.status_code}", file=sys.stderr)
     except Exception as e:
         if debug:
             print(f" [TOPO] Error fetching operational IPs: {e}", file=sys.stderr)
+
+    # Targeted fallback for WAN interfaces or DHCP interfaces missing from query API
+    if el_interfaces_map and all_elements:
+        missing_tasks = []
+        for el in all_elements:
+            eid = el.get('id')
+            sid = el.get('site_id')
+            if not eid or not sid:
+                continue
+            for intf in el_interfaces_map.get(eid, []):
+                iname = intf.get('name')
+                iid = intf.get('id')
+                swi_ids = intf.get('site_wan_interface_ids') or []
+                ipv4_cfg = intf.get('ipv4_config') or {}
+                cfg_type = ipv4_cfg.get('type')
+
+                # Target WAN-bound interfaces or DHCP/PPPoE interfaces
+                is_target = bool(swi_ids) or cfg_type in ('dhcp', 'pppoe')
+                if is_target:
+                    existing = op_map.get((eid, iname)) or op_map.get((eid, iid))
+                    # If missing from bulk or has no IPs while being DHCP, fetch directly
+                    if not existing or not existing.get('ips'):
+                        missing_tasks.append((sid, eid, iid, iname))
+
+        if missing_tasks:
+            if debug:
+                print(f" [TOPO] Fetching targeted operational status for {len(missing_tasks)} DHCP/WAN interfaces...", file=sys.stderr)
+
+            def _fetch_target_op(task):
+                tsid, teid, tiid, tiname = task
+                try:
+                    st_resp = sdk.get.interfaces_status(site_id=tsid, element_id=teid, interface_id=tiid)
+                    if st_resp.cgx_status:
+                        c = st_resp.cgx_content
+                        ips = c.get('ipv4_addresses') or []
+                        routes = c.get('routes') or []
+                        gateway = None
+                        for rt in routes:
+                            if rt.get('destination') == '0.0.0.0/0':
+                                gateway = rt.get('via')
+                                break
+                        return (teid, tiname, tiid, {
+                            'ips': ips,
+                            'link_up': c.get('operational_state') == 'up' or c.get('link_up', True),
+                            'admin_up': c.get('admin_up', True),
+                            'gateway': gateway
+                        })
+                except Exception:
+                    pass
+                return (teid, tiname, tiid, None)
+
+            with concurrent.futures.ThreadPoolExecutor(max_workers=15) as executor:
+                results = list(executor.map(_fetch_target_op, missing_tasks))
+                for teid, tiname, tiid, entry in results:
+                    if entry:
+                        if tiname:
+                            op_map[(teid, tiname)] = entry
+                        if tiid:
+                            op_map[(teid, tiid)] = entry
+
     return op_map
 
 
@@ -1259,7 +1332,7 @@ def build_full_topology(sdk: API, sites_data: dict, debug: bool = False, debug_t
     connections_by_site = get_bulk_topology(sdk, all_site_ids, debug=debug, debug_topo=debug_topo)
 
     # --- Step 5: Operational Bulk IPs (for DHCP) ---
-    op_ip_map = get_operational_ips(sdk, all_site_ids, debug=debug)
+    op_ip_map = get_operational_ips(sdk, all_site_ids, el_interfaces_map=el_interfaces_map, all_elements=all_elements, debug=debug)
 
     # --- Step 6: Assemble per-site output ---
     for site_id in all_site_ids:
@@ -1351,18 +1424,23 @@ def build_full_topology(sdk: API, sites_data: dict, debug: bool = False, debug_t
                 # WAN IP (from bound interface's ipv4_config)
                 wan_ip = None
                 wan_network = None
+                wan_gateway = None
                 wan_admin_up = True
                 wan_link_up = True
+                wan_cfg_type = 'unknown'
                 for intf in interfaces:
                     swi_ids = intf.get('site_wan_interface_ids') or []
                     if wan_if_id in swi_ids:
                         wan_admin_up = intf.get('admin_up', True)
-                        op_status = op_ip_map.get((el_id, intf.get('name')), {})
-                        if isinstance(op_status, dict) and op_status.get('link_up') is not None:
-                            wan_link_up = op_status.get('link_up')
+                        op_status = op_ip_map.get((el_id, intf.get('name'))) or op_ip_map.get((el_id, intf.get('id')), {})
+                        if isinstance(op_status, dict):
+                            if op_status.get('link_up') is not None:
+                                wan_link_up = op_status.get('link_up')
+                            wan_gateway = op_status.get('gateway')
 
                         ipv4_cfg = intf.get('ipv4_config') or {}
                         cfg_type = ipv4_cfg.get('type')
+                        wan_cfg_type = cfg_type or 'unknown'
                         if cfg_type == 'static':
                             st = ipv4_cfg.get('static_config') or {}
                             ip_raw = st.get('address')
@@ -1379,8 +1457,8 @@ def build_full_topology(sdk: API, sites_data: dict, debug: bool = False, debug_t
                                 except Exception:
                                     pass
                         elif cfg_type == 'dhcp' or cfg_type == 'pppoe':
-                            # Try resolving from operational status using name (since status IDs often mismatch config IDs)
-                            op_st = op_ip_map.get((el_id, intf.get('name')), {})
+                            # Try resolving from operational status using name or ID
+                            op_st = op_ip_map.get((el_id, intf.get('name'))) or op_ip_map.get((el_id, intf.get('id')), {})
                             op_ips = op_st.get('ips', []) if isinstance(op_st, dict) else op_st
                             if op_ips:
                                 raw_op_ip = op_ips[0]
@@ -1471,6 +1549,10 @@ def build_full_topology(sdk: API, sites_data: dict, debug: bool = False, debug_t
                             'debug_vpn_id': vl.get('id', 'N/A'),
                             'debug_source_ip': vl.get('source_ip') or vl.get('local_ip', 'N/A'),
                             'debug_peer_ip': vlink_peer_ip or 'N/A',
+                            # Runtime IP & Gateway
+                            'ip': wan_ip,
+                            'interface_ip': wan_ip,
+                            'gateway': wan_gateway,
                         })
 
                 # Normalize WAN IP/CIDR for underlay resolver (additive fields, do not break existing contract)
@@ -1490,7 +1572,7 @@ def build_full_topology(sdk: API, sites_data: dict, debug: bool = False, debug_t
                                 wan_ip_cidr = str(iface_obj)           # "192.168.190.1/24"
                                 wan_ip_only = str(iface_obj.ip)        # "192.168.190.1"
                                 wan_network_cidr = str(iface_obj.network)  # "192.168.190.0/24"
-                                wan_ip_type = 'static_with_cidr'
+                                wan_ip_type = 'static_with_cidr' if wan_cfg_type == 'static' else 'dhcp_with_cidr'
                         except Exception:
                             pass
                     else:
@@ -1510,6 +1592,7 @@ def build_full_topology(sdk: API, sites_data: dict, debug: bool = False, debug_t
                     'wan_network': wan_net_id_to_name.get(wan_if.get('network_id'), 'Unknown'),
                     'ip': wan_ip,
                     'network': wan_network,
+                    'gateway': wan_gateway,
                     'bw_down_kbps': bw_down,
                     'bw_up_kbps': bw_up,
                     'admin_up': wan_admin_up,
