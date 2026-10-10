@@ -1275,6 +1275,7 @@ function TopologyContent({ token }: TopologyProps) {
     const [diagnosticsFilter, setDiagnosticsFilter] = useState<'ALL' | 'matched' | 'no_match' | 'ambiguous' | 'wan_ip_unavailable'>('ALL');
     const [diagnosticsSearch, setDiagnosticsSearch] = useState('');
     const [tracerouteTarget, setTracerouteTarget] = useState<string | null>(null);
+    const [inspectedLink, setInspectedLink] = useState<any | null>(null);
     const [popTunnelFilter, setPopTunnelFilter] = useState<'ALL' | 'ACTIVE' | 'BACKUP' | 'DOWN'>('ALL');
     const [saseTunnelTypeFilter, setSaseTunnelTypeFilter] = useState<'ALL' | 'ACTIVE' | 'BACKUP' | 'DOWN'>('ALL');
 
@@ -2400,6 +2401,7 @@ function TopologyContent({ token }: TopologyProps) {
 
     const onNodeClick = useCallback((_: any, node: Node) => {
         const nodeData = node.data as any;
+        setInspectedLink(null);
 
         if (node.type === 'cloud') {
             const netName = (nodeData.name || '').toUpperCase();
@@ -2437,8 +2439,9 @@ function TopologyContent({ token }: TopologyProps) {
     }, [topologyViewMode]);
 
     const onEdgeClick = useCallback((_: any, edge: Edge) => {
-        setSelectedObject({ type: 'edge', ...edge.data });
         const edgeData = edge.data as any;
+        setInspectedLink(edgeData);
+        setSelectedObject(null);
         if (edgeData?.resolution) {
             setUnderlayDrawerResolution(edgeData.resolution);
         }
@@ -2782,15 +2785,113 @@ function TopologyContent({ token }: TopologyProps) {
                             </div>
                         </div>
 
-                        {/* Center: Contextual Filter Pills (Horizontally Centered in Top Bar) */}
+                        {/* Center: Primary View Modes & Contextual Sub-Filters (Clean Top Bar Integration) */}
                         <div className="absolute left-1/2 -translate-x-1/2 top-1/2 -translate-y-1/2 flex items-center gap-2 z-10 pointer-events-auto">
-                            {/* Mode 1 & 2: WAN Transport / SD-WAN Overlay Filters */}
+                            {/* Primary 4-Mode Switcher */}
+                            <div className="bg-card-secondary/70 backdrop-blur-md border border-border p-1 rounded-xl shadow-sm flex items-center gap-1 shrink-0">
+                                {/* Mode 1: WAN Transport */}
+                                <button
+                                    onClick={() => {
+                                        setTopologyViewMode('physical');
+                                        setSelectedNetwork(null);
+                                        setLogicalViewSiteId(null);
+                                        setInspectedLink(null);
+                                    }}
+                                    className={cn(
+                                        "px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all flex items-center gap-1.5 cursor-pointer shrink-0",
+                                        topologyViewMode === 'physical'
+                                            ? "bg-sky-600 text-white shadow-sm shadow-sky-500/25"
+                                            : "text-text-muted hover:text-text-primary hover:bg-card/80"
+                                    )}
+                                    title="Physical WAN Transport View"
+                                >
+                                    <Globe size={12} />
+                                    <span>WAN Transport</span>
+                                </button>
+
+                                {/* Mode 2: SD-WAN Mesh */}
+                                <button
+                                    onClick={() => {
+                                        setTopologyViewMode('overlay');
+                                        setSelectedNetwork(null);
+                                        setLogicalViewSiteId(null);
+                                        setInspectedLink(null);
+                                    }}
+                                    className={cn(
+                                        "px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all flex items-center gap-1.5 cursor-pointer shrink-0",
+                                        topologyViewMode === 'overlay'
+                                            ? "bg-blue-600 text-white shadow-sm shadow-blue-500/25"
+                                            : "text-text-muted hover:text-text-primary hover:bg-card/80"
+                                    )}
+                                    title="Logical SD-WAN Mesh View"
+                                >
+                                    <Share2 size={12} />
+                                    <span>SD-WAN Mesh</span>
+                                </button>
+
+                                {/* Mode 3: SASE Fabric */}
+                                <button
+                                    onClick={() => {
+                                        setTopologyViewMode('sase');
+                                        setSelectedNetwork(null);
+                                        setLogicalViewSiteId(null);
+                                        setInspectedLink(null);
+                                    }}
+                                    className={cn(
+                                        "px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all flex items-center gap-1.5 cursor-pointer shrink-0",
+                                        topologyViewMode === 'sase'
+                                            ? "bg-purple-600 text-white shadow-sm shadow-purple-500/25"
+                                            : "text-text-muted hover:text-purple-400 hover:bg-card/80"
+                                    )}
+                                    title="SASE Security Fabric View"
+                                >
+                                    <Shield size={12} />
+                                    <span>SASE Fabric</span>
+                                    {topology?.sase_infrastructure?.up_service_links !== undefined && (
+                                        <span className={cn(
+                                            "px-1.5 py-0.2 rounded-full text-[8px] font-mono font-black",
+                                            topologyViewMode === 'sase' ? "bg-white/20 text-white" : "bg-purple-500/20 text-purple-300"
+                                        )}>
+                                            {topology.sase_infrastructure.up_service_links}
+                                        </span>
+                                    )}
+                                </button>
+
+                                {/* Mode 4: VyOS Ports */}
+                                <button
+                                    onClick={() => {
+                                        setTopologyViewMode('underlay');
+                                        setSelectedNetwork(null);
+                                        setLogicalViewSiteId(null);
+                                        setInspectedLink(null);
+                                    }}
+                                    className={cn(
+                                        "px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all flex items-center gap-1.5 cursor-pointer shrink-0",
+                                        topologyViewMode === 'underlay'
+                                            ? "bg-amber-500 text-slate-950 font-black shadow-sm shadow-amber-500/25"
+                                            : "text-text-muted hover:text-amber-400 hover:bg-card/80"
+                                    )}
+                                    title="VyOS Underlay Ports View"
+                                >
+                                    <Server size={12} />
+                                    <span>VyOS Ports</span>
+                                    {underlayData?.summary?.matched ? (
+                                        <span className={cn(
+                                            "px-1.5 py-0.2 rounded-full text-[8px] font-mono font-black",
+                                            topologyViewMode === 'underlay' ? "bg-slate-950/20 text-slate-950" : "bg-amber-500/20 text-amber-300"
+                                        )}>
+                                            {underlayData.summary.matched}
+                                        </span>
+                                    ) : null}
+                                </button>
+                            </div>
+
+                            {/* Divider */}
+                            <div className="h-5 w-px bg-border/60 shrink-0" />
+
+                            {/* Mode 1 & 2: WAN Transport / SD-WAN Overlay Sub-Filters */}
                             {(topologyViewMode === 'overlay' || topologyViewMode === 'physical') && (
-                                <div className="bg-card-secondary/70 backdrop-blur-md border border-border p-1 rounded-xl shadow-sm flex items-center gap-1 animate-in fade-in duration-200">
-                                    <div className="px-2 py-0.5 text-[9px] font-black text-text-muted uppercase tracking-wider flex items-center gap-1 border-r border-border/60 shrink-0">
-                                        <Share2 size={11} className="text-blue-400" />
-                                        <span>{topologyViewMode === 'overlay' ? 'SD-WAN Overlay:' : 'WAN Transport:'}</span>
-                                    </div>
+                                <div className="bg-card-secondary/70 backdrop-blur-md border border-border p-1 rounded-xl shadow-sm flex items-center gap-1 animate-in fade-in duration-200 shrink-0">
                                     <button
                                         onClick={() => {
                                             setSelectedNetwork(null);
@@ -2857,11 +2958,7 @@ function TopologyContent({ token }: TopologyProps) {
 
                             {/* Mode 3: SASE Security Fabric Path Filter */}
                             {topologyViewMode === 'sase' && (
-                                <div className="bg-card-secondary/70 backdrop-blur-md border border-border p-1 rounded-xl shadow-sm flex items-center gap-1 animate-in fade-in duration-200">
-                                    <div className="px-2 py-0.5 text-[9px] font-black text-text-muted uppercase tracking-wider flex items-center gap-1 border-r border-border/60 shrink-0">
-                                        <Shield size={11} className="text-purple-400" />
-                                        <span>SASE Filter:</span>
-                                    </div>
+                                <div className="bg-card-secondary/70 backdrop-blur-md border border-border p-1 rounded-xl shadow-sm flex items-center gap-1 animate-in fade-in duration-200 shrink-0">
                                     <button
                                         onClick={() => setSaseTunnelTypeFilter('ALL')}
                                         className={cn(
@@ -2886,7 +2983,7 @@ function TopologyContent({ token }: TopologyProps) {
                                         )}
                                     >
                                         <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-                                        <span>Active Only</span>
+                                        <span>Active</span>
                                     </button>
                                     <button
                                         onClick={() => setSaseTunnelTypeFilter('BACKUP')}
@@ -2898,7 +2995,7 @@ function TopologyContent({ token }: TopologyProps) {
                                         )}
                                     >
                                         <span className="w-1.5 h-1.5 rounded-full bg-cyan-400" />
-                                        <span>Backup Only</span>
+                                        <span>Backup</span>
                                     </button>
                                     <button
                                         onClick={() => setSaseTunnelTypeFilter('DOWN')}
@@ -2910,7 +3007,20 @@ function TopologyContent({ token }: TopologyProps) {
                                         )}
                                     >
                                         <span className="w-1.5 h-1.5 rounded-full bg-rose-400" />
-                                        <span>Down / Standby</span>
+                                        <span>Down</span>
+                                    </button>
+                                </div>
+                            )}
+
+                            {/* Mode 4: VyOS Underlay Diagnostics Shortcut */}
+                            {topologyViewMode === 'underlay' && (
+                                <div className="bg-card-secondary/70 backdrop-blur-md border border-border p-1 rounded-xl shadow-sm flex items-center gap-1 animate-in fade-in duration-200 shrink-0">
+                                    <button
+                                        onClick={() => setShowUnderlayDiagnostics(true)}
+                                        className="px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border border-amber-500/30 transition-all flex items-center gap-1.5 cursor-pointer shadow-sm"
+                                    >
+                                        <Layers size={12} />
+                                        <span>Underlay Diagnostics</span>
                                     </button>
                                 </div>
                             )}
@@ -3070,6 +3180,7 @@ function TopologyContent({ token }: TopologyProps) {
                             setSelectedNetwork(null);
                             setLogicalViewSiteId(null);
                             setShowUnderlayPanel(false);
+                            setInspectedLink(null);
                         }}
                         minZoom={0.12}
                         maxZoom={2.5}
@@ -3080,113 +3191,9 @@ function TopologyContent({ token }: TopologyProps) {
                         <Background color="#1e293b" gap={20} size={1} className="topology-bg" />
                         <Controls className="!bg-card !border-border !rounded-xl !shadow-xl" />
 
-                        {/* Export & Toggles Panel - Vertical Dock Centered on Right */}
-                        <div className="absolute right-5 top-1/2 -translate-y-1/2 z-20 pointer-events-auto flex flex-col gap-2.5 items-end">
-                            {/* 1. View Switcher: 4 Modes (Vertical Segmented Control) */}
-                            <div className="bg-card/90 backdrop-blur-md border border-border p-1.5 rounded-2xl shadow-2xl flex flex-col gap-1 w-[155px]">
-                                {/* Mode 1: WAN Transport */}
-                                <button
-                                    onClick={() => {
-                                        setTopologyViewMode('physical');
-                                        setSelectedNetwork(null);
-                                        setLogicalViewSiteId(null);
-                                    }}
-                                    className={cn(
-                                        "w-full px-3 py-2 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all flex items-center justify-between gap-2 cursor-pointer",
-                                        topologyViewMode === 'physical'
-                                            ? "bg-sky-600 text-white shadow-md shadow-sky-500/25"
-                                            : "text-text-muted hover:text-text-primary hover:bg-card-secondary"
-                                    )}
-                                    title="Physical WAN Transport View (Circuits <-> Internet/MPLS Clouds)"
-                                >
-                                    <div className="flex items-center gap-2">
-                                        <Globe size={14} />
-                                        <span>WAN Transport</span>
-                                    </div>
-                                </button>
-
-                                {/* Mode 2: SD-WAN Mesh */}
-                                <button
-                                    onClick={() => {
-                                        setTopologyViewMode('overlay');
-                                        setSelectedNetwork(null);
-                                        setLogicalViewSiteId(null);
-                                    }}
-                                    className={cn(
-                                        "w-full px-3 py-2 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all flex items-center justify-between gap-2 cursor-pointer",
-                                        topologyViewMode === 'overlay'
-                                            ? "bg-blue-600 text-white shadow-md shadow-blue-500/25"
-                                            : "text-text-muted hover:text-text-primary hover:bg-card-secondary"
-                                    )}
-                                    title="Logical SD-WAN Mesh View (Site-to-Site Tunnels)"
-                                >
-                                    <div className="flex items-center gap-2">
-                                        <Share2 size={14} />
-                                        <span>SD-WAN Mesh</span>
-                                    </div>
-                                </button>
-
-                                {/* Mode 3: SASE Fabric */}
-                                <button
-                                    onClick={() => {
-                                        setTopologyViewMode('sase');
-                                        setSelectedNetwork(null);
-                                        setLogicalViewSiteId(null);
-                                    }}
-                                    className={cn(
-                                        "w-full px-3 py-2 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all flex items-center justify-between gap-2 cursor-pointer",
-                                        topologyViewMode === 'sase'
-                                            ? "bg-purple-600 text-white shadow-md shadow-purple-500/25"
-                                            : "text-text-muted hover:text-purple-400 hover:bg-card-secondary"
-                                    )}
-                                    title="Full SASE Security Fabric View (Branches <-> Prisma Access PoPs)"
-                                >
-                                    <div className="flex items-center gap-2">
-                                        <Shield size={14} />
-                                        <span>SASE Fabric</span>
-                                    </div>
-                                    {topology?.sase_infrastructure?.up_service_links !== undefined ? (
-                                        <span className={cn(
-                                            "px-1.5 py-0.5 rounded-full text-[8px] font-mono font-black",
-                                            topologyViewMode === 'sase' ? "bg-white/20 text-white" : "bg-purple-500/20 text-purple-300"
-                                        )}>
-                                            {topology.sase_infrastructure.up_service_links}
-                                        </span>
-                                    ) : null}
-                                </button>
-
-                                {/* Mode 4: VyOS Underlay */}
-                                <button
-                                    onClick={() => {
-                                        setTopologyViewMode('underlay');
-                                        setSelectedNetwork(null);
-                                        setLogicalViewSiteId(null);
-                                    }}
-                                    className={cn(
-                                        "w-full px-3 py-2 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all flex items-center justify-between gap-2 cursor-pointer",
-                                        topologyViewMode === 'underlay'
-                                            ? "bg-amber-500 text-slate-950 font-black shadow-md shadow-amber-500/25"
-                                            : "text-text-muted hover:text-amber-400 hover:bg-card-secondary"
-                                    )}
-                                    title="Physical Underlay View (Prisma ION Ports <-> VyOS Router Interfaces)"
-                                >
-                                    <div className="flex items-center gap-2">
-                                        <Server size={14} />
-                                        <span>VyOS Ports</span>
-                                    </div>
-                                    {underlayData?.summary?.matched ? (
-                                        <span className={cn(
-                                            "px-1.5 py-0.5 rounded-full text-[8px] font-mono font-black",
-                                            topologyViewMode === 'underlay' ? "bg-slate-950/20 text-slate-950" : "bg-amber-500/20 text-amber-300"
-                                        )}>
-                                            {underlayData.summary.matched}
-                                        </span>
-                                    ) : null}
-                                </button>
-                            </div>
-
-                            {/* 2. Action Tools Vertical Dock */}
-                            <div className="bg-card/90 backdrop-blur-md border border-border p-1.5 rounded-2xl shadow-2xl flex flex-col items-center gap-1.5 w-[50px]">
+                        {/* Action Tools Dock - Bottom Right Corner (Never Overlaps Nodes) */}
+                        <div className="absolute right-5 bottom-6 z-20 pointer-events-auto flex flex-col items-end">
+                            <div className="bg-card/90 backdrop-blur-md border border-border p-1.5 rounded-2xl shadow-2xl flex flex-col items-center gap-1.5 w-[46px]">
                                 {/* Auto-fit to Screen Button */}
                                 <button
                                     onClick={handleFitView}
@@ -3496,6 +3503,81 @@ function TopologyContent({ token }: TopologyProps) {
                                 )}
                             </div>
                         </Panel>
+
+                        {/* Floating Link Inspector Card (Zero Canvas Push) */}
+                        {inspectedLink && (
+                            <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-40 bg-card/95 backdrop-blur-xl border border-border/80 rounded-2xl shadow-2xl p-3.5 w-[380px] max-w-[92vw] animate-in fade-in slide-in-from-bottom-3 duration-200 pointer-events-auto">
+                                <div className="flex items-center justify-between pb-2 border-b border-border/60">
+                                    <div className="flex items-center gap-2 min-w-0">
+                                        <div className={cn(
+                                            "p-1.5 rounded-lg shrink-0",
+                                            inspectedLink.wan_network === 'MPLS' || inspectedLink.isCircuitMpls || inspectedLink.isMplsCircuit
+                                                ? "bg-purple-500/20 text-purple-400"
+                                                : "bg-sky-500/20 text-sky-400"
+                                        )}>
+                                            {inspectedLink.isOverlayTunnel ? <Share2 size={14} /> : inspectedLink.service_endpoint_name ? <Shield size={14} /> : <Route size={14} />}
+                                        </div>
+                                        <div className="min-w-0">
+                                            <h4 className="text-xs font-black text-text-primary tracking-tight truncate">
+                                                {inspectedLink.name || inspectedLink.label || inspectedLink.circuit_name || 'Circuit Link'}
+                                            </h4>
+                                            <p className="text-[9px] text-text-muted font-bold tracking-wider truncate">
+                                                {inspectedLink.sourceSiteName || inspectedLink.sourceSite ? (
+                                                    `${inspectedLink.sourceSiteName || inspectedLink.sourceSite} ➔ ${inspectedLink.peer_site_name || inspectedLink.peerSite || 'Peer'}`
+                                                ) : (
+                                                    `${inspectedLink.site_name || 'Site'} · ${(inspectedLink.wan_network || inspectedLink.network || 'WAN').toUpperCase()}`
+                                                )}
+                                            </p>
+                                        </div>
+                                    </div>
+                                    <button
+                                        onClick={() => setInspectedLink(null)}
+                                        className="p-1 hover:bg-card-secondary rounded-lg text-text-muted hover:text-text-primary transition-colors cursor-pointer shrink-0"
+                                        title="Close"
+                                    >
+                                        <X size={14} />
+                                    </button>
+                                </div>
+
+                                {/* Dynamic Key Specs */}
+                                <div className="grid grid-cols-2 gap-2 my-2 text-xs font-mono">
+                                    <div className="bg-card-secondary/40 p-2 rounded-xl border border-border/40">
+                                        <div className="text-[8px] font-black text-text-muted uppercase">Public IP / Remote</div>
+                                        <div className="text-[11px] font-bold text-text-primary truncate">{inspectedLink.public_ip || inspectedLink.remote_ip || 'N/A'}</div>
+                                    </div>
+                                    <div className="bg-card-secondary/40 p-2 rounded-xl border border-border/40">
+                                        <div className="text-[8px] font-black text-text-muted uppercase">Interface IP</div>
+                                        <div className="text-[11px] font-bold text-text-secondary truncate">{inspectedLink.ip || inspectedLink.interface_ip || 'DHCP'}</div>
+                                    </div>
+                                </div>
+
+                                {/* Status Pill & Action */}
+                                <div className="flex items-center justify-between pt-1 border-t border-border/30 text-xs">
+                                    <div className="flex items-center gap-1.5">
+                                        <span className={cn(
+                                            "w-2 h-2 rounded-full",
+                                            (inspectedLink.status === 'down' || inspectedLink.active === false) ? "bg-rose-500" : "bg-emerald-500 animate-pulse"
+                                        )} />
+                                        <span className="text-[9px] font-black uppercase text-text-primary">
+                                            {inspectedLink.status || (inspectedLink.active !== undefined ? (inspectedLink.active ? 'Active' : 'Backup') : 'Operational')}
+                                        </span>
+                                        {inspectedLink.latency && (
+                                            <span className="text-[9px] font-mono text-emerald-400 font-bold ml-1">
+                                                · {inspectedLink.latency}ms
+                                            </span>
+                                        )}
+                                    </div>
+                                    {(inspectedLink.public_ip || inspectedLink.ip || inspectedLink.remote_ip) && (
+                                        <button
+                                            onClick={() => setTracerouteTarget(inspectedLink.public_ip || inspectedLink.ip || inspectedLink.remote_ip || '')}
+                                            className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 border border-blue-500/20 text-[10px] font-bold transition-all cursor-pointer"
+                                        >
+                                            <Route size={11} /> Trace Path
+                                        </button>
+                                    )}
+                                </div>
+                            </div>
+                        )}
                     </ReactFlow>
                     </div>
 
@@ -4151,41 +4233,42 @@ function TopologyContent({ token }: TopologyProps) {
                                                                                     onClick={() => {
                                                                                         setLogicalViewSiteId(p.sourceSiteId);
                                                                                     }}
-                                                                                    className="bg-card-secondary/30 hover:bg-card-secondary/60 border border-border/50 hover:border-blue-500/40 py-1.5 px-2.5 rounded-xl transition-all cursor-pointer group"
+                                                                                    className="bg-card-secondary/30 hover:bg-card-secondary/60 border border-border/50 hover:border-blue-500/40 p-2 rounded-xl transition-all cursor-pointer group space-y-1"
                                                                                     title="Click to focus this site on canvas"
                                                                                 >
-                                                                                    <div className="flex items-center justify-between gap-1.5">
-                                                                                        {/* Source */}
-                                                                                        <div className="flex items-center gap-1 min-w-0">
-                                                                                            <span className="text-xs font-black text-text-primary truncate">{p.sourceSite}</span>
-                                                                                            <span className="text-[8px] font-mono text-sky-400 bg-sky-500/10 px-1 py-0.5 rounded border border-sky-500/20">{p.sourceCircuit}</span>
+                                                                                    {/* Row 1: Source Site ➔ Peer Site + Status Badge */}
+                                                                                    <div className="flex items-center justify-between gap-2">
+                                                                                        <div className="flex items-center gap-1.5 min-w-0 font-bold text-xs text-text-primary">
+                                                                                            <span className="truncate">{p.sourceSite}</span>
+                                                                                            <span className="text-text-muted/50 text-[10px]">➔</span>
+                                                                                            <span className="truncate">{p.peerSite}</span>
                                                                                         </div>
-
-                                                                                        {/* Status Pill */}
-                                                                                        <div className="shrink-0 flex items-center gap-1">
-                                                                                            <span className={cn(
-                                                                                                "px-1.5 py-0.5 rounded text-[8px] font-black uppercase tracking-wider border",
-                                                                                                isAct
-                                                                                                    ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/30"
-                                                                                                    : (isBk ? "bg-sky-500/10 text-sky-400 border-sky-500/30" : "bg-rose-500/10 text-rose-400 border-rose-500/30")
-                                                                                            )}>
-                                                                                                {isAct ? 'ACTIVE' : (isBk ? 'BACKUP' : 'DOWN')}
-                                                                                            </span>
-                                                                                        </div>
-
-                                                                                        {/* Peer */}
-                                                                                        <div className="flex items-center gap-1 justify-end min-w-0">
-                                                                                            <span className="text-[8px] font-mono text-purple-400 bg-purple-500/10 px-1 py-0.5 rounded border border-purple-500/20">{p.destCircuit}</span>
-                                                                                            <span className="text-xs font-black text-text-primary truncate">{p.peerSite}</span>
-                                                                                        </div>
+                                                                                        <span className={cn(
+                                                                                            "shrink-0 px-1.5 py-0.5 rounded text-[8px] font-black uppercase tracking-wider border",
+                                                                                            isAct
+                                                                                                ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/30"
+                                                                                                : (isBk ? "bg-sky-500/10 text-sky-400 border-sky-500/30" : "bg-rose-500/10 text-rose-400 border-rose-500/30")
+                                                                                        )}>
+                                                                                            {isAct ? 'ACTIVE' : (isBk ? 'BACKUP' : 'DOWN')}
+                                                                                        </span>
                                                                                     </div>
 
-                                                                                    {showBottomBar && (
-                                                                                        <div className="mt-1 pt-1 border-t border-border/30 flex items-center justify-between text-[9px] font-mono text-text-muted">
-                                                                                            {hasIps ? (
-                                                                                                <span>{(hasSrcIp ? p.srcIp : '—')} ➔ {(hasDstIp ? p.dstIp : '—')}</span>
-                                                                                            ) : <span className="text-text-muted/60">Stats</span>}
-                                                                                            {hasLatency && <span className="text-emerald-400 font-bold">{p.latency}ms</span>}
+                                                                                    {/* Row 2: Circuit Badges & Latency */}
+                                                                                    <div className="flex items-center justify-between text-[9px] font-mono text-text-muted pt-0.5">
+                                                                                        <div className="flex items-center gap-1 min-w-0">
+                                                                                            <span className="text-sky-400 bg-sky-500/10 px-1.5 py-0.2 rounded border border-sky-500/20 truncate max-w-[110px]">{p.sourceCircuit}</span>
+                                                                                            <span className="text-text-muted/40 text-[8px]">➔</span>
+                                                                                            <span className="text-purple-400 bg-purple-500/10 px-1.5 py-0.2 rounded border border-purple-500/20 truncate max-w-[110px]">{p.destCircuit}</span>
+                                                                                        </div>
+                                                                                        {hasLatency && (
+                                                                                            <span className="text-emerald-400 font-bold shrink-0">{p.latency}ms</span>
+                                                                                        )}
+                                                                                    </div>
+
+                                                                                    {/* Row 3: Real IPs (Only if actual IPs exist) */}
+                                                                                    {hasIps && (
+                                                                                        <div className="pt-1 border-t border-border/20 flex items-center justify-between text-[8px] font-mono text-text-muted/80">
+                                                                                            <span>{(hasSrcIp ? p.srcIp : '—')} ➔ {(hasDstIp ? p.dstIp : '—')}</span>
                                                                                         </div>
                                                                                     )}
                                                                                 </div>
