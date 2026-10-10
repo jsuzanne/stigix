@@ -4,7 +4,7 @@ All notable changes made specifically on the `v2` branch are documented in this 
 
 ## [v2.1.3-dev] - 2026-10-10 — SD-WAN Overlay Redesign, Transport Filtering, Viewport Auto-Fit & Drawer Crash Fix
 
-- **feat(topology-overlay)**: Redesigned SD-WAN Overlay module with 4 dedicated view modes (`WAN Transport`, `SD-WAN Mesh`, `SASE Fabric`, `VyOS Ports`) in `Topology.tsx`, set `WAN Transport (physical)` view as the default landing mode, and made the top transport ribbon available in both physical and overlay modes.
+- **feat(topology-overlay)**: Redesigned SD-WAN Overlay module with 4 dedicated view modes (`WAN Transport`, `SD-WAN Mesh`, `SASE Fabric`, `VyOS Ports`) in `Topology.tsx`, set `WAN Transport (physical)` view as the default landing mode, removed central Internet/MPLS carrier blocks from SD-WAN Mesh overlay view to eliminate visual clutter, and enforced strict English localization across all ribbons and drawers.
 - **feat(transport-inspection)**: Made Internet and MPLS carrier nodes interactive with live tunnel counters. Clicking a carrier filters SD-WAN overlay tunnels over that transport and opens a detailed tunnel telemetry drawer with active/backup/down states, RTT latency, packet loss, and site search.
 - **feat(site-focus)**: Added instant 1-click focus on any site (Hub or Spoke) to isolate and display only that site's direct SD-WAN tunnels, with canvas unselect and top filter ribbon.
 - **feat(edge-inspection)**: Added dedicated SD-WAN Overlay Tunnel Inspector drawer for clicked links showing source/dest site circuits, IPsec endpoints, routing state (Active/Backup/Down), VPN ID, vpState, RTT latency, and packet loss.

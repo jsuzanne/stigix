@@ -1768,8 +1768,8 @@ function TopologyContent({ token }: TopologyProps) {
                     }
                 });
             });
-        } else {
-            // CLOUDS: Rendered for physical and overlay modes!
+        } else if (topologyViewMode === 'physical') {
+            // CLOUDS: Rendered strictly for physical WAN Transport mode!
             let internetTunnelsCount = 0;
             let internetTunnelsUp = 0;
             let mplsTunnelsCount = 0;
@@ -2672,7 +2672,7 @@ function TopologyContent({ token }: TopologyProps) {
                                         : "text-text-muted hover:text-text-primary hover:bg-card-secondary"
                                 )}
                             >
-                                <span>{topologyViewMode === 'overlay' ? 'Tous les Tunnels' : 'Tous les Liens'}</span>
+                                <span>{topologyViewMode === 'overlay' ? 'All Tunnels' : 'All Links'}</span>
                             </button>
                             <button
                                 onClick={() => {
@@ -3779,7 +3779,7 @@ function TopologyContent({ token }: TopologyProps) {
                                                                         )}
                                                                     >
                                                                         <Filter size={13} />
-                                                                        {selectedNetwork === targetNetworkName ? 'Filtre Actif (Isolé)' : 'Focaliser sur le Canvas'}
+                                                                        {selectedNetwork === targetNetworkName ? 'Active Filter (Isolated)' : 'Focus on Canvas'}
                                                                     </button>
                                                                 </div>
                                                             </div>
@@ -3826,7 +3826,7 @@ function TopologyContent({ token }: TopologyProps) {
                                                                     <Search size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-text-muted" />
                                                                     <input
                                                                         type="text"
-                                                                        placeholder="Filtrer site..."
+                                                                        placeholder="Filter sites..."
                                                                         value={networkTunnelSearch}
                                                                         onChange={(e) => setNetworkTunnelSearch(e.target.value)}
                                                                         className="w-full bg-card-secondary/50 border border-border/60 rounded-lg pl-7 pr-2 py-1 text-[10px] text-text-primary placeholder:text-text-muted/60 focus:outline-none focus:border-blue-500"
@@ -3838,14 +3838,14 @@ function TopologyContent({ token }: TopologyProps) {
                                                             <div className="space-y-2">
                                                                 <div className="text-[10px] font-black text-text-muted uppercase tracking-widest flex items-center justify-between">
                                                                     <span className="flex items-center gap-1.5">
-                                                                        <Share2 size={12} /> Tunnels SD-WAN ({filteredNetworkPaths.length})
+                                                                        <Share2 size={12} /> SD-WAN Tunnels ({filteredNetworkPaths.length})
                                                                     </span>
                                                                 </div>
 
                                                                 <div className="max-h-[420px] overflow-y-auto space-y-1.5 pr-1 scrollbar-thin scrollbar-thumb-border">
                                                                     {filteredNetworkPaths.length === 0 ? (
                                                                         <div className="py-8 text-center text-text-muted text-xs italic">
-                                                                            Aucun tunnel SD-WAN trouvé sur {targetNetworkName}
+                                                                            No SD-WAN tunnels discovered on {targetNetworkName}
                                                                         </div>
                                                                     ) : (
                                                                         filteredNetworkPaths.map((p, idx) => {
@@ -3858,7 +3858,7 @@ function TopologyContent({ token }: TopologyProps) {
                                                                                         setLogicalViewSiteId(p.sourceSiteId);
                                                                                     }}
                                                                                     className="bg-card-secondary/30 hover:bg-card-secondary/60 border border-border/50 hover:border-blue-500/40 p-2.5 rounded-xl transition-all cursor-pointer group"
-                                                                                    title="Cliquer pour focaliser ce site sur le canvas"
+                                                                                    title="Click to focus this site on canvas"
                                                                                 >
                                                                                     <div className="flex items-center justify-between gap-1.5">
                                                                                         {/* Source */}
