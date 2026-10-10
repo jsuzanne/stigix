@@ -2701,8 +2701,9 @@ function TopologyContent({ token }: TopologyProps) {
             ) : (
                 <>
                     {/* Top Bar Header (Dedicated outside of ReactFlow canvas to eliminate any node overlap) */}
-                    <div className="px-5 py-2.5 border-b border-border bg-card/80 backdrop-blur-md flex items-center justify-between gap-4 z-20 shrink-0">
-                        <div className="flex items-center gap-3 shrink-0">
+                    <div className="relative px-5 py-2.5 border-b border-border bg-card/80 backdrop-blur-md flex items-center justify-between gap-4 z-20 shrink-0 min-h-[56px]">
+                        {/* Left: View Mode Icon & Title */}
+                        <div className="flex items-center gap-3 shrink-0 z-20">
                             <div className={cn(
                                 "p-2 rounded-xl text-white shadow-lg transition-all",
                                 logicalViewSiteId
@@ -2781,8 +2782,8 @@ function TopologyContent({ token }: TopologyProps) {
                             </div>
                         </div>
 
-                        {/* Top Bar Contextual Filters & Controls */}
-                        <div className="flex items-center gap-2 overflow-x-auto py-0.5">
+                        {/* Center: Contextual Filter Pills (Horizontally Centered in Top Bar) */}
+                        <div className="absolute left-1/2 -translate-x-1/2 top-1/2 -translate-y-1/2 flex items-center gap-2 z-10 pointer-events-auto">
                             {/* Mode 1 & 2: WAN Transport / SD-WAN Overlay Filters */}
                             {(topologyViewMode === 'overlay' || topologyViewMode === 'physical') && (
                                 <div className="bg-card-secondary/70 backdrop-blur-md border border-border p-1 rounded-xl shadow-sm flex items-center gap-1 animate-in fade-in duration-200">
@@ -2913,8 +2914,10 @@ function TopologyContent({ token }: TopologyProps) {
                                     </button>
                                 </div>
                             )}
+                        </div>
 
-                            {/* Clear Filter button if site focus or network filter active */}
+                        {/* Right: Actions / Clear Filter */}
+                        <div className="flex items-center gap-2 z-20 shrink-0 min-w-[32px]">
                             {(logicalViewSiteId || selectedNetwork) && (
                                 <button
                                     onClick={() => {
