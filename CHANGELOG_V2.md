@@ -2,7 +2,7 @@
 
 All notable changes made specifically on the `v2` branch are documented in this file.
 
-## [v2.2.6] - 2026-10-10 — Parallel Remote Fleet Upgrades, Leader Isolation & Interactive Circuit Spotlighting
+## [v2.2.7] - 2026-10-10 — Parallel Remote Fleet Upgrades, Leader Isolation & Interactive Circuit Spotlighting
 
 - **feat(settings)**: Dynamically excluded Leader node (`DC1-Ubuntu`) from the Fleet Nodes Maintenance table, avoiding accidental self-restarts while orchestrating remote nodes.
 - **feat(settings)**: Implemented parallel remote fleet upgrades with the new `⚡ Upgrade All Remote Nodes` header action, tracking per-node progress across 3 stages (`1/3 Pulling...`, `2/3 Restarting...`, `3/3 Reconnecting...`).
