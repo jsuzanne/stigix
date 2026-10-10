@@ -5,6 +5,28 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.2.0] - 2026-10-10 — Major Production Release
+
+### Added
+- **Modernized 4-Mode Topology Experience (`Topology.tsx`)**:
+  - Implemented 4 dedicated view modes: `WAN Transport (physical)` (default), `SD-WAN Mesh (overlay)`, `SASE Fabric`, and `VyOS Ports (underlay)`.
+  - In `SD-WAN Mesh (overlay)` mode, central carrier nodes (`cloud:INTERNET`, `cloud:MPLS`) are cleanly omitted to prioritize uncluttered direct site-to-site overlay tunnels.
+  - Interactive top transport filter ribbon (`All Tunnels / All Links`, `Internet`, `MPLS`, site-focused mesh) active across both Physical and Overlay views.
+  - Interactive Carrier & Tunnel Drawers: Clicking Internet or MPLS opens the SD-WAN Transport Carrier telemetry drawer (KPIs, site search, tunnels table). Clicking an overlay edge opens the SD-WAN Overlay Tunnel Inspector.
+  - Responsive Viewport Auto-Fit: Extended zoom bounds down to `minZoom = 0.12`, compacted vertical coordinate tiers to 1240px, auto-fit on window resize, and added a 1-click Auto-Fit toolbar button for seamless visibility on MacBook 13" and 27" screens.
+  - Enforced strict English UI localization across all ribbons, toolbar actions, and drawers.
+- **High-Precision Real-Time Failover Telemetry (`Failover.tsx`, `App.tsx`)**:
+  - Activated 500ms (2x/sec) fast polling specifically for Failover Lab, querying the lightweight `/api/convergence/status` endpoint directly without shell process spawning.
+  - Real-time in-place metric updates: live packet counts, instantaneous RTT, jitter, loss, and outage counters update smoothly without 3-4s lag.
+  - Deduplicated time-series slots: rolling live metrics update the active 1-second slot in-place, keeping time windows (1m, 5m, 15m) perfectly calibrated while strictly capping chart memory to 3600 points (< 200 KB).
+  - Aligned view state conditions (`view === 'failover' || view === 'convergence'`) across core dashboard and remote peer gateway loops.
+- **Frictionless Local Container Self-Upgrade (`Settings.tsx`)**:
+  - Removed native browser `confirm()` modal on 1-click local Docker upgrades, launching the progress modal (pulling, recreation, auto-prune, and reconnect radar) immediately upon click.
+
+### Removed
+- **Digital Experience (DEM) Automatic Probe Note (`ConnectivityPerformance.tsx`)**:
+  - Suppressed redundant `Probes run automatically every 1 minute.` subtitle banner from the DEM score calculation description.
+
 ## [2.1.2] - 2026-10-09
 
 ### Added

@@ -1,9 +1,9 @@
-> **Last Updated:** 2026-10-08 | **Created:** 2026-01-25 (v1.0.0)
+> **Last Updated:** 2026-10-10 | **Created:** 2026-01-25 (v1.0.0)
 
 # 🕸️ Stigix — Advanced Networking & Security Simulation Environment
 
-[![Version](https://img.shields.io/badge/Version-2.1.1-blue.svg)](https://github.com/jsuzanne/stigix/releases)
-[![Last Updated](https://img.shields.io/badge/Updated-2026--10--08-brightgreen.svg)](CHANGELOG_V2.md)
+[![Version](https://img.shields.io/badge/Version-2.2.0-blue.svg)](https://github.com/jsuzanne/stigix/releases)
+[![Last Updated](https://img.shields.io/badge/Updated-2026--10--10-brightgreen.svg)](CHANGELOG_V2.md)
 [![Docker Pulls](https://img.shields.io/docker/pulls/jlsuzanne/stigix)](https://hub.docker.com/r/jlsuzanne/stigix)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
@@ -123,6 +123,13 @@ This project is my way to turn all that lab and demo experience into an open-sou
 ## 🆕 What's New
 
 The project is evolving rapidly with major features, engines, and UX refinements in every release.
+
+### 🚀 Stigix 2.2 — Modernized Topology, Real-Time Failover & Multi-Arch Release *(v2.2.0)*
+
+- **🗺️ Modernized 4-Mode Topology Experience** — Dedicated views for WAN Transport (Physical), SD-WAN Mesh Overlay, SASE Fabric, and VyOS Underlay. Features direct carrier telemetry inspection drawers, responsive MacBook 13"/27" viewport auto-fit, and top transport filter ribbons.
+- **⏱️ High-Precision Real-Time Failover Telemetry** — Ultra-responsive 500ms live polling (2x/sec) for instant RTT, jitter, loss, and packet exchange updates during SD-WAN/SASE failover testing.
+- **⚡ Frictionless Local Container Self-Upgrade** — Streamlined 1-click upgrades without blocking browser confirmation dialogs, backed by detached ephemeral container recreation and auto-prune.
+- **🐳 Multi-Architecture Production Docker Builds** — Official multi-arch (`linux/amd64` + `linux/arm64`) release published with `:latest`, `:stable`, and `:2.2.0` Docker Hub tags.
 
 ### 🚀 Stigix 2.1.2 — Leader-Orchestrated Remote Upgrades, SASE Fabric Topology & Resilient In-Place Maintenance *(v2.1.2)*
 
