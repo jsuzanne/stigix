@@ -2701,10 +2701,10 @@ function TopologyContent({ token }: TopologyProps) {
             ) : (
                 <>
                     {/* Top Bar Header (Dedicated outside of ReactFlow canvas to eliminate any node overlap) */}
-                    <div className="px-5 py-3 border-b border-border bg-card/75 backdrop-blur-md flex items-center justify-between gap-4 z-20 shrink-0">
-                        <div className="flex items-center gap-3">
+                    <div className="px-5 py-2.5 border-b border-border bg-card/80 backdrop-blur-md flex items-center justify-between gap-4 z-20 shrink-0">
+                        <div className="flex items-center gap-3 shrink-0">
                             <div className={cn(
-                                "p-2.5 rounded-xl text-white shadow-lg transition-all",
+                                "p-2 rounded-xl text-white shadow-lg transition-all",
                                 logicalViewSiteId
                                     ? "bg-purple-600 shadow-purple-500/25"
                                     : (selectedNetwork
@@ -2718,21 +2718,21 @@ function TopologyContent({ token }: TopologyProps) {
                                                     : "bg-sky-600 shadow-sky-500/25"))
                             )}>
                                 {logicalViewSiteId ? (
-                                    <Network size={18} />
+                                    <Network size={16} />
                                 ) : selectedNetwork ? (
-                                    <Cloud size={18} />
+                                    <Cloud size={16} />
                                 ) : topologyViewMode === 'overlay' ? (
-                                    <Share2 size={18} />
+                                    <Share2 size={16} />
                                 ) : topologyViewMode === 'underlay' ? (
-                                    <Server size={18} />
+                                    <Server size={16} />
                                 ) : topologyViewMode === 'sase' ? (
-                                    <Shield size={18} />
+                                    <Shield size={16} />
                                 ) : (
-                                    <Globe size={18} />
+                                    <Globe size={16} />
                                 )}
                             </div>
                             <div>
-                                <div className="flex items-center gap-2.5">
+                                <div className="flex items-center gap-2">
                                     <h1 className="text-sm font-black text-text-primary uppercase tracking-tight">
                                         {logicalViewSiteId ? (
                                             <>
@@ -2781,18 +2781,153 @@ function TopologyContent({ token }: TopologyProps) {
                             </div>
                         </div>
 
-                        {(logicalViewSiteId || selectedNetwork) && (
-                            <button
-                                onClick={() => {
-                                    setLogicalViewSiteId(null);
-                                    setSelectedNetwork(null);
-                                    if (selectedObject?.type === 'network' || selectedObject?.site_id) setSelectedObject(null);
-                                }}
-                                className="bg-red-500/10 hover:bg-red-500/20 text-red-500 border border-red-500/25 px-3.5 py-1.5 rounded-xl text-[10px] font-black tracking-widest uppercase transition-all flex items-center gap-2 cursor-pointer shadow-sm shadow-red-500/10"
-                            >
-                                <X size={12} /> Clear Filter (All Sites)
-                            </button>
-                        )}
+                        {/* Top Bar Contextual Filters & Controls */}
+                        <div className="flex items-center gap-2 overflow-x-auto py-0.5">
+                            {/* Mode 1 & 2: WAN Transport / SD-WAN Overlay Filters */}
+                            {(topologyViewMode === 'overlay' || topologyViewMode === 'physical') && (
+                                <div className="bg-card-secondary/70 backdrop-blur-md border border-border p-1 rounded-xl shadow-sm flex items-center gap-1 animate-in fade-in duration-200">
+                                    <div className="px-2 py-0.5 text-[9px] font-black text-text-muted uppercase tracking-wider flex items-center gap-1 border-r border-border/60 shrink-0">
+                                        <Share2 size={11} className="text-blue-400" />
+                                        <span>{topologyViewMode === 'overlay' ? 'SD-WAN Overlay:' : 'WAN Transport:'}</span>
+                                    </div>
+                                    <button
+                                        onClick={() => {
+                                            setSelectedNetwork(null);
+                                            if (selectedObject?.type === 'network') setSelectedObject(null);
+                                        }}
+                                        className={cn(
+                                            "px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all cursor-pointer flex items-center gap-1 shrink-0",
+                                            selectedNetwork === null
+                                                ? "bg-blue-600 text-white shadow-sm shadow-blue-500/25"
+                                                : "text-text-muted hover:text-text-primary hover:bg-card/80"
+                                        )}
+                                    >
+                                        <span>{topologyViewMode === 'overlay' ? 'All Tunnels' : 'All Links'}</span>
+                                    </button>
+                                    <button
+                                        onClick={() => {
+                                            setSelectedNetwork('INTERNET');
+                                            setSelectedObject({ type: 'network', network: 'INTERNET', wan_network: 'INTERNET', name: 'INTERNET' });
+                                        }}
+                                        className={cn(
+                                            "px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all cursor-pointer flex items-center gap-1 shrink-0",
+                                            selectedNetwork === 'INTERNET'
+                                                ? "bg-sky-600 text-white shadow-sm shadow-sky-500/25"
+                                                : "text-text-muted hover:text-sky-400 hover:bg-card/80"
+                                        )}
+                                    >
+                                        <Cloud size={11} className="text-sky-400" />
+                                        <span>Internet</span>
+                                    </button>
+                                    <button
+                                        onClick={() => {
+                                            setSelectedNetwork('MPLS');
+                                            setSelectedObject({ type: 'network', network: 'MPLS', wan_network: 'MPLS', name: 'MPLS' });
+                                        }}
+                                        className={cn(
+                                            "px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all cursor-pointer flex items-center gap-1 shrink-0",
+                                            selectedNetwork === 'MPLS'
+                                                ? "bg-purple-600 text-white shadow-sm shadow-purple-500/25"
+                                                : "text-text-muted hover:text-purple-400 hover:bg-card/80"
+                                        )}
+                                    >
+                                        <Network size={11} className="text-purple-400" />
+                                        <span>MPLS</span>
+                                    </button>
+                                    {logicalViewSiteId && (
+                                        <div className="pl-1.5 border-l border-border/60 flex items-center gap-1 shrink-0">
+                                            <span className="text-[9px] font-black text-amber-400 bg-amber-500/10 border border-amber-500/20 px-2 py-0.5 rounded-md">
+                                                Site: {topology?.sites?.find((s: any) => s.site_id === logicalViewSiteId)?.site_name || logicalViewSiteId}
+                                            </span>
+                                            <button
+                                                onClick={() => {
+                                                    setLogicalViewSiteId(null);
+                                                    if (selectedObject?.site_id) setSelectedObject(null);
+                                                }}
+                                                className="p-1 hover:bg-card text-text-muted hover:text-rose-400 rounded-md transition-colors cursor-pointer"
+                                                title="Clear Site Focus"
+                                            >
+                                                <X size={11} />
+                                            </button>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+
+                            {/* Mode 3: SASE Security Fabric Path Filter */}
+                            {topologyViewMode === 'sase' && (
+                                <div className="bg-card-secondary/70 backdrop-blur-md border border-border p-1 rounded-xl shadow-sm flex items-center gap-1 animate-in fade-in duration-200">
+                                    <div className="px-2 py-0.5 text-[9px] font-black text-text-muted uppercase tracking-wider flex items-center gap-1 border-r border-border/60 shrink-0">
+                                        <Shield size={11} className="text-purple-400" />
+                                        <span>SASE Filter:</span>
+                                    </div>
+                                    <button
+                                        onClick={() => setSaseTunnelTypeFilter('ALL')}
+                                        className={cn(
+                                            "px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all cursor-pointer flex items-center gap-1 shrink-0",
+                                            saseTunnelTypeFilter === 'ALL'
+                                                ? "bg-purple-600 text-white shadow-sm shadow-purple-500/25"
+                                                : "text-text-muted hover:text-text-primary hover:bg-card/80"
+                                        )}
+                                    >
+                                        <span>All Paths</span>
+                                        <span className="px-1.5 py-0.5 rounded-full text-[9px] bg-white/20 font-mono font-bold">
+                                            {topology?.sase_infrastructure?.total_service_links || 25}
+                                        </span>
+                                    </button>
+                                    <button
+                                        onClick={() => setSaseTunnelTypeFilter('ACTIVE')}
+                                        className={cn(
+                                            "px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all cursor-pointer flex items-center gap-1 shrink-0",
+                                            saseTunnelTypeFilter === 'ACTIVE'
+                                                ? "bg-emerald-600 text-white shadow-sm shadow-emerald-500/25"
+                                                : "text-text-muted hover:text-emerald-400 hover:bg-card/80"
+                                        )}
+                                    >
+                                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                                        <span>Active Only</span>
+                                    </button>
+                                    <button
+                                        onClick={() => setSaseTunnelTypeFilter('BACKUP')}
+                                        className={cn(
+                                            "px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all cursor-pointer flex items-center gap-1 shrink-0",
+                                            saseTunnelTypeFilter === 'BACKUP'
+                                                ? "bg-cyan-600 text-white shadow-sm shadow-cyan-500/25"
+                                                : "text-text-muted hover:text-cyan-400 hover:bg-card/80"
+                                        )}
+                                    >
+                                        <span className="w-1.5 h-1.5 rounded-full bg-cyan-400" />
+                                        <span>Backup Only</span>
+                                    </button>
+                                    <button
+                                        onClick={() => setSaseTunnelTypeFilter('DOWN')}
+                                        className={cn(
+                                            "px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all cursor-pointer flex items-center gap-1 shrink-0",
+                                            saseTunnelTypeFilter === 'DOWN'
+                                                ? "bg-rose-600 text-white shadow-sm shadow-rose-500/25"
+                                                : "text-text-muted hover:text-rose-400 hover:bg-card/80"
+                                        )}
+                                    >
+                                        <span className="w-1.5 h-1.5 rounded-full bg-rose-400" />
+                                        <span>Down / Standby</span>
+                                    </button>
+                                </div>
+                            )}
+
+                            {/* Clear Filter button if site focus or network filter active */}
+                            {(logicalViewSiteId || selectedNetwork) && (
+                                <button
+                                    onClick={() => {
+                                        setLogicalViewSiteId(null);
+                                        setSelectedNetwork(null);
+                                        if (selectedObject?.type === 'network' || selectedObject?.site_id) setSelectedObject(null);
+                                    }}
+                                    className="bg-red-500/10 hover:bg-red-500/20 text-red-500 border border-red-500/25 px-3 py-1.5 rounded-xl text-[10px] font-black tracking-widest uppercase transition-all flex items-center gap-1.5 cursor-pointer shadow-sm shadow-red-500/10 shrink-0"
+                                >
+                                    <X size={12} /> Clear Filter
+                                </button>
+                            )}
+                        </div>
                     </div>
 
                     {/* Canvas & Floating Drawers Container */}
@@ -2915,136 +3050,7 @@ function TopologyContent({ token }: TopologyProps) {
                             <div className="p-4 bg-card-secondary/30 rounded-b-3xl text-[10px] text-text-muted font-bold text-center italic border-t border-border">
                                 {visibleSiteIds?.length || 0} of {topology.sites.length} sites visible
                             </div>
-                        </div>
-                    )}
-
-                    {/* Global SD-WAN / WAN Transport Filter Ribbon */}
-                    {(topologyViewMode === 'overlay' || topologyViewMode === 'physical') && (
-                        <div className="absolute top-4 left-1/2 -translate-x-1/2 z-20 pointer-events-auto bg-card/90 backdrop-blur-xl border border-border p-1.5 rounded-2xl shadow-2xl flex items-center gap-1.5 animate-in fade-in slide-in-from-top-4 duration-300">
-                            <div className="px-2.5 py-1 text-[10px] font-black text-text-muted uppercase tracking-wider flex items-center gap-1.5 border-r border-border/60">
-                                <Share2 size={12} className="text-blue-400" /> {topologyViewMode === 'overlay' ? 'SD-WAN Overlay:' : 'WAN Transport:'}
-                            </div>
-                            <button
-                                onClick={() => {
-                                    setSelectedNetwork(null);
-                                    if (selectedObject?.type === 'network') setSelectedObject(null);
-                                }}
-                                className={cn(
-                                    "px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all cursor-pointer flex items-center gap-1.5",
-                                    selectedNetwork === null
-                                        ? "bg-blue-600 text-white shadow-md shadow-blue-500/25"
-                                        : "text-text-muted hover:text-text-primary hover:bg-card-secondary"
-                                )}
-                            >
-                                <span>{topologyViewMode === 'overlay' ? 'All Tunnels' : 'All Links'}</span>
-                            </button>
-                            <button
-                                onClick={() => {
-                                    setSelectedNetwork('INTERNET');
-                                    setSelectedObject({ type: 'network', network: 'INTERNET', wan_network: 'INTERNET', name: 'INTERNET' });
-                                }}
-                                className={cn(
-                                    "px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all cursor-pointer flex items-center gap-1.5",
-                                    selectedNetwork === 'INTERNET'
-                                        ? "bg-sky-600 text-white shadow-md shadow-sky-500/25"
-                                        : "text-text-muted hover:text-sky-400 hover:bg-card-secondary"
-                                )}
-                            >
-                                <Cloud size={12} className="text-sky-400" />
-                                <span>Internet</span>
-                            </button>
-                            <button
-                                onClick={() => {
-                                    setSelectedNetwork('MPLS');
-                                    setSelectedObject({ type: 'network', network: 'MPLS', wan_network: 'MPLS', name: 'MPLS' });
-                                }}
-                                className={cn(
-                                    "px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all cursor-pointer flex items-center gap-1.5",
-                                    selectedNetwork === 'MPLS'
-                                        ? "bg-purple-600 text-white shadow-md shadow-purple-500/25"
-                                        : "text-text-muted hover:text-purple-400 hover:bg-card-secondary"
-                                )}
-                            >
-                                <Network size={12} className="text-purple-400" />
-                                <span>MPLS</span>
-                            </button>
-                            {logicalViewSiteId && (
-                                <div className="pl-1.5 border-l border-border/60 flex items-center gap-1">
-                                    <span className="text-[10px] font-black text-amber-400 bg-amber-500/10 border border-amber-500/20 px-2 py-0.5 rounded-lg">
-                                        Site: {topology?.sites?.find((s: any) => s.site_id === logicalViewSiteId)?.site_name || logicalViewSiteId}
-                                    </span>
-                                    <button
-                                        onClick={() => {
-                                            setLogicalViewSiteId(null);
-                                            if (selectedObject?.site_id) setSelectedObject(null);
-                                        }}
-                                        className="p-1 hover:bg-card-secondary text-text-muted hover:text-rose-400 rounded-lg transition-colors cursor-pointer"
-                                        title="Clear Site Focus"
-                                    >
-                                        <X size={12} />
-                                    </button>
-                                </div>
-                            )}
-                        </div>
-                    )}
-
-                    {/* Global SASE Path Type Filter Ribbon */}
-                    {topologyViewMode === 'sase' && (
-                        <div className="absolute top-4 left-1/2 -translate-x-1/2 z-20 pointer-events-auto bg-card/90 backdrop-blur-xl border border-border p-1.5 rounded-2xl shadow-2xl flex items-center gap-1.5 animate-in fade-in slide-in-from-top-4 duration-300">
-                            <div className="px-2.5 py-1 text-[10px] font-black text-text-muted uppercase tracking-wider flex items-center gap-1.5 border-r border-border/60">
-                                <Shield size={12} className="text-purple-400" /> SASE Filter:
-                            </div>
-                            <button
-                                onClick={() => setSaseTunnelTypeFilter('ALL')}
-                                className={cn(
-                                    "px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all cursor-pointer flex items-center gap-1.5",
-                                    saseTunnelTypeFilter === 'ALL'
-                                        ? "bg-purple-600 text-white shadow-md shadow-purple-500/25"
-                                        : "text-text-muted hover:text-text-primary hover:bg-card-secondary"
-                                )}
-                            >
-                                <span>All Paths</span>
-                                <span className="px-1.5 py-0.5 rounded-full text-[9px] bg-white/20 font-mono font-bold">
-                                    {topology?.sase_infrastructure?.total_service_links || 25}
-                                </span>
-                            </button>
-                            <button
-                                onClick={() => setSaseTunnelTypeFilter('ACTIVE')}
-                                className={cn(
-                                    "px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all cursor-pointer flex items-center gap-1.5",
-                                    saseTunnelTypeFilter === 'ACTIVE'
-                                        ? "bg-emerald-600 text-white shadow-md shadow-emerald-500/25"
-                                        : "text-text-muted hover:text-emerald-400 hover:bg-card-secondary"
-                                )}
-                            >
-                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-                                <span>Active Only</span>
-                            </button>
-                            <button
-                                onClick={() => setSaseTunnelTypeFilter('BACKUP')}
-                                className={cn(
-                                    "px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all cursor-pointer flex items-center gap-1.5",
-                                    saseTunnelTypeFilter === 'BACKUP'
-                                        ? "bg-cyan-600 text-white shadow-md shadow-cyan-500/25"
-                                        : "text-text-muted hover:text-cyan-400 hover:bg-card-secondary"
-                                )}
-                            >
-                                <span className="w-1.5 h-1.5 rounded-full bg-cyan-400" />
-                                <span>Backup Only</span>
-                            </button>
-                            <button
-                                onClick={() => setSaseTunnelTypeFilter('DOWN')}
-                                className={cn(
-                                    "px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all cursor-pointer flex items-center gap-1.5",
-                                    saseTunnelTypeFilter === 'DOWN'
-                                        ? "bg-rose-600 text-white shadow-md shadow-rose-500/25"
-                                        : "text-text-muted hover:text-rose-400 hover:bg-card-secondary"
-                                )}
-                            >
-                                <span className="w-1.5 h-1.5 rounded-full bg-rose-400" />
-                                <span>Down / Standby</span>
-                            </button>
-                        </div>
+                         </div>
                     )}
 
                     <ReactFlow
