@@ -2933,8 +2933,10 @@ function TopologyContent({ token }: TopologyProps) {
                         </div>
                     </div>
 
-                    {/* Canvas & Floating Drawers Container */}
-                    <div className="relative flex-1 w-full min-h-0">
+                    {/* Canvas & Floating Drawers Container (Split-Pane Push Layout) */}
+                    <div className="relative flex-1 flex flex-row w-full min-h-0 overflow-hidden">
+                        {/* Canvas Area (resizes to calc(100% - 360px) when detail drawer opens) */}
+                        <div className="flex-1 min-w-0 h-full relative">
                         {/* Filter Panel Overlay */}
                     {showFilter && topology && (
                         <div className="absolute top-20 right-4 z-[60] w-[350px] bg-card/95 backdrop-blur-xl border border-border rounded-3xl shadow-2xl animate-in fade-in slide-in-from-top-4 duration-300 max-h-[70vh] flex flex-col">
@@ -3067,6 +3069,7 @@ function TopologyContent({ token }: TopologyProps) {
                             setSelectedObject(null);
                             setSelectedNetwork(null);
                             setLogicalViewSiteId(null);
+                            setShowUnderlayPanel(false);
                         }}
                         minZoom={0.12}
                         maxZoom={2.5}
@@ -3494,18 +3497,16 @@ function TopologyContent({ token }: TopologyProps) {
                             </div>
                         </Panel>
                     </ReactFlow>
+                    </div>
 
-                    {/* Site Details Side Panel */}
-                    <div className={cn(
-                        "absolute top-4 bottom-4 right-4 w-[450px] bg-card/95 backdrop-blur-xl border border-border rounded-3xl shadow-2xl transition-all duration-500 z-50 overflow-hidden transform",
-                        selectedObject ? "translate-x-0 opacity-100" : "translate-x-[calc(100%+20px)] opacity-0"
-                    )}>
-                        {selectedObject && (
-                            <div className="flex flex-col h-full">
-                                <div className="p-6 border-b border-border bg-card-secondary/30 flex items-center justify-between">
-                                    <div className="flex items-center gap-3">
+                    {/* Site Details Side Panel (Push Layout Split-Pane - 360px) */}
+                    {selectedObject && (
+                        <div className="w-[360px] h-full border-l border-border bg-card/95 backdrop-blur-xl flex flex-col z-30 shrink-0 shadow-2xl transition-all duration-300 animate-in slide-in-from-right overflow-hidden">
+                            <div className="flex flex-col h-full min-h-0">
+                                <div className="p-4 border-b border-border bg-card-secondary/30 flex items-center justify-between shrink-0">
+                                    <div className="flex items-center gap-2.5 min-w-0">
                                         <div className={cn(
-                                            "p-2.5 rounded-xl",
+                                            "p-2 rounded-xl shrink-0",
                                             selectedObject.type === 'network'
                                                 ? (selectedObject.network === 'INTERNET' ? "bg-sky-500 text-white shadow-lg shadow-sky-500/30" : "bg-purple-600 text-white shadow-lg shadow-purple-500/30")
                                                 : selectedObject.isSaseEdge || selectedObject.isSasePop
@@ -3513,14 +3514,14 @@ function TopologyContent({ token }: TopologyProps) {
                                                     : (selectedObject.type === 'node' ? "bg-blue-500 text-white" : "bg-purple-500 text-white")
                                         )}>
                                             {selectedObject.type === 'network' ? (
-                                                <Cloud size={18} />
+                                                <Cloud size={16} />
                                             ) : selectedObject.isSaseEdge || selectedObject.isSasePop ? (
-                                                <Shield size={18} />
-                                            ) : (selectedObject.role === 'HUB' ? <Server size={18} /> : <Home size={18} />)}
+                                                <Shield size={16} />
+                                            ) : (selectedObject.role === 'HUB' ? <Server size={16} /> : <Home size={16} />)}
                                         </div>
-                                        <div>
-                                            <h3 className="text-lg font-black text-text-primary tracking-tight">{selectedObject.name || selectedObject.label}</h3>
-                                            <p className="text-[10px] text-text-muted font-bold tracking-widest uppercase">
+                                        <div className="min-w-0">
+                                            <h3 className="text-sm font-black text-text-primary tracking-tight truncate">{selectedObject.name || selectedObject.label}</h3>
+                                            <p className="text-[9px] text-text-muted font-bold tracking-widest uppercase truncate">
                                                 {selectedObject.type === 'network'
                                                     ? 'SD-WAN Transport Carrier'
                                                     : selectedObject.isSasePop
@@ -3533,12 +3534,12 @@ function TopologyContent({ token }: TopologyProps) {
                                             </p>
                                         </div>
                                     </div>
-                                    <button onClick={() => setSelectedObject(null)} className="p-1.5 hover:bg-card-secondary rounded-lg text-text-muted transition-colors">
-                                        <X size={20} />
+                                    <button onClick={() => setSelectedObject(null)} className="p-1 hover:bg-card-secondary rounded-lg text-text-muted transition-colors shrink-0">
+                                        <X size={18} />
                                     </button>
                                 </div>
 
-                                <div className="flex-1 overflow-y-auto p-6 space-y-6 scrollbar-thin scrollbar-thumb-border">
+                                <div className="flex-1 overflow-y-auto p-4 space-y-4 scrollbar-thin scrollbar-thumb-border min-h-0">
                                     {selectedObject.isSasePop ? (
 <div className="space-y-5">
                                             {/* SASE PoP Banner with Official Brand Logo */}
@@ -4029,65 +4030,65 @@ function TopologyContent({ token }: TopologyProps) {
                                                     });
 
                                                     return (
-                                                        <div className="space-y-5">
+                                                        <div className="space-y-3.5">
                                                             {/* Provider Card with Spotlight Actions */}
                                                             <div className={cn(
-                                                                "border p-5 rounded-3xl flex flex-col items-center gap-3 shadow-lg",
+                                                                "border p-3.5 rounded-2xl flex flex-col items-center gap-2 shadow-lg",
                                                                 isTargetMpls
                                                                     ? "bg-purple-950/20 border-purple-500/30 shadow-purple-500/10"
                                                                     : "bg-sky-950/20 border-sky-500/30 shadow-sky-500/10"
                                                             )}>
                                                                 <div className={cn(
-                                                                    "p-3 rounded-2xl shadow-xl flex items-center justify-center border",
+                                                                    "p-2 rounded-xl shadow-md flex items-center justify-center border",
                                                                     isTargetMpls ? "bg-purple-600/30 border-purple-500/40 text-purple-300" : "bg-sky-600/30 border-sky-500/40 text-sky-300"
                                                                 )}>
-                                                                    <Cloud size={28} />
+                                                                    <Cloud size={22} />
                                                                 </div>
                                                                 <div className="text-center">
-                                                                    <div className="text-lg font-black text-text-primary tracking-tight leading-tight uppercase">
+                                                                    <div className="text-base font-black text-text-primary tracking-tight leading-tight uppercase">
                                                                         {targetNetworkName} OVERLAY
                                                                     </div>
-                                                                    <div className="text-[10px] text-text-muted font-bold tracking-widest uppercase mt-1">
+                                                                    <div className="text-[9px] text-text-muted font-bold tracking-widest uppercase mt-0.5">
                                                                         SD-WAN Transport Carrier
                                                                     </div>
                                                                 </div>
 
                                                                 {/* Quick Focus Button on Canvas */}
-                                                                <div className="flex gap-2 w-full pt-1">
+                                                                <div className="flex gap-2 w-full pt-0.5">
                                                                     <button
                                                                         onClick={() => {
                                                                             setSelectedNetwork(prev => prev === targetNetworkName ? null : targetNetworkName);
                                                                         }}
                                                                         className={cn(
-                                                                            "flex-1 py-2 px-3 rounded-xl text-xs font-black uppercase tracking-wider transition-all border flex items-center justify-center gap-2 cursor-pointer shadow-sm",
+                                                                            "flex-1 py-1.5 px-3 rounded-xl text-xs font-black uppercase tracking-wider transition-all border flex items-center justify-center gap-1.5 cursor-pointer shadow-sm",
                                                                             selectedNetwork === targetNetworkName
                                                                                 ? (isTargetMpls ? "bg-purple-600 border-purple-500 text-white shadow-purple-500/25" : "bg-sky-600 border-sky-500 text-white shadow-sky-500/25")
                                                                                 : "bg-card-secondary/40 border-border/50 text-text-primary hover:bg-card-secondary"
                                                                         )}
                                                                     >
-                                                                        <Filter size={13} />
+                                                                        <Filter size={12} />
                                                                         {selectedNetwork === targetNetworkName ? 'Active Filter (Isolated)' : 'Focus on Canvas'}
                                                                     </button>
                                                                 </div>
                                                             </div>
 
                                                             {/* KPI Summary Cards */}
-                                                            <div className="grid grid-cols-4 gap-2">
-                                                                <div className="bg-card-secondary/40 border border-border/50 p-2.5 rounded-2xl text-center">
-                                                                    <div className="text-[9px] font-black uppercase tracking-wider text-text-muted">Total</div>
-                                                                    <div className="text-base font-black text-text-primary mt-0.5">{totalPaths}</div>
+                                                            <div className="grid grid-cols-4 gap-1.5">
+                                                                <div className="bg-card-secondary/40 border border-border/50 p-2 rounded-xl text-center">
+                                                                    <div className="text-[8px] font-black uppercase tracking-wider text-text-muted">Total</div>
+                                                                    <div className="text-sm font-black text-text-primary mt-0.5">{totalPaths}</div>
                                                                 </div>
-                                                                <div className="bg-emerald-500/10 border border-emerald-500/20 p-2.5 rounded-2xl text-center">
-                                                                    <div className="text-[9px] font-black uppercase tracking-wider text-emerald-400">Active</div>
-                                                                    <div className="text-base font-black text-emerald-400 mt-0.5">{activePaths}</div>
+                                                                <div className="bg-emerald-500/10 border border-emerald-500/20 p-2 rounded-xl text-center">
+                                                                    <div className="text-[8px] font-black uppercase tracking-wider text-emerald-400">Active</div>
+                                                                    <div className="text-sm font-black text-emerald-400 mt-0.5">{activePaths}</div>
                                                                 </div>
-                                                                <div className="bg-sky-500/10 border border-sky-500/20 p-2.5 rounded-2xl text-center">
-                                                                    <div className="text-[9px] font-black uppercase tracking-wider text-sky-400">Backup</div>
-                                                                    <div className="text-base font-black text-sky-400 mt-0.5">{backupPaths}</div>
+                                                                <div className="bg-sky-500/10 border border-sky-500/20 p-2 rounded-xl text-center">
+                                                                    <div className="text-[8px] font-black uppercase tracking-wider text-sky-400">Backup</div>
+                                                                    <div className="text-sm font-black text-sky-400 mt-0.5">{backupPaths}</div>
                                                                 </div>
-                                                                <div className="bg-rose-500/10 border border-rose-500/20 p-2.5 rounded-2xl text-center">
-                                                                    <div className="text-[9px] font-black uppercase tracking-wider text-rose-400">Down</div>
-                                                                    <div className="text-base font-black text-rose-400 mt-0.5">{downPaths}</div>
+                                                                <div className="bg-rose-500/10 border border-rose-500/20 p-2 rounded-xl text-center">
+                                                                    <div className="text-[8px] font-black uppercase tracking-wider text-rose-400">Down</div>
+                                                                    <div className="text-sm font-black text-rose-400 mt-0.5">{downPaths}</div>
                                                                 </div>
                                                             </div>
 
@@ -4099,7 +4100,7 @@ function TopologyContent({ token }: TopologyProps) {
                                                                             key={f}
                                                                             onClick={() => setNetworkTunnelFilter(f)}
                                                                             className={cn(
-                                                                                "px-2 py-1 rounded-lg text-[9px] font-black uppercase tracking-wider transition-all border cursor-pointer",
+                                                                                "px-1.5 py-0.5 rounded-lg text-[8px] font-black uppercase tracking-wider transition-all border cursor-pointer",
                                                                                 networkTunnelFilter === f
                                                                                     ? "bg-blue-600 border-blue-500 text-white shadow-md shadow-blue-500/20"
                                                                                     : "bg-card-secondary/40 border-border/40 text-text-muted hover:text-text-primary"
@@ -4109,42 +4110,48 @@ function TopologyContent({ token }: TopologyProps) {
                                                                         </button>
                                                                     ))}
                                                                 </div>
-                                                                <div className="relative flex-1 max-w-[150px]">
-                                                                    <Search size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-text-muted" />
+                                                                <div className="relative flex-1 max-w-[130px]">
+                                                                    <Search size={11} className="absolute left-2 top-1/2 -translate-y-1/2 text-text-muted" />
                                                                     <input
                                                                         type="text"
-                                                                        placeholder="Filter sites..."
+                                                                        placeholder="Filter..."
                                                                         value={networkTunnelSearch}
                                                                         onChange={(e) => setNetworkTunnelSearch(e.target.value)}
-                                                                        className="w-full bg-card-secondary/50 border border-border/60 rounded-lg pl-7 pr-2 py-1 text-[10px] text-text-primary placeholder:text-text-muted/60 focus:outline-none focus:border-blue-500"
+                                                                        className="w-full bg-card-secondary/50 border border-border/60 rounded-lg pl-5 pr-2 py-0.5 text-[9px] text-text-primary placeholder:text-text-muted/60 focus:outline-none focus:border-blue-500"
                                                                     />
                                                                 </div>
                                                             </div>
 
                                                             {/* Tunnels List */}
-                                                            <div className="space-y-2">
-                                                                <div className="text-[10px] font-black text-text-muted uppercase tracking-widest flex items-center justify-between">
+                                                            <div className="space-y-1.5">
+                                                                <div className="text-[9px] font-black text-text-muted uppercase tracking-widest flex items-center justify-between">
                                                                     <span className="flex items-center gap-1.5">
-                                                                        <Share2 size={12} /> SD-WAN Tunnels ({filteredNetworkPaths.length})
+                                                                        <Share2 size={11} /> SD-WAN Tunnels ({filteredNetworkPaths.length})
                                                                     </span>
                                                                 </div>
 
-                                                                <div className="max-h-[420px] overflow-y-auto space-y-1.5 pr-1 scrollbar-thin scrollbar-thumb-border">
+                                                                <div className="max-h-[480px] overflow-y-auto space-y-1 pr-0.5 scrollbar-thin scrollbar-thumb-border">
                                                                     {filteredNetworkPaths.length === 0 ? (
-                                                                        <div className="py-8 text-center text-text-muted text-xs italic">
+                                                                        <div className="py-6 text-center text-text-muted text-xs italic">
                                                                             No SD-WAN tunnels discovered on {targetNetworkName}
                                                                         </div>
                                                                     ) : (
                                                                         filteredNetworkPaths.map((p, idx) => {
                                                                             const isAct = p.isRoutingActive;
                                                                             const isBk = !isAct && (p.isRoutingUsable || p.isLinkUp);
+                                                                            const hasSrcIp = p.srcIp && p.srcIp !== 'N/A' && p.srcIp !== 'None';
+                                                                            const hasDstIp = p.dstIp && p.dstIp !== 'N/A' && p.dstIp !== 'None';
+                                                                            const hasIps = Boolean(hasSrcIp || hasDstIp);
+                                                                            const hasLatency = Boolean(p.latency);
+                                                                            const showBottomBar = hasIps || hasLatency;
+
                                                                             return (
                                                                                 <div
                                                                                     key={idx}
                                                                                     onClick={() => {
                                                                                         setLogicalViewSiteId(p.sourceSiteId);
                                                                                     }}
-                                                                                    className="bg-card-secondary/30 hover:bg-card-secondary/60 border border-border/50 hover:border-blue-500/40 p-2.5 rounded-xl transition-all cursor-pointer group"
+                                                                                    className="bg-card-secondary/30 hover:bg-card-secondary/60 border border-border/50 hover:border-blue-500/40 py-1.5 px-2.5 rounded-xl transition-all cursor-pointer group"
                                                                                     title="Click to focus this site on canvas"
                                                                                 >
                                                                                     <div className="flex items-center justify-between gap-1.5">
@@ -4173,10 +4180,12 @@ function TopologyContent({ token }: TopologyProps) {
                                                                                         </div>
                                                                                     </div>
 
-                                                                                    {(p.srcIp || p.dstIp || p.latency) && (
-                                                                                        <div className="mt-1.5 pt-1.5 border-t border-border/30 flex items-center justify-between text-[9px] font-mono text-text-muted">
-                                                                                            <span>{p.srcIp} ➔ {p.dstIp}</span>
-                                                                                            {p.latency && <span className="text-emerald-400 font-bold">{p.latency}ms</span>}
+                                                                                    {showBottomBar && (
+                                                                                        <div className="mt-1 pt-1 border-t border-border/30 flex items-center justify-between text-[9px] font-mono text-text-muted">
+                                                                                            {hasIps ? (
+                                                                                                <span>{(hasSrcIp ? p.srcIp : '—')} ➔ {(hasDstIp ? p.dstIp : '—')}</span>
+                                                                                            ) : <span className="text-text-muted/60">Stats</span>}
+                                                                                            {hasLatency && <span className="text-emerald-400 font-bold">{p.latency}ms</span>}
                                                                                         </div>
                                                                                     )}
                                                                                 </div>
@@ -4471,41 +4480,37 @@ function TopologyContent({ token }: TopologyProps) {
                                     )}
                                 </div>
 
-                                <div className="p-6 bg-card-secondary/50 border-t border-border mt-auto">
-                                    <div className="flex items-center justify-between bg-white/5 rounded-2xl p-4 border border-white/5">
-                                        <div className="flex items-center gap-3">
+                                <div className="p-3 bg-card-secondary/50 border-t border-border mt-auto shrink-0">
+                                    <div className="flex items-center justify-between bg-white/5 rounded-xl p-2.5 border border-white/5">
+                                        <div className="flex items-center gap-2">
                                             <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
-                                            <span className="text-[10px] font-black text-text-muted uppercase tracking-widest">Health Synchronized</span>
+                                            <span className="text-[9px] font-black text-text-muted uppercase tracking-widest">Health Synchronized</span>
                                         </div>
-                                        <Info size={14} className="text-text-muted cursor-help" />
+                                        <Info size={13} className="text-text-muted cursor-help" />
                                     </div>
                                 </div>
                             </div>
-                        )}
-                    </div>
+                        </div>
+                    )}
 
-                    {/* Underlay Details Side Panel */}
-                    <div className={cn(
-                        "absolute top-4 bottom-4 w-[400px] bg-card/95 backdrop-blur-xl border border-amber-500/20 rounded-3xl shadow-2xl transition-all duration-500 z-[55] overflow-hidden transform",
-                        showUnderlayPanel && underlayPanelResolution
-                            ? "translate-x-0 opacity-100"
-                            : "translate-x-[calc(100%+20px)] opacity-0 pointer-events-none"
-                    )} style={{ right: showUnderlayPanel && underlayPanelResolution && selectedObject ? '474px' : '16px' }}>
-                        {showUnderlayPanel && underlayPanelResolution && (() => {
-                            const r = underlayPanelResolution;
-                            return (
-                                <div className="flex flex-col h-full">
-                                    <div className="p-5 border-b border-border bg-amber-500/5 flex items-center justify-between">
-                                        <div className="flex items-center gap-3">
-                                            <div className="p-2.5 rounded-xl bg-amber-500/20 text-amber-400"><Layers size={18} /></div>
-                                            <div>
-                                                <h3 className="text-sm font-black text-text-primary tracking-tight">Underlay Inspect</h3>
-                                                <p className="text-[10px] text-text-muted font-bold tracking-widest uppercase opacity-60">{r.prismaWan.interfaceName} · {r.prismaWan.siteName}</p>
+                    {/* Underlay Details Side Panel (Push Layout Split-Pane - 360px) */}
+                    {showUnderlayPanel && underlayPanelResolution && (
+                        <div className="w-[360px] h-full border-l border-amber-500/30 bg-card/95 backdrop-blur-xl flex flex-col z-30 shrink-0 shadow-2xl transition-all duration-300 animate-in slide-in-from-right overflow-hidden">
+                            {(() => {
+                                const r = underlayPanelResolution;
+                                return (
+                                    <div className="flex flex-col h-full min-h-0">
+                                        <div className="p-4 border-b border-border bg-amber-500/5 flex items-center justify-between shrink-0">
+                                            <div className="flex items-center gap-2.5 min-w-0">
+                                                <div className="p-2 rounded-xl bg-amber-500/20 text-amber-400 shrink-0"><Layers size={16} /></div>
+                                                <div className="min-w-0">
+                                                    <h3 className="text-sm font-black text-text-primary tracking-tight truncate">Underlay Inspect</h3>
+                                                    <p className="text-[9px] text-text-muted font-bold tracking-widest uppercase opacity-60 truncate">{r.prismaWan.interfaceName} · {r.prismaWan.siteName}</p>
+                                                </div>
                                             </div>
+                                            <button onClick={() => setShowUnderlayPanel(false)} className="p-1 hover:bg-card-secondary rounded-lg text-text-muted transition-colors shrink-0"><X size={18} /></button>
                                         </div>
-                                        <button onClick={() => setShowUnderlayPanel(false)} className="p-1.5 hover:bg-card-secondary rounded-lg text-text-muted transition-colors"><X size={18} /></button>
-                                    </div>
-                                    <div className="flex-1 overflow-y-auto p-5 space-y-5 scrollbar-thin scrollbar-thumb-border">
+                                        <div className="flex-1 overflow-y-auto p-4 space-y-4 scrollbar-thin scrollbar-thumb-border min-h-0">
                                         {r.status === 'matched' && (
                                             <div className="flex items-center gap-2 bg-green-500/10 border border-green-500/30 rounded-2xl px-4 py-3">
                                                 <ShieldCheck size={18} className="text-green-400 shrink-0" />
@@ -4622,7 +4627,8 @@ function TopologyContent({ token }: TopologyProps) {
                                 </div>
                             );
                         })()}
-                    </div>
+                        </div>
+                    )}
                     </div>
                 </>
             )}
