@@ -60,7 +60,8 @@ import {
     Sliders,
     Gauge,
     Route,
-    Loader2
+    Loader2,
+    Maximize
 } from 'lucide-react';
 import { toPng } from 'html-to-image';
 import { clsx } from 'clsx';
@@ -629,25 +630,49 @@ const SiteNode = ({ data }: any) => {
 
 const CloudNode = ({ data }: any) => {
     const isInternet = data.name === 'INTERNET';
+    const isSelected = data.isSelected;
+    const tunnelsUp = data.tunnelsUp;
+    const tunnelsTotal = data.tunnelsTotal;
+    const viewMode = data.viewMode;
 
     return (
         <div className={cn(
-            "px-10 py-6 rounded-[50px] border-2 border-dashed transition-all shadow-2xl backdrop-blur-3xl flex flex-col items-center gap-3 min-w-[240px]",
-            isInternet ? "bg-blue-500/10 border-blue-500/30 shadow-blue-500/10" : "bg-purple-500/10 border-purple-500/30 shadow-purple-500/10"
+            "px-8 py-5 rounded-[40px] border-2 transition-all shadow-2xl backdrop-blur-3xl flex flex-col items-center gap-2.5 min-w-[230px] cursor-pointer group select-none",
+            isInternet
+                ? (isSelected 
+                    ? "bg-sky-500/25 border-sky-400 ring-4 ring-sky-500/40 shadow-sky-500/30 scale-105" 
+                    : "bg-sky-500/10 border-sky-500/30 hover:border-sky-400/80 hover:bg-sky-500/15 shadow-sky-500/10")
+                : (isSelected 
+                    ? "bg-purple-500/25 border-purple-400 ring-4 ring-purple-500/40 shadow-purple-500/30 scale-105" 
+                    : "bg-purple-500/10 border-purple-500/30 hover:border-purple-400/80 hover:bg-purple-500/15 shadow-purple-500/10")
         )}>
             <Handle type="target" position={Position.Top} id="target-top" className="!opacity-0" />
             <Handle type="target" position={Position.Bottom} id="target-bottom" className="!opacity-0" />
 
             <div className={cn(
-                "p-4 rounded-full shadow-inner",
-                isInternet ? "bg-blue-500 text-white" : "bg-purple-500 text-white"
+                "p-3.5 rounded-full shadow-inner transition-transform group-hover:scale-110",
+                isInternet ? "bg-sky-500 text-white shadow-sky-500/40" : "bg-purple-500 text-white shadow-purple-500/40"
             )}>
-                <Cloud size={28} />
+                <Cloud size={26} />
             </div>
             <div className="text-center">
-                <div className="text-lg font-black text-text-primary tracking-tight uppercase leading-none">{data.name}</div>
-                <div className="text-[10px] text-text-muted font-bold tracking-[0.2em] mt-2 opacity-50 uppercase tracking-widest">Network Provider</div>
+                <div className="text-base font-black text-text-primary tracking-tight uppercase leading-none">{data.name}</div>
+                <div className="text-[9px] text-text-muted font-bold tracking-[0.2em] mt-1.5 opacity-60 uppercase">
+                    {viewMode === 'overlay' ? 'SD-WAN Overlay' : 'Underlay Network'}
+                </div>
             </div>
+
+            {tunnelsTotal !== undefined && tunnelsTotal > 0 && (
+                <div className={cn(
+                    "px-3 py-1 rounded-full text-[9px] font-mono font-bold border flex items-center gap-1.5 mt-0.5 shadow-sm",
+                    isInternet
+                        ? (isSelected ? "bg-sky-500/30 border-sky-400 text-sky-200" : "bg-sky-500/15 border-sky-500/30 text-sky-300")
+                        : (isSelected ? "bg-purple-500/30 border-purple-400 text-purple-200" : "bg-purple-500/15 border-purple-500/30 text-purple-300")
+                )}>
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                    <span>{tunnelsUp || 0} / {tunnelsTotal} Tunnels</span>
+                </div>
+            )}
         </div>
     );
 };
@@ -1081,7 +1106,10 @@ function TopologyContent({ token }: TopologyProps) {
     const [fleetNodes, setFleetNodes] = useState<any[]>([]);
 
     // View & Underlay state
-    const [topologyViewMode, setTopologyViewMode] = useState<'overlay' | 'underlay' | 'sase'>('overlay');
+    const [topologyViewMode, setTopologyViewMode] = useState<'physical' | 'overlay' | 'sase' | 'underlay'>('overlay');
+    const [selectedNetwork, setSelectedNetwork] = useState<'INTERNET' | 'MPLS' | null>(null);
+    const [networkTunnelFilter, setNetworkTunnelFilter] = useState<'ALL' | 'ACTIVE' | 'BACKUP' | 'DOWN'>('ALL');
+    const [networkTunnelSearch, setNetworkTunnelSearch] = useState('');
     const [underlayData, setUnderlayData] = useState<UnderlayPayload | null>(null);
     const [underlayMode, setUnderlayMode] = useState<'off' | 'badges'>('off');
     const [showUnderlayPanel, setShowUnderlayPanel] = useState(false);
@@ -1511,10 +1539,10 @@ function TopologyContent({ token }: TopologyProps) {
             });
         });
 
-        const HUB_Y = -850;
+        const HUB_Y = -620;
         const CLOUD_Y = 0;
-        const SPOKE_Y = 850;
-        const HORIZONTAL_GAP_PX = 100;
+        const SPOKE_Y = 620;
+        const HORIZONTAL_GAP_PX = 80;
 
         const getSiteWidth = (site: any) => {
             const numDevices = site.devices?.length || 1;
@@ -1572,238 +1600,279 @@ function TopologyContent({ token }: TopologyProps) {
         layoutRow(hubs, HUB_Y, 'HUB');
 
         // Middle Tier:
-        // - Overlay Mode: Public & Private WAN Clouds (Internet, MPLS)
-        // - Underlay Mode: Active VyOS Routers (filtered to only routers with active WAN circuits) + External Cloud
-        if (!logicalViewSiteId) {
-            if (topologyViewMode === 'underlay') {
-                const resolutions = underlayData?.resolutions || [];
-                const allRouters = underlayData?.routers || [];
+        // - Underlay Mode: Active VyOS Routers + External Cloud
+        // - SASE Mode: SASE Security Cloud PoPs (Prisma Access & Zscaler)
+        // - Overlay & Physical Mode: Public & Private WAN Clouds (Internet, MPLS)
+        if (topologyViewMode === 'underlay') {
+            const resolutions = underlayData?.resolutions || [];
+            const allRouters = underlayData?.routers || [];
 
-                const resolvedWithHub = resolutions.map((r: any) => ({
-                    ...r,
-                    isHub: hubs.some((h: any) => h.site_name === r.prismaWan?.siteName)
-                }));
+            const resolvedWithHub = resolutions.map((r: any) => ({
+                ...r,
+                isHub: hubs.some((h: any) => h.site_name === r.prismaWan?.siteName)
+            }));
 
-                // Find distinct active VyOS router names that actually have matched WAN circuits
-                const activeRouterNames = Array.from(new Set(
-                    resolvedWithHub
-                        .filter((r: any) => r.status === 'matched' && r.vyos?.routerName)
-                        .map((r: any) => r.vyos.routerName)
-                ));
+            // Find distinct active VyOS router names that actually have matched WAN circuits
+            const activeRouterNames = Array.from(new Set(
+                resolvedWithHub
+                    .filter((r: any) => r.status === 'matched' && r.vyos?.routerName)
+                    .map((r: any) => r.vyos.routerName)
+            ));
 
-                // Construct active router objects
-                const activeRouters = activeRouterNames.map(routerName => {
-                    const fromPayload = allRouters.find((r: any) => r.name === routerName);
-                    const routerResolutions = resolvedWithHub.filter((r: any) => r.status === 'matched' && r.vyos?.routerName === routerName);
+            // Construct active router objects
+            const activeRouters = activeRouterNames.map(routerName => {
+                const fromPayload = allRouters.find((r: any) => r.name === routerName);
+                const routerResolutions = resolvedWithHub.filter((r: any) => r.status === 'matched' && r.vyos?.routerName === routerName);
 
-                    // Build comprehensive interfaces list with guaranteed IP and description resolution
-                    const ifaceMap = new Map<string, any>();
-                    fromPayload?.interfaces?.forEach((i: any) => ifaceMap.set(i.name, { ...i }));
-                    routerResolutions.forEach((res: any) => {
-                        if (res.vyos?.interfaceName) {
-                            const existing = ifaceMap.get(res.vyos.interfaceName) || {};
-                            const ipCidr = res.vyos.ipCidr || res.vyos.ip || existing.ipCidr || existing.address?.[0];
-                            const addresses = (existing.address && existing.address.length > 0 && existing.address[0])
-                                ? existing.address
-                                : (ipCidr ? [ipCidr] : []);
-                            
-                            ifaceMap.set(res.vyos.interfaceName, {
-                                ...existing,
-                                name: res.vyos.interfaceName,
-                                description: existing.description || res.vyos.description,
-                                address: addresses,
-                                ipCidr: ipCidr,
-                                ip: res.vyos.ip || existing.ip || (ipCidr ? ipCidr.split('/')[0] : undefined),
-                                status: res.vyos.status || existing.status || 'up',
-                                qos: res.vyos.qos || existing.qos || null
-                            });
-                        }
-                    });
-
-                    return {
-                        id: fromPayload?.id || routerName,
-                        name: routerName,
-                        host: fromPayload?.host || routerResolutions[0]?.vyos?.routerId || '192.168.122.254',
-                        location: fromPayload?.location || 'VyOS Underlay Backbone',
-                        status: fromPayload?.status || 'up',
-                        interfaces: Array.from(ifaceMap.values()),
-                        resolutions: routerResolutions,
-                        connectedCount: routerResolutions.length
-                    };
+                // Build comprehensive interfaces list with guaranteed IP and description resolution
+                const ifaceMap = new Map<string, any>();
+                fromPayload?.interfaces?.forEach((i: any) => ifaceMap.set(i.name, { ...i }));
+                routerResolutions.forEach((res: any) => {
+                    if (res.vyos?.interfaceName) {
+                        const existing = ifaceMap.get(res.vyos.interfaceName) || {};
+                        const ipCidr = res.vyos.ipCidr || res.vyos.ip || existing.ipCidr || existing.address?.[0];
+                        const addresses = (existing.address && existing.address.length > 0 && existing.address[0])
+                            ? existing.address
+                            : (ipCidr ? [ipCidr] : []);
+                        
+                        ifaceMap.set(res.vyos.interfaceName, {
+                            ...existing,
+                            name: res.vyos.interfaceName,
+                            description: existing.description || res.vyos.description,
+                            address: addresses,
+                            ipCidr: ipCidr,
+                            ip: res.vyos.ip || existing.ip || (ipCidr ? ipCidr.split('/')[0] : undefined),
+                            status: res.vyos.status || existing.status || 'up',
+                            qos: res.vyos.qos || existing.qos || null
+                        });
+                    }
                 });
 
-                const ROUTER_GAP = 140;
-                const routerWidths = activeRouters.map((r: any) => {
-                    const hubCount = r.resolutions.filter((res: any) => res.isHub).length;
-                    const spokeCount = r.resolutions.filter((res: any) => !res.isHub).length;
-                    const portMax = Math.max(hubCount, spokeCount, 3);
-                    return Math.max(540, portMax * 195 + 80);
+                return {
+                    id: fromPayload?.id || routerName,
+                    name: routerName,
+                    host: fromPayload?.host || routerResolutions[0]?.vyos?.routerId || '192.168.122.254',
+                    location: fromPayload?.location || 'VyOS Underlay Backbone',
+                    status: fromPayload?.status || 'up',
+                    interfaces: Array.from(ifaceMap.values()),
+                    resolutions: routerResolutions,
+                    connectedCount: routerResolutions.length
+                };
+            });
+
+            const ROUTER_GAP = 140;
+            const routerWidths = activeRouters.map((r: any) => {
+                const hubCount = r.resolutions.filter((res: any) => res.isHub).length;
+                const spokeCount = r.resolutions.filter((res: any) => !res.isHub).length;
+                const portMax = Math.max(hubCount, spokeCount, 3);
+                return Math.max(540, portMax * 195 + 80);
+            });
+
+            const totalRoutersWidth = routerWidths.reduce((acc: number, w: number) => acc + w, 0) + Math.max(0, activeRouters.length - 1) * ROUTER_GAP;
+            let currentRouterX = -totalRoutersWidth / 2;
+
+            activeRouters.forEach((r: any, idx: number) => {
+                const rWidth = routerWidths[idx];
+                const x = currentRouterX + rWidth / 2;
+                currentRouterX += rWidth + ROUTER_GAP;
+
+                newNodes.push({
+                    id: `vyos:${r.id || r.name}`,
+                    type: 'vyosRouter',
+                    position: { x, y: CLOUD_Y },
+                    origin: [0.5, 0.5],
+                    data: {
+                        router: r,
+                        connectedCount: r.connectedCount,
+                        resolutions: r.resolutions,
+                        siteOrder: sitePositions,
+                        onSelectResolution: (res: any) => setUnderlayDrawerResolution(res)
+                    }
                 });
+            });
 
-                const totalRoutersWidth = routerWidths.reduce((acc: number, w: number) => acc + w, 0) + Math.max(0, activeRouters.length - 1) * ROUTER_GAP;
-                let currentRouterX = -totalRoutersWidth / 2;
-
-                activeRouters.forEach((r: any, idx: number) => {
-                    const rWidth = routerWidths[idx];
-                    const x = currentRouterX + rWidth / 2;
-                    currentRouterX += rWidth + ROUTER_GAP;
-
-                    newNodes.push({
-                        id: `vyos:${r.id || r.name}`,
-                        type: 'vyosRouter',
-                        position: { x, y: CLOUD_Y },
-                        origin: [0.5, 0.5],
-                        data: {
-                            router: r,
-                            connectedCount: r.connectedCount,
-                            resolutions: r.resolutions,
-                            siteOrder: sitePositions,
-                            onSelectResolution: (res: any) => setUnderlayDrawerResolution(res)
-                        }
-                    });
-                });
-
-                // If there are unmatched circuits, add cloud:EXTERNAL to the right
-                const unmatchedCount = resolvedWithHub.filter((r: any) => r.status !== 'matched').length;
-                if (unmatchedCount > 0 || activeRouters.length === 0) {
-                    const externalX = activeRouters.length > 0 ? (totalRoutersWidth / 2) + 260 : 0;
-                    newNodes.push({
-                        id: `cloud:EXTERNAL`,
-                        type: 'cloud',
-                        position: { x: externalX, y: CLOUD_Y },
-                        origin: [0.5, 0.5],
-                        data: { name: 'EXTERNAL / UNMAPPED' }
-                    });
-                }
-            } else if (topologyViewMode === 'sase') {
-                // SASE MODE MIDDLE TIER: SASE Security Cloud PoPs
-                // Symmetrical & spacious separation: Prisma Access (Palo Alto) on the LEFT, Zscaler on the RIGHT
-                const rawPops = topology?.sase_infrastructure?.pops || [
-                    { id: 'prisma-france-south', name: 'Prisma Access France South (Paris Lime)', short_name: 'France South', provider: 'Prisma Access', primary_peer_ip: '130.41.124.164', liveliness_probe_ip: '192.168.255.254', status: 'healthy', tunnels_up: 4, tunnels_total: 8 },
-                    { id: 'prisma-ireland', name: 'Prisma Access Ireland (Elderberry)', short_name: 'Ireland', provider: 'Prisma Access', primary_peer_ip: '74.221.137.55', liveliness_probe_ip: '192.168.255.254', status: 'healthy', tunnels_up: 4, tunnels_total: 8 },
-                    { id: 'zscaler-cloud', name: 'Zscaler Internet Access (ZIA)', short_name: 'Zscaler Cloud', provider: 'Zscaler', primary_peer_ip: '165.225.72.39', status: 'healthy', tunnels_up: 3, tunnels_total: 9 },
-                ];
-
-                const prismaPops = rawPops.filter((p: any) => p.provider === 'Prisma Access' || p.id.includes('prisma'));
-                const zscalerPops = rawPops.filter((p: any) => p.provider === 'Zscaler' || p.id.includes('zscaler'));
-                const otherPops = rawPops.filter((p: any) => !prismaPops.includes(p) && !zscalerPops.includes(p));
-
-                const POP_STEP = 420; // 420px center-to-center for 330px cards ensures 90px clear gap between nodes
-                const CARD_WIDTH = 330;
-                const CLUSTER_GAP = 280; // 280px clean space between rightmost Prisma card and leftmost Zscaler card
-                const MIN_CENTER_DIST = CARD_WIDTH + CLUSTER_GAP; // 610px center-to-center separation
-
-                // Left wing: Prisma Access (Palo Alto Networks)
-                prismaPops.forEach((pop: any, idx: number) => {
-                    const offsetFromRight = (prismaPops.length - 1 - idx) * POP_STEP;
-                    const x = -(MIN_CENTER_DIST / 2) - offsetFromRight;
-                    newNodes.push({
-                        id: `cloud:${pop.id}`,
-                        type: 'sasePop',
-                        position: { x, y: CLOUD_Y },
-                        origin: [0.5, 0.5],
-                        data: {
-                            ...pop,
-                            isSasePop: true,
-                            cluster: 'prisma'
-                        }
-                    });
-                });
-
-                // Right wing: Zscaler
-                zscalerPops.forEach((pop: any, idx: number) => {
-                    const x = (MIN_CENTER_DIST / 2) + idx * POP_STEP;
-                    newNodes.push({
-                        id: `cloud:${pop.id}`,
-                        type: 'sasePop',
-                        position: { x, y: CLOUD_Y },
-                        origin: [0.5, 0.5],
-                        data: {
-                            ...pop,
-                            isSasePop: true,
-                            cluster: 'zscaler'
-                        }
-                    });
-                });
-
-                // Other providers (if any)
-                otherPops.forEach((pop: any, idx: number) => {
-                    const x = (MIN_CENTER_DIST / 2) + (zscalerPops.length + idx) * POP_STEP;
-                    newNodes.push({
-                        id: `cloud:${pop.id}`,
-                        type: 'sasePop',
-                        position: { x, y: CLOUD_Y },
-                        origin: [0.5, 0.5],
-                        data: {
-                            ...pop,
-                            isSasePop: true,
-                            cluster: 'other'
-                        }
-                    });
-                });
-            } else {
-                const INTERNET_X = -200;
-                if (publicWanNetworks.size > 0) {
-                    newNodes.push({
-                        id: `cloud:INTERNET`,
-                        type: 'cloud',
-                        position: { x: INTERNET_X, y: CLOUD_Y },
-                        origin: [0.5, 0.5],
-                        data: { name: 'INTERNET' },
-                    });
-                }
-
-                const privates = Array.from(privateWanNetworks);
-                privates.forEach((cloudName, i) => {
-                    const x = 200 + (i * 250);
-                    newNodes.push({
-                        id: `cloud:${cloudName}`,
-                        type: 'cloud',
-                        position: { x, y: CLOUD_Y },
-                        origin: [0.5, 0.5],
-                        data: { name: cloudName },
-                    });
+            // If there are unmatched circuits, add cloud:EXTERNAL to the right
+            const unmatchedCount = resolvedWithHub.filter((r: any) => r.status !== 'matched').length;
+            if (unmatchedCount > 0 || activeRouters.length === 0) {
+                const externalX = activeRouters.length > 0 ? (totalRoutersWidth / 2) + 260 : 0;
+                newNodes.push({
+                    id: `cloud:EXTERNAL`,
+                    type: 'cloud',
+                    position: { x: externalX, y: CLOUD_Y },
+                    origin: [0.5, 0.5],
+                    data: { name: 'EXTERNAL / UNMAPPED' }
                 });
             }
+        } else if (topologyViewMode === 'sase') {
+            // SASE MODE MIDDLE TIER: SASE Security Cloud PoPs
+            const rawPops = topology?.sase_infrastructure?.pops || [
+                { id: 'prisma-france-south', name: 'Prisma Access France South (Paris Lime)', short_name: 'France South', provider: 'Prisma Access', primary_peer_ip: '130.41.124.164', liveliness_probe_ip: '192.168.255.254', status: 'healthy', tunnels_up: 4, tunnels_total: 8 },
+                { id: 'prisma-ireland', name: 'Prisma Access Ireland (Elderberry)', short_name: 'Ireland', provider: 'Prisma Access', primary_peer_ip: '74.221.137.55', liveliness_probe_ip: '192.168.255.254', status: 'healthy', tunnels_up: 4, tunnels_total: 8 },
+                { id: 'zscaler-cloud', name: 'Zscaler Internet Access (ZIA)', short_name: 'Zscaler Cloud', provider: 'Zscaler', primary_peer_ip: '165.225.72.39', status: 'healthy', tunnels_up: 3, tunnels_total: 9 },
+            ];
+
+            const prismaPops = rawPops.filter((p: any) => p.provider === 'Prisma Access' || p.id.includes('prisma'));
+            const zscalerPops = rawPops.filter((p: any) => p.provider === 'Zscaler' || p.id.includes('zscaler'));
+            const otherPops = rawPops.filter((p: any) => !prismaPops.includes(p) && !zscalerPops.includes(p));
+
+            const POP_STEP = 420;
+            const CARD_WIDTH = 330;
+            const CLUSTER_GAP = 280;
+            const MIN_CENTER_DIST = CARD_WIDTH + CLUSTER_GAP;
+
+            // Left wing: Prisma Access (Palo Alto Networks)
+            prismaPops.forEach((pop: any, idx: number) => {
+                const offsetFromRight = (prismaPops.length - 1 - idx) * POP_STEP;
+                const x = -(MIN_CENTER_DIST / 2) - offsetFromRight;
+                newNodes.push({
+                    id: `cloud:${pop.id}`,
+                    type: 'sasePop',
+                    position: { x, y: CLOUD_Y },
+                    origin: [0.5, 0.5],
+                    data: {
+                        ...pop,
+                        isSasePop: true,
+                        cluster: 'prisma'
+                    }
+                });
+            });
+
+            // Right wing: Zscaler
+            zscalerPops.forEach((pop: any, idx: number) => {
+                const x = (MIN_CENTER_DIST / 2) + idx * POP_STEP;
+                newNodes.push({
+                    id: `cloud:${pop.id}`,
+                    type: 'sasePop',
+                    position: { x, y: CLOUD_Y },
+                    origin: [0.5, 0.5],
+                    data: {
+                        ...pop,
+                        isSasePop: true,
+                        cluster: 'zscaler'
+                    }
+                });
+            });
+
+            // Other providers (if any)
+            otherPops.forEach((pop: any, idx: number) => {
+                const x = (MIN_CENTER_DIST / 2) + (zscalerPops.length + idx) * POP_STEP;
+                newNodes.push({
+                    id: `cloud:${pop.id}`,
+                    type: 'sasePop',
+                    position: { x, y: CLOUD_Y },
+                    origin: [0.5, 0.5],
+                    data: {
+                        ...pop,
+                        isSasePop: true,
+                        cluster: 'other'
+                    }
+                });
+            });
+        } else {
+            // CLOUDS: Rendered for physical and overlay modes!
+            let internetTunnelsCount = 0;
+            let internetTunnelsUp = 0;
+            let mplsTunnelsCount = 0;
+            let mplsTunnelsUp = 0;
+
+            filteredSites.forEach((s: any) => {
+                s.devices?.forEach((d: any) => {
+                    d.wan_interfaces?.forEach((w: any) => {
+                        const isMpls = (w.wan_network || '').toLowerCase().includes('mpls') || (w.name || '').toLowerCase().includes('mpls');
+                        w.connections?.forEach((c: any) => {
+                            const isUp = c.status === 'UP' || c.active || c.usable;
+                            if (isMpls) {
+                                mplsTunnelsCount++;
+                                if (isUp) mplsTunnelsUp++;
+                            } else {
+                                internetTunnelsCount++;
+                                if (isUp) internetTunnelsUp++;
+                            }
+                        });
+                    });
+                });
+            });
+
+            const INTERNET_X = -200;
+            newNodes.push({
+                id: `cloud:INTERNET`,
+                type: 'cloud',
+                position: { x: INTERNET_X, y: CLOUD_Y },
+                origin: [0.5, 0.5],
+                data: {
+                    name: 'INTERNET',
+                    tunnelsTotal: internetTunnelsCount,
+                    tunnelsUp: internetTunnelsUp,
+                    isSelected: selectedNetwork === 'INTERNET',
+                    viewMode: topologyViewMode,
+                },
+            });
+
+            const privates = Array.from(privateWanNetworks);
+            const mplsClouds = privates.length > 0 ? privates : ['MPLS'];
+            mplsClouds.forEach((cloudName, i) => {
+                const x = 200 + (i * 250);
+                newNodes.push({
+                    id: `cloud:${cloudName}`,
+                    type: 'cloud',
+                    position: { x, y: CLOUD_Y },
+                    origin: [0.5, 0.5],
+                    data: {
+                        name: cloudName,
+                        tunnelsTotal: mplsTunnelsCount,
+                        tunnelsUp: mplsTunnelsUp,
+                        isSelected: selectedNetwork === 'MPLS' || selectedNetwork === cloudName,
+                        viewMode: topologyViewMode,
+                    },
+                });
+            });
         }
 
         layoutRow(spokes, SPOKE_Y, 'SPOKE');
 
         // --- EDGES CHANGE BASED ON MODE ---
-        if (logicalViewSiteId) {
-            const selectedSite = data.sites.find((s: any) => s.site_id === logicalViewSiteId);
+        if (topologyViewMode === 'overlay') {
+            // mode SD-WAN OVERLAY: Direct site-to-site VPN tunnels
+            const selectedSite = logicalViewSiteId ? data.sites.find((s: any) => s.site_id === logicalViewSiteId) : null;
             const isSelectedSiteHub = selectedSite && isHubLike(selectedSite);
 
-            // mode LOGICAL: Draw direct site-to-site tunnels relative to selected site
             data.sites.forEach((site: any) => {
-                // Only consider sites that are visible or the selected site itself
                 const isSiteVisible = !visibleSiteIds || visibleSiteIds.includes(site.site_id);
                 if (!isSiteVisible && site.site_id !== logicalViewSiteId) return;
 
                 site.devices?.forEach((d: any) => {
                     d.wan_interfaces?.forEach((w: any) => {
+                        const isMplsCircuit = (w.wan_network || '').toLowerCase().includes('mpls') || (w.name || '').toLowerCase().includes('mpls');
+
+                        // Network filter (if user clicked INTERNET or MPLS cloud)
+                        if (selectedNetwork === 'INTERNET' && isMplsCircuit) return;
+                        if (selectedNetwork === 'MPLS' && !isMplsCircuit) return;
+
                         w.connections?.forEach((c: any, cIdx: number) => {
                             const isSourceSelected = site.site_id === logicalViewSiteId;
                             const isTargetSelected = c.peer_site_id === logicalViewSiteId;
 
-                            // If this isn't a connection to or from our selected site, skip it
-                            if (!isSourceSelected && !isTargetSelected) return;
+                            // If a specific site is focused, only show tunnels attached to it
+                            if (logicalViewSiteId && !isSourceSelected && !isTargetSelected) return;
 
                             // Only show connections between visible sites
                             const isPeerVisible = !visibleSiteIds || visibleSiteIds.includes(c.peer_site_id);
                             if (!isPeerVisible && c.peer_site_id !== logicalViewSiteId) return;
 
-                            // If we selected a SPOKE, only show connections to HUBS
-                            if (!isSelectedSiteHub) {
-                                const peerSiteId = isSourceSelected ? c.peer_site_id : site.site_id;
-                                const peerSite = data.sites.find((s: any) => s.site_id === peerSiteId);
-                                const isPeerHub = peerSite && isHubLike(peerSite);
-                                if (!isPeerHub) return;
-                            }
+                            const isSiteHub = isHubLike(site);
+                            const peerSite = data.sites.find((s: any) => s.site_id === c.peer_site_id);
+                            const isPeerHub = peerSite && isHubLike(peerSite);
 
-                            // Prevent edge duplication: Only draw from the "source" side if it's the selected site,
-                            // OR draw from the Spoke to the Hub if the Hub is selected (to show branches).
-                            if (!isSourceSelected && !isSelectedSiteHub) return;
+                            // Prevent duplicate reverse edges in global view:
+                            if (!logicalViewSiteId) {
+                                if (isSiteHub && !isPeerHub) return;
+                                if (isSiteHub && isPeerHub && site.site_id > c.peer_site_id) return;
+                            } else {
+                                if (!isSelectedSiteHub) {
+                                    if (!isPeerHub) return;
+                                }
+                                if (!isSourceSelected && !isSelectedSiteHub) return;
+                            }
 
                             const isUp = c.status === 'UP' || c.active || c.usable;
                             let strokeColor = '#64748b';
@@ -1811,14 +1880,14 @@ function TopologyContent({ token }: TopologyProps) {
                             let animated = false;
 
                             if (c.active) {
-                                strokeColor = '#22c55e'; // Green
-                                strokeClass = '2,6'; // Dotted
+                                strokeColor = isMplsCircuit ? '#c084fc' : '#22c55e'; // Purple for MPLS, Green for Internet
+                                strokeClass = '2,6';
                                 animated = true;
                             } else if (c.usable) {
-                                strokeColor = '#3b82f6'; // Blue
-                                strokeClass = '5,5'; // Dashed
+                                strokeColor = isMplsCircuit ? '#9333ea' : '#3b82f6';
+                                strokeClass = '5,5';
                             } else if (c.status === 'DOWN') {
-                                strokeColor = '#ef4444'; // Red
+                                strokeColor = '#ef4444';
                             }
 
                             newEdges.push({
@@ -1829,8 +1898,18 @@ function TopologyContent({ token }: TopologyProps) {
                                 targetHandle: `target-circuit:${c.peer_device_name}:${c.peer_wan_interface}`,
                                 type: 'default',
                                 animated,
-                                style: { stroke: strokeColor, strokeWidth: c.active ? 5 : 2, strokeDasharray: strokeClass },
-                                data: { ...c, hideLabel: true }
+                                style: {
+                                    stroke: strokeColor,
+                                    strokeWidth: c.active ? 4 : 2,
+                                    strokeDasharray: strokeClass
+                                },
+                                data: {
+                                    ...c,
+                                    isMplsCircuit,
+                                    sourceSiteName: site.site_name,
+                                    sourceCircuitName: w.name,
+                                    hideLabel: true
+                                }
                             });
                         });
                     });
@@ -1958,7 +2037,7 @@ function TopologyContent({ token }: TopologyProps) {
                 });
             });
         } else {
-            // mode PHYSICAL OVERLAY: Draw site-to-cloud edges
+            // mode PHYSICAL (WAN Transport): Draw site-to-cloud edges
             filteredSites.forEach((site: any) => {
                 const isHub = hubs.includes(site);
                 site.devices?.forEach((device: any) => {
@@ -1968,6 +2047,10 @@ function TopologyContent({ token }: TopologyProps) {
                             const isPrivate = privateWanNetworks.has(wan.wan_network);
                             const targetCloudId = isPrivate ? `cloud:${wan.wan_network}` : `cloud:INTERNET`;
 
+                            if (selectedNetwork === 'INTERNET' && isPrivate) return;
+                            if (selectedNetwork === 'MPLS' && !isPrivate) return;
+                            if (logicalViewSiteId && site.site_id !== logicalViewSiteId) return;
+
                             newEdges.push({
                                 id: `edge:${site.site_id}:${device.device_name}:${wan.name}`,
                                 type: 'site',
@@ -1976,6 +2059,11 @@ function TopologyContent({ token }: TopologyProps) {
                                 sourceHandle: `circuit:${device.device_name}:${wan.name}`,
                                 targetHandle: isHub ? 'target-top' : 'target-bottom',
                                 animated: isUp && !isPrivate,
+                                style: {
+                                    stroke: isPrivate ? '#c084fc' : '#38bdf8',
+                                    strokeWidth: isUp ? 2.5 : 1.5,
+                                    strokeDasharray: isUp ? undefined : '4 4'
+                                },
                                 data: {
                                     ...wan,
                                     site_name: site.site_name,
@@ -1991,7 +2079,7 @@ function TopologyContent({ token }: TopologyProps) {
 
         setNodes(newNodes);
         setEdges(newEdges);
-    }, [logicalViewSiteId, setNodes, setEdges, visibleSiteIds, isHubLike, siteHubStatus, topologyViewMode, underlayData, fleetNodes, pathFilter, bgAsHub, getVyosInterfaceStatus]);
+    }, [logicalViewSiteId, selectedNetwork, setNodes, setEdges, visibleSiteIds, isHubLike, siteHubStatus, topologyViewMode, underlayData, fleetNodes, pathFilter, bgAsHub, getVyosInterfaceStatus]);
 
     const fetchTopology = useCallback(async () => {
         setLoading(true);
@@ -2042,17 +2130,44 @@ function TopologyContent({ token }: TopologyProps) {
         } else {
             processTopology(topology);
         }
-    }, [topology, logicalViewSiteId, fetchTopology, processTopology, visibleSiteIds, topologyViewMode, underlayData, fleetNodes]);
+    }, [topology, logicalViewSiteId, selectedNetwork, fetchTopology, processTopology, visibleSiteIds, topologyViewMode, underlayData, fleetNodes]);
 
     const onNodeClick = useCallback((_: any, node: Node) => {
-        setSelectedObject({ type: 'node', ...node.data });
         const nodeData = node.data as any;
+
+        if (node.type === 'cloud') {
+            const netName = (nodeData.name || '').toUpperCase();
+            const isInternet = netName.includes('INTERNET') || netName.includes('PUBLIC');
+            const targetNet = isInternet ? 'INTERNET' : 'MPLS';
+
+            setSelectedNetwork(prev => prev === targetNet ? null : targetNet);
+            setLogicalViewSiteId(null);
+            setSelectedObject({
+                type: 'network',
+                network: targetNet,
+                name: targetNet,
+                tunnelsTotal: nodeData.tunnelsTotal,
+                tunnelsUp: nodeData.tunnelsUp,
+                viewMode: topologyViewMode,
+                ...nodeData
+            });
+            return;
+        }
+
+        if (node.type === 'site') {
+            setSelectedNetwork(null);
+            setLogicalViewSiteId(prev => prev === nodeData.site_id ? null : nodeData.site_id);
+            setSelectedObject({ type: 'node', ...nodeData });
+            return;
+        }
+
+        setSelectedObject({ type: 'node', ...nodeData });
         if (node.type === 'underlayGateway' && nodeData?.resolution) {
             setUnderlayDrawerResolution(nodeData.resolution);
         } else if (node.type === 'vyosRouter' && Array.isArray(nodeData?.resolutions) && nodeData.resolutions.length > 0) {
             setUnderlayDrawerResolution(nodeData.resolutions[0]);
         }
-    }, []);
+    }, [topologyViewMode]);
 
     const onEdgeClick = useCallback((_: any, edge: Edge) => {
         setSelectedObject({ type: 'edge', ...edge.data });
@@ -2243,14 +2358,26 @@ function TopologyContent({ token }: TopologyProps) {
         });
     }, [edges, searchQuery, selectedObject, saseTunnelTypeFilter]);
 
+    const handleFitView = useCallback(() => {
+        fitView({ padding: 0.12, duration: 450, minZoom: 0.12 });
+    }, [fitView]);
+
     useEffect(() => {
         if (filteredNodes.length > 0) {
             const timer = setTimeout(() => {
-                fitView({ padding: 0.28, duration: 800 });
-            }, 300);
+                handleFitView();
+            }, 250);
             return () => clearTimeout(timer);
         }
-    }, [filteredNodes.length, logicalViewSiteId, fitView]);
+    }, [filteredNodes.length, topologyViewMode, handleFitView]);
+
+    useEffect(() => {
+        const handleResize = () => {
+            handleFitView();
+        };
+        window.addEventListener('resize', handleResize);
+        return () => window.removeEventListener('resize', handleResize);
+    }, [handleFitView]);
 
     return (
         <div className="h-[calc(100vh-140px)] w-full relative dark:bg-black/20 bg-card-secondary/30 rounded-3xl border border-border overflow-hidden animate-in fade-in zoom-in-95 duration-500 flex flex-col">
@@ -2311,25 +2438,65 @@ function TopologyContent({ token }: TopologyProps) {
                         <div className="flex items-center gap-3">
                             <div className={cn(
                                 "p-2.5 rounded-xl text-white shadow-lg transition-all",
-                                logicalViewSiteId ? "bg-purple-600 shadow-purple-500/25" : "bg-blue-600 shadow-blue-500/25"
+                                logicalViewSiteId
+                                    ? "bg-purple-600 shadow-purple-500/25"
+                                    : (selectedNetwork
+                                        ? "bg-sky-600 shadow-sky-500/25"
+                                        : (topologyViewMode === 'overlay'
+                                            ? "bg-blue-600 shadow-blue-500/25"
+                                            : topologyViewMode === 'underlay'
+                                                ? "bg-amber-500 shadow-amber-500/25"
+                                                : topologyViewMode === 'sase'
+                                                    ? "bg-purple-600 shadow-purple-500/25"
+                                                    : "bg-sky-600 shadow-sky-500/25"))
                             )}>
-                                {logicalViewSiteId ? <Network size={18} /> : <Share2 size={18} />}
+                                {logicalViewSiteId ? (
+                                    <Network size={18} />
+                                ) : selectedNetwork ? (
+                                    <Cloud size={18} />
+                                ) : topologyViewMode === 'overlay' ? (
+                                    <Share2 size={18} />
+                                ) : topologyViewMode === 'underlay' ? (
+                                    <Server size={18} />
+                                ) : topologyViewMode === 'sase' ? (
+                                    <Shield size={18} />
+                                ) : (
+                                    <Globe size={18} />
+                                )}
                             </div>
                             <div>
                                 <div className="flex items-center gap-2.5">
                                     <h1 className="text-sm font-black text-text-primary uppercase tracking-tight">
                                         {logicalViewSiteId ? (
                                             <>
-                                                Logical Overlay View
+                                                Site Overlay Focus
                                                 <span className="text-purple-400 font-mono text-xs font-bold lowercase ml-1.5">
                                                     ({topology?.sites?.find((s: any) => s.site_id === logicalViewSiteId)?.site_name || logicalViewSiteId})
                                                 </span>
                                             </>
-                                        ) : 'Site Topology'}
+                                        ) : selectedNetwork ? (
+                                            <>
+                                                {selectedNetwork} SD-WAN Overlay
+                                                <span className="text-sky-400 font-mono text-xs font-bold ml-1.5">
+                                                    (Network Filter)
+                                                </span>
+                                            </>
+                                        ) : topologyViewMode === 'overlay' ? (
+                                            'SD-WAN Overlay Mesh'
+                                        ) : topologyViewMode === 'underlay' ? (
+                                            'VyOS Underlay Hardware'
+                                        ) : topologyViewMode === 'sase' ? (
+                                            'SASE Security Fabric'
+                                        ) : (
+                                            'WAN Transport Topology'
+                                        )}
                                     </h1>
-                                    {logicalViewSiteId && (
-                                        <span className="px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-purple-500/15 text-purple-400 border border-purple-500/30 animate-pulse">
-                                            Site Focus Mode
+                                    {(logicalViewSiteId || selectedNetwork) && (
+                                        <span className={cn(
+                                            "px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider border animate-pulse",
+                                            logicalViewSiteId ? "bg-purple-500/15 text-purple-400 border-purple-500/30" : "bg-sky-500/15 text-sky-400 border-sky-500/30"
+                                        )}>
+                                            {logicalViewSiteId ? 'Site Focus' : 'Carrier Focus'}
                                         </span>
                                     )}
                                 </div>
@@ -2347,12 +2514,16 @@ function TopologyContent({ token }: TopologyProps) {
                             </div>
                         </div>
 
-                        {logicalViewSiteId && (
+                        {(logicalViewSiteId || selectedNetwork) && (
                             <button
-                                onClick={() => setLogicalViewSiteId(null)}
+                                onClick={() => {
+                                    setLogicalViewSiteId(null);
+                                    setSelectedNetwork(null);
+                                    if (selectedObject?.type === 'network' || selectedObject?.site_id) setSelectedObject(null);
+                                }}
                                 className="bg-red-500/10 hover:bg-red-500/20 text-red-500 border border-red-500/25 px-3.5 py-1.5 rounded-xl text-[10px] font-black tracking-widest uppercase transition-all flex items-center gap-2 cursor-pointer shadow-sm shadow-red-500/10"
                             >
-                                <X size={12} /> Exit Overlay View
+                                <X size={12} /> Clear Filter (All Sites)
                             </button>
                         )}
                     </div>
@@ -2475,6 +2646,76 @@ function TopologyContent({ token }: TopologyProps) {
                         </div>
                     )}
 
+                    {/* Global SD-WAN Overlay Transport Filter Ribbon */}
+                    {topologyViewMode === 'overlay' && (
+                        <div className="absolute top-4 left-1/2 -translate-x-1/2 z-20 pointer-events-auto bg-card/90 backdrop-blur-xl border border-border p-1.5 rounded-2xl shadow-2xl flex items-center gap-1.5 animate-in fade-in slide-in-from-top-4 duration-300">
+                            <div className="px-2.5 py-1 text-[10px] font-black text-text-muted uppercase tracking-wider flex items-center gap-1.5 border-r border-border/60">
+                                <Share2 size={12} className="text-blue-400" /> SD-WAN Transport:
+                            </div>
+                            <button
+                                onClick={() => {
+                                    setSelectedNetwork(null);
+                                    if (selectedObject?.type === 'network') setSelectedObject(null);
+                                }}
+                                className={cn(
+                                    "px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all cursor-pointer flex items-center gap-1.5",
+                                    selectedNetwork === null
+                                        ? "bg-blue-600 text-white shadow-md shadow-blue-500/25"
+                                        : "text-text-muted hover:text-text-primary hover:bg-card-secondary"
+                                )}
+                            >
+                                <span>Tous les Tunnels</span>
+                            </button>
+                            <button
+                                onClick={() => {
+                                    setSelectedNetwork('INTERNET');
+                                    setSelectedObject({ type: 'network', network: 'INTERNET', name: 'INTERNET' });
+                                }}
+                                className={cn(
+                                    "px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all cursor-pointer flex items-center gap-1.5",
+                                    selectedNetwork === 'INTERNET'
+                                        ? "bg-sky-600 text-white shadow-md shadow-sky-500/25"
+                                        : "text-text-muted hover:text-sky-400 hover:bg-card-secondary"
+                                )}
+                            >
+                                <Cloud size={12} className="text-sky-400" />
+                                <span>Internet</span>
+                            </button>
+                            <button
+                                onClick={() => {
+                                    setSelectedNetwork('MPLS');
+                                    setSelectedObject({ type: 'network', network: 'MPLS', name: 'MPLS' });
+                                }}
+                                className={cn(
+                                    "px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all cursor-pointer flex items-center gap-1.5",
+                                    selectedNetwork === 'MPLS'
+                                        ? "bg-purple-600 text-white shadow-md shadow-purple-500/25"
+                                        : "text-text-muted hover:text-purple-400 hover:bg-card-secondary"
+                                )}
+                            >
+                                <Network size={12} className="text-purple-400" />
+                                <span>MPLS</span>
+                            </button>
+                            {logicalViewSiteId && (
+                                <div className="pl-1.5 border-l border-border/60 flex items-center gap-1">
+                                    <span className="text-[10px] font-black text-amber-400 bg-amber-500/10 border border-amber-500/20 px-2 py-0.5 rounded-lg">
+                                        Site: {topology?.sites?.find((s: any) => s.site_id === logicalViewSiteId)?.site_name || logicalViewSiteId}
+                                    </span>
+                                    <button
+                                        onClick={() => {
+                                            setLogicalViewSiteId(null);
+                                            if (selectedObject?.site_id) setSelectedObject(null);
+                                        }}
+                                        className="p-1 hover:bg-card-secondary text-text-muted hover:text-rose-400 rounded-lg transition-colors cursor-pointer"
+                                        title="Clear Site Focus"
+                                    >
+                                        <X size={12} />
+                                    </button>
+                                </div>
+                            )}
+                        </div>
+                    )}
+
                     {/* Global SASE Path Type Filter Ribbon */}
                     {topologyViewMode === 'sase' && (
                         <div className="absolute top-4 left-1/2 -translate-x-1/2 z-20 pointer-events-auto bg-card/90 backdrop-blur-xl border border-border p-1.5 rounded-2xl shadow-2xl flex items-center gap-1.5 animate-in fade-in slide-in-from-top-4 duration-300">
@@ -2541,6 +2782,13 @@ function TopologyContent({ token }: TopologyProps) {
                         onEdgesChange={onEdgesChange}
                         onNodeClick={onNodeClick}
                         onEdgeClick={onEdgeClick}
+                        onPaneClick={() => {
+                            setSelectedObject(null);
+                            setSelectedNetwork(null);
+                            setLogicalViewSiteId(null);
+                        }}
+                        minZoom={0.12}
+                        maxZoom={2.5}
                         nodeTypes={nodeTypes}
                         edgeTypes={edgeTypes}
                         className="w-full h-full dark:bg-slate-950/40 bg-card-secondary/20"
@@ -2550,48 +2798,57 @@ function TopologyContent({ token }: TopologyProps) {
 
                         {/* Export & Toggles Panel - Vertical Dock Centered on Right */}
                         <div className="absolute right-5 top-1/2 -translate-y-1/2 z-20 pointer-events-auto flex flex-col gap-2.5 items-end">
-                            {/* 1. View Switcher: Overlay vs Underlay (Vertical Segmented Control) */}
-                            <div className="bg-card/90 backdrop-blur-md border border-border p-1.5 rounded-2xl shadow-2xl flex flex-col gap-1 w-[148px]">
+                            {/* 1. View Switcher: 4 Modes (Vertical Segmented Control) */}
+                            <div className="bg-card/90 backdrop-blur-md border border-border p-1.5 rounded-2xl shadow-2xl flex flex-col gap-1 w-[155px]">
+                                {/* Mode 1: WAN Transport */}
                                 <button
-                                    onClick={() => setTopologyViewMode('overlay')}
+                                    onClick={() => {
+                                        setTopologyViewMode('physical');
+                                        setSelectedNetwork(null);
+                                        setLogicalViewSiteId(null);
+                                    }}
+                                    className={cn(
+                                        "w-full px-3 py-2 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all flex items-center justify-between gap-2 cursor-pointer",
+                                        topologyViewMode === 'physical'
+                                            ? "bg-sky-600 text-white shadow-md shadow-sky-500/25"
+                                            : "text-text-muted hover:text-text-primary hover:bg-card-secondary"
+                                    )}
+                                    title="Physical WAN Transport View (Circuits <-> Internet/MPLS Clouds)"
+                                >
+                                    <div className="flex items-center gap-2">
+                                        <Globe size={14} />
+                                        <span>WAN Transport</span>
+                                    </div>
+                                </button>
+
+                                {/* Mode 2: SD-WAN Mesh */}
+                                <button
+                                    onClick={() => {
+                                        setTopologyViewMode('overlay');
+                                        setSelectedNetwork(null);
+                                        setLogicalViewSiteId(null);
+                                    }}
                                     className={cn(
                                         "w-full px-3 py-2 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all flex items-center justify-between gap-2 cursor-pointer",
                                         topologyViewMode === 'overlay'
                                             ? "bg-blue-600 text-white shadow-md shadow-blue-500/25"
                                             : "text-text-muted hover:text-text-primary hover:bg-card-secondary"
                                     )}
-                                    title="Logical SASE Overlay View (Hubs <-> Clouds <-> Branches)"
+                                    title="Logical SD-WAN Mesh View (Site-to-Site Tunnels)"
                                 >
                                     <div className="flex items-center gap-2">
-                                        <Globe size={14} />
-                                        <span>Overlay</span>
+                                        <Share2 size={14} />
+                                        <span>SD-WAN Mesh</span>
                                     </div>
                                 </button>
+
+                                {/* Mode 3: SASE Fabric */}
                                 <button
-                                    onClick={() => setTopologyViewMode('underlay')}
-                                    className={cn(
-                                        "w-full px-3 py-2 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all flex items-center justify-between gap-2 cursor-pointer",
-                                        topologyViewMode === 'underlay'
-                                            ? "bg-amber-500 text-slate-950 font-black shadow-md shadow-amber-500/25"
-                                            : "text-text-muted hover:text-amber-400 hover:bg-card-secondary"
-                                    )}
-                                    title="Physical Underlay View (Prisma ION Ports <-> VyOS Router Interfaces)"
-                                >
-                                    <div className="flex items-center gap-2">
-                                        <Server size={14} />
-                                        <span>Underlay</span>
-                                    </div>
-                                    {underlayData?.summary?.matched ? (
-                                        <span className={cn(
-                                            "px-1.5 py-0.5 rounded-full text-[8px] font-mono font-black",
-                                            topologyViewMode === 'underlay' ? "bg-slate-950/20 text-slate-950" : "bg-amber-500/20 text-amber-300"
-                                        )}>
-                                            {underlayData.summary.matched}
-                                        </span>
-                                    ) : null}
-                                </button>
-                                <button
-                                    onClick={() => setTopologyViewMode('sase')}
+                                    onClick={() => {
+                                        setTopologyViewMode('sase');
+                                        setSelectedNetwork(null);
+                                        setLogicalViewSiteId(null);
+                                    }}
                                     className={cn(
                                         "w-full px-3 py-2 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all flex items-center justify-between gap-2 cursor-pointer",
                                         topologyViewMode === 'sase'
@@ -2613,10 +2870,48 @@ function TopologyContent({ token }: TopologyProps) {
                                         </span>
                                     ) : null}
                                 </button>
+
+                                {/* Mode 4: VyOS Underlay */}
+                                <button
+                                    onClick={() => {
+                                        setTopologyViewMode('underlay');
+                                        setSelectedNetwork(null);
+                                        setLogicalViewSiteId(null);
+                                    }}
+                                    className={cn(
+                                        "w-full px-3 py-2 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all flex items-center justify-between gap-2 cursor-pointer",
+                                        topologyViewMode === 'underlay'
+                                            ? "bg-amber-500 text-slate-950 font-black shadow-md shadow-amber-500/25"
+                                            : "text-text-muted hover:text-amber-400 hover:bg-card-secondary"
+                                    )}
+                                    title="Physical Underlay View (Prisma ION Ports <-> VyOS Router Interfaces)"
+                                >
+                                    <div className="flex items-center gap-2">
+                                        <Server size={14} />
+                                        <span>VyOS Ports</span>
+                                    </div>
+                                    {underlayData?.summary?.matched ? (
+                                        <span className={cn(
+                                            "px-1.5 py-0.5 rounded-full text-[8px] font-mono font-black",
+                                            topologyViewMode === 'underlay' ? "bg-slate-950/20 text-slate-950" : "bg-amber-500/20 text-amber-300"
+                                        )}>
+                                            {underlayData.summary.matched}
+                                        </span>
+                                    ) : null}
+                                </button>
                             </div>
 
                             {/* 2. Action Tools Vertical Dock */}
                             <div className="bg-card/90 backdrop-blur-md border border-border p-1.5 rounded-2xl shadow-2xl flex flex-col items-center gap-1.5 w-[50px]">
+                                {/* Auto-fit to Screen Button */}
+                                <button
+                                    onClick={handleFitView}
+                                    className="w-9 h-9 rounded-xl transition-all flex items-center justify-center hover:bg-card-secondary text-text-muted hover:text-sky-400 cursor-pointer"
+                                    title="Recadrer la topologie (Auto-fit)"
+                                >
+                                    <Maximize size={16} />
+                                </button>
+
                                 {/* BG as Hub Toggle */}
                                 <button
                                     onClick={() => setBgAsHub(prev => !prev)}
@@ -2850,16 +3145,20 @@ function TopologyContent({ token }: TopologyProps) {
                         <Panel position="bottom-left" className="font-sans">
                             <div className="bg-card/80 backdrop-blur-md border border-border p-4 rounded-2xl shadow-xl flex flex-col gap-2 min-w-[150px]">
                                 <div className="text-[9px] font-black text-text-muted uppercase tracking-[0.2em] mb-1">Topology Legend</div>
-                                {logicalViewSiteId ? (
+                                {(logicalViewSiteId || topologyViewMode === 'overlay') ? (
                                     <>
-                                        <div className="flex items-center gap-2 text-[10px] font-bold text-text-secondary">
-                                            <div className="w-6 h-1 bg-green-500 rounded-full" /> Overlay: Active
+                                        <div className="flex items-center gap-2 text-[10px] font-bold text-emerald-400">
+                                            <div className="w-6 h-1 bg-emerald-500 rounded-full" /> Overlay: Active (UP)
                                         </div>
-                                        <div className="flex items-center gap-2 text-[10px] font-bold text-text-secondary">
+                                        <div className="flex items-center gap-2 text-[10px] font-bold text-blue-400">
                                             <div className="w-6 h-1 bg-blue-500 border-t border-dashed rounded-full" /> Overlay: Backup
                                         </div>
-                                        <div className="flex items-center gap-2 text-[10px] font-bold text-text-secondary">
-                                            <div className="w-6 h-1 bg-red-500 rounded-full" /> Overlay: Down
+                                        <div className="flex items-center gap-2 text-[10px] font-bold text-rose-400">
+                                            <div className="w-6 h-1 bg-rose-500 rounded-full" /> Overlay: Down
+                                        </div>
+                                        <div className="pt-1 mt-1 border-t border-border/50 flex items-center justify-between text-[9px] text-text-muted font-mono gap-2">
+                                            <span className="text-sky-400 font-bold">Cyan: Internet</span>
+                                            <span className="text-purple-400 font-bold">Purple: MPLS</span>
                                         </div>
                                     </>
                                 ) : topologyViewMode === 'sase' ? (
@@ -2912,24 +3211,30 @@ function TopologyContent({ token }: TopologyProps) {
                                     <div className="flex items-center gap-3">
                                         <div className={cn(
                                             "p-2.5 rounded-xl",
-                                            selectedObject.isSaseEdge || selectedObject.isSasePop
-                                                ? "bg-purple-600 text-white shadow-lg shadow-purple-500/30"
-                                                : (selectedObject.type === 'node' ? "bg-blue-500 text-white" : "bg-purple-500 text-white")
+                                            selectedObject.type === 'network'
+                                                ? (selectedObject.network === 'INTERNET' ? "bg-sky-500 text-white shadow-lg shadow-sky-500/30" : "bg-purple-600 text-white shadow-lg shadow-purple-500/30")
+                                                : selectedObject.isSaseEdge || selectedObject.isSasePop
+                                                    ? "bg-purple-600 text-white shadow-lg shadow-purple-500/30"
+                                                    : (selectedObject.type === 'node' ? "bg-blue-500 text-white" : "bg-purple-500 text-white")
                                         )}>
-                                            {selectedObject.isSaseEdge || selectedObject.isSasePop ? (
+                                            {selectedObject.type === 'network' ? (
+                                                <Cloud size={18} />
+                                            ) : selectedObject.isSaseEdge || selectedObject.isSasePop ? (
                                                 <Shield size={18} />
                                             ) : (selectedObject.role === 'HUB' ? <Server size={18} /> : <Home size={18} />)}
                                         </div>
                                         <div>
                                             <h3 className="text-lg font-black text-text-primary tracking-tight">{selectedObject.name || selectedObject.label}</h3>
                                             <p className="text-[10px] text-text-muted font-bold tracking-widest uppercase">
-                                                {selectedObject.isSasePop
-                                                    ? 'SASE Security Cloud PoP'
-                                                    : (selectedObject.isSaseEdge
-                                                        ? (selectedObject.circuit_name ? `${selectedObject.circuit_name} · ServiceLink IPsec Tunnel` : 'ServiceLink IPsec Tunnel')
-                                                        : (selectedObject.type === 'node'
-                                                            ? (selectedObject.site_id ? 'Site Entity' : 'WAN Network')
-                                                            : 'Circuit Link'))}
+                                                {selectedObject.type === 'network'
+                                                    ? 'SD-WAN Transport Carrier'
+                                                    : selectedObject.isSasePop
+                                                        ? 'SASE Security Cloud PoP'
+                                                        : (selectedObject.isSaseEdge
+                                                            ? (selectedObject.circuit_name ? `${selectedObject.circuit_name} · ServiceLink IPsec Tunnel` : 'ServiceLink IPsec Tunnel')
+                                                            : (selectedObject.type === 'node'
+                                                                ? (selectedObject.site_id ? 'Site Entity' : 'WAN Network')
+                                                                : 'Circuit Link'))}
                                             </p>
                                         </div>
                                     </div>
@@ -3369,28 +3674,225 @@ function TopologyContent({ token }: TopologyProps) {
                                                     </div>
                                                 </>
                                             ) : (
-                                                /* Cloud-Specific View (Hide Overlays) */
-                                                <div className="space-y-6">
-                                                    <div className="bg-blue-500/5 border border-blue-500/20 p-8 rounded-[40px] flex flex-col items-center gap-4 shadow-inner">
-                                                        <div className="p-4 bg-blue-500 rounded-full text-white shadow-xl shadow-blue-500/20">
-                                                            <Cloud size={32} />
-                                                        </div>
-                                                        <div className="text-center">
-                                                            <div className="text-xl font-black text-text-primary tracking-tight uppercase leading-none">{selectedObject.name}</div>
-                                                            <div className="text-[10px] text-text-muted font-bold tracking-[0.2em] mt-3 opacity-60">NETWORK INFRASTRUCTURE</div>
-                                                        </div>
-                                                    </div>
+                                                /* Cloud Network SD-WAN Dashboard */
+                                                (() => {
+                                                    const isTargetMpls = (selectedObject.network || selectedObject.name || '').toUpperCase().includes('MPLS');
+                                                    const targetNetworkName = isTargetMpls ? 'MPLS' : 'INTERNET';
 
-                                                    <div className="bg-card-secondary/20 p-6 rounded-3xl border border-border/50 space-y-4">
-                                                        <div className="flex items-center gap-2 text-[10px] font-black text-text-muted uppercase tracking-widest">
-                                                            <Info size={14} className="text-blue-500" /> Network Details
+                                                    // Collect all overlay paths running across this WAN network
+                                                    const allNetworkPaths: any[] = [];
+                                                    (topology?.sites || []).forEach((s: any) => {
+                                                        (s.devices || []).forEach((d: any) => {
+                                                            (d.wan_interfaces || []).forEach((w: any) => {
+                                                                const isCircuitMpls = (w.wan_network || '').toUpperCase().includes('MPLS') || (w.name || '').toUpperCase().includes('MPLS');
+                                                                if (isTargetMpls ? isCircuitMpls : !isCircuitMpls) {
+                                                                    (w.connections || []).forEach((c: any) => {
+                                                                        allNetworkPaths.push({
+                                                                            sourceSite: s.site_name,
+                                                                            sourceSiteId: s.site_id,
+                                                                            sourceDevice: d.device_name,
+                                                                            sourceCircuit: w.name || 'WAN',
+                                                                            peerSite: c.peer_site_name,
+                                                                            peerSiteId: c.peer_site_id,
+                                                                            peerDevice: c.peer_device_name || 'ION',
+                                                                            destCircuit: c.peer_wan_interface || 'WAN',
+                                                                            network: targetNetworkName,
+                                                                            vpnId: c.debug_vpn_id,
+                                                                            srcIp: c.debug_source_ip || w.ip,
+                                                                            dstIp: c.debug_peer_ip,
+                                                                            isRoutingActive: c.active,
+                                                                            isRoutingUsable: c.usable,
+                                                                            isLinkUp: c.link_up,
+                                                                            status: c.status,
+                                                                            vpState: c.vpState,
+                                                                            latency: c.latency ?? c.delay_ms,
+                                                                            loss: c.loss_pct ?? c.packet_loss
+                                                                        });
+                                                                    });
+                                                                }
+                                                            });
+                                                        });
+                                                    });
+
+                                                    const totalPaths = allNetworkPaths.length;
+                                                    const activePaths = allNetworkPaths.filter(p => p.isRoutingActive).length;
+                                                    const backupPaths = allNetworkPaths.filter(p => !p.isRoutingActive && (p.isRoutingUsable || p.isLinkUp)).length;
+                                                    const downPaths = allNetworkPaths.filter(p => !p.isRoutingActive && !p.isRoutingUsable && !p.isLinkUp).length;
+
+                                                    const filteredNetworkPaths = allNetworkPaths.filter(p => {
+                                                        if (networkTunnelFilter === 'ACTIVE') return p.isRoutingActive;
+                                                        if (networkTunnelFilter === 'BACKUP') return !p.isRoutingActive && (p.isRoutingUsable || p.isLinkUp);
+                                                        if (networkTunnelFilter === 'DOWN') return !p.isRoutingActive && !p.isRoutingUsable && !p.isLinkUp;
+                                                        return true;
+                                                    }).filter(p => {
+                                                        if (!networkTunnelSearch) return true;
+                                                        const q = networkTunnelSearch.toLowerCase();
+                                                        return p.sourceSite.toLowerCase().includes(q) ||
+                                                               p.peerSite.toLowerCase().includes(q) ||
+                                                               p.sourceCircuit.toLowerCase().includes(q) ||
+                                                               p.destCircuit.toLowerCase().includes(q);
+                                                    });
+
+                                                    return (
+                                                        <div className="space-y-5">
+                                                            {/* Provider Card with Spotlight Actions */}
+                                                            <div className={cn(
+                                                                "border p-5 rounded-3xl flex flex-col items-center gap-3 shadow-lg",
+                                                                isTargetMpls
+                                                                    ? "bg-purple-950/20 border-purple-500/30 shadow-purple-500/10"
+                                                                    : "bg-sky-950/20 border-sky-500/30 shadow-sky-500/10"
+                                                            )}>
+                                                                <div className={cn(
+                                                                    "p-3 rounded-2xl shadow-xl flex items-center justify-center border",
+                                                                    isTargetMpls ? "bg-purple-600/30 border-purple-500/40 text-purple-300" : "bg-sky-600/30 border-sky-500/40 text-sky-300"
+                                                                )}>
+                                                                    <Cloud size={28} />
+                                                                </div>
+                                                                <div className="text-center">
+                                                                    <div className="text-lg font-black text-text-primary tracking-tight leading-tight uppercase">
+                                                                        {targetNetworkName} OVERLAY
+                                                                    </div>
+                                                                    <div className="text-[10px] text-text-muted font-bold tracking-widest uppercase mt-1">
+                                                                        SD-WAN Transport Carrier
+                                                                    </div>
+                                                                </div>
+
+                                                                {/* Quick Focus Button on Canvas */}
+                                                                <div className="flex gap-2 w-full pt-1">
+                                                                    <button
+                                                                        onClick={() => {
+                                                                            setSelectedNetwork(prev => prev === targetNetworkName ? null : targetNetworkName);
+                                                                        }}
+                                                                        className={cn(
+                                                                            "flex-1 py-2 px-3 rounded-xl text-xs font-black uppercase tracking-wider transition-all border flex items-center justify-center gap-2 cursor-pointer shadow-sm",
+                                                                            selectedNetwork === targetNetworkName
+                                                                                ? (isTargetMpls ? "bg-purple-600 border-purple-500 text-white shadow-purple-500/25" : "bg-sky-600 border-sky-500 text-white shadow-sky-500/25")
+                                                                                : "bg-card-secondary/40 border-border/50 text-text-primary hover:bg-card-secondary"
+                                                                        )}
+                                                                    >
+                                                                        <Filter size={13} />
+                                                                        {selectedNetwork === targetNetworkName ? 'Filtre Actif (Isolé)' : 'Focaliser sur le Canvas'}
+                                                                    </button>
+                                                                </div>
+                                                            </div>
+
+                                                            {/* KPI Summary Cards */}
+                                                            <div className="grid grid-cols-4 gap-2">
+                                                                <div className="bg-card-secondary/40 border border-border/50 p-2.5 rounded-2xl text-center">
+                                                                    <div className="text-[9px] font-black uppercase tracking-wider text-text-muted">Total</div>
+                                                                    <div className="text-base font-black text-text-primary mt-0.5">{totalPaths}</div>
+                                                                </div>
+                                                                <div className="bg-emerald-500/10 border border-emerald-500/20 p-2.5 rounded-2xl text-center">
+                                                                    <div className="text-[9px] font-black uppercase tracking-wider text-emerald-400">Active</div>
+                                                                    <div className="text-base font-black text-emerald-400 mt-0.5">{activePaths}</div>
+                                                                </div>
+                                                                <div className="bg-sky-500/10 border border-sky-500/20 p-2.5 rounded-2xl text-center">
+                                                                    <div className="text-[9px] font-black uppercase tracking-wider text-sky-400">Backup</div>
+                                                                    <div className="text-base font-black text-sky-400 mt-0.5">{backupPaths}</div>
+                                                                </div>
+                                                                <div className="bg-rose-500/10 border border-rose-500/20 p-2.5 rounded-2xl text-center">
+                                                                    <div className="text-[9px] font-black uppercase tracking-wider text-rose-400">Down</div>
+                                                                    <div className="text-base font-black text-rose-400 mt-0.5">{downPaths}</div>
+                                                                </div>
+                                                            </div>
+
+                                                            {/* Filter Tabs & Search */}
+                                                            <div className="flex items-center justify-between gap-1.5">
+                                                                <div className="flex gap-1">
+                                                                    {(['ALL', 'ACTIVE', 'BACKUP', 'DOWN'] as const).map(f => (
+                                                                        <button
+                                                                            key={f}
+                                                                            onClick={() => setNetworkTunnelFilter(f)}
+                                                                            className={cn(
+                                                                                "px-2 py-1 rounded-lg text-[9px] font-black uppercase tracking-wider transition-all border cursor-pointer",
+                                                                                networkTunnelFilter === f
+                                                                                    ? "bg-blue-600 border-blue-500 text-white shadow-md shadow-blue-500/20"
+                                                                                    : "bg-card-secondary/40 border-border/40 text-text-muted hover:text-text-primary"
+                                                                            )}
+                                                                        >
+                                                                            {f}
+                                                                        </button>
+                                                                    ))}
+                                                                </div>
+                                                                <div className="relative flex-1 max-w-[150px]">
+                                                                    <Search size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-text-muted" />
+                                                                    <input
+                                                                        type="text"
+                                                                        placeholder="Filtrer site..."
+                                                                        value={networkTunnelSearch}
+                                                                        onChange={(e) => setNetworkTunnelSearch(e.target.value)}
+                                                                        className="w-full bg-card-secondary/50 border border-border/60 rounded-lg pl-7 pr-2 py-1 text-[10px] text-text-primary placeholder:text-text-muted/60 focus:outline-none focus:border-blue-500"
+                                                                    />
+                                                                </div>
+                                                            </div>
+
+                                                            {/* Tunnels List */}
+                                                            <div className="space-y-2">
+                                                                <div className="text-[10px] font-black text-text-muted uppercase tracking-widest flex items-center justify-between">
+                                                                    <span className="flex items-center gap-1.5">
+                                                                        <Share2 size={12} /> Tunnels SD-WAN ({filteredNetworkPaths.length})
+                                                                    </span>
+                                                                </div>
+
+                                                                <div className="max-h-[420px] overflow-y-auto space-y-1.5 pr-1 scrollbar-thin scrollbar-thumb-border">
+                                                                    {filteredNetworkPaths.length === 0 ? (
+                                                                        <div className="py-8 text-center text-text-muted text-xs italic">
+                                                                            Aucun tunnel SD-WAN trouvé sur {targetNetworkName}
+                                                                        </div>
+                                                                    ) : (
+                                                                        filteredNetworkPaths.map((p, idx) => {
+                                                                            const isAct = p.isRoutingActive;
+                                                                            const isBk = !isAct && (p.isRoutingUsable || p.isLinkUp);
+                                                                            return (
+                                                                                <div
+                                                                                    key={idx}
+                                                                                    onClick={() => {
+                                                                                        setLogicalViewSiteId(p.sourceSiteId);
+                                                                                    }}
+                                                                                    className="bg-card-secondary/30 hover:bg-card-secondary/60 border border-border/50 hover:border-blue-500/40 p-2.5 rounded-xl transition-all cursor-pointer group"
+                                                                                    title="Cliquer pour focaliser ce site sur le canvas"
+                                                                                >
+                                                                                    <div className="flex items-center justify-between gap-1.5">
+                                                                                        {/* Source */}
+                                                                                        <div className="flex items-center gap-1 min-w-0">
+                                                                                            <span className="text-xs font-black text-text-primary truncate">{p.sourceSite}</span>
+                                                                                            <span className="text-[8px] font-mono text-sky-400 bg-sky-500/10 px-1 py-0.5 rounded border border-sky-500/20">{p.sourceCircuit}</span>
+                                                                                        </div>
+
+                                                                                        {/* Status Pill */}
+                                                                                        <div className="shrink-0 flex items-center gap-1">
+                                                                                            <span className={cn(
+                                                                                                "px-1.5 py-0.5 rounded text-[8px] font-black uppercase tracking-wider border",
+                                                                                                isAct
+                                                                                                    ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/30"
+                                                                                                    : (isBk ? "bg-sky-500/10 text-sky-400 border-sky-500/30" : "bg-rose-500/10 text-rose-400 border-rose-500/30")
+                                                                                            )}>
+                                                                                                {isAct ? 'ACTIVE' : (isBk ? 'BACKUP' : 'DOWN')}
+                                                                                            </span>
+                                                                                        </div>
+
+                                                                                        {/* Peer */}
+                                                                                        <div className="flex items-center gap-1 justify-end min-w-0">
+                                                                                            <span className="text-[8px] font-mono text-purple-400 bg-purple-500/10 px-1 py-0.5 rounded border border-purple-500/20">{p.destCircuit}</span>
+                                                                                            <span className="text-xs font-black text-text-primary truncate">{p.peerSite}</span>
+                                                                                        </div>
+                                                                                    </div>
+
+                                                                                    {(p.srcIp || p.dstIp || p.latency) && (
+                                                                                        <div className="mt-1.5 pt-1.5 border-t border-border/30 flex items-center justify-between text-[9px] font-mono text-text-muted">
+                                                                                            <span>{p.srcIp} ➔ {p.dstIp}</span>
+                                                                                            {p.latency && <span className="text-emerald-400 font-bold">{p.latency}ms</span>}
+                                                                                        </div>
+                                                                                    )}
+                                                                                </div>
+                                                                            );
+                                                                        })
+                                                                    )}
+                                                                </div>
+                                                            </div>
                                                         </div>
-                                                        <p className="text-xs text-text-secondary leading-relaxed font-medium">
-                                                            This node represents the <span className="text-text-primary font-bold">{selectedObject.name}</span> underlay network.
-                                                            It facilitates transport for all overlay tunnels associated with this network provider.
-                                                        </p>
-                                                    </div>
-                                                </div>
+                                                    );
+                                                })()
                                             )}
 
                                             {selectedObject.address && (
