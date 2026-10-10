@@ -5,6 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.2.1] - 2026-10-10
+
+### Added
+- **Dynamic DHCP Runtime Lease Resolution & VyOS Underlay Mapping (`getflow.py`, `underlay-topology-manager.ts`, `Topology.tsx`)**:
+  - Resolved runtime DHCP-assigned IPv4 addresses, CIDR network prefixes, and default gateways for branch and DC interfaces in real time via parallelized operational status queries (`sdk.get.interfaces_status`).
+  - Overcame Prisma SD-WAN bulk `interfaces_status_query` API 200-item truncation with an ultra-fast (180ms) targeted multi-threaded fallback, ensuring recently created elements (such as BR8) resolve their DHCP lease accurately.
+  - Enabled automated Underlay mapping between DHCP branch interfaces and VyOS routers (`underlay-topology-manager.ts`) by supplying real host IPs (`wan_ip_only`, `wan_ip_cidr`) to the subnet matcher.
+  - Circuit badges and link inspectors now display the real leased IP address (e.g. `192.168.1.155/24`) and default gateway route instead of generic `DHCP (Lease Pending)` placeholders.
+- **Topology UX & Navigation Overhaul (`Topology.tsx`)**:
+  - Unified View Selector directly inside the top header ribbon: integrated all 4 view modes (`WAN Transport`, `SD-WAN Mesh`, `SASE Fabric`, `VyOS Ports`) with contextual filter pills in a single centered toolbar with zero visual overlap.
+  - Floating Action Toolbar & Mini-Card Inspector: relocated action controls (Filter, Zoom, Fit) to the bottom-right corner and introduced a floating mini-card for inspected circuit links with zero canvas layout displacement.
+  - Compact Split-Pane Drawer: tuned detail drawer to 360px fixed width with two-row structured tunnel cards, avoiding canvas obstruction and text truncation.
+  - Adaptive Branch Gateway Flank Layout & Arched Bridge Mesh: placed Branch Gateways (e.g. BRGW7) on the left flank between Hubs and Spokes, and rendered Spoke-to-Spoke overlay tunnels with arched bridge curves.
+
+### Fixed
+- **Prisma SD-WAN API Studio Preset Bootstrap (`api-studio.ts`, `server.ts`)**:
+  - Aligned Prisma SD-WAN preset versions and session bootstrap for seamless interactive API queries.
+
 ## [2.2.0] - 2026-10-10 — Major Production Release
 
 ### Added
