@@ -117,7 +117,7 @@
         <span class="hero__badge-dot" aria-hidden="true"></span>
         Open-source · MIT · Multi-Node Mesh &amp; V2 Engine
       </div>
-      <span class="hero__version">current: jsuzanne/stigix:v2 &nbsp;·&nbsp; <a href="https://github.com/jsuzanne/stigix/releases" target="_blank" rel="noopener noreferrer" style="color:var(--teal);text-decoration:none;">v2.0.112</a></span>
+      <span class="hero__version">current: jsuzanne/stigix:latest &nbsp;·&nbsp; <a href="https://github.com/jsuzanne/stigix/releases" target="_blank" rel="noopener noreferrer" style="color:var(--teal);text-decoration:none;">v2.2.0</a></span>
     </div>
 
     <h1 class="hero__headline">
@@ -370,16 +370,16 @@
     <!-- 7. Failover Monitoring -->
     <div class="caps__row" role="row">
       <div class="caps__col" role="cell">
-        <div class="caps__col-name">Failover Monitoring</div>
+        <div class="caps__col-name">Failover Monitoring <span class="tag" style="margin-left:6px;background:rgba(24,201,174,0.1);border-color:rgba(24,201,174,0.3);color:var(--teal);font-size:0.56rem;vertical-align:middle;">Oct 2026</span></div>
         <div class="caps__col-category">network testing · convergence</div>
       </div>
       <div class="caps__col" role="cell">
-        <div class="caps__col-desc">High-precision UDP probing (up to 1000 PPS) to measure SD-WAN &amp; SASE failover convergence with sub-second accuracy. Features historical RTT, Jitter, and Loss spike curves with adaptive Y-scaling, interactive timeline scrubbing, SCM multi-path sequence tracking, and 1-click HD PoC card export.</div>
+        <div class="caps__col-desc">High-precision UDP probing (up to 1000 PPS) to measure SD-WAN &amp; SASE failover convergence with sub-second accuracy. Features real-time 500ms reactive telemetry, historical RTT, Jitter, and Loss spike curves with adaptive Y-scaling, interactive timeline scrubbing, SCM multi-path sequence tracking, and 1-click HD PoC card export.</div>
       </div>
       <div class="caps__col" role="cell">
         <div class="caps__col-tags">
+          <span class="tag">500ms Real-Time</span>
           <span class="tag">UDP Probes</span>
-          <span class="tag">1000 PPS</span>
           <span class="tag">Historical Curves</span>
           <span class="tag">PoC Card Export</span>
           <span class="tag">Multi-Path Tracking</span>
@@ -387,22 +387,22 @@
       </div>
     </div>
 
-    <!-- 8. VyOS Control & Physical Underlay -->
+    <!-- 8. Multi-Mode Topology & VyOS Control -->
     <div class="caps__row" role="row">
       <div class="caps__col" role="cell">
-        <div class="caps__col-name">VyOS Control &amp; Physical Underlay <span class="tag" style="margin-left:6px;background:rgba(24,201,174,0.1);border-color:rgba(24,201,174,0.3);color:var(--teal);font-size:0.56rem;vertical-align:middle;">Sep 2026</span></div>
+        <div class="caps__col-name">Multi-Mode Topology &amp; VyOS Control <span class="tag" style="margin-left:6px;background:rgba(24,201,174,0.1);border-color:rgba(24,201,174,0.3);color:var(--teal);font-size:0.56rem;vertical-align:middle;">Oct 2026</span></div>
         <div class="caps__col-category">orchestration · chaos · topology</div>
       </div>
       <div class="caps__col" role="cell">
-        <div class="caps__col-desc">Orchestrate network impairments on VyOS routers via the VyOS API with real-time interactive canvas visualization of physical backbone routers and 1:1 cable wiring. Execute direct actions: instant <strong>Shut / No-Shut</strong> port toggle, <strong>Inject WAN Impairment</strong> (Netem latency/loss sliders), and automated multi-step test sequences with persistent audit history.</div>
+        <div class="caps__col-desc">Interactive topology canvas with 4 dedicated view modes: <strong>WAN Transport</strong> (physical links), <strong>SD-WAN Mesh</strong> (overlay tunnels), <strong>SASE Fabric</strong> (Prisma Access &amp; Zscaler ServiceLinks), and <strong>VyOS Underlay</strong> (router chassis with 1:1 port cabling). Features instant transport filtering, carrier telemetry drawers, responsive viewport auto-fit, and direct VyOS API port toggling and Netem impairment injection.</div>
       </div>
       <div class="caps__col" role="cell">
         <div class="caps__col-tags">
-          <span class="tag">VyOS API</span>
+          <span class="tag">4 View Modes</span>
+          <span class="tag">Carrier Telemetry</span>
+          <span class="tag">SASE Fabric</span>
           <span class="tag">Physical Underlay</span>
-          <span class="tag">Shut/No-Shut</span>
-          <span class="tag">Netem Sliders</span>
-          <span class="tag">1:1 Cabling</span>
+          <span class="tag">VyOS API</span>
         </div>
       </div>
     </div>
@@ -1019,9 +1019,9 @@
             <img src="assets/screenshots/topology-underlay-chassis.png" alt="VyOS Underlay Transit Hub and Spoke Circuits" loading="lazy">
             <div class="gallery__caption"><strong>Underlay Transit Circuits:</strong> Real-time VyOS router port mappings correlating DC/Hub uplinks and Branch/Spoke downlinks with circuit IDs.</div>
           </div>
-          <div class="gallery__slide" data-label="Topology — Logical SD-WAN Overlay Mesh View">
+          <div class="gallery__slide" data-label="Topology — SD-WAN Mesh Overlay &amp; SASE Fabric">
             <img src="assets/screenshots/topology-overlay.png" alt="Logical SD-WAN Overlay Mesh View" loading="lazy">
-            <div class="gallery__caption"><strong>Logical SD-WAN Overlay:</strong> Live tunnel status (Active/Backup/Down), Prisma SASE site detection, and hub-and-spoke mapping.</div>
+            <div class="gallery__caption"><strong>SD-WAN Mesh &amp; SASE Fabric:</strong> 4 dedicated views (WAN Transport, SD-WAN Overlay, SASE Fabric, VyOS Underlay) with interactive carrier inspection and tunnel drawers.</div>
           </div>
           <div class="gallery__slide" data-label="Topology — WAN Link Details &amp; Direct Impairments">
             <img src="assets/screenshots/topology-link.png" alt="WAN Link Details Modal" loading="lazy">
@@ -1656,7 +1656,7 @@
       </ul>
     </div>
     <p class="footer__note" id="footer-last-updated" style="margin-top:12px;padding-top:12px;border-top:1px solid var(--stroke);font-family:var(--mono);font-size:0.72rem;color:var(--muted);">
-      Site last updated: <strong id="footer-date" style="color:var(--mid)">2026-09-30</strong> &nbsp;&middot;&nbsp; Covers release <a href="https://github.com/jsuzanne/stigix/releases" target="_blank" rel="noopener noreferrer" style="color:var(--teal);">v2.0.112</a> &nbsp;&middot;&nbsp; <a href="https://github.com/jsuzanne/stigix/blob/main/CHANGELOG_V2.md" target="_blank" rel="noopener noreferrer" style="color:var(--teal);">View V2 changelog &rarr;</a>
+      Site last updated: <strong id="footer-date" style="color:var(--mid)">2026-10-10</strong> &nbsp;&middot;&nbsp; Covers release <a href="https://github.com/jsuzanne/stigix/releases" target="_blank" rel="noopener noreferrer" style="color:var(--teal);">v2.2.0</a> &nbsp;&middot;&nbsp; <a href="https://github.com/jsuzanne/stigix/blob/main/CHANGELOG_V2.md" target="_blank" rel="noopener noreferrer" style="color:var(--teal);">View V2 changelog &rarr;</a>
     </p>
     <script>var d=new Date(document.lastModified);if(d.getFullYear()>2000){document.getElementById('footer-date').textContent=d.toISOString().slice(0,10);}</script>
     <p class="footer__note" id="footer-disclaimer">
