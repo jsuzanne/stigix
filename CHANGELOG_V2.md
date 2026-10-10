@@ -2,11 +2,13 @@
 
 All notable changes made specifically on the `v2` branch are documented in this file.
 
-## [v2.1.3-dev] - 2026-10-10 — SD-WAN Overlay Redesign, Transport Filtering & Viewport Auto-Fit
+## [v2.1.3-dev] - 2026-10-10 — SD-WAN Overlay Redesign, Transport Filtering, Viewport Auto-Fit & Drawer Crash Fix
 
-- **feat(topology-overlay)**: Redesigned SD-WAN Overlay module with 4 dedicated view modes (`WAN Transport`, `SD-WAN Mesh`, `SASE Fabric`, `VyOS Ports`) in `Topology.tsx`.
+- **feat(topology-overlay)**: Redesigned SD-WAN Overlay module with 4 dedicated view modes (`WAN Transport`, `SD-WAN Mesh`, `SASE Fabric`, `VyOS Ports`) in `Topology.tsx`, set `WAN Transport (physical)` view as the default landing mode, and made the top transport ribbon available in both physical and overlay modes.
 - **feat(transport-inspection)**: Made Internet and MPLS carrier nodes interactive with live tunnel counters. Clicking a carrier filters SD-WAN overlay tunnels over that transport and opens a detailed tunnel telemetry drawer with active/backup/down states, RTT latency, packet loss, and site search.
 - **feat(site-focus)**: Added instant 1-click focus on any site (Hub or Spoke) to isolate and display only that site's direct SD-WAN tunnels, with canvas unselect and top filter ribbon.
+- **feat(edge-inspection)**: Added dedicated SD-WAN Overlay Tunnel Inspector drawer for clicked links showing source/dest site circuits, IPsec endpoints, routing state (Active/Backup/Down), VPN ID, vpState, RTT latency, and packet loss.
+- **fix(drawer-crash)**: Resolved React render crash (black screen) when clicking on Internet/MPLS carrier nodes or edges. The network drawer branch now correctly handles `type === 'network'`, and all edge and carrier property accesses safely guard against undefined `wan_network`.
 - **fix(viewport-autofit)**: Fixed canvas zoom-out limitations on smaller laptop screens (e.g., MacBook 13") by expanding `minZoom` down to `0.12`, tightening vertical coordinate tiers to 1240px, adding auto-fit on window resize, and adding a 1-click Auto-Fit toolbar button.
 
 ## [v2.1.2] - 2026-10-09 — Live Packet Capture, Remote Upgrades, SASE Fabric Topology & In-Place Maintenance

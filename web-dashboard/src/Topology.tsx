@@ -1106,7 +1106,7 @@ function TopologyContent({ token }: TopologyProps) {
     const [fleetNodes, setFleetNodes] = useState<any[]>([]);
 
     // View & Underlay state
-    const [topologyViewMode, setTopologyViewMode] = useState<'physical' | 'overlay' | 'sase' | 'underlay'>('overlay');
+    const [topologyViewMode, setTopologyViewMode] = useState<'physical' | 'overlay' | 'sase' | 'underlay'>('physical');
     const [selectedNetwork, setSelectedNetwork] = useState<'INTERNET' | 'MPLS' | null>(null);
     const [networkTunnelFilter, setNetworkTunnelFilter] = useState<'ALL' | 'ACTIVE' | 'BACKUP' | 'DOWN'>('ALL');
     const [networkTunnelSearch, setNetworkTunnelSearch] = useState('');
@@ -1908,7 +1908,11 @@ function TopologyContent({ token }: TopologyProps) {
                                     isMplsCircuit,
                                     sourceSiteName: site.site_name,
                                     sourceCircuitName: w.name,
-                                    hideLabel: true
+                                    sourceDeviceName: d.device_name,
+                                    hideLabel: true,
+                                    isOverlayTunnel: true,
+                                    wan_network: isMplsCircuit ? 'MPLS' : 'INTERNET',
+                                    network: isMplsCircuit ? 'MPLS' : 'INTERNET'
                                 }
                             });
                         });
@@ -2068,7 +2072,10 @@ function TopologyContent({ token }: TopologyProps) {
                                     ...wan,
                                     site_name: site.site_name,
                                     device_name: device.device_name,
-                                    hideLabel: true
+                                    hideLabel: true,
+                                    isPhysicalWanEdge: true,
+                                    wan_network: wan.wan_network || (isPrivate ? 'MPLS' : 'INTERNET'),
+                                    network: wan.wan_network || (isPrivate ? 'MPLS' : 'INTERNET')
                                 }
                             });
                         }
@@ -2145,6 +2152,7 @@ function TopologyContent({ token }: TopologyProps) {
             setSelectedObject({
                 type: 'network',
                 network: targetNet,
+                wan_network: targetNet,
                 name: targetNet,
                 tunnelsTotal: nodeData.tunnelsTotal,
                 tunnelsUp: nodeData.tunnelsUp,
@@ -2646,11 +2654,11 @@ function TopologyContent({ token }: TopologyProps) {
                         </div>
                     )}
 
-                    {/* Global SD-WAN Overlay Transport Filter Ribbon */}
-                    {topologyViewMode === 'overlay' && (
+                    {/* Global SD-WAN / WAN Transport Filter Ribbon */}
+                    {(topologyViewMode === 'overlay' || topologyViewMode === 'physical') && (
                         <div className="absolute top-4 left-1/2 -translate-x-1/2 z-20 pointer-events-auto bg-card/90 backdrop-blur-xl border border-border p-1.5 rounded-2xl shadow-2xl flex items-center gap-1.5 animate-in fade-in slide-in-from-top-4 duration-300">
                             <div className="px-2.5 py-1 text-[10px] font-black text-text-muted uppercase tracking-wider flex items-center gap-1.5 border-r border-border/60">
-                                <Share2 size={12} className="text-blue-400" /> SD-WAN Transport:
+                                <Share2 size={12} className="text-blue-400" /> {topologyViewMode === 'overlay' ? 'SD-WAN Overlay:' : 'WAN Transport:'}
                             </div>
                             <button
                                 onClick={() => {
@@ -2664,12 +2672,12 @@ function TopologyContent({ token }: TopologyProps) {
                                         : "text-text-muted hover:text-text-primary hover:bg-card-secondary"
                                 )}
                             >
-                                <span>Tous les Tunnels</span>
+                                <span>{topologyViewMode === 'overlay' ? 'Tous les Tunnels' : 'Tous les Liens'}</span>
                             </button>
                             <button
                                 onClick={() => {
                                     setSelectedNetwork('INTERNET');
-                                    setSelectedObject({ type: 'network', network: 'INTERNET', name: 'INTERNET' });
+                                    setSelectedObject({ type: 'network', network: 'INTERNET', wan_network: 'INTERNET', name: 'INTERNET' });
                                 }}
                                 className={cn(
                                     "px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all cursor-pointer flex items-center gap-1.5",
@@ -2684,7 +2692,7 @@ function TopologyContent({ token }: TopologyProps) {
                             <button
                                 onClick={() => {
                                     setSelectedNetwork('MPLS');
-                                    setSelectedObject({ type: 'network', network: 'MPLS', name: 'MPLS' });
+                                    setSelectedObject({ type: 'network', network: 'MPLS', wan_network: 'MPLS', name: 'MPLS' });
                                 }}
                                 className={cn(
                                     "px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all cursor-pointer flex items-center gap-1.5",
@@ -3460,7 +3468,7 @@ function TopologyContent({ token }: TopologyProps) {
                                                 );
                                             })()}
                                         </div>
-                                    ) : selectedObject.type === 'node' ? (
+                                    ) : (selectedObject.type === 'node' || selectedObject.type === 'network') ? (
                                         <>
                                             {/* Site-Specific View (Logical View Toggle & Interfaces) */}
                                             {selectedObject.site_id ? (
@@ -3676,7 +3684,7 @@ function TopologyContent({ token }: TopologyProps) {
                                             ) : (
                                                 /* Cloud Network SD-WAN Dashboard */
                                                 (() => {
-                                                    const isTargetMpls = (selectedObject.network || selectedObject.name || '').toUpperCase().includes('MPLS');
+                                                    const isTargetMpls = Boolean((selectedObject.network || selectedObject.name || selectedObject.wan_network || '').toUpperCase().includes('MPLS'));
                                                     const targetNetworkName = isTargetMpls ? 'MPLS' : 'INTERNET';
 
                                                     // Collect all overlay paths running across this WAN network
@@ -3904,8 +3912,7 @@ function TopologyContent({ token }: TopologyProps) {
                                                 </div>
                                             )}
                                         </>
-                                    ) : (
-                                        selectedObject.isSaseEdge ? (
+                                    ) : selectedObject.isSaseEdge ? (
                                         <div className="space-y-5">
                                             {/* SASE Tunnel Header Banner with Human-Friendly Name & Brand Logo */}
                                             {(() => {
@@ -4024,63 +4031,157 @@ function TopologyContent({ token }: TopologyProps) {
                                                 )}
                                             </div>
                                         </div>
+                                    ) : (selectedObject.isOverlayTunnel || selectedObject.peer_site_name) ? (
+                                        <div className="space-y-5">
+                                            {/* SD-WAN Overlay Tunnel Inspector */}
+                                            {(() => {
+                                                const isOverlayMpls = Boolean(selectedObject.isMplsCircuit || (selectedObject.network || selectedObject.wan_network || '').toUpperCase().includes('MPLS'));
+                                                const isAct = selectedObject.active;
+                                                const isBk = !isAct && (selectedObject.usable || selectedObject.link_up);
+
+                                                return (
+                                                    <>
+                                                        <div className={cn(
+                                                            "border p-5 rounded-2xl flex flex-col items-center gap-3 shadow-lg",
+                                                            isOverlayMpls
+                                                                ? "bg-purple-950/20 border-purple-500/30 shadow-purple-500/10"
+                                                                : "bg-sky-950/20 border-sky-500/30 shadow-sky-500/10"
+                                                        )}>
+                                                            <div className={cn(
+                                                                "p-3 rounded-2xl shadow-xl flex items-center justify-center border",
+                                                                isOverlayMpls ? "bg-purple-600/30 border-purple-500/40 text-purple-300" : "bg-sky-600/30 border-sky-500/40 text-sky-300"
+                                                            )}>
+                                                                <Share2 size={24} />
+                                                            </div>
+                                                            <div className="text-center">
+                                                                <div className="text-base font-black text-text-primary tracking-tight">
+                                                                    {selectedObject.sourceSiteName || selectedObject.sourceSite || 'Site'} ➔ {selectedObject.peer_site_name || selectedObject.peerSite || 'Peer'}
+                                                                </div>
+                                                                <div className="text-[10px] font-mono text-text-muted mt-0.5">
+                                                                    {selectedObject.sourceCircuitName || selectedObject.sourceCircuit || 'WAN'} ➔ {selectedObject.peer_wan_interface || selectedObject.destCircuit || 'WAN'}
+                                                                </div>
+                                                                <div className={cn(
+                                                                    "text-[10px] font-bold tracking-[0.15em] mt-1 uppercase",
+                                                                    isOverlayMpls ? "text-purple-400" : "text-sky-400"
+                                                                )}>
+                                                                    {isOverlayMpls ? 'SD-WAN OVERLAY (MPLS TRANSPORT)' : 'SD-WAN OVERLAY (INTERNET TRANSPORT)'}
+                                                                </div>
+                                                            </div>
+                                                        </div>
+
+                                                        {/* Routing Status */}
+                                                        <div className={cn(
+                                                            "p-3 rounded-xl border flex items-center justify-between text-xs font-bold",
+                                                            isAct
+                                                                ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-400"
+                                                                : isBk
+                                                                    ? "bg-sky-500/10 border-sky-500/30 text-sky-400"
+                                                                    : "bg-rose-500/10 border-rose-500/30 text-rose-400"
+                                                        )}>
+                                                            <div className="flex items-center gap-2">
+                                                                <span className={cn(
+                                                                    "w-2 h-2 rounded-full",
+                                                                    isAct ? "bg-emerald-400 animate-pulse" : isBk ? "bg-sky-400" : "bg-rose-400"
+                                                                )} />
+                                                                <span>STATUS: {isAct ? 'ROUTING ACTIVE (Best Path)' : isBk ? 'BACKUP PATH (Standby)' : 'TUNNEL DOWN'}</span>
+                                                            </div>
+                                                            <span className="font-mono text-[10px] px-2 py-0.5 rounded bg-black/20">
+                                                                {selectedObject.vpState || selectedObject.status || 'UP'}
+                                                            </span>
+                                                        </div>
+
+                                                        {/* IPsec Endpoints Specs */}
+                                                        <div className="grid grid-cols-2 gap-3">
+                                                            <div className="bg-card-secondary/40 p-3.5 rounded-xl border border-border/60 space-y-1">
+                                                                <div className="text-[9px] font-black text-text-muted uppercase tracking-widest">Source IP</div>
+                                                                <div className="text-xs font-mono font-bold text-text-primary truncate">{selectedObject.debug_source_ip || selectedObject.srcIp || 'N/A'}</div>
+                                                            </div>
+                                                            <div className="bg-card-secondary/40 p-3.5 rounded-xl border border-border/60 space-y-1">
+                                                                <div className="text-[9px] font-black text-text-muted uppercase tracking-widest">Remote Peer IP</div>
+                                                                <div className="text-xs font-mono font-bold text-cyan-400 truncate">{selectedObject.debug_peer_ip || selectedObject.dstIp || 'N/A'}</div>
+                                                            </div>
+                                                            <div className="bg-card-secondary/40 p-3.5 rounded-xl border border-border/60 space-y-1">
+                                                                <div className="text-[9px] font-black text-text-muted uppercase tracking-widest">VPN ID</div>
+                                                                <div className="text-xs font-mono font-bold text-amber-400 truncate">{selectedObject.debug_vpn_id || selectedObject.vpnId || 'Standard IPsec'}</div>
+                                                            </div>
+                                                            <div className="bg-card-secondary/40 p-3.5 rounded-xl border border-border/60 space-y-1">
+                                                                <div className="text-[9px] font-black text-text-muted uppercase tracking-widest">Latency / Loss</div>
+                                                                <div className="text-xs font-mono font-bold text-emerald-400">
+                                                                    {(selectedObject.latency ?? selectedObject.delay_ms) ? `${selectedObject.latency ?? selectedObject.delay_ms} ms` : 'Optimal'}
+                                                                    {(selectedObject.loss_pct ?? selectedObject.loss) ? ` · ${selectedObject.loss_pct ?? selectedObject.loss}% loss` : ''}
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    </>
+                                                );
+                                            })()}
+                                        </div>
                                     ) : (
                                         <div className="space-y-6">
-                                            <div className="bg-blue-500/5 border border-blue-500/20 p-5 rounded-2xl flex flex-col items-center gap-3">
-                                                <div className="p-3 bg-blue-500 rounded-2xl text-white shadow-lg">
-                                                    <Zap size={24} />
-                                                </div>
-                                                <div className="text-center">
-                                                    <div className="text-lg font-black text-text-primary tracking-tight uppercase leading-none">{selectedObject.wan_network}</div>
-                                                    <div className="text-[10px] text-text-muted font-bold tracking-[0.2em] mt-2">NETWORK PROVIDER</div>
-                                                </div>
-                                            </div>
+                                            {(() => {
+                                                const circuitNetName = selectedObject.wan_network || selectedObject.network || selectedObject.name || 'Public Internet';
+                                                const isCircuitMpls = circuitNetName.toLowerCase().includes('mpls');
 
-                                            <div className="grid grid-cols-2 gap-4">
-                                                <div className="bg-card-secondary/30 p-4 rounded-xl border border-border space-y-1">
-                                                    <div className="text-[9px] font-black text-text-muted uppercase tracking-widest">Public IP</div>
-                                                    <div className="text-xs font-mono font-bold text-text-primary">{selectedObject.public_ip || 'N/A'}</div>
-                                                </div>
-                                                <div className="bg-card-secondary/30 p-4 rounded-xl border border-border space-y-1">
-                                                    <div className="text-[9px] font-black text-text-muted uppercase tracking-widest">Interface IP</div>
-                                                    <div className="text-xs font-mono font-bold text-text-secondary">{selectedObject.ip || 'DHCP'}</div>
-                                                </div>
-                                            </div>
+                                                return (
+                                                    <>
+                                                        <div className="bg-blue-500/5 border border-blue-500/20 p-5 rounded-2xl flex flex-col items-center gap-3">
+                                                            <div className="p-3 bg-blue-500 rounded-2xl text-white shadow-lg">
+                                                                <Zap size={24} />
+                                                            </div>
+                                                            <div className="text-center">
+                                                                <div className="text-lg font-black text-text-primary tracking-tight uppercase leading-none">{circuitNetName}</div>
+                                                                <div className="text-[10px] text-text-muted font-bold tracking-[0.2em] mt-2">NETWORK PROVIDER</div>
+                                                            </div>
+                                                        </div>
 
-                                            {(selectedObject.public_ip || selectedObject.ip) && (
-                                                <div className="pt-1">
-                                                    <button
-                                                        onClick={() => setTracerouteTarget(selectedObject.public_ip || selectedObject.ip || '')}
-                                                        className="w-full flex items-center justify-center gap-1.5 py-2 rounded-xl bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 border border-blue-500/20 text-xs font-bold transition-all shadow-sm cursor-pointer"
-                                                    >
-                                                        <Route size={13} /> Trace Circuit Path
-                                                    </button>
-                                                </div>
-                                            )}
+                                                        <div className="grid grid-cols-2 gap-4">
+                                                            <div className="bg-card-secondary/30 p-4 rounded-xl border border-border space-y-1">
+                                                                <div className="text-[9px] font-black text-text-muted uppercase tracking-widest">Public IP</div>
+                                                                <div className="text-xs font-mono font-bold text-text-primary">{selectedObject.public_ip || 'N/A'}</div>
+                                                            </div>
+                                                            <div className="bg-card-secondary/30 p-4 rounded-xl border border-border space-y-1">
+                                                                <div className="text-[9px] font-black text-text-muted uppercase tracking-widest">Interface IP</div>
+                                                                <div className="text-xs font-mono font-bold text-text-secondary">{selectedObject.ip || 'DHCP'}</div>
+                                                            </div>
+                                                        </div>
 
-                                            <div className="space-y-4 pt-2">
-                                                <div className="text-[10px] font-black text-text-muted uppercase tracking-widest flex items-center gap-2">
-                                                    <CheckCircle size={14} className="text-green-500" /> Circuit Compliance
-                                                </div>
-                                                <div className="space-y-2">
-                                                    <div className="flex items-center justify-between text-xs py-1 border-b border-border/40">
-                                                        <span className="text-text-muted">Status</span>
-                                                        <span className="font-bold text-green-500 uppercase">Operational</span>
-                                                    </div>
-                                                    <div className="flex items-center justify-between text-xs py-1 border-b border-border/40">
-                                                        <span className="text-text-muted">Network Type</span>
-                                                        <span className="font-bold text-text-primary uppercase tracking-tighter">
-                                                            {selectedObject.wan_network.toLowerCase().includes('mpls') ? 'Private MPLS' : 'Public Internet'}
-                                                        </span>
-                                                    </div>
-                                                    <div className="flex items-center justify-between text-xs py-1">
-                                                        <span className="text-text-muted">Label</span>
-                                                        <span className="font-bold text-blue-500">{selectedObject.label}</span>
-                                                    </div>
-                                                </div>
-                                            </div>
+                                                        {(selectedObject.public_ip || selectedObject.ip) && (
+                                                            <div className="pt-1">
+                                                                <button
+                                                                    onClick={() => setTracerouteTarget(selectedObject.public_ip || selectedObject.ip || '')}
+                                                                    className="w-full flex items-center justify-center gap-1.5 py-2 rounded-xl bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 border border-blue-500/20 text-xs font-bold transition-all shadow-sm cursor-pointer"
+                                                                >
+                                                                    <Route size={13} /> Trace Circuit Path
+                                                                </button>
+                                                            </div>
+                                                        )}
+
+                                                        <div className="space-y-4 pt-2">
+                                                            <div className="text-[10px] font-black text-text-muted uppercase tracking-widest flex items-center gap-2">
+                                                                <CheckCircle size={14} className="text-green-500" /> Circuit Compliance
+                                                            </div>
+                                                            <div className="space-y-2">
+                                                                <div className="flex items-center justify-between text-xs py-1 border-b border-border/40">
+                                                                    <span className="text-text-muted">Status</span>
+                                                                    <span className="font-bold text-green-500 uppercase">Operational</span>
+                                                                </div>
+                                                                <div className="flex items-center justify-between text-xs py-1 border-b border-border/40">
+                                                                    <span className="text-text-muted">Network Type</span>
+                                                                    <span className="font-bold text-text-primary uppercase tracking-tighter">
+                                                                        {isCircuitMpls ? 'Private MPLS' : 'Public Internet'}
+                                                                    </span>
+                                                                </div>
+                                                                <div className="flex items-center justify-between text-xs py-1">
+                                                                    <span className="text-text-muted">Label</span>
+                                                                    <span className="font-bold text-blue-500">{selectedObject.label || selectedObject.name || 'WAN Circuit'}</span>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    </>
+                                                );
+                                            })()}
                                         </div>
-                                    ))}
+                                    )}
                                 </div>
 
                                 <div className="p-6 bg-card-secondary/50 border-t border-border mt-auto">
