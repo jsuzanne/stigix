@@ -1049,9 +1049,6 @@ export default function ConnectivityPerformance({ token, uiConfig, onManage }: C
                         <span className="text-blue-600 dark:text-blue-400 font-bold ml-1">Jitter/Loss (UDP)</span>, and
                         <span className="text-blue-600 dark:text-blue-400 font-bold ml-1">TTFB (HTTP)</span>.
                         Errors/Timeouts result in a score of <span className="text-red-500 font-black">0</span>.
-                        <span className="block mt-1 text-text-muted/60 font-bold flex items-center gap-1 uppercase tracking-tighter text-[9px]">
-                            <Clock size={10} /> Probes run automatically every 1 minute.
-                        </span>
                     </p>
                 </div>
             </div>
