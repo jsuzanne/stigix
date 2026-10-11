@@ -245,7 +245,13 @@ export default function App() {
   const [token, setToken] = useState<string | null>(localStorage.getItem('token'));
   const [username, setUsername] = useState<string | null>(localStorage.getItem('username'));
   const [view, setView] = useState<'dashboard' | 'settings' | 'statistics' | 'security' | 'voice' | 'performance' | 'failover' | 'srt' | 'iot' | 'vyos' | 'speedtest' | 'topology' | 'convergence' | 'events' | 'custom_apps' | 'pcap_replay' | 'packet_capture' | 'api_studio' | 'copilot' | 'fleet' | 'home'>(
-    (localStorage.getItem('activeView') as any) || 'home'
+    () => {
+      const saved = localStorage.getItem('activeView');
+      if (saved && saved !== 'settings') {
+        return saved as any;
+      }
+      return 'home';
+    }
   );
 
   const handleNavigate = (viewId: string, subTab?: string) => {
@@ -500,6 +506,10 @@ export default function App() {
     localStorage.setItem('username', u);
     setToken(t);
     setUsername(u);
+    setView('home');
+    try {
+      localStorage.setItem('activeView', 'home');
+    } catch { }
   };
 
   const changePassword = async () => {

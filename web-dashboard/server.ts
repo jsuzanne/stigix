@@ -11431,9 +11431,12 @@ app.get('/api/system/health-matrix', authenticateToken, async (req, res) => {
             let allP95: number[] = [];
             let totalHealth = 0;
 
+            let totalStreams = 0;
             for (const st of allStatuses) {
                 if (st.listenerState === 'listening') customAppsStatus.active_listeners++;
                 if (st.clientWorkloadRunning || (st.activeOutgoingSessions && st.activeOutgoingSessions > 0) || (st.clientSessionCount && st.clientSessionCount > 0)) customAppsStatus.active_workloads++;
+                const streams = (st.activeIncomingSessions || 0) + (st.activeOutgoingSessions || 0);
+                totalStreams += streams;
                 if (st.healthScore !== undefined) totalHealth += st.healthScore;
                 const rttVal = st.avgRttMs || st.latency?.avg;
                 if (rttVal) {
@@ -11446,6 +11449,8 @@ app.get('/api/system/health-matrix', authenticateToken, async (req, res) => {
                 if (p95Val) allP95.push(p95Val);
             }
 
+            customAppsStatus.active_streams = totalStreams;
+            customAppsStatus.active_sessions = totalStreams;
             if (allStatuses.length > 0) {
                 customAppsStatus.health_score = Math.round(totalHealth / allStatuses.length);
             }
@@ -11464,9 +11469,10 @@ app.get('/api/system/health-matrix', authenticateToken, async (req, res) => {
                 if (app.enabled !== false && app.startup?.startClientWorkload === true) customAppsStatus.active_workloads++;
             }
         }
-        customAppsStatus.status = customAppsStatus.total_apps > 0
-            ? (customAppsStatus.active_listeners > 0 || customAppsStatus.active_workloads > 0 ? 'running' : 'idle')
-            : 'ready';
+        customAppsStatus.running = (customAppsStatus.active_workloads > 0 || (customAppsStatus.active_streams ?? 0) > 0);
+        customAppsStatus.status = customAppsStatus.running
+            ? 'running'
+            : (customAppsStatus.active_listeners > 0 ? 'listening' : (customAppsStatus.total_apps > 0 ? 'ready' : 'idle'));
 
         // 4. Digital Experience (DEM) & Bandwidth
         let demStatus: any = {

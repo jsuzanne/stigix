@@ -1189,6 +1189,9 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
     useEffect(() => {
         if (upgradeModal.open && upgradeModal.phase === 'complete') {
             if (upgradeModal.countdown <= 0) {
+                try {
+                    localStorage.setItem('activeView', 'home');
+                } catch { }
                 window.location.reload();
                 return;
             }
