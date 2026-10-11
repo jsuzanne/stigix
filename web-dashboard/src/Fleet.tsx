@@ -5,6 +5,7 @@ import {
     Check, X, Filter, Copy, Clock, AlertTriangle, ShieldCheck,
     Zap
 } from 'lucide-react';
+import { cn } from './lib/utils';
 import { usePeerContext } from './PeerContext';
 import { FleetSkeleton } from './components/skeletons/FleetSkeleton';
 
@@ -279,27 +280,67 @@ export default function Fleet({ token, onNavigate: _onNavigate }: FleetProps) {
 
     return (
         <div className="space-y-6">
-            {/* Top Header */}
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-card/60 backdrop-blur-md p-6 rounded-2xl border border-border shadow-xl">
-                <div className="flex items-center gap-4">
-                    <div className="w-12 h-12 rounded-xl bg-blue-500/10 border border-blue-500/20 flex items-center justify-center text-blue-400 shadow-inner">
-                        <Globe size={26} />
+            {/* Top Header with Integrated Telemetry Ribbon */}
+            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 bg-card/60 backdrop-blur-md p-5 rounded-2xl border border-border shadow-xl">
+                <div className="flex flex-wrap items-center gap-4">
+                    <div className="w-11 h-11 rounded-xl bg-blue-500/10 border border-blue-500/20 flex items-center justify-center text-blue-400 shadow-inner flex-shrink-0">
+                        <Globe size={24} />
                     </div>
                     <div>
-                        <div className="flex items-center gap-3">
-                            <h1 className="text-2xl font-black tracking-tight text-text">Mesh Overview</h1>
-                            <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 flex items-center gap-1.5">
-                                <ShieldCheck size={12} />
+                        <div className="flex items-center gap-2.5">
+                            <h1 className="text-xl font-black tracking-tight text-text">Mesh Overview</h1>
+                            <span className="px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 flex items-center gap-1">
+                                <ShieldCheck size={11} />
                                 Leader Active
                             </span>
                         </div>
-                        <p className="text-sm text-text-muted mt-0.5">
-                            Centralized observability & telemetry aggregation across all distributed Stigix peers
+                        <p className="text-xs text-text-muted mt-0.5 hidden sm:block">
+                            Centralized observability & telemetry aggregation across distributed Stigix peers
                         </p>
+                    </div>
+
+                    {/* Compact Telemetry Ribbon (Saves ~100px vertical space) */}
+                    <div className="flex flex-wrap items-center gap-2 sm:ml-2 sm:pl-3 sm:border-l sm:border-border/60">
+                        {/* Total Nodes */}
+                        <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-card-secondary/70 border border-border text-xs">
+                            <Server size={12} className="text-text-muted" />
+                            <span className="text-[10px] uppercase font-bold text-text-muted tracking-wider">Nodes:</span>
+                            <span className="font-mono font-black text-text-primary">{data?.total_instances ?? '—'}</span>
+                        </div>
+
+                        {/* Online */}
+                        <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-xs text-emerald-600 dark:text-emerald-400">
+                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                            <span className="text-[10px] uppercase font-bold tracking-wider">Online:</span>
+                            <span className="font-mono font-black">{data?.online_count ?? '—'}</span>
+                        </div>
+
+                        {/* Offline */}
+                        <div className={cn(
+                            "flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-xs",
+                            (data?.offline_count ?? 0) > 0
+                                ? "bg-rose-500/10 border-rose-500/30 text-rose-600 dark:text-rose-400 font-bold"
+                                : "bg-card-secondary/50 border-border text-text-muted"
+                        )}>
+                            <XCircle size={11} className={(data?.offline_count ?? 0) > 0 ? "text-rose-500 animate-pulse" : "text-text-muted opacity-50"} />
+                            <span className="text-[10px] uppercase font-bold tracking-wider">Offline:</span>
+                            <span className="font-mono font-bold">{data?.offline_count ?? 0}</span>
+                        </div>
+
+                        {/* Mesh Global Experience */}
+                        <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-blue-500/10 border border-blue-500/20 text-xs text-blue-600 dark:text-blue-400">
+                            <Gauge size={12} className="text-blue-500" />
+                            <span className="text-[10px] uppercase font-bold tracking-wider">Mesh Exp:</span>
+                            <span className="font-mono font-black">
+                                {data?.avg_global_experience !== null && data?.avg_global_experience !== undefined 
+                                    ? `${data.avg_global_experience}%` 
+                                    : '—'}
+                            </span>
+                        </div>
                     </div>
                 </div>
 
-                <div className="flex items-center gap-3">
+                <div className="flex items-center gap-2.5 self-end lg:self-auto">
                     <button
                         onClick={() => setAutoRefresh(prev => !prev)}
                         className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition-all flex items-center gap-1.5 ${
@@ -314,15 +355,15 @@ export default function Fleet({ token, onNavigate: _onNavigate }: FleetProps) {
                     </button>
 
                     <span className="text-[11px] font-mono text-text-muted hidden md:inline">
-                        Updated {lastRefreshTime.toLocaleTimeString()}
+                        {lastRefreshTime.toLocaleTimeString()}
                     </span>
 
                     <button
                         onClick={() => fetchFleetOverview(true)}
                         disabled={loading}
-                        className="px-4 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs flex items-center gap-2 transition-all shadow-md active:scale-95 disabled:opacity-50"
+                        className="px-3.5 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs flex items-center gap-1.5 transition-all shadow-md active:scale-95 disabled:opacity-50"
                     >
-                        <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
+                        <RefreshCw size={13} className={loading ? 'animate-spin' : ''} />
                         Refresh
                     </button>
                 </div>
@@ -336,63 +377,16 @@ export default function Fleet({ token, onNavigate: _onNavigate }: FleetProps) {
                 </div>
             )}
 
-            {/* KPI Metrics Cards */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                <div className="bg-card/50 backdrop-blur-md p-4 rounded-xl border border-border flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-lg bg-card-secondary flex items-center justify-center text-text-muted">
-                        <Server size={20} />
-                    </div>
-                    <div>
-                        <div className="text-xs text-text-muted font-bold uppercase tracking-wider">Total Nodes</div>
-                        <div className="text-2xl font-black text-text">{data?.total_instances ?? '—'}</div>
-                    </div>
-                </div>
-
-                <div className="bg-card/50 backdrop-blur-md p-4 rounded-xl border border-border flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-lg bg-emerald-500/10 flex items-center justify-center text-emerald-400">
-                        <CheckCircle2 size={20} />
-                    </div>
-                    <div>
-                        <div className="text-xs text-emerald-400/80 font-bold uppercase tracking-wider">Online</div>
-                        <div className="text-2xl font-black text-emerald-400">{data?.online_count ?? '—'}</div>
-                    </div>
-                </div>
-
-                <div className="bg-card/50 backdrop-blur-md p-4 rounded-xl border border-border flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-lg bg-red-500/10 flex items-center justify-center text-red-400">
-                        <XCircle size={20} />
-                    </div>
-                    <div>
-                        <div className="text-xs text-red-400/80 font-bold uppercase tracking-wider">Offline</div>
-                        <div className="text-2xl font-black text-red-400">{data?.offline_count ?? '—'}</div>
-                    </div>
-                </div>
-
-                <div className="bg-gradient-to-br from-blue-950/20 to-indigo-950/20 backdrop-blur-md p-4 rounded-xl border border-blue-500/20 flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-lg bg-blue-500/10 flex items-center justify-center text-blue-400">
-                        <Gauge size={20} />
-                    </div>
-                    <div>
-                        <div className="text-xs text-blue-400/80 font-bold uppercase tracking-wider">Mesh Global Exp.</div>
-                        <div className="text-2xl font-black text-blue-400">
-                            {data?.avg_global_experience !== null && data?.avg_global_experience !== undefined 
-                                ? `${data.avg_global_experience}%` 
-                                : '—'}
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            {/* Filter and Search Bar */}
-            <div className="flex flex-col sm:flex-row items-center justify-between gap-4 bg-card/40 p-4 rounded-xl border border-border">
+            {/* Filter and Search Bar with Integrated Dynamic Badges */}
+            <div className="flex flex-col sm:flex-row items-center justify-between gap-4 bg-card/40 p-3.5 rounded-xl border border-border">
                 <div className="relative w-full sm:w-80">
-                    <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-text-muted" />
+                    <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-text-muted" />
                     <input
                         type="text"
                         placeholder="Search by Site, Node ID, IP..."
                         value={searchQuery}
                         onChange={e => setSearchQuery(e.target.value)}
-                        className="w-full pl-9 pr-4 py-2 bg-background border border-border rounded-lg text-sm text-text focus:outline-none focus:border-blue-500 transition-colors"
+                        className="w-full pl-9 pr-4 py-1.5 bg-background border border-border rounded-lg text-xs text-text focus:outline-none focus:border-blue-500 transition-colors"
                     />
                 </div>
 
@@ -400,19 +394,35 @@ export default function Fleet({ token, onNavigate: _onNavigate }: FleetProps) {
                     <span className="text-xs text-text-muted flex items-center gap-1 mr-1">
                         <Filter size={12} /> Status:
                     </span>
-                    {(['all', 'online', 'offline'] as const).map(f => (
-                        <button
-                            key={f}
-                            onClick={() => setStatusFilter(f)}
-                            className={`px-3 py-1 rounded-md text-xs font-bold uppercase tracking-wider transition-all ${
-                                statusFilter === f
-                                    ? 'bg-blue-600 text-white shadow-sm'
-                                    : 'bg-card-secondary text-text-muted hover:text-text-primary hover:bg-card-hover'
-                            }`}
-                        >
-                            {f}
-                        </button>
-                    ))}
+                    {(['all', 'online', 'offline'] as const).map(f => {
+                        const count = f === 'all' 
+                            ? (data?.total_instances ?? 0)
+                            : f === 'online' 
+                                ? (data?.online_count ?? 0)
+                                : (data?.offline_count ?? 0);
+                        return (
+                            <button
+                                key={f}
+                                onClick={() => setStatusFilter(f)}
+                                className={cn(
+                                    "px-3 py-1 rounded-lg text-xs font-bold uppercase tracking-wider transition-all flex items-center gap-1.5",
+                                    statusFilter === f
+                                        ? 'bg-blue-600 text-white shadow-sm'
+                                        : 'bg-card-secondary text-text-muted hover:text-text-primary hover:bg-card-hover'
+                                )}
+                            >
+                                <span>{f}</span>
+                                <span className={cn(
+                                    "text-[10px] px-1.5 py-0.2 rounded-full font-mono",
+                                    statusFilter === f
+                                        ? "bg-white/20 text-white"
+                                        : "bg-background/80 text-text-muted"
+                                )}>
+                                    {count}
+                                </span>
+                            </button>
+                        );
+                    })}
                 </div>
             </div>
 

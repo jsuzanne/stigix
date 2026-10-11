@@ -1072,39 +1072,39 @@ export default function App() {
       )}
 
 
-      <header className="mb-5 flex justify-between items-center gap-4">
+      <header className="mb-6 flex justify-between items-center gap-4">
         {/* Left: Brand Identity Logo & Single-Line Platform Title */}
-        <div className="flex items-center gap-3.5 min-w-0">
-          {/* Fluo Pulse Gem Icon */}
+        <div className="flex items-center gap-4 min-w-0">
+          {/* Fluo Pulse Gem Icon (Scaled for bold brand presence) */}
           <div className="relative flex-shrink-0 neon-squircle">
-            <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-blue-600 via-indigo-600 to-purple-600 p-[2px] shadow-lg shadow-blue-500/25">
-              <div className="w-full h-full bg-[#0a0f1d] rounded-[10px] flex items-center justify-center">
-                <svg className="w-4.5 h-4.5 pulse-path" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+            <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-blue-600 via-indigo-600 to-purple-600 p-[2.5px] shadow-xl shadow-blue-500/30">
+              <div className="w-full h-full bg-[#0a0f1d] rounded-[13px] flex items-center justify-center">
+                <svg className="w-6 h-6 pulse-path" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
                   <path d="M22 12h-4l-3 9L9 3l-3 9H2" />
                 </svg>
               </div>
             </div>
-            <span className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-emerald-400 border border-white dark:border-[#0a0f1d] shadow-[0_0_8px_rgba(52,211,153,0.9)]" />
+            <span className="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full bg-emerald-400 border-2 border-white dark:border-[#0a0f1d] shadow-[0_0_10px_rgba(52,211,153,0.9)]" />
           </div>
 
           {/* Wordmark Stigix & Single-Line Metadata (Full Light & Dark Theme Support) */}
-          <div className="flex items-baseline gap-3 flex-wrap sm:flex-nowrap">
-            <h1 className="text-2xl font-bold tracking-[-0.02em] leading-none text-slate-900 dark:text-text-primary flex items-baseline select-none font-sans">
+          <div className="flex items-baseline gap-3.5 flex-wrap sm:flex-nowrap">
+            <h1 className="text-3xl sm:text-[34px] font-black tracking-[-0.03em] leading-none text-slate-900 dark:text-text-primary flex items-baseline select-none font-sans">
               St
               <span className="relative inline-block mx-[1px]">
-                <span className="absolute -top-1 left-1/2 -translate-x-1/2 w-[5px] h-[5px] rounded-full bg-cyan-400 dark:bg-cyan-400 neon-dot border border-cyan-300/60" />
+                <span className="absolute -top-1.5 left-1/2 -translate-x-1/2 w-[6px] h-[6px] rounded-full bg-cyan-400 dark:bg-cyan-400 neon-dot border border-cyan-300/70" />
                 ı
               </span>
               g
               <span className="relative inline-block mx-[1px]">
-                <span className="absolute -top-1 left-1/2 -translate-x-1/2 w-[5px] h-[5px] rounded-full bg-cyan-400 dark:bg-cyan-400 neon-dot-delay border border-cyan-300/60" />
+                <span className="absolute -top-1.5 left-1/2 -translate-x-1/2 w-[6px] h-[6px] rounded-full bg-cyan-400 dark:bg-cyan-400 neon-dot-delay border border-cyan-300/70" />
                 ı
               </span>
               x
             </h1>
 
             {/* Divider */}
-            <span className="text-slate-300 dark:text-text-muted/40 font-light text-sm hidden sm:inline">|</span>
+            <span className="text-slate-300 dark:text-text-muted/40 font-light text-base hidden sm:inline">|</span>
 
             {/* Single-line Metadata */}
             <div className="flex items-center gap-2 text-xs text-slate-500 dark:text-text-muted font-medium">

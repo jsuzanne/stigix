@@ -130,22 +130,7 @@ export const SidebarRail: React.FC<SidebarRailProps> = ({
                     "transition-colors duration-200"
                 )}
             >
-                {/* Brand Stigix Glowing Icon */}
-                <button
-                    onClick={() => {
-                        onNavigate('home');
-                        setActiveDomain(null);
-                        setIsPinned(false);
-                    }}
-                    title="Stigix Home (⌘H)"
-                    className="w-9 h-9 rounded-xl bg-gradient-to-br from-blue-600 via-indigo-600 to-purple-600 flex items-center justify-center text-white shadow-lg shadow-blue-500/25 border border-white/20 hover:scale-105 active:scale-95 transition-all group mb-2 cursor-pointer"
-                >
-                    <span className="font-black text-base tracking-tighter text-white group-hover:drop-shadow-[0_0_8px_rgba(255,255,255,0.8)]">
-                        S
-                    </span>
-                </button>
 
-                <div className="w-6 h-[1px] bg-slate-200 dark:bg-[#1e293b]/70 my-1" />
 
                 {/* Primary Functional Domains (SCM Navigation) */}
                 <div className="flex-1 w-full flex flex-col items-center gap-2">

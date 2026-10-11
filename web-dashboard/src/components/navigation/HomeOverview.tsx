@@ -108,20 +108,11 @@ export const HomeOverview: React.FC<HomeOverviewProps> = ({
                 <div className="absolute -bottom-24 -left-24 w-96 h-96 bg-indigo-500/10 rounded-full blur-3xl pointer-events-none" />
 
                 <div className="relative z-10 flex flex-col lg:flex-row lg:items-center justify-between gap-6">
-                    {/* Left: Node Identity & Role */}
+                    {/* Left: Node Identity & Role (Clean, bold typography, no duplicate pulse icon) */}
                     <div className="flex items-start sm:items-center gap-4">
-                        <div className="relative">
-                            <div className="w-16 h-16 rounded-2xl bg-gradient-to-tr from-blue-600 via-indigo-600 to-purple-600 p-[2px] shadow-lg shadow-blue-500/30">
-                                <div className="w-full h-full bg-slate-900 dark:bg-[#0a0f1d] rounded-[14px] flex items-center justify-center">
-                                    <Activity size={28} className="text-blue-400 animate-pulse" />
-                                </div>
-                            </div>
-                            <span className="absolute -bottom-1 -right-1 w-4 h-4 rounded-full bg-emerald-500 border-2 border-white dark:border-[#0a0f1d] shadow-[0_0_10px_rgba(16,185,129,0.8)]" />
-                        </div>
-
                         <div>
                             <div className="flex flex-wrap items-center gap-2.5">
-                                <h1 className="text-2xl font-black tracking-tight text-slate-900 dark:text-white flex items-center gap-2">
+                                <h1 className="text-3xl font-black tracking-tight text-slate-900 dark:text-white flex items-center gap-2">
                                     {localSiteName}
                                 </h1>
                                 <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-widest bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/30">
@@ -129,7 +120,7 @@ export const HomeOverview: React.FC<HomeOverviewProps> = ({
                                 </span>
                             </div>
 
-                            <p className="text-xs text-slate-600 dark:text-text-muted mt-1 font-medium flex items-center gap-2 flex-wrap">
+                            <p className="text-xs text-slate-600 dark:text-text-muted mt-1.5 font-medium flex items-center gap-2 flex-wrap">
                                 <span>Host: <strong className="text-slate-900 dark:text-text-primary">{host.hostname || 'Host Mode'}</strong></span>
                                 <span>•</span>
                                 <span>Uptime: <strong className="text-emerald-600 dark:text-emerald-400 font-mono">{formatUptime(uptimeRaw)}</strong></span>
@@ -139,25 +130,38 @@ export const HomeOverview: React.FC<HomeOverviewProps> = ({
                         </div>
                     </div>
 
-                    {/* Right: Health Score & Action Buttons */}
-                    <div className="flex items-center gap-4 self-end sm:self-auto">
+                    {/* Right: Cluster Topology & Action Buttons (Leader, Peer, or Standalone Aware) */}
+                    <div className="flex items-center gap-3 self-end sm:self-auto">
                         <div className={cn(
-                            "px-4 py-2.5 rounded-2xl border shadow-lg flex items-center gap-3 backdrop-blur-md",
-                            score >= 90
-                                ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-600 dark:text-emerald-400"
-                                : score >= 70
-                                    ? "bg-amber-500/10 border-amber-500/30 text-amber-600 dark:text-amber-400"
-                                    : "bg-rose-500/10 border-rose-500/30 text-rose-600 dark:text-rose-400"
+                            "px-4 py-2 rounded-2xl border shadow-sm flex items-center gap-3 backdrop-blur-md",
+                            registryStatus?.mode === 'leader'
+                                ? "bg-purple-500/10 border-purple-500/30 text-purple-600 dark:text-purple-400"
+                                : registryStatus?.mode === 'peer' && (mesh.status === 'connected' || registryStatus?.is_registered)
+                                    ? "bg-blue-500/10 border-blue-500/30 text-blue-600 dark:text-blue-400"
+                                    : "bg-slate-500/10 border-slate-500/30 text-slate-600 dark:text-slate-400"
                         )}>
-                            <div className="text-3xl font-black tracking-tighter">
-                                {score}%
-                            </div>
+                            <div className={cn(
+                                "w-2.5 h-2.5 rounded-full",
+                                registryStatus?.mode === 'leader'
+                                    ? "bg-purple-500 animate-pulse shadow-[0_0_8px_rgba(168,85,247,0.8)]"
+                                    : registryStatus?.mode === 'peer' && (mesh.status === 'connected' || registryStatus?.is_registered)
+                                        ? "bg-blue-500 animate-pulse shadow-[0_0_8px_rgba(59,130,246,0.8)]"
+                                        : "bg-slate-400"
+                            )} />
                             <div className="text-left leading-tight">
-                                <div className="text-[10px] font-black uppercase tracking-wider text-slate-800 dark:text-white">
-                                    {score >= 90 ? 'Operational' : score >= 70 ? 'Degraded' : 'Critical'}
+                                <div className="text-[11px] font-black uppercase tracking-wider text-slate-900 dark:text-white">
+                                    {registryStatus?.mode === 'leader'
+                                        ? 'Fleet Leader Active'
+                                        : registryStatus?.mode === 'peer' && (mesh.status === 'connected' || registryStatus?.is_registered)
+                                            ? 'Mesh Peer Connected'
+                                            : 'Standalone Node'}
                                 </div>
-                                <div className="text-[10px] text-slate-500 dark:text-text-muted">
-                                    Health Matrix
+                                <div className="text-[10px] text-slate-500 dark:text-text-muted font-mono">
+                                    {registryStatus?.mode === 'leader'
+                                        ? `${mesh.peer_count ?? registryStatus?.peer_count ?? 0} Distributed Peers`
+                                        : registryStatus?.mode === 'peer' && (mesh.status === 'connected' || registryStatus?.is_registered)
+                                            ? `Leader: ${leaderSite || leaderPeer?.ip_private || mesh.leader_ip || 'Cluster Active'}`
+                                            : 'Local Operations (Single Node)'}
                                 </div>
                             </div>
                         </div>
@@ -188,10 +192,14 @@ export const HomeOverview: React.FC<HomeOverviewProps> = ({
                         <span className="text-[10px] font-bold text-blue-600 dark:text-blue-400 font-mono">SASE Mesh</span>
                     </div>
 
-                    {/* Prisma SD-WAN */}
-                    <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-card-secondary/40 border border-slate-200 dark:border-[#1e293b]/70 space-y-2">
+                    {/* Prisma SD-WAN (Interactive Link to Prisma SASE API) */}
+                    <div
+                        onClick={() => onNavigate('settings', 'prisma-api')}
+                        title="Click to configure Prisma SASE API Settings"
+                        className="p-3.5 rounded-xl bg-slate-50 dark:bg-card-secondary/40 hover:bg-slate-100 dark:hover:bg-card-secondary/70 border border-slate-200 dark:border-[#1e293b]/70 hover:border-blue-400 dark:hover:border-blue-500/40 transition-all cursor-pointer group space-y-2"
+                    >
                         <div className="flex items-center justify-between">
-                            <span className="text-xs font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
+                            <span className="text-xs font-bold text-slate-900 dark:text-white flex items-center gap-1.5 group-hover:text-blue-600 dark:group-hover:text-blue-300 transition-colors">
                                 <span className={cn("w-2 h-2 rounded-full", prisma.status === 'connected' ? "bg-blue-500 dark:bg-blue-400 animate-pulse" : "bg-zinc-400 dark:bg-zinc-500")} />
                                 Prisma SD-WAN
                             </span>
@@ -356,10 +364,14 @@ export const HomeOverview: React.FC<HomeOverviewProps> = ({
                         </div>
                     </div>
 
-                    {/* CPU Load Gauge */}
-                    <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-card-secondary/40 border border-slate-200 dark:border-[#1e293b]/70 space-y-1.5">
+                    {/* CPU Load Gauge (Interactive Link to System Info) */}
+                    <div
+                        onClick={() => onNavigate('settings', 'system')}
+                        title="Click to view detailed System Info in Settings"
+                        className="p-3.5 rounded-xl bg-slate-50 dark:bg-card-secondary/40 hover:bg-slate-100 dark:hover:bg-card-secondary/70 border border-slate-200 dark:border-[#1e293b]/70 hover:border-pink-400 dark:hover:border-pink-500/40 transition-all cursor-pointer group space-y-1.5"
+                    >
                         <div className="flex justify-between text-xs font-bold">
-                            <span className="text-slate-600 dark:text-text-muted flex items-center gap-1.5">
+                            <span className="text-slate-600 dark:text-text-muted flex items-center gap-1.5 group-hover:text-pink-600 dark:group-hover:text-pink-300 transition-colors">
                                 <Cpu size={14} className="text-pink-500 dark:text-pink-400" /> CPU Load
                             </span>
                             <span className="text-slate-900 dark:text-white font-mono">{host.cpu_percent || 21}% ({host.cpu_cores || 2} Cores)</span>
@@ -372,10 +384,14 @@ export const HomeOverview: React.FC<HomeOverviewProps> = ({
                         </div>
                     </div>
 
-                    {/* Memory RAM Gauge */}
-                    <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-card-secondary/40 border border-slate-200 dark:border-[#1e293b]/70 space-y-1.5">
+                    {/* Memory RAM Gauge (Interactive Link to System Info) */}
+                    <div
+                        onClick={() => onNavigate('settings', 'system')}
+                        title="Click to view detailed System Info in Settings"
+                        className="p-3.5 rounded-xl bg-slate-50 dark:bg-card-secondary/40 hover:bg-slate-100 dark:hover:bg-card-secondary/70 border border-slate-200 dark:border-[#1e293b]/70 hover:border-blue-400 dark:hover:border-blue-500/40 transition-all cursor-pointer group space-y-1.5"
+                    >
                         <div className="flex justify-between text-xs font-bold">
-                            <span className="text-slate-600 dark:text-text-muted flex items-center gap-1.5">
+                            <span className="text-slate-600 dark:text-text-muted flex items-center gap-1.5 group-hover:text-blue-600 dark:group-hover:text-blue-300 transition-colors">
                                 <Layers size={14} className="text-blue-500 dark:text-blue-400" /> Memory RAM
                             </span>
                             <span className="text-slate-900 dark:text-white font-mono">{usedMemGb} / {totalMemGb} GB ({memUsagePercent}%)</span>
