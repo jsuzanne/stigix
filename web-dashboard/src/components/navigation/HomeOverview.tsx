@@ -494,7 +494,13 @@ export const HomeOverview: React.FC<HomeOverviewProps> = ({
                         </div>
                         <div className="text-[11px] text-slate-600 dark:text-text-muted flex justify-between font-mono mt-1">
                             <span>Active Routers: <strong className="text-slate-900 dark:text-text-primary">{vyos.active_routers !== undefined ? vyos.active_routers : (host.mode === 'Host Mode' ? '0 (Host Mode)' : '0')}</strong></span>
-                            <span>Netem: <strong className="text-emerald-600 dark:text-emerald-400">{vyos.netem || 'Clean'}</strong></span>
+                            <span>Impairments: <strong className={cn(
+                                (vyos.active_qos_rules && vyos.active_qos_rules > 0)
+                                    ? "text-amber-600 dark:text-amber-400 font-bold"
+                                    : "text-emerald-600 dark:text-emerald-400"
+                            )}>
+                                {(vyos.active_qos_rules && vyos.active_qos_rules > 0) ? `${vyos.active_qos_rules} Injected` : 'None'}
+                            </strong></span>
                         </div>
                     </div>
 
@@ -686,7 +692,7 @@ export const HomeOverview: React.FC<HomeOverviewProps> = ({
                             VyOS WAN Impairments
                         </h3>
                         <p className="text-xs text-slate-500 dark:text-text-muted mt-1 leading-relaxed">
-                            Inject netem latency, loss, and jitter to stress test SD-WAN failover.
+                            Inject latency, loss, and jitter on VyOS routers to stress test SD-WAN failover.
                         </p>
                     </div>
                 </div>

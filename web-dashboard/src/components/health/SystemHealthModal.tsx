@@ -632,9 +632,9 @@ export const SystemHealthModal: React.FC<SystemHealthModalProps> = ({
                                         </strong>
                                     </div>
                                     <div className="flex justify-between">
-                                        <span>Netem QoS:</span>
+                                        <span>WAN Impairments:</span>
                                         <strong className={vyos.active_qos_rules > 0 ? "text-amber-500" : "text-text-primary"}>
-                                            {vyos.active_qos_rules > 0 ? `${vyos.active_qos_rules} Injected` : 'Clean (0 rules)'}
+                                            {vyos.active_qos_rules > 0 ? `${vyos.active_qos_rules} Injected` : 'None (0 rules)'}
                                         </strong>
                                     </div>
                                 </div>
