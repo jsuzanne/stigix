@@ -34,13 +34,13 @@ From v1 to v2.2.x, Stigix grew from a SaaS traffic generator into an end-to-end 
 | `fleet` | Fleet | Multi-node cluster management (**Leader node only**) |
 | `settings` | Settings | Targets, controller, provisioning, maintenance |
 
-Planned addition: **Use Cases** (multi-module scenarios).
+Today the default landing page is the **Traffic Generator** (`dashboard` view = SaaS traffic). There is no dedicated Home page.
 
 ### 1.2 User Experience Pain Points
 On common laptop resolutions (1366×768, 1440×900, 1080p), the flat bar wraps onto 2–3 lines:
 1. **Vertical real-estate waste** — 120–160 px consumed by navigation pushes packet lists, topology canvases, and graphs below the fold. On 16:9 / 16:10 screens, **height is the scarcest resource**; width is abundant.
 2. **Cognitive overload** — 16 unstructured buttons violate Hick's Law.
-3. **No room for the roadmap** — Use Cases and future modules cannot be added without breaking the layout further.
+3. **No room for the roadmap** — future modules cannot be added without breaking the layout further.
 4. **Hidden background activity** — Traffic, Voice, IoT, captures, and failover tests run in the background, with no consistent "running" indicator in the navigation.
 
 ---
@@ -106,7 +106,7 @@ Stigix users are SASE / SD-WAN engineers who already use Palo Alto **Strata Clou
 
 | Mode | Width | Behavior |
 |---|---|---|
-| **Rail (default)** | 56 px | Icons only. Hover/click on a domain icon opens a **flyout panel** (~240 px) that **overlays** the content (no layout shift). Single-item entries (Home, Use Cases) navigate directly with a tooltip. |
+| **Rail (default)** | 56 px | Icons only. Hover/click on a domain icon opens a **flyout panel** (~240 px) that **overlays** the content (no layout shift). Single-item entries (Home) navigate directly with a tooltip. |
 | **Pinned / Expanded** | 240 px | Toggled via the `»` button at the bottom. Shows section headers and all module labels inline (collapsible groups like SCM's `⌄ Security`). Content area shrinks accordingly. |
 | **Auto-collapse** | 56 px | When entering `topology` or `packet_capture`, an expanded sidebar temporarily collapses to the rail (restored on leave). |
 
@@ -129,14 +129,11 @@ Stigix users are SASE / SD-WAN engineers who already use Palo Alto **Strata Clou
 Grouping is based on **user intent**: *"I want to generate load"* vs *"I want a verdict"* vs *"I want to see what's happening"* vs *"I want to act on the network"*.
 
 ```text
-🏠  HOME                       (direct link)
-    └── Dashboard               Global overview + running jobs summary
-
-🎬  USE CASES                  (direct link — NEW)
-    └── Scenarios               Multi-module orchestrated test scenarios
+🏠  HOME                       (direct link — NEW page, see §5.6)
+    └── Overview                Node health, network status, cluster, running jobs
 
 ⚡  GENERATE                   (flyout)  — "produce realistic load"
-    ├── SaaS Traffic            Multi-app background load
+    ├── SaaS Traffic            Multi-app background load (today's default page, unchanged)
     ├── Custom Apps             Enterprise private TCP/HTTP apps
     ├── Voice                   RTP call load & MOS
     ├── IoT Devices             Real-on-wire device profiles
@@ -220,6 +217,23 @@ Grouping is based on **user intent**: *"I want to generate load"* vs *"I want a 
 - Switching pages never stops running jobs (unchanged behavior).
 - Each module keeps its internal tab/filter state when navigating away and back.
 
+### 5.6 Home — Overview Page (only new screen)
+Today the landing page is the Traffic Generator. With the sidebar, SaaS Traffic becomes one module among others, so a neutral landing page is introduced. It is **read-only aggregation** of data already exposed by existing modules (no module page is modified):
+
+| Block | Content | Source (existing) |
+|---|---|---|
+| **Node** | Name, version, health %, uptime | Health badge / system info |
+| **Network Status** | IP, GW, Public IP, endpoints reachable | Network Status block of the Traffic Generator page |
+| **Cluster** | Leader: peers online + updates available (→ Fleet). Peer: Leader connection state (→ Settings › Target Controller) | Registry status |
+| **Running now & last results** | One tile per module: status (Running / Stopped / Last run), key metric, Start/Stop shortcut; click → module | Existing status endpoints |
+| **Recent events** | Last 5 events (→ Live Events) | Live Events stream |
+| **Quick actions** | Shortcuts to frequent actions | Navigation only |
+
+**Fallback / phased option:** if the Overview page is postponed, `Home` is omitted and the app lands on **Generate › SaaS Traffic** (identical to today). A user preference *"Default landing page"* can be added later.
+
+### 5.7 Node Role Is Read-Only in the Shell
+The header shows the node role (`LEADER` / `PEER`) as a **read-only badge**. Changing the role is **only** possible in **Settings › Target Controller** (unchanged). Switching a Leader to Peer from the navigation is explicitly out of scope, as it would break the cluster.
+
 ---
 
 ## 6. Implementation Specifications
@@ -283,7 +297,7 @@ The top bar keeps only contextual information: page title, ☆ favorite toggle, 
 | **3. Expanded mode** | Pin toggle, collapsible groups, persisted preference | ~0.5 day |
 | **4. Favorites & running badges** | ☆ in page headers, favorites flyout, activity dots | ~0.5 day |
 | **5. Command palette** | `Ctrl+K` navigation search | ~0.5 day |
-| **6. Phase 2 (later)** | Server-side favorites, palette quick actions, Use Cases entry | — |
+| **6. Phase 2 (later)** | Server-side favorites, palette quick actions | — |
 
 **Acceptance criteria**
 - No navigation wrapping at 1280 px width.
@@ -298,6 +312,7 @@ The top bar keeps only contextual information: page title, ☆ favorite toggle, 
 
 | Date | Stigix Version | Author / Trigger | Summary of Changes |
 |---|---|---|---|
+| 2026-10-11 | `v2.2.12` | Stigix Core Team (review) | Removed Use Cases (not existing); Home defined as a new read-only Overview page (fallback: land on SaaS Traffic as today); node role is a read-only header badge, changed only in Settings › Target Controller; all existing sub-menus kept identical. |
 | 2026-10-11 | `v2.2.12` | Stigix Core Team (review) | Clarified scope (navigation shell only, module content unchanged); removed Flow Browser (not existing); Fleet entry rendered on Leader only; Settings promoted to a first-class domain with a grouped flyout deep-linking its 11 existing tabs. |
 | 2026-10-11 | `v2.2.12` | Stigix Core Team (design review) | Switched recommendation to a Strata Cloud Manager-style icon rail with overlay flyouts; rejected domain ribbons (height cost, 3 stacked tab levels); corrected taxonomy (added Home, Use Cases, Fleet; Copilot & Settings as global utilities; Flow Browser marked future); added Favorites, hash deep-linking, running-job indicators, and command palette specs. |
 | 2026-10-11 | `v2.2.9` | Stigix Architecture Team | Initial PRD: Navigation architecture study, comparison of Horizontal Domain Ribbons vs Vertical Sidebar, and definition of the 5-pillar functional taxonomy. |
