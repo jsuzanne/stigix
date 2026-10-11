@@ -39,7 +39,7 @@ export const HomeOverview: React.FC<HomeOverviewProps> = ({
     onRefreshHealth,
     registryStatus,
     siteInfo,
-    version = 'v3.0.0-dev',
+    version = 'v3.0.0',
     trafficRunning,
     currentRpm = 0,
     saasAppsCount = 67,

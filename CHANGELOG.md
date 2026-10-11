@@ -5,6 +5,47 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.0.0] - 2026-10-11 — Major Release: Modernized Navigation & Command Center
+
+### Added
+- **SCM-Inspired Vertical Icon Rail & Flyout Navigation (`NavigationRail.tsx`, `SidebarFlyout.tsx`, `App.tsx`)**:
+  - Replaced legacy horizontal top navbar with a sleek, space-saving vertical icon rail inspired by Palo Alto Strata Cloud Manager (SCM).
+  - Categorized functional domains: **Home**, **Generate** (SaaS Traffic, Voice VoIP, IoT Devices, Custom Apps, Failover Matrix), **Validate** (DEM, Security Evasion, API Studio), **Observe** (WAN Topology, Performance, Live Telemetry), and **Settings** (Fleet Nodes, VyOS Underlay, Speedtest, Users, System Diagnostics).
+  - Hover flyout menus (`SidebarFlyout.tsx`) with 384px (`w-96`) width, rich 2-line descriptions, live running state indicators, and click-to-pin navigation drawer behavior.
+  - Deep linking support with URL hash routing (`#home`, `#traffic`, `#topology`, `#settings:fleet`, etc.) preserving browser history and instant view navigation.
+- **Home Command Center & Executive Overview (`HomeOverview.tsx`)**:
+  - Centralized single-pane-of-glass dashboard displaying cluster state, health matrix, public IP geolocation, and active node roles.
+  - Interactive **Simulation Engines** cards displaying live states and real-time metrics across all 5 workload engines:
+    - **SaaS Traffic Generator**: Dynamic active application count (`stats.requests_by_app`) during warmup and live rate (`req/min`).
+    - **Voice VoIP**: Active SIP/RTP sessions and duration.
+    - **Custom Apps**: Total configured apps and active TCP streams.
+    - **IoT Devices**: Provisioned devices and active simulation instances.
+    - **Failover Convergence**: Active failover workflows and test status.
+  - **Quick Actions & System Diagnostics**: Direct access to 1-click system diagnostics, network speedtest, and fleet maintenance.
+- **Compact Single-Line Header & Telemetry Ribbon (`Header.tsx`)**:
+  - Modernized header consolidating Stigix brand identity, cluster status badge (`LEADER` / `PEER` / `STANDALONE`), and real-time cluster telemetry in a compact 56px bar.
+  - Live animated health indicator with 1-click modal access to cluster diagnostics.
+  - Seamless Light / Dark theme toggle with persistent user preference storage.
+- **Dynamic Fleet Peer Context Switching (`App.tsx`, `RemoteViewBanner.tsx`)**:
+  - Dynamic switching between cluster nodes with contextual read-only indicator banner.
+  - Instant cache invalidation and UI state synchronization when changing monitored peers.
+
+### Changed
+- **Topology Action Dock Polish (`Topology.tsx`)**:
+  - Cleaned up the floating action dock: removed redundant empty traceroute quick action, eliminating visual duplicate route icons.
+  - Contextual traceroute modals remain fully operational across inspected circuit links, interfaces, and VyOS next-hops.
+  - Aligned action dock position with 360px split-pane inspection drawer to eliminate visual overlaps.
+- **Terminology Refinement (`HomeOverview.tsx`, `SystemHealthModal.tsx`)**:
+  - Replaced ambiguous `"Netem: Clean"` wording with clear `"VyOS Impairments: None"` and dynamic `"X Injected"` badges.
+- **Navigation Domain Order**:
+  - Placed DEM before Security in Validate; placed Custom Apps alongside IoT in Generate.
+
+### Fixed
+- **SaaS Active Apps Dynamic Sync (`App.tsx`, `HomeOverview.tsx`)**:
+  - Fixed application count in Home overview to track actual active apps (`stats.requests_by_app`) during startup and show full 68-app catalog count when stopped.
+- **Retina 4K Font Rendering & Sub-pixel Antialiasing (`index.css`)**:
+  - Removed backdrop-blur artifacts on high-DPI displays for crisp typographic rendering.
+
 ## [2.2.12] - 2026-10-11
 
 ### Fixed

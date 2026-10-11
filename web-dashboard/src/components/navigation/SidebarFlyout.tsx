@@ -184,7 +184,7 @@ export const SidebarFlyout: React.FC<SidebarFlyoutProps> = ({
             {/* Footer Tip */}
             <div className="pt-3 mt-2 border-t border-slate-200 dark:border-[#1e293b]/70 px-2 text-[10px] text-slate-400 dark:text-text-muted/60 flex items-center justify-between">
                 <span>Stigix Platform</span>
-                <span className="font-mono">v3.0.0-dev</span>
+                <span className="font-mono">v3.0.0</span>
             </div>
         </div>
     );

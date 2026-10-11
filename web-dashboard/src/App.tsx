@@ -1406,7 +1406,7 @@ export default function App() {
           onRefreshHealth={fetchHealthMatrix}
           registryStatus={registryStatus}
           siteInfo={siteInfo}
-          version="v3.0.0-dev"
+          version="v3.0.0"
           trafficRunning={trafficRunning}
           currentRpm={currentRpm}
           saasAppsCount={trafficRunning && activeSaasAppsCount > 0 ? activeSaasAppsCount : totalConfiguredSaasApps}
