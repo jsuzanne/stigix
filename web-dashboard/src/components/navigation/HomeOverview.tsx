@@ -61,6 +61,8 @@ export const HomeOverview: React.FC<HomeOverviewProps> = ({
     const mesh = sub.mesh || {};
     const vyos = sub.vyos || {};
     const dem = sub.dem || {};
+    const customAppsSub = sub.custom_apps || {};
+    const iotSub = sub.iot || {};
 
     // Simulation Engines Real-time States
     const voiceSub = sub.voice || {};
@@ -75,6 +77,16 @@ export const HomeOverview: React.FC<HomeOverviewProps> = ({
     const demActive = Boolean(dem.status === 'active' || (dem.probes_count ?? 0) > 0);
     const demScore = dem.score || dem.global_score || 71;
     const demProbes = dem.probes_count || 94;
+
+    const customAppsRunning = Boolean(
+        customAppsSub.running || (customAppsSub.active_streams > 0) || (customAppsSub.active_workloads > 0)
+    );
+    const customAppsCount = Number(customAppsSub.total_apps ?? 0);
+    const customAppsFlows = Number(customAppsSub.active_streams ?? customAppsSub.active_sessions ?? 0);
+
+    const iotRunning = Boolean(iotSub.running || (iotSub.running_devices > 0));
+    const iotTotalCount = Number(iotSub.total_devices ?? 0);
+    const iotActiveCount = Number(iotSub.running_devices ?? 0);
 
     // Robust Uptime Formatting (handles numeric seconds, string seconds, or pre-formatted strings)
     const uptimeRaw = host.uptime_system
@@ -388,42 +400,66 @@ export const HomeOverview: React.FC<HomeOverviewProps> = ({
                         {/* Custom TCP Apps */}
                         <div
                             onClick={() => onNavigate('custom_apps')}
-                            className="p-2.5 rounded-xl bg-slate-50 dark:bg-card-secondary/40 hover:bg-slate-100 dark:hover:bg-card-secondary/70 border border-slate-200 dark:border-[#1e293b]/70 hover:border-amber-400 dark:hover:border-amber-500/40 transition-all cursor-pointer group"
+                            className={cn(
+                                "p-2.5 rounded-xl bg-slate-50 dark:bg-card-secondary/40 hover:bg-slate-100 dark:hover:bg-card-secondary/70 border border-slate-200 dark:border-[#1e293b]/70 hover:border-amber-400 dark:hover:border-amber-500/40 transition-all cursor-pointer group",
+                                customAppsRunning && "hover:border-emerald-400 dark:hover:border-emerald-500/40"
+                            )}
                             title="Click to view Custom TCP/HTTP Applications"
                         >
                             <div className="flex items-center justify-between">
                                 <span className="text-[11px] font-bold text-slate-900 dark:text-white flex items-center gap-1.5 group-hover:text-amber-600 dark:group-hover:text-amber-300">
-                                    <Boxes size={12} className="text-amber-500 dark:text-amber-400" />
+                                    <Boxes size={12} className={cn("text-amber-500 dark:text-amber-400", customAppsRunning && "text-emerald-500 dark:text-emerald-400 animate-pulse")} />
                                     Custom Apps
                                 </span>
-                                <span className="px-1.5 py-0.2 rounded text-[8px] font-black uppercase tracking-wider bg-slate-200 dark:bg-zinc-800 text-slate-600 dark:text-zinc-400">
-                                    Ready
+                                <span className={cn(
+                                    "px-1.5 py-0.2 rounded text-[8px] font-black uppercase tracking-wider",
+                                    customAppsRunning
+                                        ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 animate-pulse"
+                                        : (customAppsSub.status === 'listening' || (customAppsSub.active_listeners > 0))
+                                            ? "bg-blue-500/15 text-blue-600 dark:text-blue-400"
+                                            : "bg-slate-200 dark:bg-zinc-800 text-slate-600 dark:text-zinc-400"
+                                )}>
+                                    {customAppsRunning ? 'Running' : (customAppsSub.status === 'listening' || (customAppsSub.active_listeners > 0) ? 'Listening' : (customAppsCount > 0 ? 'Ready' : 'Idle'))}
                                 </span>
                             </div>
                             <div className="text-[10px] text-slate-500 dark:text-text-muted mt-1 font-mono flex justify-between">
-                                <span>Enterprise TCP</span>
-                                <span className="text-amber-600 dark:text-amber-400">L7 Flow</span>
+                                <span>{customAppsCount} {customAppsCount > 1 ? 'Apps' : 'App'}</span>
+                                <span className={cn(customAppsFlows > 0 ? "text-emerald-600 dark:text-emerald-400 font-bold" : "text-amber-600 dark:text-amber-400")}>
+                                    {customAppsFlows} {customAppsFlows > 1 ? 'Flows' : 'Flow'}
+                                </span>
                             </div>
                         </div>
 
                         {/* IoT Simulation */}
                         <div
                             onClick={() => onNavigate('iot')}
-                            className="p-2.5 rounded-xl bg-slate-50 dark:bg-card-secondary/40 hover:bg-slate-100 dark:hover:bg-card-secondary/70 border border-slate-200 dark:border-[#1e293b]/70 hover:border-cyan-400 dark:hover:border-cyan-500/40 transition-all cursor-pointer group"
+                            className={cn(
+                                "p-2.5 rounded-xl bg-slate-50 dark:bg-card-secondary/40 hover:bg-slate-100 dark:hover:bg-card-secondary/70 border border-slate-200 dark:border-[#1e293b]/70 hover:border-cyan-400 dark:hover:border-cyan-500/40 transition-all cursor-pointer group",
+                                iotRunning && "hover:border-emerald-400 dark:hover:border-emerald-500/40"
+                            )}
                             title="Click to view IoT Device Emulation"
                         >
                             <div className="flex items-center justify-between">
                                 <span className="text-[11px] font-bold text-slate-900 dark:text-white flex items-center gap-1.5 group-hover:text-cyan-600 dark:group-hover:text-cyan-300">
-                                    <Cpu size={12} className="text-cyan-500 dark:text-cyan-400" />
+                                    <Cpu size={12} className={cn("text-cyan-500 dark:text-cyan-400", iotRunning && "text-emerald-500 dark:text-emerald-400 animate-pulse")} />
                                     IoT Fleet
                                 </span>
-                                <span className="px-1.5 py-0.2 rounded text-[8px] font-black uppercase tracking-wider bg-slate-200 dark:bg-zinc-800 text-slate-600 dark:text-zinc-400">
-                                    Standby
+                                <span className={cn(
+                                    "px-1.5 py-0.2 rounded text-[8px] font-black uppercase tracking-wider",
+                                    iotRunning
+                                        ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 animate-pulse"
+                                        : (iotTotalCount > 0)
+                                            ? "bg-slate-200 dark:bg-zinc-800 text-slate-600 dark:text-zinc-400"
+                                            : "bg-slate-200 dark:bg-zinc-800 text-slate-500 dark:text-zinc-500"
+                                )}>
+                                    {iotRunning ? 'Running' : (iotTotalCount > 0 ? 'Standby' : 'Idle')}
                                 </span>
                             </div>
                             <div className="text-[10px] text-slate-500 dark:text-text-muted mt-1 font-mono flex justify-between">
-                                <span>Devices</span>
-                                <span className="text-cyan-600 dark:text-cyan-400">Real-Wire</span>
+                                <span>{iotTotalCount} {iotTotalCount > 1 ? 'Devices' : 'Device'}</span>
+                                <span className={cn(iotActiveCount > 0 ? "text-emerald-600 dark:text-emerald-400 font-bold" : "text-cyan-600 dark:text-cyan-400")}>
+                                    {iotActiveCount} Active
+                                </span>
                             </div>
                         </div>
                     </div>

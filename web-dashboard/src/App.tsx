@@ -457,6 +457,15 @@ export default function App() {
           ? globalConvStatus.some((t: any) => t.running)
           : (globalConvStatus as any)?.running
       )
+    ),
+    custom_apps: Boolean(
+      healthData?.subsystems?.custom_apps?.running ||
+      (healthData?.subsystems?.custom_apps?.active_streams > 0) ||
+      (healthData?.subsystems?.custom_apps?.active_workloads > 0)
+    ),
+    iot: Boolean(
+      healthData?.subsystems?.iot?.running ||
+      (healthData?.subsystems?.iot?.running_devices > 0)
     )
   }), [trafficRunning, globalVoiceStatus, globalConvStatus, healthData]);
 

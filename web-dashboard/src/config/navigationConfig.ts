@@ -81,7 +81,8 @@ export const STIGIX_NAVIGATION_DOMAINS: NavDomainConfig[] = [
                 label: 'Custom TCP/HTTP Apps',
                 icon: Boxes,
                 route: '#/generate/custom-apps',
-                description: 'Enterprise private apps emulation across SD-WAN overlays and breakouts'
+                description: 'Enterprise private apps emulation across SD-WAN overlays and breakouts',
+                runningKey: 'custom_apps'
             },
             {
                 id: 'voice',
@@ -96,7 +97,8 @@ export const STIGIX_NAVIGATION_DOMAINS: NavDomainConfig[] = [
                 label: 'IoT Device Emulation',
                 icon: Cpu,
                 route: '#/generate/iot',
-                description: 'Physical IoT device emulation & security attack profiles (Real-on-Wire)'
+                description: 'Physical IoT device emulation & security attack profiles (Real-on-Wire)',
+                runningKey: 'iot'
             },
             {
                 id: 'pcap_replay',

@@ -11509,6 +11509,22 @@ app.get('/api/system/health-matrix', authenticateToken, async (req, res) => {
             server_port: 5201
         };
 
+        // 4b. IoT Fleet Emulation
+        let iotStatus: any = {
+            status: 'standby',
+            total_devices: 0,
+            running_devices: 0,
+            running: false
+        };
+        try {
+            const iotDevs = getIoTDevices();
+            const runningDevIds = (typeof iotManager !== 'undefined' && iotManager) ? iotManager.getRunningDevices() : [];
+            iotStatus.total_devices = Array.isArray(iotDevs) ? iotDevs.length : 0;
+            iotStatus.running_devices = Array.isArray(runningDevIds) ? runningDevIds.length : 0;
+            iotStatus.running = iotStatus.running_devices > 0;
+            iotStatus.status = iotStatus.running ? 'running' : (iotStatus.total_devices > 0 ? 'standby' : 'idle');
+        } catch {}
+
         // 5. Voice & VoIP
         let voiceActive = false;
         try {
@@ -11680,6 +11696,7 @@ app.get('/api/system/health-matrix', authenticateToken, async (req, res) => {
                 cloud: cloudStatus,
                 vyos: vyosStatus,
                 custom_apps: customAppsStatus,
+                iot: iotStatus,
                 dem: demStatus,
                 bandwidth: bandwidthStatus,
                 voice: voiceStatus,
