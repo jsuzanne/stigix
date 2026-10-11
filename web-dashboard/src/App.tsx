@@ -440,9 +440,19 @@ export default function App() {
 
   const activeTasks = useMemo(() => ({
     traffic: Boolean(trafficRunning),
-    voice: Boolean(globalVoiceStatus && (globalVoiceStatus.activeCalls > 0 || globalVoiceStatus.running)),
-    failover: Boolean(globalConvStatus && (Array.isArray(globalConvStatus) ? globalConvStatus.length > 0 : (globalConvStatus as any)?.running))
-  }), [trafficRunning, globalVoiceStatus, globalConvStatus]);
+    voice: Boolean(
+      (globalVoiceStatus?.control?.enabled) ||
+      (healthData?.subsystems?.voice?.active) ||
+      (globalVoiceStatus && (globalVoiceStatus.activeCalls > 0 || globalVoiceStatus.running))
+    ),
+    failover: Boolean(
+      globalConvStatus && (
+        Array.isArray(globalConvStatus)
+          ? globalConvStatus.some((t: any) => t.running)
+          : (globalConvStatus as any)?.running
+      )
+    )
+  }), [trafficRunning, globalVoiceStatus, globalConvStatus, healthData]);
 
   const addUser = async () => {
     if (!token) return;
