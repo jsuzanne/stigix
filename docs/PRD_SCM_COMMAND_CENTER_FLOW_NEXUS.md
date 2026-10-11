@@ -1,197 +1,266 @@
 > **Last Updated:** 2026-10-11 | **Created:** 2026-10-11 (v3.0.0-dev)
 
-# PRD: Stigix Traffic Flow Nexus & SCM Command Center Architecture
+# PRD: Stigix Traffic Flow Nexus & Observe Mesh Grid
+
+| Field | Value |
+|---|---|
+| **Component** | Web Dashboard (`Home`, `Observe`), Backend (`server.ts`) |
+| **Status** | Draft — Study only (no implementation started) |
+| **Feature Flag** | `ENABLE_FLOW_NEXUS` (default `false`) |
+| **Branch** | `v3` |
+
+---
 
 ## 1. Executive Summary & Vision
 
-Modern SASE management platforms, epitomized by **Palo Alto Networks Strata Cloud Manager (SCM) Command Center**, leverage topological flow diagrams (Nexus / Sankey visualizations) to answer the fundamental operational question in real time:
+Palo Alto Networks **Strata Cloud Manager (SCM) Command Center** uses a flow (Sankey / Nexus) visualization to answer one operational question:
 
-> **"Who is communicating with what destination, through which SASE enforcement points, and with what quality of experience?"**
+> **"Who is talking to what, through which enforcement path, and with what quality?"**
 
-In Stigix, our distributed SD-WAN testbed actively produces synthetic multi-tenant enterprise workloads across five distinct engines:
-1. **SaaS Application Traffic** (Office 365, Salesforce, ServiceNow, Zoom, Workday, etc.)
-2. **Enterprise Private TCP/HTTP Applications** (Custom ERP, SAP, Database, SMB)
-3. **Voice & VoIP Simulation** (SIP / RTP with bidirectional MOS scoring and jitter)
-4. **Physical IoT Device Emulation** (Smart sensors, cameras, industrial controllers)
-5. **Stateful PCAP Replays & Threat Validation** (Malware, EICAR, C2 emulation)
+Stigix generates synthetic workloads from five engines (SaaS, Custom TCP/HTTP Apps, Voice, IoT, PCAP/Security). Today these are shown as per-engine cards and tables. There is no single view that connects **Sources ➔ Transit Path ➔ Destinations**.
 
-While Stigix currently aggregates these workloads into quantitative metric cards and table lists, it lacks a **unified macro-visual flow** that connects **Initiators ➔ Security & Transit Engines ➔ Destination Services**.
+### The Stigix Differentiator: Expected vs. Verified Paths
 
-This specification defines the architectural study, UX model, and data aggregation pipeline for the **Stigix Traffic Flow Nexus** (inspired by SCM Command Center), alongside the migration of the **Bidirectional Full-Mesh Reachability Grid** into a dedicated view under the `Observe` domain.
+SCM shows **what happened**. Stigix also knows **what it intended to send**, because it generated the traffic. This enables something SCM cannot do on its own:
+
+> **Every ribbon carries an *expected* transit path (from Stigix intent/config) and, when available, a *verified* transit path (observed from the SD-WAN fabric). A mismatch is a policy validation finding.**
+
+Example: *"BR8 ➔ M365 expected via Prisma Access, observed via DIA"* is a steering-policy violation surfaced visually. This turns the Flow Nexus from a decorative dashboard into a **validation instrument**, consistent with Stigix's positioning ("The Engine for SASE Validation").
+
+### Scope of this PRD
+1. **Observe ➔ SD-WAN Mesh Grid**: promote the bidirectional reachability grid out of DEM (low risk, independent).
+2. **Flow Nexus**: data model, backend contract, and UX for the SCM-inspired flow view.
 
 ---
 
-## 2. High-Level Concept Diagram (Flow Nexus)
+## 2. Conceptual Model
 
 ```mermaid
 flowchart LR
-    subgraph INITIATORS ["1. Initiators & Fleet Sources"]
-        N1["Stigix Fleet Nodes<br/>(DC1, BR1, BR2, BR5, BR8)"]
-        N2["SaaS Synthetic Clients<br/>(Background Load Workers)"]
-        N3["Voice RTP Callers<br/>(G.711 / G.729 Streamers)"]
-        N4["IoT Fleet Devices<br/>(Physical Sensors & Cameras)"]
+    subgraph SRC ["1. Sources (Sites)"]
+        S1["BR8"]
+        S2["BR1"]
+        S3["DC1"]
     end
 
-    subgraph TRANSIT ["2. Transit & Forwarding Core"]
-        P1["Direct SD-WAN Overlay<br/>(Branch-to-Branch / Branch-to-DC IPsec & Prisma SD-WAN)"]
-        P2["Cloud SASE & SSE<br/>(Prisma Access TSG / Zscaler ZIA & ZPA Inspection)"]
-        P3["VyOS WAN Routers<br/>(Impairments, Multi-Path & BGP Failover)"]
-        P4["Direct Internet Breakout (DIA)<br/>(Local Branch Gateway)"]
+    subgraph VIA ["2. Transit Path (Overlay Decision)"]
+        T1["Direct SD-WAN<br/>(Site-to-Site VPN)"]
+        T2["Cloud SSE<br/>(Prisma Access / Zscaler)"]
+        T3["Direct Internet<br/>(DIA)"]
     end
 
-    subgraph DESTINATIONS ["3. Destination Targets & Services"]
-        D1["Remote Stigix Peers<br/>(DC1 Hub, BR1, BR5, Homelab Targets)"]
-        D2["Enterprise Private Apps<br/>(Custom TCP, Branch ERP, SMB)"]
-        D3["Public SaaS Workloads<br/>(M365, Salesforce, ServiceNow, AWS)"]
-        D4["VoIP PBX & Echo Responders<br/>(MOS Scoring Endpoints)"]
-        D5["Threat Validation Endpoints<br/>(EICAR, DNS Sinkholes)"]
+    subgraph DST ["3. Destinations"]
+        D1["Stigix Peers<br/>(BR1, DC1, ...)"]
+        D2["Private Apps<br/>(Custom TCP/HTTP)"]
+        D3["SaaS Apps<br/>(M365, Salesforce, ...)"]
+        D4["Voice Responders"]
+        D5["Security Targets<br/>(EICAR, DNS, URL)"]
     end
 
-    INITIATORS ==>|Real-time Bitrate & Sessions| TRANSIT
-    TRANSIT ==>|Inspected & Routed Flows| DESTINATIONS
+    SRC ==> VIA ==> DST
 ```
+
+### Modeling Rules
+1. **Left column = sites only.** Workload type (SaaS / Voice / IoT / Custom App / Security) is an **attribute of the ribbon**, not a separate source node. Mixing sites and workload types in the same column double-counts traffic (BR8 *is* the origin of its SaaS workers).
+   * A toolbar toggle switches grouping: **Group by Site** (default) ↔ **Group by Engine**.
+2. **Center column = overlay path decision only**: Direct SD-WAN, Cloud SSE, DIA. These are mutually exclusive per flow.
+3. **VyOS is the underlay, not a transit lane.** It sits *beneath* all three paths. It is rendered as an **attribute on ribbons** (impairment badge, e.g. `⚠ +50ms / 2% loss on BR8-eth1`), never as a peer node of Prisma Access.
+4. **Stigix peers are destinations.** When BR8 talks to BR1, BR1 appears in the right column (responding to probes, Custom TCP sockets, RTP echo, iperf3).
+5. **Zscaler is declarative only.** No Zscaler integration exists in Stigix. It may be selected as the configured SSE vendor for *expected* paths, but it never produces *verified* telemetry.
 
 ---
 
-## 3. The 3-Tier Topological Architecture
+## 3. Data Availability — Honest Assessment
 
-### Tier 1: Initiators & Fleet Sources (Left Column)
-Represents the origins of all traffic generated inside the Stigix environment:
-* **Fleet Meshed Nodes:**
-  * DC1-Ubuntu (Data Center Hub)
-  * BR1-Ubuntu, BR2-Ubuntu, BR5-Ubuntu, BR8-Ubuntu (Branch Offices)
-  * Standalone / Homelab nodes
-* **Workload Archetypes:**
-  * **Enterprise Users & SaaS Traffic:** Total active simulated workers and aggregate requests/min (RPM).
-  * **Voice Channels:** Active concurrent RTP calls.
-  * **IoT Devices:** Emulated real-wire physical interfaces and MAC/IP bindings.
-  * **Security Probes:** Policy validation probes (URL, threat signatures).
+A flow diagram needs **weighted links** (`source ➔ via ➔ destination = N sessions`), not per-node totals.
 
-### Tier 2: Transit & Forwarding Core (Center Column)
-Represents the enforcement, routing, and transit fabric through which synthetic packets flow:
-* **Direct SD-WAN Overlay (Site-to-Site Fabric):**
-  * Direct Branch-to-Branch (e.g. BR8 ➔ BR1) and Branch-to-DC overlay paths.
-  * Native SD-WAN IPsec tunnels, BGP EVPN/OSPF paths, or Prisma SD-WAN fabric without going through cloud SSE.
-* **Cloud SASE & SSE Inspection (Prisma Access / Zscaler):**
-  * Palo Alto Cloud Security Processing Nodes (SPN / TSG) and SSE inspection engines (Zscaler ZIA/ZPA).
-  * Cloud SWG, CASB, Zero Trust Network Access (ZTNA) inspection, and regional PoPs (`eu-central`, `eu-west`).
-  * Security verdict aggregation (Allowed vs. Inspected vs. Blocked).
-* **VyOS WAN Underlay & Impairments:**
-  * Physical circuit emulation, dual-ISP paths, and applied QoS impairment rules (Latency, Loss, Jitter).
-* **Direct Internet Breakout (DIA):**
-  * Traffic bypassing the corporate overlay directly to local ISP gateways.
+| Need | Exists today? | Source / Gap |
+|---|---|---|
+| Per-node engine totals (apps, streams, devices, calls) | ✅ Yes | `/api/system/health-matrix` (`custom_apps`, `iot`, `voice`, `vyos`, `prisma`) |
+| Fleet membership & peers | ✅ Yes | `/api/fleet/overview` |
+| Peer-to-peer reachability (A ➔ B latency/SLA) | ✅ Yes | Fleet matrix endpoints (`/api/fleet/matrix/*`) |
+| **Per-link weights** (src ➔ dst, per engine) | ❌ No | Engines expose totals; per-destination breakdown must be aggregated |
+| **Expected transit path** | ❌ No | Must be derived from Stigix config (target type + declared steering) |
+| **Verified transit path** | ⚠️ Partial | `engines/getflow.py` (Prisma SD-WAN flows API) already powers `/api/fleet/matrix/flow-trace`. Returns `path_id` per flow; **mapping `path_id` ➔ {VPN, DIA, Service Link} must be built**. Slow, rate-limited, Prisma SD-WAN only. |
+| VyOS impairments per interface | ✅ Yes | `vyos.routers_summary` / interface `qos` in health-matrix |
 
-### Tier 3: Destination Targets & Services (Right Column)
-Represents the target entities receiving and responding to traffic:
-* **Remote Stigix Peer Instances (Inter-Branch / Hub Mesh):**
-  * When BR8 communicates with BR1 or DC1, the **remote Stigix nodes are themselves destination targets** (responding to private probes, custom TCP sockets, bidirectional voice, and iperf3 bandwidth tests).
-* **Enterprise Private Applications:**
-  * Custom TCP workloads, Branch ERPs, Internal Web servers, SMB file shares hosted at DC or across branches.
-* **Public SaaS Applications:**
-  * Microsoft 365, Salesforce, ServiceNow, GitHub, Workday, Google Workspace.
-* **VoIP Responders & Echo Endpoints:**
-  * RTP reflectors and loopback audio targets for bidirectional MOS computation.
-* **Security Validation Endpoints:**
-  * WildFire test endpoints, DNS sinkholes, HTTP threat catalogs.
+> [!IMPORTANT]
+> A new backend aggregation endpoint is **required**. The previous revision's claim that "all data is already available" was incorrect.
 
 ---
 
-## 4. Visual Design & Interactive UX Model
+## 4. Backend Contract (define before any UI work)
 
-Drawing inspiration from Palo Alto Strata Cloud Manager, the interface will feature:
+### Endpoint
+`GET /api/flow-nexus/graph?scope=local|fleet&group=site|engine`
 
+* Returns `404` / empty when `ENABLE_FLOW_NEXUS !== 'true'`.
+* `scope=fleet` is **leader-only**; aggregates peers via existing fleet proxy.
+
+### Response Shape
+```json
+{
+  "generated_at": "2026-10-11T20:00:00Z",
+  "scope": "fleet",
+  "verification": {
+    "source": "prisma_sdwan_getflow",
+    "last_sampled_at": "2026-10-11T19:55:00Z",
+    "status": "ok | stale | unavailable"
+  },
+  "nodes": [
+    { "id": "site:BR8", "tier": "source", "label": "BR8" },
+    { "id": "via:sse",  "tier": "transit", "label": "Prisma Access", "vendor": "prisma" },
+    { "id": "dst:saas:m365", "tier": "destination", "label": "Microsoft 365", "kind": "saas" },
+    { "id": "dst:peer:BR1",  "tier": "destination", "label": "BR1", "kind": "peer" }
+  ],
+  "links": [
+    {
+      "src": "site:BR8",
+      "via": "via:sse",
+      "dst": "dst:saas:m365",
+      "engine": "saas",
+      "sessions": 42,
+      "rate": { "value": 120, "unit": "rpm" },
+      "health": "ok | degraded | critical | blocked",
+      "latency_p95_ms": 38,
+      "loss_pct": 0,
+      "path": {
+        "expected": "sse",
+        "verified": "dia",
+        "match": "mismatch | match | unknown"
+      },
+      "underlay": { "impairment": { "latency_ms": 50, "loss_pct": 2, "iface": "eth1" } }
+    }
+  ]
+}
 ```
-┌────────────────────────────────────────────────────────────────────────────────────────┐
-│  STIGIX COMMAND CENTER • TRAFFIC FLOW NEXUS                          [ 24h ] [ Live ● ]│
-├───────────────────────┬───────────────────────────────┬────────────────────────────────┤
-│  INITIATORS (SOURCES) │   TRANSIT & FORWARDING CORE   │      DESTINATION TARGETS       │
-│                       │                               │                                │
-│   ┌────────────────┐  │       ┌───────────────┐       │       ┌────────────────┐       │
-│   │   BR8 (Branch) │──┼───────│ Direct SD-WAN │───────┼───────│ BR1 (Peer Node)│       │
-│   │ 28 Streams     │  │  ╱─── │ Overlay Mesh  │ ───╲  │       │ 14ms • SLA OK  │       │
-│   └────────────────┘  │ ╱     └───────────────┘     ╲ │       └────────────────┘       │
-│          ...          │╱                             ╲│              ...               │
-│   ┌────────────────┐ ╱│       ┌───────────────┐       │╲      ┌────────────────┐       │
-│   │   DC1 (Hub)    │──┼───────│ Prisma Access │───────┼───────│ SaaS (M365...) │       │
-│   │ 11 Apps • 40 IoT│  │       │ TSG: 192797   │       │       │ 450 req/min    │       │
-│   └────────────────┘  │       └───────────────┘       │       └────────────────┘       │
-│                       │       ┌───────────────┐       │       ┌────────────────┐       │
-│                       │       │ VyOS (Impair) │       │       │ Private Apps   │       │
-│                       │       │ Lat: +50ms    │       │       │ 28 Streams     │       │
-│                       │       └───────────────┘       │       └────────────────┘       │
-└───────────────────────┴───────────────────────────────┴────────────────────────────────┘
-```
 
-### Key Interactive Capabilities
-1. **Dynamic Glowing Flow Ribbons:**
-   * Stream thickness dynamically scales with throughput / active streams.
-   * Subtle animated particles move along the paths to convey live motion.
-   * Color-coded health status:
-     * **Electric Cyan / Blue:** Healthy SaaS and private traffic conforming to SLAs.
-     * **Emerald Green:** Normal voice streams with MOS score > 4.2.
-     * **Amber:** Paths experiencing latency degradation or VyOS impairments.
-     * **Crimson Red:** Blocked security threats, EICAR drops, or packet loss breaches.
-2. **Bi-directional Focus Selection:**
-   * **Click on a Source Node (e.g. BR8):** Dims all unrelated paths; illuminates exactly where BR8 is sending traffic (which VyOS router, which Prisma TSG, which Private Apps).
-   * **Click on a Destination (e.g. Custom Apps):** Reveals all contributing branch offices and latency metrics.
-   * **Click on a Transit Core (e.g. Prisma Access):** Displays inspected volume, active sessions, and security verdicts.
-3. **Hover Telemetry Badges:**
-   * Hovering over any ribbon reveals an instant micro-card: `Bandwidth Rate`, `P95 Latency`, `Packet Loss %`, and `Active Sessions`.
+### Expected Path Derivation (cheap, instant)
+| Destination kind | Default expected path | Override |
+|---|---|---|
+| Stigix peer / Private App on DC | `sdwan` | Per-target setting |
+| SaaS app | Configured SSE vendor (`sse`) or `dia` | Per-category steering declared in Settings |
+| Security targets | `sse` | — |
+| Voice responder | Follows target kind (peer ➔ `sdwan`, cloud ➔ `sse`/`dia`) | — |
+
+### Verified Path Sampling (expensive, cached)
+* Background job on the **leader**, every **5 minutes** (configurable), queries `getflow` per branch site.
+* Results cached in memory; the graph endpoint **never** calls `getflow` synchronously.
+* DC/Hub IONs carry no branch path policy: verification is performed on the branch side (same rule as `flow-trace`).
+* When Prisma credentials are missing: `verification.status = "unavailable"`, all `match = "unknown"`.
 
 ---
 
-## 5. Telemetry Data Model & Integration
+## 5. UX Specification
 
-All data required to feed this visualization is **already computed and available** across existing Stigix backend subsystems:
+### Layout
+```
+┌───────────────────────────────────────────────────────────────────────────────────┐
+│ FLOW NEXUS   [Local | Fleet]  [Group: Site | Engine]  [Mismatches only]  ● Live  │
+│ Verification: Prisma SD-WAN • sampled 3 min ago                                   │
+├─────────────────────┬───────────────────────────┬─────────────────────────────────┤
+│ SOURCES             │ TRANSIT PATH              │ DESTINATIONS                    │
+│                     │                           │                                 │
+│  BR8  ━━━━━━━━━━━━━━━━━ Direct SD-WAN ━━━━━━━━━━━━  BR1 (peer)                   │
+│       ━━━━━━━━━━━━━━━━━ Prisma Access ━━━━━━━━━━━━  Microsoft 365                │
+│       ┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄ DIA  ⚠ mismatch ┄┄┄┄┄┄┄┄┄┄  Salesforce                   │
+│  DC1  ━━━━━━━━━━━━━━━━━ Direct SD-WAN ━━━━━━━━━━━━  Private Apps (11)            │
+│                         ⚠ VyOS +50ms on BR8-eth1                                  │
+│                                                     & 38 more SaaS apps           │
+└─────────────────────┴───────────────────────────┴─────────────────────────────────┘
+```
 
-| Nexus Node | Data Source in Stigix Backend |
+### Visual Encoding (one dimension per channel)
+| Channel | Encodes | Values |
+|---|---|---|
+| **Color** | Health only | Cyan = OK · Amber = degraded · Red = critical/loss · Grey-red hatched = blocked by security |
+| **Line style** | Path verification | Solid = verified match · Dashed = mismatch · Dotted = unverified |
+| **Thickness** | Volume | Sessions or rate (log-scaled) |
+| **Icon on ribbon** | Engine | SaaS / Voice / IoT / Custom App / Security glyph |
+| **Badge** | Underlay | VyOS impairment on the traversed interface |
+
+> Engine type must **not** be encoded by color (previous revision conflated "green = voice" with "cyan = healthy").
+
+### Interactions
+* **Click source**: isolate its ribbons; side panel lists destinations, paths, mismatches.
+* **Click transit**: inspected volume, sessions, security verdict counts.
+* **Click destination**: contributing sites and P95 latency.
+* **Hover ribbon**: rate, P95, loss, sessions, expected vs verified path.
+* **"Mismatches only"** filter: shows only `match = mismatch` ribbons — the validation view.
+
+### Scale Rules
+* Destinations: show **top-N (default 8) per kind** by volume, collapse the rest into `& N more`, as SCM does.
+* Sources: up to 12 sites rendered; beyond that, group by region/role.
+* Minimum ribbon thickness so low-volume flows remain clickable.
+
+### Empty & Degraded States
+| Condition | Behavior |
 |---|---|
-| **Fleet Nodes** | `/api/fleet/overview`, `/api/system/health-matrix` (`mesh`, `host`) |
-| **SaaS Traffic** | `/api/dashboard/metrics`, `/api/live-stats` |
-| **Private Apps** | `/api/system/health-matrix` (`custom_apps.total_apps`, `active_streams`) |
-| **Voice Simulation** | `/api/system/health-matrix` (`voice.activeCalls`, `mos_score`, `avg_loss_pct`) |
-| **IoT Fleet** | `/api/system/health-matrix` (`iot.total_devices`, `running_devices`) |
-| **Prisma SD-WAN** | `/api/system/health-matrix` (`prisma.status`, `tsg_id`, `region`) |
-| **VyOS Routers** | `/api/system/health-matrix` (`vyos.active_routers`, `active_qos_rules`) |
+| Standalone node | `scope=local` only; Fleet toggle hidden |
+| No engine running | Explanatory empty state with links to Generate engines |
+| No Prisma credentials | Graph renders with expected paths; banner "Verification unavailable" |
+| Verification stale (> 3× interval) | Banner "Verification stale"; ribbons dotted |
+| Peer unreachable (fleet scope) | Source node greyed with "No telemetry" |
 
 ---
 
-## 6. Ergonomic Navigation Restructuring: `Observe > Mesh Matrix`
+## 6. Observe ➔ SD-WAN Mesh Grid
 
-### The Problem
-The **SD-WAN Bidirectional Reachability Grid ($N \times N$)** is currently embedded as a nested tab inside `Digital Experience (DEM)`. 
-* It is visually constrained by the DEM layout.
-* DEM's primary focus is synthetic user experience monitoring (SLAs, HTTP endpoints, SaaS performance curves).
-* The reachability matrix is fundamentally an **infrastructure telemetry grid** correlating forward egress SLA ($A \to B$) with return ingress path quality ($B \to A$).
+### Problem
+The bidirectional reachability grid (N × N, forward A➔B and return B➔A) is nested in **Digital Experience (DEM)**. It is constrained by the DEM layout and is semantically infrastructure telemetry, not application experience.
 
-### The Solution
-Promote the Reachability Grid to a dedicated, first-class citizen in the **`Observe`** domain:
-* `Observe` ➔ **Packet Capture** (Deep BPF live capture)
-* `Observe` ➔ **SD-WAN Mesh Grid** *(New dedicated screen)*
-* `Observe` ➔ **Live Events Stream** (Real-time audit & syslog trail)
+### Solution
+New entry **`Observe ➔ SD-WAN Mesh Grid`**, full-width, with existing filters (SLA OK / Degraded / Critical / Egress Only, topology mode, latency threshold).
 
-#### Benefits:
-* **Full-screen 4K / Ultrawide Canvas:** Allows $7 \times 7$ and $10 \times 10$ matrices to render with zero horizontal scroll bar truncation.
-* **Instant Filtering:** Filter by SLA status (`SLA OK`, `Degraded`, `Critical`, `Egress Only`) directly in the header toolbar.
-* **Clear Semantic Division:** `Validate > DEM` tests applications; `Observe > Mesh Grid` tests the underlying SD-WAN mesh fabric.
+* `Validate ➔ DEM` = application experience.
+* `Observe ➔ Mesh Grid` = SD-WAN fabric health.
+* DEM keeps a link card to the new view.
+* **Not behind a feature flag** — this is a relocation, not a new capability.
+
+### Link to Flow Nexus
+Clicking a peer-to-peer ribbon in the Flow Nexus deep-links to the corresponding Mesh Grid cell (and to `flow-trace`).
 
 ---
 
-## 7. Implementation Roadmap
+## 7. Feature Flag
 
-### Phase 1: Navigation Realignment & Mesh Matrix Separation
-1. Add `mesh_matrix` item under `Observe` in `navigationConfig.ts`.
-2. Extract the `Bidirectional Reachability Grid` component from `Performance.tsx` into a dedicated component `ObserveMeshGrid.tsx`.
-3. Provide seamless cross-navigation links between `DEM` and `Observe > Mesh Grid`.
+| Location | Change |
+|---|---|
+| `.env` | `ENABLE_FLOW_NEXUS=true` |
+| `docker-compose.yml` (`stigix.environment`) | `- ENABLE_FLOW_NEXUS=${ENABLE_FLOW_NEXUS:-false}` |
+| Backend | Endpoint and sampling job disabled unless `process.env.ENABLE_FLOW_NEXUS === 'true'` |
+| Frontend | Exposed via the UI config payload (same pattern as `enablePcapReplay`), consumed through `features` in navigation |
 
-### Phase 2: Flow Nexus Engine (Mockup & Prototype)
-1. Build an SVG / Canvas rendering component (`FlowNexus.tsx`) using D3-Sankey or custom Bezier curves with Tailwind styling.
-2. Connect mock and real data from `/api/system/health-matrix`.
-3. Implement node selection highlighting and telemetry tooltips.
+---
 
-### Phase 3: Live Telemetry Streaming & Production Polish
-1. Bind particle animation speed to live transfer rates (RPM / KBps).
-2. Integrate into Home Overview with a clean toggle: `[ Dashboard Matrix ]` | `[ Flow Nexus ]`.
+## 8. Success Criteria
+
+1. An operator can answer "which path does BR8 use to reach M365?" in under 5 seconds.
+2. A deliberately misconfigured steering policy (e.g. SaaS forced to DIA) appears as a **mismatch** within one sampling interval.
+3. Graph endpoint p95 response < 300 ms (cached, no synchronous `getflow`).
+4. Fleet scope with 8 sites and 5 engines renders without overlapping labels at 1440 px width.
+
+---
+
+## 9. Open Questions
+
+1. **`path_id` classification**: how to map Prisma SD-WAN `path_id` to `{VPN, DIA, Service Link}` reliably (WAN interface / service link lookup)?
+2. **Per-destination weights**: which engines already track per-target counters (SaaS per app, Custom Apps per app) and which need new counters (IoT per destination)?
+3. **Steering declaration**: is a per-category "expected path" setting acceptable UX, or should it be inferred from Prisma SD-WAN path policies via API?
+4. **Sampling budget**: acceptable `getflow` call rate per site against Prisma API limits.
+
+---
+
+## 10. Implementation Roadmap
+
+| Phase | Deliverable | Depends on |
+|---|---|---|
+| **1** | `Observe ➔ SD-WAN Mesh Grid` (extract from DEM, nav entry, DEM link card) | — |
+| **1.5** | `/api/flow-nexus/graph` contract with **mock data** + feature flag plumbing | — |
+| **2** | **Expected** layer: per-link aggregation from engines + expected-path derivation | 1.5, Q2, Q3 |
+| **3** | UI prototype (`FlowNexus.tsx`) on the contract: encoding, interactions, scale rules, empty states | 1.5 |
+| **4** | **Verified** layer: cached `getflow` sampling, `path_id` classification, mismatch filter | 2, Q1, Q4 |
+| **5** | Home integration toggle `[ Overview ] / [ Flow Nexus ]`, fleet scope polish | 3, 4 |
 
 ---
 
@@ -199,5 +268,6 @@ Promote the Reachability Grid to a dedicated, first-class citizen in the **`Obse
 
 | Date | Stigix Version | Author / Trigger | Summary of Changes |
 |---|---|---|---|
+| 2026-10-11 | `v3.0.0-dev` | Stigix Core Team (review) | Corrected data-availability claim; added Expected vs Verified path model, backend graph contract, VyOS as underlay attribute, site-only sources, single-dimension color encoding, scope/scale/empty states, success criteria, open questions, revised roadmap |
 | 2026-10-11 | `v3.0.0-dev` | Stigix Core Team | Integrate Direct SD-WAN transit overlay, Prisma Access / Zscaler SSE, and Stigix peer target destinations |
 | 2026-10-11 | `v3.0.0-dev` | Stigix Core Team | Initial PRD and architectural study for SCM Flow Nexus and Mesh Grid separation |
