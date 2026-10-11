@@ -58,7 +58,7 @@ export const SidebarFlyout: React.FC<SidebarFlyoutProps> = ({
             onMouseEnter={onMouseEnter}
             onMouseLeave={onMouseLeave}
             className={cn(
-                "fixed left-14 top-0 bottom-0 w-88 z-50",
+                "fixed left-14 top-0 bottom-0 w-96 z-50",
                 // Crisp solid background for native 4K / Retina display clarity (no backdrop-filter blur artifacts)
                 "bg-white dark:bg-[#0b1020]",
                 "border-r border-slate-200 dark:border-[#1e293b]",
@@ -88,7 +88,7 @@ export const SidebarFlyout: React.FC<SidebarFlyoutProps> = ({
                             )}
                         </div>
                         {domain.subtitle && (
-                            <p className="text-[11px] text-slate-500 dark:text-text-muted/80 line-clamp-1 mt-0.5 font-medium">
+                            <p className="text-[11px] text-slate-500 dark:text-text-muted/80 line-clamp-2 mt-0.5 font-medium leading-snug">
                                 {domain.subtitle}
                             </p>
                         )}
@@ -165,7 +165,7 @@ export const SidebarFlyout: React.FC<SidebarFlyoutProps> = ({
                                     </div>
 
                                     {item.description && (
-                                        <p className="text-[10px] text-slate-500 dark:text-text-muted/70 line-clamp-1 mt-0.5 leading-tight">
+                                        <p className="text-[10px] text-slate-500 dark:text-text-muted/70 line-clamp-2 mt-0.5 leading-snug">
                                             {item.description}
                                         </p>
                                     )}
