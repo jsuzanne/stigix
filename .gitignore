@@ -73,8 +73,9 @@ Thumbs.db
 .idea/
 
 # Config files (auto-generated)
-config/
-!config/.gitkeep
+/config/
+!/config/.gitkeep
+!web-dashboard/src/config/
 
 # Logs (auto-generated)
 logs/

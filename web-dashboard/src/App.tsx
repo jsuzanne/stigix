@@ -22,6 +22,8 @@ import { SystemHealthBadge } from './components/health/SystemHealthBadge';
 import { SystemHealthModal } from './components/health/SystemHealthModal';
 import { TopLoadingBar } from './components/common/TopLoadingBar';
 import { MagicJoinModal } from './components/MagicJoinModal';
+import { SidebarRail } from './components/navigation/SidebarRail';
+import { HomeOverview } from './components/navigation/HomeOverview';
 import { Activity, Server, AlertCircle, LayoutDashboard, Settings, LogOut, Key, UserPlus, BarChart3, Wifi, Shield, ChevronDown, ChevronUp, Clock, CheckCircle, XCircle, Play, Pause, Phone, Gauge, Network, Plus, Zap, Monitor, Cpu, Sun, Moon, Globe, Terminal, Sliders, Layers, Code, Bot, Sparkles, Binary, Radio } from 'lucide-react';
 import { clsx } from 'clsx';
 import { twMerge } from 'tailwind-merge';
@@ -226,9 +228,19 @@ interface SiteInfo {
 export default function App() {
   const [token, setToken] = useState<string | null>(localStorage.getItem('token'));
   const [username, setUsername] = useState<string | null>(localStorage.getItem('username'));
-  const [view, setView] = useState<'dashboard' | 'settings' | 'statistics' | 'security' | 'voice' | 'performance' | 'failover' | 'srt' | 'iot' | 'vyos' | 'speedtest' | 'topology' | 'convergence' | 'events' | 'custom_apps' | 'pcap_replay' | 'packet_capture' | 'api_studio' | 'copilot' | 'fleet'>(
-    (localStorage.getItem('activeView') as any) || 'performance'
+  const [view, setView] = useState<'dashboard' | 'settings' | 'statistics' | 'security' | 'voice' | 'performance' | 'failover' | 'srt' | 'iot' | 'vyos' | 'speedtest' | 'topology' | 'convergence' | 'events' | 'custom_apps' | 'pcap_replay' | 'packet_capture' | 'api_studio' | 'copilot' | 'fleet' | 'home'>(
+    (localStorage.getItem('activeView') as any) || 'home'
   );
+
+  const handleNavigate = (viewId: string, subTab?: string) => {
+    if (subTab) {
+      setInitialSettingsTab(subTab);
+    }
+    setView(viewId as any);
+    try {
+      localStorage.setItem('activeView', viewId);
+    } catch { }
+  };
 
   const [features, setFeatures] = useState<{ xfr_enabled: boolean }>({ xfr_enabled: false });
   const [initialSettingsTab, setInitialSettingsTab] = useState<any>(null);
@@ -408,6 +420,12 @@ export default function App() {
     const avg = nonZero.length > 0 ? Math.round(nonZero.reduce((a: number, b: number) => a + b, 0) / nonZero.length) : 0;
     return { avg, peak, current: Math.round(currentRpm) || 0 };
   }, [history, currentRpm]);
+
+  const activeTasks = useMemo(() => ({
+    traffic: Boolean(trafficRunning),
+    voice: Boolean(globalVoiceStatus && (globalVoiceStatus.activeCalls > 0 || globalVoiceStatus.running)),
+    failover: Boolean(globalConvStatus && (Array.isArray(globalConvStatus) ? globalConvStatus.length > 0 : (globalConvStatus as any)?.running))
+  }), [trafficRunning, globalVoiceStatus, globalConvStatus]);
 
   const addUser = async () => {
     if (!token) return;
@@ -1014,7 +1032,20 @@ export default function App() {
         onConnectivity={setConnectivity}
         onIperfServer={setIperfServerInfo}
       />
-    <div className="min-h-screen bg-background text-foreground pt-4 pb-8 px-8">
+    <div className="min-h-screen bg-background text-foreground pt-4 pb-8 pr-8 pl-20 transition-all">
+      <SidebarRail
+        activeView={view}
+        onNavigate={handleNavigate}
+        isLeader={isLeader}
+        features={{
+          xfr_enabled: features.xfr_enabled,
+          pcap_enabled: isPcapEnabled,
+          copilot_enabled: Boolean(copilotConfig?.featureEnabled && copilotConfig?.hasKey)
+        }}
+        activeTasks={activeTasks}
+        copilotDrawerOpen={copilotDrawerOpen}
+        onToggleCopilot={() => setCopilotDrawerOpen(prev => !prev)}
+      />
       <TopLoadingBar isLoading={isNavigating} />
       <Toaster position="top-right" />
 
@@ -1281,187 +1312,24 @@ export default function App() {
       {/* Remote Peer View Banner — shown when a remote peer context is active */}
       <RemoteViewBanner />
 
-      {/* Navigation Tabs */}
-      <div className="flex flex-wrap gap-2 mb-8 border-b border-border">
-        <button
-          onClick={() => setView('dashboard')}
-          className={cn(
-            "group relative px-4 py-3 flex items-center gap-2 font-bold tracking-wider text-sm border-b-2 transition-all",
-            view === 'dashboard' ? "border-blue-600 text-blue-600 dark:text-blue-300" : "border-transparent text-text-muted hover:text-text-primary"
-          )}
-        >
-          <LayoutDashboard size={18} /> Traffic Generator
-          <span className="absolute top-full left-1/2 -translate-x-1/2 mt-1 px-3 py-1.5 bg-[#0f172a] text-[#f8fafc] text-[10px] font-bold rounded shadow-2xl opacity-0 scale-95 group-hover:opacity-100 group-hover:scale-100 transition-all pointer-events-none z-[100] border border-[#1e293b] whitespace-nowrap">Generate multi-app SaaS traffic load and monitor live APM telemetry</span>
-        </button>
-        <button
-          onClick={() => setView('performance')}
-          className={cn(
-            "group relative px-4 py-3 flex items-center gap-2 font-bold tracking-wider text-sm border-b-2 transition-all",
-            view === 'performance' ? "border-blue-600 text-blue-600 dark:text-blue-300" : "border-transparent text-text-muted hover:text-text-primary"
-          )}
-        >
-          <Gauge size={18} /> Digital Experience
-          <span className="absolute top-full left-1/2 -translate-x-1/2 mt-1 px-3 py-1.5 bg-[#0f172a] text-[#f8fafc] text-[10px] font-bold rounded shadow-2xl opacity-0 scale-95 group-hover:opacity-100 group-hover:scale-100 transition-all pointer-events-none z-[100] border border-[#1e293b] whitespace-nowrap">Monitor synthetic probes, path SLAs and user experience (DEM)</span>
-        </button>
-
-        {features.xfr_enabled && (
-          <button
-            onClick={() => setView('speedtest')}
-            className={cn(
-              "group relative px-4 py-3 flex items-center gap-2 font-bold tracking-wider text-sm border-b-2 transition-all",
-              view === 'speedtest' ? "border-blue-600 text-blue-600 dark:text-blue-300" : "border-transparent text-text-muted hover:text-text-primary"
-            )}
-          >
-            <Activity size={18} /> Bandwidth Test
-            <span className="absolute top-full left-1/2 -translate-x-1/2 mt-1 px-3 py-1.5 bg-[#0f172a] text-[#f8fafc] text-[10px] font-bold rounded shadow-2xl opacity-0 scale-95 group-hover:opacity-100 group-hover:scale-100 transition-all pointer-events-none z-[100] border border-[#1e293b] whitespace-nowrap">High-performance throughput & latency validation (XFR / iPerf)</span>
-          </button>
-        )}
-        <button
-          onClick={() => setView('security')}
-          className={cn(
-            "group relative px-4 py-3 flex items-center gap-2 font-bold tracking-wider text-sm border-b-2 transition-all",
-            view === 'security' ? "border-blue-600 text-blue-600 dark:text-blue-300" : "border-transparent text-text-muted hover:text-text-primary"
-          )}
-        >
-          <Shield size={18} /> Security
-          <span className="absolute top-full left-1/2 -translate-x-1/2 mt-1 px-3 py-1.5 bg-[#0f172a] text-[#f8fafc] text-[10px] font-bold rounded shadow-2xl opacity-0 scale-95 group-hover:opacity-100 group-hover:scale-100 transition-all pointer-events-none z-[100] border border-[#1e293b] whitespace-nowrap">Validate SASE & NGFW security policy enforcement (URL, DNS, Threats, C2)</span>
-        </button>
-        <button
-          onClick={() => setView('iot')}
-          className={cn(
-            "group relative px-4 py-3 flex items-center gap-2 font-bold tracking-wider text-sm border-b-2 transition-all",
-            view === 'iot' ? "border-blue-600 text-blue-600 dark:text-blue-300" : "border-transparent text-text-muted hover:text-text-primary"
-          )}
-        >
-          <Cpu size={18} /> IoT
-          <span className="absolute top-full left-1/2 -translate-x-1/2 mt-1 px-3 py-1.5 bg-[#0f172a] text-[#f8fafc] text-[10px] font-bold rounded shadow-2xl opacity-0 scale-95 group-hover:opacity-100 group-hover:scale-100 transition-all pointer-events-none z-[100] border border-[#1e293b] whitespace-nowrap">Emulate physical IoT devices & security attack profiles (Real-on-Wire)</span>
-        </button>
-        <button
-          onClick={() => setView('voice')}
-          className={cn(
-            "group relative px-4 py-3 flex items-center gap-2 font-bold tracking-wider text-sm border-b-2 transition-all",
-            view === 'voice' ? "border-blue-600 text-blue-600 dark:text-blue-300" : "border-transparent text-text-muted hover:text-text-primary"
-          )}
-        >
-          <Phone size={18} /> Voice
-          <span className="absolute top-full left-1/2 -translate-x-1/2 mt-1 px-3 py-1.5 bg-[#0f172a] text-[#f8fafc] text-[10px] font-bold rounded shadow-2xl opacity-0 scale-95 group-hover:opacity-100 group-hover:scale-100 transition-all pointer-events-none z-[100] border border-[#1e293b] whitespace-nowrap">Simulate RTP voice calls and measure MOS / jitter quality</span>
-        </button>
-        <button
-          onClick={() => setView('custom_apps')}
-          className={cn(
-            "group relative px-4 py-3 flex items-center gap-2 font-bold tracking-wider text-sm border-b-2 transition-all",
-            view === 'custom_apps' ? "border-blue-600 text-blue-600 dark:text-blue-300" : "border-transparent text-text-muted hover:text-text-primary"
-          )}
-        >
-          <Layers size={18} /> Custom Apps
-          <span className="absolute top-full left-1/2 -translate-x-1/2 mt-1 px-3 py-1.5 bg-[#0f172a] text-[#f8fafc] text-[10px] font-bold rounded shadow-2xl opacity-0 scale-95 group-hover:opacity-100 group-hover:scale-100 transition-all pointer-events-none z-[100] border border-[#1e293b] whitespace-nowrap">Simulate Custom TCP & HTTP Applications across SD-WAN overlays and direct breakouts</span>
-        </button>
-        {isPcapEnabled && (
-          <button
-            onClick={() => setView('pcap_replay')}
-            className={cn(
-              "group relative px-4 py-3 flex items-center gap-2 font-bold tracking-wider text-sm border-b-2 transition-all",
-              view === 'pcap_replay' ? "border-indigo-600 text-indigo-600 dark:text-indigo-300" : "border-transparent text-text-muted hover:text-text-primary"
-            )}
-          >
-            <Binary size={18} /> PCAP Replay <span className="px-1 py-0.5 rounded text-[8px] font-black uppercase tracking-tighter bg-indigo-600/10 text-indigo-600 dark:text-indigo-400 border border-indigo-500/20 ml-1">New</span>
-            <span className="absolute top-full left-1/2 -translate-x-1/2 mt-1 px-3 py-1.5 bg-[#0f172a] text-[#f8fafc] text-[10px] font-bold rounded shadow-2xl opacity-0 scale-95 group-hover:opacity-100 group-hover:scale-100 transition-all pointer-events-none z-[100] border border-[#1e293b] whitespace-nowrap">Stateful L7 PCAP Replay Engine with zero-config profiles & SASE verdict validation</span>
-          </button>
-        )}
-        <button
-          onClick={() => setView('packet_capture')}
-          className={cn(
-            "group relative px-4 py-3 flex items-center gap-2 font-bold tracking-wider text-sm border-b-2 transition-all",
-            view === 'packet_capture' ? "border-cyan-500 text-cyan-600 dark:text-cyan-300" : "border-transparent text-text-muted hover:text-text-primary"
-          )}
-        >
-          <Radio size={18} /> Packet Capture <span className="px-1 py-0.5 rounded text-[8px] font-black uppercase tracking-tighter bg-cyan-600/10 text-cyan-600 dark:text-cyan-400 border border-cyan-500/20 ml-1">New</span>
-          <span className="absolute top-full left-1/2 -translate-x-1/2 mt-1 px-3 py-1.5 bg-[#0f172a] text-[#f8fafc] text-[10px] font-bold rounded shadow-2xl opacity-0 scale-95 group-hover:opacity-100 group-hover:scale-100 transition-all pointer-events-none z-[100] border border-[#1e293b] whitespace-nowrap">Live BPF packet sniffer & Wireshark-grade 3-pane web inspector</span>
-        </button>
-        <button
-          onClick={() => setView('convergence')}
-          className={cn(
-            "group relative px-4 py-3 flex items-center gap-2 font-bold tracking-wider text-sm border-b-2 transition-all",
-            view === 'convergence' ? "border-blue-600 text-blue-600 dark:text-blue-300" : "border-transparent text-text-muted hover:text-text-primary"
-          )}
-        >
-          <Zap size={18} /> Failover Monitoring
-          <span className="absolute top-full left-1/2 -translate-x-1/2 mt-1 px-3 py-1.5 bg-[#0f172a] text-[#f8fafc] text-[10px] font-bold rounded shadow-2xl opacity-0 scale-95 group-hover:opacity-100 group-hover:scale-100 transition-all pointer-events-none z-[100] border border-[#1e293b] whitespace-nowrap">Track millisecond blackout and packet loss during failover</span>
-        </button>
-        <button
-          onClick={() => setView('topology')}
-          className={cn(
-            "group relative px-4 py-3 flex items-center gap-2 font-bold tracking-wider text-sm border-b-2 transition-all",
-            view === 'topology' ? "border-blue-600 text-blue-600 dark:text-blue-300" : "border-transparent text-text-muted hover:text-text-primary"
-          )}
-        >
-          <Network size={18} /> Topology
-          <span className="absolute top-full left-1/2 -translate-x-1/2 mt-1 px-3 py-1.5 bg-[#0f172a] text-[#f8fafc] text-[10px] font-bold rounded shadow-2xl opacity-0 scale-95 group-hover:opacity-100 group-hover:scale-100 transition-all pointer-events-none z-[100] border border-[#1e293b] whitespace-nowrap">Visualize physical VyOS underlay, SD-WAN tunnels & live paths</span>
-        </button>
-        <button
-          onClick={() => setView('vyos')}
-          className={cn(
-            "group relative px-4 py-3 flex items-center gap-2 font-bold tracking-wider text-sm border-b-2 transition-all",
-            view === 'vyos' ? "border-blue-600 text-blue-600 dark:text-blue-300" : "border-transparent text-text-muted hover:text-text-primary"
-          )}
-        >
-          <Monitor size={18} /> VyOS Control
-          <span className="absolute top-full left-1/2 -translate-x-1/2 mt-1 px-3 py-1.5 bg-[#0f172a] text-[#f8fafc] text-[10px] font-bold rounded shadow-2xl opacity-0 scale-95 group-hover:opacity-100 group-hover:scale-100 transition-all pointer-events-none z-[100] border border-[#1e293b] whitespace-nowrap">Inject WAN impairments (latency, loss) & orchestrate VyOS routers</span>
-        </button>
-        <button
-          onClick={() => setView('events')}
-          className={cn(
-            "group relative px-4 py-3 flex items-center gap-2 font-bold tracking-wider text-sm border-b-2 transition-all",
-            view === 'events' ? "border-blue-600 text-blue-600 dark:text-blue-300" : "border-transparent text-text-muted hover:text-text-primary"
-          )}
-        >
-          <Terminal size={18} /> Live Events
-          <span className="absolute top-full left-1/2 -translate-x-1/2 mt-1 px-3 py-1.5 bg-[#0f172a] text-[#f8fafc] text-[10px] font-bold rounded shadow-2xl opacity-0 scale-95 group-hover:opacity-100 group-hover:scale-100 transition-all pointer-events-none z-[100] border border-[#1e293b] whitespace-nowrap">Stream live real-time network and security events</span>
-        </button>
-        {copilotConfig?.featureEnabled && copilotConfig?.hasKey && (
-          <button
-            onClick={() => setView('copilot')}
-            className={cn(
-              "group relative px-4 py-3 flex items-center gap-2 font-bold tracking-wider text-sm border-b-2 transition-all",
-              view === 'copilot' ? "border-blue-600 text-blue-600 dark:text-blue-300" : "border-transparent text-text-muted hover:text-text-primary"
-            )}
-          >
-            <Bot size={18} /> AI Copilot <span className="px-1 py-0.5 rounded text-[8px] font-black uppercase tracking-tighter bg-blue-600/10 text-blue-600 dark:text-blue-400 border border-blue-500/20 ml-1">AI</span>
-            <span className="absolute top-full left-1/2 -translate-x-1/2 mt-1 px-3 py-1.5 bg-[#0f172a] text-[#f8fafc] text-[10px] font-bold rounded shadow-2xl opacity-0 scale-95 group-hover:opacity-100 group-hover:scale-100 transition-all pointer-events-none z-[100] border border-[#1e293b] whitespace-nowrap">Interactive Conversational Assistant (BYOK Claude) with multi-tool orchestration</span>
-          </button>
-        )}
-        {isLeader && (
-          <button
-            onClick={() => setView('fleet')}
-            className={cn(
-              "group relative px-4 py-3 flex items-center gap-2 font-bold tracking-wider text-sm border-b-2 transition-all",
-              view === 'fleet' ? "border-blue-600 text-blue-600 dark:text-blue-300" : "border-transparent text-text-muted hover:text-text-primary"
-            )}
-          >
-            <Globe size={18} /> Mesh <span className="px-1 py-0.5 rounded text-[8px] font-black uppercase tracking-tighter bg-emerald-600/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 ml-1">Leader</span>
-            <span className="absolute top-full left-1/2 -translate-x-1/2 mt-1 px-3 py-1.5 bg-[#0f172a] text-[#f8fafc] text-[10px] font-bold rounded shadow-2xl opacity-0 scale-95 group-hover:opacity-100 group-hover:scale-100 transition-all pointer-events-none z-[100] border border-[#1e293b] whitespace-nowrap">Centralized multi-instance mesh observability & peer metrics</span>
-          </button>
-        )}
-        {/* SRT Tab hidden in v1.1.2-patch.28 */}
-        {username === 'admin' && (
-          <button
-            onClick={() => {
-              setInitialSettingsTab(null);
-              setView('settings');
-            }}
-            className={cn(
-              "group relative px-4 py-3 flex items-center gap-2 font-bold tracking-wider text-sm border-b-2 transition-all",
-              view === 'settings' ? "border-blue-600 text-blue-600 dark:text-blue-300" : "border-transparent text-text-muted hover:text-text-primary"
-            )}
-          >
-            <Settings size={18} /> Settings
-            {maintenance?.updateAvailable && (
-              <span className="absolute top-2 right-1 w-2 h-2 bg-blue-600 rounded-full animate-pulse border border-background" />
-            )}
-            <span className="absolute top-full left-1/2 -translate-x-1/2 mt-1 px-3 py-1.5 bg-[#0f172a] text-[#f8fafc] text-[10px] font-bold rounded shadow-2xl opacity-0 scale-95 group-hover:opacity-100 group-hover:scale-100 transition-all pointer-events-none z-[100] border border-[#1e293b] whitespace-nowrap">Manage Global Provisioning, Synthetic Probes & cluster config</span>
-          </button>
-        )}
-      </div>
+      {/* Home Command Center & Overview */}
+      {view === 'home' && (
+        <HomeOverview
+          token={token}
+          healthData={healthData}
+          isLoadingHealth={isHealthLoading}
+          onRefreshHealth={fetchHealthMatrix}
+          registryStatus={registryStatus}
+          siteInfo={siteInfo}
+          version="v3.0.0-dev"
+          trafficRunning={trafficRunning}
+          globalVoiceStatus={globalVoiceStatus}
+          globalConvStatus={globalConvStatus}
+          isLeader={isLeader}
+          onNavigate={handleNavigate}
+          onOpenDiagnostics={() => setShowHealthModal(true)}
+        />
+      )}
 
       {/* Traffic Control — always mounted so chart never re-animates on tab return */}
       <div className={view !== 'dashboard' ? 'hidden' : ''}>
