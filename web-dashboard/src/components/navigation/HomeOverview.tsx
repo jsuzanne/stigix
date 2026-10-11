@@ -2,7 +2,7 @@ import React from 'react';
 import {
     Activity, Server, Cloud, Cpu, Layers,
     Zap, ExternalLink, RefreshCw, Phone, LineChart,
-    Sparkles, Shield, Network, Radio, Monitor, Globe, Gauge
+    Sparkles, Shield, Network, Radio, Monitor, Globe, Gauge, Boxes
 } from 'lucide-react';
 import { cn } from '../../lib/utils';
 
@@ -39,6 +39,7 @@ export const HomeOverview: React.FC<HomeOverviewProps> = ({
     siteInfo,
     version = 'v3.0.0-dev',
     trafficRunning,
+    globalVoiceStatus,
     isLeader,
     publicIp,
     publicIpCountry,
@@ -54,13 +55,26 @@ export const HomeOverview: React.FC<HomeOverviewProps> = ({
     const leaderPeer = peers.find(p => p.is_leader);
     const leaderSite = leaderPeer?.site || leaderPeer?.instance_id;
 
-    const score = healthData?.overall_score ?? 100;
     const sub = healthData?.subsystems || {};
     const host = sub.host || {};
     const prisma = sub.prisma || {};
     const mesh = sub.mesh || {};
     const vyos = sub.vyos || {};
     const dem = sub.dem || {};
+
+    // Simulation Engines Real-time States
+    const voiceSub = sub.voice || {};
+    const voiceRunning = Boolean(
+        voiceSub.active ??
+        (globalVoiceStatus?.control?.enabled ?? Boolean(globalVoiceStatus?.activeCalls > 0 || globalVoiceStatus?.running))
+    );
+    const voiceMos = voiceSub.mos_score || (globalVoiceStatus?.stats?.[0]?.mos_score) || 4.38;
+    const voiceLoss = voiceSub.avg_loss_pct !== undefined ? `${voiceSub.avg_loss_pct}%` : '0%';
+    const voiceJitter = voiceSub.avg_jitter_ms ? `${voiceSub.avg_jitter_ms}ms RTT` : '<10ms RTT';
+
+    const demActive = Boolean(dem.status === 'active' || (dem.probes_count ?? 0) > 0);
+    const demScore = dem.score || dem.global_score || 71;
+    const demProbes = dem.probes_count || 94;
 
     // Robust Uptime Formatting (handles numeric seconds, string seconds, or pre-formatted strings)
     const uptimeRaw = host.uptime_system
@@ -329,16 +343,20 @@ export const HomeOverview: React.FC<HomeOverviewProps> = ({
                     >
                         <div className="flex items-center justify-between">
                             <span className="text-xs font-bold text-slate-900 dark:text-white flex items-center gap-1.5 group-hover:text-emerald-600 dark:group-hover:text-emerald-300">
-                                <Phone size={14} className="text-emerald-500 dark:text-emerald-400" />
+                                <Phone size={14} className={voiceRunning ? "text-emerald-500 dark:text-emerald-400 animate-pulse" : "text-slate-400 dark:text-text-muted"} />
                                 Voice & VoIP Simulator
                             </span>
-                            <span className="px-2 py-0.2 rounded text-[9px] font-black uppercase tracking-widest bg-emerald-500/15 text-emerald-600 dark:text-emerald-400">
-                                MOS 4.38
+                            <span className={cn(
+                                "px-2 py-0.2 rounded text-[9px] font-black uppercase tracking-widest",
+                                voiceRunning ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400" : "bg-slate-200 dark:bg-zinc-800 text-slate-600 dark:text-zinc-400"
+                            )}>
+                                {voiceRunning ? 'Running' : 'Stopped'}
                             </span>
                         </div>
                         <div className="text-[11px] text-slate-600 dark:text-text-muted flex justify-between font-mono mt-1">
-                            <span>Loss: <strong className="text-emerald-600 dark:text-emerald-400">0%</strong></span>
-                            <span>Jitter: <strong className="text-slate-900 dark:text-text-primary">&lt;10ms RTT</strong></span>
+                            <span>MOS: <strong className={voiceRunning ? "text-emerald-600 dark:text-emerald-400" : "text-slate-900 dark:text-text-primary"}>{voiceMos}</strong></span>
+                            <span>Loss: <strong className={voiceRunning ? "text-emerald-600 dark:text-emerald-400" : "text-slate-900 dark:text-text-primary"}>{voiceLoss}</strong></span>
+                            <span>Jitter: <strong className="text-slate-900 dark:text-text-primary">{voiceJitter}</strong></span>
                         </div>
                     </div>
 
@@ -349,16 +367,64 @@ export const HomeOverview: React.FC<HomeOverviewProps> = ({
                     >
                         <div className="flex items-center justify-between">
                             <span className="text-xs font-bold text-slate-900 dark:text-white flex items-center gap-1.5 group-hover:text-purple-600 dark:group-hover:text-purple-300">
-                                <LineChart size={14} className="text-purple-500 dark:text-purple-400" />
+                                <LineChart size={14} className={demActive ? "text-purple-500 dark:text-purple-400 animate-pulse" : "text-slate-400 dark:text-text-muted"} />
                                 Digital Experience (DEM)
                             </span>
-                            <span className="px-2 py-0.2 rounded text-[9px] font-black uppercase tracking-widest bg-purple-500/15 text-purple-600 dark:text-purple-300">
-                                Score {dem.score || 71}/100
+                            <span className={cn(
+                                "px-2 py-0.2 rounded text-[9px] font-black uppercase tracking-widest",
+                                demActive ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400" : "bg-slate-200 dark:bg-zinc-800 text-slate-600 dark:text-zinc-400"
+                            )}>
+                                {demActive ? 'ON' : 'OFF'}
                             </span>
                         </div>
                         <div className="text-[11px] text-slate-600 dark:text-text-muted flex justify-between font-mono mt-1">
-                            <span>Configured Probes: <strong className="text-slate-900 dark:text-text-primary">{dem.probes_count || 94}</strong></span>
-                            <span>Daemon: <strong className="text-emerald-600 dark:text-emerald-400">Ready</strong></span>
+                            <span>Score: <strong className="text-purple-600 dark:text-purple-400">{demScore}/100</strong></span>
+                            <span>Probes: <strong className="text-slate-900 dark:text-text-primary">{demProbes} Active</strong></span>
+                        </div>
+                    </div>
+
+                    {/* Compact Duo: Custom TCP Apps & IoT Simulation */}
+                    <div className="grid grid-cols-2 gap-2 pt-1 border-t border-slate-100 dark:border-[#1e293b]/70">
+                        {/* Custom TCP Apps */}
+                        <div
+                            onClick={() => onNavigate('custom_apps')}
+                            className="p-2.5 rounded-xl bg-slate-50 dark:bg-card-secondary/40 hover:bg-slate-100 dark:hover:bg-card-secondary/70 border border-slate-200 dark:border-[#1e293b]/70 hover:border-amber-400 dark:hover:border-amber-500/40 transition-all cursor-pointer group"
+                            title="Click to view Custom TCP/HTTP Applications"
+                        >
+                            <div className="flex items-center justify-between">
+                                <span className="text-[11px] font-bold text-slate-900 dark:text-white flex items-center gap-1.5 group-hover:text-amber-600 dark:group-hover:text-amber-300">
+                                    <Boxes size={12} className="text-amber-500 dark:text-amber-400" />
+                                    Custom Apps
+                                </span>
+                                <span className="px-1.5 py-0.2 rounded text-[8px] font-black uppercase tracking-wider bg-slate-200 dark:bg-zinc-800 text-slate-600 dark:text-zinc-400">
+                                    Ready
+                                </span>
+                            </div>
+                            <div className="text-[10px] text-slate-500 dark:text-text-muted mt-1 font-mono flex justify-between">
+                                <span>Enterprise TCP</span>
+                                <span className="text-amber-600 dark:text-amber-400">L7 Flow</span>
+                            </div>
+                        </div>
+
+                        {/* IoT Simulation */}
+                        <div
+                            onClick={() => onNavigate('iot')}
+                            className="p-2.5 rounded-xl bg-slate-50 dark:bg-card-secondary/40 hover:bg-slate-100 dark:hover:bg-card-secondary/70 border border-slate-200 dark:border-[#1e293b]/70 hover:border-cyan-400 dark:hover:border-cyan-500/40 transition-all cursor-pointer group"
+                            title="Click to view IoT Device Emulation"
+                        >
+                            <div className="flex items-center justify-between">
+                                <span className="text-[11px] font-bold text-slate-900 dark:text-white flex items-center gap-1.5 group-hover:text-cyan-600 dark:group-hover:text-cyan-300">
+                                    <Cpu size={12} className="text-cyan-500 dark:text-cyan-400" />
+                                    IoT Fleet
+                                </span>
+                                <span className="px-1.5 py-0.2 rounded text-[8px] font-black uppercase tracking-wider bg-slate-200 dark:bg-zinc-800 text-slate-600 dark:text-zinc-400">
+                                    Standby
+                                </span>
+                            </div>
+                            <div className="text-[10px] text-slate-500 dark:text-text-muted mt-1 font-mono flex justify-between">
+                                <span>Devices</span>
+                                <span className="text-cyan-600 dark:text-cyan-400">Real-Wire</span>
+                            </div>
                         </div>
                     </div>
                 </div>
