@@ -469,6 +469,19 @@ export default function App() {
     )
   }), [trafficRunning, globalVoiceStatus, globalConvStatus, healthData]);
 
+  const totalConfiguredSaasApps = useMemo(() => {
+    if (!Array.isArray(appConfig) || appConfig.length === 0) return 67;
+    const count = appConfig.reduce((sum: number, item: any) => {
+      if (Array.isArray(item?.apps)) return sum + item.apps.length;
+      return sum + 1;
+    }, 0);
+    return count > 0 ? count : 67;
+  }, [appConfig]);
+
+  const activeSaasAppsCount = useMemo(() => {
+    return stats?.requests_by_app ? Object.keys(stats.requests_by_app).length : 0;
+  }, [stats]);
+
   const addUser = async () => {
     if (!token) return;
     try {
@@ -1396,7 +1409,7 @@ export default function App() {
           version="v3.0.0-dev"
           trafficRunning={trafficRunning}
           currentRpm={currentRpm}
-          saasAppsCount={(Array.isArray(appConfig) && appConfig.length > 0) ? appConfig.length : 67}
+          saasAppsCount={trafficRunning && activeSaasAppsCount > 0 ? activeSaasAppsCount : totalConfiguredSaasApps}
           globalVoiceStatus={globalVoiceStatus}
           globalConvStatus={globalConvStatus}
           isLeader={isLeader}
