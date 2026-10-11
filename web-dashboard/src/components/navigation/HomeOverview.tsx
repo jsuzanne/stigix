@@ -17,6 +17,8 @@ interface HomeOverviewProps {
     siteInfo?: any;
     version?: string;
     trafficRunning?: boolean;
+    currentRpm?: number;
+    saasAppsCount?: number;
     globalVoiceStatus?: any;
     globalConvStatus?: any;
     isLeader?: boolean;
@@ -39,6 +41,8 @@ export const HomeOverview: React.FC<HomeOverviewProps> = ({
     siteInfo,
     version = 'v3.0.0-dev',
     trafficRunning,
+    currentRpm = 0,
+    saasAppsCount = 67,
     globalVoiceStatus,
     isLeader,
     publicIp,
@@ -343,9 +347,10 @@ export const HomeOverview: React.FC<HomeOverviewProps> = ({
                                 {trafficRunning ? 'Running' : 'Stopped'}
                             </span>
                         </div>
-                        <p className="text-[11px] text-slate-600 dark:text-text-muted mt-1">
-                            Click to configure load rate, SaaS profiles and APM telemetry.
-                        </p>
+                        <div className="text-[11px] text-slate-600 dark:text-text-muted flex justify-between font-mono mt-1">
+                            <span>Apps: <strong className="text-slate-900 dark:text-text-primary">{saasAppsCount || 67} Apps</strong></span>
+                            <span>Rate: <strong className={trafficRunning ? "text-emerald-600 dark:text-emerald-400 font-bold" : "text-slate-900 dark:text-text-primary"}>{trafficRunning ? (currentRpm && currentRpm > 0 ? `${Math.round(currentRpm)} req/min` : 'Active') : '0 req/min'}</strong></span>
+                        </div>
                     </div>
 
                     {/* Voice VoIP */}

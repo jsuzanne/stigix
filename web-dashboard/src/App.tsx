@@ -1395,6 +1395,8 @@ export default function App() {
           siteInfo={siteInfo}
           version="v3.0.0-dev"
           trafficRunning={trafficRunning}
+          currentRpm={currentRpm}
+          saasAppsCount={(Array.isArray(appConfig) && appConfig.length > 0) ? appConfig.length : 67}
           globalVoiceStatus={globalVoiceStatus}
           globalConvStatus={globalConvStatus}
           isLeader={isLeader}
