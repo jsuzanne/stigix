@@ -49,7 +49,8 @@ export const HomeOverview: React.FC<HomeOverviewProps> = ({
     runningSpeedtest,
     onNavigate
 }) => {
-    const { peers } = usePeerContext();
+    const { peers, activePeerId, activePeer } = usePeerContext();
+    const isRemote = Boolean(activePeerId);
     const leaderPeer = peers.find(p => p.is_leader);
     const leaderSite = leaderPeer?.site || leaderPeer?.instance_id;
 
@@ -90,8 +91,9 @@ export const HomeOverview: React.FC<HomeOverviewProps> = ({
     const usedMemGb = (usedMemBytes / (1024 * 1024 * 1024)).toFixed(1);
     const memUsagePercent = host.memory?.usage_percent || (totalMemBytes > 0 ? Math.round((usedMemBytes / totalMemBytes) * 100) : 0);
 
-    // Primary Site Name Resolution (Local Site Name > Fleet Leader Site > Hostname)
-    const rawSiteName = siteInfo?.detected_site_name
+    // Primary Site Name Resolution (Remote Active Peer > Local Site Name > Fleet Leader Site > Hostname)
+    const rawSiteName = (activePeerId && (activePeer?.site || activePeer?.instance_id))
+        || siteInfo?.detected_site_name
         || siteInfo?.site_name
         || registryStatus?.site_name
         || registryStatus?.site
@@ -121,13 +123,19 @@ export const HomeOverview: React.FC<HomeOverviewProps> = ({
                                 <h1 className="text-3xl font-black tracking-tight text-slate-900 dark:text-white flex items-center gap-2">
                                     {localSiteName}
                                 </h1>
-                                <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-widest bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/30">
-                                    {version}
-                                </span>
+                                {isRemote ? (
+                                    <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-widest bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30">
+                                        Remote Peer View
+                                    </span>
+                                ) : (
+                                    <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-widest bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/30">
+                                        {version}
+                                    </span>
+                                )}
                             </div>
 
                             <p className="text-xs text-slate-600 dark:text-text-muted mt-1.5 font-medium flex items-center gap-2 flex-wrap">
-                                <span>Host: <strong className="text-slate-900 dark:text-text-primary">{host.hostname || 'Host Mode'}</strong></span>
+                                <span>Host: <strong className="text-slate-900 dark:text-text-primary">{isRemote ? (activePeer?.instance_id || host.hostname || 'Remote Host') : (host.hostname || 'Host Mode')}</strong></span>
                                 <span>•</span>
                                 <span>Uptime: <strong className="text-emerald-600 dark:text-emerald-400 font-mono">{formatUptime(uptimeRaw)}</strong></span>
                                 <span>•</span>
@@ -140,34 +148,42 @@ export const HomeOverview: React.FC<HomeOverviewProps> = ({
                     <div className="flex items-center gap-3 self-end sm:self-auto">
                         <div className={cn(
                             "px-4 py-2 rounded-2xl border shadow-sm flex items-center gap-3 backdrop-blur-md",
-                            registryStatus?.mode === 'leader'
-                                ? "bg-purple-500/10 border-purple-500/30 text-purple-600 dark:text-purple-400"
-                                : registryStatus?.mode === 'peer' && (mesh.status === 'connected' || registryStatus?.is_registered)
-                                    ? "bg-blue-500/10 border-blue-500/30 text-blue-600 dark:text-blue-400"
-                                    : "bg-slate-500/10 border-slate-500/30 text-slate-600 dark:text-slate-400"
+                            isRemote
+                                ? "bg-amber-500/10 border-amber-500/30 text-amber-600 dark:text-amber-400"
+                                : registryStatus?.mode === 'leader'
+                                    ? "bg-purple-500/10 border-purple-500/30 text-purple-600 dark:text-purple-400"
+                                    : registryStatus?.mode === 'peer' && (mesh.status === 'connected' || registryStatus?.is_registered)
+                                        ? "bg-blue-500/10 border-blue-500/30 text-blue-600 dark:text-blue-400"
+                                        : "bg-slate-500/10 border-slate-500/30 text-slate-600 dark:text-slate-400"
                         )}>
                             <div className={cn(
                                 "w-2.5 h-2.5 rounded-full",
-                                registryStatus?.mode === 'leader'
-                                    ? "bg-purple-500 animate-pulse shadow-[0_0_8px_rgba(168,85,247,0.8)]"
-                                    : registryStatus?.mode === 'peer' && (mesh.status === 'connected' || registryStatus?.is_registered)
-                                        ? "bg-blue-500 animate-pulse shadow-[0_0_8px_rgba(59,130,246,0.8)]"
-                                        : "bg-slate-400"
+                                isRemote
+                                    ? "bg-amber-500 animate-pulse shadow-[0_0_8px_rgba(245,158,11,0.8)]"
+                                    : registryStatus?.mode === 'leader'
+                                        ? "bg-purple-500 animate-pulse shadow-[0_0_8px_rgba(168,85,247,0.8)]"
+                                        : registryStatus?.mode === 'peer' && (mesh.status === 'connected' || registryStatus?.is_registered)
+                                            ? "bg-blue-500 animate-pulse shadow-[0_0_8px_rgba(59,130,246,0.8)]"
+                                            : "bg-slate-400"
                             )} />
                             <div className="text-left leading-tight">
                                 <div className="text-[11px] font-black uppercase tracking-wider text-slate-900 dark:text-white">
-                                    {registryStatus?.mode === 'leader'
-                                        ? 'Fleet Leader Active'
-                                        : registryStatus?.mode === 'peer' && (mesh.status === 'connected' || registryStatus?.is_registered)
-                                            ? 'Mesh Peer Connected'
-                                            : 'Standalone Node'}
+                                    {isRemote
+                                        ? 'Remote Node View'
+                                        : registryStatus?.mode === 'leader'
+                                            ? 'Fleet Leader Active'
+                                            : registryStatus?.mode === 'peer' && (mesh.status === 'connected' || registryStatus?.is_registered)
+                                                ? 'Mesh Peer Connected'
+                                                : 'Standalone Node'}
                                 </div>
                                 <div className="text-[10px] text-slate-500 dark:text-text-muted font-mono">
-                                    {registryStatus?.mode === 'leader'
-                                        ? `${mesh.peer_count ?? registryStatus?.peer_count ?? 0} Distributed Peers`
-                                        : registryStatus?.mode === 'peer' && (mesh.status === 'connected' || registryStatus?.is_registered)
-                                            ? `Leader: ${leaderSite || leaderPeer?.ip_private || mesh.leader_ip || 'Cluster Active'}`
-                                            : 'Local Operations (Single Node)'}
+                                    {isRemote
+                                        ? `Tunnel: ${activePeer?.ip_private || 'Gateway Proxy'}`
+                                        : registryStatus?.mode === 'leader'
+                                            ? `${mesh.peer_count ?? registryStatus?.peer_count ?? 0} Distributed Peers`
+                                            : registryStatus?.mode === 'peer' && (mesh.status === 'connected' || registryStatus?.is_registered)
+                                                ? `Leader: ${leaderSite || leaderPeer?.ip_private || mesh.leader_ip || 'Cluster Active'}`
+                                                : 'Local Operations (Single Node)'}
                                 </div>
                             </div>
                         </div>
@@ -245,7 +261,7 @@ export const HomeOverview: React.FC<HomeOverviewProps> = ({
                         </div>
                         <div className="text-[11px] text-slate-600 dark:text-text-muted flex justify-between font-mono">
                             <span>Learned Targets: <strong className="text-slate-900 dark:text-text-primary">{mesh.learned_targets_count ?? '0'}</strong></span>
-                            <span>Leader IP: <strong className="text-slate-900 dark:text-text-primary">{mesh.leader_ip || '127.0.0.1'}</strong></span>
+                            <span>Leader IP: <strong className="text-slate-900 dark:text-text-primary">{mesh.leader_ip || (registryStatus?.mode === 'leader' || mesh.mode === 'leader' ? 'Local Leader' : (mesh.status === 'connected' ? (leaderSite || 'Connected') : '—'))}</strong></span>
                         </div>
                     </div>
 
