@@ -132,12 +132,18 @@ export const SidebarFlyout: React.FC<SidebarFlyoutProps> = ({
                                 )}
                             >
                                 <div className={cn(
-                                    "p-1.5 rounded-lg mt-0.5 transition-colors",
+                                    "p-1.5 rounded-lg mt-0.5 transition-colors relative flex-shrink-0",
                                     isItemActive
                                         ? "bg-blue-600 dark:bg-blue-500 text-white shadow-md shadow-blue-500/30"
                                         : "bg-slate-100 dark:bg-[#161f36] text-slate-500 dark:text-text-muted group-hover:text-blue-600 dark:group-hover:text-blue-400 group-hover:bg-blue-50 dark:group-hover:bg-blue-500/10"
                                 )}>
                                     <Icon size={15} />
+                                    {isRunning && (
+                                        <span
+                                            title="Service actively running"
+                                            className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-emerald-400 border border-white dark:border-[#0b1020] shadow-[0_0_8px_rgba(52,211,153,0.9)] animate-pulse"
+                                        />
+                                    )}
                                 </div>
 
                                 <div className="flex-1 min-w-0">
@@ -151,12 +157,6 @@ export const SidebarFlyout: React.FC<SidebarFlyoutProps> = ({
                                             {item.label}
                                         </span>
 
-                                        {isRunning && (
-                                            <span className="flex items-center gap-1 text-[9px] font-black uppercase text-emerald-600 dark:text-emerald-400 px-1.5 py-0.2 rounded-full bg-emerald-500/10 border border-emerald-500/20">
-                                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                                                Active
-                                            </span>
-                                        )}
                                         {item.leaderOnly && (
                                             <span className="text-[9px] font-black uppercase text-purple-600 dark:text-purple-400 px-1.5 py-0.2 rounded bg-purple-500/10 border border-purple-500/20">
                                                 Leader

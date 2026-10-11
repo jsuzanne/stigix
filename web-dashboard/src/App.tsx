@@ -1072,52 +1072,77 @@ export default function App() {
       )}
 
 
-      <header className="mb-8 flex justify-between items-center">
-        <div>
-          <div className="flex flex-col gap-0.5">
-            <h1 className="text-[42px] font-bold tracking-[-0.03em] leading-tight text-text-primary flex items-baseline">
+      <header className="mb-5 flex justify-between items-center gap-4">
+        {/* Left: Brand Identity Logo & Single-Line Platform Title */}
+        <div className="flex items-center gap-3.5 min-w-0">
+          {/* Fluo Pulse Gem Icon */}
+          <div className="relative flex-shrink-0 neon-squircle">
+            <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-blue-600 via-indigo-600 to-purple-600 p-[2px] shadow-lg shadow-blue-500/25">
+              <div className="w-full h-full bg-[#0a0f1d] rounded-[10px] flex items-center justify-center">
+                <svg className="w-4.5 h-4.5 pulse-path" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M22 12h-4l-3 9L9 3l-3 9H2" />
+                </svg>
+              </div>
+            </div>
+            <span className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-emerald-400 border border-white dark:border-[#0a0f1d] shadow-[0_0_8px_rgba(52,211,153,0.9)]" />
+          </div>
+
+          {/* Wordmark Stigix & Single-Line Metadata (Full Light & Dark Theme Support) */}
+          <div className="flex items-baseline gap-3 flex-wrap sm:flex-nowrap">
+            <h1 className="text-2xl font-bold tracking-[-0.02em] leading-none text-slate-900 dark:text-text-primary flex items-baseline select-none font-sans">
               St
-              <span className="relative">
-                i
-                <span className="absolute left-[50%] top-[22%] -translate-x-1/2 -translate-y-1/2">
-                  <span className="absolute inset-0 bg-cyan-400 rounded-full blur-[4px] animate-pulse"></span>
-                  <span className="relative block w-[7px] h-[7px] bg-cyan-400 rounded-full border border-cyan-300 shadow-[0_0_10px_rgba(34,211,238,0.8)]"></span>
-                </span>
+              <span className="relative inline-block mx-[1px]">
+                <span className="absolute -top-1 left-1/2 -translate-x-1/2 w-[5px] h-[5px] rounded-full bg-cyan-400 dark:bg-cyan-400 neon-dot border border-cyan-300/60" />
+                ı
               </span>
               g
-              <span className="relative">
-                i
-                <span className="absolute left-[50%] top-[22%] -translate-x-1/2 -translate-y-1/2">
-                  <span className="absolute inset-0 bg-cyan-400 rounded-full blur-[4px] animate-pulse"></span>
-                  <span className="relative block w-[7px] h-[7px] bg-cyan-400 rounded-full border border-cyan-300 shadow-[0_0_10px_rgba(34,211,238,0.8)]"></span>
-                </span>
+              <span className="relative inline-block mx-[1px]">
+                <span className="absolute -top-1 left-1/2 -translate-x-1/2 w-[5px] h-[5px] rounded-full bg-cyan-400 dark:bg-cyan-400 neon-dot-delay border border-cyan-300/60" />
+                ı
               </span>
               x
             </h1>
-            <p className="text-text-muted text-lg tracking-tight font-medium">
-              The Engine for SASE Validation
+
+            {/* Divider */}
+            <span className="text-slate-300 dark:text-text-muted/40 font-light text-sm hidden sm:inline">|</span>
+
+            {/* Single-line Metadata */}
+            <div className="flex items-center gap-2 text-xs text-slate-500 dark:text-text-muted font-medium">
+              <span className="hidden md:inline text-slate-700 dark:text-text-secondary">The Engine for SASE Validation</span>
               {isRemoteView && activePeerLabel ? (
-                <span className="text-text-muted/60"> • <span className="text-amber-400 font-bold">{activePeerLabel}</span></span>
+                <>
+                  <span className="text-slate-300 dark:text-text-muted/40 hidden md:inline">•</span>
+                  <span className="text-amber-500 dark:text-amber-400 font-bold">{activePeerLabel}</span>
+                </>
               ) : (
-                siteInfo?.success && siteInfo.detected_site_name && (
-                  <span className="text-text-muted/60"> • <span className="text-blue-400 font-bold">{siteInfo.detected_site_name}</span></span>
+                (siteInfo?.detected_site_name || registryStatus?.site_name || (isLeader ? 'DC1' : 'BR8')) && (
+                  <>
+                    <span className="text-slate-300 dark:text-text-muted/40 hidden md:inline">•</span>
+                    <span className="text-blue-600 dark:text-blue-400 font-bold">
+                      {siteInfo?.detected_site_name || registryStatus?.site_name || (isLeader ? 'DC1' : 'BR8')}
+                    </span>
+                  </>
                 )
               )}
-              {version && <span className="text-text-muted/60"> • {version}</span>}
+              {version && (
+                <>
+                  <span className="text-slate-300 dark:text-text-muted/40">•</span>
+                  <span className="font-mono text-cyan-600 dark:text-cyan-400/90 text-[11px]">{version}</span>
+                </>
+              )}
               {registryStatus?.is_registered && (
                 <span className={cn(
-                  "ml-4 px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-widest border shadow-sm inline-flex items-center gap-1.5",
+                  "px-2 py-0.2 rounded-full text-[9px] font-black uppercase tracking-widest border shadow-sm inline-flex items-center gap-1.5",
                   registryStatus?.mode === 'leader'
-                    ? "bg-purple-600/10 text-purple-500 border-purple-500/30"
-                    : "bg-blue-600/10 text-blue-500 border-blue-500/30"
+                    ? "bg-purple-500/10 text-purple-600 dark:text-purple-400 border-purple-500/30"
+                    : "bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/30"
                 )}>
-                  <div className={cn("w-1.5 h-1.5 rounded-full", registryStatus.mode === 'leader' ? "bg-purple-500 animate-pulse" : "bg-blue-500")} />
+                  <span className={cn("w-1.5 h-1.5 rounded-full", registryStatus.mode === 'leader' ? "bg-purple-500 animate-pulse" : "bg-blue-500")} />
                   {registryStatus.mode === 'leader' ? 'Leader' : 'Peer'}
                 </span>
               )}
-            </p>
+            </div>
           </div>
-
         </div>
 
 
@@ -1310,6 +1335,10 @@ export default function App() {
           globalVoiceStatus={globalVoiceStatus}
           globalConvStatus={globalConvStatus}
           isLeader={isLeader}
+          publicIp={publicIp}
+          publicIpCountry={publicIpCountry}
+          gatewayIp={gatewayIp}
+          speedtestResult={speedtestResult}
           onNavigate={handleNavigate}
           onOpenDiagnostics={() => setShowHealthModal(true)}
         />
@@ -1427,320 +1456,9 @@ export default function App() {
               )}
             </div>
 
-            {/* Network Monitoring */}
-            <div className="bg-card border border-border rounded-xl p-4 mb-8 shadow-sm">
-              <div className="flex items-center justify-between mb-2">
-                <h3 className="text-lg font-black text-text-primary flex items-center gap-2 tracking-tight">
-                  <Wifi size={20} className="text-blue-600 dark:text-blue-400" />
-                  Network Status
-
-                  {/* Network Badges */}
-                  {(publicIp || gatewayIp || siteInfo?.local_ip) && (
-                    <div className="hidden sm:flex items-center gap-1.5 px-2 py-1 bg-blue-500/10 border border-blue-500/20 rounded text-[10px] font-black text-blue-700 dark:text-blue-300 tracking-widest">
-                      <Globe size={10} />
-                      {siteInfo?.local_ip && <span className="mr-1 border-r border-blue-500/30 pr-2">IP: {siteInfo.local_ip}</span>}
-                      {gatewayIp && <span className="mr-1 border-r border-blue-500/30 pr-2">GW: {gatewayIp}</span>}
-                      <span className="flex items-center gap-1">
-                        {publicIpCountry && (
-                          <span className="text-sm leading-none" title={publicIpCountry}>
-                            {String.fromCodePoint(...[...publicIpCountry.toUpperCase()].map(c => 0x1F1E6 - 65 + c.charCodeAt(0)))}
-                          </span>
-                        )}
-                        Public IP: {publicIp}
-                      </span>
-                    </div>
-                  )}
-
-                  {/* Iperf Status Badge */}
-                  {iperfServerInfo?.running && (
-                    <div className="hidden sm:flex items-center gap-1.5 px-2 py-1 bg-green-500/10 border border-green-500/20 rounded text-[10px] font-black text-green-600 dark:text-green-400 tracking-widest">
-                      <Server size={10} /> Iperf Server Up (5201)
-                    </div>
-                  )}
-                </h3>
-                <div className="flex items-center gap-2.5">
-                  <button
-                    onClick={runSpeedtest}
-                    disabled={runningSpeedtest || isRemoteView}
-                    title={isRemoteView ? "Cannot run speedtest on a remote peer — view only" : undefined}
-                    className={cn(
-                      "flex items-center gap-2 px-3 py-1.5 rounded-lg text-[10px] font-black tracking-widest transition-all shadow-sm border",
-                      (runningSpeedtest || isRemoteView)
-                        ? "bg-blue-500/10 text-blue-400/40 border-blue-500/20 cursor-not-allowed opacity-50"
-                        : "bg-card-secondary hover:bg-card-hover hover:border-blue-500/30 text-text-muted hover:text-text-primary border-border"
-                    )}
-                  >
-                    <Gauge size={13} className={cn("text-blue-400", runningSpeedtest ? "animate-spin" : "")} />
-                    {runningSpeedtest ? 'Testing...' : 'Internet Speedtest'}
-                  </button>
-
-                  <button
-                    onClick={() => setShowIperfModal(true)}
-                    disabled={isRemoteView}
-                    title={isRemoteView ? "Cannot run iperf on a remote peer — view only" : undefined}
-                    className={cn(
-                      "flex items-center gap-2 px-3 py-1.5 rounded-lg text-[10px] font-black tracking-widest border transition-all shadow-sm",
-                      isRemoteView
-                        ? "bg-card-secondary text-text-muted/40 border-border opacity-50 cursor-not-allowed"
-                        : "bg-card-secondary hover:bg-card-hover hover:border-purple-500/30 text-text-muted hover:text-text-primary border-border"
-                    )}
-                  >
-                    <Activity size={13} className="text-purple-400" />
-                    Iperf Client
-                  </button>
-
-                  <button
-                    onClick={() => setView('settings')}
-                    className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-[10px] font-black tracking-widest bg-blue-600/10 hover:bg-blue-600/20 text-blue-700 dark:text-blue-300 border border-blue-500/20 transition-all shadow-sm"
-                  >
-                    <Sliders size={13} />
-                    Manage
-                  </button>
-
-                  <button
-                    onClick={() => setNetworkExpanded(!networkExpanded)}
-                    className="text-text-muted hover:text-text-primary transition-colors ml-1 p-1 hover:bg-card-secondary rounded-lg"
-                  >
-                    <ChevronDown size={18} className={`transform transition-transform ${networkExpanded ? 'rotate-180' : ''}`} />
-                  </button>
-                </div>
-              </div>
-
-              {/* Compact Summary */}
-              <div className="flex items-center justify-between text-sm">
-                <div className="flex items-center gap-6">
-                  {/* Connectivity Status */}
-                  {connectivity && (
-                    <div className="flex items-center gap-2">
-                      {connectivity.connected ? (
-                        <>
-                          <CheckCircle size={14} className="text-green-600 dark:text-green-400" />
-                          <span className="text-text-primary font-bold">
-                            {connectivity.results?.filter((r: any) => r.status === 'connected').length || 0}/{connectivity.results?.length || 0} <span className="text-[10px] text-text-muted uppercase tracking-widest ml-1">Endpoints</span>
-                          </span>
-                        </>
-                      ) : (
-                        <>
-                          <XCircle size={14} className="text-orange-500" />
-                          <span className="text-orange-600 dark:text-orange-400 font-black">
-                            {connectivity.results?.filter((r: any) => r.status !== 'connected').length || 0} <span className="text-[10px] uppercase tracking-widest ml-1 opacity-70">Offline</span>
-                          </span>
-                        </>
-                      )}
-                    </div>
-                  )}
-
-                  {/* Speedtest Result */}
-                  {speedtestResult && (
-                    <div className="flex items-center gap-2 bg-blue-500/10 px-3 py-1 rounded-full border border-blue-500/20">
-                      <Gauge size={12} className="text-blue-400" />
-                      <span className="text-blue-300 font-bold">{speedtestResult.download_mbps} <span className="text-[10px] opacity-70">Mbps</span></span>
-                    </div>
-                  )}
-
-                  {/* Iperf Result */}
-                  {iperfResult && (
-                    <div className="flex items-center gap-2 bg-purple-500/10 px-3 py-1 rounded-full border border-purple-500/20">
-                      <Activity size={12} className="text-purple-400" />
-                      <span className="text-purple-300 font-bold">{Math.round(iperfResult.received_mbps || iperfResult.sent_mbps)} <span className="text-[10px] opacity-70">Mbps (iperf)</span></span>
-                    </div>
-                  )}
-
-                  {/* Docker Stats: Network Bitrate */}
-                  {dockerStats?.success && dockerStats.stats.network && (
-                    <div className="flex items-center gap-4">
-                      <div className="flex items-center gap-3 bg-card-secondary/50 px-3 py-1 rounded-full border border-border shadow-inner">
-                        <span className="flex items-center gap-1.5 font-mono text-[11px] font-black">
-                          <ChevronDown size={14} className={cn("transition-colors", parseFloat(dockerStats.stats.network.rx_mbps) > 5 ? "text-green-600 dark:text-green-400" : "text-blue-600 dark:text-blue-400")} />
-                          <span className="text-text-primary min-w-[60px]">{formatBitrate(dockerStats.stats.network.rx_mbps)}</span>
-                        </span>
-                        <div className="w-px h-3 bg-border" />
-                        <span className="flex items-center gap-1.5 font-mono text-[11px] font-black">
-                          <ChevronUp size={14} className={cn("transition-colors", parseFloat(dockerStats.stats.network.tx_mbps) > 5 ? "text-green-600 dark:text-green-400" : "text-purple-600 dark:text-purple-400")} />
-                          <span className="text-text-primary min-w-[60px]">{formatBitrate(dockerStats.stats.network.tx_mbps)}</span>
-                        </span>
-                      </div>
-                      <div className="hidden lg:flex items-center gap-3 text-[9px] text-text-muted font-bold uppercase tracking-widest">
-                        <span>TOT: {dockerStats.stats.network.rx_mb || dockerStats.stats.network.received_mb} MB</span>
-                        <span className="opacity-30">/</span>
-                        <span>{dockerStats.stats.network.tx_mb || dockerStats.stats.network.transmitted_mb} MB</span>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Docker Stats: Resource Monitoring */}
-                  {dockerStats?.success && (
-                    <div className="hidden md:flex items-center gap-6">
-                      {/* CPU */}
-                      <div className="flex items-center gap-2 min-w-[100px]">
-                        <span className="text-[9px] text-text-muted uppercase font-black tracking-widest w-8">CPU</span>
-                        <div className="flex-1 h-1 bg-card rounded-full overflow-hidden border border-border shadow-inner">
-                          <div
-                            className={cn("h-full transition-all duration-500",
-                              parseFloat(dockerStats.stats.cpu.percent) > 80 ? "bg-red-500" : "bg-blue-600 dark:bg-blue-500")}
-                            style={{ width: `${dockerStats.stats.cpu.percent}%` }}
-                          />
-                        </div>
-                        <span className="text-[10px] text-text-muted font-mono font-bold w-8 text-right">{dockerStats.stats.cpu.percent}%</span>
-                      </div>
-
-                      {/* RAM */}
-                      <div className="flex items-center gap-2 min-w-[100px]">
-                        <span className="text-[9px] text-text-muted uppercase font-black tracking-widest w-8">RAM</span>
-                        <div className="flex-1 h-1 bg-card rounded-full overflow-hidden border border-border shadow-inner">
-                          <div
-                            className={cn("h-full transition-all duration-500",
-                              parseFloat(dockerStats.stats.memory.percent) > 80 ? "bg-red-500" : "bg-purple-600 dark:bg-purple-500")}
-                            style={{ width: `${dockerStats.stats.memory.percent}%` }}
-                          />
-                        </div>
-                        <span className="text-[10px] text-text-muted font-mono font-bold w-8 text-right">{dockerStats.stats.memory.percent}%</span>
-                      </div>
-
-                      {/* DISK (Host) */}
-                      {dockerStats.host?.disk && (
-                        <div className="flex items-center gap-2 min-w-[100px]">
-                          <span className="text-[9px] text-text-muted uppercase font-black tracking-widest w-8">DISK</span>
-                          <div className="flex-1 h-1 bg-card rounded-full overflow-hidden border border-border shadow-inner">
-                            <div
-                              className={cn("h-full transition-all duration-500",
-                                dockerStats.host.disk.percent > 85 ? "bg-red-500" : "bg-orange-600 dark:bg-orange-500")}
-                              style={{ width: `${dockerStats.host.disk.percent}%` }}
-                            />
-                          </div>
-                          <span className="text-[10px] text-text-muted font-mono font-bold w-8 text-right">{dockerStats.host.disk.percent}%</span>
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              {/* Container Breakdown (Expanded) */}
-              {networkExpanded && dockerStats?.containers && (
-                <div className="mt-4 pt-4 border-t border-border animate-in slide-in-from-top-4 duration-300">
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    {dockerStats.containers.map((c: any) => (
-                      <div key={c.name} className="bg-card-secondary/40 border border-border/60 p-4 rounded-xl flex flex-col gap-3 group hover:border-blue-500/30 transition-all shadow-sm">
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-2">
-                            <div className={cn("w-2 h-2 rounded-full", c.fallback ? "bg-orange-500" : "bg-green-500")} />
-                            <span className="text-xs font-bold text-text-primary uppercase tracking-wider">{c.name.replace('sdwan-', '')}</span>
-                          </div>
-                          <span className="text-[10px] text-text-muted font-mono">{c.id || 'LOCAL'}</span>
-                        </div>
-
-                        <div className="grid grid-cols-2 gap-4">
-                          <div className="space-y-1">
-                            <span className="text-[10px] text-text-muted uppercase font-bold block">Bitrate</span>
-                            <div className="flex flex-col text-[11px] font-mono whitespace-nowrap">
-                              <span className="text-blue-400">↓ {formatBitrate(c.network.rx_mbps)}</span>
-                              <span className="text-purple-400">↑ {formatBitrate(c.network.tx_mbps)}</span>
-                            </div>
-                          </div>
-                          <div className="space-y-1">
-                            <span className="text-[10px] text-text-muted uppercase font-bold block">CPU / RAM</span>
-                            <div className="flex flex-col text-[11px] font-mono text-text-secondary">
-                              <span>{c.cpu.percent}% CPU</span>
-                              <span>{c.memory.percent}% RAM</span>
-                            </div>
-                          </div>
-                        </div>
-
-                        <div className="mt-1 h-1 bg-card rounded-full overflow-hidden border border-border/30">
-                          <div
-                            className="h-full bg-blue-500/50 transition-all duration-500"
-                            style={{ width: `${Math.min(100, (parseFloat(c.network.rx_mbps) + parseFloat(c.network.tx_mbps)) * 5)}%` }}
-                          />
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* Expanded Details */}
-              {networkExpanded && connectivity?.results && (
-                <div className="mt-4 pt-4 border-t border-border space-y-1">
-                  {connectivity.results.map((result: any, idx: number) => (
-                    <div key={idx} className="flex items-center gap-2 text-xs py-1">
-                      {result.status === 'connected' ? (
-                        <CheckCircle size={12} className="text-green-400 flex-shrink-0" />
-                      ) : (
-                        <XCircle size={12} className="text-red-400 flex-shrink-0" />
-                      )}
-                      <span className="text-text-primary font-medium">{result.name}</span>
-                      <span className="text-text-muted uppercase text-[10px] px-1.5 py-0.5 bg-card-secondary border border-border rounded">
-                        {result.type || 'http'}
-                      </span>
-                      {result.status === 'connected' && result.latency && (
-                        <div className="flex items-center gap-3 ml-auto">
-                          {result.score !== undefined && (
-                            <span className={cn(
-                              "px-1.5 py-0.5 rounded-[4px] text-[10px] font-bold border flex items-center gap-1",
-                              result.score >= 80 ? "text-green-400 bg-green-400/10 border-green-400/20" :
-                                result.score >= 50 ? "text-orange-400 bg-orange-400/10 border-orange-400/20" :
-                                  "text-red-400 bg-red-400/10 border-red-400/20"
-                            )}>
-                              <Gauge size={10} /> {result.score}
-                            </span>
-                          )}
-                          <span className="text-text-muted font-mono">{Math.round(result.latency)}ms</span>
-                        </div>
-                      )}
-                      {result.status !== 'connected' && result.error && (
-                        <span className="text-red-400 ml-auto text-[10px]">{result.error}</span>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            {/* Metrics Grid */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-4 mb-8">
-              <Card
-                title="Traffic Rate"
-                value={`${Math.round(currentRpm)}`}
-                icon={<Activity />}
-                subValue="req/min · live rate"
-                accentColor="cyan"
-              />
-              <Card
-                title="Success Rate"
-                value={`${successRate}%`}
-                icon={<CheckCircle />}
-                subValue={totalErrors === 0 ? "100% operational" : `${totalErrors} errors logged`}
-                accentColor={parseFloat(successRate) >= 95 ? "emerald" : parseFloat(successRate) >= 85 ? "amber" : "rose"}
-                progress={parseFloat(successRate) || 0}
-              />
-              <Card
-                title="Active Apps"
-                value={stats ? Object.keys(stats.requests_by_app).length : 0}
-                icon={<LayoutDashboard />}
-                subValue="endpoints active"
-                accentColor="purple"
-                progress={stats ? Math.min(100, (Object.keys(stats.requests_by_app).length / 68) * 100) : 0}
-              />
-              <Card
-                title="Total Requests"
-                value={stats?.total_requests?.toLocaleString() || 0}
-                icon={<Server />}
-                subValue="session cumulative"
-                accentColor="blue"
-              />
-              <Card
-                title="Total Errors"
-                value={totalErrors.toLocaleString()}
-                icon={<AlertCircle />}
-                subValue={totalErrors === 0 ? "0 dropped streams" : "attention required"}
-                accentColor={totalErrors === 0 ? "emerald" : "rose"}
-              />
-            </div>
-
-            {/* Main Chart */}
+            {/* Main Chart with Consolidated Live KPIs Ribbon */}
             <div className="bg-card border border-border rounded-2xl p-6 shadow-sm hover:shadow-md transition-shadow">
-              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
+              <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 mb-6">
                 <div className="flex flex-wrap items-center gap-3">
                   <div className="flex items-center gap-2">
                     <div className="p-2 bg-blue-500/10 rounded-lg text-blue-500">
@@ -1752,25 +1470,63 @@ export default function App() {
                     </div>
                   </div>
 
-                  {/* Summary Metric Pills */}
-                  <div className="flex items-center gap-2 sm:ml-3 sm:pl-3 sm:border-l sm:border-border/50">
+                  {/* Consolidated Telemetry Ribbon (Supports Light & Dark Modes) */}
+                  <div className="flex flex-wrap items-center gap-2 sm:ml-2 sm:pl-3 sm:border-l sm:border-border/60">
+                    {/* Live Rate */}
                     <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-blue-500/10 border border-blue-500/20 text-xs">
-                      <span className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse" />
-                      <span className="text-[10px] uppercase font-black text-blue-400 tracking-wider">Rate:</span>
-                      <span className="font-mono font-black text-blue-300">{Math.round(currentRpm)} <span className="text-[9px] font-normal text-text-muted">req/min</span></span>
+                      <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse" />
+                      <span className="text-[10px] uppercase font-black text-blue-600 dark:text-blue-400 tracking-wider">Rate:</span>
+                      <span className="font-mono font-black text-blue-700 dark:text-blue-300">{Math.round(currentRpm)} <span className="text-[9px] font-normal text-text-muted">req/min</span></span>
                     </div>
-                    <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-card-secondary/50 border border-border text-xs">
-                      <span className="text-[10px] uppercase font-bold text-text-muted tracking-wider">Avg:</span>
-                      <span className="font-mono font-bold text-text-primary">{trafficMetrics.avg} <span className="text-[9px] font-normal text-text-muted">req/min</span></span>
+
+                    {/* Success Rate */}
+                    <div className={cn(
+                      "flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-xs",
+                      parseFloat(successRate) >= 95
+                        ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-600 dark:text-emerald-400"
+                        : parseFloat(successRate) >= 85
+                          ? "bg-amber-500/10 border-amber-500/20 text-amber-600 dark:text-amber-400"
+                          : "bg-rose-500/10 border-rose-500/20 text-rose-600 dark:text-rose-400"
+                    )}>
+                      <CheckCircle size={11} />
+                      <span className="text-[10px] uppercase font-black tracking-wider">Success:</span>
+                      <span className="font-mono font-black">{successRate}%</span>
                     </div>
-                    <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-card-secondary/50 border border-border text-xs">
-                      <span className="text-[10px] uppercase font-bold text-text-muted tracking-wider">Peak:</span>
-                      <span className="font-mono font-bold text-amber-400">{trafficMetrics.peak} <span className="text-[9px] font-normal text-text-muted">req/min</span></span>
+
+                    {/* Active Apps */}
+                    <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-purple-500/10 border border-purple-500/20 text-xs">
+                      <LayoutDashboard size={11} className="text-purple-600 dark:text-purple-400" />
+                      <span className="text-[10px] uppercase font-black text-purple-600 dark:text-purple-400 tracking-wider">Apps:</span>
+                      <span className="font-mono font-black text-purple-700 dark:text-purple-300">{stats ? Object.keys(stats.requests_by_app).length : 0}</span>
+                    </div>
+
+                    {/* Total Requests */}
+                    <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-card-secondary/50 border border-slate-200 dark:border-border text-xs">
+                      <span className="text-[10px] uppercase font-bold text-slate-500 dark:text-text-muted tracking-wider">Total:</span>
+                      <span className="font-mono font-bold text-slate-900 dark:text-text-primary">{stats?.total_requests?.toLocaleString() || 0}</span>
+                    </div>
+
+                    {/* Total Errors */}
+                    <div className={cn(
+                      "flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-xs",
+                      totalErrors > 0
+                        ? "bg-rose-500/10 border-rose-500/30 text-rose-600 dark:text-rose-400"
+                        : "bg-slate-100 dark:bg-card-secondary/50 border-slate-200 dark:border-border text-slate-500 dark:text-text-muted"
+                    )}>
+                      <AlertCircle size={11} className={totalErrors > 0 ? "text-rose-500 dark:text-rose-400 animate-pulse" : "text-slate-400 dark:text-text-muted"} />
+                      <span className="text-[10px] uppercase font-bold tracking-wider">Errors:</span>
+                      <span className="font-mono font-black">{totalErrors.toLocaleString()}</span>
+                    </div>
+
+                    {/* Avg & Peak */}
+                    <div className="hidden xl:flex items-center gap-2 pl-2 border-l border-slate-200 dark:border-border/40 text-[11px] font-mono text-slate-500 dark:text-text-muted">
+                      <span>Avg: <strong className="text-slate-900 dark:text-text-primary">{trafficMetrics.avg}</strong></span>
+                      <span>Peak: <strong className="text-amber-500 dark:text-amber-400">{trafficMetrics.peak}</strong></span>
                     </div>
                   </div>
                 </div>
 
-                <div className="flex bg-card-secondary/20 p-1 rounded-xl border border-border self-end sm:self-auto">
+                <div className="flex bg-slate-100 dark:bg-card-secondary/20 p-1 rounded-xl border border-slate-200 dark:border-border self-end lg:self-auto">
                   {(['1h', '6h', '24h'] as const).map((range) => (
                     <button
                       key={range}

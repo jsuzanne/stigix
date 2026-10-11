@@ -2,7 +2,7 @@ import React from 'react';
 import {
     Activity, Server, Cloud, Cpu, Layers,
     Zap, ExternalLink, RefreshCw, Phone, LineChart,
-    Sparkles, Shield, Network, Radio, Monitor
+    Sparkles, Shield, Network, Radio, Monitor, Globe
 } from 'lucide-react';
 import { cn } from '../../lib/utils';
 
@@ -20,6 +20,10 @@ interface HomeOverviewProps {
     globalVoiceStatus?: any;
     globalConvStatus?: any;
     isLeader?: boolean;
+    publicIp?: string | null;
+    publicIpCountry?: string | null;
+    gatewayIp?: string | null;
+    speedtestResult?: any;
     onNavigate: (viewId: string, subTab?: string) => void;
     onOpenDiagnostics?: () => void;
 }
@@ -33,6 +37,10 @@ export const HomeOverview: React.FC<HomeOverviewProps> = ({
     version = 'v3.0.0-dev',
     trafficRunning,
     isLeader,
+    publicIp,
+    publicIpCountry,
+    gatewayIp,
+    speedtestResult,
     onNavigate
 }) => {
     const { peers } = usePeerContext();
@@ -48,7 +56,11 @@ export const HomeOverview: React.FC<HomeOverviewProps> = ({
     const dem = sub.dem || {};
 
     // Robust Uptime Formatting (handles numeric seconds, string seconds, or pre-formatted strings)
-    const uptimeRaw = host.uptime_seconds || host.uptime || 0;
+    const uptimeRaw = host.uptime_system
+        || host.uptime?.system
+        || host.uptime_seconds
+        || host.uptime_process
+        || (typeof host.uptime === 'number' ? host.uptime : 0);
     const formatUptime = (val: any) => {
         if (!val) return 'Up';
         if (typeof val === 'string' && isNaN(Number(val))) {
@@ -375,6 +387,37 @@ export const HomeOverview: React.FC<HomeOverviewProps> = ({
                             />
                         </div>
                     </div>
+
+                    {/* Underlay Network & Public IP Status */}
+                    {(publicIp || gatewayIp || siteInfo?.local_ip) && (
+                        <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-card-secondary/40 border border-slate-200 dark:border-[#1e293b]/70 space-y-1.5">
+                            <div className="flex items-center justify-between">
+                                <span className="text-xs font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
+                                    <Globe size={14} className="text-cyan-500 dark:text-cyan-400" />
+                                    Underlay WAN
+                                </span>
+                                {publicIp && (
+                                    <span className="text-xs font-mono flex items-center gap-1.5" title={publicIpCountry || 'Public IP'}>
+                                        {publicIpCountry && (
+                                            <span className="text-sm leading-none">
+                                                {String.fromCodePoint(...[...publicIpCountry.toUpperCase()].map(c => 0x1F1E6 - 65 + c.charCodeAt(0)))}
+                                            </span>
+                                        )}
+                                        <strong className="text-slate-900 dark:text-text-primary text-[10px]">{publicIp}</strong>
+                                    </span>
+                                )}
+                            </div>
+                            <div className="text-[11px] text-slate-600 dark:text-text-muted flex justify-between font-mono">
+                                <span>Local: <strong className="text-slate-900 dark:text-text-primary">{siteInfo?.local_ip || host.ip || '—'}</strong></span>
+                                <span>GW: <strong className="text-slate-900 dark:text-text-primary">{gatewayIp || '—'}</strong></span>
+                                {speedtestResult?.download_mbps ? (
+                                    <span className="text-cyan-600 dark:text-cyan-400 font-bold">⚡ {Math.round(speedtestResult.download_mbps)} Mbps</span>
+                                ) : (
+                                    <span className="text-slate-400 dark:text-slate-500 text-[10px]">Speed: Ready</span>
+                                )}
+                            </div>
+                        </div>
+                    )}
                 </div>
             </div>
 
