@@ -11550,21 +11550,21 @@ app.get('/api/system/health-matrix', authenticateToken, async (req, res) => {
                 const lines = raw.split('\n').filter(l => l.trim()).slice(-100);
                 const calls = lines.map(l => { try { return JSON.parse(l); } catch { return null; } }).filter(Boolean);
                 if (calls.length > 0) {
-                    const mosCalls = calls.filter((c: any) => c.mos_score && c.mos_score > 0);
+                    const mosCalls = calls.filter((c: any) => (c.mos_score && c.mos_score > 0) || (c.mos && c.mos > 0));
                     if (mosCalls.length > 0) {
-                        voiceStatus.mos_score = parseFloat((mosCalls.reduce((s: number, c: any) => s + c.mos_score, 0) / mosCalls.length).toFixed(2));
+                        voiceStatus.mos_score = parseFloat((mosCalls.reduce((s: number, c: any) => s + (c.mos_score ?? c.mos ?? 0), 0) / mosCalls.length).toFixed(2));
                     }
-                    const rttCalls = calls.filter((c: any) => c.rtt && c.rtt > 0);
+                    const rttCalls = calls.filter((c: any) => (c.rtt && c.rtt > 0) || (c.avg_rtt_ms && c.avg_rtt_ms > 0));
                     if (rttCalls.length > 0) {
-                        voiceStatus.avg_rtt_ms = Math.round(rttCalls.reduce((s: number, c: any) => s + c.rtt, 0) / rttCalls.length);
+                        voiceStatus.avg_rtt_ms = Math.round(rttCalls.reduce((s: number, c: any) => s + (c.rtt ?? c.avg_rtt_ms ?? 0), 0) / rttCalls.length);
                     }
-                    const jitterCalls = calls.filter((c: any) => c.jitter !== undefined && c.jitter !== null);
+                    const jitterCalls = calls.filter((c: any) => (c.jitter !== undefined && c.jitter !== null) || (c.jitter_ms !== undefined && c.jitter_ms !== null));
                     if (jitterCalls.length > 0) {
-                        voiceStatus.avg_jitter_ms = parseFloat((jitterCalls.reduce((s: number, c: any) => s + Number(c.jitter), 0) / jitterCalls.length).toFixed(1));
+                        voiceStatus.avg_jitter_ms = parseFloat((jitterCalls.reduce((s: number, c: any) => s + Number(c.jitter ?? c.jitter_ms ?? 0), 0) / jitterCalls.length).toFixed(1));
                     }
-                    const lossCalls = calls.filter((c: any) => c.loss_percent !== undefined || c.loss !== undefined);
+                    const lossCalls = calls.filter((c: any) => c.loss_pct !== undefined || c.loss_percent !== undefined || c.loss !== undefined);
                     if (lossCalls.length > 0) {
-                        voiceStatus.avg_loss_pct = parseFloat((lossCalls.reduce((s: number, c: any) => s + Number(c.loss_percent ?? c.loss ?? 0), 0) / lossCalls.length).toFixed(1));
+                        voiceStatus.avg_loss_pct = parseFloat((lossCalls.reduce((s: number, c: any) => s + Number(c.loss_pct ?? c.loss_percent ?? c.loss ?? 0), 0) / lossCalls.length).toFixed(1));
                     }
                     voiceStatus.total_calls_count = calls.length;
                     voiceStatus.status = 'active';

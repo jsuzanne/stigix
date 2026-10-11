@@ -74,9 +74,41 @@ export const HomeOverview: React.FC<HomeOverviewProps> = ({
         voiceSub.active ??
         (globalVoiceStatus?.control?.enabled ?? Boolean(globalVoiceStatus?.activeCalls > 0 || globalVoiceStatus?.running))
     );
-    const voiceMos = voiceSub.mos_score || (globalVoiceStatus?.stats?.[0]?.mos_score) || 4.38;
-    const voiceLoss = voiceSub.avg_loss_pct !== undefined ? `${voiceSub.avg_loss_pct}%` : '0%';
+    const voiceMos = (() => {
+        const raw = voiceSub.mos_score ?? globalVoiceStatus?.avgMos ?? globalVoiceStatus?.stats?.[0]?.mos_score;
+        const num = Number(raw);
+        return !isNaN(num) && num > 0 ? num.toFixed(2) : '4.38';
+    })();
+    const voiceLossVal = (() => {
+        if (typeof voiceSub.avg_loss_pct === 'number') {
+            return voiceSub.avg_loss_pct;
+        }
+        if (Array.isArray(globalVoiceStatus?.stats) && globalVoiceStatus.stats.length > 0) {
+            const fin = globalVoiceStatus.stats.filter((c: any) => (c.loss_pct !== undefined || c.loss_percent !== undefined || c.loss !== undefined));
+            if (fin.length > 0) {
+                return fin.reduce((a: number, c: any) => a + Number(c.loss_pct ?? c.loss_percent ?? c.loss ?? 0), 0) / fin.length;
+            }
+        }
+        if (typeof globalVoiceStatus?.avg_loss_pct === 'number') {
+            return globalVoiceStatus.avg_loss_pct;
+        }
+        return 0;
+    })();
+    const voiceLoss = `${Number(voiceLossVal).toFixed(1)}%`;
     const voiceJitter = voiceSub.avg_jitter_ms ? `${voiceSub.avg_jitter_ms}ms RTT` : '<10ms RTT';
+
+    const cleanLeaderIp = (() => {
+        const raw = mesh.leader_ip || (registryStatus?.mode === 'leader' || mesh.mode === 'leader' ? 'Local Leader' : (mesh.status === 'connected' ? (leaderSite || 'Connected') : '—'));
+        if (typeof raw === 'string' && (raw.startsWith('http://') || raw.startsWith('https://'))) {
+            try {
+                const parsed = new URL(raw);
+                return parsed.hostname || parsed.host || raw;
+            } catch {
+                return raw.replace(/^https?:\/\//, '').split('/')[0].split(':')[0] || raw;
+            }
+        }
+        return raw;
+    })();
 
     const demActive = Boolean(dem.status === 'active' || (dem.probes_count ?? 0) > 0);
     const demScore = dem.score || dem.global_score || 71;
@@ -289,9 +321,9 @@ export const HomeOverview: React.FC<HomeOverviewProps> = ({
                                 {registryStatus?.mode === 'leader' || mesh.mode === 'leader' ? 'Fleet Mesh ›' : 'Target Controller ›'}
                             </span>
                         </div>
-                        <div className="text-[11px] text-slate-600 dark:text-text-muted flex justify-between font-mono">
-                            <span>Learned Targets: <strong className="text-slate-900 dark:text-text-primary">{mesh.learned_targets_count ?? '0'}</strong></span>
-                            <span>Leader IP: <strong className="text-slate-900 dark:text-text-primary">{mesh.leader_ip || (registryStatus?.mode === 'leader' || mesh.mode === 'leader' ? 'Local Leader' : (mesh.status === 'connected' ? (leaderSite || 'Connected') : '—'))}</strong></span>
+                        <div className="text-[11px] text-slate-600 dark:text-text-muted flex items-center justify-between font-mono gap-2">
+                            <span className="whitespace-nowrap shrink-0">Learned Targets: <strong className="text-slate-900 dark:text-text-primary">{mesh.learned_targets_count ?? '0'}</strong></span>
+                            <span className="whitespace-nowrap truncate text-right" title={String(mesh.leader_ip || cleanLeaderIp)}>Leader IP: <strong className="text-slate-900 dark:text-text-primary">{cleanLeaderIp}</strong></span>
                         </div>
                     </div>
 
@@ -372,7 +404,7 @@ export const HomeOverview: React.FC<HomeOverviewProps> = ({
                         </div>
                         <div className="text-[11px] text-slate-600 dark:text-text-muted flex justify-between font-mono mt-1">
                             <span>MOS: <strong className={voiceRunning ? "text-emerald-600 dark:text-emerald-400" : "text-slate-900 dark:text-text-primary"}>{voiceMos}</strong></span>
-                            <span>Loss: <strong className={voiceRunning ? "text-emerald-600 dark:text-emerald-400" : "text-slate-900 dark:text-text-primary"}>{voiceLoss}</strong></span>
+                            <span>Loss: <strong className={voiceRunning ? (voiceLossVal > 1 ? "text-amber-500 dark:text-amber-400" : "text-emerald-600 dark:text-emerald-400") : "text-slate-900 dark:text-text-primary"}>{voiceLoss}</strong></span>
                             <span>Jitter: <strong className="text-slate-900 dark:text-text-primary">{voiceJitter}</strong></span>
                         </div>
                     </div>

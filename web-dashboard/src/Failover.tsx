@@ -908,27 +908,27 @@ export default function Failover(props: FailoverProps) {
                 {activeTests.map((test) => (
                     <div key={test.testId} id={`active-test-card-${test.testId}`} className="bg-card border border-border rounded-2xl overflow-hidden shadow-xl flex flex-col md:flex-row divide-y md:divide-y-0 md:divide-x divide-border">
                         {/* Outage Stats */}
-                        <div className="bg-card-secondary/30 p-4 md:w-56 shrink-0 flex flex-col justify-center items-center text-center space-y-4">
+                        <div className="bg-card-secondary/30 p-4 md:w-64 shrink-0 flex flex-col justify-center items-center text-center space-y-4">
                             <div className="space-y-1">
                                 <div className="flex items-center gap-1.5 justify-center mb-1">
                                     <Activity size={12} className="text-blue-500" />
-                                    <span className="text-[9px] font-bold text-text-muted uppercase tracking-widest">Current Outage</span>
+                                    <span className="text-[9px] font-bold text-text-muted uppercase tracking-wider whitespace-nowrap">Current Outage</span>
                                 </div>
                                 <div className={`text-3xl font-black font-mono tracking-tighter transition-all duration-300 ${test.current_blackout_ms > 0 ? 'text-red-500 animate-pulse' : 'text-text-primary'}`} style={test.current_blackout_ms > 0 ? { textShadow: '0 0 20px rgba(239, 68, 68, 0.4)' } : {}}>
                                     {formatMs(test.current_blackout_ms || 0)}
                                 </div>
                             </div>
                             <div className="w-full h-px bg-border/50"></div>
-                            <div className="flex justify-between w-full px-2 gap-2">
-                                <div className="space-y-1 flex-1 text-center">
-                                    <div className="text-[9px] font-bold text-text-muted uppercase tracking-widest">Max Blackout</div>
+                            <div className="flex justify-between w-full px-1 gap-2">
+                                <div className="space-y-1 flex-1 text-center min-w-0">
+                                    <div className="text-[9px] font-bold text-text-muted uppercase tracking-wider whitespace-nowrap">Max Blackout</div>
                                     <div className="text-lg font-bold text-orange-500 font-mono tracking-tighter">
                                         {formatMs(test.max_blackout_ms || 0)}
                                     </div>
                                 </div>
-                                <div className="w-px bg-border/50"></div>
-                                <div className="space-y-1 flex flex-col items-center flex-1">
-                                    <div className="text-[9px] font-bold text-text-muted uppercase tracking-widest">QoE Score</div>
+                                <div className="w-px bg-border/50 shrink-0"></div>
+                                <div className="space-y-1 flex flex-col items-center flex-1 min-w-0">
+                                    <div className="text-[9px] font-bold text-text-muted uppercase tracking-wider whitespace-nowrap">QoE Score</div>
                                     {(() => {
                                         // Synthetic QoE Score: Starts at 100, drops for live loss, jitter, and high RTT.
                                         const currentLoss = typeof test.live_loss_pct === 'number' ? test.live_loss_pct : (test.loss_pct || 0);
