@@ -460,6 +460,12 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
 
     const [activeTab, setActiveTab] = useState<'probes' | 'distribution' | 'maintenance' | 'system' | 'targets' | 'convergence' | 'registry' | 'targetService' | 'mcp' | 'prisma-api' | 'strata' | 'custom-tcp' | 'api-studio'>(initialTab || 'distribution');
 
+    useEffect(() => {
+        if (initialTab) {
+            setActiveTab(initialTab);
+        }
+    }, [initialTab]);
+
     // Shared State
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);

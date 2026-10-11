@@ -1035,6 +1035,7 @@ export default function App() {
     <div className="min-h-screen bg-background text-foreground pt-4 pb-8 pr-8 pl-20 transition-all">
       <SidebarRail
         activeView={view}
+        activeSubTab={initialSettingsTab}
         onNavigate={handleNavigate}
         isLeader={isLeader}
         features={{
