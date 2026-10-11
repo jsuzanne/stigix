@@ -122,14 +122,6 @@ export const STIGIX_NAVIGATION_DOMAINS: NavDomainConfig[] = [
                 description: 'Validate SASE / NGFW security policy enforcement (URL, DNS, EICAR, Threats)'
             },
             {
-                id: 'speedtest',
-                label: 'Bandwidth Test (XFR / iPerf)',
-                icon: Gauge,
-                route: '#/validate/speedtest',
-                description: 'Line-rate throughput, latency and packet loss validation',
-                featureFlag: 'xfr_enabled'
-            },
-            {
                 id: 'performance',
                 label: 'Digital Experience (DEM)',
                 icon: LineChart,

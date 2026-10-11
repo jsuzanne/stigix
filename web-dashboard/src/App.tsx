@@ -1046,6 +1046,12 @@ export default function App() {
         activeTasks={activeTasks}
         copilotDrawerOpen={copilotDrawerOpen}
         onToggleCopilot={() => setCopilotDrawerOpen(prev => !prev)}
+        username={username}
+        theme={theme}
+        onToggleTheme={toggleTheme}
+        onAddUser={() => setShowAddUserModal(true)}
+        onChangePassword={() => setShowPwdModal(true)}
+        onLogout={logout}
       />
       <TopLoadingBar isLoading={isNavigating} />
       <Toaster position="top-right" />
@@ -1158,29 +1164,6 @@ export default function App() {
             isLoading={isHealthLoading}
             onClick={() => setShowHealthModal(true)}
           />
-
-          <span className="text-sm font-medium text-text-secondary">{username}</span>
-
-          <button
-            onClick={toggleTheme}
-            title={theme === 'dark' ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
-            className="p-2 hover:bg-card-secondary rounded-lg text-text-muted hover:text-yellow-400 transition-colors"
-          >
-            {theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}
-          </button>
-
-          {username === 'admin' && (
-            <button onClick={() => setShowAddUserModal(true)} title="Add User" className="p-2 hover:bg-card-secondary rounded-lg text-text-muted hover:text-green-400 transition-colors">
-              <UserPlus size={18} />
-            </button>
-          )}
-
-          <button onClick={() => setShowPwdModal(true)} title="Change Password" className="p-2 hover:bg-card-secondary rounded-lg text-text-muted hover:text-blue-400 transition-colors">
-            <Key size={18} />
-          </button>
-          <button onClick={logout} title="Sign Out" className="p-2 hover:bg-card-secondary rounded-lg text-text-muted hover:text-red-400 transition-colors">
-            <LogOut size={18} />
-          </button>
         </div>
       </header >
 

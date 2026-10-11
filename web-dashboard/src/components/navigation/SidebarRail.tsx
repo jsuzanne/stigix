@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import type { NavDomainConfig } from '../../config/navigationConfig';
 import { STIGIX_NAVIGATION_DOMAINS } from '../../config/navigationConfig';
 import { cn } from '../../lib/utils';
-import { Bot } from 'lucide-react';
+import { Bot, User, Sun, Moon, UserPlus, Key, LogOut } from 'lucide-react';
 import { SidebarFlyout } from './SidebarFlyout';
 
 interface SidebarRailProps {
@@ -18,6 +18,12 @@ interface SidebarRailProps {
     activeTasks?: Record<string, boolean>;
     copilotDrawerOpen?: boolean;
     onToggleCopilot?: () => void;
+    username?: string | null;
+    theme?: 'dark' | 'light';
+    onToggleTheme?: () => void;
+    onAddUser?: () => void;
+    onChangePassword?: () => void;
+    onLogout?: () => void;
 }
 
 export const SidebarRail: React.FC<SidebarRailProps> = ({
@@ -28,10 +34,18 @@ export const SidebarRail: React.FC<SidebarRailProps> = ({
     features,
     activeTasks = {},
     copilotDrawerOpen,
-    onToggleCopilot
+    onToggleCopilot,
+    username = 'admin',
+    theme = 'dark',
+    onToggleTheme,
+    onAddUser,
+    onChangePassword,
+    onLogout
 }) => {
+    const currentUsername = username || 'admin';
     const [activeDomain, setActiveDomain] = useState<NavDomainConfig | null>(null);
     const [isPinned, setIsPinned] = useState(false);
+    const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
     const hoverTimeoutRef = useRef<any>(null);
     const containerRef = useRef<HTMLDivElement>(null);
 
@@ -55,13 +69,11 @@ export const SidebarRail: React.FC<SidebarRailProps> = ({
     const handleMouseEnterDomain = (domain: NavDomainConfig) => {
         cancelCloseTimer();
         if (domain.items.length === 1) {
-            // Single-item domains (like Home) do not need a flyout menu
             if (!isPinned) {
                 setActiveDomain(null);
             }
             return;
         }
-        // If not pinned, open or switch flyout to hovered domain
         if (!isPinned) {
             setActiveDomain(domain);
         }
@@ -76,24 +88,22 @@ export const SidebarRail: React.FC<SidebarRailProps> = ({
             return;
         }
 
-        // Toggle or switch pinned domain
         if (activeDomain?.id === domain.id && isPinned) {
-            // Already pinned this domain -> unpin and close
             setActiveDomain(null);
             setIsPinned(false);
         } else {
-            // Pin open this domain so the user can browse comfortably without time limits
             setActiveDomain(domain);
             setIsPinned(true);
         }
     };
 
-    // Close on click outside rail & flyout
+    // Close on click outside rail, flyout & user menu
     useEffect(() => {
         const handleClickOutside = (e: MouseEvent) => {
             if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
                 setActiveDomain(null);
                 setIsPinned(false);
+                setIsUserMenuOpen(false);
             }
         };
 
@@ -114,7 +124,6 @@ export const SidebarRail: React.FC<SidebarRailProps> = ({
                 onMouseLeave={scheduleCloseTimer}
                 className={cn(
                     "fixed top-0 left-0 bottom-0 w-14 z-40 select-none",
-                    // Light & Dark theme support with Retina crispness
                     "bg-white dark:bg-[#070b14] border-r border-slate-200 dark:border-[#1e293b] shadow-xl",
                     "flex flex-col items-center py-3.5 gap-2",
                     "antialiased [text-rendering:optimizeLegibility]",
@@ -143,14 +152,12 @@ export const SidebarRail: React.FC<SidebarRailProps> = ({
                     {STIGIX_NAVIGATION_DOMAINS.map((domain) => {
                         const Icon = domain.icon;
 
-                        // Check if domain is active based on activeView
                         const isDomainActive = domain.items.some(
                             item => item.id === activeView || (domain.id === 'home' && (activeView === 'home'))
                         );
 
                         const isDomainOpen = activeDomain?.id === domain.id;
 
-                        // Check if any child item has a background active job
                         const hasRunningTask = domain.items.some(
                             item => item.runningKey && activeTasks[item.runningKey]
                         );
@@ -226,8 +233,102 @@ export const SidebarRail: React.FC<SidebarRailProps> = ({
                             <span className="absolute top-1 right-1 w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
                         </button>
                     )}
+
+                    {/* User Profile Avatar Button */}
+                    <button
+                        onClick={() => setIsUserMenuOpen(prev => !prev)}
+                        title={`Logged in as ${username}`}
+                        className={cn(
+                            "w-10 h-10 rounded-xl flex items-center justify-center transition-all duration-150 cursor-pointer relative",
+                            isUserMenuOpen
+                                ? "bg-blue-600 text-white shadow-md shadow-blue-500/30"
+                                : "bg-slate-100 dark:bg-[#161f36] text-slate-700 dark:text-slate-300 hover:text-blue-600 dark:hover:text-blue-400 border border-slate-200 dark:border-[#1e293b]"
+                        )}
+                    >
+                        <User size={18} />
+                    </button>
                 </div>
             </aside>
+
+            {/* User Profile Popover Menu */}
+            {isUserMenuOpen && (
+                <div className="fixed left-16 bottom-3 w-60 z-50 bg-white dark:bg-[#0b1020] border border-slate-200 dark:border-[#1e293b] rounded-2xl shadow-2xl p-2.5 antialiased animate-in fade-in slide-in-from-left-2 duration-150 text-slate-800 dark:text-text-primary">
+                    {/* User Info Header */}
+                    <div className="px-3 py-2 border-b border-slate-100 dark:border-[#1e293b]/70 flex items-center gap-2.5">
+                        <div className="w-8 h-8 rounded-lg bg-blue-600/10 text-blue-600 dark:text-blue-400 flex items-center justify-center font-bold text-xs">
+                            {currentUsername.slice(0, 2).toUpperCase()}
+                        </div>
+                        <div className="min-w-0 flex-1">
+                            <div className="font-bold text-xs truncate text-slate-900 dark:text-white">
+                                {currentUsername}
+                            </div>
+                            <div className="text-[10px] text-slate-500 dark:text-text-muted">
+                                {currentUsername === 'admin' ? 'Administrator' : 'Operator'}
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="py-1.5 space-y-0.5">
+                        {/* Theme Toggle */}
+                        {onToggleTheme && (
+                            <button
+                                onClick={() => {
+                                    onToggleTheme();
+                                    setIsUserMenuOpen(false);
+                                }}
+                                className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-[#161f36] transition-colors cursor-pointer"
+                            >
+                                {theme === 'dark' ? <Sun size={15} className="text-yellow-400" /> : <Moon size={15} className="text-slate-600" />}
+                                <span>{theme === 'dark' ? 'Switch to Light Mode' : 'Switch to Dark Mode'}</span>
+                            </button>
+                        )}
+
+                        {/* Add User (Admin only) */}
+                        {username === 'admin' && onAddUser && (
+                            <button
+                                onClick={() => {
+                                    onAddUser();
+                                    setIsUserMenuOpen(false);
+                                }}
+                                className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-[#161f36] transition-colors cursor-pointer"
+                            >
+                                <UserPlus size={15} className="text-emerald-500" />
+                                <span>Add New User</span>
+                            </button>
+                        )}
+
+                        {/* Change Password */}
+                        {onChangePassword && (
+                            <button
+                                onClick={() => {
+                                    onChangePassword();
+                                    setIsUserMenuOpen(false);
+                                }}
+                                className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-[#161f36] transition-colors cursor-pointer"
+                            >
+                                <Key size={15} className="text-blue-500" />
+                                <span>Change Password</span>
+                            </button>
+                        )}
+
+                        <div className="my-1 border-t border-slate-100 dark:border-[#1e293b]/70" />
+
+                        {/* Logout */}
+                        {onLogout && (
+                            <button
+                                onClick={() => {
+                                    onLogout();
+                                    setIsUserMenuOpen(false);
+                                }}
+                                className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-semibold text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-500/10 transition-colors cursor-pointer"
+                            >
+                                <LogOut size={15} />
+                                <span>Sign Out</span>
+                            </button>
+                        )}
+                    </div>
+                </div>
+            )}
 
             {/* SCM Floating Flyout Panel */}
             <SidebarFlyout

@@ -58,7 +58,7 @@ export const SidebarFlyout: React.FC<SidebarFlyoutProps> = ({
             onMouseEnter={onMouseEnter}
             onMouseLeave={onMouseLeave}
             className={cn(
-                "fixed left-14 top-0 bottom-0 w-80 z-50",
+                "fixed left-14 top-0 bottom-0 w-88 z-50",
                 // Crisp solid background for native 4K / Retina display clarity (no backdrop-filter blur artifacts)
                 "bg-white dark:bg-[#0b1020]",
                 "border-r border-slate-200 dark:border-[#1e293b]",
