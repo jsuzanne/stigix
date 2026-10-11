@@ -6,6 +6,8 @@ import {
 } from 'lucide-react';
 import { cn } from '../../lib/utils';
 
+import { usePeerContext } from '../../PeerContext';
+
 interface HomeOverviewProps {
     token?: string;
     healthData: any;
@@ -30,8 +32,13 @@ export const HomeOverview: React.FC<HomeOverviewProps> = ({
     siteInfo,
     version = 'v3.0.0-dev',
     trafficRunning,
+    isLeader,
     onNavigate
 }) => {
+    const { peers } = usePeerContext();
+    const leaderPeer = peers.find(p => p.is_leader);
+    const leaderSite = leaderPeer?.site || leaderPeer?.instance_id;
+
     const score = healthData?.overall_score ?? 100;
     const sub = healthData?.subsystems || {};
     const host = sub.host || {};
@@ -65,8 +72,20 @@ export const HomeOverview: React.FC<HomeOverviewProps> = ({
     const usedMemGb = (usedMemBytes / (1024 * 1024 * 1024)).toFixed(1);
     const memUsagePercent = host.memory?.usage_percent || (totalMemBytes > 0 ? Math.round((usedMemBytes / totalMemBytes) * 100) : 0);
 
-    // Primary Site Name Resolution (Local Site Name > Hostname)
-    const localSiteName = siteInfo?.detected_site_name || siteInfo?.site_name || siteInfo?.name || host.hostname || 'Stigix Node';
+    // Primary Site Name Resolution (Local Site Name > Fleet Leader Site > Hostname)
+    const rawSiteName = siteInfo?.detected_site_name
+        || siteInfo?.site_name
+        || registryStatus?.site_name
+        || registryStatus?.site
+        || (isLeader ? leaderSite : null)
+        || siteInfo?.name
+        || host.hostname
+        || 'Stigix Node';
+
+    // Normalize: strip generic OS suffix like "-Ubuntu" (e.g. "DC1-Ubuntu" -> "DC1")
+    const localSiteName = typeof rawSiteName === 'string' && rawSiteName.includes('-Ubuntu')
+        ? rawSiteName.replace(/-Ubuntu$/i, '')
+        : rawSiteName;
 
     return (
         <div className="space-y-8 animate-in fade-in duration-300 pb-12">

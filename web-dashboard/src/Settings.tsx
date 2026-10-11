@@ -2631,15 +2631,15 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
     const tabs = [
         { id: 'distribution', label: 'Traffic Distribution' },
         { id: 'probes', label: 'Synthetic Probes' },
-        { id: 'custom-tcp', label: 'Custom TCP Apps', isNew: true },
+        { id: 'custom-tcp', label: 'Custom TCP Apps' },
         { id: 'convergence', label: 'Failover' },
         { id: 'system', label: 'System Info' },
         { id: 'maintenance', label: 'Maintenance & Updates' },
         { id: 'targets', label: 'Stigix Targets' },
         { id: 'registry', label: 'Target Controller' },
-        ...(copilotConfig?.featureEnabled ? [{ id: 'mcp', label: 'AI & Copilot', beta: true }] : []),
+        ...(copilotConfig?.featureEnabled ? [{ id: 'mcp', label: 'AI & Copilot' }] : []),
         { id: 'prisma-api', label: 'Prisma SASE API' },
-        { id: 'api-studio', label: 'API Studio', isNew: true },
+        { id: 'api-studio', label: 'API Studio' },
     ];
 
     return (
@@ -2656,21 +2656,19 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                                 <h2 className="text-2xl font-black text-text-primary tracking-tight">Settings</h2>
                                 <span className="text-[10px] text-text-muted font-bold tracking-widest opacity-60">Control Center • {status?.current || 'v1.2.1-patch.237'}</span>
                             </div>
-                            <div className="flex items-center gap-4 mt-1">
+                            <div className="flex items-center gap-4 mt-2 overflow-x-auto scrollbar-none flex-nowrap">
                                 {tabs.map((tab: any) => (
                                     <button
                                         key={tab.id}
                                         onClick={() => setActiveTab(tab.id as any)}
                                         className={cn(
-                                            "text-xs font-bold tracking-wider transition-colors pt-1 flex items-center gap-1.5",
+                                            "text-xs font-bold tracking-wider transition-colors pt-1 flex items-center gap-1.5 whitespace-nowrap flex-shrink-0 cursor-pointer",
                                             activeTab === tab.id
                                                 ? "text-purple-500 border-b-2 border-purple-500 pb-1"
                                                 : "text-text-muted hover:text-text-secondary"
                                         )}
                                     >
                                         {tab.label}
-                                        {tab.beta && <BetaBadge />}
-                                        {tab.isNew && <NewBadge />}
                                     </button>
                                 ))}
                             </div>

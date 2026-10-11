@@ -202,6 +202,7 @@ export const STIGIX_NAVIGATION_DOMAINS: NavDomainConfig[] = [
                 label: 'Traffic Distribution',
                 icon: SlidersHorizontal,
                 route: '#/settings/distribution',
+                description: 'Weights & SaaS traffic load ratios by category or app',
                 group: 'Simulation Profiles'
             },
             {
@@ -210,6 +211,7 @@ export const STIGIX_NAVIGATION_DOMAINS: NavDomainConfig[] = [
                 label: 'Synthetic Probes',
                 icon: Activity,
                 route: '#/settings/probes',
+                description: 'Synthetic path probe targets, SLAs, intervals & HTTP URLs',
                 group: 'Simulation Profiles'
             },
             {
@@ -218,6 +220,7 @@ export const STIGIX_NAVIGATION_DOMAINS: NavDomainConfig[] = [
                 label: 'Custom TCP Apps',
                 icon: Boxes,
                 route: '#/settings/custom-tcp',
+                description: 'Enterprise TCP/HTTP workloads & private branch apps',
                 group: 'Simulation Profiles'
             },
             {
@@ -226,6 +229,7 @@ export const STIGIX_NAVIGATION_DOMAINS: NavDomainConfig[] = [
                 label: 'Failover Settings',
                 icon: GitFork,
                 route: '#/settings/failover',
+                description: 'Blackout detection thresholds, alerting & path recovery',
                 group: 'Simulation Profiles'
             },
             {
@@ -234,6 +238,7 @@ export const STIGIX_NAVIGATION_DOMAINS: NavDomainConfig[] = [
                 label: 'Stigix Targets',
                 icon: Layers,
                 route: '#/settings/targets',
+                description: 'Underlay WAN destinations matrix & probe endpoints',
                 group: 'Cluster & Controller'
             },
             {
@@ -242,6 +247,7 @@ export const STIGIX_NAVIGATION_DOMAINS: NavDomainConfig[] = [
                 label: 'Target Controller',
                 icon: Globe,
                 route: '#/settings/target-controller',
+                description: 'Cluster mesh enrollment, join tokens & leader peering',
                 group: 'Cluster & Controller'
             },
             {
@@ -250,6 +256,7 @@ export const STIGIX_NAVIGATION_DOMAINS: NavDomainConfig[] = [
                 label: 'Prisma SASE API',
                 icon: Shield,
                 route: '#/settings/prisma-api',
+                description: 'Palo Alto Strata/Prisma credentials, TSG & telemetry sync',
                 group: 'Integrations & AI'
             },
             {
@@ -258,6 +265,7 @@ export const STIGIX_NAVIGATION_DOMAINS: NavDomainConfig[] = [
                 label: 'API Studio',
                 icon: Globe,
                 route: '#/settings/api-studio',
+                description: 'Interactive OpenAPI test console & curl/Python snippets',
                 group: 'Integrations & AI'
             },
             {
@@ -266,6 +274,7 @@ export const STIGIX_NAVIGATION_DOMAINS: NavDomainConfig[] = [
                 label: 'AI & Copilot Settings',
                 icon: Sparkles,
                 route: '#/settings/ai-copilot',
+                description: 'Anthropic Claude API key, model options & tool permissions',
                 group: 'Integrations & AI',
                 featureFlag: 'copilot_enabled'
             },
@@ -275,6 +284,7 @@ export const STIGIX_NAVIGATION_DOMAINS: NavDomainConfig[] = [
                 label: 'System Information',
                 icon: Monitor,
                 route: '#/settings/system',
+                description: 'Hardware resources, OS kernel, Docker & interfaces',
                 group: 'System & Maintenance'
             },
             {
@@ -283,6 +293,7 @@ export const STIGIX_NAVIGATION_DOMAINS: NavDomainConfig[] = [
                 label: 'Maintenance & Updates',
                 icon: Server,
                 route: '#/settings/maintenance',
+                description: 'One-click image upgrades, Docker prune & fleet sync',
                 group: 'System & Maintenance'
             }
         ]
