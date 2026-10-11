@@ -217,24 +217,27 @@ New entry **`Observe ➔ SD-WAN Mesh Grid`**, full-width, keeping the existing f
 
 ---
 
-## 8. Open Questions (pending — owner reflecting)
+## 8. Validated Architectural Decisions
 
-1. **Path classification:** Prisma SD-WAN flows only return *standard VPN overlay* vs *direct*; is that enough for the on-demand `Trace path`, or should path display be dropped entirely?
-2. **Per-destination counters:** which engines already track per-target counters (mesh, Custom Apps, Voice) and which need new ones (IoT per destination, SaaS per app)?
-3. **Heartbeat extension:** can the existing heartbeat carry a ~4 KB summary, or is the polling fallback required?
-4. **External grouping:** are the groups SaaS / Probes / Security / Other the right ones?
+1. **Prisma Path Trace:** **Dropped completely.** No external API calls to Prisma SD-WAN flows or getflow. Stigix Explorer displays pure Stigix-native telemetry (no background or on-demand external API queries).
+2. **Per-Destination Telemetry:** Uses existing telemetry available in health-matrix and local engine metrics (active sessions, RTP streams, probe reachability) without requiring intrusive protocol changes.
+3. **Heartbeat Transport:** **Adopted.** Peers append their lightweight interaction summary (< 4 KB) directly to their existing registry heartbeat. The cluster leader aggregates this in memory, delivering sub-millisecond response times with zero fan-out requests.
+4. **External Target Grouping:** Standardized into 4 clean functional categories:
+   * **SaaS Apps** (M365, Salesforce, ServiceNow, Zoom, Workday)
+   * **DEM Probes** (Synthetic path probes, SLAs, HTTP endpoints)
+   * **Security Targets** (URL filtering, EICAR, DNS sinkhole verification)
+   * **External Workloads** (Non-cluster private servers, DIA internet breakout)
 
 ---
 
 ## 9. Implementation Roadmap
 
-| Phase | Deliverable | Depends on |
+| Phase | Deliverable | Status |
 |---|---|---|
-| **1** | `Observe ➔ SD-WAN Mesh Grid` (extract from DEM, nav entry, DEM link card) | — |
-| **2** | Local `/api/explorer/summary` built from engine state + feature flag plumbing | Q2 |
-| **3** | Fleet aggregation on the leader (heartbeat extension or guarded polling) + `/api/explorer/graph` | 2, Q3 |
-| **4** | UI: Fleet View + Instance Focus View + breadcrumb browsing + side panel (with mock data first) | Contract from 2 |
-| **5** | On-demand `Trace path` with cache and cooldown | 4, Q1 |
+| **1** | `Observe ➔ SD-WAN Mesh Grid` (separate from DEM, dedicated full-width view) | **Ready to implement** |
+| **2** | Local `/api/explorer/summary` generator + feature flag plumbing (`ENABLE_FLOW_NEXUS`) | Planned |
+| **3** | Peer heartbeat summary extension + Leader in-memory aggregation (`/api/explorer/graph`) | Planned |
+| **4** | Frontend Stigix Explorer: Fleet View + Instance Focus View + breadcrumb navigation | Planned |
 
 ---
 
