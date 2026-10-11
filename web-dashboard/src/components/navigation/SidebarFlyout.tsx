@@ -59,12 +59,13 @@ export const SidebarFlyout: React.FC<SidebarFlyoutProps> = ({
             onMouseLeave={onMouseLeave}
             className={cn(
                 "fixed left-14 top-0 bottom-0 w-80 z-50",
-                // Light & Dark theme responsive glassmorphism
-                "bg-white/98 dark:bg-[#0a0f1d]/95 backdrop-blur-2xl",
-                "border-r border-slate-200 dark:border-[#1e293b]/80",
-                "shadow-[25px_0_50px_rgba(0,0,0,0.15)] dark:shadow-[25px_0_50px_rgba(0,0,0,0.6)]",
+                // Crisp solid background for native 4K / Retina display clarity (no backdrop-filter blur artifacts)
+                "bg-white dark:bg-[#0b1020]",
+                "border-r border-slate-200 dark:border-[#1e293b]",
+                "shadow-[20px_0_40px_rgba(0,0,0,0.12)] dark:shadow-[20px_0_50px_rgba(0,0,0,0.6)]",
                 "flex flex-col py-5 px-3.5 text-slate-800 dark:text-text-primary",
-                "animate-in fade-in slide-in-from-left-2 duration-150",
+                "animate-in fade-in duration-100",
+                "antialiased [text-rendering:optimizeLegibility]",
                 // Safe hover bridge to avoid dead zones between rail and flyout
                 "before:content-[''] before:absolute before:-left-3 before:top-0 before:bottom-0 before:w-3"
             )}

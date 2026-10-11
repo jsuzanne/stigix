@@ -114,9 +114,10 @@ export const SidebarRail: React.FC<SidebarRailProps> = ({
                 onMouseLeave={scheduleCloseTimer}
                 className={cn(
                     "fixed top-0 left-0 bottom-0 w-14 z-40 select-none",
-                    // Light & Dark theme support
-                    "bg-white dark:bg-[#070b14] border-r border-slate-200 dark:border-[#1e293b]/80 shadow-xl",
+                    // Light & Dark theme support with Retina crispness
+                    "bg-white dark:bg-[#070b14] border-r border-slate-200 dark:border-[#1e293b] shadow-xl",
                     "flex flex-col items-center py-3.5 gap-2",
+                    "antialiased [text-rendering:optimizeLegibility]",
                     "transition-colors duration-200"
                 )}
             >
