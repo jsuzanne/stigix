@@ -3422,15 +3422,6 @@ function TopologyContent({ token }: TopologyProps) {
                                     <RefreshCw size={16} />
                                 </button>
 
-                                {/* Trace Path Quick Tool */}
-                                <button
-                                    onClick={() => setTracerouteTarget('')}
-                                    className="w-9 h-9 hover:bg-card-secondary rounded-xl text-text-muted hover:text-blue-500 transition-all flex items-center justify-center cursor-pointer"
-                                    title="Trace Network Path (Traceroute)"
-                                >
-                                    <Route size={16} />
-                                </button>
-
                                 <div className="w-6 h-px bg-border/60 my-0.5" />
 
                                 {/* Underlay Inspect Button */}
