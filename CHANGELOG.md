@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.2.12] - 2026-10-11
+
+### Fixed
+- **Dynamic Cluster Enrollment (`server.ts`)**: Fixed `TypeError: Assignment to constant variable.` when redeeming an onboarding join token via `POST /api/registry/join-with-token`. Replaced `const SECRET_KEY` with `let SECRET_KEY` so dynamic in-memory cluster credentials update cleanly without crashing.
+
+### Added
+- **1-Click Join Token & Leader URL Copying (`MagicJoinModal.tsx`)**:
+  - Added dedicated **Copy Token** (`STX-...`) and **Copy Leader URL** buttons in the `+ Add Node` modal on the Leader, eliminating the need to copy the entire `curl` command and manually extract the token for existing nodes.
+  - Added an **Option B: Existing Peer (Token / Dashboard Join)** card with an interactive, 1-click copyable token preview and usage guidance.
+  - Added **Copy Token** buttons for active tokens directly inside the **Active Tokens & History** tab.
+
 ## [2.2.9] - 2026-10-10
 
 ### Added

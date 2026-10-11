@@ -2187,7 +2187,7 @@ iotManager.on('daemon:error', (info) => {
 
 const PORT = parseInt(process.env.PORT || '8080'); // Unified to 8080
 
-const SECRET_KEY = process.env.JWT_SECRET || 'super-secret-key-change-this';
+let SECRET_KEY = process.env.JWT_SECRET || 'super-secret-key-change-this';
 const USERS_FILE = path.join(APP_CONFIG.configDir, 'users.json');
 const DEBUG_API = process.env.DEBUG_API === 'true';
 
