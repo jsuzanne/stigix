@@ -2,193 +2,273 @@
 
 # Product Requirement Document (PRD): Stigix Navigation Architecture & Functional Taxonomy
 
+**Status:** Approved direction — Icon Rail + Flyout Sidebar (Strata Cloud Manager model)
+**Owner:** Stigix Core Team
+
+---
+
 ## 1. Executive Summary & Problem Statement
 
-### 1.1 Context & The "Horizontal Sprawl" Problem
-Over the evolution from Stigix v1 to v2.2.x, the platform expanded from a simple SaaS traffic generator into an end-to-end SD-WAN and SASE validation engine. It currently hosts **15 top-level modules**:
+### 1.1 Context — The "Horizontal Sprawl" Problem
+From v1 to v2.2.x, Stigix grew from a SaaS traffic generator into an end-to-end SD-WAN / SASE validation platform. The top navigation bar in `App.tsx` currently exposes **16 flat entries**:
 
-| Module Name | Primary Objective |
+| View ID | Module | Primary Objective |
+|---|---|---|
+| `dashboard` | Traffic Generator / Home | Multi-app SaaS background traffic and global status |
+| `performance` | Digital Experience (DEM) | Synthetic path probes and SLA telemetry |
+| `speedtest` | Bandwidth Test (XFR / iPerf) | Throughput, latency, and packet loss validation |
+| `security` | Security Validation | SASE / NGFW inspection (URL, DNS, EICAR, Threats) |
+| `iot` | IoT Emulation | Real-on-wire IoT device and vulnerability simulation |
+| `voice` | Voice Simulation | RTP VoIP MOS, jitter, and codec testing |
+| `custom_apps` | Custom TCP/HTTP Apps | Enterprise custom application emulator |
+| `pcap_replay` | PCAP Replay | Stateful L7 PCAP replay engine |
+| `packet_capture` | Packet Capture | BPF sniffer & 3-pane web inspector |
+| `convergence` | Failover Monitoring | Sub-second blackout and convergence monitoring |
+| `topology` | Topology | Underlay, SD-WAN overlay, and SASE tunnel visualization |
+| `vyos` | VyOS Control | WAN impairment injection & router orchestration |
+| `events` | Live Events | Real-time event streaming and logging |
+| `copilot` | AI Copilot | Conversational troubleshooting and orchestration |
+| `fleet` | Fleet | Multi-node cluster management |
+| `settings` | Settings | Targets, controller, provisioning, maintenance |
+
+Planned additions: **Use Cases** (multi-module scenarios) and **Flow Browser** (not implemented yet).
+
+### 1.2 User Experience Pain Points
+On common laptop resolutions (1366×768, 1440×900, 1080p), the flat bar wraps onto 2–3 lines:
+1. **Vertical real-estate waste** — 120–160 px consumed by navigation pushes packet lists, topology canvases, and graphs below the fold. On 16:9 / 16:10 screens, **height is the scarcest resource**; width is abundant.
+2. **Cognitive overload** — 16 unstructured buttons violate Hick's Law.
+3. **No room for the roadmap** — Use Cases and Flow Browser cannot be added without breaking the layout further.
+4. **Hidden background activity** — Traffic, Voice, IoT, captures, and failover tests run in the background, with no consistent "running" indicator in the navigation.
+
+---
+
+## 2. Options Considered
+
+### Option A — Vertical Sidebar (Icon Rail + Flyout) ✅ SELECTED
+*Industry references: Palo Alto **Strata Cloud Manager**, Grafana, Datadog, AWS Console.*
+
+### Option B — Hierarchical Domain Ribbons (top bar + permanent sub-ribbon) ❌ REJECTED
+Initially recommended in the first draft of this PRD; rejected after review for the following reasons:
+
+| Concern | Detail |
 |---|---|
-| **Traffic Generator** | Multi-app SaaS background traffic generator |
-| **Digital Experience (DEM)** | Synthetic path probes and SLA telemetry |
-| **Bandwidth Test (XFR / iPerf)** | Throughput, latency, and packet loss validation |
-| **Security Validation** | SASE / NGFW inspection (URL, DNS, EICAR, Threats) |
-| **IoT Emulation** | Real-on-wire IoT device and vulnerability simulation |
-| **Voice Simulation** | RTP VoIP MOS, jitter, and codec degradation testing |
-| **Custom TCP/HTTP Apps** | Enterprise custom application emulator |
-| **PCAP Replay** | Stateful L7 PCAP replay engine |
-| **Packet Capture** | BPF sniffer & Wireshark-grade 3-pane web inspector |
-| **Failover Monitoring** | Sub-second blackout and convergence monitoring |
-| **Topology** | Underlay, SD-WAN overlay, and SASE tunnel visualization |
-| **VyOS Control** | WAN impairment injection & router orchestrator |
-| **Live Events** | Real-time event streaming and logging |
-| **AI Copilot** | Conversational troubleshooting and orchestration |
-| **Settings** | Targets, controller, provisioning, and fleet maintenance |
+| **Contradicts the space argument** | Two permanent horizontal bars consume ~90 px of the scarcest dimension (height), while a collapsed rail costs only ~56 px of the most abundant one (width). |
+| **Three stacked tab levels** | `Settings` and `VyOS Control` already have internal sub-tabs. Ribbons would produce *Domain → Module → Module sub-tabs* — three horizontal tab bars stacked on top of each other. |
+| **Hidden running state** | Modules hidden behind domains cannot show individual "running" indicators. |
+| **Effort not lower** | The real cost (taxonomy config, URL routing, state preservation) is identical for both options. |
 
-### 1.2 The User Experience Pain Point
-On standard widescreen displays (1366x768, 1440x900, and 1080p laptop displays), these 15 buttons **wrap into 2 or even 3 horizontal lines** (as seen in production screenshots). This creates several severe usability issues:
-1. **Vertical Screen Real-Estate Waste**: Taking up 120px–160px purely for navigation pushes critical content (Wireshark packet lists, Topology canvases, and Flow graphs) below the fold.
-2. **Cognitive Overload**: A flat list of 15 unstructured buttons violates Hick's Law, forcing engineers to visually scan the entire header to locate a specific tool.
-3. **No Room for Roadmap Features**: Planned additions (Use Case Scenarios, Automated Test Suites, Flow Browser queries) cannot be accommodated without breaking the layout further.
+### Comparison Matrix
+
+| Criteria | Option A: Rail + Flyout | Option B: Domain Ribbons |
+|---|---|---|
+| Content width (Topology / PCAP) | 🟢 ~97% (56 px rail; flyout overlays content) | 🟢 100% |
+| Content height (tables / logs / graphs) | 🟢 **Optimal** | 🔴 −90 px permanently |
+| Interaction with existing sub-tabs | 🟢 Sub-tabs remain the only horizontal tabs | 🔴 3 stacked tab levels |
+| Running-job visibility | 🟢 Per-module badges | 🟡 Aggregated per domain only |
+| Scalability (30+ items) | 🟢 Very high | 🟡 Limited per ribbon width |
+| Familiarity for target audience | 🟢 Identical to Strata Cloud Manager | 🟡 Medium |
+| Implementation effort | 🟡 ~2–3 days | 🟡 ~2 days |
 
 ---
 
-## 2. Structural Options Analysis
+## 3. Selected Design — Strata Cloud Manager-Style Navigation
 
-We evaluate the two competing architectural paradigms:
+Stigix users are SASE / SD-WAN engineers who already use Palo Alto **Strata Cloud Manager (SCM)** daily. Reusing its navigation model gives them zero learning curve and keeps a consistent "Palo Alto ecosystem" feel.
 
----
-
-### Architecture Option A: Vertical Collapsible Sidebar (Left Rail)
-*Examples in industry: Grafana, AWS Management Console, Datadog, Portainer, Proxmox.*
+### 3.1 Anatomy
 
 ```text
-┌──────┬─────────────────────────────────────────────────────────────┐
-│ Logo │ Header Bar (Instance, Health Badge, Cluster Status, User)   │
-├──────┼─────────────────────────────────────────────────────────────┤
-│ [📁] │                                                             │
-│Traffic│ Content Area (Full Vertical Height)                         │
-│ [🛡️] │                                                             │
-│Security│ • High vertical resolution (vital for PCAP 3-pane & graphs) │
-│ [🌐] │                                                             │
-│ Infra │ • Unaffected by top header scrolling                        │
-│ [⚙️] │                                                             │
-│Settings│                                                             │
-│ [«]  │                                                             │
-└──────┴─────────────────────────────────────────────────────────────┘
+┌────┬──────────────────────┬──────────────────────────────────────────────┐
+│ ◆  │                      │  Page Header:  Security Validation   [☆]     │
+│ 🔍 │  ┌────────────────┐  │  Sub-tabs (module-internal, if any)          │
+│────│  │ VALIDATE    ⊼  │  │                                              │
+│ 🏠 │  │                │  │                                              │
+│ 🎬 │  │ Security    ●  │  │   Content area                               │
+│ ⚡ │  │ Speedtest      │  │   (flyout OVERLAYS content, never pushes it) │
+│ ✅›│◄─┤ DEM         ●  │  │                                              │
+│ 🔍 │  │ Failover       │  │                                              │
+│ 🌐 │  └────────────────┘  │                                              │
+│    │                      │                                              │
+│────│                      │                                              │
+│ ✨ │  AI Copilot          │                                              │
+│ ☆ ›│  Favorites           │                                              │
+│ 🔔 │  Notifications       │                                              │
+│ ⚙️ │  Settings            │                                              │
+│ 👤 │  User / Logout       │                                              │
+│ »  │  Pin / Expand        │                                              │
+└────┴──────────────────────┴──────────────────────────────────────────────┘
 ```
 
-#### Advantages
-* **Infinite Vertical Scalability**: Can accommodate 30+ items with natural vertical scrolling.
-* **Preserves Vertical Height**: Screens are 16:9 or 16:10 (wide, not tall). Vertical screen space is the rarest and most critical asset for data tables, hex packet views, and live graphs.
-* **Collapsible to Mini-Rail (60px)**: When collapsed, displays crisp Lucide icons with instant hover tooltips, freeing up 96% of the screen width for Topology and Wireshark inspection.
-* **Industry Standard for Ops Tools**: Enterprise DevOps and NOC engineers are intimately familiar with left-hand vertical sidebars.
+### 3.2 Behavior Modes
 
-#### Disadvantages
-* **Consumes Horizontal Space (240px when expanded)**: May compress high-density data tables or wide topology canvases unless auto-collapsed.
-* **Visual Disruption**: Shifts the existing mental model of Stigix from a top-down dashboard to a sidebar portal.
+| Mode | Width | Behavior |
+|---|---|---|
+| **Rail (default)** | 56 px | Icons only. Hover/click on a domain icon opens a **flyout panel** (~240 px) that **overlays** the content (no layout shift). Single-item entries (Home, Use Cases) navigate directly with a tooltip. |
+| **Pinned / Expanded** | 240 px | Toggled via the `»` button at the bottom. Shows section headers and all module labels inline (collapsible groups like SCM's `⌄ Security`). Content area shrinks accordingly. |
+| **Auto-collapse** | 56 px | When entering `topology` or `packet_capture`, an expanded sidebar temporarily collapses to the rail (restored on leave). |
+
+- Mode preference persisted in `localStorage` (`stigix.nav.mode`).
+- Flyout closes on: item click, `Esc`, click outside, or mouse leave (with ~250 ms grace delay to avoid accidental closes).
+- Rail icons show a `›` chevron when they open a flyout (as in SCM).
+
+### 3.3 Rail Sections (top → bottom)
+
+| Zone | Items |
+|---|---|
+| **Top** | Stigix logo (→ Home) · 🔍 **Search / Command Palette** (`Ctrl+K` / `⌘K`) |
+| **Main** | Domain icons (see §4) |
+| **Bottom (global utilities)** | ✨ AI Copilot (side panel, not a page) · ☆ Favorites (flyout) · 🔔 Notifications / Live Events badge · ⚙️ Settings · 👤 User · `»` Pin toggle |
 
 ---
 
-### Architecture Option B: Hierarchical Domain Ribbons (Categorized Top Header + Sub-Tabs)
-*Examples in industry: Palo Alto Strata Cloud Manager, Microsoft Azure Portal, Fortinet FortiOS, Cisco Catalyst SD-WAN.*
+## 4. Functional Taxonomy (Corrected)
+
+Grouping is based on **user intent**: *"I want to generate load"* vs *"I want a verdict"* vs *"I want to see what's happening"* vs *"I want to act on the network"*.
 
 ```text
-┌─────────────────────────────────────────────────────────────────────────┐
-│ [Logo] Stigix  |  [ Traffic & Apps ]  [ Testing & SLA ]  [ Observe ]  [ Infra ]  [ Admin ] │
-├─────────────────────────────────────────────────────────────────────────┤
-│ Sub-Ribbon:  [ SaaS Gen ]  [ Custom Apps ]  [ VoIP Voice ]  [ IoT Devices ]  [ PCAP Replay ] │
-├─────────────────────────────────────────────────────────────────────────┤
-│ Content Area                                                            │
-│ (Leverages 100% of horizontal viewport width)                           │
-└─────────────────────────────────────────────────────────────────────────┘
+🏠  HOME                       (direct link)
+    └── Dashboard               Global overview + running jobs summary
+
+🎬  USE CASES                  (direct link — NEW)
+    └── Scenarios               Multi-module orchestrated test scenarios
+
+⚡  GENERATE                   (flyout)  — "produce realistic load"
+    ├── SaaS Traffic            Multi-app background load
+    ├── Custom Apps             Enterprise private TCP/HTTP apps
+    ├── Voice                   RTP call load & MOS
+    ├── IoT Devices             Real-on-wire device profiles
+    └── PCAP Replay             Stateful L7 replay
+
+✅  VALIDATE                   (flyout)  — "get a verdict"
+    ├── Security                URL, DNS, EICAR, threat tests
+    ├── Speedtest               XFR / iPerf3 throughput
+    ├── Digital Experience      Synthetic probes & SLA
+    └── Failover                Blackout & path switch timing
+
+🔍  OBSERVE                    (flyout)  — "see what happens"
+    ├── Packet Capture          BPF sniffer & 3-pane inspector
+    ├── Live Events             Real-time telemetry stream
+    └── Flow Browser            (future — hidden until implemented)
+
+🌐  NETWORK                    (flyout)  — "act on the infrastructure"
+    ├── Topology                Underlay / overlay / SASE map
+    ├── VyOS Control            Impairments & routing
+    └── Fleet                   Cluster nodes & upgrades
+
+── Global utilities (bottom of rail) ──
+✨  AI Copilot                 Slide-over panel, available from any page
+☆   Favorites                  User-pinned pages
+🔔  Notifications              Alerts & Live Events badge
+⚙️  Settings                   Unchanged internal sub-tabs
+👤  User
 ```
 
-#### Advantages
-* **100% Horizontal Viewport Preservation**: Crucial for the **Topology Canvas** (D3 forced-directed graph) and the **Packet Capture** 3-pane inspector (Summary list + Packet Details tree + Raw Hex Dump).
-* **Zero Cognitive Fatigue**: Consolidates 15 confusing items into **5 clear functional domains** on a single, clean 1-line top ribbon.
-* **Consistency with Existing Proven Patterns**: Stigix already uses sub-tabs with high user satisfaction in:
-  * `Settings` (Traffic Distribution, Synthetic Probes, Custom Apps, Target Controller, SASE API...)
-  * `VyOS Control` (Impairments, Interfaces, Static Routes, Firewall, Configuration...)
-* **Zero Breaking Change**: Feels like a natural refinement of the existing interface rather than a jarring layout redesign.
-
-#### Disadvantages
-* **Requires 2 Clicks (or Hover)** to navigate between sub-modules of different domains (e.g. from VoIP to Packet Capture).
-* **Vertical Height Usage**: Still consumes two horizontal bars (~90px total), although significantly cleaner than 2 wrapped rows of cluttered buttons.
+**Notes**
+- **Voice** stays in *Generate*: its primary use is call load generation; MOS is a by-product shown on its own page.
+- **Copilot** and **Settings** are no longer "domains": they are global utilities, always one click away.
+- **Feature flags**: items whose feature is disabled (e.g. Copilot without API key, Flow Browser not implemented) are hidden, not greyed out.
 
 ---
 
-## 3. Comparison Matrix
+## 5. Key Features
 
-| Evaluation Criteria | Option A: Vertical Sidebar | Option B: Domain Ribbons (Hierarchical) | Hybrid: Collapsible Rail + Header |
-|---|---|---|---|
-| **Max Screen Width for Canvas / Tables** | ⚠️ Moderate (minus 240px unless collapsed) | 🟢 **100% Full Width** | 🟢 **96% Full Width** (60px rail) |
-| **Max Screen Height for Logs / Wireshark** | 🟢 **Optimal** | ⚠️ Uses ~90px top | 🟢 **Optimal** |
-| **Scalability for New Features** | 🟢 Very High | 🟢 High (within categories) | 🟢 Very High |
-| **Cognitive Simplicity (Hick's Law)** | ⚠️ Requires expanding categories | 🟢 **Extremely Clear (5 Domains)** | 🟢 High |
-| **Familiarity with Current Stigix UX** | 🔴 Low (total redesign) | 🟢 **High (matches Settings & VyOS)** | 🟡 Medium |
-| **Implementation Complexity** | 🟡 Medium (~2 days) | 🟢 **Low (~1 day)** | 🔴 Higher (~3 days) |
+### 5.1 Favorites ☆
+- A **☆ star button** in every page header toggles the current page as a favorite.
+- Favorites can target a **module** (`Security`) or a **module sub-tab** (`VyOS › Impairments`, `Settings › Target Controller`).
+- The ☆ rail icon opens a flyout listing favorites (drag-to-reorder, remove with ✕).
+- In expanded mode, favorites appear as a pinned section at the top of the sidebar.
+- **Storage**: phase 1 in `localStorage` (`stigix.nav.favorites`); phase 2 persisted per user server-side (`users.json`) so favorites follow the user across browsers.
 
----
+### 5.2 Deep-Linking (URL Routing)
+- Hash-based routes, one per page and sub-tab:
+  - `#/generate/saas`, `#/validate/security`, `#/network/vyos/impairments`, `#/settings/target-controller`
+- Browser **Back / Forward** works across modules.
+- Links are bookmarkable and shareable (e.g. in a lab runbook or Slack).
+- The legacy `view` state is mapped 1:1 to routes to keep all existing `setView('...')` calls working during migration.
 
-## 4. Proposed Functional Taxonomy (Categorization)
+### 5.3 Running-Job Indicators ●
+- Each module entry shows a small **pulsing green dot** when it has an active job (traffic running, voice calls, IoT devices up, capture in progress, failover test running).
+- Domain icons in the rail show an **aggregated dot** if any child is active.
+- Source: existing status endpoints / WebSocket events already used by each module (no new backend required for phase 1).
 
-Whether implemented via Domain Ribbons or a Vertical Sidebar, the **15 modules must be grouped into 5 coherent functional pillars**:
+### 5.4 Command Palette 🔍 (`Ctrl+K` / `⌘K`)
+- Fuzzy search across all modules, sub-tabs, and favorites.
+- Quick actions (phase 2): "Start traffic", "Run security test", "Open capture on eth1".
 
-```text
-┌──────────────────────────────────────────────────────────────────────────┐
-│ STIGIX FUNCTIONAL DOMAINS                                                │
-├──────────────────────────────────────────────────────────────────────────┤
-│ 1. 🚀 TRAFFIC GENERATION & EMULATION                                     │
-│    ├── SaaS Traffic Generator   (Multi-app background load & APM)        │
-│    ├── Custom TCP / HTTP Apps   (Enterprise private apps & impairments)  │
-│    ├── VoIP Simulation          (RTP G.711/G.729 call load & MOS score)  │
-│    ├── IoT Device Emulation     (Physical device real-on-wire profiles)  │
-│    └── PCAP Replay              (Stateful L7 replay & verdict audit)     │
-├──────────────────────────────────────────────────────────────────────────┤
-│ 2. 🧪 TESTING & SLA VALIDATION                                           │
-│    ├── Security Validation      (URL, DNS, EICAR, C2 malware tests)      │
-│    ├── Bandwidth Speedtest      (XFR & iPerf3 line-rate validation)      │
-│    ├── Digital Experience (DEM) (Synthetic path probes & SLA latency)   │
-│    └── Failover Monitoring      (Millisecond blackout & path switch)     │
-├──────────────────────────────────────────────────────────────────────────┤
-│ 3. 🔍 OBSERVABILITY & ANALYSIS                                           │
-│    ├── Packet Capture           (Live BPF sniffer & 3-pane web inspector)│
-│    ├── Live Events              (WebSocket telemetry streaming)          │
-│    └── Flow Browser             (Prisma SD-WAN flow session queries)     │
-├──────────────────────────────────────────────────────────────────────────┤
-│ 4. 🌐 NETWORK INFRASTRUCTURE                                             │
-│    ├── Topology Map             (Underlay, SD-WAN mesh & SASE circuits)  │
-│    └── VyOS Router Control      (WAN impairment injection & routing)     │
-├──────────────────────────────────────────────────────────────────────────┤
-│ 5. ⚙️ PLATFORM & ORCHESTRATION                                           │
-│    ├── Settings & Fleet         (Targets, Target Controller, Upgrades)   │
-│    └── AI Copilot               (Interactive LLM Assistant / FastMCP)    │
-└──────────────────────────────────────────────────────────────────────────┘
-```
-
----
-
-## 5. Strategic Recommendation
-
-### 🏆 Recommended Solution: The "Domain Ribbon" Model (Option B) with Sub-Tabs
-
-**Why this is the superior choice for Stigix:**
-1. **The Topology & Packet Capture Imperative**: Stigix has two hallmark killer features:
-   - The interactive **D3 Topology Canvas** (requiring full horizontal span to display Hubs, Branch Gateways, and Spoke rings without crowding).
-   - The **Wireshark-Grade Packet Capture Inspector** (requiring a wide layout to accommodate the Packet List, the Protocol Tree, and the Hex Dump side-by-side).
-   *A static left sidebar permanently robs these tools of crucial horizontal space.*
-2. **Proven Ergonomic Success**: Users are already enthusiastic about the structured sub-menu pill bars inside **VyOS Control** and **Settings**. Extending this mental model across the whole application creates immediate visual harmony.
-3. **Clean Single-Row Header**: By reducing 15 top buttons into **5 Domain Tabs**, the primary header fits comfortably on even a 1280px display with **zero wrapping**.
-4. **Contextual Sub-Ribbon**: The secondary sub-ribbon displays only the 2 to 5 relevant tools for the selected domain, keeping the operator focused on their active task.
+### 5.5 Preserved State
+- Switching pages never stops running jobs (unchanged behavior).
+- Each module keeps its internal tab/filter state when navigating away and back.
 
 ---
 
 ## 6. Implementation Specifications
 
-### 6.1 Top Ribbon Design Tokens
-* **Height**: 48px fixed.
-* **Style**: Sleek glassmorphism (`bg-card/80 backdrop-blur-md border-b border-border`).
-* **Pill Style**:
-  * Inactive: `text-text-muted hover:text-text-primary hover:bg-card-hover font-semibold text-xs tracking-wider uppercase`
-  * Active: `bg-blue-600 text-white shadow-[0_0_15px_rgba(37,99,235,0.3)] font-black text-xs tracking-wider uppercase`
+### 6.1 Single Source of Truth — `navigationConfig.ts`
+```ts
+export interface NavItem {
+  id: string;             // legacy view id, e.g. 'security'
+  label: string;
+  icon: LucideIcon;
+  route: string;          // e.g. '/validate/security'
+  featureFlag?: string;   // hide when disabled
+  runningKey?: string;    // key in the running-jobs store
+  subTabs?: { id: string; label: string; route: string }[];
+}
 
-### 6.2 Sub-Ribbon Design Tokens
-* **Height**: 40px fixed.
-* **Style**: Subtle muted strip (`bg-muted/30 border-b border-border/50 px-6 flex items-center gap-2`).
-* **Items**: Underline or pill indicator matching the existing sub-menu style in `VyOS` and `Settings`.
+export interface NavDomain {
+  id: 'home' | 'usecases' | 'generate' | 'validate' | 'observe' | 'network';
+  label: string;
+  icon: LucideIcon;
+  items: NavItem[];       // 1 item = direct link, >1 = flyout
+}
+```
+Rendering (rail, flyout, expanded, palette, favorites) is derived entirely from this config.
 
-### 6.3 State Management & URL Deep-Linking
-* URL query parameter support: `?domain=traffic&sub=pcap_replay` to allow direct bookmarks and shareable links for specific test workflows.
-* Retain state when switching between domains so active tests are not accidentally interrupted.
+### 6.2 Components
+| Component | Responsibility |
+|---|---|
+| `SidebarRail.tsx` | 56 px rail, domain icons, bottom utilities, tooltips |
+| `SidebarFlyout.tsx` | Overlay panel with domain title and items (SCM style) |
+| `SidebarExpanded.tsx` | Pinned 240 px mode with collapsible groups |
+| `FavoriteStar.tsx` | Star toggle for page headers |
+| `CommandPalette.tsx` | `Ctrl+K` fuzzy search |
+| `useNavRouter.ts` | Hash routing ↔ legacy `view` state bridge |
+| `useRunningJobs.ts` | Aggregates module activity for badges |
+
+### 6.3 Design Tokens
+- **Rail**: `w-14`, dark surface (`bg-neutral-950` / theme `bg-card`), `border-r border-border`.
+- **Active item**: rounded square highlight (`bg-blue-600/20 text-blue-400`) + 2 px left accent bar.
+- **Flyout**: `w-60`, `bg-card/95 backdrop-blur-md shadow-2xl rounded-r-xl`, domain title in bold, items `text-sm`, active item highlighted.
+- **Running dot**: `w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse`.
+- **Tooltips**: shown on rail hover after 300 ms.
+- **Light & dark theme** support via existing theme tokens.
+
+### 6.4 Top Header (simplified)
+The top bar keeps only contextual information: page title, ☆ favorite toggle, instance/site name, cluster/health badges. All navigation moves to the rail.
+
+### 6.5 Responsive
+- `< 768 px`: rail hidden, hamburger opens the expanded sidebar as a drawer.
+- `≥ 768 px`: rail visible by default.
 
 ---
 
 ## 7. Migration & Rollout Plan
 
-1. **Phase 1 (Taxonomy Engine)**: Create `domainNavigationConfig.ts` defining the 5 domains, their icons, and member views.
-2. **Phase 2 (Header Refactoring)**: Replace the 15-button wrap in `App.tsx` with the 5-domain primary bar and the dynamic sub-ribbon.
-3. **Phase 3 (User Preference Toggle - Optional)**: Provide an option in *Settings ➔ Preferences* allowing operators who prefer a vertical sidebar to toggle a "Compact Left Icon Rail".
+| Phase | Scope | Estimate |
+|---|---|---|
+| **1. Taxonomy & routing** | `navigationConfig.ts`, `useNavRouter.ts` (hash routes mapped to existing views) | ~0.5 day |
+| **2. Rail + Flyout** | Replace the flat top bar in `App.tsx`; bottom utilities; tooltips; auto-collapse | ~1 day |
+| **3. Expanded mode** | Pin toggle, collapsible groups, persisted preference | ~0.5 day |
+| **4. Favorites & running badges** | ☆ in page headers, favorites flyout, activity dots | ~0.5 day |
+| **5. Command palette** | `Ctrl+K` navigation search | ~0.5 day |
+| **6. Phase 2 (later)** | Server-side favorites, palette quick actions, Use Cases & Flow Browser entries | — |
+
+**Acceptance criteria**
+- No navigation wrapping at 1280 px width.
+- Every module and sub-tab reachable by URL; Back/Forward works.
+- Flyout never shifts content layout.
+- Running jobs visible from any page.
+- All existing `setView(...)` call sites keep working.
 
 ---
 
@@ -196,4 +276,5 @@ Whether implemented via Domain Ribbons or a Vertical Sidebar, the **15 modules m
 
 | Date | Stigix Version | Author / Trigger | Summary of Changes |
 |---|---|---|---|
+| 2026-10-11 | `v2.2.12` | Stigix Core Team (design review) | Switched recommendation to a Strata Cloud Manager-style icon rail with overlay flyouts; rejected domain ribbons (height cost, 3 stacked tab levels); corrected taxonomy (added Home, Use Cases, Fleet; Copilot & Settings as global utilities; Flow Browser marked future); added Favorites, hash deep-linking, running-job indicators, and command palette specs. |
 | 2026-10-11 | `v2.2.9` | Stigix Architecture Team | Initial PRD: Navigation architecture study, comparison of Horizontal Domain Ribbons vs Vertical Sidebar, and definition of the 5-pillar functional taxonomy. |
