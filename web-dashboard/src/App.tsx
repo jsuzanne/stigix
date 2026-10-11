@@ -376,6 +376,7 @@ export default function App() {
   const [publicIp, setPublicIp] = useState<string | null>(null);
   const [publicIpCountry, setPublicIpCountry] = useState<string | null>(null);
   const [gatewayIp, setGatewayIp] = useState<string | null>(null);
+  const [localIp, setLocalIp] = useState<string | null>(null);
 
   // Maintenance State
   const [maintenance, setMaintenance] = useState<{ updateAvailable: boolean } | null>(null);
@@ -853,6 +854,7 @@ export default function App() {
       if (res.ok) {
         const data = await res.json();
         setGatewayIp(data.ip);
+        if (data.local_ip) setLocalIp(data.local_ip);
       }
     } catch (e) {
       console.error('Failed to fetch gateway IP');
@@ -1089,15 +1091,15 @@ export default function App() {
 
           {/* Wordmark Stigix & Single-Line Metadata (Full Light & Dark Theme Support) */}
           <div className="flex items-baseline gap-3.5 flex-wrap sm:flex-nowrap">
-            <h1 className="text-3xl sm:text-[34px] font-black tracking-[-0.03em] leading-none text-slate-900 dark:text-text-primary flex items-baseline select-none font-sans">
+            <h1 className="text-4xl sm:text-[40px] font-black tracking-[-0.035em] leading-none text-slate-900 dark:text-text-primary flex items-baseline select-none font-sans">
               St
               <span className="relative inline-block mx-[1px]">
-                <span className="absolute -top-1.5 left-1/2 -translate-x-1/2 w-[6px] h-[6px] rounded-full bg-cyan-400 dark:bg-cyan-400 neon-dot border border-cyan-300/70" />
+                <span className="absolute -top-2 left-1/2 -translate-x-1/2 w-[7px] h-[7px] rounded-full bg-cyan-400 dark:bg-cyan-400 neon-dot border border-cyan-300/80 shadow-[0_0_8px_rgba(34,211,238,0.8)]" />
                 ı
               </span>
               g
               <span className="relative inline-block mx-[1px]">
-                <span className="absolute -top-1.5 left-1/2 -translate-x-1/2 w-[6px] h-[6px] rounded-full bg-cyan-400 dark:bg-cyan-400 neon-dot-delay border border-cyan-300/70" />
+                <span className="absolute -top-2 left-1/2 -translate-x-1/2 w-[7px] h-[7px] rounded-full bg-cyan-400 dark:bg-cyan-400 neon-dot-delay border border-cyan-300/80 shadow-[0_0_8px_rgba(34,211,238,0.8)]" />
                 ı
               </span>
               x
@@ -1189,6 +1191,19 @@ export default function App() {
             isLoading={isHealthLoading}
             onClick={() => setShowHealthModal(true)}
           />
+
+          {/* Quick Light / Dark Theme Switcher Button */}
+          <button
+            onClick={toggleTheme}
+            title={theme === 'dark' ? "Switch to Light Mode" : "Switch to Dark Mode"}
+            className="p-1.5 sm:p-2 rounded-xl border border-slate-200 dark:border-border bg-slate-100 hover:bg-slate-200 dark:bg-card-secondary dark:hover:bg-card-hover text-slate-700 dark:text-text-muted hover:text-slate-900 dark:hover:text-white transition-all shadow-xs cursor-pointer active:scale-95 flex items-center justify-center"
+          >
+            {theme === 'dark' ? (
+              <Sun size={15} className="text-amber-400 hover:rotate-45 transition-transform" />
+            ) : (
+              <Moon size={15} className="text-indigo-600 hover:-rotate-12 transition-transform" />
+            )}
+          </button>
         </div>
       </header >
 
@@ -1338,7 +1353,10 @@ export default function App() {
           publicIp={publicIp}
           publicIpCountry={publicIpCountry}
           gatewayIp={gatewayIp}
+          localIp={localIp}
           speedtestResult={speedtestResult}
+          onRunSpeedtest={runSpeedtest}
+          runningSpeedtest={runningSpeedtest}
           onNavigate={handleNavigate}
           onOpenDiagnostics={() => setShowHealthModal(true)}
         />

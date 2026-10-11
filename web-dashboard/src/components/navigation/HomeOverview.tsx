@@ -2,7 +2,7 @@ import React from 'react';
 import {
     Activity, Server, Cloud, Cpu, Layers,
     Zap, ExternalLink, RefreshCw, Phone, LineChart,
-    Sparkles, Shield, Network, Radio, Monitor, Globe
+    Sparkles, Shield, Network, Radio, Monitor, Globe, Gauge
 } from 'lucide-react';
 import { cn } from '../../lib/utils';
 
@@ -23,7 +23,10 @@ interface HomeOverviewProps {
     publicIp?: string | null;
     publicIpCountry?: string | null;
     gatewayIp?: string | null;
+    localIp?: string | null;
     speedtestResult?: any;
+    onRunSpeedtest?: () => void;
+    runningSpeedtest?: boolean;
     onNavigate: (viewId: string, subTab?: string) => void;
     onOpenDiagnostics?: () => void;
 }
@@ -40,7 +43,10 @@ export const HomeOverview: React.FC<HomeOverviewProps> = ({
     publicIp,
     publicIpCountry,
     gatewayIp,
+    localIp,
     speedtestResult,
+    onRunSpeedtest,
+    runningSpeedtest,
     onNavigate
 }) => {
     const { peers } = usePeerContext();
@@ -243,20 +249,27 @@ export const HomeOverview: React.FC<HomeOverviewProps> = ({
                         </div>
                     </div>
 
-                    {/* Cloud Workers */}
-                    <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-card-secondary/40 border border-slate-200 dark:border-[#1e293b]/70 space-y-2">
+                    {/* Cloudflare Registry */}
+                    <div 
+                        onClick={() => onNavigate('settings', 'registry')}
+                        className="p-3.5 rounded-xl bg-slate-50 dark:bg-card-secondary/40 hover:bg-slate-100 dark:hover:bg-card-secondary/70 border border-slate-200 dark:border-[#1e293b]/70 hover:border-emerald-400 dark:hover:border-emerald-500/40 transition-all cursor-pointer group space-y-2"
+                        title="Click to configure Cloudflare Registry in Settings"
+                    >
                         <div className="flex items-center justify-between">
-                            <span className="text-xs font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
-                                <span className="w-2 h-2 rounded-full bg-emerald-500" />
+                            <span className="text-xs font-bold text-slate-900 dark:text-white flex items-center gap-1.5 group-hover:text-emerald-600 dark:group-hover:text-emerald-300 transition-colors">
+                                <span className={cn("w-2 h-2 rounded-full", registryStatus?.is_registered ? "bg-emerald-500" : "bg-blue-400")} />
                                 Cloudflare Registry
                             </span>
-                            <span className="px-2 py-0.2 rounded text-[9px] font-black uppercase tracking-widest bg-emerald-500/15 text-emerald-600 dark:text-emerald-400">
-                                Set Valid
+                            <span className={cn(
+                                "px-2 py-0.2 rounded text-[9px] font-black uppercase tracking-widest",
+                                registryStatus?.is_registered ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400" : "bg-blue-500/15 text-blue-600 dark:text-blue-400"
+                            )}>
+                                {registryStatus?.is_registered ? 'Registered' : (registryStatus?.mode === 'standalone' ? 'Standalone' : 'Ready')}
                             </span>
                         </div>
                         <div className="text-[11px] text-slate-600 dark:text-text-muted flex justify-between font-mono">
-                            <span>Edge Scenarios: <strong className="text-slate-900 dark:text-text-primary">7</strong></span>
-                            <span>PoP Group: <strong className="text-slate-900 dark:text-text-primary">Global</strong></span>
+                            <span>Autodiscovery: <strong className="text-slate-900 dark:text-text-primary">{registryStatus?.is_registered ? 'Worker Sync' : (registryStatus?.mode === 'leader' ? 'Leader Active' : 'Standalone')}</strong></span>
+                            <span>Edge PoP: <strong className="text-slate-900 dark:text-text-primary">Global</strong></span>
                         </div>
                     </div>
                 </div>
@@ -351,16 +364,19 @@ export const HomeOverview: React.FC<HomeOverviewProps> = ({
                     >
                         <div className="flex items-center justify-between">
                             <span className="text-xs font-bold text-slate-900 dark:text-white flex items-center gap-1.5 group-hover:text-blue-600 dark:group-hover:text-blue-300">
-                                <span className="w-2 h-2 rounded-full bg-emerald-500" />
+                                <span className={cn("w-2 h-2 rounded-full", (vyos.active_routers > 0 || (vyos.status === 'online' && vyos.active_routers !== 0)) ? "bg-emerald-500" : "bg-zinc-400")} />
                                 VyOS Underlay Routers
                             </span>
-                            <span className="px-2 py-0.2 rounded text-[9px] font-black uppercase tracking-widest bg-emerald-500/15 text-emerald-600 dark:text-emerald-400">
-                                Online
+                            <span className={cn(
+                                "px-2 py-0.2 rounded text-[9px] font-black uppercase tracking-widest",
+                                (vyos.active_routers > 0 || (vyos.status === 'online' && vyos.active_routers !== 0)) ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400" : "bg-slate-200 dark:bg-zinc-800 text-slate-600 dark:text-zinc-400"
+                            )}>
+                                {(vyos.active_routers > 0 || (vyos.status === 'online' && vyos.active_routers !== 0)) ? 'Online' : 'Standby'}
                             </span>
                         </div>
                         <div className="text-[11px] text-slate-600 dark:text-text-muted flex justify-between font-mono mt-1">
-                            <span>Active Routers: <strong className="text-slate-900 dark:text-text-primary">{vyos.active_routers || '3 / 3'}</strong></span>
-                            <span>Netem: <strong className="text-emerald-600 dark:text-emerald-400">Clean</strong></span>
+                            <span>Active Routers: <strong className="text-slate-900 dark:text-text-primary">{vyos.active_routers !== undefined ? vyos.active_routers : (host.mode === 'Host Mode' ? '0 (Host Mode)' : '0')}</strong></span>
+                            <span>Netem: <strong className="text-emerald-600 dark:text-emerald-400">{vyos.netem || 'Clean'}</strong></span>
                         </div>
                     </div>
 
@@ -405,8 +421,8 @@ export const HomeOverview: React.FC<HomeOverviewProps> = ({
                     </div>
 
                     {/* Underlay Network & Public IP Status */}
-                    {(publicIp || gatewayIp || siteInfo?.local_ip) && (
-                        <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-card-secondary/40 border border-slate-200 dark:border-[#1e293b]/70 space-y-1.5">
+                    {(publicIp || gatewayIp || localIp || siteInfo?.local_ip) && (
+                        <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-card-secondary/40 border border-slate-200 dark:border-[#1e293b]/70 space-y-2">
                             <div className="flex items-center justify-between">
                                 <span className="text-xs font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
                                     <Globe size={14} className="text-cyan-500 dark:text-cyan-400" />
@@ -423,14 +439,34 @@ export const HomeOverview: React.FC<HomeOverviewProps> = ({
                                     </span>
                                 )}
                             </div>
-                            <div className="text-[11px] text-slate-600 dark:text-text-muted flex justify-between font-mono">
-                                <span>Local: <strong className="text-slate-900 dark:text-text-primary">{siteInfo?.local_ip || host.ip || '—'}</strong></span>
+                            <div className="text-[11px] text-slate-600 dark:text-text-muted flex justify-between items-center font-mono">
+                                <span>Local: <strong className="text-slate-900 dark:text-text-primary">{localIp || siteInfo?.local_ip || host.ip || '—'}</strong></span>
                                 <span>GW: <strong className="text-slate-900 dark:text-text-primary">{gatewayIp || '—'}</strong></span>
-                                {speedtestResult?.download_mbps ? (
-                                    <span className="text-cyan-600 dark:text-cyan-400 font-bold">⚡ {Math.round(speedtestResult.download_mbps)} Mbps</span>
-                                ) : (
-                                    <span className="text-slate-400 dark:text-slate-500 text-[10px]">Speed: Ready</span>
-                                )}
+                                <button
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        onRunSpeedtest?.();
+                                    }}
+                                    disabled={runningSpeedtest}
+                                    title="Click to run/re-run Internet Speedtest"
+                                    className={cn(
+                                        "px-2 py-0.5 rounded text-[10px] font-bold font-mono transition-all flex items-center gap-1 border shadow-xs cursor-pointer active:scale-95",
+                                        runningSpeedtest
+                                            ? "bg-blue-500/20 text-blue-500 dark:text-blue-400 border-blue-500/40 animate-pulse cursor-wait"
+                                            : speedtestResult?.download_mbps
+                                                ? "bg-cyan-500/15 hover:bg-cyan-500/25 text-cyan-700 dark:text-cyan-300 border-cyan-500/30"
+                                                : "bg-slate-200 hover:bg-slate-300 dark:bg-card-secondary dark:hover:bg-card-hover text-slate-700 dark:text-text-muted hover:text-slate-900 dark:hover:text-white border-slate-300 dark:border-border"
+                                    )}
+                                >
+                                    <Gauge size={11} className={runningSpeedtest ? "animate-spin text-blue-500" : "text-cyan-500 dark:text-cyan-400"} />
+                                    <span>
+                                        {runningSpeedtest
+                                            ? "Testing..."
+                                            : speedtestResult?.download_mbps
+                                                ? `${Math.round(speedtestResult.download_mbps)} Mbps`
+                                                : "Speedtest"}
+                                    </span>
+                                </button>
                             </div>
                         </div>
                     )}

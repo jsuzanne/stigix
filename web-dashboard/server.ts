@@ -4878,17 +4878,40 @@ app.get('/api/system/gateway-ip', authenticateToken, async (req, res) => {
     try {
         const platform = os.platform();
         let cmd = '';
+        let localIp = '';
+
+        // Extract primary non-internal IPv4 from host network interfaces
+        const interfaces = os.networkInterfaces();
+        for (const name of Object.keys(interfaces)) {
+            for (const iface of interfaces[name] || []) {
+                if (iface.family === 'IPv4' && !iface.internal && !iface.address.startsWith('172.17.') && !iface.address.startsWith('172.18.') && !iface.address.startsWith('127.')) {
+                    if (!localIp || (!localIp.startsWith('192.168.') && iface.address.startsWith('192.168.'))) {
+                        localIp = iface.address;
+                    }
+                }
+            }
+        }
+
         if (platform === 'darwin') {
             cmd = "route -n get default | awk '/gateway/ {print $2}'";
         } else if (platform === 'linux') {
             cmd = "ip route | grep default | awk '{print $3}' | head -n 1";
         } else {
-            return res.json({ ip: 'Unknown OS' });
+            return res.json({ ip: 'Unknown OS', local_ip: localIp });
         }
 
         const execPromise = promisify(exec);
         const { stdout } = await execPromise(cmd);
-        res.json({ ip: stdout.trim() });
+
+        // On Linux, try to get exact src IP used for routing to public internet
+        if (platform === 'linux') {
+            try {
+                const { stdout: srcOut } = await execPromise("ip route get 1.1.1.1 2>/dev/null | awk '{for(i=1;i<=NF;i++) if($i==\"src\") print $(i+1)}' | head -n 1");
+                if (srcOut.trim()) localIp = srcOut.trim();
+            } catch {}
+        }
+
+        res.json({ ip: stdout.trim(), local_ip: localIp });
     } catch (e: any) {
         console.error('Failed to get gateway IP:', e.message);
         res.status(500).json({ error: e.message });
