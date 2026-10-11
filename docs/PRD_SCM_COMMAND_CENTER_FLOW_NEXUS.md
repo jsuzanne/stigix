@@ -27,26 +27,28 @@ This specification defines the architectural study, UX model, and data aggregati
 flowchart LR
     subgraph INITIATORS ["1. Initiators & Fleet Sources"]
         N1["Stigix Fleet Nodes<br/>(DC1, BR1, BR2, BR5, BR8)"]
-        N2["SaaS Synthetic Clients<br/>(Background Workers)"]
+        N2["SaaS Synthetic Clients<br/>(Background Load Workers)"]
         N3["Voice RTP Callers<br/>(G.711 / G.729 Streamers)"]
-        N4["IoT Fleet Devices<br/>(Real-Wire Sensors)"]
+        N4["IoT Fleet Devices<br/>(Physical Sensors & Cameras)"]
     end
 
-    subgraph TRANSIT ["2. Transit & Security Core"]
-        P1["Prisma Access / NGFW<br/>(Security Inspection & TSG)"]
-        P2["VyOS Underlay Routers<br/>(WAN Paths, IPsec, Impairments)"]
-        P3["Direct Internet Breakout<br/>(Local Underlay Gateway)"]
+    subgraph TRANSIT ["2. Transit & Forwarding Core"]
+        P1["Direct SD-WAN Overlay<br/>(Branch-to-Branch / Branch-to-DC IPsec & Prisma SD-WAN)"]
+        P2["Cloud SASE & SSE<br/>(Prisma Access TSG / Zscaler ZIA & ZPA Inspection)"]
+        P3["VyOS WAN Routers<br/>(Impairments, Multi-Path & BGP Failover)"]
+        P4["Direct Internet Breakout (DIA)<br/>(Local Branch Gateway)"]
     end
 
-    subgraph DESTINATIONS ["3. Destination Services"]
-        D1["SaaS Workloads<br/>(M365, Salesforce, AWS)"]
-        D2["Private Apps / Custom TCP<br/>(Branch ERP, Databases)"]
-        D3["VoIP PBX & Gateways<br/>(Echo Responders)"]
-        D4["Threat Targets & Security<br/>(EICAR, DNS Sinkholes)"]
+    subgraph DESTINATIONS ["3. Destination Targets & Services"]
+        D1["Remote Stigix Peers<br/>(DC1 Hub, BR1, BR5, Homelab Targets)"]
+        D2["Enterprise Private Apps<br/>(Custom TCP, Branch ERP, SMB)"]
+        D3["Public SaaS Workloads<br/>(M365, Salesforce, ServiceNow, AWS)"]
+        D4["VoIP PBX & Echo Responders<br/>(MOS Scoring Endpoints)"]
+        D5["Threat Validation Endpoints<br/>(EICAR, DNS Sinkholes)"]
     end
 
-    INITIATORS ==>|Real-time Bitrate & Streams| TRANSIT
-    TRANSIT ==>|Inspected / Forwarded Packets| DESTINATIONS
+    INITIATORS ==>|Real-time Bitrate & Sessions| TRANSIT
+    TRANSIT ==>|Inspected & Routed Flows| DESTINATIONS
 ```
 
 ---
@@ -65,26 +67,30 @@ Represents the origins of all traffic generated inside the Stigix environment:
   * **IoT Devices:** Emulated real-wire physical interfaces and MAC/IP bindings.
   * **Security Probes:** Policy validation probes (URL, threat signatures).
 
-### Tier 2: Transit & Security Core (Center Column)
-Represents the enforcement and routing tier through which synthetic packets flow:
-* **Prisma SASE / Prisma Access:**
-  * Palo Alto Cloud Security Processing Nodes (SPN).
-  * Tenant Service Group (TSG) mapping, regional PoPs (`eu-central`, `eu-west`).
+### Tier 2: Transit & Forwarding Core (Center Column)
+Represents the enforcement, routing, and transit fabric through which synthetic packets flow:
+* **Direct SD-WAN Overlay (Site-to-Site Fabric):**
+  * Direct Branch-to-Branch (e.g. BR8 ➔ BR1) and Branch-to-DC overlay paths.
+  * Native SD-WAN IPsec tunnels, BGP EVPN/OSPF paths, or Prisma SD-WAN fabric without going through cloud SSE.
+* **Cloud SASE & SSE Inspection (Prisma Access / Zscaler):**
+  * Palo Alto Cloud Security Processing Nodes (SPN / TSG) and SSE inspection engines (Zscaler ZIA/ZPA).
+  * Cloud SWG, CASB, Zero Trust Network Access (ZTNA) inspection, and regional PoPs (`eu-central`, `eu-west`).
   * Security verdict aggregation (Allowed vs. Inspected vs. Blocked).
-* **VyOS SD-WAN Underlay Routers:**
-  * Underlay tunnels (Hub-and-Spoke, overlay IPsec, WireGuard).
-  * WAN Path status and applied QoS impairment rules (Latency, Loss, Jitter).
+* **VyOS WAN Underlay & Impairments:**
+  * Physical circuit emulation, dual-ISP paths, and applied QoS impairment rules (Latency, Loss, Jitter).
 * **Direct Internet Breakout (DIA):**
   * Traffic bypassing the corporate overlay directly to local ISP gateways.
 
-### Tier 3: Destination Services & Targets (Right Column)
-Represents the services being validated:
+### Tier 3: Destination Targets & Services (Right Column)
+Represents the target entities receiving and responding to traffic:
+* **Remote Stigix Peer Instances (Inter-Branch / Hub Mesh):**
+  * When BR8 communicates with BR1 or DC1, the **remote Stigix nodes are themselves destination targets** (responding to private probes, custom TCP sockets, bidirectional voice, and iperf3 bandwidth tests).
+* **Enterprise Private Applications:**
+  * Custom TCP workloads, Branch ERPs, Internal Web servers, SMB file shares hosted at DC or across branches.
 * **Public SaaS Applications:**
   * Microsoft 365, Salesforce, ServiceNow, GitHub, Workday, Google Workspace.
-* **Enterprise Private Applications:**
-  * Custom TCP workloads, Branch ERPs, Internal Web servers, SMB file shares.
-* **VoIP Responders:**
-  * RTP reflectors and loopback audio targets.
+* **VoIP Responders & Echo Endpoints:**
+  * RTP reflectors and loopback audio targets for bidirectional MOS computation.
 * **Security Validation Endpoints:**
   * WildFire test endpoints, DNS sinkholes, HTTP threat catalogs.
 
@@ -98,20 +104,21 @@ Drawing inspiration from Palo Alto Strata Cloud Manager, the interface will feat
 ┌────────────────────────────────────────────────────────────────────────────────────────┐
 │  STIGIX COMMAND CENTER • TRAFFIC FLOW NEXUS                          [ 24h ] [ Live ● ]│
 ├───────────────────────┬───────────────────────────────┬────────────────────────────────┤
-│  INITIATORS (SOURCES) │   SECURITY & TRANSIT CORE     │      DESTINATION SERVICES      │
+│  INITIATORS (SOURCES) │   TRANSIT & FORWARDING CORE   │      DESTINATION TARGETS       │
 │                       │                               │                                │
 │   ┌────────────────┐  │       ┌───────────────┐       │       ┌────────────────┐       │
-│   │   DC1 (Hub)    │──┼───────│ Prisma SASE   │───────┼───────│ SaaS (M365...) │       │
-│   │ 28 Streams     │  │       │ TSG: 192797   │       │       │ 450 req/min    │       │
-│   └────────────────┘  │  ╱─── │ 100% Policy OK│ ───╲  │       └────────────────┘       │
-│          ...          │ ╱     └───────────────┘     ╲ │              ...               │
-│   ┌────────────────┐ ╱│╱                             ╲│╲      ┌────────────────┐       │
-│   │  BR8 (Branch)  │──┼                              ─┼───────│ Private Apps   │       │
-│   │ 11 Apps • 40 IoT│  │       ┌───────────────┐       │       │ 28 Streams     │       │
-│   └────────────────┘  │       │ VyOS Routers  │       │       └────────────────┘       │
-│                       │       │ 3 Active Rtrs │       │                                │
-│                       │       │ Impair: None  │       │                                │
-│                       │       └───────────────┘       │                                │
+│   │   BR8 (Branch) │──┼───────│ Direct SD-WAN │───────┼───────│ BR1 (Peer Node)│       │
+│   │ 28 Streams     │  │  ╱─── │ Overlay Mesh  │ ───╲  │       │ 14ms • SLA OK  │       │
+│   └────────────────┘  │ ╱     └───────────────┘     ╲ │       └────────────────┘       │
+│          ...          │╱                             ╲│              ...               │
+│   ┌────────────────┐ ╱│       ┌───────────────┐       │╲      ┌────────────────┐       │
+│   │   DC1 (Hub)    │──┼───────│ Prisma Access │───────┼───────│ SaaS (M365...) │       │
+│   │ 11 Apps • 40 IoT│  │       │ TSG: 192797   │       │       │ 450 req/min    │       │
+│   └────────────────┘  │       └───────────────┘       │       └────────────────┘       │
+│                       │       ┌───────────────┐       │       ┌────────────────┐       │
+│                       │       │ VyOS (Impair) │       │       │ Private Apps   │       │
+│                       │       │ Lat: +50ms    │       │       │ 28 Streams     │       │
+│                       │       └───────────────┘       │       └────────────────┘       │
 └───────────────────────┴───────────────────────────────┴────────────────────────────────┘
 ```
 
@@ -192,4 +199,5 @@ Promote the Reachability Grid to a dedicated, first-class citizen in the **`Obse
 
 | Date | Stigix Version | Author / Trigger | Summary of Changes |
 |---|---|---|---|
+| 2026-10-11 | `v3.0.0-dev` | Stigix Core Team | Integrate Direct SD-WAN transit overlay, Prisma Access / Zscaler SSE, and Stigix peer target destinations |
 | 2026-10-11 | `v3.0.0-dev` | Stigix Core Team | Initial PRD and architectural study for SCM Flow Nexus and Mesh Grid separation |
