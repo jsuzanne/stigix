@@ -5,6 +5,9 @@
 **Status:** Approved direction — Icon Rail + Flyout Sidebar (Strata Cloud Manager model)
 **Owner:** Stigix Core Team
 
+> [!IMPORTANT]
+> **Scope: navigation shell only.** This PRD changes *how users reach* each module (sidebar, routing, favorites). The **content, layout, and behavior of every existing module page remain unchanged** — including the internal sub-tabs of `Settings` and `VyOS Control`.
+
 ---
 
 ## 1. Executive Summary & Problem Statement
@@ -28,16 +31,16 @@ From v1 to v2.2.x, Stigix grew from a SaaS traffic generator into an end-to-end 
 | `vyos` | VyOS Control | WAN impairment injection & router orchestration |
 | `events` | Live Events | Real-time event streaming and logging |
 | `copilot` | AI Copilot | Conversational troubleshooting and orchestration |
-| `fleet` | Fleet | Multi-node cluster management |
+| `fleet` | Fleet | Multi-node cluster management (**Leader node only**) |
 | `settings` | Settings | Targets, controller, provisioning, maintenance |
 
-Planned additions: **Use Cases** (multi-module scenarios) and **Flow Browser** (not implemented yet).
+Planned addition: **Use Cases** (multi-module scenarios).
 
 ### 1.2 User Experience Pain Points
 On common laptop resolutions (1366×768, 1440×900, 1080p), the flat bar wraps onto 2–3 lines:
 1. **Vertical real-estate waste** — 120–160 px consumed by navigation pushes packet lists, topology canvases, and graphs below the fold. On 16:9 / 16:10 screens, **height is the scarcest resource**; width is abundant.
 2. **Cognitive overload** — 16 unstructured buttons violate Hick's Law.
-3. **No room for the roadmap** — Use Cases and Flow Browser cannot be added without breaking the layout further.
+3. **No room for the roadmap** — Use Cases and future modules cannot be added without breaking the layout further.
 4. **Hidden background activity** — Traffic, Voice, IoT, captures, and failover tests run in the background, with no consistent "running" indicator in the navigation.
 
 ---
@@ -147,26 +150,44 @@ Grouping is based on **user intent**: *"I want to generate load"* vs *"I want a 
 
 🔍  OBSERVE                    (flyout)  — "see what happens"
     ├── Packet Capture          BPF sniffer & 3-pane inspector
-    ├── Live Events             Real-time telemetry stream
-    └── Flow Browser            (future — hidden until implemented)
+    └── Live Events             Real-time telemetry stream
 
 🌐  NETWORK                    (flyout)  — "act on the infrastructure"
     ├── Topology                Underlay / overlay / SASE map
     ├── VyOS Control            Impairments & routing
-    └── Fleet                   Cluster nodes & upgrades
+    └── Fleet                   Cluster nodes & upgrades (Leader only)
+
+⚙️  SETTINGS                   (flyout, grouped) — "configure Stigix"
+    ── Module Configuration
+    ├── Traffic Distribution
+    ├── Synthetic Probes
+    ├── Custom TCP Apps
+    ├── Failover
+    ── Cluster & Targets
+    ├── Stigix Targets
+    ├── Target Controller
+    ── Integrations
+    ├── Prisma SASE API
+    ├── API Studio
+    ├── AI & Copilot            (feature-flagged)
+    ── System
+    ├── System Info
+    └── Maintenance & Updates
 
 ── Global utilities (bottom of rail) ──
 ✨  AI Copilot                 Slide-over panel, available from any page
 ☆   Favorites                  User-pinned pages
 🔔  Notifications              Alerts & Live Events badge
-⚙️  Settings                   Unchanged internal sub-tabs
+⚙️  Settings  → promoted to a full domain (see above)
 👤  User
 ```
 
 **Notes**
 - **Voice** stays in *Generate*: its primary use is call load generation; MOS is a by-product shown on its own page.
-- **Copilot** and **Settings** are no longer "domains": they are global utilities, always one click away.
-- **Feature flags**: items whose feature is disabled (e.g. Copilot without API key, Flow Browser not implemented) are hidden, not greyed out.
+- **Copilot** is no longer a "domain": it is a global utility (slide-over panel), always one click away.
+- **Settings is a first-class domain**: it is heavily used, so it sits in the main rail with its own flyout. Each flyout entry deep-links to the **existing** Settings tab (`#/settings/target-controller`); the Settings page and its tab bar are unchanged. This makes every Settings tab reachable in 1 click from anywhere and favoritable.
+- **Feature flags**: items whose feature is disabled (e.g. Copilot without API key) are hidden, not greyed out.
+- **Role-based visibility**: `Fleet` is only rendered when the node is the cluster **Leader** (`registryStatus.isLeader`). On Peer / standalone nodes the *Network* flyout shows only Topology and VyOS Control.
 
 ---
 
@@ -211,6 +232,7 @@ export interface NavItem {
   icon: LucideIcon;
   route: string;          // e.g. '/validate/security'
   featureFlag?: string;   // hide when disabled
+  leaderOnly?: boolean;   // render only on the cluster Leader (e.g. Fleet)
   runningKey?: string;    // key in the running-jobs store
   subTabs?: { id: string; label: string; route: string }[];
 }
@@ -261,7 +283,7 @@ The top bar keeps only contextual information: page title, ☆ favorite toggle, 
 | **3. Expanded mode** | Pin toggle, collapsible groups, persisted preference | ~0.5 day |
 | **4. Favorites & running badges** | ☆ in page headers, favorites flyout, activity dots | ~0.5 day |
 | **5. Command palette** | `Ctrl+K` navigation search | ~0.5 day |
-| **6. Phase 2 (later)** | Server-side favorites, palette quick actions, Use Cases & Flow Browser entries | — |
+| **6. Phase 2 (later)** | Server-side favorites, palette quick actions, Use Cases entry | — |
 
 **Acceptance criteria**
 - No navigation wrapping at 1280 px width.
@@ -276,5 +298,6 @@ The top bar keeps only contextual information: page title, ☆ favorite toggle, 
 
 | Date | Stigix Version | Author / Trigger | Summary of Changes |
 |---|---|---|---|
+| 2026-10-11 | `v2.2.12` | Stigix Core Team (review) | Clarified scope (navigation shell only, module content unchanged); removed Flow Browser (not existing); Fleet entry rendered on Leader only; Settings promoted to a first-class domain with a grouped flyout deep-linking its 11 existing tabs. |
 | 2026-10-11 | `v2.2.12` | Stigix Core Team (design review) | Switched recommendation to a Strata Cloud Manager-style icon rail with overlay flyouts; rejected domain ribbons (height cost, 3 stacked tab levels); corrected taxonomy (added Home, Use Cases, Fleet; Copilot & Settings as global utilities; Flow Browser marked future); added Favorites, hash deep-linking, running-job indicators, and command palette specs. |
 | 2026-10-11 | `v2.2.9` | Stigix Architecture Team | Initial PRD: Navigation architecture study, comparison of Horizontal Domain Ribbons vs Vertical Sidebar, and definition of the 5-pillar functional taxonomy. |
