@@ -2,7 +2,7 @@
 
 # Product Requirement Document (PRD): Stigix Navigation Architecture & Functional Taxonomy
 
-**Status:** Approved direction — Icon Rail + Flyout Sidebar (Strata Cloud Manager model)
+**Status:** ✅ Implemented in Stigix v3.0.0 (Production)
 **Owner:** Stigix Core Team
 
 > [!IMPORTANT]
@@ -312,6 +312,7 @@ The top bar keeps only contextual information: page title, ☆ favorite toggle, 
 
 | Date | Stigix Version | Author / Trigger | Summary of Changes |
 |---|---|---|---|
+| 2026-10-11 | `v3.0.0` | Stigix Core Team | Status changed to Implemented: SCM icon rail (`NavigationRail`), flyout menus (`SidebarFlyout`), Home Command Center (`HomeOverview`), compact single-line header, and deep hash linking released in Stigix v3.0.0. |
 | 2026-10-11 | `v2.2.12` | Stigix Core Team (review) | Removed Use Cases (not existing); Home defined as a new read-only Overview page (fallback: land on SaaS Traffic as today); node role is a read-only header badge, changed only in Settings › Target Controller; all existing sub-menus kept identical. |
 | 2026-10-11 | `v2.2.12` | Stigix Core Team (review) | Clarified scope (navigation shell only, module content unchanged); removed Flow Browser (not existing); Fleet entry rendered on Leader only; Settings promoted to a first-class domain with a grouped flyout deep-linking its 11 existing tabs. |
 | 2026-10-11 | `v2.2.12` | Stigix Core Team (design review) | Switched recommendation to a Strata Cloud Manager-style icon rail with overlay flyouts; rejected domain ribbons (height cost, 3 stacked tab levels); corrected taxonomy (added Home, Use Cases, Fleet; Copilot & Settings as global utilities; Flow Browser marked future); added Favorites, hash deep-linking, running-job indicators, and command palette specs. |

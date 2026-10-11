@@ -1,9 +1,9 @@
-> **Last Updated:** 2026-10-01 | **Created:** 2026-01-19 (v1.1.0)
+> **Last Updated:** 2026-10-11 | **Created:** 2026-01-19 (v1.1.0)
 
 # 🚀 Stigix Quick Start & Deployment Guide
 
 Deploy a complete, distributed Stigix SD-WAN & SASE validation mesh in **under 2 minutes**. 
-This guide covers **both modern 1-line copy-paste methods (Magic Join)** and **classic manual Docker Compose deployments**.
+This guide covers **both modern 1-line copy-paste methods (Magic Join)** and **classic manual Docker Compose deployments** for Stigix v3.
 
 ---
 
@@ -23,23 +23,24 @@ The **Leader** acts as your central dashboard, orchestrator, and telemetry aggre
 
 #### Option A: 1-Line Installer (Docker already installed)
 ```bash
-curl -fsSL https://raw.githubusercontent.com/jsuzanne/stigix/v2/install.sh | sudo bash
+curl -fsSL https://raw.githubusercontent.com/jsuzanne/stigix/main/install.sh | sudo bash
 ```
 
 #### Option B: Auto-Docker Installer (Installs Docker + Docker Compose + Stigix automatically)
 ```bash
-curl -fsSL https://raw.githubusercontent.com/jsuzanne/stigix/v2/install-autodocker.sh | sudo bash
+curl -fsSL https://raw.githubusercontent.com/jsuzanne/stigix/main/install-autodocker.sh | sudo bash
 ```
 
 Once installed, open your browser:
 * **URL:** `http://<LEADER_IP>:8080`
 * **Default Login:** `admin` / `admin`
+* **Landing Page:** You will be greeted by the **Home Command Center**, displaying live cluster health, public IP geolocation, and real-time engine telemetry.
 
 ---
 
 ### 🏢 2. Add Remote Branch Nodes (Magic Join in 1 Click)
 
-Stigix v2 automates cluster enrollment through **Magic Join Tokens** and Cloudflare Rendezvous:
+Stigix v3 automates cluster enrollment through **Magic Join Tokens** and Cloudflare Rendezvous:
 
 ```mermaid
 sequenceDiagram
@@ -49,7 +50,7 @@ sequenceDiagram
     participant Spoke as 🏢 Remote Spoke (Branch / Cloud)
     participant Relay as 🛰️ Cloudflare Relay
 
-    Admin->>Leader: Click "+ Add Node" & copy 1-line command
+    Admin->>Leader: Open Settings > Fleet Nodes, click "+ Add Node"
     Admin->>Spoke: Paste 1-line command in terminal
     Spoke->>Relay: Register with Magic Join Token
     Relay-->>Leader: Instant event push with Spoke endpoints
@@ -59,13 +60,14 @@ sequenceDiagram
 ```
 
 1. **On your Leader Web Dashboard:**
-   * Go to the **Mesh** tab or click the **`+ Add Node`** button in the top navigation bar.
+   * Open the left navigation rail, hover over **Settings**, and select **Fleet Nodes** (or direct URL `#settings:fleet`).
+   * Click the **`+ Add Node`** button.
    * Enter a site name (e.g. `Branch-Paris`, `HetznerCloud`, `NUC-Lab`).
    * Click **Generate Token** and copy the 1-line command.
 2. **On your Remote Machine / Cloud VPS / Branch PC:**
    * Paste the copied command:
      ```bash
-     curl -fsSL https://raw.githubusercontent.com/jsuzanne/stigix/v2/install.sh | sudo bash -s -- STX-eyJhbGciOi...
+     curl -fsSL https://raw.githubusercontent.com/jsuzanne/stigix/main/install.sh | sudo bash -s -- STX-eyJhbGciOi...
      ```
 3. **Done!** The node connects to the Leader, mounts a reverse WebSocket tunnel, synchronizes configuration, and appears **🟢 Online [ ⚡ WS TUNNEL ]** in your Leader dashboard.
 
@@ -75,10 +77,10 @@ sequenceDiagram
 
 Manage and inspect any remote branch node directly through your Leader web dashboard without SSH, VPNs, or exposing public management ports:
 
-1. In the Leader dashboard, go to the **Mesh** tab.
-2. Click on the remote node.
+1. In the Leader dashboard, open **Settings > Fleet Nodes** (`#settings:fleet`).
+2. Click on the remote node in the Fleet table.
 3. Click **`⚡ Connect via Remote View`**.
-4. The interface displays an amber frame, proxying all live charts, traffic controls, and probe settings directly to the remote node over the WebSocket tunnel.
+4. The interface displays an amber frame and a top banner, proxying all live charts, traffic controls, and probe settings directly to the remote node over the WebSocket tunnel. Click **Return to Leader** at any time to resume central control.
 
 ---
 
@@ -98,7 +100,7 @@ version: '3.8'
 
 services:
   stigix:
-    image: jsuzanne/stigix:v2
+    image: jsuzanne/stigix:latest
     container_name: stigix
     network_mode: host
     restart: unless-stopped
@@ -134,7 +136,7 @@ docker compose up -d
 To deploy Stigix purely as a traffic/probe target (XFR 9000, Voice RTP 6100, Probes 6200, iPerf 5201) without running the web dashboard:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/jsuzanne/stigix/v2/install.sh | sudo bash -s -- --target
+curl -fsSL https://raw.githubusercontent.com/jsuzanne/stigix/main/install.sh | sudo bash -s -- --target
 ```
 
 ---
@@ -177,5 +179,6 @@ cd ~/stigix && docker compose pull && docker compose up -d
 
 | Date | Stigix Version | Author / Trigger | Summary of Changes |
 |---|---|---|---|
+| 2026-10-11 | `v3.0.0` | Stigix Core Team | Updated for Stigix v3: SCM icon rail navigation, Command Center Home overview, Settings > Fleet Nodes path, and latest Docker image tags |
 | 2026-10-01 | `v2.0.136` | Stigix Core Team | Added 1-line copy-paste Magic Join & Auto-Docker methods alongside classic Docker Compose and Target-only options |
 | 2026-04-16 | `v1.1.0` | Stigix Core Team | Initial legacy guide creation |

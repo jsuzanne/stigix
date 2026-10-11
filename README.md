@@ -1,14 +1,14 @@
-> **Last Updated:** 2026-10-10 | **Created:** 2026-01-25 (v1.0.0)
+> **Last Updated:** 2026-10-11 | **Created:** 2026-01-25 (v1.0.0)
 
 # 🕸️ Stigix — Advanced Networking & Security Simulation Environment
 
-[![Version](https://img.shields.io/badge/Version-2.2.8-blue.svg)](https://github.com/jsuzanne/stigix/releases)
-[![Last Updated](https://img.shields.io/badge/Updated-2026--10--10-brightgreen.svg)](CHANGELOG_V2.md)
+[![Version](https://img.shields.io/badge/Version-3.0.0-blue.svg)](https://github.com/jsuzanne/stigix/releases)
+[![Last Updated](https://img.shields.io/badge/Updated-2026--10--11-brightgreen.svg)](CHANGELOG.md)
 [![Docker Pulls](https://img.shields.io/docker/pulls/jlsuzanne/stigix)](https://hub.docker.com/r/jlsuzanne/stigix)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
 **The all-in-one open-source validation platform for SASE, SD-WAN, and Enterprise Network Security.**  
-Generate realistic multi-site SaaS, Voice, and IoT traffic, execute live security threat attacks, inject network chaos on underlay routers, and orchestrate tests using AI with native Model Context Protocol (MCP).
+Generate realistic multi-site SaaS, Voice, and IoT traffic, execute live security threat attacks, inject network chaos on underlay routers, and orchestrate tests using AI with native Model Context Protocol (MCP). Built with modern SCM-inspired vertical rail navigation and an executive Command Center dashboard.
 
 ![Stigix](docs/stigix-banner.gif)
 

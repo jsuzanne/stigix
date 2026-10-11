@@ -1458,6 +1458,19 @@ curl -X POST http://&lt;HOST&gt;:8080/api/security/profile \
           </div></div></div>
         </div>
 
+        <div class="faq-item">
+          <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">How does the SCM-inspired vertical rail navigation and Command Center work in Stigix v3?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
+          <div class="faq-item__body"><div class="faq-item__inner"><div class="faq-item__answer">
+            <p>Stigix v3 replaces the legacy top horizontal navbar with a modern, space-saving <strong>vertical icon rail</strong> inspired by Palo Alto Strata Cloud Manager (SCM):</p>
+            <ul>
+              <li><strong>Functional Taxonomy:</strong> Grouped into 5 distinct domains: <strong>Home</strong> (Command Center overview), <strong>Generate</strong> (SaaS, Voice, IoT, Custom Apps, Failover), <strong>Validate</strong> (DEM, Security, API Studio), <strong>Observe</strong> (Topology, Performance, Telemetry), and <strong>Settings</strong> (Fleet, VyOS, Speedtest, Users, Diagnostics).</li>
+              <li><strong>Rich Flyout Drawers:</strong> Hovering over any rail icon reveals a 384px drawer with descriptions, live engine status indicators, and 1-click pinning.</li>
+              <li><strong>Deep Linking with URL Hashes:</strong> Every view and sub-tab maps to a clean URL hash (e.g. <code>#home</code>, <code>#traffic</code>, <code>#topology</code>, <code>#settings:fleet</code>), enabling browser back/forward navigation and direct link bookmarking.</li>
+              <li><strong>Single-Line Header:</strong> Consolidates brand identity, role badge (<code>LEADER</code> / <code>PEER</code>), live cluster health, and a seamless Dark / Light mode toggle into a compact 56px bar.</li>
+            </ul>
+          </div></div></div>
+        </div>
+
       </div><!-- /panel-settings -->
 
       <!-- ═══════════════════════════════════════════════════
@@ -1567,6 +1580,21 @@ curl -X POST http://&lt;HOST&gt;:8080/api/security/profile \
               <li>&#128683; <strong>Historical playback</strong> &mdash; replaying a topology snapshot from a specific point in time (e.g. during a recorded failover)</li>
             </ul>
             <p>If you have a feature request or encounter a bug, open a <a href="https://github.com/jsuzanne/stigix/issues" target="_blank" rel="noopener noreferrer">GitHub Issue</a> or contact <a href="mailto:contact@stigix.io">contact@stigix.io</a>.</p>
+          </div></div></div>
+        </div>
+
+        <div class="faq-item">
+          <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">What are the 4 view modes and split-pane inspection features in Stigix v3 Topology?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
+          <div class="faq-item__body"><div class="faq-item__inner"><div class="faq-item__answer">
+            <p>Stigix v3 introduces a redesigned, high-performance network topology canvas with 4 specialized viewing modes and a responsive split-pane inspection drawer:</p>
+            <ul>
+              <li><strong>WAN Transport:</strong> Physical underlay view showing branch interfaces, ISP/MPLS carrier clouds, and termination circuits.</li>
+              <li><strong>SD-WAN Mesh:</strong> Pure overlay mode omitting central carrier nodes to spotlight direct site-to-site overlay tunnels and tunnel health (ACTIVE, BACKUP, DOWN).</li>
+              <li><strong>SASE Fabric:</strong> Cloud security fabric mapping links to Prisma Access and SSE security edges.</li>
+              <li><strong>VyOS Ports:</strong> Underlay mapping with port-level resolution (<code>ethX</code>) and real-time VyOS router status.</li>
+            </ul>
+            <p><strong>Split-Pane Inspector (360px):</strong> Clicking any circuit, carrier, or site smoothly contracts the canvas to make room for a dedicated 360px telemetry panel. The floating Action Dock on the right automatically stays docked to the active canvas edge.</p>
+            <p><strong>Integrated Traceroute:</strong> Instead of opening blank diagnostic modals, traceroute actions are now contextually integrated directly on inspected links, WAN interfaces, and VyOS next-hop circuits with targets pre-populated.</p>
           </div></div></div>
         </div>
 

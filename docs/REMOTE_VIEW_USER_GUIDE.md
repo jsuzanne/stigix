@@ -1,4 +1,4 @@
-> **Last Updated:** 2026-09-30 | **Created:** 2026-09-28 (v2.0.73)
+> **Last Updated:** 2026-10-11 | **Created:** 2026-09-28 (v2.0.73)
 
 # Remote View — Operator Guide
 
@@ -6,14 +6,14 @@
 
 Remote View allows an operator connected to a **Leader node** (e.g. DC1) to observe, monitor, and control any remote **peer node** (e.g. BR1, BR2, BR5, BR8, Hetzner Cloud, Home LAN) directly from the Leader's dashboard — without opening separate browser tabs or logging into remote instances individually.
 
-All dashboard actions (reads and writes) are transparently routed through the Leader's gateway to the selected peer. The experience is identical to being directly connected to that peer.
+All dashboard actions (reads and writes) are transparently routed through the Leader's gateway to the selected peer. In **Stigix v3**, the **Home Command Center** also dynamically synchronizes its simulation engine cards, health status, and live telemetry to match the selected remote peer.
 
 ---
 
 ## Prerequisites & Connectivity
 
-- Your Stigix node must be in **Leader mode** (`LEADER` badge visible in the header).
-- The target peer must be **registered** in the Leader's registry (auto-discovery or manual targets).
+- Your Stigix node must be in **Leader mode** (`LEADER` badge visible in the single-line header).
+- The target peer must be **registered** in the Leader's registry (auto-discovery or Magic Join token enrollment).
 - **Transport & Firewall Traversal (M5 & M6)**:
   - **Inbound WebSocket Reverse Tunnels (M5)**: Spokes behind NAT/CGNAT or strict branch firewalls connect outbound to the Leader over a persistent WebSocket session (`/fleet-tunnel`). No open inbound ports or public IPs are required on the spoke.
   - **Leader Outbound Reverse Dialing (M6)**: For external Cloud Peers (e.g., Hetzner, AWS) or Home LAN nodes where the Leader is inside a private lab/LAN, the Leader dials outbound to the Cloud Peer's `/fleet-tunnel` endpoint. The Leader remains 100% private with zero inbound ports exposed.
@@ -23,11 +23,10 @@ All dashboard actions (reads and writes) are transparently routed through the Le
 
 ## Activating Remote View
 
-1. Click the **peer selector dropdown** in the top-right area of the header (next to the Health badge).
-2. Select the peer you want to manage (e.g. `BR5-Ubuntu` or `BR8-Ubuntu`).
-3. The dashboard immediately switches to Remote View mode.
+You can activate Remote View through two convenient paths:
 
-![Switch Stigix Target Dropdown](screenshots/14-Remote-View/01-peer-context-switcher-dropdown.png)
+1. **Via Header Ribbon:** Click the peer selector dropdown in the header next to the health indicator, and select your target peer.
+2. **Via Fleet Table:** Navigate to **Settings > Fleet Nodes** (`#settings:fleet`) from the left rail, locate the target peer, and click **`⚡ Connect via Remote View`**.
 
 > **Tip:** Peers shown with a red `UNREACHABLE` badge are offline or blocked by the network. Selecting them is disabled to prevent silent empty states.
 
@@ -35,13 +34,14 @@ All dashboard actions (reads and writes) are transparently routed through the Le
 
 ## Visual Indicators
 
-When Remote View is active, clear visual cues identify the active remote context across the dashboard:
+When Remote View is active in Stigix v3, clear visual cues identify the active remote context across the dashboard:
 
 | Indicator | Location | Description |
 |---|---|---|
-| **Amber Site Name** | Top-left header subtitle | Displays the active remote site name (e.g., `BR5-Ubuntu`) directly in the header banner next to the subtitle. |
-| **Amber Peer Chip** | Top-right navbar | Shows the remote peer IP and name. Includes a quick **✕** button to exit Remote View. |
-| **Amber Inset Border** | Full viewport perimeter | A subtle 2 px amber frame around the entire dashboard window. Zero layout shift — no content is displaced. |
+| **Top Amber Banner (`RemoteViewBanner`)** | Directly below header | Displays `REMOTE PEER VIEW: [Site Name]` with peer IP, tunnel status, and a **`Return to Leader`** button. |
+| **Amber Site Badge** | Header Ribbon | Displays the active remote site name in amber with an active peer indicator dot. |
+| **Amber Viewport Frame** | Full perimeter | A subtle amber border around the viewport. Zero layout shift — no canvas elements displaced. |
+| **Dynamic Home Overview** | Home Command Center | The 5 simulation engine cards, traffic rates, and active task indicators switch automatically to reflect the remote peer's live state. |
 
 ![Remote View Active Mode with Yellow Frame](screenshots/14-Remote-View/02-remote-view-active-frame.png)
 
@@ -107,6 +107,7 @@ Click the **✕** button on the amber chip in the navbar. The dashboard instantl
 
 | Date | Stigix Version | Author / Trigger | Summary of Changes |
 |---|---|---|---|
+| 2026-10-11 | `v3.0.0` | Stigix Core Team | Updated for Stigix v3: documented RemoteViewBanner top ribbon, Settings > Fleet Nodes access, and Home Command Center context synchronization |
 | 2026-09-30 | `v2.0.109` | Stigix Core Team / Antigravity | Added M5/M6 WebSocket Reverse Tunneling and Leader Reverse Dialing documentation for NAT/CGNAT/Firewall traversal |
 | 2026-09-28 | `v2.0.80` | Stigix Core Team / Antigravity | Added UI screenshots for Peer Context Switcher dropdown and Remote View active state (amber frame & site subtitle) |
 | 2026-09-28 | `v2.0.73` | Stigix Core Team / Antigravity | Initial document creation — Remote View operator guide |
