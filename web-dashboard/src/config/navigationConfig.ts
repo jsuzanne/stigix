@@ -77,14 +77,6 @@ export const STIGIX_NAVIGATION_DOMAINS: NavDomainConfig[] = [
                 runningKey: 'traffic'
             },
             {
-                id: 'custom_apps',
-                label: 'Custom TCP/HTTP Apps',
-                icon: Boxes,
-                route: '#/generate/custom-apps',
-                description: 'Enterprise private apps emulation across SD-WAN overlays and breakouts',
-                runningKey: 'custom_apps'
-            },
-            {
                 id: 'voice',
                 label: 'Voice Simulation',
                 icon: Phone,
@@ -99,6 +91,14 @@ export const STIGIX_NAVIGATION_DOMAINS: NavDomainConfig[] = [
                 route: '#/generate/iot',
                 description: 'Physical IoT device emulation & security attack profiles (Real-on-Wire)',
                 runningKey: 'iot'
+            },
+            {
+                id: 'custom_apps',
+                label: 'Custom TCP/HTTP Apps',
+                icon: Boxes,
+                route: '#/generate/custom-apps',
+                description: 'Enterprise private apps emulation across SD-WAN overlays and breakouts',
+                runningKey: 'custom_apps'
             },
             {
                 id: 'pcap_replay',
@@ -117,18 +117,18 @@ export const STIGIX_NAVIGATION_DOMAINS: NavDomainConfig[] = [
         subtitle: 'Validate SASE policies, performance & SLA path behavior',
         items: [
             {
-                id: 'security',
-                label: 'Security Validation',
-                icon: Shield,
-                route: '#/validate/security',
-                description: 'Validate SASE / NGFW security policy enforcement (URL, DNS, EICAR, Threats)'
-            },
-            {
                 id: 'performance',
                 label: 'Digital Experience (DEM)',
                 icon: LineChart,
                 route: '#/validate/dem',
                 description: 'Synthetic path probes, SLAs and user digital experience monitoring'
+            },
+            {
+                id: 'security',
+                label: 'Security Validation',
+                icon: Shield,
+                route: '#/validate/security',
+                description: 'Validate SASE / NGFW security policy enforcement (URL, DNS, EICAR, Threats)'
             },
             {
                 id: 'convergence',
