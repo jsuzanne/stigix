@@ -1350,6 +1350,16 @@ function TopologyContent({ token }: TopologyProps) {
         }
     }, [selectedCircuit]);
 
+    const handleViewModeChange = useCallback((mode: 'physical' | 'overlay' | 'sase' | 'underlay') => {
+        setTopologyViewMode(mode);
+        setSelectedNetwork(null);
+        setLogicalViewSiteId(null);
+        setInspectedLink(null);
+        setSelectedCircuit(null);
+        setSelectedObject(null);
+        setEdges([]); // Clean React Flow canvas edges immediately to avoid stale cross-mode edge persistence
+    }, [setEdges]);
+
     // VyOS Direct Action State (Interactive Topology Controls)
     const [isVyosExecuting, setIsVyosExecuting] = useState(false);
     const [vyosExecutingAction, setVyosExecutingAction] = useState<string | null>(null);
@@ -2614,7 +2624,23 @@ function TopologyContent({ token }: TopologyProps) {
     }, [underlayData]);
 
     const filteredNodes = useMemo(() => {
-        return nodes.map(n => {
+        const modeNodes = nodes.filter(n => {
+            if (topologyViewMode === 'overlay') {
+                return n.type === 'site';
+            }
+            if (topologyViewMode === 'physical') {
+                return n.type === 'site' || (n.type === 'cloud' && !n.id.includes('EXTERNAL'));
+            }
+            if (topologyViewMode === 'sase') {
+                return n.type === 'site' || n.type === 'sasePop';
+            }
+            if (topologyViewMode === 'underlay') {
+                return n.type === 'site' || n.type === 'vyosRouter' || n.type === 'underlayGateway' || n.id === 'cloud:EXTERNAL';
+            }
+            return true;
+        });
+
+        return modeNodes.map(n => {
             const nodeData = n.data as any;
             // Inject underlay data & circuit selection handlers into site nodes
             const enriched = (n.type === 'site')
@@ -2643,7 +2669,7 @@ function TopologyContent({ token }: TopologyProps) {
                 }
             };
         });
-    }, [nodes, searchQuery, underlayMode, underlayResolutionMap, underlayData, selectedCircuit, handleSelectCircuit]);
+    }, [nodes, topologyViewMode, searchQuery, underlayMode, underlayResolutionMap, underlayData, selectedCircuit, handleSelectCircuit]);
 
 
     const filteredEdges = useMemo(() => {
@@ -2652,7 +2678,28 @@ function TopologyContent({ token }: TopologyProps) {
         const selectedPopPeer = selectedObject?.isSasePop ? selectedObject.primary_peer_ip : null;
         const hasCircuitSelection = Boolean(selectedCircuit);
 
-        return edges.map(e => {
+        // Strict View Mode Isolation:
+        // Ensure edges strictly correspond to the current active topology view mode.
+        // This guarantees that switching between Overlay, Physical, SASE, and Underlay
+        // never leaks residual edges from other layers.
+        const modeEdges = edges.filter(e => {
+            const edgeData = e.data as any;
+            if (topologyViewMode === 'overlay') {
+                return Boolean(edgeData?.isOverlayTunnel || e.id.startsWith('logical-edge-'));
+            }
+            if (topologyViewMode === 'physical') {
+                return Boolean(edgeData?.isPhysicalWanEdge || e.id.startsWith('edge:'));
+            }
+            if (topologyViewMode === 'sase') {
+                return Boolean(edgeData?.isSaseEdge || e.id.startsWith('sase-edge:'));
+            }
+            if (topologyViewMode === 'underlay') {
+                return Boolean(edgeData?.isUnderlayEdge || e.id.startsWith('underlay-edge:'));
+            }
+            return true;
+        });
+
+        return modeEdges.map(e => {
             const edgeData = e.data as any;
             let currentEdge = e;
 
@@ -2805,7 +2852,7 @@ function TopologyContent({ token }: TopologyProps) {
 
             return currentEdge;
         });
-    }, [edges, searchQuery, selectedObject, saseTunnelTypeFilter, selectedCircuit, overlayTunnelStateFilter]);
+    }, [edges, topologyViewMode, searchQuery, selectedObject, saseTunnelTypeFilter, selectedCircuit, overlayTunnelStateFilter]);
 
     const handleFitView = useCallback(() => {
         fitView({ padding: 0.12, duration: 450, minZoom: 0.12 });
@@ -2970,12 +3017,7 @@ function TopologyContent({ token }: TopologyProps) {
                             <div className="bg-card-secondary/70 backdrop-blur-md border border-border p-1 rounded-xl shadow-sm flex items-center gap-1 shrink-0">
                                 {/* Mode 1: WAN Transport */}
                                 <button
-                                    onClick={() => {
-                                        setTopologyViewMode('physical');
-                                        setSelectedNetwork(null);
-                                        setLogicalViewSiteId(null);
-                                        setInspectedLink(null);
-                                    }}
+                                    onClick={() => handleViewModeChange('physical')}
                                     className={cn(
                                         "px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all flex items-center gap-1.5 cursor-pointer shrink-0",
                                         topologyViewMode === 'physical'
@@ -2990,12 +3032,7 @@ function TopologyContent({ token }: TopologyProps) {
 
                                 {/* Mode 2: SD-WAN Mesh */}
                                 <button
-                                    onClick={() => {
-                                        setTopologyViewMode('overlay');
-                                        setSelectedNetwork(null);
-                                        setLogicalViewSiteId(null);
-                                        setInspectedLink(null);
-                                    }}
+                                    onClick={() => handleViewModeChange('overlay')}
                                     className={cn(
                                         "px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all flex items-center gap-1.5 cursor-pointer shrink-0",
                                         topologyViewMode === 'overlay'
@@ -3010,12 +3047,7 @@ function TopologyContent({ token }: TopologyProps) {
 
                                 {/* Mode 3: SASE Fabric */}
                                 <button
-                                    onClick={() => {
-                                        setTopologyViewMode('sase');
-                                        setSelectedNetwork(null);
-                                        setLogicalViewSiteId(null);
-                                        setInspectedLink(null);
-                                    }}
+                                    onClick={() => handleViewModeChange('sase')}
                                     className={cn(
                                         "px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all flex items-center gap-1.5 cursor-pointer shrink-0",
                                         topologyViewMode === 'sase'
@@ -3038,12 +3070,7 @@ function TopologyContent({ token }: TopologyProps) {
 
                                 {/* Mode 4: VyOS Ports */}
                                 <button
-                                    onClick={() => {
-                                        setTopologyViewMode('underlay');
-                                        setSelectedNetwork(null);
-                                        setLogicalViewSiteId(null);
-                                        setInspectedLink(null);
-                                    }}
+                                    onClick={() => handleViewModeChange('underlay')}
                                     className={cn(
                                         "px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all flex items-center gap-1.5 cursor-pointer shrink-0",
                                         topologyViewMode === 'underlay'

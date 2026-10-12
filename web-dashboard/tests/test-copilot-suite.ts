@@ -64,6 +64,7 @@ export class CopilotTestSuite {
 
         // 2. Try common JWT secrets
         const candidateSecrets = [
+            'your-secure-secret-here',
             'super-secret-key-change-this',
             'stigix-local-dev-secret-key-123456',
             'stigix-default-secret-2026',
@@ -242,7 +243,7 @@ export class CopilotTestSuite {
             registryManager: {
                 getSiteName: () => 'BR8',
                 getPeers: () => [
-                    { site_name: 'BR8', ip_private: '192.168.123.102', port: 8080 }
+                    { site_name: 'BR8', ip_private: '192.168.123.102', ip_public: '2.13.195.58', port: 8080 }
                 ]
             }
         };
@@ -538,10 +539,13 @@ export class CopilotTestSuite {
                 agent_id: this.host,
                 bundle_type: 'connectivity-probes'
             }, remoteCtx);
-            if (res.error) throw new Error(res.error);
+            if (res.error && !res.error.includes('Only the active mesh Leader') && !res.error.includes('member node')) {
+                throw new Error(res.error);
+            }
             return {
                 published: res.published?.type || 'connectivity-probes',
-                revision: res.published?.revision
+                revision: res.published?.revision,
+                skippedOnMember: res.error ? 'Skipped (node is mesh member, only Leader publishes)' : undefined
             };
         });
 
@@ -631,6 +635,126 @@ export class CopilotTestSuite {
             };
         });
 
+
+        // 34. Tool: get_public_ip (Query WAN egress IP)
+        await this.runTest('34. Tool "get_public_ip" (Query WAN egress IP)', async () => {
+            const res = await executeCopilotTool('get_public_ip', {
+                agent_id: this.host
+            }, remoteCtx);
+            if (res.error) throw new Error(res.error);
+            if (!res.ip) throw new Error(`Expected IP in response: ${JSON.stringify(res)}`);
+            return { ip: res.ip, source: res.source, country: res.country || res.countryCode };
+        });
+
+        // 35. Tool: list_apps (Application profiles)
+        await this.runTest('35. Tool "list_apps" (Application profiles)', async () => {
+            const res = await executeCopilotTool('list_apps', {
+                agent_id: this.host
+            }, remoteCtx);
+            if (res.error) throw new Error(res.error);
+            const count = Array.isArray(res) ? res.length : (res.applications?.length || 0);
+            return { count };
+        });
+
+        // 36. Tool: get_diagnostics (Real-time socket diagnostics)
+        await this.runTest('36. Tool "get_diagnostics" (Socket diagnostics)', async () => {
+            const res = await executeCopilotTool('get_diagnostics', {
+                agent_id: this.host
+            }, remoteCtx);
+            if (res.error) throw new Error(res.error);
+            return { status: res.status || 'OK' };
+        });
+
+        // 37. Tool: list_vyos_routers (Underlay router discovery)
+        await this.runTest('37. Tool "list_vyos_routers" (Underlay routers)', async () => {
+            const res = await executeCopilotTool('list_vyos_routers', {
+                agent_id: this.host
+            }, remoteCtx);
+            if (res.error) throw new Error(res.error);
+            const count = Array.isArray(res) ? res.length : (res.routers?.length || 0);
+            return { count };
+        });
+
+        // 38. Tool: get_node_status (System load & node health)
+        await this.runTest('38. Tool "get_node_status" (System status)', async () => {
+            const res = await executeCopilotTool('get_node_status', {
+                agent_id: this.host
+            }, remoteCtx);
+            if (res.error) throw new Error(res.error);
+            return { version: res.version || res.stigix_version, hostname: res.hostname || res.site_name };
+        });
+
+        // 39. Tool: run_system_diagnostics (Deep health audit)
+        await this.runTest('39. Tool "run_system_diagnostics" (Health audit)', async () => {
+            const res = await executeCopilotTool('run_system_diagnostics', {
+                agent_id: this.host
+            }, remoteCtx);
+            if (res.error) throw new Error(res.error);
+            return { healthy: res.healthy ?? true };
+        });
+
+        // 40. Regression Test: list_custom_tcp_apps (Local Context using getSanitizedConfig)
+        await this.runTest('40. Tool "list_custom_tcp_apps" (Local Context Sanitized Config)', async () => {
+            const mockTcpMgr = {
+                getSanitizedConfig: () => ({
+                    applications: [{ id: 'app-pos-test', name: 'app-pos-test', listener: { port: 18443 } }]
+                }),
+                getAllAppsStatus: () => [{ appId: 'app-pos-test', state: 'running', listenerActive: true }]
+            };
+            const localMockCtx: ToolExecutionContext = {
+                ...remoteCtx,
+                tcpAppManager: mockTcpMgr
+            };
+            const res = await executeCopilotTool('list_custom_tcp_apps', {
+                agent_id: 'local'
+            }, localMockCtx);
+            if (res.error) throw new Error(res.error);
+            const apps = Array.isArray(res) ? res : (res.applications || []);
+            if (!apps || apps.length === 0) throw new Error('Expected at least 1 app returned from local tcpAppManager');
+            if (apps[0].id !== 'app-pos-test') throw new Error(`Unexpected app id: ${apps[0].id}`);
+            if (!apps[0].status || apps[0].status.state !== 'running') throw new Error('Expected live status attached to app');
+            return { appCount: apps.length, appStatus: apps[0].status.state };
+        });
+
+        // 41. Regression Test: get_dem_summary (Ensures health_score & probes are returned)
+        await this.runTest('41. Tool "get_dem_summary" (Health score & probes presence)', async () => {
+            const res = await executeCopilotTool('get_dem_summary', {
+                agent_id: this.host
+            }, remoteCtx);
+            if (res.error) throw new Error(res.error);
+            if (!Array.isArray(res.probes)) throw new Error('Expected probes array in get_dem_summary');
+            return { total_probes: res.total_probes, health_score: res.health_score };
+        });
+
+        // 42. Regression Test: get_probe_details (Enriched probe with status/score/details)
+        await this.runTest('42. Tool "get_probe_details" (Live metrics and status enrichment)', async () => {
+            // Pick first available probe from active list
+            const activeRes = await this.request('/api/connectivity/active-probes');
+            const firstProbe = activeRes.probes?.[0];
+            if (!firstProbe) return { skipped: true, reason: 'No active probes configured' };
+
+            const res = await executeCopilotTool('get_probe_details', {
+                agent_id: this.host,
+                probe_name: firstProbe.name
+            }, remoteCtx);
+            if (res.error) throw new Error(res.error);
+            if (!res.status) throw new Error('Expected status field on enriched probe');
+            return { probe: res.name, status: res.status, score: res.score, latency_ms: res.latency_ms };
+        });
+
+        // 43. Regression Test: VyOS State & Direct Action endpoints
+        await this.runTest('43. VyOS Routes (Direct action & state API without 404 fallback)', async () => {
+            // Verify /api/vyos/state route does not return SPA fallback HTML
+            const res = await fetch(`${this.host}/api/vyos/state`, {
+                headers: { 'Authorization': `Bearer ${this.token}` }
+            });
+            // It should be 400 (missing router_id) or JSON, NOT 404 HTML fallback!
+            const text = await res.text();
+            if (text.includes('<!doctype html') || text.includes('<!DOCTYPE html')) {
+                throw new Error('/api/vyos/state returned SPA fallback HTML');
+            }
+            return { status: res.status, ok: true };
+        });
 
         // Summary
         const passedCount = this.results.filter(r => r.passed).length;

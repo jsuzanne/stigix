@@ -124,6 +124,14 @@ export const STIGIX_NAVIGATION_DOMAINS: NavDomainConfig[] = [
                 description: 'Synthetic path probes, SLAs and user digital experience monitoring'
             },
             {
+                id: 'speedtest',
+                label: 'Bandwidth Test (XFR)',
+                icon: Gauge,
+                route: '#/validate/bandwidth',
+                description: 'Multi-stream WAN throughput testing, TCP retransmits & latency benchmark',
+                featureFlag: 'xfr_enabled'
+            },
+            {
                 id: 'security',
                 label: 'Security Validation',
                 icon: Shield,

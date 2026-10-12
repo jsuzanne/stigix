@@ -62,10 +62,13 @@ interface CopilotSession {
 interface AiPublicConfig {
     enabled: boolean;
     hasKey: boolean;
+    provider?: 'anthropic' | 'deepseek';
     keyMasked: string;
+    hasDeepseekKey?: boolean;
+    maskedDeepseekKey?: string;
     defaultModel: string;
     requireConfirmation: boolean;
-    models: Array<{ id: string; name: string; description: string }>;
+    models: Array<{ id: string; name: string; description: string; provider?: 'anthropic' | 'deepseek' }>;
 }
 
 interface CopilotProps {
@@ -114,6 +117,7 @@ export default function Copilot({ token, onOpenSettings, isDrawer = false, onClo
     const [isStreaming, setIsStreaming] = useState(false);
     const [sidebarOpen, setSidebarOpen] = useState(!isDrawer);
     const [showKeyModal, setShowKeyModal] = useState(false);
+    const [modalProvider, setModalProvider] = useState<'anthropic' | 'deepseek'>('anthropic');
     const [newApiKey, setNewApiKey] = useState('');
     const [isTestingKey, setIsTestingKey] = useState(false);
     const [isSavingKey, setIsSavingKey] = useState(false);
@@ -152,8 +156,17 @@ export default function Copilot({ token, onOpenSettings, isDrawer = false, onClo
                 const data = await res.json();
                 const cfg: AiPublicConfig = data.config || data;
                 setConfig(cfg);
+                if (cfg.provider) {
+                    setModalProvider(cfg.provider);
+                } else if (cfg.hasDeepseekKey && !cfg.hasKey) {
+                    setModalProvider('deepseek');
+                }
                 if (cfg.defaultModel) {
-                    setSelectedModel(cfg.defaultModel);
+                    if (cfg.provider === 'deepseek' || (cfg.hasDeepseekKey && !cfg.hasKey)) {
+                        setSelectedModel(cfg.defaultModel.startsWith('deepseek-') ? cfg.defaultModel : 'deepseek-chat');
+                    } else {
+                        setSelectedModel(cfg.defaultModel);
+                    }
                 }
             }
         } catch (e: any) {
@@ -189,7 +202,13 @@ export default function Copilot({ token, onOpenSettings, isDrawer = false, onClo
                 const data = await res.json();
                 const session: CopilotSession = data.session || data;
                 setMessages(session.messages || []);
-                if (session.model) setSelectedModel(session.model);
+                if (session.model) {
+                    if (session.model.startsWith('claude-') && config && !config.hasKey && config.hasDeepseekKey) {
+                        setSelectedModel(config.defaultModel?.startsWith('deepseek-') ? config.defaultModel : 'deepseek-chat');
+                    } else {
+                        setSelectedModel(session.model);
+                    }
+                }
             }
         } catch (e: any) {
             console.error('Failed to load session:', e);
@@ -248,10 +267,26 @@ export default function Copilot({ token, onOpenSettings, isDrawer = false, onClo
         if (!newApiKey.trim()) return;
         setIsSavingKey(true);
         try {
+            const bodyPayload: any = {
+                provider: modalProvider,
+                ...(modalProvider === 'deepseek'
+                    ? { deepseekApiKey: newApiKey.trim() }
+                    : { apiKey: newApiKey.trim() }
+                )
+            };
+
+            if (modalProvider === 'deepseek' && selectedModel.startsWith('claude-')) {
+                bodyPayload.defaultModel = 'deepseek-chat';
+                setSelectedModel('deepseek-chat');
+            } else if (modalProvider === 'anthropic' && selectedModel.startsWith('deepseek-')) {
+                bodyPayload.defaultModel = 'claude-sonnet-4-5-20250929';
+                setSelectedModel('claude-sonnet-4-5-20250929');
+            }
+
             const res = await fetch('/api/copilot/config', {
                 method: 'POST',
                 headers: authHeaders,
-                body: JSON.stringify({ apiKey: newApiKey.trim() })
+                body: JSON.stringify(bodyPayload)
             });
             if (res.ok) {
                 const data = await res.json();
@@ -259,7 +294,7 @@ export default function Copilot({ token, onOpenSettings, isDrawer = false, onClo
                 setConfig(updated);
                 setShowKeyModal(false);
                 setNewApiKey('');
-                toast.success('Anthropic API key saved securely');
+                toast.success(`${modalProvider === 'deepseek' ? 'DeepSeek' : 'Anthropic'} API key saved securely!`);
             } else {
                 toast.error('Failed to save API key');
             }
@@ -277,11 +312,14 @@ export default function Copilot({ token, onOpenSettings, isDrawer = false, onClo
             const res = await fetch('/api/copilot/test-key', {
                 method: 'POST',
                 headers: authHeaders,
-                body: JSON.stringify({ apiKey: newApiKey.trim() })
+                body: JSON.stringify({
+                    apiKey: newApiKey.trim(),
+                    provider: modalProvider
+                })
             });
             const data = await res.json();
             if (data.success || data.valid) {
-                toast.success('API Key validated successfully with Anthropic!');
+                toast.success(`API Key validated successfully with ${modalProvider === 'deepseek' ? 'DeepSeek' : 'Anthropic'}!`);
             } else {
                 toast.error(`Validation failed: ${data.error}`);
             }
@@ -437,6 +475,17 @@ export default function Copilot({ token, onOpenSettings, isDrawer = false, onClo
         toast.success('Copied to clipboard');
     };
 
+    const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null);
+
+    const handleCopyMessage = (msgId: string, text: string) => {
+        if (!text) return;
+        copyToClipboard(text);
+        setCopiedMessageId(msgId);
+        setTimeout(() => {
+            setCopiedMessageId(prev => prev === msgId ? null : prev);
+        }, 2000);
+    };
+
     return (
         <div className="flex flex-col lg:flex-row h-[calc(100vh-140px)] min-h-[600px] bg-card border border-border rounded-2xl overflow-hidden shadow-2xl relative">
             {/* ── Sessions Sidebar ── */}
@@ -507,14 +556,21 @@ export default function Copilot({ token, onOpenSettings, isDrawer = false, onClo
                         <div className="flex items-center gap-2">
                             <Key size={14} className={config?.hasKey ? "text-emerald-400" : "text-amber-400"} />
                             <div className="flex flex-col">
-                                <span className="text-[10px] font-black uppercase tracking-wider text-text-muted">Anthropic BYOK</span>
+                                <span className="text-[10px] font-black uppercase tracking-wider text-text-muted">
+                                    {config?.provider === 'deepseek' || (config?.hasDeepseekKey && !config?.hasKey) ? 'DeepSeek BYOK' : 'Anthropic BYOK'}
+                                </span>
                                 <span className="text-xs font-mono text-text-secondary truncate max-w-[120px]">
-                                    {config?.hasKey ? config.keyMasked : 'No API Key'}
+                                    {config?.provider === 'deepseek'
+                                        ? (config.maskedDeepseekKey || config.keyMasked || 'No API Key')
+                                        : (config?.keyMasked || config?.maskedDeepseekKey || 'No API Key')}
                                 </span>
                             </div>
                         </div>
                         <button
-                            onClick={() => setShowKeyModal(true)}
+                            onClick={() => {
+                                setModalProvider(config?.provider || (config?.hasDeepseekKey && !config?.hasKey ? 'deepseek' : 'anthropic'));
+                                setShowKeyModal(true);
+                            }}
                             className="px-2 py-1 bg-card-secondary hover:bg-card-hover border border-border rounded-lg text-[10px] font-bold text-text-secondary transition-all"
                         >
                             {config?.hasKey ? 'Change' : 'Set Key'}
@@ -544,7 +600,7 @@ export default function Copilot({ token, onOpenSettings, isDrawer = false, onClo
                             <div className="flex items-center gap-2">
                                 <h1 className="text-sm font-black tracking-tight text-text-primary">Stigix AI Copilot</h1>
                                 <span className="hidden sm:inline px-1.5 py-0.5 rounded text-[9px] font-black uppercase tracking-wider bg-blue-500/10 text-blue-400 border border-blue-500/20">
-                                    BYOK Claude
+                                    {selectedModel.startsWith('deepseek-') ? 'BYOK DeepSeek' : 'BYOK Claude'}
                                 </span>
                             </div>
                             <p className="text-[10px] text-text-muted font-bold truncate max-w-[140px] sm:max-w-none">Local SD-WAN & SASE Orchestrator</p>
@@ -687,7 +743,7 @@ export default function Copilot({ token, onOpenSettings, isDrawer = false, onClo
 
                             <div className={`flex flex-col ${m.role === 'user' ? 'max-w-[85%] sm:max-w-[75%] items-end' : 'w-full max-w-full items-start'}`}>
                                 <div
-                                    className={`rounded-2xl p-4 sm:p-5 text-xs leading-relaxed shadow-sm ${
+                                    className={`relative group/msg rounded-2xl p-4 sm:p-5 text-xs leading-relaxed shadow-sm ${
                                         m.role === 'user'
                                             ? 'bg-blue-600 text-white rounded-tr-sm font-medium'
                                             : 'bg-card-secondary/50 border border-border text-text-primary rounded-tl-sm w-full'
@@ -700,6 +756,21 @@ export default function Copilot({ token, onOpenSettings, isDrawer = false, onClo
                                                 <ToolCallCard key={tool.id} tool={tool} onCopy={copyToClipboard} />
                                             ))}
                                         </div>
+                                    )}
+
+                                    {/* Quick floating copy button on hover for assistant messages */}
+                                    {m.role === 'assistant' && m.content && (
+                                        <button
+                                            onClick={() => handleCopyMessage(m.id, m.content)}
+                                            className="absolute top-3 right-3 opacity-0 group-hover/msg:opacity-100 p-1.5 rounded-lg bg-card/90 hover:bg-card border border-border/80 text-text-muted hover:text-text-primary transition-all shadow-sm cursor-pointer z-10"
+                                            title="Copy response to clipboard"
+                                        >
+                                            {copiedMessageId === m.id ? (
+                                                <Check size={13} className="text-emerald-400" />
+                                            ) : (
+                                                <Copy size={13} />
+                                            )}
+                                        </button>
                                     )}
 
                                     {/* Render Markdown Content */}
@@ -715,12 +786,34 @@ export default function Copilot({ token, onOpenSettings, isDrawer = false, onClo
                                     )}
                                 </div>
 
-                                <div className="flex items-center gap-2 text-[10px] text-text-muted mt-1 px-1">
+                                <div className="flex items-center gap-2 text-[10px] text-text-muted mt-1.5 px-1">
                                     <span>{new Date(m.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
                                     {m.model && (
                                         <>
                                             <span>•</span>
                                             <span className="font-mono">{m.model}</span>
+                                        </>
+                                    )}
+                                    {m.role === 'assistant' && m.content && (
+                                        <>
+                                            <span>•</span>
+                                            <button
+                                                onClick={() => handleCopyMessage(m.id, m.content)}
+                                                className="flex items-center gap-1 px-1.5 py-0.5 rounded hover:bg-card-secondary hover:text-text-primary text-text-muted transition-colors cursor-pointer"
+                                                title="Copy full response"
+                                            >
+                                                {copiedMessageId === m.id ? (
+                                                    <>
+                                                        <Check size={11} className="text-emerald-400" />
+                                                        <span className="text-emerald-400 font-bold">Copied!</span>
+                                                    </>
+                                                ) : (
+                                                    <>
+                                                        <Copy size={11} />
+                                                        <span>Copy</span>
+                                                    </>
+                                                )}
+                                            </button>
                                         </>
                                     )}
                                 </div>
@@ -773,7 +866,9 @@ export default function Copilot({ token, onOpenSettings, isDrawer = false, onClo
                         </div>
                     </form>
                     <div className="flex items-center justify-between text-[10px] text-text-muted mt-2 px-1">
-                        <span>Anthropic Claude API (BYOK) • Local Tool Execution • Zero Log Sharing</span>
+                        <span>
+                            {selectedModel.startsWith('deepseek-') ? 'DeepSeek API (BYOK) • Local Tool Execution • Zero Log Sharing' : 'Anthropic Claude API (BYOK) • Local Tool Execution • Zero Log Sharing'}
+                        </span>
                         <span>Shift + Enter for new line</span>
                     </div>
                 </div>
@@ -789,7 +884,7 @@ export default function Copilot({ token, onOpenSettings, isDrawer = false, onClo
                                     <Key size={22} />
                                 </div>
                                 <div>
-                                    <h3 className="text-base font-black text-text-primary tracking-tight">Anthropic API Key (BYOK)</h3>
+                                    <h3 className="text-base font-black text-text-primary tracking-tight">AI Provider API Key (BYOK)</h3>
                                     <p className="text-[10px] font-bold text-text-muted uppercase tracking-wider">Bring Your Own Key</p>
                                 </div>
                             </div>
@@ -801,10 +896,44 @@ export default function Copilot({ token, onOpenSettings, isDrawer = false, onClo
                             </button>
                         </div>
 
+                        {/* Provider Selection Tabs */}
+                        <div className="flex bg-card-secondary/70 p-1 rounded-xl border border-border">
+                            <button
+                                type="button"
+                                onClick={() => { setModalProvider('anthropic'); setNewApiKey(''); }}
+                                className={`flex-1 py-1.5 text-xs font-black rounded-lg transition-all ${
+                                    modalProvider === 'anthropic'
+                                        ? 'bg-blue-600 text-white shadow-sm'
+                                        : 'text-text-muted hover:text-text-primary'
+                                }`}
+                            >
+                                Anthropic (Claude)
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => { setModalProvider('deepseek'); setNewApiKey(''); }}
+                                className={`flex-1 py-1.5 text-xs font-black rounded-lg transition-all ${
+                                    modalProvider === 'deepseek'
+                                        ? 'bg-indigo-600 text-white shadow-sm'
+                                        : 'text-text-muted hover:text-text-primary'
+                                }`}
+                            >
+                                DeepSeek (V3 / R1)
+                            </button>
+                        </div>
+
                         <div className="space-y-3">
                             <p className="text-xs text-text-secondary leading-relaxed">
-                                Enter your Claude API key from Anthropic Console (<code className="bg-card-secondary px-1.5 py-0.5 rounded text-blue-400 font-mono">sk-ant-api03-...</code>).
-                                The key is stored locally in <code className="bg-card-secondary px-1 py-0.5 rounded text-text-primary font-mono text-[10px]">config/ai-config.json</code> (chmod 600) and is never transmitted to any third party.
+                                {modalProvider === 'deepseek' ? (
+                                    <>
+                                        Enter your DeepSeek API key from DeepSeek Platform (<code className="bg-card-secondary px-1.5 py-0.5 rounded text-indigo-400 font-mono">sk-...</code>). Supports <strong>DeepSeek-V3</strong> (tools enabled) and <strong>DeepSeek-R1</strong> (deep reasoning).
+                                    </>
+                                ) : (
+                                    <>
+                                        Enter your Claude API key from Anthropic Console (<code className="bg-card-secondary px-1.5 py-0.5 rounded text-blue-400 font-mono">sk-ant-api03-...</code>).
+                                    </>
+                                )}
+                                {' '}Stored locally in <code className="bg-card-secondary px-1 py-0.5 rounded text-text-primary font-mono text-[10px]">config/ai-config.json</code> (chmod 600). Direct proxy with zero logs.
                             </p>
 
                             <div className="relative">
@@ -812,21 +941,33 @@ export default function Copilot({ token, onOpenSettings, isDrawer = false, onClo
                                     type="password"
                                     value={newApiKey}
                                     onChange={(e) => setNewApiKey(e.target.value)}
-                                    placeholder="sk-ant-api03-..."
+                                    placeholder={modalProvider === 'deepseek' ? "sk-..." : "sk-ant-api03-..."}
                                     className="w-full bg-card-secondary border border-border focus:border-blue-500 rounded-xl px-4 py-2.5 text-xs font-mono text-text-primary focus:outline-none shadow-inner"
                                 />
                             </div>
 
-                            <div className="flex items-center gap-2 pt-2">
-                                <a
-                                    href="https://console.anthropic.com/settings/keys"
-                                    target="_blank"
-                                    rel="noreferrer"
-                                    className="text-[11px] text-blue-400 hover:underline flex items-center gap-1 font-bold"
-                                >
-                                    <span>Get an API Key from Anthropic Console</span>
-                                    <ExternalLink size={12} />
-                                </a>
+                            <div className="flex items-center gap-2 pt-1">
+                                {modalProvider === 'deepseek' ? (
+                                    <a
+                                        href="https://platform.deepseek.com/api_keys"
+                                        target="_blank"
+                                        rel="noreferrer"
+                                        className="text-[11px] text-indigo-400 hover:underline flex items-center gap-1 font-bold"
+                                    >
+                                        <span>Get an API Key from DeepSeek Platform</span>
+                                        <ExternalLink size={12} />
+                                    </a>
+                                ) : (
+                                    <a
+                                        href="https://console.anthropic.com/settings/keys"
+                                        target="_blank"
+                                        rel="noreferrer"
+                                        className="text-[11px] text-blue-400 hover:underline flex items-center gap-1 font-bold"
+                                    >
+                                        <span>Get an API Key from Anthropic Console</span>
+                                        <ExternalLink size={12} />
+                                    </a>
+                                )}
                             </div>
                         </div>
 
@@ -851,7 +992,9 @@ export default function Copilot({ token, onOpenSettings, isDrawer = false, onClo
                                 type="button"
                                 onClick={handleSaveKey}
                                 disabled={!newApiKey.trim() || isSavingKey}
-                                className="px-5 py-2 bg-blue-600 hover:bg-blue-500 text-white text-xs font-black rounded-xl transition-all shadow-md active:scale-95 disabled:opacity-50 flex items-center gap-1.5"
+                                className={`px-5 py-2 text-white text-xs font-black rounded-xl transition-all shadow-md active:scale-95 disabled:opacity-50 flex items-center gap-1.5 ${
+                                    modalProvider === 'deepseek' ? 'bg-indigo-600 hover:bg-indigo-500' : 'bg-blue-600 hover:bg-blue-500'
+                                }`}
                             >
                                 {isSavingKey && <Loader2 size={13} className="animate-spin" />}
                                 <span>Save Key</span>

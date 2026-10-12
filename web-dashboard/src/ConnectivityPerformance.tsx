@@ -1,11 +1,12 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { usePeerContext } from './PeerContext';
-import { Gauge, Activity, Clock, Filter, Download, Zap, Shield, Search, ChevronRight, BarChart3, AlertCircle, Info, ChevronUp, ChevronDown, Flame, Plus, XCircle, CheckCircle, RefreshCw, Globe, Play, Pause, TrendingUp, Pencil, Route, Grid } from 'lucide-react';
+import { Gauge, Activity, Clock, Filter, Download, Zap, Shield, Search, ChevronRight, BarChart3, AlertCircle, Info, ChevronUp, ChevronDown, Flame, Plus, XCircle, CheckCircle, RefreshCw, Globe, Play, Pause, TrendingUp, Pencil, Route, Grid, Trash2 } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as ReTooltip, ResponsiveContainer, AreaChart, Area, ReferenceLine, ReferenceArea } from 'recharts';
 import { twMerge } from 'tailwind-merge';
 import { TracerouteModal } from './components/TracerouteModal';
 import { ReachabilityMatrix } from './components/ReachabilityMatrix';
 import { DEMSkeleton } from './components/skeletons/DEMSkeleton';
+import { ProbeScoreCard, InteractiveScoreBadge } from './components/health/ProbeScoreExplainer';
 
 // ── Inline SVG sparkline (no recharts dependency) ───────────────────────────
 const Sparkline = ({ data, color, width = 80, height = 20 }: { data: number[]; color: string; width?: number; height?: number }) => {
@@ -139,6 +140,7 @@ interface ConnectivityPerformanceProps {
     token: string;
     uiConfig?: { maxCaptures: number };
     onManage?: () => void;
+    isLeader?: boolean;
 }
 
 // Component for individual endpoint type graph
@@ -386,7 +388,7 @@ function ProbeScoreChart({ results, range, probeType, data: externalData, syncId
     );
 }
 
-export default function ConnectivityPerformance({ token, uiConfig, onManage }: ConnectivityPerformanceProps) {
+export default function ConnectivityPerformance({ token, uiConfig, onManage, isLeader: propIsLeader }: ConnectivityPerformanceProps) {
     const maxCaptures = uiConfig?.maxCaptures || 10;
     const [results, setResults] = useState<any[]>([]);
     const [stats, setStats] = useState<any>(null);
@@ -401,12 +403,28 @@ export default function ConnectivityPerformance({ token, uiConfig, onManage }: C
     const [endpointConfigs, setEndpointConfigs] = useState<Map<string, any>>(new Map());
     const [cloudScenarios, setCloudScenarios] = useState<any[]>([]);
 
-    // Edit Probe Modal state
+    // Edit Probe Modal state & Leader state
     const [editingProbe, setEditingProbe] = useState<any>(null);
     const [isEditModalOpen, setIsEditModalOpen] = useState(false);
     const [isSavingProbe, setIsSavingProbe] = useState(false);
+    const [isDeletingProbe, setIsDeletingProbe] = useState(false);
+    const [isLeader, setIsLeader] = useState<boolean>(propIsLeader ?? false);
     const [tracerouteTarget, setTracerouteTarget] = useState<string | null>(null);
     const [viewMode, setViewMode] = useState<'catalog' | 'matrix'>('catalog');
+    const [inspectedCapture, setInspectedCapture] = useState<any>(null);
+
+    useEffect(() => {
+        if (propIsLeader !== undefined) {
+            setIsLeader(propIsLeader);
+        } else {
+            gFetch('/api/registry/status', { headers: authHeaders() })
+                .then(r => r.json())
+                .then(data => {
+                    setIsLeader(data.mode === 'leader' || data.current_mode === 'leader' || data.local_registry_active === true);
+                })
+                .catch(() => {});
+        }
+    }, [propIsLeader]);
 
     const formatDisplayUrl = (endpoint: any) => {
         const target = endpoint.lastResult?.url || '';
@@ -524,17 +542,53 @@ export default function ConnectivityPerformance({ token, uiConfig, onManage }: C
         const type = (config.type || endpoint.type || 'HTTP').toUpperCase();
         const isHttp = type === 'HTTP' || type === 'HTTPS';
         
+        let initialCodes = config.expectedStatusCodes || config.expected_status_codes;
+        if (!initialCodes || !Array.isArray(initialCodes)) {
+            initialCodes = [200, 201, 202, 204, 301, 302, 304, 307, 308];
+        }
+
         setEditingProbe({
             _originalName: config.name || endpoint.name,
             name: config.name || endpoint.name || '',
             type,
             target: config.target || endpoint.target || '',
             timeout: config.timeout || (type === 'PING' ? 2000 : 5000),
-            frequency: config.frequency || (isHttp ? 300 : 60),
+            frequency: config.frequency || (type === 'CLOUD' ? 600 : isHttp ? 300 : 60),
             enabled: config.enabled ?? true,
+            expectedStatusCodes: initialCodes,
+            expectedStatusCodesInput: initialCodes.join(', '),
             content_match: config.content_match ? { ...config.content_match } : { enabled: false, mode: 'contains', value: '', case_sensitive: false }
         });
         setIsEditModalOpen(true);
+    };
+
+    const handleQuickAddStatusCode = async (statusCode: number) => {
+        if (!selectedEndpoint) return;
+        try {
+            const res = await gFetch('/api/connectivity/custom', { headers: authHeaders() });
+            const allEndpoints = await res.json();
+            const origName = (selectedEndpoint.name || '').toLowerCase();
+            const index = Array.isArray(allEndpoints) ? allEndpoints.findIndex((p: any) => (p.name || '').toLowerCase() === origName) : -1;
+            if (index >= 0) {
+                const currentCodes: number[] = Array.isArray(allEndpoints[index].expectedStatusCodes)
+                    ? allEndpoints[index].expectedStatusCodes
+                    : (Array.isArray(allEndpoints[index].expected_status_codes)
+                        ? allEndpoints[index].expected_status_codes
+                        : [200, 201, 202, 204, 301, 302, 304, 307, 308]);
+                if (!currentCodes.includes(statusCode)) {
+                    allEndpoints[index].expectedStatusCodes = [...currentCodes, statusCode];
+                    await gFetch('/api/connectivity/custom', {
+                        method: 'POST',
+                        headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ endpoints: allEndpoints })
+                    });
+                    await fetchProbesConfig();
+                    await fetchStatsAndResults();
+                }
+            }
+        } catch (e) {
+            console.error('Failed to quick-add status code', e);
+        }
     };
 
     const handleSaveProbeEdit = async () => {
@@ -552,15 +606,26 @@ export default function ConnectivityPerformance({ token, uiConfig, onManage }: C
                 formattedTarget = `${editingProbe.type.toLowerCase()}://${formattedTarget}`;
             }
 
-            const updatedProbe = {
+            const updatedProbe: any = {
                 name: editingProbe.name.trim(),
                 type: editingProbe.type,
                 target: formattedTarget,
                 timeout: Number(editingProbe.timeout) || 5000,
-                frequency: Number(editingProbe.frequency) || (['HTTP', 'HTTPS', 'CLOUD'].includes(editingProbe.type) ? 300 : 60),
+                frequency: Number(editingProbe.frequency) || (editingProbe.type === 'CLOUD' ? 600 : ['HTTP', 'HTTPS'].includes(editingProbe.type) ? 300 : 60),
                 enabled: editingProbe.enabled ?? true,
                 ...(editingProbe.content_match?.enabled ? { content_match: editingProbe.content_match } : { content_match: { enabled: false } })
             };
+
+            if (editingProbe.type === 'HTTP' || editingProbe.type === 'HTTPS') {
+                if (typeof editingProbe.expectedStatusCodesInput === 'string') {
+                    const parsed = editingProbe.expectedStatusCodesInput.split(',').map((s: string) => parseInt(s.trim())).filter((n: number) => !isNaN(n));
+                    if (parsed.length > 0) {
+                        updatedProbe.expectedStatusCodes = parsed;
+                    }
+                } else if (Array.isArray(editingProbe.expectedStatusCodes)) {
+                    updatedProbe.expectedStatusCodes = editingProbe.expectedStatusCodes;
+                }
+            }
 
             let updatedList = Array.isArray(allEndpoints) ? [...allEndpoints] : [];
             if (index >= 0) {
@@ -586,6 +651,44 @@ export default function ConnectivityPerformance({ token, uiConfig, onManage }: C
             console.error('Failed to update probe:', err);
         } finally {
             setIsSavingProbe(false);
+        }
+    };
+
+    const handleDeleteProbe = async (probeToDelete?: any) => {
+        const targetProbe = probeToDelete || editingProbe;
+        if (!targetProbe || !targetProbe.name) return;
+        if (!isLeader) {
+            alert('Probes can only be deleted from the Leader node.');
+            return;
+        }
+        const confirmDelete = window.confirm(`Are you sure you want to delete probe "${targetProbe.name}"?\nThis probe will be permanently deleted and synchronized across the fleet.`);
+        if (!confirmDelete) return;
+
+        setIsDeletingProbe(true);
+        try {
+            const probeNameEncoded = encodeURIComponent(targetProbe.name);
+            const res = await gFetch(`/api/connectivity/custom/${probeNameEncoded}`, {
+                method: 'DELETE',
+                headers: authHeaders()
+            });
+            if (!res.ok) {
+                const errData = await res.json().catch(() => ({}));
+                throw new Error(errData.error || `HTTP ${res.status}`);
+            }
+
+            setIsEditModalOpen(false);
+            if (selectedEndpoint && (selectedEndpoint.name || '').toLowerCase() === (targetProbe.name || '').toLowerCase()) {
+                setShowDetailModal(false);
+                setSelectedEndpoint(null);
+                setInspectedCapture(null);
+            }
+            await fetchProbesConfig();
+            await fetchStatsAndResults();
+        } catch (e: any) {
+            console.error('Failed to delete probe', e);
+            alert(`Failed to delete probe: ${e.message || 'Unknown error'}`);
+        } finally {
+            setIsDeletingProbe(false);
         }
     };
 
@@ -907,6 +1010,7 @@ export default function ConnectivityPerformance({ token, uiConfig, onManage }: C
                                                 const found = (endpoints || []).find((ep: any) => ep.id === e.id || ep.name === e.name);
                                                 if (found) {
                                                     setSelectedEndpoint(found);
+                                                    setInspectedCapture(null);
                                                     setShowDetailModal(true);
                                                 }
                                             }}
@@ -1239,6 +1343,18 @@ export default function ConnectivityPerformance({ token, uiConfig, onManage }: C
                                         >
                                             <Pencil size={16} />
                                         </button>
+                                        {isLeader && (
+                                            <button
+                                                onClick={(ev) => {
+                                                    ev.stopPropagation();
+                                                    handleDeleteProbe(e);
+                                                }}
+                                                className="p-2 rounded-lg transition-all border border-transparent flex items-center justify-center text-text-muted hover:bg-red-500/10 hover:text-red-400 hover:border-red-500/20"
+                                                title="Delete Probe (Leader only)"
+                                            >
+                                                <Trash2 size={16} />
+                                            </button>
+                                        )}
                                     </div>
                                 </td>
                             </tr>
@@ -1246,7 +1362,7 @@ export default function ConnectivityPerformance({ token, uiConfig, onManage }: C
                         {/* Normal probes with results */}
                         {endpoints.map(e => (
                             <tr key={e.id} 
-                                onClick={(ev) => { ev.stopPropagation(); setSelectedEndpoint(e); setShowDetailModal(true); }}
+                                onClick={(ev) => { ev.stopPropagation(); setSelectedEndpoint(e); setInspectedCapture(null); setShowDetailModal(true); }}
                                 className={cn(
                                 "hover:bg-card-secondary transition-colors group cursor-pointer",
                                 !e.enabled && "opacity-40"
@@ -1377,6 +1493,18 @@ export default function ConnectivityPerformance({ token, uiConfig, onManage }: C
                                         >
                                             <Pencil size={16} />
                                         </button>
+                                        {isLeader && (
+                                            <button
+                                                onClick={(ev) => {
+                                                    ev.stopPropagation();
+                                                    handleDeleteProbe(e);
+                                                }}
+                                                className="p-2 rounded-lg transition-all border border-transparent flex items-center justify-center text-text-muted hover:bg-red-500/10 hover:text-red-400 hover:border-red-500/20"
+                                                title="Delete Probe (Leader only)"
+                                            >
+                                                <Trash2 size={16} />
+                                            </button>
+                                        )}
                                     </div>
                                 </td>
                             </tr>
@@ -1426,6 +1554,22 @@ export default function ConnectivityPerformance({ token, uiConfig, onManage }: C
                             </div>
                             <div className="flex items-center gap-2">
                                 <button
+                                    onClick={() => startEditProbe(selectedEndpoint)}
+                                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-card-secondary hover:bg-card-secondary/80 text-text-primary border border-border text-xs font-semibold transition-all"
+                                    title="Edit probe parameters"
+                                >
+                                    <Pencil size={14} /> Edit
+                                </button>
+                                {isLeader && (
+                                    <button
+                                        onClick={() => handleDeleteProbe(selectedEndpoint)}
+                                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20 text-xs font-semibold transition-all"
+                                        title="Delete this probe (Leader only)"
+                                    >
+                                        <Trash2 size={14} /> Delete
+                                    </button>
+                                )}
+                                <button
                                     onClick={() => setTracerouteTarget(selectedEndpoint.target || selectedEndpoint.lastResult?.url || '')}
                                     className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-500/10 hover:bg-blue-500/20 text-blue-500 dark:text-blue-400 border border-blue-500/20 text-xs font-semibold transition-all"
                                     title="Trace path to this endpoint"
@@ -1437,6 +1581,7 @@ export default function ConnectivityPerformance({ token, uiConfig, onManage }: C
                                 </button>
                             </div>
                         </div>
+
 
                         {/* ── Content Match Info Banner (visible when enabled) ── */}
                         {(selectedEndpoint as any).content_match?.enabled && (() => {
@@ -1634,13 +1779,30 @@ export default function ConnectivityPerformance({ token, uiConfig, onManage }: C
                                             </tr>
                                         </thead>
                                         <tbody className="divide-y divide-border">
-                                            {selectedEndpointResults.slice(0, maxCaptures).map((r, i) => (
-                                                <tr key={i} className="hover:bg-card-secondary transition-colors">
-                                                    <td className="px-4 py-3 text-text-primary font-bold uppercase tracking-tighter whitespace-nowrap">{formatTimestamp(r.timestamp)}</td>
-                                                    <td className="px-4 py-3 text-center">
-                                                        <span className={cn("font-black px-2 py-0.5 rounded text-[11px]", r.score >= 80 ? "text-green-600 dark:text-green-400" : "text-red-500")}>
-                                                            {r.score}
-                                                        </span>
+                                            {selectedEndpointResults.slice(0, maxCaptures).map((r, i) => {
+                                                const isSelected = inspectedCapture === r || (!inspectedCapture && i === 0);
+                                                return (
+                                                <tr 
+                                                    key={i} 
+                                                    onClick={() => setInspectedCapture(r)}
+                                                    className={cn(
+                                                        "transition-colors cursor-pointer",
+                                                        isSelected ? "bg-indigo-500/10 hover:bg-indigo-500/15" : "hover:bg-card-secondary"
+                                                    )}
+                                                >
+                                                    <td className="px-4 py-3 text-text-primary font-bold uppercase tracking-tighter whitespace-nowrap">
+                                                        <div className="flex items-center gap-1.5">
+                                                            {isSelected && <span className="w-1.5 h-1.5 rounded-full bg-indigo-500 animate-pulse shrink-0" />}
+                                                            {formatTimestamp(r.timestamp)}
+                                                        </div>
+                                                    </td>
+                                                    <td className="px-4 py-3 text-center" onClick={(e) => { e.stopPropagation(); setInspectedCapture(r); }}>
+                                                        <InteractiveScoreBadge
+                                                            score={r.score}
+                                                            probe={selectedEndpoint}
+                                                            result={r}
+                                                            onClick={() => setInspectedCapture(r)}
+                                                        />
                                                     </td>
                                                     {(selectedEndpoint.type.includes('HTTP') || selectedEndpoint.type === 'CLOUD') && (
                                                         <>
@@ -1679,11 +1841,20 @@ export default function ConnectivityPerformance({ token, uiConfig, onManage }: C
                                                         </td>
                                                     )}
                                                 </tr>
-                                            ))}
+                                                );
+                                            })}
                                         </tbody>
                                     </table>
                                 </div>
                             </div>
+
+                            {/* ── Dynamic DEM Score Breakdown & Explainer Card (placed at bottom) ── */}
+                            <ProbeScoreCard
+                                probe={selectedEndpoint}
+                                result={inspectedCapture || selectedEndpointResults[0]}
+                                onQuickFixStatus={handleQuickAddStatusCode}
+                                onOpenEditModal={() => startEditProbe(selectedEndpoint)}
+                            />
                         </div>
                     </div>
                 </div>
@@ -1729,7 +1900,7 @@ export default function ConnectivityPerformance({ token, uiConfig, onManage }: C
                                         onChange={e => {
                                             const t = e.target.value;
                                             const isHttp = t === 'HTTP' || t === 'HTTPS';
-                                            const defaultFreq = isHttp ? 300 : 60;
+                                            const defaultFreq = t === 'CLOUD' ? 600 : isHttp ? 300 : 60;
                                             setEditingProbe({ ...editingProbe, type: t, timeout: t === 'PING' ? 2000 : 5000, frequency: defaultFreq });
                                         }}
                                     >
@@ -1763,7 +1934,7 @@ export default function ConnectivityPerformance({ token, uiConfig, onManage }: C
                                 <div className="space-y-2">
                                     <div className="flex items-center justify-between ml-1 leading-none">
                                         <label className="text-[9px] font-black text-text-muted tracking-[0.2em] uppercase">Freq (s)</label>
-                                        <span className="text-[8px] font-bold text-text-muted/50 tracking-wider">MIN 30 — MAX 3600 — default: HTTP/S=300 · other=60</span>
+                                        <span className="text-[8px] font-bold text-text-muted/50 tracking-wider">MIN 30 — MAX 3600 — default: Cloud=600 · HTTP/S=300 · other=60</span>
                                     </div>
                                     <input
                                         type="number"
@@ -1771,10 +1942,11 @@ export default function ConnectivityPerformance({ token, uiConfig, onManage }: C
                                         max="3600"
                                         step="10"
                                         className="w-full bg-card-secondary border border-border text-text-primary rounded-xl px-4 py-3 outline-none focus:ring-1 focus:ring-blue-500 text-[11px] font-black tracking-widest shadow-inner transition-all"
-                                        value={editingProbe.frequency || 300}
+                                        value={editingProbe.frequency || (editingProbe.type === 'CLOUD' ? 600 : 300)}
                                         onChange={e => {
                                             const val = parseInt(e.target.value);
-                                            setEditingProbe({ ...editingProbe, frequency: isNaN(val) ? 300 : Math.min(3600, Math.max(30, val)) });
+                                            const fallback = editingProbe.type === 'CLOUD' ? 600 : 300;
+                                            setEditingProbe({ ...editingProbe, frequency: isNaN(val) ? fallback : Math.min(3600, Math.max(30, val)) });
                                         }}
                                     />
                                 </div>
@@ -1870,20 +2042,91 @@ export default function ConnectivityPerformance({ token, uiConfig, onManage }: C
                                 </div>
                             )}
 
-                            <div className="flex justify-end gap-3 pt-4 border-t border-border">
-                                <button
-                                    onClick={() => setIsEditModalOpen(false)}
-                                    className="px-5 py-2.5 rounded-xl border border-border text-text-muted hover:text-text-primary hover:bg-card-secondary font-bold text-xs transition-all"
-                                >
-                                    Cancel
-                                </button>
-                                <button
-                                    onClick={handleSaveProbeEdit}
-                                    disabled={isSavingProbe || !editingProbe.name || !editingProbe.target}
-                                    className="px-6 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-black text-xs uppercase tracking-wider transition-all disabled:opacity-50 shadow-lg shadow-blue-500/20"
-                                >
-                                    {isSavingProbe ? 'Saving...' : 'Save Parameters'}
-                                </button>
+                            {/* Expected HTTP Status Codes (HTTP/HTTPS only) */}
+                            {(editingProbe.type === 'HTTP' || editingProbe.type === 'HTTPS') && (
+                                <div className="border border-border rounded-xl p-4 space-y-3 bg-card-secondary/30">
+                                    <div className="flex items-center justify-between">
+                                        <label className="text-[10px] font-black uppercase tracking-widest text-text-primary">
+                                            Expected HTTP Status Codes (Valid SLA)
+                                        </label>
+                                        <span className="text-[9px] text-text-muted opacity-60 font-bold uppercase tracking-widest">
+                                            Any other 4xx/5xx status code will cap score at 20
+                                        </span>
+                                    </div>
+                                    <input
+                                        type="text"
+                                        placeholder="e.g.: 200, 201, 204, 301, 302, 429"
+                                        className="w-full bg-card-secondary border border-border text-text-primary rounded-xl px-4 py-3 outline-none focus:ring-1 focus:ring-blue-500 text-[11px] font-mono shadow-inner transition-all"
+                                        value={editingProbe.expectedStatusCodesInput ?? (Array.isArray(editingProbe.expectedStatusCodes) ? editingProbe.expectedStatusCodes.join(', ') : '200, 201, 202, 204, 301, 302, 304, 307, 308')}
+                                        onChange={e => setEditingProbe({ ...editingProbe, expectedStatusCodesInput: e.target.value })}
+                                    />
+                                    {/* Preset quick buttons */}
+                                    <div className="flex items-center gap-1.5 flex-wrap pt-1">
+                                        <span className="text-[9px] font-bold text-text-muted uppercase tracking-wider mr-1">Presets:</span>
+                                        {[
+                                            { label: 'Standard (200-308)', codes: '200, 201, 202, 204, 301, 302, 304, 307, 308' },
+                                            { label: '+ 429 (Rate-Limit)', addCode: '429' },
+                                            { label: '+ 401/403 (Auth)', addCode: '401, 403' },
+                                            { label: '200 Strict', codes: '200' },
+                                        ].map((preset, pIdx) => (
+                                            <button
+                                                key={pIdx}
+                                                type="button"
+                                                onClick={() => {
+                                                    if (preset.codes) {
+                                                        setEditingProbe({ ...editingProbe, expectedStatusCodesInput: preset.codes });
+                                                    } else if (preset.addCode) {
+                                                        const current = editingProbe.expectedStatusCodesInput || (Array.isArray(editingProbe.expectedStatusCodes) ? editingProbe.expectedStatusCodes.join(', ') : '200, 204');
+                                                        const parts = current.split(',').map((s: string) => s.trim()).filter(Boolean);
+                                                        const toAdd = preset.addCode.split(',').map((s: string) => s.trim()).filter(Boolean);
+                                                        const merged = Array.from(new Set([...parts, ...toAdd])).join(', ');
+                                                        setEditingProbe({ ...editingProbe, expectedStatusCodesInput: merged });
+                                                    }
+                                                }}
+                                                className="px-2 py-0.5 rounded text-[9px] font-bold border border-border bg-card-secondary/70 hover:bg-card-secondary text-text-secondary hover:text-text-primary transition-all cursor-pointer"
+                                            >
+                                                {preset.label}
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+
+                            <div className="flex items-center justify-between gap-3 pt-4 border-t border-border">
+                                {isLeader ? (
+                                    <button
+                                        type="button"
+                                        onClick={() => handleDeleteProbe()}
+                                        disabled={isDeletingProbe}
+                                        className="px-4 py-2.5 rounded-xl border border-red-500/30 bg-red-500/10 hover:bg-red-500/20 text-red-400 hover:text-red-300 font-bold text-xs flex items-center gap-1.5 transition-all shadow-sm cursor-pointer disabled:opacity-50"
+                                        title="Delete this probe (Leader only)"
+                                    >
+                                        <Trash2 size={14} />
+                                        {isDeletingProbe ? 'Deleting...' : 'Delete Probe'}
+                                    </button>
+                                ) : (
+                                    <div className="flex items-center gap-1.5 text-[11px] text-text-muted/60 select-none">
+                                        <Shield size={13} className="text-amber-400/80" />
+                                        <span>Deletion managed on Leader</span>
+                                    </div>
+                                )}
+                                <div className="flex items-center gap-3">
+                                    <button
+                                        type="button"
+                                        onClick={() => setIsEditModalOpen(false)}
+                                        className="px-5 py-2.5 rounded-xl border border-border text-text-muted hover:text-text-primary hover:bg-card-secondary font-bold text-xs transition-all cursor-pointer"
+                                    >
+                                        Cancel
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={handleSaveProbeEdit}
+                                        disabled={isSavingProbe || !editingProbe.name || !editingProbe.target}
+                                        className="px-6 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-black text-xs uppercase tracking-wider transition-all disabled:opacity-50 shadow-lg shadow-blue-500/20 cursor-pointer"
+                                    >
+                                        {isSavingProbe ? 'Saving...' : 'Save Parameters'}
+                                    </button>
+                                </div>
                             </div>
                         </div>
                     </div>

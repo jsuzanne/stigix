@@ -2861,10 +2861,23 @@ app.get('/api/vyos/history', authenticateToken, (req, res) => {
     res.json(vyosScheduler.getHistory(limit));
 });
 
-// Interactive Direct Action Execution (e.g. from Topology Canvas or Quick Controls)
-app.post('/api/vyos/direct-action', authenticateToken, async (req, res) => {
+// Interactive Direct Action Execution (e.g. from Topology Canvas, Quick Controls, AI Copilot, or MCP)
+const handleDirectVyosAction = async (req: any, res: any) => {
     try {
-        const { routerId, routerName, interface: iface, command, params, source = 'Topology Action' } = req.body;
+        const body = req.body || {};
+        const routerId = body.routerId || body.router_id;
+        const routerName = body.routerName || body.router_name;
+        const iface = body.interface;
+        const command = body.command;
+        const source = body.source || (req.path.includes('adhoc') ? 'AdHoc Action' : 'Topology Action');
+        const params = body.params || body.parameters || {
+            latency_ms: body.latency_ms,
+            loss_pct: body.loss_pct,
+            corruption_pct: body.corruption_pct,
+            rate: body.rate,
+            ip: body.ip
+        };
+
         if (!routerId && !routerName) {
             return res.status(400).json({ success: false, error: 'routerId or routerName is required' });
         }
@@ -2876,7 +2889,7 @@ app.post('/api/vyos/direct-action', authenticateToken, async (req, res) => {
         let targetRouterId = routerId;
         const allRouters = vyosManager.getRouters();
         if (routerName) {
-            const found = allRouters.find(r => 
+            const found = allRouters.find((r: any) => 
                 (r.name && r.name.toLowerCase() === routerName.toLowerCase()) || 
                 (r.id && r.id.toLowerCase() === routerName.toLowerCase())
             );
@@ -2900,6 +2913,24 @@ app.post('/api/vyos/direct-action', authenticateToken, async (req, res) => {
             success: true,
             ...result
         });
+    } catch (e: any) {
+        res.status(500).json({ success: false, error: e.message });
+    }
+};
+
+app.post('/api/vyos/direct-action', authenticateToken, handleDirectVyosAction);
+app.post('/api/vyos/adhoc', authenticateToken, handleDirectVyosAction);
+app.post('/api/vyos/action', authenticateToken, handleDirectVyosAction);
+
+// Compatibility alias for router state audit via query param ?router_id=...
+app.get('/api/vyos/state', authenticateToken, async (req, res) => {
+    try {
+        const routerId = (req.query.router_id || req.query.routerId || req.query.id) as string;
+        if (!routerId) {
+            return res.status(400).json({ success: false, error: 'router_id is required' });
+        }
+        const state = await vyosManager.getState(routerId);
+        res.json(state);
     } catch (e: any) {
         res.status(500).json({ success: false, error: e.message });
     }
@@ -4162,7 +4193,7 @@ app.get('/api/traffic/history', authenticateToken, async (req, res) => {
 });
 
 // API: Get Applications (Categorized)
-app.get('/api/config/apps', extractUserMiddleware, (req, res) => {
+app.get(['/api/config/apps', '/api/traffic/apps'], extractUserMiddleware, (req, res) => {
     if (!fs.existsSync(APPLICATIONS_CONFIG_FILE)) return res.json({ error: 'Config not found' });
 
     const config = JSON.parse(fs.readFileSync(APPLICATIONS_CONFIG_FILE, 'utf8'));
@@ -4736,6 +4767,29 @@ const saveCustomConnectivityEndpoints = (endpoints: any[]) => {
     }
 };
 
+const getFullEffectiveConnectivityProbes = () => {
+    const isLeader = typeof registryManager?.isLeader === 'function' 
+        ? registryManager.isLeader() 
+        : (registryManager?.getStatus?.()?.mode === 'leader');
+    const envProbes = getEnvConnectivityEndpoints();
+    const rawCustom = getCustomConnectivityEndpoints();
+    const custom = (provisioningManager && !isLeader) 
+        ? provisioningManager.getEnrichedEffectiveItems('connectivity-probes', rawCustom) 
+        : rawCustom;
+    const discovered = discoveryManager ? discoveryManager.getProbes() : [];
+    const autoMesh = getAutoMeshProbes();
+
+    // Merge custom state into env probes and serve them all
+    const mergedEnvProbes = envProbes.map((p: any) => {
+        const override = custom.find((cp: any) => cp.name === p.name);
+        return override ? { ...p, ...override } : p;
+    });
+
+    const pureCustom = custom.filter((p: any) => !envProbes.find(ep => ep.name === p.name));
+
+    return [...mergedEnvProbes, ...pureCustom, ...discovered, ...autoMesh];
+};
+
 // API: Refresh Discovered Connectivity Probes
 app.post('/api/probes/discovery/sync', authenticateToken, async (req, res) => {
     try {
@@ -4754,30 +4808,16 @@ app.post('/api/probes/discovery/sync', authenticateToken, async (req, res) => {
 // API: Get active probes list (dynamic + static)
 app.get('/api/connectivity/active-probes', authenticateToken, (req, res) => {
     try {
-        const envProbes = getEnvConnectivityEndpoints();
-        const customProbes = getCustomConnectivityEndpoints();
-        const discoveredProbes = discoveryManager.getProbes();
-        const autoMeshProbes = getAutoMeshProbes();
-
-        // Merge env state with custom
-        const mergedEnvProbes = envProbes.map((p: any) => {
-            const override = customProbes.find((cp: any) => cp.name === p.name);
-            return override ? { ...p, enabled: override.enabled } : p;
-        });
-
-        // Unique custom probes
-        const pureCustom = customProbes.filter((p: any) => !envProbes.find(ep => ep.name === p.name));
-
-        // Return all known probes so the frontend knows they exist (even if paused/disabled)
-        const allProbes = [...mergedEnvProbes, ...pureCustom, ...discoveredProbes, ...autoMeshProbes];
+        const allProbes = getFullEffectiveConnectivityProbes();
 
         res.json({
             success: true,
             probes: allProbes.map(p => ({
-                id: p.name.toLowerCase().replace(/\s+/g, '-'),
+                id: (p.name || p.id || '').toLowerCase().replace(/\s+/g, '-'),
                 name: p.name,
-                type: p.type.toUpperCase(),
-                target: p.target
+                type: (p.type || 'PING').toUpperCase(),
+                target: p.target,
+                enabled: p.enabled !== false
             }))
         });
     } catch (error) {
@@ -4788,19 +4828,7 @@ app.get('/api/connectivity/active-probes', authenticateToken, (req, res) => {
 app.get('/api/connectivity/test', authenticateToken, async (req, res) => {
     // console.log('[CONNECTIVITY] Starting internet connectivity test...'); // Silenced to reduce noise
 
-    const envProbes = getEnvConnectivityEndpoints();
-    const customProbes = getCustomConnectivityEndpoints();
-
-    const mergedEnvProbes = envProbes.map((p: any) => {
-        const override = customProbes.find((cp: any) => cp.name === p.name);
-        return override ? { ...p, enabled: override.enabled } : p;
-    });
-
-    const testEndpoints: any[] = [
-        ...mergedEnvProbes.filter((p: any) => p.enabled !== false),
-        ...customProbes.filter((p: any) => !envProbes.find(ep => ep.name === p.name) && p.enabled !== false),
-        ...getAutoMeshProbes()
-    ];
+    const testEndpoints: any[] = getFullEffectiveConnectivityProbes().filter((p: any) => p.enabled !== false);
 
     const results = [];
     for (const endpoint of testEndpoints) {
@@ -4837,7 +4865,7 @@ app.get('/api/connectivity/test', authenticateToken, async (req, res) => {
     });
 });
 
-app.get('/api/connectivity/public-ip', authenticateToken, async (req, res) => {
+app.get(['/api/connectivity/public-ip', '/api/system/public-ip'], authenticateToken, async (req, res) => {
     try {
         // 1. Attempt Cloudflare Target Probe first (robust, no rate limits, authenticates TSG)
         if (targetManager) {
@@ -4853,29 +4881,75 @@ app.get('/api/connectivity/public-ip', authenticateToken, async (req, res) => {
                         source: 'cloudflare'
                     });
                 }
-                log('API', '[Public IP] Cloudflare probe failed or missing data, falling back to ipapi.co', 'debug');
+                log('API', '[Public IP] Cloudflare probe failed or missing data, falling back to ifconfig.co', 'debug');
             } catch (err: any) {
-                log('API', `[Public IP] Cloudflare probe exception: ${err.message}, falling back to ipapi.co`, 'debug');
+                log('API', `[Public IP] Cloudflare probe exception: ${err.message}, falling back to ifconfig.co`, 'debug');
             }
         }
 
-        // 2. Fallback to ipapi.co
-        // ipapi.co returns JSON with ip, country_code, city — free, no key required (1k req/day)
-        const response = await fetch('https://ipapi.co/json/', {
-            headers: { 'User-Agent': 'stigix-dem-monitor/1.0' }
-        });
-        if (response.ok) {
-            const data = await response.json() as any;
-            res.json({
-                ip: data.ip,
-                countryCode: data.country_code || null,
-                country: data.country_name || null,
-                city: data.city || null,
-                source: 'ipapi'
+        // 2. Fallback to ifconfig.co (JSON response, high limits)
+        try {
+            const ifconfigRes = await fetch('https://ifconfig.co/json', {
+                headers: { 'User-Agent': 'curl/7.81.0' },
+                signal: AbortSignal.timeout(4000)
             });
-        } else {
-            res.status(500).json({ error: 'Failed to fetch public IP from fallback' });
+            if (ifconfigRes.ok) {
+                const data = await ifconfigRes.json() as any;
+                if (data && data.ip) {
+                    return res.json({
+                        ip: data.ip,
+                        countryCode: data.country_iso || null,
+                        country: data.country || null,
+                        city: data.city || null,
+                        source: 'ifconfig.co'
+                    });
+                }
+            }
+        } catch (e: any) {
+            log('API', `[Public IP] ifconfig.co failed (${e.message}), trying api.ipify.org`, 'debug');
         }
+
+        // 3. Fallback to api.ipify.org (ultra lightweight, reliable)
+        try {
+            const ipifyRes = await fetch('https://api.ipify.org?format=json', {
+                headers: { 'User-Agent': 'stigix-dem-monitor/1.0' },
+                signal: AbortSignal.timeout(4000)
+            });
+            if (ipifyRes.ok) {
+                const data = await ipifyRes.json() as any;
+                if (data && data.ip) {
+                    return res.json({
+                        ip: data.ip,
+                        countryCode: null,
+                        country: null,
+                        city: null,
+                        source: 'ipify'
+                    });
+                }
+            }
+        } catch (e: any) {
+            log('API', `[Public IP] ipify failed (${e.message}), trying ipapi.co`, 'debug');
+        }
+
+        // 4. Fallback to ipapi.co
+        try {
+            const response = await fetch('https://ipapi.co/json/', {
+                headers: { 'User-Agent': 'stigix-dem-monitor/1.0' },
+                signal: AbortSignal.timeout(4000)
+            });
+            if (response.ok) {
+                const data = await response.json() as any;
+                return res.json({
+                    ip: data.ip,
+                    countryCode: data.country_code || null,
+                    country: data.country_name || null,
+                    city: data.city || null,
+                    source: 'ipapi'
+                });
+            }
+        } catch {}
+
+        res.status(500).json({ error: 'Failed to fetch public IP from all external resolvers' });
     } catch (e: any) {
         res.status(500).json({ error: e.message });
     }
@@ -5053,28 +5127,6 @@ app.all('/api/network/traceroute', authenticateToken, async (req, res) => {
 });
 
 
-const getFullEffectiveConnectivityProbes = () => {
-    const isLeader = typeof registryManager?.isLeader === 'function' 
-        ? registryManager.isLeader() 
-        : (registryManager?.getStatus?.()?.mode === 'leader');
-    const envProbes = getEnvConnectivityEndpoints();
-    const rawCustom = getCustomConnectivityEndpoints();
-    const custom = (provisioningManager && !isLeader) 
-        ? provisioningManager.getEnrichedEffectiveItems('connectivity-probes', rawCustom) 
-        : rawCustom;
-    const discovered = discoveryManager ? discoveryManager.getProbes() : [];
-    const autoMesh = getAutoMeshProbes();
-
-    // Merge custom state into env probes and serve them all
-    const mergedEnvProbes = envProbes.map((p: any) => {
-        const override = custom.find((cp: any) => cp.name === p.name);
-        return override ? { ...p, ...override } : p;
-    });
-
-    const pureCustom = custom.filter((p: any) => !envProbes.find(ep => ep.name === p.name));
-
-    return [...mergedEnvProbes, ...pureCustom, ...discovered, ...autoMesh];
-};
 
 // API: Get Custom Connectivity Endpoints
 app.get('/api/connectivity/custom', authenticateToken, (req, res) => {
@@ -5141,6 +5193,29 @@ app.post('/api/connectivity/custom', authenticateToken, async (req, res) => {
         res.json({ success: true, count: endpoints.length });
     } else {
         res.status(500).json({ error: 'Failed to save custom endpoints' });
+    }
+});
+
+// API: Delete Custom Connectivity Probe (Leader only)
+app.delete('/api/connectivity/custom/:name', authenticateToken, async (req, res) => {
+    const isLeader = typeof registryManager?.isLeader === 'function'
+        ? registryManager.isLeader()
+        : (registryManager?.getStatus?.()?.mode === 'leader' || !registryManager?.getStatus?.()?.remote_url);
+
+    if (!isLeader) {
+        return res.status(403).json({ error: 'Probes can only be deleted from the Leader node.' });
+    }
+
+    const targetName = decodeURIComponent(req.params.name).trim().toLowerCase();
+    const currentEndpoints = getFullEffectiveConnectivityProbes();
+    const updatedEndpoints = currentEndpoints.filter((p: any) => (p.name || '').trim().toLowerCase() !== targetName);
+
+    const success = await applyCustomConnectivityEndpoints(updatedEndpoints);
+    if (success) {
+        log('DEM', `Probe "${req.params.name}" deleted by Leader and fleet bundle synced.`);
+        res.json({ success: true, name: req.params.name });
+    } else {
+        res.status(500).json({ error: 'Failed to delete probe' });
     }
 });
 
@@ -5260,18 +5335,8 @@ app.get('/api/connectivity/results', authenticateToken, async (req, res) => {
 app.get('/api/connectivity/stats', authenticateToken, async (req, res) => {
     const { range } = req.query;
 
-    const envProbes = getEnvConnectivityEndpoints();
-    const customProbes = getCustomConnectivityEndpoints();
-    const discoveredProbes = discoveryManager.getProbes();
-
-    const mergedEnvProbes = envProbes.map((p: any) => {
-        const override = customProbes.find((cp: any) => cp.name === p.name);
-        return override ? { ...p, enabled: override.enabled } : p;
-    });
-    const pureCustom = customProbes.filter((p: any) => !envProbes.find(ep => ep.name === p.name));
-
-    const allProbes = [...mergedEnvProbes, ...pureCustom, ...discoveredProbes];
-    const activeProbeIds = allProbes.filter((p: any) => p.enabled !== false).map((p: any) => p.name.toLowerCase().replace(/\s+/g, '-'));
+    const allProbes = getFullEffectiveConnectivityProbes();
+    const activeProbeIds = allProbes.filter((p: any) => p.enabled !== false).map((p: any) => (p.name || p.id || '').toLowerCase().replace(/\s+/g, '-'));
 
     // Read globalScoreTypes from ui-config
     let globalScoreTypes: string[] | undefined;
@@ -5321,12 +5386,8 @@ const startConnectivityMonitor = () => {
     console.log(`[DEM] Starting background connectivity monitoring (Tick every 10s)`);
 
     const runMonitorTick = async () => {
-        const rawEndpoints: any[] = [
-            ...getEnvConnectivityEndpoints(),
-            ...getCustomConnectivityEndpoints(),
-            ...discoveryManager.getProbes(),
-            ...getAutoMeshProbes()
-        ].filter(p => p.enabled !== false); // Only run probes that are not disabled
+        const rawEndpoints: any[] = getFullEffectiveConnectivityProbes()
+            .filter((p: any) => p.enabled !== false); // Only run probes that are not disabled
 
         // Deduplicate endpoints by type:name to avoid collision
         const seenKeys = new Set<string>();
@@ -5345,9 +5406,8 @@ const startConnectivityMonitor = () => {
 
         for (const endpoint of testEndpoints) {
             const key = `${endpoint.type}:${endpoint.name}`;
-            if (isRunning.has(key)) continue;
-
-            const freqMs = (endpoint.frequency || 60) * 1000;
+            const defaultFreqSec = endpoint.type === 'CLOUD' ? 600 : (['HTTP', 'HTTPS'].includes(endpoint.type) ? 300 : 60);
+            const freqMs = (endpoint.frequency || defaultFreqSec) * 1000;
             const lastRun = lastRunMap.get(key) || 0; // Default to 0 forces immediate execution
 
             if (now - lastRun >= freqMs) {
@@ -6929,7 +6989,7 @@ const updateAppsWeigth = (updates: Record<string, number>, res: any) => {
 };
 
 // API: Export Applications (Download applications.txt format from JSON)
-app.get('/api/config/applications/export', authenticateToken, (req, res) => {
+app.get(['/api/config/applications/export', '/api/traffic/config'], authenticateToken, (req, res) => {
     try {
         if (!fs.existsSync(APPLICATIONS_CONFIG_FILE)) {
             return res.status(404).json({ error: 'Applications config not found' });
@@ -8844,7 +8904,18 @@ app.post('/api/config/cloud/test', authenticateToken, async (req, res) => {
             res.json({ success: true });
         } else {
             const body = await testRes.text();
-            res.json({ success: false, error: `HTTP ${testRes.status}${body ? ': ' + body.substring(0, 80) : ''}` });
+            let errMsg = `HTTP ${testRes.status}`;
+            if (testRes.status === 429) {
+                if (body.includes('1027')) {
+                    errMsg = `HTTP 429: Cloudflare Worker daily quota exceeded (Error 1027). The Free plan limit of 100k req/day was reached on target.stigix.io.`;
+                } else {
+                    errMsg = `HTTP 429: Rate limit exceeded on Worker endpoint.`;
+                }
+            } else if (body) {
+                const cleanBody = body.replace(/<[^>]*>?/gm, '').replace(/\s+/g, ' ').trim();
+                errMsg += `: ${cleanBody.substring(0, 100)}`;
+            }
+            res.json({ success: false, error: errMsg });
         }
     } catch (e: any) {
         res.json({ success: false, error: e.message });

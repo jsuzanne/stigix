@@ -37,6 +37,23 @@ npx tsx tests/test-copilot-suite.ts --host=http://localhost:8080 --user=admin --
 npx tsx tests/test-copilot-suite.ts --host=http://192.168.123.102:8080 --token=<JWT_TOKEN>
 ```
 
+### Natural Language Prompt Runner (End-to-End LLM Validation)
+
+In addition to direct tool testing, validate real conversational prompts against live LLMs (DeepSeek, Claude) streaming via SSE:
+
+```bash
+cd web-dashboard
+
+# Run all natural language prompt scenarios against live node
+npx tsx tests/test-copilot-prompts.ts --host=http://192.168.123.102:8080
+
+# Run a single scenario (e.g., Aircall on BR1)
+npx tsx tests/test-copilot-prompts.ts --host=http://192.168.123.102:8080 --only=dem-probe-aircall-br1
+
+# Run with live verbose streaming text
+npx tsx tests/test-copilot-prompts.ts --host=http://192.168.123.102:8080 --verbose
+```
+
 ## Mandatory Regression Policy: Test On Every Bug (TDD)
 
 > [!IMPORTANT]
