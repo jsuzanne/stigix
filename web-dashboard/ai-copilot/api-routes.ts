@@ -23,9 +23,11 @@ export function createAiCopilotRouter(aiManager: AiManager): Router {
     // POST /api/copilot/config — Update AI configuration
     router.post('/config', (req: Request, res: Response) => {
         try {
-            const { apiKey, defaultModel, requireConfirmation, enabled } = req.body;
+            const { apiKey, deepseekApiKey, provider, defaultModel, requireConfirmation, enabled } = req.body;
             const updated = aiManager.saveConfig({
                 ...(apiKey !== undefined ? { apiKey: String(apiKey).trim() } : {}),
+                ...(deepseekApiKey !== undefined ? { deepseekApiKey: String(deepseekApiKey).trim() } : {}),
+                ...(provider !== undefined ? { provider } : {}),
                 ...(defaultModel ? { defaultModel: String(defaultModel).trim() } : {}),
                 ...(requireConfirmation !== undefined ? { requireConfirmation: Boolean(requireConfirmation) } : {}),
                 ...(enabled !== undefined ? { enabled: Boolean(enabled) } : {})
@@ -36,12 +38,12 @@ export function createAiCopilotRouter(aiManager: AiManager): Router {
         }
     });
 
-    // POST /api/copilot/test-key — Test an Anthropic API Key
+    // POST /api/copilot/test-key — Test an Anthropic or DeepSeek API Key
     router.post('/test-key', async (req: Request, res: Response) => {
         try {
-            const { apiKey } = req.body;
-            const result = await aiManager.testApiKey(String(apiKey || '').trim());
-            res.json({ success: result.valid, valid: result.valid, error: result.error });
+            const { apiKey, provider } = req.body;
+            const result = await aiManager.testApiKey(String(apiKey || '').trim(), provider);
+            res.json({ success: result.valid, valid: result.valid, provider: result.provider, error: result.error, models: result.models });
         } catch (e: any) {
             res.status(500).json({ success: false, valid: false, error: e.message });
         }

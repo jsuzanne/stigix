@@ -2020,11 +2020,17 @@ export async function executeCopilotTool(
                     );
 
                     const targetId = matched?.testId || testId;
-                    const stopRes = await fetch(`${nodeCtx.baseUrl}/api/convergence/stop`, {
-                        method: 'POST',
-                        headers: nodeCtx.headers,
-                        body: JSON.stringify({ enabled: false })
-                    }).catch(() => {});
+                    let stopData: any = null;
+                    try {
+                        const stopRes = await fetch(`${nodeCtx.baseUrl}/api/convergence/stop`, {
+                            method: 'POST',
+                            headers: nodeCtx.headers,
+                            body: JSON.stringify({ enabled: false })
+                        });
+                        if (stopRes.ok) {
+                            stopData = await stopRes.json().catch(() => null);
+                        }
+                    } catch {}
 
                     // 2. Wait up to 3 seconds for backend to flush and write the final stats to history
                     let finalMetrics: any = null;

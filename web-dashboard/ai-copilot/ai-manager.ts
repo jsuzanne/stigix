@@ -1,6 +1,7 @@
 /**
  * Stigix In-App AI Copilot — Core AI Manager
- * Manages BYOK key storage, Anthropic Messages API communication, tool dispatching, and streaming SSE responses.
+ * Multi-Provider BYOK Engine: Anthropic Messages API & DeepSeek API (V3 / R1)
+ * Handles BYOK key storage, tool dispatching, and streaming SSE responses.
  */
 
 import fs from 'fs';
@@ -9,6 +10,7 @@ import crypto from 'crypto';
 import {
     AiConfig,
     AiPublicConfig,
+    AiProvider,
     CopilotSession,
     CopilotMessage,
     CopilotToolCall
@@ -16,15 +18,22 @@ import {
 import { COPILOT_TOOLS, executeCopilotTool, ToolExecutionContext } from './ai-tools.js';
 
 export const AVAILABLE_MODELS = [
-    { id: 'claude-sonnet-4-5-20250929', name: 'Claude Sonnet 4.5 (Recommended)', description: 'Best balance of intelligence, speed, and tool calling precision' },
-    { id: 'claude-haiku-4-5-20251001', name: 'Claude Haiku 4.5 (Fast)', description: 'Ultra-fast response time for rapid diagnostics' },
-    { id: 'claude-sonnet-4-6', name: 'Claude Sonnet 4.6', description: 'Next-gen Sonnet reasoning engine' },
-    { id: 'claude-sonnet-5', name: 'Claude Sonnet 5 (Latest)', description: 'Flagship frontier intelligence for complex network orchestration' },
-    { id: 'claude-opus-4-5-20251101', name: 'Claude Opus 4.5', description: 'High-capability model for complex multi-step diagnostics' }
+    // Anthropic Claude
+    { id: 'claude-sonnet-4-5-20250929', provider: 'anthropic' as AiProvider, name: 'Claude Sonnet 4.5 (Recommended)', description: 'Best balance of intelligence, speed, and tool calling precision' },
+    { id: 'claude-haiku-4-5-20251001', provider: 'anthropic' as AiProvider, name: 'Claude Haiku 4.5 (Fast)', description: 'Ultra-fast response time for rapid diagnostics' },
+    { id: 'claude-sonnet-4-6', provider: 'anthropic' as AiProvider, name: 'Claude Sonnet 4.6', description: 'Next-gen Sonnet reasoning engine' },
+    { id: 'claude-sonnet-5', provider: 'anthropic' as AiProvider, name: 'Claude Sonnet 5 (Latest)', description: 'Flagship frontier intelligence for complex network orchestration' },
+    { id: 'claude-opus-4-5-20251101', provider: 'anthropic' as AiProvider, name: 'Claude Opus 4.5', description: 'High-capability model for complex multi-step diagnostics' },
+    // DeepSeek
+    { id: 'deepseek-chat', provider: 'deepseek' as AiProvider, name: 'DeepSeek-V3 (Chat)', description: 'High performance general LLM with full tool calling support' },
+    { id: 'deepseek-reasoner', provider: 'deepseek' as AiProvider, name: 'DeepSeek-R1 (Reasoner)', description: 'Reasoning model with chain-of-thought and deep diagnostics' }
 ];
 
 export function normalizeModelId(modelId?: string): string {
     if (!modelId) return 'claude-sonnet-4-5-20250929';
+    if (modelId === 'deepseek-chat' || modelId === 'deepseek-reasoner') {
+        return modelId;
+    }
     if (modelId.includes('3-5-sonnet') || modelId.includes('3-7-sonnet')) {
         return 'claude-sonnet-4-5-20250929';
     }
@@ -68,11 +77,16 @@ export class AiManager {
     }
 
     private loadConfig(): AiConfig {
-        const envKey = process.env.ANTHROPIC_API_KEY || '';
+        const envAnthropicKey = process.env.ANTHROPIC_API_KEY || '';
+        const envDeepseekKey = process.env.DEEPSEEK_API_KEY || '';
+        const defaultProvider: AiProvider = (envDeepseekKey && !envAnthropicKey) ? 'deepseek' : 'anthropic';
+
         const defaultCfg: AiConfig = {
             enabled: true,
-            apiKey: envKey,
-            defaultModel: 'claude-sonnet-4-5-20250929',
+            provider: defaultProvider,
+            apiKey: envAnthropicKey,
+            deepseekApiKey: envDeepseekKey,
+            defaultModel: defaultProvider === 'deepseek' ? 'deepseek-chat' : 'claude-sonnet-4-5-20250929',
             requireConfirmation: true,
             maxTokensPerRequest: 8192
         };
@@ -83,8 +97,10 @@ export class AiManager {
                 return {
                     ...defaultCfg,
                     ...saved,
-                    apiKey: saved.apiKey || envKey,
-                    defaultModel: normalizeModelId(saved.defaultModel)
+                    apiKey: saved.apiKey || envAnthropicKey,
+                    deepseekApiKey: saved.deepseekApiKey || envDeepseekKey,
+                    provider: saved.provider || (saved.deepseekApiKey && !saved.apiKey ? 'deepseek' : defaultCfg.provider),
+                    defaultModel: normalizeModelId(saved.defaultModel || defaultCfg.defaultModel)
                 };
             } catch {}
         }
@@ -92,11 +108,39 @@ export class AiManager {
     }
 
     public saveConfig(patch: Partial<AiConfig>): AiPublicConfig {
-        this.config = {
+        const updated: AiConfig = {
             ...this.config,
-            ...patch,
-            defaultModel: normalizeModelId(patch.defaultModel || this.config.defaultModel)
+            ...patch
         };
+
+        // Auto-detect provider if apiKey is supplied without explicit provider
+        if (patch.apiKey && !patch.provider) {
+            if (patch.apiKey.startsWith('sk-ant-')) {
+                updated.provider = 'anthropic';
+            } else if (patch.apiKey.startsWith('sk-')) {
+                updated.provider = 'deepseek';
+                updated.deepseekApiKey = patch.apiKey;
+            }
+        }
+
+        if (patch.deepseekApiKey) {
+            updated.deepseekApiKey = patch.deepseekApiKey;
+            if (!patch.provider && !patch.apiKey) {
+                updated.provider = 'deepseek';
+            }
+        }
+
+        if (patch.defaultModel) {
+            updated.defaultModel = normalizeModelId(patch.defaultModel);
+            if (updated.defaultModel.startsWith('deepseek-') && !patch.provider) {
+                updated.provider = 'deepseek';
+            } else if (updated.defaultModel.startsWith('claude-') && !patch.provider) {
+                updated.provider = 'anthropic';
+            }
+        }
+
+        this.config = updated;
+
         try {
             fs.writeFileSync(this.configPath, JSON.stringify(this.config, null, 2), 'utf8');
             try { fs.chmodSync(this.configPath, 0o600); } catch {}
@@ -107,13 +151,17 @@ export class AiManager {
     }
 
     public getPublicConfig(): AiPublicConfig {
-        const key = (this.config.apiKey || '').trim();
-        let masked = '';
-        if (key.length > 10) {
-            masked = `${key.substring(0, 10)}••••••••••••${key.substring(key.length - 4)}`;
-        } else if (key.length > 0) {
-            masked = '••••••••••••';
-        }
+        const anthropicKey = (this.config.apiKey || '').trim();
+        const deepseekKey = (this.config.deepseekApiKey || '').trim();
+
+        const maskKey = (key: string) => {
+            if (key.length > 10) {
+                return `${key.substring(0, 8)}••••••••••••${key.substring(key.length - 4)}`;
+            } else if (key.length > 0) {
+                return '••••••••••••';
+            }
+            return '';
+        };
 
         const envVal = (
             process.env.ENABLE_AI_COPILOT ||
@@ -125,13 +173,18 @@ export class AiManager {
         ).toLowerCase().trim();
 
         const featureEnabled = envVal === 'true' || envVal === '1' || envVal === 'yes' || envVal === 'on';
+        const hasAnthropic = Boolean(anthropicKey && anthropicKey.length > 5);
+        const hasDeepseek = Boolean(deepseekKey && deepseekKey.length > 5);
 
         return {
             enabled: this.config.enabled !== false,
             featureEnabled,
-            hasKey: Boolean(key && key.length > 5),
-            maskedKey: masked,
-            keyMasked: masked,
+            provider: this.config.provider || (hasDeepseek && !hasAnthropic ? 'deepseek' : 'anthropic'),
+            hasKey: hasAnthropic || hasDeepseek,
+            maskedKey: maskKey(anthropicKey),
+            keyMasked: maskKey(anthropicKey),
+            hasDeepseekKey: hasDeepseek,
+            maskedDeepseekKey: maskKey(deepseekKey),
             defaultModel: normalizeModelId(this.config.defaultModel),
             requireConfirmation: this.config.requireConfirmation !== false,
             models: AVAILABLE_MODELS
@@ -198,67 +251,125 @@ export class AiManager {
     }
 
     /**
-     * Validates an Anthropic API Key using the official /v1/models endpoint.
+     * Validates an API Key against Anthropic or DeepSeek.
      */
-    public async testApiKey(apiKey: string): Promise<{ valid: boolean; error?: string; models?: string[] }> {
-        if (!apiKey || !apiKey.startsWith('sk-ant-')) {
-            return { valid: false, error: 'Invalid API key format. Key must start with "sk-ant-"' };
+    public async testApiKey(
+        apiKey: string,
+        providerHint?: 'anthropic' | 'deepseek'
+    ): Promise<{ valid: boolean; provider?: 'anthropic' | 'deepseek'; error?: string; models?: string[] }> {
+        const key = (apiKey || '').trim();
+        if (!key) {
+            return { valid: false, error: 'API key is required' };
         }
 
-        try {
-            // 1. First test authentication and retrieve available models
-            const modelsRes = await fetch('https://api.anthropic.com/v1/models', {
-                method: 'GET',
-                headers: {
-                    'x-api-key': apiKey,
-                    'anthropic-version': '2023-06-01'
+        const isAnthropic = providerHint === 'anthropic' || key.startsWith('sk-ant-');
+
+        if (isAnthropic) {
+            try {
+                const modelsRes = await fetch('https://api.anthropic.com/v1/models', {
+                    method: 'GET',
+                    headers: {
+                        'x-api-key': key,
+                        'anthropic-version': '2023-06-01'
+                    }
+                });
+
+                if (modelsRes.ok) {
+                    const modelsData: any = await modelsRes.json().catch(() => ({}));
+                    const availableModels = (modelsData?.data || []).map((m: any) => m.id);
+                    return { valid: true, provider: 'anthropic', models: availableModels };
                 }
-            });
 
-            if (modelsRes.ok) {
-                const modelsData: any = await modelsRes.json().catch(() => ({}));
-                const availableModels = (modelsData?.data || []).map((m: any) => m.id);
-                console.log(`[COPILOT_TEST_KEY] Key is valid! Available models:`, availableModels);
-                return { valid: true, models: availableModels };
+                if (modelsRes.status === 401) {
+                    return { valid: false, provider: 'anthropic', error: 'Authentication failed: Invalid Anthropic API key.' };
+                }
+                if (modelsRes.status === 403) {
+                    const errData: any = await modelsRes.json().catch(() => ({}));
+                    return { valid: false, provider: 'anthropic', error: errData?.error?.message || 'Access forbidden: Check Anthropic permissions.' };
+                }
+            } catch (e: any) {
+                console.log('[COPILOT_TEST_KEY] Anthropic models endpoint error:', e);
             }
 
-            const errData: any = await modelsRes.json().catch(() => ({}));
-            console.log(`[COPILOT_TEST_KEY] /v1/models status=${modelsRes.status}:`, errData);
+            // Fallback ping test
+            try {
+                const res = await fetch('https://api.anthropic.com/v1/messages', {
+                    method: 'POST',
+                    headers: {
+                        'x-api-key': key,
+                        'anthropic-version': '2023-06-01',
+                        'content-type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        model: 'claude-haiku-4-5-20251001',
+                        max_tokens: 10,
+                        messages: [{ role: 'user', content: 'Ping' }]
+                    })
+                });
 
-            if (modelsRes.status === 401) {
-                return { valid: false, error: 'Authentication failed: Invalid API key.' };
+                if (res.ok) {
+                    return { valid: true, provider: 'anthropic' };
+                }
+
+                const errData = await res.json().catch(() => ({}));
+                return { valid: false, provider: 'anthropic', error: errData?.error?.message || `HTTP ${res.status}: Anthropic validation error` };
+            } catch (e: any) {
+                return { valid: false, provider: 'anthropic', error: `Anthropic connection failed: ${e?.message || e}` };
             }
-            if (modelsRes.status === 403) {
-                return { valid: false, error: errData?.error?.message || 'Access forbidden: Check workspace permissions in Anthropic Console.' };
+        } else {
+            // DeepSeek validation
+            try {
+                const modelsRes = await fetch('https://api.deepseek.com/models', {
+                    method: 'GET',
+                    headers: {
+                        'Authorization': `Bearer ${key}`
+                    }
+                });
+
+                if (modelsRes.ok) {
+                    const data: any = await modelsRes.json().catch(() => ({}));
+                    const availableModels = (data?.data || []).map((m: any) => m.id);
+                    return {
+                        valid: true,
+                        provider: 'deepseek',
+                        models: availableModels.length ? availableModels : ['deepseek-chat', 'deepseek-reasoner']
+                    };
+                }
+
+                if (modelsRes.status === 401) {
+                    return { valid: false, provider: 'deepseek', error: 'Authentication failed: Invalid DeepSeek API key.' };
+                }
+                if (modelsRes.status === 402) {
+                    return { valid: false, provider: 'deepseek', error: 'DeepSeek account has insufficient balance / credits.' };
+                }
+            } catch (e: any) {
+                console.log('[COPILOT_TEST_KEY] DeepSeek /models fetch error:', e);
             }
-        } catch (e: any) {
-            console.log(`[COPILOT_TEST_KEY] /v1/models fetch failed:`, e);
-        }
 
-        // 2. Fallback: try pinging messages API with claude-haiku-4-5
-        try {
-            const res = await fetch('https://api.anthropic.com/v1/messages', {
-                method: 'POST',
-                headers: {
-                    'x-api-key': apiKey,
-                    'anthropic-version': '2023-06-01',
-                    'content-type': 'application/json'
-                },
-                body: JSON.stringify({
-                    model: 'claude-haiku-4-5-20251001',
-                    max_tokens: 10,
-                    messages: [{ role: 'user', content: 'Ping' }]
-                })
-            });
+            // Fallback: ping deepseek-chat completions
+            try {
+                const compRes = await fetch('https://api.deepseek.com/chat/completions', {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${key}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        model: 'deepseek-chat',
+                        max_tokens: 5,
+                        messages: [{ role: 'user', content: 'ping' }]
+                    })
+                });
 
-            if (res.ok) {
-                return { valid: true };
+                if (compRes.ok) {
+                    return { valid: true, provider: 'deepseek', models: ['deepseek-chat', 'deepseek-reasoner'] };
+                }
+
+                const errData = await compRes.json().catch(() => ({}));
+                return { valid: false, provider: 'deepseek', error: errData?.error?.message || `HTTP ${compRes.status}: DeepSeek validation failed` };
+            } catch (e: any) {
+                return { valid: false, provider: 'deepseek', error: `DeepSeek connection failed: ${e?.message || e}` };
             }
-
-            const errData = await res.json().catch(() => ({}));
-            return { valid: false, error: errData?.error?.message || `HTTP ${res.status}: Validation error` };
-        } catch (e: any) {
-            return { valid: false, error: `Connection failed: ${e?.message || e}` };
         }
     }
 
@@ -292,6 +403,7 @@ YOUR ROLE & BEHAVIOR:
 
     /**
      * Executes an SSE streaming chat session with multi-turn tool execution.
+     * Supports both Anthropic and DeepSeek providers seamlessly.
      */
     public async streamChat(
         sessionId: string,
@@ -299,11 +411,6 @@ YOUR ROLE & BEHAVIOR:
         modelOverride: string | undefined,
         sendEvent: (event: string, data: any) => void
     ): Promise<void> {
-        if (!this.config.apiKey) {
-            sendEvent('error', { type: 'error', error: 'No Anthropic API key configured. Please configure your key in Settings ➔ AI & Copilot.', message: 'No Anthropic API key configured. Please configure your key in Settings ➔ AI & Copilot.' });
-            return;
-        }
-
         let session = this.sessions.get(sessionId);
         if (!session) {
             session = this.createSession(modelOverride);
@@ -313,6 +420,23 @@ YOUR ROLE & BEHAVIOR:
         const model = normalizeModelId(rawModel);
         session.model = model;
         session.updatedAt = Date.now();
+
+        // Determine active provider & API key
+        const isDeepSeek = model.startsWith('deepseek-') || (this.config.provider === 'deepseek' && !model.startsWith('claude-'));
+        const activeProvider: AiProvider = isDeepSeek ? 'deepseek' : 'anthropic';
+        const activeApiKey = isDeepSeek
+            ? (this.config.deepseekApiKey || this.config.apiKey)
+            : (this.config.apiKey || this.config.deepseekApiKey);
+
+        if (!activeApiKey) {
+            const providerName = isDeepSeek ? 'DeepSeek' : 'Anthropic';
+            sendEvent('error', {
+                type: 'error',
+                error: `No ${providerName} API key configured. Please configure your key in Settings ➔ AI & Copilot.`,
+                message: `No ${providerName} API key configured. Please configure your key in Settings ➔ AI & Copilot.`
+            });
+            return;
+        }
 
         // If first user message, update session title
         if (session.messages.length === 0) {
@@ -327,12 +451,6 @@ YOUR ROLE & BEHAVIOR:
         };
         session.messages.push(userMsg);
 
-        // Convert session history to Anthropic API message format
-        const anthropicMessages: any[] = session.messages.map(m => ({
-            role: m.role,
-            content: m.content
-        }));
-
         const systemPrompt = this.buildSystemPrompt();
 
         const assistantMsg: CopilotMessage = {
@@ -344,7 +462,218 @@ YOUR ROLE & BEHAVIOR:
             toolCalls: []
         };
 
-        // Multi-turn loop: handles assistant text and sequential tool executions
+        if (activeProvider === 'deepseek') {
+            await this.streamDeepSeekChat(model, activeApiKey, systemPrompt, session, assistantMsg, sendEvent);
+        } else {
+            await this.streamAnthropicChat(model, activeApiKey, systemPrompt, session, assistantMsg, sendEvent);
+        }
+
+        session.messages.push(assistantMsg);
+        session.updatedAt = Date.now();
+        this.persistSessions();
+
+        sendEvent('done', {
+            type: 'done',
+            messageId: assistantMsg.id,
+            sessionId: session.id,
+            totalMessages: session.messages.length
+        });
+    }
+
+    /**
+     * DeepSeek execution loop (supports deepseek-chat with OpenAI tool calls, and deepseek-reasoner R1)
+     */
+    private async streamDeepSeekChat(
+        model: string,
+        apiKey: string,
+        systemPrompt: string,
+        session: CopilotSession,
+        assistantMsg: CopilotMessage,
+        sendEvent: (event: string, data: any) => void
+    ): Promise<void> {
+        const deepseekMessages: any[] = [
+            { role: 'system', content: systemPrompt },
+            ...session.messages.map(m => ({
+                role: m.role,
+                content: m.content
+            }))
+        ];
+
+        // DeepSeek-V3 supports function calling; DeepSeek-R1 reasoner does not currently support tools
+        const supportsTools = model === 'deepseek-chat';
+        const deepseekTools = supportsTools ? COPILOT_TOOLS.map(t => ({
+            type: 'function',
+            function: {
+                name: t.name,
+                description: t.description,
+                parameters: t.input_schema
+            }
+        })) : undefined;
+
+        let continueLoop = true;
+        let loopCount = 0;
+        const MAX_TOOL_LOOPS = 10;
+
+        while (continueLoop && loopCount < MAX_TOOL_LOOPS) {
+            loopCount++;
+            continueLoop = false;
+
+            try {
+                let response: Response | null = null;
+                let lastFetchErr: any = null;
+
+                const payload: any = {
+                    model,
+                    messages: deepseekMessages,
+                    max_tokens: this.config.maxTokensPerRequest || 4096
+                };
+
+                if (supportsTools && deepseekTools && deepseekTools.length > 0) {
+                    payload.tools = deepseekTools;
+                    payload.tool_choice = 'auto';
+                }
+
+                for (let attempt = 1; attempt <= 3; attempt++) {
+                    try {
+                        response = await fetch('https://api.deepseek.com/chat/completions', {
+                            method: 'POST',
+                            headers: {
+                                'Authorization': `Bearer ${apiKey}`,
+                                'Content-Type': 'application/json'
+                            },
+                            body: JSON.stringify(payload)
+                        });
+
+                        if (response.ok) break;
+
+                        if ([500, 502, 503, 504, 529].includes(response.status) && attempt < 3) {
+                            await new Promise(r => setTimeout(r, attempt * 1000));
+                            continue;
+                        }
+                        break;
+                    } catch (netErr: any) {
+                        lastFetchErr = netErr;
+                        if (attempt < 3) {
+                            await new Promise(r => setTimeout(r, attempt * 1000));
+                            continue;
+                        }
+                    }
+                }
+
+                if (!response) {
+                    throw lastFetchErr || new Error('Failed to reach DeepSeek API after 3 attempts');
+                }
+
+                if (!response.ok) {
+                    const errBody: any = await response.json().catch(() => ({}));
+                    const errMsg = errBody?.error?.message || `DeepSeek API error (HTTP ${response.status})`;
+                    sendEvent('error', { type: 'error', error: errMsg, message: errMsg });
+                    assistantMsg.content += `\n\n⚠️ **Error:** ${errMsg}`;
+                    break;
+                }
+
+                const data: any = await response.json();
+                const choice = data.choices?.[0];
+                const resMsg = choice?.message;
+
+                if (!resMsg) {
+                    throw new Error('Empty response from DeepSeek API');
+                }
+
+                // If DeepSeek-R1 returned reasoning_content, stream as formatted thought block
+                if (resMsg.reasoning_content) {
+                    assistantMsg.reasoning = resMsg.reasoning_content;
+                    const reasoningBlock = `> 💭 **DeepSeek Reasoning (R1):**\n> ${resMsg.reasoning_content.replace(/\n/g, '\n> ')}\n\n`;
+                    assistantMsg.content += reasoningBlock;
+                    sendEvent('chunk', { type: 'chunk', text: reasoningBlock, delta: reasoningBlock });
+                }
+
+                // Emit regular text content
+                if (resMsg.content) {
+                    assistantMsg.content += resMsg.content;
+                    sendEvent('chunk', { type: 'chunk', text: resMsg.content, delta: resMsg.content });
+                }
+
+                // Handle tool calls
+                const toolCalls = resMsg.tool_calls || [];
+                if (toolCalls.length > 0 && supportsTools) {
+                    deepseekMessages.push({
+                        role: 'assistant',
+                        content: resMsg.content || null,
+                        tool_calls: toolCalls
+                    });
+
+                    for (const tc of toolCalls) {
+                        let parsedInput: any = {};
+                        try {
+                            parsedInput = typeof tc.function?.arguments === 'string'
+                                ? JSON.parse(tc.function.arguments)
+                                : (tc.function?.arguments || {});
+                        } catch {
+                            parsedInput = {};
+                        }
+
+                        const toolCall: CopilotToolCall = {
+                            id: tc.id,
+                            tool: tc.function?.name,
+                            name: tc.function?.name,
+                            input: parsedInput,
+                            status: 'running'
+                        };
+                        assistantMsg.toolCalls?.push(toolCall);
+
+                        sendEvent('tool_call', {
+                            type: 'tool_call',
+                            toolCall
+                        });
+
+                        const execStart = Date.now();
+                        const result = await executeCopilotTool(toolCall.tool, parsedInput, this.executionContext);
+                        const dur = Date.now() - execStart;
+
+                        toolCall.output = result;
+                        toolCall.durationMs = dur;
+                        toolCall.status = result?.error ? 'failed' : 'completed';
+                        toolCall.error = result?.error;
+
+                        sendEvent('tool_call', {
+                            type: 'tool_call',
+                            toolCall
+                        });
+
+                        deepseekMessages.push({
+                            role: 'tool',
+                            tool_call_id: tc.id,
+                            content: JSON.stringify(result)
+                        });
+                    }
+
+                    continueLoop = true;
+                }
+
+            } catch (streamErr: any) {
+                sendEvent('error', { type: 'error', error: `DeepSeek stream failure: ${streamErr?.message || streamErr}`, message: `DeepSeek stream failure: ${streamErr?.message || streamErr}` });
+                break;
+            }
+        }
+    }
+
+    /**
+     * Anthropic Messages API execution loop
+     */
+    private async streamAnthropicChat(
+        model: string,
+        apiKey: string,
+        systemPrompt: string,
+        session: CopilotSession,
+        assistantMsg: CopilotMessage,
+        sendEvent: (event: string, data: any) => void
+    ): Promise<void> {
+        const anthropicMessages: any[] = session.messages.map(m => ({
+            role: m.role,
+            content: m.content
+        }));
+
         let continueLoop = true;
         let loopCount = 0;
         const MAX_TOOL_LOOPS = 10;
@@ -362,7 +691,7 @@ YOUR ROLE & BEHAVIOR:
                         response = await fetch('https://api.anthropic.com/v1/messages', {
                             method: 'POST',
                             headers: {
-                                'x-api-key': this.config.apiKey,
+                                'x-api-key': apiKey,
                                 'anthropic-version': '2023-06-01',
                                 'content-type': 'application/json'
                             },
@@ -381,7 +710,6 @@ YOUR ROLE & BEHAVIOR:
 
                         if (response.ok) break;
 
-                        // If transient server error (500, 502, 503, 504, 529), retry after backoff
                         if ([500, 502, 503, 504, 529].includes(response.status) && attempt < 3) {
                             await new Promise(r => setTimeout(r, attempt * 1000));
                             continue;
@@ -410,8 +738,6 @@ YOUR ROLE & BEHAVIOR:
 
                 const data: any = await response.json();
                 const contentBlocks = data.content || [];
-
-                // Process content blocks (text and tool_use)
                 const toolResults: any[] = [];
 
                 for (const block of contentBlocks) {
@@ -433,7 +759,6 @@ YOUR ROLE & BEHAVIOR:
                             toolCall
                         });
 
-                        // Execute tool locally
                         const execStart = Date.now();
                         const result = await executeCopilotTool(block.name, block.input || {}, this.executionContext);
                         const dur = Date.now() - execStart;
@@ -456,7 +781,6 @@ YOUR ROLE & BEHAVIOR:
                     }
                 }
 
-                // If tools were called, feed tool_results back to Claude for final synthesis
                 if (toolResults.length > 0 && data.stop_reason === 'tool_use') {
                     anthropicMessages.push({
                         role: 'assistant',
@@ -470,20 +794,9 @@ YOUR ROLE & BEHAVIOR:
                 }
 
             } catch (streamErr: any) {
-                sendEvent('error', { type: 'error', error: `Stream failure: ${streamErr?.message || streamErr}`, message: `Stream failure: ${streamErr?.message || streamErr}` });
+                sendEvent('error', { type: 'error', error: `Anthropic stream failure: ${streamErr?.message || streamErr}`, message: `Anthropic stream failure: ${streamErr?.message || streamErr}` });
                 break;
             }
         }
-
-        session.messages.push(assistantMsg);
-        session.updatedAt = Date.now();
-        this.persistSessions();
-
-        sendEvent('done', {
-            type: 'done',
-            messageId: assistantMsg.id,
-            sessionId: session.id,
-            totalMessages: session.messages.length
-        });
     }
 }

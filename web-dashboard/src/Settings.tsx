@@ -739,6 +739,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
     const [mcpStatus, setMcpStatus] = useState<{ online: boolean; status?: string; transport?: string; url?: string; error?: string } | null>(null);
     const [mcpHistory, setMcpHistory] = useState<{ entries: any[]; stats: { totalCalls: number; errorCount: number; avgDuration: number } } | null>(null);
     const [copilotConfig, setCopilotConfig] = useState<any>(null);
+    const [copilotProvider, setCopilotProvider] = useState<'anthropic' | 'deepseek'>('anthropic');
     const [copilotApiKey, setCopilotApiKey] = useState('');
     const [isSavingCopilot, setIsSavingCopilot] = useState(false);
     const [isTestingCopilot, setIsTestingCopilot] = useState(false);
@@ -1012,7 +1013,14 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
         const fetchCopilotConfig = () => {
             apiFetch('/api/copilot/config', { headers: authHeaders })
                 .then(r => r.ok ? r.json() : null)
-                .then(data => { if (data) setCopilotConfig(data.config || data); })
+                .then(data => {
+                    if (data) {
+                        const cfg = data.config || data;
+                        setCopilotConfig(cfg);
+                        if (cfg.provider) setCopilotProvider(cfg.provider);
+                        else if (cfg.hasDeepseekKey && !cfg.hasKey) setCopilotProvider('deepseek');
+                    }
+                })
                 .catch(() => {});
         };
         fetchCopilotConfig();
@@ -6807,7 +6815,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                                         <div className="flex items-center gap-3">
                                             <h2 className="text-lg font-black text-text-primary tracking-tight">Stigix In-App AI Copilot</h2>
                                             <span className="px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-wider bg-blue-500/10 text-blue-400 border border-blue-500/20">
-                                                BYOK Claude
+                                                {copilotProvider === 'deepseek' ? 'BYOK DeepSeek' : 'BYOK Claude'}
                                             </span>
                                         </div>
                                         <p className="text-[10px] font-bold text-text-muted tracking-widest mt-0.5 opacity-70">
@@ -6828,15 +6836,73 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                                 </div>
                             </div>
 
+                            {/* Provider Selection Tabs */}
+                            <div className="flex bg-card-secondary/70 p-1 rounded-xl border border-border mb-4 max-w-md">
+                                <button
+                                    type="button"
+                                    onClick={async () => {
+                                        setCopilotProvider('anthropic');
+                                        setCopilotApiKey('');
+                                        try {
+                                            const res = await apiFetch('/api/copilot/config', {
+                                                method: 'POST',
+                                                headers: authHeaders,
+                                                body: JSON.stringify({ provider: 'anthropic' })
+                                            });
+                                            if (res.ok) {
+                                                const d = await res.json();
+                                                setCopilotConfig(d.config || d);
+                                                onUpdateCopilotConfig?.();
+                                            }
+                                        } catch {}
+                                    }}
+                                    className={cn(
+                                        "flex-1 py-1.5 text-xs font-black rounded-lg transition-all",
+                                        copilotProvider === 'anthropic'
+                                            ? "bg-blue-600 text-white shadow-sm"
+                                            : "text-text-muted hover:text-text-primary"
+                                    )}
+                                >
+                                    Anthropic (Claude)
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={async () => {
+                                        setCopilotProvider('deepseek');
+                                        setCopilotApiKey('');
+                                        try {
+                                            const res = await apiFetch('/api/copilot/config', {
+                                                method: 'POST',
+                                                headers: authHeaders,
+                                                body: JSON.stringify({ provider: 'deepseek' })
+                                            });
+                                            if (res.ok) {
+                                                const d = await res.json();
+                                                setCopilotConfig(d.config || d);
+                                                onUpdateCopilotConfig?.();
+                                            }
+                                        } catch {}
+                                    }}
+                                    className={cn(
+                                        "flex-1 py-1.5 text-xs font-black rounded-lg transition-all",
+                                        copilotProvider === 'deepseek'
+                                            ? "bg-indigo-600 text-white shadow-sm"
+                                            : "text-text-muted hover:text-text-primary"
+                                    )}
+                                >
+                                    DeepSeek (V3 / R1)
+                                </button>
+                            </div>
+
                             <div className="space-y-4">
                                 <div className="bg-card-secondary/30 border border-border rounded-xl p-4 space-y-3">
                                     <div className="flex items-center justify-between">
                                         <label className="text-xs font-black uppercase tracking-wider text-text-primary">
-                                            Anthropic API Key
+                                            {copilotProvider === 'deepseek' ? 'DeepSeek API Key' : 'Anthropic API Key'}
                                         </label>
-                                        {copilotConfig?.hasKey && (
+                                        {(copilotProvider === 'deepseek' ? copilotConfig?.hasDeepseekKey : copilotConfig?.keyMasked) && (
                                             <span className="text-[11px] font-mono text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">
-                                                Active: {copilotConfig.keyMasked}
+                                                Active: {copilotProvider === 'deepseek' ? copilotConfig?.maskedDeepseekKey : copilotConfig?.keyMasked}
                                             </span>
                                         )}
                                     </div>
@@ -6845,7 +6911,11 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                                             type="password"
                                             value={copilotApiKey}
                                             onChange={(e) => setCopilotApiKey(e.target.value)}
-                                            placeholder={copilotConfig?.hasKey ? "Enter new key to replace..." : "sk-ant-api03-..."}
+                                            placeholder={
+                                                (copilotProvider === 'deepseek' ? copilotConfig?.hasDeepseekKey : copilotConfig?.keyMasked)
+                                                    ? "Enter new key to replace..."
+                                                    : (copilotProvider === 'deepseek' ? "sk-..." : "sk-ant-api03-...")
+                                            }
                                             className="flex-1 bg-card border border-border focus:border-blue-500 rounded-xl px-4 py-2 text-xs font-mono text-text-primary focus:outline-none shadow-inner"
                                         />
                                         <button
@@ -6857,10 +6927,13 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                                                     const res = await apiFetch('/api/copilot/test-key', {
                                                         method: 'POST',
                                                         headers: authHeaders,
-                                                        body: JSON.stringify({ apiKey: copilotApiKey.trim() })
+                                                        body: JSON.stringify({
+                                                            apiKey: copilotApiKey.trim(),
+                                                            provider: copilotProvider
+                                                        })
                                                     });
                                                     const d = await res.json();
-                                                    if (d.success || d.valid) toast.success('API Key validated successfully!');
+                                                    if (d.success || d.valid) toast.success(`${copilotProvider === 'deepseek' ? 'DeepSeek' : 'Anthropic'} API Key validated successfully!`);
                                                     else toast.error(`Validation failed: ${d.error}`);
                                                 } catch (e: any) {
                                                     toast.error(e.message || 'Test failed');
@@ -6879,16 +6952,29 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                                                 if (!copilotApiKey.trim()) return;
                                                 setIsSavingCopilot(true);
                                                 try {
+                                                    const bodyPayload: any = {
+                                                        provider: copilotProvider,
+                                                        ...(copilotProvider === 'deepseek'
+                                                            ? { deepseekApiKey: copilotApiKey.trim() }
+                                                            : { apiKey: copilotApiKey.trim() }
+                                                        )
+                                                    };
+                                                    if (copilotProvider === 'deepseek' && (copilotConfig?.defaultModel || '').startsWith('claude-')) {
+                                                        bodyPayload.defaultModel = 'deepseek-chat';
+                                                    } else if (copilotProvider === 'anthropic' && (copilotConfig?.defaultModel || '').startsWith('deepseek-')) {
+                                                        bodyPayload.defaultModel = 'claude-sonnet-4-5-20250929';
+                                                    }
+
                                                     const res = await apiFetch('/api/copilot/config', {
                                                         method: 'POST',
                                                         headers: authHeaders,
-                                                        body: JSON.stringify({ apiKey: copilotApiKey.trim() })
+                                                        body: JSON.stringify(bodyPayload)
                                                     });
                                                     if (res.ok) {
                                                         const d = await res.json();
                                                         setCopilotConfig(d.config || d);
                                                         setCopilotApiKey('');
-                                                        toast.success('Anthropic API key saved!');
+                                                        toast.success(`${copilotProvider === 'deepseek' ? 'DeepSeek' : 'Anthropic'} API key saved!`);
                                                         onUpdateCopilotConfig?.();
                                                     } else {
                                                         toast.error('Failed to save API key');
@@ -6900,25 +6986,32 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                                                 }
                                             }}
                                             disabled={!copilotApiKey.trim() || isSavingCopilot}
-                                            className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white text-xs font-black rounded-xl transition-all shadow-md active:scale-95 disabled:opacity-50"
+                                            className={cn(
+                                                "px-4 py-2 text-white text-xs font-black rounded-xl transition-all shadow-md active:scale-95 disabled:opacity-50",
+                                                copilotProvider === 'deepseek' ? "bg-indigo-600 hover:bg-indigo-500" : "bg-blue-600 hover:bg-blue-500"
+                                            )}
                                         >
                                             {isSavingCopilot ? 'Saving...' : 'Save Key'}
                                         </button>
-                                        {copilotConfig?.hasKey && (
+                                        {(copilotProvider === 'deepseek' ? copilotConfig?.hasDeepseekKey : copilotConfig?.keyMasked) && (
                                             <button
                                                 type="button"
                                                 onClick={async () => {
-                                                    if (!confirm('Are you sure you want to remove your Anthropic API key?')) return;
+                                                    const name = copilotProvider === 'deepseek' ? 'DeepSeek' : 'Anthropic';
+                                                    if (!confirm(`Are you sure you want to remove your ${name} API key?`)) return;
                                                     try {
+                                                        const payload = copilotProvider === 'deepseek'
+                                                            ? { deepseekApiKey: '' }
+                                                            : { apiKey: '' };
                                                         const res = await apiFetch('/api/copilot/config', {
                                                             method: 'POST',
                                                             headers: authHeaders,
-                                                            body: JSON.stringify({ apiKey: '' })
+                                                            body: JSON.stringify(payload)
                                                         });
                                                         if (res.ok) {
                                                             const d = await res.json();
-                                                            setCopilotConfig(d);
-                                                            toast.success('API key removed');
+                                                            setCopilotConfig(d.config || d);
+                                                            toast.success(`${name} API key removed`);
                                                             onUpdateCopilotConfig?.();
                                                         }
                                                     } catch {}
@@ -6930,39 +7023,51 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                                         )}
                                     </div>
                                     <p className="text-[11px] text-text-muted leading-relaxed">
-                                        Saved securely in <code className="font-mono text-text-primary">config/ai-config.json</code> (chmod 600). Direct proxy to Anthropic API — zero log sharing or retention.
+                                        Saved securely in <code className="font-mono text-text-primary">config/ai-config.json</code> (chmod 600). Direct proxy to {copilotProvider === 'deepseek' ? 'DeepSeek API' : 'Anthropic API'} — zero log sharing or retention.
                                     </p>
                                 </div>
 
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                     <div className="bg-card-secondary/30 border border-border rounded-xl p-4 space-y-2">
                                         <label className="text-xs font-black uppercase tracking-wider text-text-primary">
-                                            Default Claude Model
+                                            Default AI Model
                                         </label>
                                         <select
-                                            value={copilotConfig?.defaultModel || 'claude-sonnet-4-5-20250929'}
+                                            value={copilotConfig?.defaultModel || (copilotProvider === 'deepseek' ? 'deepseek-chat' : 'claude-sonnet-4-5-20250929')}
                                             onChange={async (e) => {
                                                 const model = e.target.value;
+                                                const isDs = model.startsWith('deepseek-');
                                                 try {
                                                     const res = await apiFetch('/api/copilot/config', {
                                                         method: 'POST',
                                                         headers: authHeaders,
-                                                        body: JSON.stringify({ defaultModel: model })
+                                                        body: JSON.stringify({
+                                                            defaultModel: model,
+                                                            provider: isDs ? 'deepseek' : 'anthropic'
+                                                        })
                                                     });
                                                     if (res.ok) {
                                                         const d = await res.json();
                                                         setCopilotConfig(d.config || d);
+                                                        if (isDs) setCopilotProvider('deepseek');
+                                                        else setCopilotProvider('anthropic');
                                                         toast.success(`Default model set to ${model}`);
                                                     }
                                                 } catch {}
                                             }}
                                             className="w-full bg-card border border-border focus:border-blue-500 rounded-xl px-3 py-2 text-xs font-bold text-text-primary focus:outline-none"
                                         >
-                                            <option value="claude-sonnet-4-5-20250929">Claude Sonnet 4.5 (Recommended)</option>
-                                            <option value="claude-haiku-4-5-20251001">Claude Haiku 4.5 (Fast)</option>
-                                            <option value="claude-sonnet-4-6">Claude Sonnet 4.6</option>
-                                            <option value="claude-sonnet-5">Claude Sonnet 5 (Latest)</option>
-                                            <option value="claude-opus-4-5-20251101">Claude Opus 4.5</option>
+                                            <optgroup label="Anthropic Claude">
+                                                <option value="claude-sonnet-4-5-20250929">Claude Sonnet 4.5 (Recommended)</option>
+                                                <option value="claude-haiku-4-5-20251001">Claude Haiku 4.5 (Fast)</option>
+                                                <option value="claude-sonnet-4-6">Claude Sonnet 4.6</option>
+                                                <option value="claude-sonnet-5">Claude Sonnet 5 (Latest)</option>
+                                                <option value="claude-opus-4-5-20251101">Claude Opus 4.5</option>
+                                            </optgroup>
+                                            <optgroup label="DeepSeek">
+                                                <option value="deepseek-chat">DeepSeek-V3 (Chat + Tools)</option>
+                                                <option value="deepseek-reasoner">DeepSeek-R1 (Reasoner / Thought Chain)</option>
+                                            </optgroup>
                                         </select>
                                     </div>
 
