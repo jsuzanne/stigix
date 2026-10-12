@@ -4813,7 +4813,7 @@ app.get('/api/connectivity/active-probes', authenticateToken, (req, res) => {
         res.json({
             success: true,
             probes: allProbes.map(p => ({
-                id: (p.id || p.name).toLowerCase().replace(/\s+/g, '-'),
+                id: (p.name || p.id || '').toLowerCase().replace(/\s+/g, '-'),
                 name: p.name,
                 type: (p.type || 'PING').toUpperCase(),
                 target: p.target,
@@ -5336,7 +5336,7 @@ app.get('/api/connectivity/stats', authenticateToken, async (req, res) => {
     const { range } = req.query;
 
     const allProbes = getFullEffectiveConnectivityProbes();
-    const activeProbeIds = allProbes.filter((p: any) => p.enabled !== false).map((p: any) => (p.id || p.name).toLowerCase().replace(/\s+/g, '-'));
+    const activeProbeIds = allProbes.filter((p: any) => p.enabled !== false).map((p: any) => (p.name || p.id || '').toLowerCase().replace(/\s+/g, '-'));
 
     // Read globalScoreTypes from ui-config
     let globalScoreTypes: string[] | undefined;
