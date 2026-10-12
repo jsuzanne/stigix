@@ -5391,9 +5391,8 @@ const startConnectivityMonitor = () => {
 
         for (const endpoint of testEndpoints) {
             const key = `${endpoint.type}:${endpoint.name}`;
-            if (isRunning.has(key)) continue;
-
-            const freqMs = (endpoint.frequency || 60) * 1000;
+            const defaultFreqSec = endpoint.type === 'CLOUD' ? 600 : (['HTTP', 'HTTPS'].includes(endpoint.type) ? 300 : 60);
+            const freqMs = (endpoint.frequency || defaultFreqSec) * 1000;
             const lastRun = lastRunMap.get(key) || 0; // Default to 0 forces immediate execution
 
             if (now - lastRun >= freqMs) {

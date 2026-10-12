@@ -3279,7 +3279,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                                                     onChange={e => {
                                                         const t = e.target.value as any;
                                                         const isHttp = t === 'HTTP' || t === 'HTTPS';
-                                                        const defaultFreq = isHttp ? 300 : 60;
+                                                        const defaultFreq = t === 'CLOUD' ? 600 : isHttp ? 300 : 60;
                                                         setNewProbe({ ...newProbe, type: t, timeout: t === 'PING' ? 2000 : 5000, frequency: defaultFreq });
                                                     }}
                                                 >
@@ -3313,7 +3313,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                                             <div className="space-y-2">
                                                 <div className="flex items-center justify-between ml-1 leading-none">
                                                     <label className="text-[9px] font-black text-text-muted tracking-[0.2em] uppercase">Freq (s)</label>
-                                                    <span className="text-[8px] font-bold text-text-muted/50 tracking-wider">MIN 30 — MAX 3600 — default: HTTP/S=300 · other=60</span>
+                                                    <span className="text-[8px] font-bold text-text-muted/50 tracking-wider">MIN 30 — MAX 3600 — default: Cloud=600 · HTTP/S=300 · other=60</span>
                                                 </div>
                                                 <input
                                                     type="number"
@@ -3321,10 +3321,11 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                                                     max="3600"
                                                     step="10"
                                                     className="w-full bg-card-secondary border border-border text-text-primary rounded-xl px-4 py-3 outline-none focus:ring-1 focus:ring-blue-500 text-[11px] font-black tracking-widest shadow-inner transition-all"
-                                                    value={newProbe.frequency || 300}
+                                                    value={newProbe.frequency || (newProbe.type === 'CLOUD' ? 600 : 300)}
                                                     onChange={e => {
                                                         const val = parseInt(e.target.value);
-                                                        setNewProbe({ ...newProbe, frequency: isNaN(val) ? 300 : Math.min(3600, Math.max(30, val)) });
+                                                        const fallback = newProbe.type === 'CLOUD' ? 600 : 300;
+                                                        setNewProbe({ ...newProbe, frequency: isNaN(val) ? fallback : Math.min(3600, Math.max(30, val)) });
                                                     }}
                                                 />
                                             </div>

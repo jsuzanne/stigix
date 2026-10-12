@@ -537,7 +537,7 @@ export default function ConnectivityPerformance({ token, uiConfig, onManage }: C
             type,
             target: config.target || endpoint.target || '',
             timeout: config.timeout || (type === 'PING' ? 2000 : 5000),
-            frequency: config.frequency || (isHttp ? 300 : 60),
+            frequency: config.frequency || (type === 'CLOUD' ? 600 : isHttp ? 300 : 60),
             enabled: config.enabled ?? true,
             expectedStatusCodes: initialCodes,
             expectedStatusCodesInput: initialCodes.join(', '),
@@ -595,7 +595,7 @@ export default function ConnectivityPerformance({ token, uiConfig, onManage }: C
                 type: editingProbe.type,
                 target: formattedTarget,
                 timeout: Number(editingProbe.timeout) || 5000,
-                frequency: Number(editingProbe.frequency) || (['HTTP', 'HTTPS', 'CLOUD'].includes(editingProbe.type) ? 300 : 60),
+                frequency: Number(editingProbe.frequency) || (editingProbe.type === 'CLOUD' ? 600 : ['HTTP', 'HTTPS'].includes(editingProbe.type) ? 300 : 60),
                 enabled: editingProbe.enabled ?? true,
                 ...(editingProbe.content_match?.enabled ? { content_match: editingProbe.content_match } : { content_match: { enabled: false } })
             };
@@ -1806,7 +1806,7 @@ export default function ConnectivityPerformance({ token, uiConfig, onManage }: C
                                         onChange={e => {
                                             const t = e.target.value;
                                             const isHttp = t === 'HTTP' || t === 'HTTPS';
-                                            const defaultFreq = isHttp ? 300 : 60;
+                                            const defaultFreq = t === 'CLOUD' ? 600 : isHttp ? 300 : 60;
                                             setEditingProbe({ ...editingProbe, type: t, timeout: t === 'PING' ? 2000 : 5000, frequency: defaultFreq });
                                         }}
                                     >
@@ -1840,7 +1840,7 @@ export default function ConnectivityPerformance({ token, uiConfig, onManage }: C
                                 <div className="space-y-2">
                                     <div className="flex items-center justify-between ml-1 leading-none">
                                         <label className="text-[9px] font-black text-text-muted tracking-[0.2em] uppercase">Freq (s)</label>
-                                        <span className="text-[8px] font-bold text-text-muted/50 tracking-wider">MIN 30 — MAX 3600 — default: HTTP/S=300 · other=60</span>
+                                        <span className="text-[8px] font-bold text-text-muted/50 tracking-wider">MIN 30 — MAX 3600 — default: Cloud=600 · HTTP/S=300 · other=60</span>
                                     </div>
                                     <input
                                         type="number"
@@ -1848,10 +1848,11 @@ export default function ConnectivityPerformance({ token, uiConfig, onManage }: C
                                         max="3600"
                                         step="10"
                                         className="w-full bg-card-secondary border border-border text-text-primary rounded-xl px-4 py-3 outline-none focus:ring-1 focus:ring-blue-500 text-[11px] font-black tracking-widest shadow-inner transition-all"
-                                        value={editingProbe.frequency || 300}
+                                        value={editingProbe.frequency || (editingProbe.type === 'CLOUD' ? 600 : 300)}
                                         onChange={e => {
                                             const val = parseInt(e.target.value);
-                                            setEditingProbe({ ...editingProbe, frequency: isNaN(val) ? 300 : Math.min(3600, Math.max(30, val)) });
+                                            const fallback = editingProbe.type === 'CLOUD' ? 600 : 300;
+                                            setEditingProbe({ ...editingProbe, frequency: isNaN(val) ? fallback : Math.min(3600, Math.max(30, val)) });
                                         }}
                                     />
                                 </div>
