@@ -172,7 +172,7 @@ function PeerStatusSync({
     };
 
     pollDash();
-    const interval = setInterval(pollDash, 10_000);
+    const interval = setInterval(pollDash, 5_000);
     return () => clearInterval(interval);
   }, [token, activePeerId]);
 
@@ -976,11 +976,11 @@ export default function App() {
       fetchTrafficStatus();
     }, 3000);
 
-    // Health Matrix polling every 10s
+    // Health Matrix polling every 5s
     const healthInterval = setInterval(() => {
       fetchHealthMatrix();
       fetchRegistryLeaderStatus();
-    }, 10000);
+    }, 5000);
 
     // History refresh every 60s silently (no spinner, no chart flash)
     const historyInterval = setInterval(() => {
@@ -1417,6 +1417,7 @@ export default function App() {
           publicIpCountry={publicIpCountry}
           gatewayIp={gatewayIp}
           localIp={localIp}
+          updateAvailable={Boolean(maintenance?.updateAvailable)}
           speedtestResult={speedtestResult}
           onRunSpeedtest={runSpeedtest}
           runningSpeedtest={runningSpeedtest}

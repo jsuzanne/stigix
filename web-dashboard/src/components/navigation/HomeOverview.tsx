@@ -29,6 +29,7 @@ interface HomeOverviewProps {
     speedtestResult?: any;
     onRunSpeedtest?: () => void;
     runningSpeedtest?: boolean;
+    updateAvailable?: boolean;
     onNavigate: (viewId: string, subTab?: string) => void;
     onOpenDiagnostics?: () => void;
 }
@@ -52,6 +53,7 @@ export const HomeOverview: React.FC<HomeOverviewProps> = ({
     speedtestResult,
     onRunSpeedtest,
     runningSpeedtest,
+    updateAvailable,
     onNavigate
 }) => {
     const { peers, activePeerId, activePeer } = usePeerContext();
@@ -80,17 +82,22 @@ export const HomeOverview: React.FC<HomeOverviewProps> = ({
         return !isNaN(num) && num > 0 ? num.toFixed(2) : '4.38';
     })();
     const voiceLossVal = (() => {
-        if (typeof voiceSub.avg_loss_pct === 'number') {
-            return voiceSub.avg_loss_pct;
-        }
+        // 1. Live Call Stats (array of calls identical to Voice.tsx calculation)
         if (Array.isArray(globalVoiceStatus?.stats) && globalVoiceStatus.stats.length > 0) {
-            const fin = globalVoiceStatus.stats.filter((c: any) => (c.loss_pct !== undefined || c.loss_percent !== undefined || c.loss !== undefined));
+            const fin = globalVoiceStatus.stats.filter((c: any) => c.event === 'end' && (c.loss_pct !== undefined || c.loss_percent !== undefined || c.loss !== undefined));
             if (fin.length > 0) {
                 return fin.reduce((a: number, c: any) => a + Number(c.loss_pct ?? c.loss_percent ?? c.loss ?? 0), 0) / fin.length;
             }
         }
-        if (typeof globalVoiceStatus?.avg_loss_pct === 'number') {
+        // 2. Subsystem values from health matrix
+        if (typeof voiceSub.avg_loss_pct === 'number' && voiceSub.avg_loss_pct > 0) {
+            return voiceSub.avg_loss_pct;
+        }
+        if (typeof globalVoiceStatus?.avg_loss_pct === 'number' && globalVoiceStatus.avg_loss_pct > 0) {
             return globalVoiceStatus.avg_loss_pct;
+        }
+        if (typeof voiceSub.avg_loss_pct === 'number') {
+            return voiceSub.avg_loss_pct;
         }
         return 0;
     })();
@@ -146,6 +153,14 @@ export const HomeOverview: React.FC<HomeOverviewProps> = ({
         return `${sec}s`;
     };
 
+    // Host CPU
+    const cpuUsage = typeof host.cpu_percent === 'number'
+        ? host.cpu_percent
+        : (typeof host.cpu_load_percent === 'number'
+            ? host.cpu_load_percent
+            : (typeof host.cpu === 'number' ? host.cpu : 0));
+    const cpuCores = host.cpu_cores || 2;
+
     // Host Memory
     const totalMemBytes = host.memory?.total_bytes || host.memory?.total || 0;
     const usedMemBytes = host.memory?.used_bytes || host.memory?.used || 0;
@@ -193,6 +208,16 @@ export const HomeOverview: React.FC<HomeOverviewProps> = ({
                                     <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-widest bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/30">
                                         {version}
                                     </span>
+                                )}
+                                {updateAvailable && (
+                                    <button
+                                        onClick={() => onNavigate('settings', 'maintenance')}
+                                        title="New version available! Click to open Maintenance & Updates"
+                                        className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-widest bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-600 dark:text-emerald-400 border border-emerald-500/40 hover:border-emerald-500/60 transition-all flex items-center gap-1.5 shadow-sm cursor-pointer animate-pulse"
+                                    >
+                                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                                        Update Available ›
+                                    </button>
                                 )}
                             </div>
 
@@ -329,9 +354,9 @@ export const HomeOverview: React.FC<HomeOverviewProps> = ({
 
                     {/* Cloudflare Registry */}
                     <div 
-                        onClick={() => onNavigate('settings', 'registry')}
+                        onClick={() => onNavigate('settings', 'probes')}
                         className="p-3.5 rounded-xl bg-slate-50 dark:bg-card-secondary/40 hover:bg-slate-100 dark:hover:bg-card-secondary/70 border border-slate-200 dark:border-[#1e293b]/70 hover:border-emerald-400 dark:hover:border-emerald-500/40 transition-all cursor-pointer group space-y-2"
-                        title="Click to configure Cloudflare Registry in Settings"
+                        title="Click to configure Cloudflare Probes & Master Key in Settings"
                     >
                         <div className="flex items-center justify-between">
                             <span className="text-xs font-bold text-slate-900 dark:text-white flex items-center gap-1.5 group-hover:text-emerald-600 dark:group-hover:text-emerald-300 transition-colors">
@@ -551,12 +576,12 @@ export const HomeOverview: React.FC<HomeOverviewProps> = ({
                             <span className="text-slate-600 dark:text-text-muted flex items-center gap-1.5 group-hover:text-pink-600 dark:group-hover:text-pink-300 transition-colors">
                                 <Cpu size={14} className="text-pink-500 dark:text-pink-400" /> CPU Load
                             </span>
-                            <span className="text-slate-900 dark:text-white font-mono">{host.cpu_percent || 21}% ({host.cpu_cores || 2} Cores)</span>
+                            <span className="text-slate-900 dark:text-white font-mono">{cpuUsage}% ({cpuCores} Cores)</span>
                         </div>
                         <div className="w-full bg-slate-200 dark:bg-[#1e293b] rounded-full h-2 overflow-hidden">
                             <div
                                 className="bg-gradient-to-r from-pink-500 to-rose-500 h-2 rounded-full transition-all duration-500"
-                                style={{ width: `${Math.min(host.cpu_percent || 21, 100)}%` }}
+                                style={{ width: `${Math.min(cpuUsage, 100)}%` }}
                             />
                         </div>
                     </div>

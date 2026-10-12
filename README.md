@@ -124,6 +124,14 @@ This project is my way to turn all that lab and demo experience into an open-sou
 
 The project is evolving rapidly with major features, engines, and UX refinements in every release.
 
+### 🚀 Stigix 3.0 — Mission Control, Unified SASE Rail Navigation & Fleet Mesh Intelligence *(v3.0.0)*
+
+- **🎛️ Mission Control Dashboard** — Unified 3-pillar executive overview: Network & Cloud (Prisma SD-WAN, Cloudflare Registry, Mesh), Simulation Engines (SaaS, VoIP RTP, DEM, Custom Apps, IoT), and Host & Underlay telemetry.
+- **🧭 SCM-Inspired Vertical Rail Navigation** — Collapsible modern sidebar, single-line header with active node badge, and fluid dark/light workspace layouts.
+- **🌐 Fleet Mesh Autodiscovery & Tunnel Routing** — Dynamic multi-site peer synchronization via Cloudflare Registry and local leader election with zero configuration.
+- **🎙️ Real-Time VoIP RTP Telemetry** — Sub-millisecond MOS, jitter, and packet loss monitoring with 1-decimal precision and multi-codec emulation (G.711, G.729, Opus).
+- **🛡️ Integrated Security & Threat Validation** — Real-time EICAR and malware inspection, synthetic DNS/URL/Threat engines, and expanded FastMCP AI Copilot tools.
+
 ### 🚀 Stigix 2.2 — Modernized Topology, Real-Time Failover & Multi-Arch Release *(v2.2.0)*
 
 - **🗺️ Modernized 4-Mode Topology Experience** — Dedicated views for WAN Transport (Physical), SD-WAN Mesh Overlay, SASE Fabric, and VyOS Underlay. Features direct carrier telemetry inspection drawers, responsive MacBook 13"/27" viewport auto-fit, and top transport filter ribbons.

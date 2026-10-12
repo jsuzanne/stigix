@@ -11579,11 +11579,23 @@ app.get('/api/system/health-matrix', authenticateToken, async (req, res) => {
         };
 
         // 7. Host Hardware & System Info
-        const totalMem = os.totalmem();
-        const freeMem = os.freemem();
-        const usedMem = totalMem - freeMem;
+        let totalMem = os.totalmem();
+        let freeMem = os.freemem();
+        try {
+            if (fs.existsSync('/proc/meminfo')) {
+                const memInfo = fs.readFileSync('/proc/meminfo', 'utf8');
+                const totalMatch = memInfo.match(/MemTotal:\s+(\d+)\s+kB/);
+                const availMatch = memInfo.match(/MemAvailable:\s+(\d+)\s+kB/);
+                if (totalMatch && availMatch) {
+                    totalMem = parseInt(totalMatch[1], 10) * 1024;
+                    freeMem = parseInt(availMatch[1], 10) * 1024;
+                }
+            }
+        } catch {}
+        const usedMem = Math.max(0, totalMem - freeMem);
         const cpus = os.cpus();
         const loadAvg = os.loadavg();
+        const cpuSample = sampleCpuPercent();
 
         let disk = { total: 0, used: 0, free: 0, usagePercent: 0 };
         try {
@@ -11606,7 +11618,8 @@ app.get('/api/system/health-matrix', authenticateToken, async (req, res) => {
             hostname: os.hostname(),
             platform: `${os.type()} ${os.release()}`,
             cpu_cores: cpus.length,
-            cpu_load_percent: sampleCpuPercent(),
+            cpu_percent: cpuSample,
+            cpu_load_percent: cpuSample,
             memory: {
                 total_bytes: totalMem,
                 used_bytes: usedMem,
@@ -11614,7 +11627,7 @@ app.get('/api/system/health-matrix', authenticateToken, async (req, res) => {
                 total: totalMem,
                 used: usedMem,
                 free: freeMem,
-                usage_percent: Math.round((usedMem / totalMem) * 100),
+                usage_percent: totalMem > 0 ? Math.round((usedMem / totalMem) * 100) : 0,
                 node_rss_bytes: process.memoryUsage().rss
             },
             disk,
