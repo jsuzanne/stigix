@@ -4162,7 +4162,7 @@ app.get('/api/traffic/history', authenticateToken, async (req, res) => {
 });
 
 // API: Get Applications (Categorized)
-app.get('/api/config/apps', extractUserMiddleware, (req, res) => {
+app.get(['/api/config/apps', '/api/traffic/apps'], extractUserMiddleware, (req, res) => {
     if (!fs.existsSync(APPLICATIONS_CONFIG_FILE)) return res.json({ error: 'Config not found' });
 
     const config = JSON.parse(fs.readFileSync(APPLICATIONS_CONFIG_FILE, 'utf8'));
@@ -4837,7 +4837,7 @@ app.get('/api/connectivity/test', authenticateToken, async (req, res) => {
     });
 });
 
-app.get('/api/connectivity/public-ip', authenticateToken, async (req, res) => {
+app.get(['/api/connectivity/public-ip', '/api/system/public-ip'], authenticateToken, async (req, res) => {
     try {
         // 1. Attempt Cloudflare Target Probe first (robust, no rate limits, authenticates TSG)
         if (targetManager) {
@@ -4853,29 +4853,75 @@ app.get('/api/connectivity/public-ip', authenticateToken, async (req, res) => {
                         source: 'cloudflare'
                     });
                 }
-                log('API', '[Public IP] Cloudflare probe failed or missing data, falling back to ipapi.co', 'debug');
+                log('API', '[Public IP] Cloudflare probe failed or missing data, falling back to ifconfig.co', 'debug');
             } catch (err: any) {
-                log('API', `[Public IP] Cloudflare probe exception: ${err.message}, falling back to ipapi.co`, 'debug');
+                log('API', `[Public IP] Cloudflare probe exception: ${err.message}, falling back to ifconfig.co`, 'debug');
             }
         }
 
-        // 2. Fallback to ipapi.co
-        // ipapi.co returns JSON with ip, country_code, city — free, no key required (1k req/day)
-        const response = await fetch('https://ipapi.co/json/', {
-            headers: { 'User-Agent': 'stigix-dem-monitor/1.0' }
-        });
-        if (response.ok) {
-            const data = await response.json() as any;
-            res.json({
-                ip: data.ip,
-                countryCode: data.country_code || null,
-                country: data.country_name || null,
-                city: data.city || null,
-                source: 'ipapi'
+        // 2. Fallback to ifconfig.co (JSON response, high limits)
+        try {
+            const ifconfigRes = await fetch('https://ifconfig.co/json', {
+                headers: { 'User-Agent': 'curl/7.81.0' },
+                signal: AbortSignal.timeout(4000)
             });
-        } else {
-            res.status(500).json({ error: 'Failed to fetch public IP from fallback' });
+            if (ifconfigRes.ok) {
+                const data = await ifconfigRes.json() as any;
+                if (data && data.ip) {
+                    return res.json({
+                        ip: data.ip,
+                        countryCode: data.country_iso || null,
+                        country: data.country || null,
+                        city: data.city || null,
+                        source: 'ifconfig.co'
+                    });
+                }
+            }
+        } catch (e: any) {
+            log('API', `[Public IP] ifconfig.co failed (${e.message}), trying api.ipify.org`, 'debug');
         }
+
+        // 3. Fallback to api.ipify.org (ultra lightweight, reliable)
+        try {
+            const ipifyRes = await fetch('https://api.ipify.org?format=json', {
+                headers: { 'User-Agent': 'stigix-dem-monitor/1.0' },
+                signal: AbortSignal.timeout(4000)
+            });
+            if (ipifyRes.ok) {
+                const data = await ipifyRes.json() as any;
+                if (data && data.ip) {
+                    return res.json({
+                        ip: data.ip,
+                        countryCode: null,
+                        country: null,
+                        city: null,
+                        source: 'ipify'
+                    });
+                }
+            }
+        } catch (e: any) {
+            log('API', `[Public IP] ipify failed (${e.message}), trying ipapi.co`, 'debug');
+        }
+
+        // 4. Fallback to ipapi.co
+        try {
+            const response = await fetch('https://ipapi.co/json/', {
+                headers: { 'User-Agent': 'stigix-dem-monitor/1.0' },
+                signal: AbortSignal.timeout(4000)
+            });
+            if (response.ok) {
+                const data = await response.json() as any;
+                return res.json({
+                    ip: data.ip,
+                    countryCode: data.country_code || null,
+                    country: data.country_name || null,
+                    city: data.city || null,
+                    source: 'ipapi'
+                });
+            }
+        } catch {}
+
+        res.status(500).json({ error: 'Failed to fetch public IP from all external resolvers' });
     } catch (e: any) {
         res.status(500).json({ error: e.message });
     }
@@ -6929,7 +6975,7 @@ const updateAppsWeigth = (updates: Record<string, number>, res: any) => {
 };
 
 // API: Export Applications (Download applications.txt format from JSON)
-app.get('/api/config/applications/export', authenticateToken, (req, res) => {
+app.get(['/api/config/applications/export', '/api/traffic/config'], authenticateToken, (req, res) => {
     try {
         if (!fs.existsSync(APPLICATIONS_CONFIG_FILE)) {
             return res.status(404).json({ error: 'Applications config not found' });

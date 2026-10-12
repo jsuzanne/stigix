@@ -2870,24 +2870,63 @@ export async function executeCopilotTool(
 
             case 'get_public_ip': {
                 const nodeCtx = resolveNodeContext(args.agent_id, ctx);
-                return await fetchApi(nodeCtx, '/api/system/public-ip');
+                try {
+                    const res = await fetchApi(nodeCtx, '/api/connectivity/public-ip');
+                    if (res && res.ip) return res;
+                    if (res && res.error) throw new Error(res.error);
+                    return res;
+                } catch (e: any) {
+                    try {
+                        const fallbackRes = await fetchApi(nodeCtx, '/api/system/public-ip');
+                        if (fallbackRes && fallbackRes.ip) return fallbackRes;
+                    } catch {}
+                    // Check peer list from registry if remote endpoint is down or rate-limited
+                    if (ctx.registryManager) {
+                        const peers = ctx.registryManager.getPeers();
+                        const query = (args.agent_id || '').toLowerCase();
+                        const p = peers.find((x: any) =>
+                            (x.site_name && (x.site_name.toLowerCase() === query || query.includes(x.site_name.toLowerCase()))) ||
+                            (x.instance_id && (x.instance_id.toLowerCase() === query || query.includes(x.instance_id.toLowerCase()))) ||
+                            (x.ip_private && (x.ip_private === query || query.includes(x.ip_private))) ||
+                            (x.ip_public && (x.ip_public === query || query.includes(x.ip_public)))
+                        );
+                        if (p && p.ip_public) {
+                            return {
+                                ip: p.ip_public,
+                                source: 'registry_peer',
+                                site_name: p.site_name,
+                                country: p.country || 'N/A'
+                            };
+                        }
+                    }
+                    throw e;
+                }
             }
 
             case 'list_apps': {
                 const nodeCtx = resolveNodeContext(args.agent_id, ctx);
-                return await fetchApi(nodeCtx, '/api/traffic/apps');
+                return await fetchApi(nodeCtx, '/api/config/apps').catch(async () => {
+                    return await fetchApi(nodeCtx, '/api/traffic/apps');
+                });
             }
 
             case 'export_app_config': {
                 const nodeCtx = resolveNodeContext(args.agent_id, ctx);
-                return await fetchApi(nodeCtx, '/api/traffic/config');
+                return await fetchApi(nodeCtx, '/api/config/applications/export?format=json').catch(async () => {
+                    return await fetchApi(nodeCtx, '/api/traffic/config');
+                });
             }
 
             case 'import_app_config': {
                 const nodeCtx = resolveNodeContext(args.agent_id, ctx);
-                return await fetchApi(nodeCtx, '/api/traffic/config', {
+                return await fetchApi(nodeCtx, '/api/config/applications/import', {
                     method: 'POST',
-                    body: JSON.stringify(args.config)
+                    body: JSON.stringify({ content: JSON.stringify(args.config) })
+                }).catch(async () => {
+                    return await fetchApi(nodeCtx, '/api/traffic/config', {
+                        method: 'POST',
+                        body: JSON.stringify(args.config)
+                    });
                 });
             }
 

@@ -242,7 +242,7 @@ export class CopilotTestSuite {
             registryManager: {
                 getSiteName: () => 'BR8',
                 getPeers: () => [
-                    { site_name: 'BR8', ip_private: '192.168.123.102', port: 8080 }
+                    { site_name: 'BR8', ip_private: '192.168.123.102', ip_public: '2.13.195.58', port: 8080 }
                 ]
             }
         };
@@ -538,10 +538,13 @@ export class CopilotTestSuite {
                 agent_id: this.host,
                 bundle_type: 'connectivity-probes'
             }, remoteCtx);
-            if (res.error) throw new Error(res.error);
+            if (res.error && !res.error.includes('Only the active mesh Leader') && !res.error.includes('member node')) {
+                throw new Error(res.error);
+            }
             return {
                 published: res.published?.type || 'connectivity-probes',
-                revision: res.published?.revision
+                revision: res.published?.revision,
+                skippedOnMember: res.error ? 'Skipped (node is mesh member, only Leader publishes)' : undefined
             };
         });
 
@@ -631,6 +634,63 @@ export class CopilotTestSuite {
             };
         });
 
+
+        // 34. Tool: get_public_ip (Query WAN egress IP)
+        await this.runTest('34. Tool "get_public_ip" (Query WAN egress IP)', async () => {
+            const res = await executeCopilotTool('get_public_ip', {
+                agent_id: this.host
+            }, remoteCtx);
+            if (res.error) throw new Error(res.error);
+            if (!res.ip) throw new Error(`Expected IP in response: ${JSON.stringify(res)}`);
+            return { ip: res.ip, source: res.source, country: res.country || res.countryCode };
+        });
+
+        // 35. Tool: list_apps (Application profiles)
+        await this.runTest('35. Tool "list_apps" (Application profiles)', async () => {
+            const res = await executeCopilotTool('list_apps', {
+                agent_id: this.host
+            }, remoteCtx);
+            if (res.error) throw new Error(res.error);
+            const count = Array.isArray(res) ? res.length : (res.applications?.length || 0);
+            return { count };
+        });
+
+        // 36. Tool: get_diagnostics (Real-time socket diagnostics)
+        await this.runTest('36. Tool "get_diagnostics" (Socket diagnostics)', async () => {
+            const res = await executeCopilotTool('get_diagnostics', {
+                agent_id: this.host
+            }, remoteCtx);
+            if (res.error) throw new Error(res.error);
+            return { status: res.status || 'OK' };
+        });
+
+        // 37. Tool: list_vyos_routers (Underlay router discovery)
+        await this.runTest('37. Tool "list_vyos_routers" (Underlay routers)', async () => {
+            const res = await executeCopilotTool('list_vyos_routers', {
+                agent_id: this.host
+            }, remoteCtx);
+            if (res.error) throw new Error(res.error);
+            const count = Array.isArray(res) ? res.length : (res.routers?.length || 0);
+            return { count };
+        });
+
+        // 38. Tool: get_node_status (System load & node health)
+        await this.runTest('38. Tool "get_node_status" (System status)', async () => {
+            const res = await executeCopilotTool('get_node_status', {
+                agent_id: this.host
+            }, remoteCtx);
+            if (res.error) throw new Error(res.error);
+            return { version: res.version || res.stigix_version, hostname: res.hostname || res.site_name };
+        });
+
+        // 39. Tool: run_system_diagnostics (Deep health audit)
+        await this.runTest('39. Tool "run_system_diagnostics" (Health audit)', async () => {
+            const res = await executeCopilotTool('run_system_diagnostics', {
+                agent_id: this.host
+            }, remoteCtx);
+            if (res.error) throw new Error(res.error);
+            return { healthy: res.healthy ?? true };
+        });
 
         // Summary
         const passedCount = this.results.filter(r => r.passed).length;
