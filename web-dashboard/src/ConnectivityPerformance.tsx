@@ -6,6 +6,7 @@ import { twMerge } from 'tailwind-merge';
 import { TracerouteModal } from './components/TracerouteModal';
 import { ReachabilityMatrix } from './components/ReachabilityMatrix';
 import { DEMSkeleton } from './components/skeletons/DEMSkeleton';
+import { ProbeScoreCard, InteractiveScoreBadge } from './components/health/ProbeScoreExplainer';
 
 // ── Inline SVG sparkline (no recharts dependency) ───────────────────────────
 const Sparkline = ({ data, color, width = 80, height = 20 }: { data: number[]; color: string; width?: number; height?: number }) => {
@@ -407,6 +408,7 @@ export default function ConnectivityPerformance({ token, uiConfig, onManage }: C
     const [isSavingProbe, setIsSavingProbe] = useState(false);
     const [tracerouteTarget, setTracerouteTarget] = useState<string | null>(null);
     const [viewMode, setViewMode] = useState<'catalog' | 'matrix'>('catalog');
+    const [inspectedCapture, setInspectedCapture] = useState<any>(null);
 
     const formatDisplayUrl = (endpoint: any) => {
         const target = endpoint.lastResult?.url || '';
@@ -524,6 +526,11 @@ export default function ConnectivityPerformance({ token, uiConfig, onManage }: C
         const type = (config.type || endpoint.type || 'HTTP').toUpperCase();
         const isHttp = type === 'HTTP' || type === 'HTTPS';
         
+        let initialCodes = config.expectedStatusCodes || config.expected_status_codes;
+        if (!initialCodes || !Array.isArray(initialCodes)) {
+            initialCodes = [200, 201, 202, 204, 301, 302, 304, 307, 308];
+        }
+
         setEditingProbe({
             _originalName: config.name || endpoint.name,
             name: config.name || endpoint.name || '',
@@ -532,9 +539,40 @@ export default function ConnectivityPerformance({ token, uiConfig, onManage }: C
             timeout: config.timeout || (type === 'PING' ? 2000 : 5000),
             frequency: config.frequency || (isHttp ? 300 : 60),
             enabled: config.enabled ?? true,
+            expectedStatusCodes: initialCodes,
+            expectedStatusCodesInput: initialCodes.join(', '),
             content_match: config.content_match ? { ...config.content_match } : { enabled: false, mode: 'contains', value: '', case_sensitive: false }
         });
         setIsEditModalOpen(true);
+    };
+
+    const handleQuickAddStatusCode = async (statusCode: number) => {
+        if (!selectedEndpoint) return;
+        try {
+            const res = await gFetch('/api/connectivity/custom', { headers: authHeaders() });
+            const allEndpoints = await res.json();
+            const origName = (selectedEndpoint.name || '').toLowerCase();
+            const index = Array.isArray(allEndpoints) ? allEndpoints.findIndex((p: any) => (p.name || '').toLowerCase() === origName) : -1;
+            if (index >= 0) {
+                const currentCodes: number[] = Array.isArray(allEndpoints[index].expectedStatusCodes)
+                    ? allEndpoints[index].expectedStatusCodes
+                    : (Array.isArray(allEndpoints[index].expected_status_codes)
+                        ? allEndpoints[index].expected_status_codes
+                        : [200, 201, 202, 204, 301, 302, 304, 307, 308]);
+                if (!currentCodes.includes(statusCode)) {
+                    allEndpoints[index].expectedStatusCodes = [...currentCodes, statusCode];
+                    await gFetch('/api/connectivity/custom', {
+                        method: 'POST',
+                        headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ endpoints: allEndpoints })
+                    });
+                    await fetchProbesConfig();
+                    await fetchStatsAndResults();
+                }
+            }
+        } catch (e) {
+            console.error('Failed to quick-add status code', e);
+        }
     };
 
     const handleSaveProbeEdit = async () => {
@@ -552,7 +590,7 @@ export default function ConnectivityPerformance({ token, uiConfig, onManage }: C
                 formattedTarget = `${editingProbe.type.toLowerCase()}://${formattedTarget}`;
             }
 
-            const updatedProbe = {
+            const updatedProbe: any = {
                 name: editingProbe.name.trim(),
                 type: editingProbe.type,
                 target: formattedTarget,
@@ -561,6 +599,17 @@ export default function ConnectivityPerformance({ token, uiConfig, onManage }: C
                 enabled: editingProbe.enabled ?? true,
                 ...(editingProbe.content_match?.enabled ? { content_match: editingProbe.content_match } : { content_match: { enabled: false } })
             };
+
+            if (editingProbe.type === 'HTTP' || editingProbe.type === 'HTTPS') {
+                if (typeof editingProbe.expectedStatusCodesInput === 'string') {
+                    const parsed = editingProbe.expectedStatusCodesInput.split(',').map((s: string) => parseInt(s.trim())).filter((n: number) => !isNaN(n));
+                    if (parsed.length > 0) {
+                        updatedProbe.expectedStatusCodes = parsed;
+                    }
+                } else if (Array.isArray(editingProbe.expectedStatusCodes)) {
+                    updatedProbe.expectedStatusCodes = editingProbe.expectedStatusCodes;
+                }
+            }
 
             let updatedList = Array.isArray(allEndpoints) ? [...allEndpoints] : [];
             if (index >= 0) {
@@ -907,6 +956,7 @@ export default function ConnectivityPerformance({ token, uiConfig, onManage }: C
                                                 const found = (endpoints || []).find((ep: any) => ep.id === e.id || ep.name === e.name);
                                                 if (found) {
                                                     setSelectedEndpoint(found);
+                                                    setInspectedCapture(null);
                                                     setShowDetailModal(true);
                                                 }
                                             }}
@@ -1246,7 +1296,7 @@ export default function ConnectivityPerformance({ token, uiConfig, onManage }: C
                         {/* Normal probes with results */}
                         {endpoints.map(e => (
                             <tr key={e.id} 
-                                onClick={(ev) => { ev.stopPropagation(); setSelectedEndpoint(e); setShowDetailModal(true); }}
+                                onClick={(ev) => { ev.stopPropagation(); setSelectedEndpoint(e); setInspectedCapture(null); setShowDetailModal(true); }}
                                 className={cn(
                                 "hover:bg-card-secondary transition-colors group cursor-pointer",
                                 !e.enabled && "opacity-40"
@@ -1436,6 +1486,16 @@ export default function ConnectivityPerformance({ token, uiConfig, onManage }: C
                                     <XCircle size={24} />
                                 </button>
                             </div>
+                        </div>
+
+                        {/* ── Dynamic DEM Score Breakdown & Explainer Card ── */}
+                        <div className="px-6 pt-5">
+                            <ProbeScoreCard
+                                probe={selectedEndpoint}
+                                result={inspectedCapture || selectedEndpointResults[0]}
+                                onQuickFixStatus={handleQuickAddStatusCode}
+                                onOpenEditModal={() => startEditProbe(selectedEndpoint)}
+                            />
                         </div>
 
                         {/* ── Content Match Info Banner (visible when enabled) ── */}
@@ -1634,13 +1694,30 @@ export default function ConnectivityPerformance({ token, uiConfig, onManage }: C
                                             </tr>
                                         </thead>
                                         <tbody className="divide-y divide-border">
-                                            {selectedEndpointResults.slice(0, maxCaptures).map((r, i) => (
-                                                <tr key={i} className="hover:bg-card-secondary transition-colors">
-                                                    <td className="px-4 py-3 text-text-primary font-bold uppercase tracking-tighter whitespace-nowrap">{formatTimestamp(r.timestamp)}</td>
-                                                    <td className="px-4 py-3 text-center">
-                                                        <span className={cn("font-black px-2 py-0.5 rounded text-[11px]", r.score >= 80 ? "text-green-600 dark:text-green-400" : "text-red-500")}>
-                                                            {r.score}
-                                                        </span>
+                                            {selectedEndpointResults.slice(0, maxCaptures).map((r, i) => {
+                                                const isSelected = inspectedCapture === r || (!inspectedCapture && i === 0);
+                                                return (
+                                                <tr 
+                                                    key={i} 
+                                                    onClick={() => setInspectedCapture(r)}
+                                                    className={cn(
+                                                        "transition-colors cursor-pointer",
+                                                        isSelected ? "bg-indigo-500/10 hover:bg-indigo-500/15" : "hover:bg-card-secondary"
+                                                    )}
+                                                >
+                                                    <td className="px-4 py-3 text-text-primary font-bold uppercase tracking-tighter whitespace-nowrap">
+                                                        <div className="flex items-center gap-1.5">
+                                                            {isSelected && <span className="w-1.5 h-1.5 rounded-full bg-indigo-500 animate-pulse shrink-0" />}
+                                                            {formatTimestamp(r.timestamp)}
+                                                        </div>
+                                                    </td>
+                                                    <td className="px-4 py-3 text-center" onClick={(e) => { e.stopPropagation(); setInspectedCapture(r); }}>
+                                                        <InteractiveScoreBadge
+                                                            score={r.score}
+                                                            probe={selectedEndpoint}
+                                                            result={r}
+                                                            onClick={() => setInspectedCapture(r)}
+                                                        />
                                                     </td>
                                                     {(selectedEndpoint.type.includes('HTTP') || selectedEndpoint.type === 'CLOUD') && (
                                                         <>
@@ -1679,7 +1756,8 @@ export default function ConnectivityPerformance({ token, uiConfig, onManage }: C
                                                         </td>
                                                     )}
                                                 </tr>
-                                            ))}
+                                                );
+                                            })}
                                         </tbody>
                                     </table>
                                 </div>
@@ -1867,6 +1945,56 @@ export default function ConnectivityPerformance({ token, uiConfig, onManage }: C
                                             </div>
                                         </div>
                                     )}
+                                </div>
+                            )}
+
+                            {/* Expected HTTP Status Codes (HTTP/HTTPS only) */}
+                            {(editingProbe.type === 'HTTP' || editingProbe.type === 'HTTPS') && (
+                                <div className="border border-border rounded-xl p-4 space-y-3 bg-card-secondary/30">
+                                    <div className="flex items-center justify-between">
+                                        <label className="text-[10px] font-black uppercase tracking-widest text-text-primary">
+                                            Codes HTTP attendus (SLA Valide)
+                                        </label>
+                                        <span className="text-[9px] text-text-muted opacity-60 font-bold uppercase tracking-widest">
+                                            Tout autre code 4xx sera bridé à 20
+                                        </span>
+                                    </div>
+                                    <input
+                                        type="text"
+                                        placeholder="ex: 200, 201, 204, 301, 302, 429"
+                                        className="w-full bg-card-secondary border border-border text-text-primary rounded-xl px-4 py-3 outline-none focus:ring-1 focus:ring-blue-500 text-[11px] font-mono shadow-inner transition-all"
+                                        value={editingProbe.expectedStatusCodesInput ?? (Array.isArray(editingProbe.expectedStatusCodes) ? editingProbe.expectedStatusCodes.join(', ') : '200, 201, 202, 204, 301, 302, 304, 307, 308')}
+                                        onChange={e => setEditingProbe({ ...editingProbe, expectedStatusCodesInput: e.target.value })}
+                                    />
+                                    {/* Preset quick buttons */}
+                                    <div className="flex items-center gap-1.5 flex-wrap pt-1">
+                                        <span className="text-[9px] font-bold text-text-muted uppercase tracking-wider mr-1">Raccourcis :</span>
+                                        {[
+                                            { label: 'Standard (200-308)', codes: '200, 201, 202, 204, 301, 302, 304, 307, 308' },
+                                            { label: '+ 429 (Rate-Limit)', addCode: '429' },
+                                            { label: '+ 401/403 (Auth)', addCode: '401, 403' },
+                                            { label: '200 Strict', codes: '200' },
+                                        ].map((preset, pIdx) => (
+                                            <button
+                                                key={pIdx}
+                                                type="button"
+                                                onClick={() => {
+                                                    if (preset.codes) {
+                                                        setEditingProbe({ ...editingProbe, expectedStatusCodesInput: preset.codes });
+                                                    } else if (preset.addCode) {
+                                                        const current = editingProbe.expectedStatusCodesInput || (Array.isArray(editingProbe.expectedStatusCodes) ? editingProbe.expectedStatusCodes.join(', ') : '200, 204');
+                                                        const parts = current.split(',').map((s: string) => s.trim()).filter(Boolean);
+                                                        const toAdd = preset.addCode.split(',').map((s: string) => s.trim()).filter(Boolean);
+                                                        const merged = Array.from(new Set([...parts, ...toAdd])).join(', ');
+                                                        setEditingProbe({ ...editingProbe, expectedStatusCodesInput: merged });
+                                                    }
+                                                }}
+                                                className="px-2 py-0.5 rounded text-[9px] font-bold border border-border bg-card-secondary/70 hover:bg-card-secondary text-text-secondary hover:text-text-primary transition-all cursor-pointer"
+                                            >
+                                                {preset.label}
+                                            </button>
+                                        ))}
+                                    </div>
                                 </div>
                             )}
 
