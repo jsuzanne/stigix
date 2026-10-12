@@ -5063,6 +5063,7 @@ const getFullEffectiveConnectivityProbes = () => {
         ? provisioningManager.getEnrichedEffectiveItems('connectivity-probes', rawCustom) 
         : rawCustom;
     const discovered = discoveryManager ? discoveryManager.getProbes() : [];
+    const autoMesh = getAutoMeshProbes();
 
     // Merge custom state into env probes and serve them all
     const mergedEnvProbes = envProbes.map((p: any) => {
@@ -5072,7 +5073,7 @@ const getFullEffectiveConnectivityProbes = () => {
 
     const pureCustom = custom.filter((p: any) => !envProbes.find(ep => ep.name === p.name));
 
-    return [...mergedEnvProbes, ...pureCustom, ...discovered];
+    return [...mergedEnvProbes, ...pureCustom, ...discovered, ...autoMesh];
 };
 
 // API: Get Custom Connectivity Endpoints
@@ -5083,10 +5084,10 @@ app.get('/api/connectivity/custom', authenticateToken, (req, res) => {
 const applyCustomConnectivityEndpoints = async (endpoints: any[]): Promise<boolean> => {
     if (!Array.isArray(endpoints)) return false;
 
-    // The UI sends back ALL endpoints (Env, Custom, Discovered).
-    // We update Discovery directly, and save everything else to custom (which now acts as state store for Env probes)
+    // The UI sends back ALL endpoints (Env, Custom, Discovered, AutoMesh).
+    // We update Discovery directly, filter out auto-mesh, and save everything else to custom (which now acts as state store for Env probes)
     const discoveredProbes = endpoints.filter(p => p.source === 'discovery');
-    const customAndEnvProbes = endpoints.filter(p => p.source !== 'discovery');
+    const customAndEnvProbes = endpoints.filter(p => p.source !== 'discovery' && p.source !== 'auto-mesh');
 
     // Detect newly added probes (not previously in the saved config) for immediate trigger
     const existing = getCustomConnectivityEndpoints();

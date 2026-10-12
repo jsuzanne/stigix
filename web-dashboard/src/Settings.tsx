@@ -2865,14 +2865,16 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
 
                         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-border pb-4">
                             <div className="flex p-1 bg-card-secondary rounded-lg border border-border flex-wrap gap-0.5">
-                                {['ALL', 'HTTP', 'HTTPS', 'PING', 'TCP', 'UDP', 'DNS', 'CLOUD', 'PRISMA'].map(t => {
+                                {['ALL', 'HTTP', 'HTTPS', 'PING', 'TCP', 'UDP', 'DNS', 'CLOUD', 'PRISMA', 'AUTOMESH'].map(t => {
                                     const count = t === 'ALL'
                                         ? customProbes.length
                                         : t === 'CLOUD'
                                             ? customProbes.filter((p: any) => p.type === 'CLOUD' || p.type === 'STIGIX CLOUD').length
                                             : t === 'PRISMA'
                                                 ? customProbes.filter((p: any) => (p as any).source === 'discovery').length
-                                                : customProbes.filter((p: any) => p.type === t).length;
+                                                : t === 'AUTOMESH'
+                                                    ? customProbes.filter((p: any) => (p as any).source === 'auto-mesh' || (p.name && p.name.startsWith('[AutoMesh]'))).length
+                                                    : customProbes.filter((p: any) => p.type === t).length;
                                     return (
                                         <button
                                             key={t}
@@ -2932,6 +2934,8 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                                             let matchesType = true;
                                             if (probeFilterType === 'PRISMA') {
                                                 matchesType = (probe as any).source === 'discovery';
+                                            } else if (probeFilterType === 'AUTOMESH') {
+                                                matchesType = (probe as any).source === 'auto-mesh' || Boolean(probe.name?.startsWith('[AutoMesh]'));
                                             } else if (probeFilterType !== 'ALL') {
                                                 matchesType = probe.type === probeFilterType;
                                             }
@@ -2949,6 +2953,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                                         })
                                         .map((probe) => {
                                         const isDiscovery = (probe as any).source === 'discovery';
+                                        const isAutoMesh = (probe as any).source === 'auto-mesh' || (probe.name && probe.name.startsWith('[AutoMesh]'));
                                         const isCloud = probe.type === 'CLOUD';
                                         
                                         // When filtering, the idx parameter of map corresponds to the filtered array, not the original.
@@ -2967,9 +2972,11 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                                                             ? "bg-purple-600/10 text-purple-600 dark:text-purple-400" 
                                                             : isDiscovery 
                                                                 ? "bg-indigo-600/10 text-indigo-600 dark:text-indigo-400"
-                                                                : "bg-amber-600/10 text-amber-600 dark:text-amber-500"
+                                                                : isAutoMesh
+                                                                    ? "bg-cyan-600/10 text-cyan-600 dark:text-cyan-400"
+                                                                    : "bg-amber-600/10 text-amber-600 dark:text-amber-500"
                                                     )}>
-                                                        {isCloud ? <Globe size={24} /> : isDiscovery ? <Shield size={24} /> : <Activity size={24} />}
+                                                        {isCloud ? <Globe size={24} /> : isDiscovery ? <Shield size={24} /> : isAutoMesh ? <Network size={24} /> : <Activity size={24} />}
                                                     </div>
                                                     <div>
                                                         <div className="flex items-center gap-2 flex-wrap">
@@ -2991,9 +2998,9 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                                                             )}
                                                             <span className={cn(
                                                                 "text-[8px] px-2 py-0.5 rounded-full font-black tracking-widest uppercase",
-                                                                isCloud ? "bg-purple-600/10 text-purple-500" : isDiscovery ? "bg-indigo-600/10 text-indigo-500" : "bg-amber-600/10 text-amber-500"
+                                                                isCloud ? "bg-purple-600/10 text-purple-500" : isDiscovery ? "bg-indigo-600/10 text-indigo-500" : isAutoMesh ? "bg-cyan-600/10 text-cyan-500" : "bg-amber-600/10 text-amber-500"
                                                             )}>
-                                                                {isDiscovery ? 'Prisma' : isCloud ? 'Cloud' : probe.type}
+                                                                {isDiscovery ? 'Prisma' : isAutoMesh ? 'AutoMesh' : isCloud ? 'Cloud' : probe.type}
                                                             </span>
                                                         </div>
                                                         {/* URL chip — full effective URL with copy-to-clipboard */}
@@ -3058,22 +3065,24 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                                                         <Power size={14} className={probe.enabled !== false ? "drop-shadow-[0_0_8px_rgba(22,163,74,0.4)]" : ""} />
                                                     </button>
                                                     
-                                                    <div className="flex items-center gap-1 border-l border-border/50 pl-2 ml-1">
-                                                        <button
-                                                            onClick={(e) => { e.stopPropagation(); startEditProbe(originalIdx); }}
-                                                            className="p-2 hover:bg-card-hover rounded-xl text-text-muted transition-all"
-                                                            title="Edit Probe"
-                                                        >
-                                                            <Edit2 size={14} />
-                                                        </button>
-                                                        <button
-                                                            onClick={(e) => { e.stopPropagation(); deleteProbe(originalIdx); }}
-                                                            className="p-2 hover:bg-red-600/10 rounded-xl text-text-muted hover:text-red-500 transition-all"
-                                                            title="Remove Probe"
-                                                        >
-                                                            <Trash2 size={14} />
-                                                        </button>
-                                                    </div>
+                                                    {!isAutoMesh && (
+                                                        <div className="flex items-center gap-1 border-l border-border/50 pl-2 ml-1">
+                                                            <button
+                                                                onClick={(e) => { e.stopPropagation(); startEditProbe(originalIdx); }}
+                                                                className="p-2 hover:bg-card-hover rounded-xl text-text-muted transition-all"
+                                                                title="Edit Probe"
+                                                            >
+                                                                <Edit2 size={14} />
+                                                            </button>
+                                                            <button
+                                                                onClick={(e) => { e.stopPropagation(); deleteProbe(originalIdx); }}
+                                                                className="p-2 hover:bg-red-600/10 rounded-xl text-text-muted hover:text-red-500 transition-all"
+                                                                title="Remove Probe"
+                                                            >
+                                                                <Trash2 size={14} />
+                                                            </button>
+                                                        </div>
+                                                    )}
                                                 </div>
                                             </div>
                                         );
