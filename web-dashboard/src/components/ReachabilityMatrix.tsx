@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { usePeerContext } from '../PeerContext';
 import { 
     Grid, Activity, AlertTriangle, CheckCircle2, XCircle, ArrowRightLeft, 
-    RefreshCw, Filter, Shield, Info, ArrowUpRight, ArrowDownLeft, Clock,
+    RefreshCw, Filter, Shield, ShieldCheck, Info, ArrowUpRight, ArrowDownLeft, Clock,
     Layers, Zap, Globe, Sparkles, Sliders, Settings as SettingsIcon, Save, Check, Search
 } from 'lucide-react';
 import { twMerge } from 'tailwind-merge';
@@ -24,6 +24,7 @@ interface MatrixPair {
     target_id: string;
     target_name: string;
     target_ip?: string;
+    is_on_net?: boolean;
     forward: {
         reachable: boolean;
         latency_ms: number;
@@ -71,12 +72,23 @@ interface MatrixThresholdsConfig {
     mesh_topology?: 'full_mesh' | 'hub_and_spoke' | 'disabled';
 }
 
+export interface FabricHealth {
+    score: number;
+    status: 'OPTIMAL' | 'DEGRADED' | 'CRITICAL';
+    label: string;
+    on_net_pairs: number;
+    optimal_pairs: number;
+    degraded_pairs: number;
+    down_pairs: number;
+}
+
 interface MatrixData {
     timestamp: number;
     local_node_id: string;
     nodes: MatrixNode[];
     thresholds?: MatrixThresholdsConfig;
     topology?: 'full_mesh' | 'hub_and_spoke' | 'disabled';
+    fabric_health?: FabricHealth;
     summary: {
         total_pairs: number;
         healthy_bidirectional: number;
@@ -85,6 +97,7 @@ interface MatrixData {
         full_outage: number;
         partial_telemetry?: number;
         policy_excluded?: number;
+        fabric_score?: number;
     };
     matrix: MatrixPair[];
 }
@@ -335,6 +348,16 @@ export function ReachabilityMatrix({ token }: { token?: string }) {
         partial_telemetry: 0
     };
 
+    const fabricHealth: FabricHealth = data?.fabric_health || {
+        score: summary.fabric_score ?? (summary.healthy_bidirectional > 0 ? 100 : 0),
+        status: (summary.fabric_score ?? 100) >= 95 ? 'OPTIMAL' : (summary.fabric_score ?? 100) >= 80 ? 'DEGRADED' : 'CRITICAL',
+        label: (summary.fabric_score ?? 100) >= 95 ? 'Symmetric SLA Compliant' : (summary.fabric_score ?? 100) >= 80 ? 'Asymmetry / SLA Warning' : 'Critical Outage',
+        on_net_pairs: summary.healthy_bidirectional + summary.asymmetric_degraded,
+        optimal_pairs: summary.healthy_bidirectional,
+        degraded_pairs: summary.asymmetric_degraded,
+        down_pairs: summary.unidirectional_down + summary.full_outage
+    };
+
     const getPair = (sourceId: string, targetId: string): MatrixPair | undefined => {
         return matrix.find(m => m.source_id === sourceId && m.target_id === targetId);
     };
@@ -342,7 +365,49 @@ export function ReachabilityMatrix({ token }: { token?: string }) {
     return (
         <div className="space-y-6">
             {/* Top Summary & Control Bar */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3.5">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-3.5">
+                {/* 1. Stigix Fabric Score (Featured KPI Card) */}
+                <div className={twMerge(
+                    "p-3.5 rounded-xl backdrop-blur-sm shadow-sm flex items-center gap-3 border transition-all",
+                    fabricHealth.score >= 95
+                        ? "bg-emerald-500/[0.08] border-emerald-500/30 text-emerald-400"
+                        : fabricHealth.score >= 80
+                            ? "bg-amber-500/[0.08] border-amber-500/30 text-amber-400"
+                            : "bg-rose-500/[0.08] border-rose-500/30 text-rose-400"
+                )}>
+                    <div className={twMerge(
+                        "p-2.5 rounded-lg border",
+                        fabricHealth.score >= 95
+                            ? "bg-emerald-500/20 text-emerald-300 border-emerald-500/40"
+                            : fabricHealth.score >= 80
+                                ? "bg-amber-500/20 text-amber-300 border-amber-500/40"
+                                : "bg-rose-500/20 text-rose-300 border-rose-500/40"
+                    )}>
+                        <ShieldCheck size={18} />
+                    </div>
+                    <div className="min-w-0">
+                        <div className="flex items-baseline gap-1.5">
+                            <span className="text-xl font-black font-mono tracking-tight text-text-primary">
+                                {formatNum(fabricHealth.score, 1)}%
+                            </span>
+                            <span className={twMerge(
+                                "text-[9px] font-black uppercase px-1.5 py-0.2 rounded font-mono",
+                                fabricHealth.score >= 95
+                                    ? "bg-emerald-500/20 text-emerald-300"
+                                    : fabricHealth.score >= 80
+                                        ? "bg-amber-500/20 text-amber-300"
+                                        : "bg-rose-500/20 text-rose-300"
+                            )}>
+                                {fabricHealth.score >= 95 ? 'Optimal' : fabricHealth.score >= 80 ? 'Degraded' : 'Critical'}
+                            </span>
+                        </div>
+                        <div className="text-[10px] font-bold text-text-muted uppercase tracking-wider truncate" title={`${fabricHealth.on_net_pairs} On-Net Inter-Node Paths (${fabricHealth.optimal_pairs} optimal, ${fabricHealth.degraded_pairs} degraded)`}>
+                            Fabric Score ({fabricHealth.on_net_pairs})
+                        </div>
+                    </div>
+                </div>
+
+                {/* 2. Symmetric & Healthy */}
                 <div className="bg-card-secondary/60 border border-border p-3.5 rounded-xl backdrop-blur-sm shadow-sm flex items-center gap-3">
                     <div className="p-2.5 rounded-lg bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
                         <CheckCircle2 size={18} />
@@ -357,6 +422,7 @@ export function ReachabilityMatrix({ token }: { token?: string }) {
                     </div>
                 </div>
 
+                {/* 3. Asymmetric / Degraded */}
                 <div className="bg-card-secondary/60 border border-border p-3.5 rounded-xl backdrop-blur-sm shadow-sm flex items-center gap-3">
                     <div className="p-2.5 rounded-lg bg-amber-500/10 text-amber-400 border border-amber-500/20">
                         <AlertTriangle size={18} />
@@ -371,6 +437,7 @@ export function ReachabilityMatrix({ token }: { token?: string }) {
                     </div>
                 </div>
 
+                {/* 4. Critical / Blocked */}
                 <div className="bg-card-secondary/60 border border-border p-3.5 rounded-xl backdrop-blur-sm shadow-sm flex items-center gap-3">
                     <div className="p-2.5 rounded-lg bg-red-500/10 text-red-400 border border-red-500/20">
                         <ArrowRightLeft size={18} />
@@ -385,6 +452,7 @@ export function ReachabilityMatrix({ token }: { token?: string }) {
                     </div>
                 </div>
 
+                {/* 5. Active Fleet Nodes */}
                 <div className="bg-card-secondary/60 border border-border p-3.5 rounded-xl backdrop-blur-sm shadow-sm flex items-center gap-3">
                     <div className="p-2.5 rounded-lg bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">
                         <Layers size={18} />
@@ -399,6 +467,7 @@ export function ReachabilityMatrix({ token }: { token?: string }) {
                     </div>
                 </div>
 
+                {/* 6. Topology Policy */}
                 <div className="bg-card-secondary/60 border border-border p-3.5 rounded-xl backdrop-blur-sm shadow-sm flex items-center gap-3">
                     <div className="p-2.5 rounded-lg bg-purple-500/10 text-purple-600 dark:text-purple-400 border border-purple-500/20">
                         <Activity size={18} />
@@ -598,9 +667,20 @@ export function ReachabilityMatrix({ token }: { token?: string }) {
             <div className="bg-card-secondary/50 border border-border rounded-xl shadow-md overflow-hidden">
                 <div className="p-4 border-b border-border bg-card-secondary/80 flex items-center justify-between">
                     <div>
-                        <h3 className="text-sm font-bold text-text-primary flex items-center gap-2">
+                        <h3 className="text-sm font-bold text-text-primary flex items-center gap-2 flex-wrap">
                             <Grid size={16} className="text-blue-500" />
-                            SD-WAN Bidirectional Reachability Grid ({nodes.length} × {nodes.length})
+                            <span>SD-WAN Bidirectional Reachability Grid ({nodes.length} × {nodes.length})</span>
+                            <span className={twMerge(
+                                "px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider flex items-center gap-1 border",
+                                fabricHealth.score >= 95
+                                    ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/30"
+                                    : fabricHealth.score >= 80
+                                        ? "bg-amber-500/10 text-amber-400 border-amber-500/30"
+                                        : "bg-rose-500/10 text-rose-400 border-rose-500/30"
+                            )}>
+                                <ShieldCheck size={12} />
+                                <span>Fabric Score: {formatNum(fabricHealth.score, 1)}%</span>
+                            </span>
                         </h3>
                         <p className="text-xs text-text-muted mt-0.5">
                             Cross-correlating forward egress SLA (A → B) with return ingress telemetry (B → A) across Stigix nodes and SD-WAN gateway paths.

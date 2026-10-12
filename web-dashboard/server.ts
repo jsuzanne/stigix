@@ -13963,10 +13963,22 @@ app.get('/api/fleet/matrix', authenticateToken, async (req, res) => {
             return scored.length > 0 ? scored[0].probe : undefined;
         };
 
+        const isPrivateIp = (ip?: string): boolean => {
+            if (!ip) return false;
+            const clean = ip.trim().replace(/^https?:\/\//, '').split(':')[0].split('/')[0];
+            return (
+                clean.startsWith('10.') ||
+                clean.startsWith('192.168.') ||
+                /^172\.(1[6-9]|2[0-9]|3[0-1])\./.test(clean) ||
+                clean === '127.0.0.1' ||
+                clean === 'localhost'
+            );
+        };
+
         const thresholds = getMatrixThresholds();
         const topology = thresholds.mesh_topology || 'full_mesh';
 
-        // 3. Assemble N x N Matrix Pairs
+        // 3. Assemble N x N Matrix Pairs & Compute Stigix Fabric Score
         const matrixPairs: Array<any> = [];
         let healthyBidirectional = 0;
         let asymmetricDegraded = 0;
@@ -13974,6 +13986,12 @@ app.get('/api/fleet/matrix', authenticateToken, async (req, res) => {
         let fullOutage = 0;
         let partialTelemetry = 0;
         let policyExcluded = 0;
+
+        let onNetTotalPairs = 0;
+        let onNetOptimalCount = 0;
+        let onNetDegradedCount = 0;
+        let onNetDownCount = 0;
+        let onNetScoreSum = 0;
 
         for (let i = 0; i < nodes.length; i++) {
             for (let j = 0; j < nodes.length; j++) {
@@ -13987,6 +14005,7 @@ app.get('/api/fleet/matrix', authenticateToken, async (req, res) => {
                 }
 
                 const isSpokeToSpoke = topology === 'hub_and_spoke' && !isHubSite(source.name, source.site_type) && !isHubSite(target.name, target.site_type);
+                const isOnNet = isPrivateIp(source.ip) && isPrivateIp(target.ip);
 
                 const fwdProbe = findProbeToNode(source.id, target);
                 const revProbe = findProbeToNode(target.id, source);
@@ -14127,6 +14146,23 @@ app.get('/api/fleet/matrix', authenticateToken, async (req, res) => {
                     reason = 'No active telemetry probe between these sites';
                 }
 
+                // Track On-Net Fabric Score stats
+                if (isOnNet && !isSpokeToSpoke) {
+                    onNetTotalPairs++;
+                    if (statusStr === 'OPTIMAL') {
+                        onNetOptimalCount++;
+                        onNetScoreSum += 100;
+                    } else if (statusStr === 'DEGRADED') {
+                        onNetDegradedCount++;
+                        onNetScoreSum += 75;
+                    } else if (statusStr === 'PARTIAL') {
+                        onNetScoreSum += 40;
+                    } else if (statusStr === 'CRITICAL') {
+                        onNetDownCount++;
+                        onNetScoreSum += 0;
+                    }
+                }
+
                 if (asymmetryOnly && !isAsymmetric) {
                     continue;
                 }
@@ -14138,6 +14174,7 @@ app.get('/api/fleet/matrix', authenticateToken, async (req, res) => {
                     target_id: target.id,
                     target_name: target.name,
                     target_ip: target.ip,
+                    is_on_net: isOnNet,
                     forward: fwdData,
                     reverse: revData,
                     asymmetry: {
@@ -14151,12 +14188,26 @@ app.get('/api/fleet/matrix', authenticateToken, async (req, res) => {
             }
         }
 
+        const fabricScore = onNetTotalPairs > 0
+            ? Math.round((onNetScoreSum / onNetTotalPairs) * 10) / 10
+            : 100;
+        const fabricStatus = fabricScore >= 95 ? 'OPTIMAL' : fabricScore >= 80 ? 'DEGRADED' : 'CRITICAL';
+
         res.json({
             timestamp: Date.now(),
             local_node_id: localId,
             nodes,
             thresholds,
             topology,
+            fabric_health: {
+                score: fabricScore,
+                status: fabricStatus,
+                label: fabricStatus === 'OPTIMAL' ? 'Symmetric SLA Compliant' : fabricStatus === 'DEGRADED' ? 'Asymmetry / SLA Warning' : 'Critical Outage',
+                on_net_pairs: onNetTotalPairs,
+                optimal_pairs: onNetOptimalCount,
+                degraded_pairs: onNetDegradedCount,
+                down_pairs: onNetDownCount
+            },
             summary: {
                 total_pairs: matrixPairs.length,
                 healthy_bidirectional: healthyBidirectional,
@@ -14164,7 +14215,8 @@ app.get('/api/fleet/matrix', authenticateToken, async (req, res) => {
                 unidirectional_down: unidirectionalDown,
                 full_outage: fullOutage,
                 partial_telemetry: partialTelemetry,
-                policy_excluded: policyExcluded
+                policy_excluded: policyExcluded,
+                fabric_score: fabricScore
             },
             matrix: matrixPairs
         });
