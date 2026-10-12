@@ -9,7 +9,7 @@
  */
 
 export interface Env {
-    STIGIX_REGISTRY: KVNamespace;
+    STIGIX_REGISTRY?: KVNamespace;
     REGISTRY_API_KEY?: string;
 }
 
@@ -17,6 +17,7 @@ interface PeerAnnouncementPayload {
     instance_id: string;
     site_name?: string;
     ip?: string;
+    ips?: string[];
     port?: number;
     capabilities?: Record<string, any>;
     tags?: Record<string, any>;
@@ -33,7 +34,7 @@ const jsonResponse = (data: any, status = 200) => {
             'Content-Type': 'application/json',
             'Access-Control-Allow-Origin': '*',
             'Access-Control-Allow-Methods': 'GET, POST, DELETE, OPTIONS',
-            'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Api-Key, X-Realm-Key'
+            'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Api-Key, X-Realm-Key, X-PoC-Key'
         }
     });
 };
@@ -50,7 +51,7 @@ export default {
                 headers: {
                     'Access-Control-Allow-Origin': '*',
                     'Access-Control-Allow-Methods': 'GET, POST, DELETE, OPTIONS',
-                    'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Api-Key, X-Realm-Key'
+                    'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Api-Key, X-Realm-Key, X-PoC-Key'
                 }
             });
         }
@@ -61,8 +62,8 @@ export default {
                 return jsonResponse({
                     status: 'ok',
                     service: 'stigix-rendezvous-relay',
-                    version: '2.0.0',
-                    features: ['sse-push-channel', 'instant-rendezvous', 'multi-tenant-realms']
+                    version: '3.0.0',
+                    features: ['sse-push-channel', 'instant-rendezvous', 'zero-kv-in-memory']
                 });
             }
 
@@ -85,6 +86,20 @@ export default {
             if (peersMatch && method === 'GET') {
                 const realmHash = peersMatch[1];
                 return await handleRealmPeers(realmHash, env);
+            }
+
+            // Backward Compatibility: Legacy endpoints without KV (zero-quota impact)
+            if (url.pathname === '/register' && method === 'POST') {
+                return jsonResponse({ status: 'ok', message: 'Registered in zero-KV mode. Use STIGIX_CONTROLLER_URL for direct peer clustering.' });
+            }
+            if (url.pathname === '/instances' && method === 'GET') {
+                return jsonResponse({ status: 'ok', instances: [] });
+            }
+            if ((url.pathname === '/announce-leader' || url.pathname === '/leader') && method === 'POST') {
+                return jsonResponse({ status: 'ok', message: 'Leader registered in zero-KV mode' });
+            }
+            if ((url.pathname === '/find-leader' || url.pathname === '/leader') && method === 'GET') {
+                return jsonResponse({ status: 'ok', leader: null });
             }
 
             return jsonResponse({ status: 'error', error: 'not_found', message: `Route ${url.pathname} not found` }, 404);
@@ -185,7 +200,7 @@ async function handleRealmRegister(realmHash: string, request: Request, env: Env
         timestamp: Date.now()
     };
 
-    // 1. Instant Fan-out to all active Leader SSE streams in memory
+    // 1. Instant Fan-out to all active Leader SSE streams in memory (0 KV operations)
     const subscribers = realmStreams.get(realmHash);
     let subscriberCount = 0;
 
@@ -203,25 +218,13 @@ async function handleRealmRegister(realmHash: string, request: Request, env: Env
         }
     }
 
-    // 2. Ephemeral storage in KV (180s TTL) for disconnect fallback
-    if (env.STIGIX_REGISTRY) {
-        try {
-            const kvKey = `realm:${realmHash}:peer:${instanceId}`;
-            await env.STIGIX_REGISTRY.put(kvKey, JSON.stringify(eventData), {
-                expirationTtl: 180
-            });
-        } catch (kvErr: any) {
-            console.warn(`[KV] Ephemeral storage warning: ${kvErr.message}`);
-        }
-    }
-
-    console.log(`[RENDEZVOUS] Registered peer ${siteName} (${effectiveIp}:${port}) in realm ${realmHash.slice(0, 8)}... — pushed to ${subscriberCount} active listeners`);
+    console.log(`[RENDEZVOUS] Registered peer ${siteName} (${effectiveIp}:${port}) in realm ${realmHash.slice(0, 8)}... — pushed to ${subscriberCount} active listeners in memory`);
 
     return jsonResponse({
         status: 'ok',
         pushed_to_listeners: subscriberCount,
         peer: eventData,
-        message: 'Rendezvous announcement broadcasted successfully'
+        message: 'Rendezvous announcement broadcasted successfully (zero-KV)'
     });
 }
 
@@ -229,22 +232,6 @@ async function handleRealmRegister(realmHash: string, request: Request, env: Env
  * GET /realms/:realmHash/peers — Fallback listing of active ephemeral peers
  */
 async function handleRealmPeers(realmHash: string, env: Env): Promise<Response> {
-    if (!env.STIGIX_REGISTRY) {
-        return jsonResponse({ status: 'ok', peers: [] });
-    }
-
-    const prefix = `realm:${realmHash}:peer:`;
-    const list = await env.STIGIX_REGISTRY.list({ prefix });
-    const peers: any[] = [];
-
-    for (const key of list.keys) {
-        const val = await env.STIGIX_REGISTRY.get(key.name);
-        if (val) {
-            try {
-                peers.push(JSON.parse(val));
-            } catch {}
-        }
-    }
-
-    return jsonResponse({ status: 'ok', realm: realmHash, peers });
+    // 100% In-memory relay mode: active peers are delivered in real-time via SSE stream (/stream)
+    return jsonResponse({ status: 'ok', realm: realmHash, peers: [] });
 }
