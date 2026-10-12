@@ -2203,19 +2203,19 @@ function TopologyContent({ token }: TopologyProps) {
                             }
 
                             const isUp = c.status === 'UP' || c.active || c.usable;
-                            let strokeColor = '#64748b';
+                            let strokeColor = '#64748b'; // Slate Grey: Inactive / Passive Standby
                             let strokeClass = '';
                             let animated = false;
 
                             if (c.active) {
-                                strokeColor = isMplsCircuit ? '#c084fc' : '#22c55e'; // Purple for MPLS, Green for Internet
+                                strokeColor = '#10b981'; // Emerald Green: Active (UP)
                                 strokeClass = '2,6';
                                 animated = true;
                             } else if (c.usable) {
-                                strokeColor = isMplsCircuit ? '#9333ea' : '#3b82f6';
+                                strokeColor = '#3b82f6'; // Royal Blue: Backup (Standby Ready)
                                 strokeClass = '5,5';
                             } else if (c.status === 'DOWN') {
-                                strokeColor = '#ef4444';
+                                strokeColor = '#ef4444'; // Red: Down
                             }
 
                             const edgeType = (isSpokeToSpoke || isHubToHub) ? 'archedBridge' : 'default';
@@ -3590,12 +3590,15 @@ function TopologyContent({ token }: TopologyProps) {
                                         <div className="flex items-center gap-2 text-[10px] font-bold text-blue-400">
                                             <div className="w-6 h-1 bg-blue-500 border-t border-dashed rounded-full" /> Overlay: Backup
                                         </div>
+                                        <div className="flex items-center gap-2 text-[10px] font-bold text-slate-400">
+                                            <div className="w-6 h-1 bg-slate-500 rounded-full" /> Overlay: Inactive (Standby)
+                                        </div>
                                         <div className="flex items-center gap-2 text-[10px] font-bold text-rose-400">
                                             <div className="w-6 h-1 bg-rose-500 rounded-full" /> Overlay: Down
                                         </div>
                                         <div className="pt-1 mt-1 border-t border-border/50 flex items-center justify-between text-[9px] text-text-muted font-mono gap-2">
-                                            <span className="text-sky-400 font-bold">Cyan: Internet</span>
-                                            <span className="text-purple-400 font-bold">Purple: MPLS</span>
+                                            <span className="text-sky-400 font-bold">Circuits: Cyan (Internet)</span>
+                                            <span className="text-purple-400 font-bold">Purple (MPLS)</span>
                                         </div>
                                     </>
                                 ) : topologyViewMode === 'sase' ? (

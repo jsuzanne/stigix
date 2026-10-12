@@ -451,14 +451,14 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
     uiConfig?: { maxCaptures: number; globalScoreTypes?: string[] },
     onUpdateUIConfig?: () => void,
     onUpdateCopilotConfig?: () => void,
-    initialTab?: 'probes' | 'distribution' | 'maintenance' | 'system' | 'targets' | 'convergence' | 'registry' | 'targetService' | 'mcp' | 'prisma-api' | 'strata' | 'custom-tcp' | 'api-studio'
+    initialTab?: 'probes' | 'distribution' | 'maintenance' | 'system' | 'targets' | 'convergence' | 'registry' | 'targetService' | 'mcp' | 'prisma-api' | 'strata' | 'custom-tcp' | 'api-studio' | 'cloud'
 }) {
     // Route all API calls through the peer gateway when in remote view
     const { gFetch, activePeerId } = usePeerContext();
     const isRemoteView = activePeerId !== null;
     const apiFetch = gFetch;
 
-    const [activeTab, setActiveTab] = useState<'probes' | 'distribution' | 'maintenance' | 'system' | 'targets' | 'convergence' | 'registry' | 'targetService' | 'mcp' | 'prisma-api' | 'strata' | 'custom-tcp' | 'api-studio'>(initialTab || 'distribution');
+    const [activeTab, setActiveTab] = useState<'probes' | 'distribution' | 'maintenance' | 'system' | 'targets' | 'convergence' | 'registry' | 'targetService' | 'mcp' | 'prisma-api' | 'strata' | 'custom-tcp' | 'api-studio' | 'cloud'>(initialTab || 'distribution');
 
     useEffect(() => {
         if (initialTab) {
@@ -2634,6 +2634,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
     const tabs = [
         { id: 'distribution', label: 'Traffic Distribution' },
         { id: 'probes', label: 'Synthetic Probes' },
+        { id: 'cloud', label: 'Cloud Edge' },
         { id: 'custom-tcp', label: 'Custom TCP Apps' },
         { id: 'convergence', label: 'Failover' },
         { id: 'system', label: 'System Info' },
@@ -3603,125 +3604,127 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                             </div>
                         )}
 
+                    </div>
+                )}
+                {activeTab === 'cloud' && (
+                    <div className="bg-card border border-border rounded-2xl p-8 shadow-sm space-y-8 animate-in fade-in duration-300">
                         {/* ── Stigix Cloudflare Worker Credentials (Cloud Probes) ── */}
-                        <div className="pt-6 border-t border-border/50">
-                            <div className="bg-card-secondary/30 border border-border/70 rounded-2xl p-6 space-y-6">
-                                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-border/40 pb-4">
-                                    <div className="flex items-center gap-3">
-                                        <div className="p-2.5 bg-blue-600/10 rounded-xl text-blue-500">
-                                            <Globe size={22} />
+                        <div className="bg-card-secondary/30 border border-border/70 rounded-2xl p-6 space-y-6">
+                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-border/40 pb-4">
+                                <div className="flex items-center gap-3">
+                                    <div className="p-2.5 bg-blue-600/10 rounded-xl text-blue-500">
+                                        <Globe size={22} />
+                                    </div>
+                                    <div>
+                                        <div className="flex items-center gap-2">
+                                            <h3 className="text-sm font-black text-text-primary tracking-tight">Stigix Cloud Probes — Credentials &amp; Worker URL</h3>
+                                            {cloudConfig?.hasKey && (
+                                                <span className="flex items-center gap-1.5 text-[8.5px] font-black text-emerald-500 uppercase tracking-widest bg-emerald-500/10 px-2.5 py-0.5 rounded-full border border-emerald-500/20 shadow-sm">
+                                                    <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                                                    Active
+                                                </span>
+                                            )}
                                         </div>
-                                        <div>
-                                            <div className="flex items-center gap-2">
-                                                <h3 className="text-sm font-black text-text-primary tracking-tight">Stigix Cloud Probes — Credentials &amp; Worker URL</h3>
-                                                {cloudConfig?.hasKey && (
-                                                    <span className="flex items-center gap-1.5 text-[8.5px] font-black text-emerald-500 uppercase tracking-widest bg-emerald-500/10 px-2.5 py-0.5 rounded-full border border-emerald-500/20 shadow-sm">
-                                                        <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                                                        Active
-                                                    </span>
+                                        <p className="text-[10px] text-text-muted mt-0.5 opacity-70">
+                                            HMAC-SHA256 signature credentials required for Synthetic Cloud Probes targeting the Cloudflare edge
+                                        </p>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
+                                {/* Left inputs */}
+                                <div className="lg:col-span-2 space-y-4">
+                                    <div className="space-y-1.5">
+                                        <div className="flex items-center justify-between pl-1">
+                                            <label className="text-[10px] font-black text-text-muted uppercase tracking-[0.2em]">Master Key</label>
+                                            {cloudConfig?.hasKey && (
+                                                <span className="text-[9px] font-bold text-text-muted opacity-60">
+                                                    Saved key active on disk
+                                                </span>
+                                            )}
+                                        </div>
+                                        <div className="relative">
+                                            <input
+                                                type={showCloudKey ? "text" : "password"}
+                                                autoComplete="new-password"
+                                                placeholder={cloudConfig?.hasKey ? "•••••••••••••••• (Leave empty to keep saved key)" : "Enter Master Key..."}
+                                                value={cloudMasterKey}
+                                                onChange={e => { setCloudMasterKey(e.target.value); setCloudDirty(true); setCloudTestResult(null); }}
+                                                className="w-full bg-card hover:bg-card-hover border border-border text-xs font-mono text-text-primary rounded-xl px-4 py-2.5 outline-none focus:ring-1 focus:ring-blue-500 transition-all pr-12"
+                                            />
+                                            <button
+                                                type="button"
+                                                onClick={() => setShowCloudKey(!showCloudKey)}
+                                                className="absolute right-3 top-1/2 -translate-y-1/2 p-1 hover:bg-card-secondary rounded-lg text-text-muted transition-colors"
+                                                title={showCloudKey ? "Hide key" : "Show key"}
+                                            >
+                                                <Globe size={13} className={showCloudKey ? "text-blue-500" : "opacity-40"} />
+                                            </button>
+                                        </div>
+                                    </div>
+
+                                    <div className="space-y-1.5">
+                                        <label className="text-[10px] font-black text-text-muted uppercase tracking-[0.2em] pl-1">Worker Base URL</label>
+                                        <input
+                                            type="text"
+                                            placeholder="https://target.stigix.io"
+                                            value={cloudConfig?.baseUrl || ''}
+                                            onChange={e => { setCloudConfig(prev => prev ? { ...prev, baseUrl: e.target.value } : null); setCloudDirty(true); setCloudTestResult(null); }}
+                                            className="w-full bg-card hover:bg-card-hover border border-border text-xs font-mono text-text-primary rounded-xl px-4 py-2.5 outline-none focus:ring-1 focus:ring-blue-500 transition-all"
+                                        />
+                                    </div>
+
+                                    <div className="flex flex-wrap items-center gap-2.5 pt-1">
+                                        <button
+                                            onClick={handleTestCloud}
+                                            disabled={isTestingCloud || !cloudConfig?.baseUrl}
+                                            className="px-4 py-2 bg-card hover:bg-card-hover border border-border hover:border-blue-500/40 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-2 shadow-sm disabled:opacity-50"
+                                        >
+                                            {isTestingCloud ? <RefreshCw size={12} className="animate-spin text-blue-500" /> : <Activity size={12} className="text-blue-500" />}
+                                            Test
+                                        </button>
+                                        <button
+                                            onClick={saveCloudConfig}
+                                            disabled={isSavingCloud || (!cloudMasterKey && !cloudDirty)}
+                                            className={cn(
+                                                "px-5 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-2 shadow-sm disabled:opacity-50",
+                                                isSavingCloud ? "bg-card-secondary text-text-muted border border-border" : "bg-blue-600 hover:bg-blue-500 text-white shadow-blue-900/20"
+                                            )}
+                                        >
+                                            {isSavingCloud ? <RefreshCw size={12} className="animate-spin" /> : <CheckCircle2 size={12} />}
+                                            Save
+                                        </button>
+                                        {cloudTestResult && (
+                                            <div className={cn(
+                                                "px-3 py-1.5 rounded-xl text-[9px] font-black uppercase tracking-widest border flex items-center gap-1.5",
+                                                cloudTestResult.success ? "bg-emerald-500/10 text-emerald-500 border-emerald-500/30" : "bg-red-500/10 text-red-500 border-red-500/30"
+                                            )}>
+                                                {cloudTestResult.success ? (
+                                                    <>
+                                                        <CheckCircle2 size={11} />
+                                                        <span>Worker Reachable • Signature OK</span>
+                                                    </>
+                                                ) : (
+                                                    <>
+                                                        <XCircle size={11} />
+                                                        <span>{cloudTestResult.error || 'Test Failed'}</span>
+                                                    </>
                                                 )}
                                             </div>
-                                            <p className="text-[10px] text-text-muted mt-0.5 opacity-70">
-                                                HMAC-SHA256 signature credentials required for Synthetic Cloud Probes targeting the Cloudflare edge
-                                            </p>
-                                        </div>
+                                        )}
                                     </div>
                                 </div>
 
-                                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
-                                    {/* Left inputs */}
-                                    <div className="lg:col-span-2 space-y-4">
-                                        <div className="space-y-1.5">
-                                            <div className="flex items-center justify-between pl-1">
-                                                <label className="text-[10px] font-black text-text-muted uppercase tracking-[0.2em]">Master Key</label>
-                                                {cloudConfig?.hasKey && (
-                                                    <span className="text-[9px] font-bold text-text-muted opacity-60">
-                                                        Saved key active on disk
-                                                    </span>
-                                                )}
-                                            </div>
-                                            <div className="relative">
-                                                <input
-                                                    type={showCloudKey ? "text" : "password"}
-                                                    autoComplete="new-password"
-                                                    placeholder={cloudConfig?.hasKey ? "•••••••••••••••• (Leave empty to keep saved key)" : "Enter Master Key..."}
-                                                    value={cloudMasterKey}
-                                                    onChange={e => { setCloudMasterKey(e.target.value); setCloudDirty(true); setCloudTestResult(null); }}
-                                                    className="w-full bg-card hover:bg-card-hover border border-border text-xs font-mono text-text-primary rounded-xl px-4 py-2.5 outline-none focus:ring-1 focus:ring-blue-500 transition-all pr-12"
-                                                />
-                                                <button
-                                                    type="button"
-                                                    onClick={() => setShowCloudKey(!showCloudKey)}
-                                                    className="absolute right-3 top-1/2 -translate-y-1/2 p-1 hover:bg-card-secondary rounded-lg text-text-muted transition-colors"
-                                                    title={showCloudKey ? "Hide key" : "Show key"}
-                                                >
-                                                    <Globe size={13} className={showCloudKey ? "text-blue-500" : "opacity-40"} />
-                                                </button>
-                                            </div>
-                                        </div>
-
-                                        <div className="space-y-1.5">
-                                            <label className="text-[10px] font-black text-text-muted uppercase tracking-[0.2em] pl-1">Worker Base URL</label>
-                                            <input
-                                                type="text"
-                                                placeholder="https://target.stigix.io"
-                                                value={cloudConfig?.baseUrl || ''}
-                                                onChange={e => { setCloudConfig(prev => prev ? { ...prev, baseUrl: e.target.value } : null); setCloudDirty(true); setCloudTestResult(null); }}
-                                                className="w-full bg-card hover:bg-card-hover border border-border text-xs font-mono text-text-primary rounded-xl px-4 py-2.5 outline-none focus:ring-1 focus:ring-blue-500 transition-all"
-                                            />
-                                        </div>
-
-                                        <div className="flex flex-wrap items-center gap-2.5 pt-1">
-                                            <button
-                                                onClick={handleTestCloud}
-                                                disabled={isTestingCloud || !cloudConfig?.baseUrl}
-                                                className="px-4 py-2 bg-card hover:bg-card-hover border border-border hover:border-blue-500/40 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-2 shadow-sm disabled:opacity-50"
-                                            >
-                                                {isTestingCloud ? <RefreshCw size={12} className="animate-spin text-blue-500" /> : <Activity size={12} className="text-blue-500" />}
-                                                Test
-                                            </button>
-                                            <button
-                                                onClick={saveCloudConfig}
-                                                disabled={isSavingCloud || (!cloudMasterKey && !cloudDirty)}
-                                                className={cn(
-                                                    "px-5 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-2 shadow-sm disabled:opacity-50",
-                                                    isSavingCloud ? "bg-card-secondary text-text-muted border border-border" : "bg-blue-600 hover:bg-blue-500 text-white shadow-blue-900/20"
-                                                )}
-                                            >
-                                                {isSavingCloud ? <RefreshCw size={12} className="animate-spin" /> : <CheckCircle2 size={12} />}
-                                                Save
-                                            </button>
-                                            {cloudTestResult && (
-                                                <div className={cn(
-                                                    "px-3 py-1.5 rounded-xl text-[9px] font-black uppercase tracking-widest border flex items-center gap-1.5",
-                                                    cloudTestResult.success ? "bg-emerald-500/10 text-emerald-500 border-emerald-500/30" : "bg-red-500/10 text-red-500 border-red-500/30"
-                                                )}>
-                                                    {cloudTestResult.success ? (
-                                                        <>
-                                                            <CheckCircle2 size={11} />
-                                                            <span>Worker Reachable • Signature OK</span>
-                                                        </>
-                                                    ) : (
-                                                        <>
-                                                            <XCircle size={11} />
-                                                            <span>{cloudTestResult.error || 'Test Failed'}</span>
-                                                        </>
-                                                    )}
-                                                </div>
-                                            )}
-                                        </div>
+                                {/* Right Info Box */}
+                                <div className="p-4 bg-blue-600/5 border border-dashed border-blue-500/20 rounded-xl space-y-2.5">
+                                    <div className="flex items-center gap-2 text-blue-500">
+                                        <Info size={14} />
+                                        <h4 className="text-[11px] font-black uppercase tracking-wider">What does this enable?</h4>
                                     </div>
-
-                                    {/* Right Info Box */}
-                                    <div className="p-4 bg-blue-600/5 border border-dashed border-blue-500/20 rounded-xl space-y-2.5">
-                                        <div className="flex items-center gap-2 text-blue-500">
-                                            <Info size={14} />
-                                            <h4 className="text-[11px] font-black uppercase tracking-wider">What does this enable?</h4>
-                                        </div>
-                                        <p className="text-[10px] text-text-muted leading-relaxed opacity-85">
-                                            Allows executing <strong>CLOUD synthetic probes</strong> (SaaS emulation, payload downloads, EICAR security inspection, speedtest) against Stigix-managed Cloudflare Workers with precise DNS, TCP, TLS, and TTFB layer timing metrics.
-                                        </p>
-                                    </div>
+                                    <p className="text-[10px] text-text-muted leading-relaxed opacity-85">
+                                        Allows executing <strong>CLOUD synthetic probes</strong> (SaaS emulation, payload downloads, EICAR security inspection, speedtest) against Stigix-managed Cloudflare Workers with precise DNS, TCP, TLS, and TTFB layer timing metrics.
+                                    </p>
                                 </div>
                             </div>
                         </div>

@@ -354,9 +354,9 @@ export const HomeOverview: React.FC<HomeOverviewProps> = ({
 
                     {/* Cloudflare Registry */}
                     <div 
-                        onClick={() => onNavigate('settings', 'probes')}
+                        onClick={() => onNavigate('settings', 'cloud')}
                         className="p-3.5 rounded-xl bg-slate-50 dark:bg-card-secondary/40 hover:bg-slate-100 dark:hover:bg-card-secondary/70 border border-slate-200 dark:border-[#1e293b]/70 hover:border-emerald-400 dark:hover:border-emerald-500/40 transition-all cursor-pointer group space-y-2"
-                        title="Click to configure Cloudflare Probes & Master Key in Settings"
+                        title="Click to configure Cloudflare Edge & Master Key in Settings"
                     >
                         <div className="flex items-center justify-between">
                             <span className="text-xs font-bold text-slate-900 dark:text-white flex items-center gap-1.5 group-hover:text-emerald-600 dark:group-hover:text-emerald-300 transition-colors">
