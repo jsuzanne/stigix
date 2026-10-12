@@ -15487,6 +15487,20 @@ app.get('/api/registry/status', authenticateToken, (req, res) => {
     res.json(status);
 });
 
+// Compatibility alias for mesh controller status
+app.get('/api/mesh/status', authenticateToken, (req, res) => {
+    const mgrStatus = registryManager.getStatus();
+    const mode = mgrStatus.current_mode || process.env.STIGIX_REGISTRY_MODE || 'peer';
+    res.json({
+        ...mgrStatus,
+        mode: mode,
+        local_registry_active: mode === 'leader',
+        local_instances: mode === 'leader' ? localRegistryServer.getInstances() : [],
+        tunnel_active: fleetTunnelManager.hasActiveLeaderTunnel(),
+        leader_tunnel_info: fleetTunnelManager.getActiveLeaderInfo()
+    });
+});
+
 app.get('/api/registry/site-name', authenticateToken, (_req, res) => {
     res.json({ siteName: registryManager.getSiteName() });
 });

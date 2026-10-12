@@ -158,6 +158,94 @@ const SCENARIOS: TestScenario[] = [
             }
             return { ok: true };
         }
+    },
+    {
+        id: 'traffic-generator-status',
+        title: 'SaaS Traffic Generator Live Status & Rate (BR8)',
+        description: 'Verifies that LLM calls get_traffic_stats and surfaces running state, client count or request rates',
+        prompt: 'Quel est l\'état du générateur de trafic SaaS sur BR8 et le rythme de requêtes ?',
+        expectedTools: ['get_traffic_stats'],
+        validateToolCalls: (tools) => {
+            const call = tools.find(t => t.tool === 'get_traffic_stats');
+            if (!call) return { ok: false, reason: 'get_traffic_stats was not called' };
+            if (call.status !== 'completed') return { ok: false, reason: `get_traffic_stats failed: ${call.error}` };
+
+            const out = call.output;
+            if (!out || (out.status === undefined && out.running === undefined)) {
+                return { ok: false, reason: 'get_traffic_stats returned invalid payload' };
+            }
+            return { ok: true };
+        }
+    },
+    {
+        id: 'security-results-stats',
+        title: 'SASE Security Policy & Threats Statistics (BR8)',
+        description: 'Verifies that LLM calls get_security_results_stats and reports threat inspection counts',
+        prompt: 'Donne-moi les statistiques de sécurité SASE sur BR8 : combien de tests ont été passés et quel est le taux de blocage ?',
+        expectedTools: ['get_security_results_stats'],
+        validateToolCalls: (tools) => {
+            const call = tools.find(t => t.tool === 'get_security_results_stats');
+            if (!call) return { ok: false, reason: 'get_security_results_stats was not called' };
+            if (call.status !== 'completed') return { ok: false, reason: `get_security_results_stats failed: ${call.error}` };
+            return { ok: true };
+        }
+    },
+    {
+        id: 'voice-voip-stats',
+        title: 'Voice VoIP Simulation & RTP Quality (BR8)',
+        description: 'Verifies that LLM calls get_voice_stats and summarizes active calls, MOS score or jitter',
+        prompt: 'Quel est l\'état de la simulation voix VoIP sur BR8 ? Y a-t-il des sessions en cours ?',
+        expectedTools: ['get_voice_stats'],
+        validateToolCalls: (tools) => {
+            const call = tools.find(t => t.tool === 'get_voice_stats');
+            if (!call) return { ok: false, reason: 'get_voice_stats was not called' };
+            if (call.status !== 'completed') return { ok: false, reason: `get_voice_stats failed: ${call.error}` };
+            return { ok: true };
+        }
+    },
+    {
+        id: 'speedtest-history',
+        title: 'Bandwidth (XFR) Speedtest Historical Results',
+        description: 'Verifies that LLM calls list_speedtest_history and reports measured throughput in Mbps',
+        prompt: 'Affiche-moi l\'historique des derniers tests de débit Speedtest (XFR) sur BR8 avec les débits mesurés.',
+        expectedTools: ['list_speedtest_history'],
+        validateToolCalls: (tools) => {
+            const call = tools.find(t => t.tool === 'list_speedtest_history');
+            if (!call) return { ok: false, reason: 'list_speedtest_history was not called' };
+            if (call.status !== 'completed') return { ok: false, reason: `list_speedtest_history failed: ${call.error}` };
+
+            const out = call.output;
+            if (!out || (out.recent_tests === undefined && !Array.isArray(out))) {
+                return { ok: false, reason: 'list_speedtest_history returned unexpected structure' };
+            }
+            return { ok: true };
+        }
+    },
+    {
+        id: 'convergence-history',
+        title: 'Failover & Blackout Convergence History (BR8)',
+        description: 'Verifies that LLM calls get_convergence_history and extracts failover recovery timings',
+        prompt: 'Quels sont les résultats des derniers tests de bascule de convergence sur BR8 ?',
+        expectedTools: ['get_convergence_history'],
+        validateToolCalls: (tools) => {
+            const call = tools.find(t => t.tool === 'get_convergence_history');
+            if (!call) return { ok: false, reason: 'get_convergence_history was not called' };
+            if (call.status !== 'completed') return { ok: false, reason: `get_convergence_history failed: ${call.error}` };
+            return { ok: true };
+        }
+    },
+    {
+        id: 'provisioning-controller-status',
+        title: 'Cluster Mesh Controller & Provisioning Status',
+        description: 'Verifies that LLM queries provisioning or controller status to identify cluster state',
+        prompt: 'Quel est l\'état de synchronisation du provisioning et du contrôleur Stigix sur ce nœud ?',
+        expectedTools: ['get_provisioning_status'],
+        validateToolCalls: (tools) => {
+            const call = tools.find(t => t.tool === 'get_provisioning_status' || t.tool === 'get_controller_status');
+            if (!call) return { ok: false, reason: 'Neither get_provisioning_status nor get_controller_status was called' };
+            if (call.status !== 'completed') return { ok: false, reason: `Call failed: ${call.error}` };
+            return { ok: true };
+        }
     }
 ];
 

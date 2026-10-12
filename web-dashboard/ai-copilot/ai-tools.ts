@@ -3357,12 +3357,21 @@ export async function executeCopilotTool(
 
             case 'get_controller_status': {
                 const nodeCtx = resolveNodeContext(args.agent_id, ctx);
-                return await fetchApi(nodeCtx, '/api/mesh/status');
+                if (nodeCtx.isLocal && ctx.registryManager?.getStatus) {
+                    return ctx.registryManager.getStatus();
+                }
+                return await fetchApi(nodeCtx, '/api/registry/status').catch(async () => {
+                    return await fetchApi(nodeCtx, '/api/mesh/status');
+                });
             }
 
             case 'list_controller_peers': {
                 const nodeCtx = resolveNodeContext(args.agent_id, ctx);
-                return await fetchApi(nodeCtx, '/api/discovery/peers');
+                if (nodeCtx.isLocal && ctx.registryManager?.getPeers) {
+                    return ctx.registryManager.getPeers();
+                }
+                const status = await fetchApi(nodeCtx, '/api/registry/status').catch(() => ({}));
+                return status?.peers || status?.instances || status?.local_instances || [];
             }
 
             case 'set_controller_leader': {
