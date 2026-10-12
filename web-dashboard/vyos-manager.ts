@@ -276,8 +276,8 @@ export class VyosManager extends EventEmitter {
         let command = action.command;
         if (command === 'interface-down') command = 'shut';
         if (command === 'interface-up') command = 'no-shut';
-        if (command === 'set-qos') command = 'set-qos';
-        if (command === 'clear-qos') command = 'clear-qos';
+        if (command === 'set-qos' || command === 'set-impairment') command = 'set-qos';
+        if (command === 'clear-qos' || command === 'clear-impairment') command = 'clear-qos';
 
         // NEW: Firewall commands
         if (command === 'deny-traffic') command = 'simple-block';
@@ -301,10 +301,12 @@ export class VyosManager extends EventEmitter {
                 if (val !== null && val !== undefined && val !== '') {
                     let flag = key;
                     // Alignment with Python CLI flags
-                    if (key === 'latency') flag = 'ms';
-                    if (key === 'loss') flag = 'loss';
-                    if (key === 'corrupt') flag = 'corruption';
-                    if (key === 'interface') flag = 'iface';
+                    if (key === 'latency' || key === 'latency_ms' || key === 'ms') flag = 'ms';
+                    if (key === 'loss' || key === 'loss_pct' || key === 'percent') flag = 'loss';
+                    if (key === 'corrupt' || key === 'corruption' || key === 'corruption_pct') flag = 'corruption';
+                    if (key === 'interface' || key === 'iface') flag = 'iface';
+                    if (key === 'reorder') flag = 'reorder';
+                    if (key === 'rate') flag = 'rate';
 
                     // NEW: Firewall flags
                     if (key === 'ip') flag = 'ip';
@@ -312,13 +314,13 @@ export class VyosManager extends EventEmitter {
 
                     // Filter parameters based on subcommand
                     const isSetLatency = command === 'set-latency' && flag === 'ms';
-                    const isSetLoss = command === 'set-loss' && flag === 'percent';
+                    const isSetLoss = command === 'set-loss' && flag === 'loss';
                     const isSetCorruption = command === 'set-corruption' && flag === 'corruption';
                     const isSetRate = command === 'set-rate' && flag === 'rate';
 
                     // Interface is needed for most commands EXCEPT block/unblock/clear/get-blocks
                     const isIface = flag === 'iface' && !['simple-block', 'simple-unblock', 'clear-blocks', 'get-blocks'].includes(command);
-                    const isQoS = command === 'set-qos';
+                    const isQoS = command === 'set-qos' && ['ms', 'loss', 'corruption', 'reorder', 'reorder-gap', 'rate'].includes(flag);
 
                     // Firewall filters: block/unblock need --ip, clear-blocks and get-blocks need NOTHING
                     const isDenyTraffic = command === 'simple-block' && flag === 'ip';

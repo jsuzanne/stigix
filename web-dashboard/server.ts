@@ -2868,7 +2868,9 @@ const handleDirectVyosAction = async (req: any, res: any) => {
         const routerId = body.routerId || body.router_id;
         const routerName = body.routerName || body.router_name;
         const iface = body.interface;
-        const command = body.command;
+        let command = body.command;
+        if (command === 'set-impairment') command = 'set-qos';
+        if (command === 'clear-impairment') command = 'clear-qos';
         const source = body.source || (req.path.includes('adhoc') ? 'AdHoc Action' : 'Topology Action');
         const params = body.params || body.parameters || {
             latency_ms: body.latency_ms,

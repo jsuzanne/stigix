@@ -246,6 +246,19 @@ const SCENARIOS: TestScenario[] = [
             if (call.status !== 'completed') return { ok: false, reason: `Call failed: ${call.error}` };
             return { ok: true };
         }
+    },
+    {
+        id: 'vyos-action-execution',
+        title: 'VyOS QoS Impairment Action Execution & Rollback (BR8)',
+        description: 'Verifies that LLM calls vyos_execute_action to set QoS latency or reset it on underlay router',
+        prompt: 'Sur le routeur vyosrouter sur BR8, applique 50ms de latence sur eth1 puis retire-la avec clear-qos.',
+        expectedTools: ['vyos_execute_action'],
+        validateToolCalls: (tools) => {
+            const call = tools.find(t => t.tool === 'vyos_execute_action');
+            if (!call) return { ok: false, reason: 'vyos_execute_action was not called' };
+            if (call.status !== 'completed') return { ok: false, reason: `vyos_execute_action failed: ${call.error}` };
+            return { ok: true };
+        }
     }
 ];
 

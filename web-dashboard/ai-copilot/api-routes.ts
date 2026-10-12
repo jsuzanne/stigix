@@ -119,17 +119,26 @@ export function createAiCopilotRouter(aiManager: AiManager): Router {
         res.setHeader('Connection', 'keep-alive');
         res.flushHeaders?.();
 
-        const sendEvent = (event: string, data: any) => {
+        let isAborted = false;
+        res.on('close', () => {
             if (!res.writableEnded) {
+                isAborted = true;
+            }
+        });
+
+        const sendEvent = (event: string, data: any) => {
+            if (!res.writableEnded && !isAborted) {
                 res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
             }
         };
 
         try {
             const targetSessionId = sessionId || aiManager.createSession(model).id;
-            await aiManager.streamChat(targetSessionId, prompt, model, sendEvent);
+            await aiManager.streamChat(targetSessionId, prompt, model, sendEvent, () => isAborted);
         } catch (err: any) {
-            sendEvent('error', { message: err?.message || 'Chat stream encountered a fatal error' });
+            if (!isAborted) {
+                sendEvent('error', { message: err?.message || 'Chat stream encountered a fatal error' });
+            }
         } finally {
             if (!res.writableEnded) {
                 res.end();

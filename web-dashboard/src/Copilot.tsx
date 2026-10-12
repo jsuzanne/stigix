@@ -28,7 +28,8 @@ import {
     Maximize2,
     X,
     PanelLeft,
-    PanelLeftClose
+    PanelLeftClose,
+    Square
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
@@ -124,6 +125,7 @@ export default function Copilot({ token, onOpenSettings, isDrawer = false, onClo
 
     const chatEndRef = useRef<HTMLDivElement>(null);
     const textareaRef = useRef<HTMLTextAreaElement>(null);
+    const abortControllerRef = useRef<AbortController | null>(null);
 
     const authHeaders = {
         'Content-Type': 'application/json',
@@ -362,6 +364,9 @@ export default function Copilot({ token, onOpenSettings, isDrawer = false, onClo
             toolCalls: []
         };
 
+        const controller = new AbortController();
+        abortControllerRef.current = controller;
+
         setMessages(prev => [...prev, userMsg, assistantMsg]);
         setInputPrompt('');
         setIsStreaming(true);
@@ -370,6 +375,7 @@ export default function Copilot({ token, onOpenSettings, isDrawer = false, onClo
             const res = await fetch('/api/copilot/chat', {
                 method: 'POST',
                 headers: authHeaders,
+                signal: controller.signal,
                 body: JSON.stringify({
                     sessionId: activeSessionId,
                     prompt: text,
@@ -451,16 +457,35 @@ export default function Copilot({ token, onOpenSettings, isDrawer = false, onClo
                 }
             }
         } catch (e: any) {
-            toast.error(e.message || 'Error interacting with AI Copilot');
-            setMessages(prev => prev.map(m => {
-                if (m.id === assistantMsgId) {
-                    return { ...m, content: m.content + `\n\n> ⚠️ **Failed to complete response:** ${e.message}` };
-                }
-                return m;
-            }));
+            if (e.name === 'AbortError') {
+                setMessages(prev => prev.map(m => {
+                    if (m.id === assistantMsgId) {
+                        return { ...m, content: m.content ? m.content + '\n\n> ⏹️ *Generation stopped by user*' : '> ⏹️ *Generation stopped by user*' };
+                    }
+                    return m;
+                }));
+            } else {
+                toast.error(e.message || 'Error interacting with AI Copilot');
+                setMessages(prev => prev.map(m => {
+                    if (m.id === assistantMsgId) {
+                        return { ...m, content: m.content + `\n\n> ⚠️ **Failed to complete response:** ${e.message}` };
+                    }
+                    return m;
+                }));
+            }
         } finally {
             setIsStreaming(false);
+            abortControllerRef.current = null;
         }
+    };
+
+    const handleStopGeneration = () => {
+        if (abortControllerRef.current) {
+            abortControllerRef.current.abort();
+            abortControllerRef.current = null;
+        }
+        setIsStreaming(false);
+        toast('Generation stopped', { icon: '⏹️' });
     };
 
     const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -851,18 +876,25 @@ export default function Copilot({ token, onOpenSettings, isDrawer = false, onClo
                         />
 
                         <div className="absolute right-2 bottom-2 flex items-center gap-1.5">
-                            <button
-                                type="submit"
-                                disabled={!config?.hasKey || !inputPrompt.trim() || isStreaming}
-                                className="p-2 bg-blue-600 hover:bg-blue-500 disabled:bg-card-hover disabled:text-text-muted text-white rounded-xl transition-all shadow-md active:scale-95 flex items-center justify-center"
-                                title="Send Message"
-                            >
-                                {isStreaming ? (
-                                    <Loader2 size={16} className="animate-spin text-white" />
-                                ) : (
+                            {isStreaming ? (
+                                <button
+                                    type="button"
+                                    onClick={handleStopGeneration}
+                                    className="p-2 bg-red-600 hover:bg-red-500 text-white rounded-xl transition-all shadow-md active:scale-95 flex items-center justify-center cursor-pointer animate-pulse"
+                                    title="Stop generation (Interrompre la réponse / action en cours)"
+                                >
+                                    <Square size={15} className="fill-current" />
+                                </button>
+                            ) : (
+                                <button
+                                    type="submit"
+                                    disabled={!config?.hasKey || !inputPrompt.trim()}
+                                    className="p-2 bg-blue-600 hover:bg-blue-500 disabled:bg-card-hover disabled:text-text-muted text-white rounded-xl transition-all shadow-md active:scale-95 flex items-center justify-center cursor-pointer"
+                                    title="Send Message"
+                                >
                                     <Send size={16} />
-                                )}
-                            </button>
+                                </button>
+                            )}
                         </div>
                     </form>
                     <div className="flex items-center justify-between text-[10px] text-text-muted mt-2 px-1">
