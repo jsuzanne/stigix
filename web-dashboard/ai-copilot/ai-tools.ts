@@ -36,7 +36,8 @@ export function resolveNodeContext(
 ): { baseUrl: string; headers: Record<string, string>; siteName: string; isLocal: boolean } {
     const defaultPort = ctx.serverPort || process.env.PORT || 8080;
     const defaultHeaders: Record<string, string> = { 'Content-Type': 'application/json' };
-    if (ctx.systemToken) defaultHeaders['Authorization'] = `Bearer ${ctx.systemToken}`;
+    const activeToken = ctx.systemToken || ctx.token;
+    if (activeToken) defaultHeaders['Authorization'] = `Bearer ${activeToken}`;
 
     const localSite = ctx.registryManager?.getSiteName?.() || 'LOCAL';
 
@@ -2432,14 +2433,25 @@ export async function executeCopilotTool(
                 // Enrich with latest live measurement & metrics from /api/connectivity/results
                 try {
                     const matchedName = (matched.name || '').toLowerCase();
+                    const nameSlug = (matched.name || '').toLowerCase().replace(/\s+/g, '-');
                     const matchedId = (matched.id || matched.name || '').toLowerCase().replace(/\s+/g, '-');
-                    const resultsData = await fetchApi(nodeCtx, '/api/connectivity/results?limit=100').catch(() => []);
-                    const allResults = Array.isArray(resultsData) ? resultsData : (resultsData?.results || []);
+                    
+                    // Direct query by endpointId first (fast and precise even with 100+ probes)
+                    let resultsData = await fetchApi(nodeCtx, `/api/connectivity/results?endpointId=${encodeURIComponent(nameSlug)}&limit=50`).catch(() => []);
+                    let allResults = Array.isArray(resultsData) ? resultsData : (resultsData?.results || []);
+                    if (allResults.length === 0 && matchedId !== nameSlug) {
+                        resultsData = await fetchApi(nodeCtx, `/api/connectivity/results?endpointId=${encodeURIComponent(matchedId)}&limit=50`).catch(() => []);
+                        allResults = Array.isArray(resultsData) ? resultsData : (resultsData?.results || []);
+                    }
+                    if (allResults.length === 0) {
+                        resultsData = await fetchApi(nodeCtx, '/api/connectivity/results?limit=300').catch(() => []);
+                        allResults = Array.isArray(resultsData) ? resultsData : (resultsData?.results || []);
+                    }
 
                     const probeResults = allResults.filter((r: any) => {
                         const rName = (r.endpointName || r.name || '').toLowerCase();
                         const rId = (r.endpointId || '').toLowerCase();
-                        return rName === matchedName || rId === matchedId;
+                        return rName === matchedName || rId === nameSlug || rId === matchedId;
                     });
 
                     if (probeResults.length > 0) {
