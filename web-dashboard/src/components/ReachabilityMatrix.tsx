@@ -897,12 +897,14 @@ export function ReachabilityMatrix({ token }: { token?: string }) {
                                     </div>
                                     <div className="flex items-center justify-between gap-2">
                                         <span className="text-text-muted whitespace-nowrap">SD-WAN Probed IP:</span>
-                                        <span className="font-bold font-mono text-blue-600 dark:text-blue-400 text-right">{selectedPair.forward.target_ip || selectedPair.target_ip || '—'}</span>
+                                        <span className="font-bold font-mono text-blue-600 dark:text-blue-400 text-right">
+                                            {selectedPair.forward.has_data ? (selectedPair.forward.target_ip || selectedPair.target_ip || '—') : '— (No probe)'}
+                                        </span>
                                     </div>
                                     <div className="flex items-center justify-between gap-2">
                                         <span className="text-text-muted whitespace-nowrap">Status:</span>
-                                        <span className={selectedPair.forward.reachable ? "text-emerald-600 dark:text-emerald-400 font-bold" : "text-red-600 dark:text-red-400 font-bold"}>
-                                            {selectedPair.forward.reachable ? 'ONLINE' : 'DOWN'}
+                                        <span className={selectedPair.forward.has_data ? (selectedPair.forward.reachable ? "text-emerald-600 dark:text-emerald-400 font-bold" : "text-red-600 dark:text-red-400 font-bold") : "text-text-muted font-bold"}>
+                                            {selectedPair.forward.has_data ? (selectedPair.forward.reachable ? 'ONLINE' : 'DOWN') : 'Pending Telemetry'}
                                         </span>
                                     </div>
                                     <div className="flex items-center justify-between gap-2">

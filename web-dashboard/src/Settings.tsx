@@ -4286,6 +4286,34 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                             </div>
                         </div>
 
+                        {/* Live Local Upgrade Progress Banner if modal is minimized/closed */}
+                        {upgrading && !upgradeModal.open && (
+                            <div className="p-4 bg-blue-500/10 border border-blue-500/30 rounded-2xl flex items-center justify-between gap-4 animate-in fade-in">
+                                <div className="flex items-center gap-3">
+                                    <div className="p-2 bg-blue-500/20 text-blue-400 rounded-xl">
+                                        <RefreshCw size={16} className="animate-spin" />
+                                    </div>
+                                    <div>
+                                        <p className="text-xs font-black text-blue-300">
+                                            Local system upgrade running in background ({upgradeModal.version || status?.latest || 'latest'})
+                                        </p>
+                                        <p className="text-[11px] font-mono text-text-muted mt-0.5">
+                                            {upgradeModal.phase === 'pulling' ? 'Phase 1/4: Pulling Docker image...' :
+                                             upgradeModal.phase === 'restarting' ? 'Phase 2/4: Recreating container...' :
+                                             upgradeModal.phase === 'reconnecting' ? 'Phase 3/4: Awaiting healthcheck...' :
+                                             'Phase 4/4: Finalizing update...'}
+                                        </p>
+                                    </div>
+                                </div>
+                                <button
+                                    onClick={() => setUpgradeModal(prev => ({ ...prev, open: true }))}
+                                    className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-black tracking-wider uppercase transition-all shadow-md cursor-pointer shrink-0"
+                                >
+                                    View Live Logs →
+                                </button>
+                            </div>
+                        )}
+
                         {upgrading && upgradeStatus && (
                             <div className="space-y-4">
                                 <div className="flex items-center justify-between">
@@ -7655,13 +7683,9 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                                 </div>
                             </div>
                             <button
-                                onClick={() => {
-                                    setUpgradeModal(prev => ({ ...prev, open: false }));
-                                    setUpgrading(false);
-                                    sessionStorage.removeItem('stigix_upgrade_active');
-                                }}
+                                onClick={() => setUpgradeModal(prev => ({ ...prev, open: false }))}
                                 className="p-1.5 text-text-muted hover:text-text-primary rounded-xl hover:bg-card-hover transition-colors cursor-pointer"
-                                title="Close dialog"
+                                title="Run in background / Minimize dialog"
                             >
                                 <X size={18} />
                             </button>
@@ -7764,9 +7788,18 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                                         Close
                                     </button>
                                 ) : (
-                                    <div className="flex items-center gap-2 text-xs font-mono text-blue-400">
-                                        <RefreshCw size={12} className="animate-spin" />
-                                        <span>Upgrade running, please do not close window...</span>
+                                    <div className="flex items-center gap-3">
+                                        <button
+                                            type="button"
+                                            onClick={() => setUpgradeModal(prev => ({ ...prev, open: false }))}
+                                            className="px-4 py-2 rounded-xl text-xs font-bold text-text-muted hover:text-text-primary bg-card hover:bg-card-hover border border-border transition-all cursor-pointer"
+                                        >
+                                            Run in Background
+                                        </button>
+                                        <div className="flex items-center gap-2 text-xs font-mono text-blue-400">
+                                            <RefreshCw size={12} className="animate-spin" />
+                                            <span>Upgrade running safely in background</span>
+                                        </div>
                                     </div>
                                 )}
                             </div>
