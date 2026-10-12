@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { usePeerContext } from './PeerContext';
-import { Gauge, Activity, Clock, Filter, Download, Zap, Shield, Search, ChevronRight, BarChart3, AlertCircle, Info, ChevronUp, ChevronDown, Flame, Plus, XCircle, CheckCircle, RefreshCw, Globe, Play, Pause, TrendingUp, Pencil, Route, Grid } from 'lucide-react';
+import { Gauge, Activity, Clock, Filter, Download, Zap, Shield, Search, ChevronRight, BarChart3, AlertCircle, Info, ChevronUp, ChevronDown, Flame, Plus, XCircle, CheckCircle, RefreshCw, Globe, Play, Pause, TrendingUp, Pencil, Route, Grid, Trash2 } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as ReTooltip, ResponsiveContainer, AreaChart, Area, ReferenceLine, ReferenceArea } from 'recharts';
 import { twMerge } from 'tailwind-merge';
 import { TracerouteModal } from './components/TracerouteModal';
@@ -140,6 +140,7 @@ interface ConnectivityPerformanceProps {
     token: string;
     uiConfig?: { maxCaptures: number };
     onManage?: () => void;
+    isLeader?: boolean;
 }
 
 // Component for individual endpoint type graph
@@ -387,7 +388,7 @@ function ProbeScoreChart({ results, range, probeType, data: externalData, syncId
     );
 }
 
-export default function ConnectivityPerformance({ token, uiConfig, onManage }: ConnectivityPerformanceProps) {
+export default function ConnectivityPerformance({ token, uiConfig, onManage, isLeader: propIsLeader }: ConnectivityPerformanceProps) {
     const maxCaptures = uiConfig?.maxCaptures || 10;
     const [results, setResults] = useState<any[]>([]);
     const [stats, setStats] = useState<any>(null);
@@ -402,13 +403,28 @@ export default function ConnectivityPerformance({ token, uiConfig, onManage }: C
     const [endpointConfigs, setEndpointConfigs] = useState<Map<string, any>>(new Map());
     const [cloudScenarios, setCloudScenarios] = useState<any[]>([]);
 
-    // Edit Probe Modal state
+    // Edit Probe Modal state & Leader state
     const [editingProbe, setEditingProbe] = useState<any>(null);
     const [isEditModalOpen, setIsEditModalOpen] = useState(false);
     const [isSavingProbe, setIsSavingProbe] = useState(false);
+    const [isDeletingProbe, setIsDeletingProbe] = useState(false);
+    const [isLeader, setIsLeader] = useState<boolean>(propIsLeader ?? false);
     const [tracerouteTarget, setTracerouteTarget] = useState<string | null>(null);
     const [viewMode, setViewMode] = useState<'catalog' | 'matrix'>('catalog');
     const [inspectedCapture, setInspectedCapture] = useState<any>(null);
+
+    useEffect(() => {
+        if (propIsLeader !== undefined) {
+            setIsLeader(propIsLeader);
+        } else {
+            gFetch('/api/registry/status', { headers: authHeaders() })
+                .then(r => r.json())
+                .then(data => {
+                    setIsLeader(data.mode === 'leader' || data.current_mode === 'leader' || data.local_registry_active === true);
+                })
+                .catch(() => {});
+        }
+    }, [propIsLeader]);
 
     const formatDisplayUrl = (endpoint: any) => {
         const target = endpoint.lastResult?.url || '';
@@ -635,6 +651,44 @@ export default function ConnectivityPerformance({ token, uiConfig, onManage }: C
             console.error('Failed to update probe:', err);
         } finally {
             setIsSavingProbe(false);
+        }
+    };
+
+    const handleDeleteProbe = async (probeToDelete?: any) => {
+        const targetProbe = probeToDelete || editingProbe;
+        if (!targetProbe || !targetProbe.name) return;
+        if (!isLeader) {
+            alert('Probes can only be deleted from the Leader node.');
+            return;
+        }
+        const confirmDelete = window.confirm(`Are you sure you want to delete probe "${targetProbe.name}"?\nThis probe will be permanently deleted and synchronized across the fleet.`);
+        if (!confirmDelete) return;
+
+        setIsDeletingProbe(true);
+        try {
+            const probeNameEncoded = encodeURIComponent(targetProbe.name);
+            const res = await gFetch(`/api/connectivity/custom/${probeNameEncoded}`, {
+                method: 'DELETE',
+                headers: authHeaders()
+            });
+            if (!res.ok) {
+                const errData = await res.json().catch(() => ({}));
+                throw new Error(errData.error || `HTTP ${res.status}`);
+            }
+
+            setIsEditModalOpen(false);
+            if (selectedEndpoint && (selectedEndpoint.name || '').toLowerCase() === (targetProbe.name || '').toLowerCase()) {
+                setShowDetailModal(false);
+                setSelectedEndpoint(null);
+                setInspectedCapture(null);
+            }
+            await fetchProbesConfig();
+            await fetchStatsAndResults();
+        } catch (e: any) {
+            console.error('Failed to delete probe', e);
+            alert(`Failed to delete probe: ${e.message || 'Unknown error'}`);
+        } finally {
+            setIsDeletingProbe(false);
         }
     };
 
@@ -1289,6 +1343,18 @@ export default function ConnectivityPerformance({ token, uiConfig, onManage }: C
                                         >
                                             <Pencil size={16} />
                                         </button>
+                                        {isLeader && (
+                                            <button
+                                                onClick={(ev) => {
+                                                    ev.stopPropagation();
+                                                    handleDeleteProbe(e);
+                                                }}
+                                                className="p-2 rounded-lg transition-all border border-transparent flex items-center justify-center text-text-muted hover:bg-red-500/10 hover:text-red-400 hover:border-red-500/20"
+                                                title="Delete Probe (Leader only)"
+                                            >
+                                                <Trash2 size={16} />
+                                            </button>
+                                        )}
                                     </div>
                                 </td>
                             </tr>
@@ -1427,6 +1493,18 @@ export default function ConnectivityPerformance({ token, uiConfig, onManage }: C
                                         >
                                             <Pencil size={16} />
                                         </button>
+                                        {isLeader && (
+                                            <button
+                                                onClick={(ev) => {
+                                                    ev.stopPropagation();
+                                                    handleDeleteProbe(e);
+                                                }}
+                                                className="p-2 rounded-lg transition-all border border-transparent flex items-center justify-center text-text-muted hover:bg-red-500/10 hover:text-red-400 hover:border-red-500/20"
+                                                title="Delete Probe (Leader only)"
+                                            >
+                                                <Trash2 size={16} />
+                                            </button>
+                                        )}
                                     </div>
                                 </td>
                             </tr>
@@ -1475,6 +1553,22 @@ export default function ConnectivityPerformance({ token, uiConfig, onManage }: C
                                 </div>
                             </div>
                             <div className="flex items-center gap-2">
+                                <button
+                                    onClick={() => startEditProbe(selectedEndpoint)}
+                                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-card-secondary hover:bg-card-secondary/80 text-text-primary border border-border text-xs font-semibold transition-all"
+                                    title="Edit probe parameters"
+                                >
+                                    <Pencil size={14} /> Edit
+                                </button>
+                                {isLeader && (
+                                    <button
+                                        onClick={() => handleDeleteProbe(selectedEndpoint)}
+                                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20 text-xs font-semibold transition-all"
+                                        title="Delete this probe (Leader only)"
+                                    >
+                                        <Trash2 size={14} /> Delete
+                                    </button>
+                                )}
                                 <button
                                     onClick={() => setTracerouteTarget(selectedEndpoint.target || selectedEndpoint.lastResult?.url || '')}
                                     className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-500/10 hover:bg-blue-500/20 text-blue-500 dark:text-blue-400 border border-blue-500/20 text-xs font-semibold transition-all"
@@ -1953,22 +2047,22 @@ export default function ConnectivityPerformance({ token, uiConfig, onManage }: C
                                 <div className="border border-border rounded-xl p-4 space-y-3 bg-card-secondary/30">
                                     <div className="flex items-center justify-between">
                                         <label className="text-[10px] font-black uppercase tracking-widest text-text-primary">
-                                            Codes HTTP attendus (SLA Valide)
+                                            Expected HTTP Status Codes (Valid SLA)
                                         </label>
                                         <span className="text-[9px] text-text-muted opacity-60 font-bold uppercase tracking-widest">
-                                            Tout autre code 4xx sera bridé à 20
+                                            Any other 4xx/5xx status code will cap score at 20
                                         </span>
                                     </div>
                                     <input
                                         type="text"
-                                        placeholder="ex: 200, 201, 204, 301, 302, 429"
+                                        placeholder="e.g.: 200, 201, 204, 301, 302, 429"
                                         className="w-full bg-card-secondary border border-border text-text-primary rounded-xl px-4 py-3 outline-none focus:ring-1 focus:ring-blue-500 text-[11px] font-mono shadow-inner transition-all"
                                         value={editingProbe.expectedStatusCodesInput ?? (Array.isArray(editingProbe.expectedStatusCodes) ? editingProbe.expectedStatusCodes.join(', ') : '200, 201, 202, 204, 301, 302, 304, 307, 308')}
                                         onChange={e => setEditingProbe({ ...editingProbe, expectedStatusCodesInput: e.target.value })}
                                     />
                                     {/* Preset quick buttons */}
                                     <div className="flex items-center gap-1.5 flex-wrap pt-1">
-                                        <span className="text-[9px] font-bold text-text-muted uppercase tracking-wider mr-1">Raccourcis :</span>
+                                        <span className="text-[9px] font-bold text-text-muted uppercase tracking-wider mr-1">Presets:</span>
                                         {[
                                             { label: 'Standard (200-308)', codes: '200, 201, 202, 204, 301, 302, 304, 307, 308' },
                                             { label: '+ 429 (Rate-Limit)', addCode: '429' },
@@ -1998,20 +2092,41 @@ export default function ConnectivityPerformance({ token, uiConfig, onManage }: C
                                 </div>
                             )}
 
-                            <div className="flex justify-end gap-3 pt-4 border-t border-border">
-                                <button
-                                    onClick={() => setIsEditModalOpen(false)}
-                                    className="px-5 py-2.5 rounded-xl border border-border text-text-muted hover:text-text-primary hover:bg-card-secondary font-bold text-xs transition-all"
-                                >
-                                    Cancel
-                                </button>
-                                <button
-                                    onClick={handleSaveProbeEdit}
-                                    disabled={isSavingProbe || !editingProbe.name || !editingProbe.target}
-                                    className="px-6 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-black text-xs uppercase tracking-wider transition-all disabled:opacity-50 shadow-lg shadow-blue-500/20"
-                                >
-                                    {isSavingProbe ? 'Saving...' : 'Save Parameters'}
-                                </button>
+                            <div className="flex items-center justify-between gap-3 pt-4 border-t border-border">
+                                {isLeader ? (
+                                    <button
+                                        type="button"
+                                        onClick={() => handleDeleteProbe()}
+                                        disabled={isDeletingProbe}
+                                        className="px-4 py-2.5 rounded-xl border border-red-500/30 bg-red-500/10 hover:bg-red-500/20 text-red-400 hover:text-red-300 font-bold text-xs flex items-center gap-1.5 transition-all shadow-sm cursor-pointer disabled:opacity-50"
+                                        title="Delete this probe (Leader only)"
+                                    >
+                                        <Trash2 size={14} />
+                                        {isDeletingProbe ? 'Deleting...' : 'Delete Probe'}
+                                    </button>
+                                ) : (
+                                    <div className="flex items-center gap-1.5 text-[11px] text-text-muted/60 select-none">
+                                        <Shield size={13} className="text-amber-400/80" />
+                                        <span>Deletion managed on Leader</span>
+                                    </div>
+                                )}
+                                <div className="flex items-center gap-3">
+                                    <button
+                                        type="button"
+                                        onClick={() => setIsEditModalOpen(false)}
+                                        className="px-5 py-2.5 rounded-xl border border-border text-text-muted hover:text-text-primary hover:bg-card-secondary font-bold text-xs transition-all cursor-pointer"
+                                    >
+                                        Cancel
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={handleSaveProbeEdit}
+                                        disabled={isSavingProbe || !editingProbe.name || !editingProbe.target}
+                                        className="px-6 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-black text-xs uppercase tracking-wider transition-all disabled:opacity-50 shadow-lg shadow-blue-500/20 cursor-pointer"
+                                    >
+                                        {isSavingProbe ? 'Saving...' : 'Save Parameters'}
+                                    </button>
+                                </div>
                             </div>
                         </div>
                     </div>

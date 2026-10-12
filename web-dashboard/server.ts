@@ -5190,6 +5190,29 @@ app.post('/api/connectivity/custom', authenticateToken, async (req, res) => {
     }
 });
 
+// API: Delete Custom Connectivity Probe (Leader only)
+app.delete('/api/connectivity/custom/:name', authenticateToken, async (req, res) => {
+    const isLeader = typeof registryManager?.isLeader === 'function'
+        ? registryManager.isLeader()
+        : (registryManager?.getStatus?.()?.mode === 'leader' || !registryManager?.getStatus?.()?.remote_url);
+
+    if (!isLeader) {
+        return res.status(403).json({ error: 'Probes can only be deleted from the Leader node.' });
+    }
+
+    const targetName = decodeURIComponent(req.params.name).trim().toLowerCase();
+    const currentEndpoints = getFullEffectiveConnectivityProbes();
+    const updatedEndpoints = currentEndpoints.filter((p: any) => (p.name || '').trim().toLowerCase() !== targetName);
+
+    const success = await applyCustomConnectivityEndpoints(updatedEndpoints);
+    if (success) {
+        log('DEM', `Probe "${req.params.name}" deleted by Leader and fleet bundle synced.`);
+        res.json({ success: true, name: req.params.name });
+    } else {
+        res.status(500).json({ error: 'Failed to delete probe' });
+    }
+});
+
 // API: Export Custom Connectivity Probes
 app.get('/api/connectivity/custom/export', authenticateToken, (req, res) => {
     try {

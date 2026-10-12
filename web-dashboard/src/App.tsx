@@ -1754,7 +1754,7 @@ export default function App() {
 
       {/* Other views — conditionally mounted */}
       {view === 'performance' && (
-        <ConnectivityPerformance token={token!} uiConfig={uiConfig} onManage={() => {
+        <ConnectivityPerformance token={token!} uiConfig={uiConfig} isLeader={isLeader} onManage={() => {
           setInitialSettingsTab('probes');
           setView('settings');
         }} />
