@@ -685,8 +685,8 @@ export default function ConnectivityPerformance({ token, uiConfig, onManage }: C
             // Filtering logic
             if (filterType === 'PRISMA SDWAN') {
                 if (e.source !== 'discovery' && e.type !== 'PRISMA' && e.type !== 'PRISMA SDWAN') return false;
-            } else if (filterType === 'AUTOMESH') {
-                if (e.source !== 'auto-mesh' && !(e.name && e.name.startsWith('[AutoMesh]'))) return false;
+            } else if (filterType === 'STIGIX' || filterType === 'AUTOMESH') {
+                if (e.source !== 'auto-mesh' && !(e.name && (e.name.startsWith('[Stigix]') || e.name.startsWith('[AutoMesh]')))) return false;
             } else if (filterType !== 'ALL' && e.type !== filterType) {
                 return false;
             }
@@ -1068,15 +1068,15 @@ export default function ConnectivityPerformance({ token, uiConfig, onManage }: C
                         />
                     </div>
                     <div className="flex p-1 bg-card-secondary rounded-lg border border-border flex-wrap gap-0.5">
-                        {['ALL', 'HTTP', 'HTTPS', 'PING', 'TCP', 'UDP', 'DNS', 'CLOUD', 'PRISMA SDWAN', 'AUTOMESH'].map(t => {
+                        {['ALL', 'HTTP', 'HTTPS', 'PING', 'TCP', 'UDP', 'DNS', 'CLOUD', 'PRISMA SDWAN', 'STIGIX'].map(t => {
                             const count = t === 'ALL'
                                 ? endpoints.length
                                 : t === 'CLOUD'
                                     ? endpoints.filter(e => e.type === 'CLOUD' || e.type === 'STIGIX CLOUD').length
                                     : t === 'PRISMA SDWAN'
                                         ? endpoints.filter(e => e.source === 'discovery' || e.type === 'PRISMA' || e.type === 'PRISMA SDWAN').length
-                                        : t === 'AUTOMESH'
-                                            ? endpoints.filter(e => e.source === 'auto-mesh' || (e.name && e.name.startsWith('[AutoMesh]'))).length
+                                        : (t === 'STIGIX' || t === 'AUTOMESH')
+                                            ? endpoints.filter(e => e.source === 'auto-mesh' || (e.name && (e.name.startsWith('[Stigix]') || e.name.startsWith('[AutoMesh]')))).length
                                             : endpoints.filter(e => e.type === t).length;
                             return (
                                 <button
@@ -1290,14 +1290,14 @@ export default function ConnectivityPerformance({ token, uiConfig, onManage }: C
                                 <td className="px-6 py-4 text-center align-middle">
                                     <span className={cn(
                                         "px-2 py-0.5 rounded text-[10px] font-bold border uppercase tracking-tighter",
-                                        (e.source === 'auto-mesh' || (e.name && e.name.startsWith('[AutoMesh]'))) ? "text-cyan-600 dark:text-cyan-400 bg-cyan-500/10 border-cyan-500/20" :
+                                        (e.source === 'auto-mesh' || (e.name && (e.name.startsWith('[Stigix]') || e.name.startsWith('[AutoMesh]')))) ? "text-cyan-600 dark:text-cyan-400 bg-cyan-500/10 border-cyan-500/20" :
                                         (e.source === 'discovery' || e.type === 'PRISMA') ? "text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 border-emerald-500/20" :
                                         e.type === 'HTTPS' ? "text-purple-600 dark:text-purple-400 bg-purple-500/10 border-purple-500/20" :
                                             e.type === 'HTTP' ? "text-blue-600 dark:text-blue-400 bg-blue-500/10 border-blue-500/20" :
                                                 e.type === 'CLOUD' ? "text-indigo-600 dark:text-indigo-400 bg-indigo-500/10 border-indigo-500/20" :
                                                     "text-orange-500 bg-orange-500/10 border-orange-500/20"
                                     )}>
-                                        {(e.source === 'auto-mesh' || (e.name && e.name.startsWith('[AutoMesh]'))) ? 'AUTOMESH' :
+                                        {(e.source === 'auto-mesh' || (e.name && (e.name.startsWith('[Stigix]') || e.name.startsWith('[AutoMesh]')))) ? 'STIGIX' :
                                          (e.source === 'discovery' || e.type === 'PRISMA') ? 'PRISMA SDWAN' :
                                          (e.type === 'CLOUD' ? 'STIGIX CLOUD' : e.type)}
                                     </span>

@@ -718,8 +718,9 @@ export class RegistryManager {
         const GRACE_PERIOD_MS = 15 * 60 * 1000; // 15 minutes
         const ownInstanceId = this.client.getConfig().instanceId;
 
-        // On Leader, prefer localRegistryServer.getInstances() as authoritative source
-        const rawInstances: RegistryInstance[] = this.localRegistryServer
+        // On Leader, prefer localRegistryServer.getInstances() as authoritative source.
+        // On Spokes/Peers, localRegistryServer is mounted for potential failover but empty; use peerCache.
+        const rawInstances: RegistryInstance[] = (this.isLeader() && this.localRegistryServer)
             ? this.localRegistryServer.getInstances()
             : Array.from(this.peerCache.values()).map(e => e.instance);
 

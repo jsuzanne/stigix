@@ -2865,15 +2865,15 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
 
                         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-border pb-4">
                             <div className="flex p-1 bg-card-secondary rounded-lg border border-border flex-wrap gap-0.5">
-                                {['ALL', 'HTTP', 'HTTPS', 'PING', 'TCP', 'UDP', 'DNS', 'CLOUD', 'PRISMA', 'AUTOMESH'].map(t => {
+                                {['ALL', 'HTTP', 'HTTPS', 'PING', 'TCP', 'UDP', 'DNS', 'CLOUD', 'PRISMA', 'STIGIX'].map(t => {
                                     const count = t === 'ALL'
                                         ? customProbes.length
                                         : t === 'CLOUD'
                                             ? customProbes.filter((p: any) => p.type === 'CLOUD' || p.type === 'STIGIX CLOUD').length
                                             : t === 'PRISMA'
                                                 ? customProbes.filter((p: any) => (p as any).source === 'discovery').length
-                                                : t === 'AUTOMESH'
-                                                    ? customProbes.filter((p: any) => (p as any).source === 'auto-mesh' || (p.name && p.name.startsWith('[AutoMesh]'))).length
+                                                : (t === 'STIGIX' || t === 'AUTOMESH')
+                                                    ? customProbes.filter((p: any) => (p as any).source === 'auto-mesh' || (p.name && (p.name.startsWith('[Stigix]') || p.name.startsWith('[AutoMesh]')))).length
                                                     : customProbes.filter((p: any) => p.type === t).length;
                                     return (
                                         <button
@@ -2934,8 +2934,8 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                                             let matchesType = true;
                                             if (probeFilterType === 'PRISMA') {
                                                 matchesType = (probe as any).source === 'discovery';
-                                            } else if (probeFilterType === 'AUTOMESH') {
-                                                matchesType = (probe as any).source === 'auto-mesh' || Boolean(probe.name?.startsWith('[AutoMesh]'));
+                                            } else if (probeFilterType === 'STIGIX' || probeFilterType === 'AUTOMESH') {
+                                                matchesType = (probe as any).source === 'auto-mesh' || Boolean(probe.name?.startsWith('[Stigix]') || probe.name?.startsWith('[AutoMesh]'));
                                             } else if (probeFilterType !== 'ALL') {
                                                 matchesType = probe.type === probeFilterType;
                                             }
@@ -2953,7 +2953,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                                         })
                                         .map((probe) => {
                                         const isDiscovery = (probe as any).source === 'discovery';
-                                        const isAutoMesh = (probe as any).source === 'auto-mesh' || (probe.name && probe.name.startsWith('[AutoMesh]'));
+                                        const isAutoMesh = (probe as any).source === 'auto-mesh' || (probe.name && (probe.name.startsWith('[Stigix]') || probe.name.startsWith('[AutoMesh]')));
                                         const isCloud = probe.type === 'CLOUD';
                                         
                                         // When filtering, the idx parameter of map corresponds to the filtered array, not the original.
@@ -3000,7 +3000,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                                                                 "text-[8px] px-2 py-0.5 rounded-full font-black tracking-widest uppercase",
                                                                 isCloud ? "bg-purple-600/10 text-purple-500" : isDiscovery ? "bg-indigo-600/10 text-indigo-500" : isAutoMesh ? "bg-cyan-600/10 text-cyan-500" : "bg-amber-600/10 text-amber-500"
                                                             )}>
-                                                                {isDiscovery ? 'Prisma' : isAutoMesh ? 'AutoMesh' : isCloud ? 'Cloud' : probe.type}
+                                                                {isDiscovery ? 'Prisma' : isAutoMesh ? 'Stigix' : isCloud ? 'Cloud' : probe.type}
                                                             </span>
                                                         </div>
                                                         {/* URL chip — full effective URL with copy-to-clipboard */}

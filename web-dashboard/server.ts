@@ -4687,7 +4687,7 @@ const getAutoMeshProbes = (): any[] => {
 
             probes.push({
                 id: `mesh-${peer.instance_id}`,
-                name: `[AutoMesh] ${peerName}`,
+                name: `[Stigix] ${peerName}`,
                 type: 'PING',
                 target: peerIp,
                 url: peerIp,
