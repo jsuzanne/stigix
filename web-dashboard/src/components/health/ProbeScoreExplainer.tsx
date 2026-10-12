@@ -56,19 +56,19 @@ export const ProbeScoreCard: React.FC<ProbeScoreCardProps> = ({
                 return {
                     bg: 'bg-emerald-500/10 border-emerald-500/30 text-emerald-600 dark:text-emerald-400',
                     icon: <CheckCircle2 size={16} className="text-emerald-500 shrink-0" />,
-                    label: 'Score Optimal'
+                    label: 'Optimal Score'
                 };
             case 'good':
                 return {
                     bg: 'bg-blue-500/10 border-blue-500/30 text-blue-600 dark:text-blue-400',
                     icon: <CheckCircle2 size={16} className="text-blue-500 shrink-0" />,
-                    label: 'Performances Bonnes'
+                    label: 'Good Performance'
                 };
             case 'degraded':
                 return {
                     bg: 'bg-amber-500/10 border-amber-500/30 text-amber-600 dark:text-amber-400',
                     icon: <AlertTriangle size={16} className="text-amber-500 shrink-0" />,
-                    label: 'Score Dégradé'
+                    label: 'Degraded Score'
                 };
             case 'critical':
             case 'down':
@@ -76,7 +76,7 @@ export const ProbeScoreCard: React.FC<ProbeScoreCardProps> = ({
                 return {
                     bg: 'bg-red-500/10 border-red-500/30 text-red-600 dark:text-red-400',
                     icon: <XCircle size={16} className="text-red-500 shrink-0" />,
-                    label: verdict === 'down' ? 'Hôte Injoignable' : 'Score Critique'
+                    label: verdict === 'down' ? 'Host Unreachable' : 'Critical Score'
                 };
         }
     };
@@ -112,7 +112,7 @@ export const ProbeScoreCard: React.FC<ProbeScoreCardProps> = ({
                     <div>
                         <div className="flex items-center gap-2">
                             <span className="text-[11px] font-black uppercase tracking-wider text-text-primary">
-                                Diagnostic du Score DEM
+                                DEM Score Diagnostics
                             </span>
                             <span className={cn("px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider border flex items-center gap-1", badge.bg)}>
                                 {badge.icon} {badge.label}
@@ -134,15 +134,15 @@ export const ProbeScoreCard: React.FC<ProbeScoreCardProps> = ({
                             }}
                             disabled={isFixing}
                             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-[11px] shadow-sm transition-all"
-                            title={`Ajouter ${missingStatusCode} aux codes attendus`}
+                            title={`Add HTTP ${missingStatusCode} to allowed status codes`}
                         >
                             <Zap size={13} className="text-yellow-300" />
-                            {isFixing ? 'Correction...' : `Accepter code ${missingStatusCode}`}
+                            {isFixing ? 'Applying fix...' : `Allow code ${missingStatusCode}`}
                         </button>
                     )}
                     {fixSuccess && (
                         <span className="text-emerald-400 text-xs font-bold flex items-center gap-1">
-                            <CheckCircle2 size={14} /> Corrigé !
+                            <CheckCircle2 size={14} /> Fixed!
                         </span>
                     )}
                     <button 
@@ -161,8 +161,8 @@ export const ProbeScoreCard: React.FC<ProbeScoreCardProps> = ({
                     {/* Visual Math Stepper */}
                     <div className="space-y-2">
                         <div className="flex items-center justify-between text-[10px] font-black uppercase tracking-widest text-text-muted">
-                            <span>Décomposition Mathématique</span>
-                            <span>Base 100 ➔ Score final {finalScore}</span>
+                            <span>Mathematical Breakdown</span>
+                            <span>Base 100 ➔ Final Score {finalScore}</span>
                         </div>
                         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2.5">
                             {factors.map((f, idx) => (
@@ -211,10 +211,10 @@ export const ProbeScoreCard: React.FC<ProbeScoreCardProps> = ({
                                 <ShieldAlert size={20} className="text-indigo-400 shrink-0 mt-0.5" />
                                 <div>
                                     <h4 className="text-xs font-black text-indigo-300 uppercase tracking-wide">
-                                        Comment rectifier ce score ?
+                                        How to rectify this score?
                                     </h4>
                                     <p className="text-xs text-text-secondary mt-0.5">
-                                        Le code <strong>HTTP {missingStatusCode}</strong> a fait chuter le score à <strong>20</strong> car il n’est pas dans la liste des codes autorisés ({allowedStatusCodes.join(', ')}).
+                                        Status code <strong>HTTP {missingStatusCode}</strong> capped the score at <strong>20</strong> because it is not in the allowed list ({allowedStatusCodes.join(', ')}).
                                     </p>
                                 </div>
                             </div>
@@ -226,7 +226,7 @@ export const ProbeScoreCard: React.FC<ProbeScoreCardProps> = ({
                                     className="px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-black text-xs transition-all shadow-md flex items-center gap-1.5 disabled:opacity-50"
                                 >
                                     <Zap size={14} className="text-yellow-300" />
-                                    {fixSuccess ? 'Code 429 autorisé' : `Autoriser le code ${missingStatusCode}`}
+                                    {fixSuccess ? `Allowed code ${missingStatusCode}` : `Allow code ${missingStatusCode}`}
                                 </button>
                                 {onOpenEditModal && (
                                     <button
@@ -235,7 +235,7 @@ export const ProbeScoreCard: React.FC<ProbeScoreCardProps> = ({
                                         className="px-3 py-2 rounded-xl border border-border bg-card-secondary hover:bg-card-secondary/80 text-text-primary text-xs font-bold transition-all flex items-center gap-1"
                                     >
                                         <Sliders size={13} />
-                                        Modifier la sonde
+                                        Edit Probe
                                     </button>
                                 )}
                             </div>
@@ -248,7 +248,7 @@ export const ProbeScoreCard: React.FC<ProbeScoreCardProps> = ({
                             <Info size={15} className="text-blue-400 shrink-0 mt-0.5" />
                             <div className="space-y-1">
                                 <span className="font-bold text-text-primary text-[11px] uppercase tracking-wider block">
-                                    Recommandations d'optimisation
+                                    Optimization Recommendations
                                 </span>
                                 {recommendations.map((rec, i) => (
                                     <p key={i} className="text-[11px] text-text-secondary leading-relaxed">
@@ -299,7 +299,7 @@ export const InteractiveScoreBadge: React.FC<ScoreCellProps> = ({ score, probe, 
                 <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-72 p-3 bg-card border border-border shadow-2xl rounded-xl z-50 text-left pointer-events-none animate-in fade-in zoom-in-95 duration-150">
                     <div className="flex items-center justify-between border-b border-border pb-1.5 mb-2">
                         <span className="text-[10px] font-black uppercase tracking-wider text-text-muted">
-                            Calcul du Score ({score}/100)
+                            Score Calculation ({score}/100)
                         </span>
                         <span className={cn(
                             "text-[9px] font-black uppercase px-1.5 py-0.5 rounded",
@@ -322,7 +322,7 @@ export const InteractiveScoreBadge: React.FC<ScoreCellProps> = ({ score, probe, 
                         ))}
                     </div>
                     <div className="text-[9px] text-indigo-400 mt-2 pt-1.5 border-t border-border/50 text-center font-bold">
-                        Cliquez pour inspecter la formule complète
+                        Click to inspect full calculation
                     </div>
                 </div>
             )}

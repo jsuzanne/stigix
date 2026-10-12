@@ -8890,7 +8890,18 @@ app.post('/api/config/cloud/test', authenticateToken, async (req, res) => {
             res.json({ success: true });
         } else {
             const body = await testRes.text();
-            res.json({ success: false, error: `HTTP ${testRes.status}${body ? ': ' + body.substring(0, 80) : ''}` });
+            let errMsg = `HTTP ${testRes.status}`;
+            if (testRes.status === 429) {
+                if (body.includes('1027')) {
+                    errMsg = `HTTP 429: Cloudflare Worker daily quota exceeded (Error 1027). The Free plan limit of 100k req/day was reached on target.stigix.io.`;
+                } else {
+                    errMsg = `HTTP 429: Rate limit exceeded on Worker endpoint.`;
+                }
+            } else if (body) {
+                const cleanBody = body.replace(/<[^>]*>?/gm, '').replace(/\s+/g, ' ').trim();
+                errMsg += `: ${cleanBody.substring(0, 100)}`;
+            }
+            res.json({ success: false, error: errMsg });
         }
     } catch (e: any) {
         res.json({ success: false, error: e.message });

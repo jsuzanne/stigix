@@ -1488,15 +1488,6 @@ export default function ConnectivityPerformance({ token, uiConfig, onManage }: C
                             </div>
                         </div>
 
-                        {/* ── Dynamic DEM Score Breakdown & Explainer Card ── */}
-                        <div className="px-6 pt-5">
-                            <ProbeScoreCard
-                                probe={selectedEndpoint}
-                                result={inspectedCapture || selectedEndpointResults[0]}
-                                onQuickFixStatus={handleQuickAddStatusCode}
-                                onOpenEditModal={() => startEditProbe(selectedEndpoint)}
-                            />
-                        </div>
 
                         {/* ── Content Match Info Banner (visible when enabled) ── */}
                         {(selectedEndpoint as any).content_match?.enabled && (() => {
@@ -1762,6 +1753,14 @@ export default function ConnectivityPerformance({ token, uiConfig, onManage }: C
                                     </table>
                                 </div>
                             </div>
+
+                            {/* ── Dynamic DEM Score Breakdown & Explainer Card (placed at bottom) ── */}
+                            <ProbeScoreCard
+                                probe={selectedEndpoint}
+                                result={inspectedCapture || selectedEndpointResults[0]}
+                                onQuickFixStatus={handleQuickAddStatusCode}
+                                onOpenEditModal={() => startEditProbe(selectedEndpoint)}
+                            />
                         </div>
                     </div>
                 </div>

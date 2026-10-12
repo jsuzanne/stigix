@@ -58,7 +58,7 @@ export function explainDEMScore(probe: any, result?: any): DEMScoreExplanation {
     let baseScore = 100;
     let computedScore = 100;
     let verdict: 'optimal' | 'good' | 'degraded' | 'critical' | 'down' = 'optimal';
-    let primaryReason = 'Sonde pleinement opérationnelle avec d’excellentes métriques de performance.';
+    let primaryReason = 'Fully operational probe with optimal performance metrics.';
     let canAddStatusCode = false;
     let missingStatusCode: number | undefined = undefined;
 
@@ -81,45 +81,45 @@ export function explainDEMScore(probe: any, result?: any): DEMScoreExplanation {
         if (!reachable || !httpCode || httpCode <= 0) {
             computedScore = 0;
             verdict = 'down';
-            primaryReason = 'Échec de connexion réseau (hôte inaccessible, DNS introuvable ou socket rejetée).';
+            primaryReason = 'Network connection failure (unreachable host, DNS resolution error, or rejected socket).';
             factors.push({
-                name: 'Connectivité',
+                name: 'Connectivity',
                 category: 'connectivity',
-                value: 'Inaccessible',
+                value: 'Unreachable',
                 impact: -100,
                 status: 'penalty',
-                detail: 'Aucun paquet HTTP reçu. Connexion interrompue avant la réponse applicative.',
+                detail: 'No HTTP packet received. Connection aborted before application response.',
                 isCritical: true
             });
-            recommendations.push('Vérifiez l’URL ciblée, la résolution DNS et l’accès WAN du nœud Stigix.');
+            recommendations.push('Verify target URL, DNS resolution, and Stigix node WAN egress.');
         } else if (lat >= 5000) {
             computedScore = 0;
             verdict = 'critical';
-            primaryReason = `Délai d’attente dépassé (Timeout ${lat.toFixed(0)} ms ≥ 5 000 ms).`;
+            primaryReason = `Request timeout exceeded (${lat.toFixed(0)} ms ≥ 5,000 ms).`;
             factors.push({
-                name: 'Délai d’attente',
+                name: 'Request Timeout',
                 category: 'latency',
                 value: `${lat.toFixed(0)} ms`,
                 impact: -100,
                 status: 'penalty',
-                detail: 'Le temps de réponse a dépassé le seuil de coupure SLA de 5 secondes.',
+                detail: 'Response time exceeded the 5-second SLA cut-off threshold.',
                 isCritical: true
             });
-            recommendations.push('Augmentez le timeout de la sonde si l’API est naturellement lourde, ou inspectez les goulots d’étranglement.');
+            recommendations.push('Increase probe timeout if the API is inherently slow, or investigate network bottlenecks.');
         } else if (cmEnabled && cmOk === false) {
             computedScore = 0;
             verdict = 'critical';
-            primaryReason = `Échec de validation du corps HTTP (Content Match : ${cmRes || 'texte absent'}).`;
+            primaryReason = `HTTP body validation failed (Content Match: ${cmRes || 'pattern missing'}).`;
             factors.push({
                 name: 'Content Match',
                 category: 'content',
-                value: `Attendu: "${cm.value}"`,
+                value: `Expected: "${cm.value}"`,
                 impact: -100,
                 status: 'penalty',
-                detail: `Le test de contenu (${cm.mode || 'contains'}) a échoué. Réponse : ${cmRes || 'non conforme'}.`,
+                detail: `Content validation (${cm.mode || 'contains'}) failed. Received: ${cmRes || 'non-compliant'}.`,
                 isCritical: true
             });
-            recommendations.push(`Ajustez la chaîne de texte recherchée ("${cm.value}") ou vérifiez le contenu de la page retournée.`);
+            recommendations.push(`Adjust expected pattern ("${cm.value}") or verify returned HTTP response payload.`);
         } else {
             // Status code validation
             const isExpected = allowedStatusCodes.includes(httpCode);
@@ -131,79 +131,79 @@ export function explainDEMScore(probe: any, result?: any): DEMScoreExplanation {
                 if (httpCode >= 500) {
                     computedScore = 0;
                     verdict = 'critical';
-                    primaryReason = `Erreur interne du serveur cible (Code HTTP ${httpCode}).`;
+                    primaryReason = `Target server internal error (HTTP ${httpCode}).`;
                     factors.push({
-                        name: 'Code HTTP (5xx)',
+                        name: 'HTTP Status Code (5xx)',
                         category: 'status_code',
                         value: `HTTP ${httpCode}`,
                         impact: -100,
                         status: 'penalty',
-                        detail: `Erreur critique côté serveur applicatif. Codes attendus : [${allowedStatusCodes.join(', ')}].`,
+                        detail: `Critical application server error. Expected status codes: [${allowedStatusCodes.join(', ')}].`,
                         isCritical: true
                     });
-                    recommendations.push(`Le serveur distant a généré une erreur 5xx. Inspectez les logs backend du service ${probe?.target || ''}.`);
+                    recommendations.push(`Remote server returned a 5xx error. Inspect backend logs for service ${probe?.target || ''}.`);
                 } else if (httpCode >= 400) {
                     computedScore = 20;
                     verdict = 'degraded';
                     primaryReason = httpCode === 429
-                        ? `Limitation de débit détectée (HTTP 429 Too Many Requests). Score bridé à 20.`
-                        : `Code HTTP d’erreur client non attendu (HTTP ${httpCode}). Score bridé à 20.`;
+                        ? `Rate limiting detected (HTTP 429 Too Many Requests). Score capped at 20.`
+                        : `Unexpected client error status code (HTTP ${httpCode}). Score capped at 20.`;
 
                     factors.push({
-                        name: `Code HTTP ${httpCode}`,
+                        name: `HTTP Status Code ${httpCode}`,
                         category: 'status_code',
                         value: `HTTP ${httpCode}`,
                         impact: -80,
                         status: 'penalty',
                         detail: httpCode === 429
-                            ? `Le service cible bloque les requêtes par rate-limiting (429). Stigix bride le score à 20 par sécurité.`
-                            : `Ce code n'est pas dans la liste des codes autorisés [${allowedStatusCodes.join(', ')}]. Score plafonné à 20.`,
+                            ? `Target service is rate-limiting requests (HTTP 429). Stigix caps score at 20 for safety.`
+                            : `Status code is not in allowed list [${allowedStatusCodes.join(', ')}]. Score capped at 20.`,
                         isCritical: true
                     });
 
                     if (httpCode === 429) {
-                        recommendations.push('Si le code 429 est attendu pour ce test, autorisez le code 429 dans la configuration de la sonde.');
-                        recommendations.push('Sinon, augmentez l’intervalle de scrutation (fréquence) pour ne pas déclencher le rate-limiter.');
+                        recommendations.push('If HTTP 429 is expected for this test, allow status code 429 in probe settings.');
+                        recommendations.push('Otherwise, increase probing interval to avoid triggering rate limiters.');
                     } else {
-                        recommendations.push(`Si le code ${httpCode} est un statut valide pour ce endpoint, ajoutez-le à la liste des codes autorisés.`);
+                        recommendations.push(`If HTTP ${httpCode} is a valid response for this endpoint, add it to the allowed status codes.`);
                     }
                 } else {
                     computedScore = 20;
                     verdict = 'degraded';
-                    primaryReason = `Code de redirection ou d’état inhabituel (HTTP ${httpCode}). Score bridé à 20.`;
+                    primaryReason = `Unexpected redirect or status code (HTTP ${httpCode}). Score capped at 20.`;
                     factors.push({
-                        name: 'Code HTTP',
+                        name: 'HTTP Status Code',
                         category: 'status_code',
                         value: `HTTP ${httpCode}`,
                         impact: -80,
                         status: 'penalty',
-                        detail: `Code inattendu reçu. Codes attendus : [${allowedStatusCodes.join(', ')}].`,
+                        detail: `Unexpected status code received. Expected codes: [${allowedStatusCodes.join(', ')}].`,
                         isCritical: true
                     });
-                    recommendations.push(`Ajoutez ${httpCode} dans la configuration de la sonde si cette réponse est normale.`);
+                    recommendations.push(`Add ${httpCode} to probe configuration if this response is normal.`);
                 }
             } else {
                 // Expected HTTP Code: full math breakdown
                 factors.push({
-                    name: 'Code HTTP',
+                    name: 'HTTP Status Code',
                     category: 'status_code',
                     value: `HTTP ${httpCode}`,
                     impact: 0,
                     status: 'optimal',
-                    detail: `Code de statut conforme aux attentes autorisées [${allowedStatusCodes.join(', ')}].`
+                    detail: `Status code conforms to expected list [${allowedStatusCodes.join(', ')}].`
                 });
 
                 if (ttfb <= 0 && lat > 0) {
                     computedScore = 0;
                     verdict = 'critical';
-                    primaryReason = 'Connexion interrompue avant la réception du premier octet (TTFB = 0).';
+                    primaryReason = 'Connection terminated before first byte received (TTFB = 0).';
                     factors.push({
-                        name: 'TTFB Interrompu',
+                        name: 'Interrupted TTFB',
                         category: 'ttfb',
                         value: '0 ms',
                         impact: -100,
                         status: 'penalty',
-                        detail: 'Le serveur a fermé la socket prématurément avant de répondre.',
+                        detail: 'Server closed socket prematurely before responding.',
                         isCritical: true
                     });
                 } else {
@@ -217,12 +217,12 @@ export function explainDEMScore(probe: any, result?: any): DEMScoreExplanation {
 
                     // Latency factor (max -30)
                     factors.push({
-                        name: 'Latence Totale',
+                        name: 'Total Latency',
                         category: 'latency',
                         value: `${lat.toFixed(1)} ms`,
                         impact: -totalDed,
                         status: totalDed <= 5 ? 'optimal' : totalDed <= 15 ? 'warning' : 'penalty',
-                        detail: `Poids max : -30 pts. Normalisé sur 2 000 ms (${Math.round(total_norm * 100)}% du plafond).`,
+                        detail: `Max weight: -30 pts. Normalized on 2,000 ms (${Math.round(total_norm * 100)}% of ceiling).`,
                         formula: `- (30 × min(${lat.toFixed(1)} / 2000, 1.0)) = -${totalDed} pts`
                     });
 
@@ -233,19 +233,19 @@ export function explainDEMScore(probe: any, result?: any): DEMScoreExplanation {
                         value: `${ttfb.toFixed(1)} ms`,
                         impact: -ttfbDed,
                         status: ttfbDed <= 6 ? 'optimal' : ttfbDed <= 18 ? 'warning' : 'penalty',
-                        detail: `Poids max : -35 pts. Normalisé sur 1 000 ms. Reflète la réactivité du serveur applicatif.`,
+                        detail: `Max weight: -35 pts. Normalized on 1,000 ms. Reflects backend application responsiveness.`,
                         formula: `- (35 × min(${ttfb.toFixed(1)} / 1000, 1.0)) = -${ttfbDed} pts`
                     });
 
                     // TLS factor (max -25)
                     if (type === 'HTTPS' || tls > 0) {
                         factors.push({
-                            name: 'Handshake TLS',
+                            name: 'TLS Handshake',
                             category: 'tls',
                             value: `${tls.toFixed(1)} ms`,
                             impact: -tlsDed,
                             status: tlsDed <= 4 ? 'optimal' : tlsDed <= 12 ? 'warning' : 'penalty',
-                            detail: `Poids max : -25 pts. Normalisé sur 800 ms. Un TLS élevé indique une inspection SASE ou un chemin lourd.`,
+                            detail: `Max weight: -25 pts. Normalized on 800 ms. Elevated TLS indicates SASE inspection or distant hops.`,
                             formula: `- (25 × min(${tls.toFixed(1)} / 800, 1.0)) = -${tlsDed} pts`
                         });
                     }
@@ -254,19 +254,19 @@ export function explainDEMScore(probe: any, result?: any): DEMScoreExplanation {
 
                     if (computedScore >= 90) {
                         verdict = 'optimal';
-                        primaryReason = 'Excellente réactivité applicative et réseau (score > 90).';
+                        primaryReason = 'Excellent application and network responsiveness (score > 90).';
                     } else if (computedScore >= 75) {
                         verdict = 'good';
-                        primaryReason = 'Performances globales satisfaisantes avec un léger ralentissement mesuré.';
+                        primaryReason = 'Satisfactory overall performance with slight observed slowdown.';
                     } else if (computedScore >= 50) {
                         verdict = 'degraded';
-                        primaryReason = 'Latence ou temps de traitement backend dégradé.';
-                        if (ttfbDed > 15) recommendations.push('Le TTFB est élevé : optimisez les temps de réponse du serveur cible.');
-                        if (tlsDed > 10) recommendations.push('La négociation TLS est lente : vérifiez la négociation de certificats ou l’inspection intermédiaire.');
+                        primaryReason = 'Degraded latency or backend processing time.';
+                        if (ttfbDed > 15) recommendations.push('High TTFB: optimize target server response time.');
+                        if (tlsDed > 10) recommendations.push('Slow TLS handshake: verify certificate negotiation or intermediate proxy/SASE inspection.');
                     } else {
                         verdict = 'critical';
-                        primaryReason = 'Latence excessive proche des seuils d’alerte SLA.';
-                        recommendations.push('Vérifiez l’infrastructure d’hébergement et les goulots d’étranglement réseau.');
+                        primaryReason = 'Excessive latency near SLA threshold limits.';
+                        recommendations.push('Inspect hosting infrastructure and WAN network bottlenecks.');
                     }
                 }
             }
@@ -280,59 +280,59 @@ export function explainDEMScore(probe: any, result?: any): DEMScoreExplanation {
         if (!reachable || lat <= 0) {
             computedScore = 0;
             verdict = 'down';
-            primaryReason = 'Perte de paquets totale (100% Packet Loss). Hôte injoignable via ICMP.';
+            primaryReason = 'Total packet loss (100% loss). Host unreachable via ICMP.';
             factors.push({
-                name: 'Écho ICMP',
+                name: 'ICMP Echo',
                 category: 'loss',
-                value: 'Perte 100%',
+                value: '100% Loss',
                 impact: -100,
                 status: 'penalty',
-                detail: 'Aucun écho ICMP reçu avant expiration du timeout.',
+                detail: 'No ICMP echo response received before timeout expiration.',
                 isCritical: true
             });
-            recommendations.push('Vérifiez si l’hôte distant ou un pare-feu bloque le protocole ICMP.');
+            recommendations.push('Check if remote host or intermediate firewall blocks ICMP echo requests.');
         } else if (lat < 100) {
             computedScore = 100;
             verdict = 'optimal';
-            primaryReason = `Latence ICMP excellente (${lat.toFixed(1)} ms < 100 ms). Aucun malus appliqué.`;
+            primaryReason = `Excellent ICMP latency (${lat.toFixed(1)} ms < 100 ms). No penalty applied.`;
             factors.push({
-                name: 'Latence ICMP',
+                name: 'ICMP Latency',
                 category: 'latency',
                 value: `${lat.toFixed(1)} ms`,
                 impact: 0,
                 status: 'optimal',
-                detail: 'Seuil SLA optimal : sous 100 ms, aucun point n’est retiré.',
+                detail: 'Optimal SLA threshold: under 100 ms, zero penalty points deducted.',
                 formula: 'lat < 100 ms ➔ Score 100/100'
             });
         } else if (lat <= 500) {
             const ded = Math.round(((lat - 100) / 400) * 100 * 10) / 10;
             computedScore = Math.max(0, Math.min(100, Math.round(100 - ded)));
             verdict = computedScore >= 70 ? 'good' : 'degraded';
-            primaryReason = `Latence modérée (${lat.toFixed(1)} ms). Déduction dégressive appliquée.`;
+            primaryReason = `Moderate latency (${lat.toFixed(1)} ms). Graduated penalty applied.`;
             factors.push({
-                name: 'Latence ICMP',
+                name: 'ICMP Latency',
                 category: 'latency',
                 value: `${lat.toFixed(1)} ms`,
                 impact: -ded,
                 status: ded <= 25 ? 'warning' : 'penalty',
-                detail: `Déduction linéaire entre 100 ms et 500 ms sur une plage de 400 ms.`,
+                detail: `Linear penalty applied between 100 ms and 500 ms across a 400 ms range.`,
                 formula: `100 - ((${lat.toFixed(1)} - 100) / 400) × 100 = ${computedScore}/100`
             });
-            if (computedScore < 70) recommendations.push('Vérifiez l’acheminement WAN ou le jitter sur ce lien.');
+            if (computedScore < 70) recommendations.push('Inspect WAN routing or jitter on this path.');
         } else {
             computedScore = 0;
             verdict = 'critical';
-            primaryReason = `Latence excessive (${lat.toFixed(1)} ms > 500 ms). Dépassement du SLA Ping.`;
+            primaryReason = `Excessive latency (${lat.toFixed(1)} ms > 500 ms). Exceeded Ping SLA.`;
             factors.push({
-                name: 'Latence ICMP',
+                name: 'ICMP Latency',
                 category: 'latency',
                 value: `${lat.toFixed(1)} ms`,
                 impact: -100,
                 status: 'penalty',
-                detail: 'Tout ping supérieur à 500 ms est sanctionné d’un score 0.',
+                detail: 'Any ping exceeding 500 ms incurs a zero score penalty.',
                 isCritical: true
             });
-            recommendations.push('La latence réseau dépasse les limites tolérées pour une liaison SD-WAN.');
+            recommendations.push('Network latency exceeds acceptable thresholds for SD-WAN links.');
         }
     }
 
@@ -343,55 +343,55 @@ export function explainDEMScore(probe: any, result?: any): DEMScoreExplanation {
         if (!reachable) {
             computedScore = 0;
             verdict = 'down';
-            primaryReason = 'Port TCP fermé, filtré ou connexion refusée.';
+            primaryReason = 'TCP port closed, filtered, or connection refused.';
             factors.push({
                 name: 'TCP Handshake',
                 category: 'connectivity',
-                value: 'Échec',
+                value: 'Failed',
                 impact: -100,
                 status: 'penalty',
-                detail: 'Le SYN/ACK TCP n’a pas abouti avant le délai d’attente.',
+                detail: 'TCP SYN/ACK timed out without successful handshake.',
                 isCritical: true
             });
-            recommendations.push('Vérifiez que le service écoute bien sur le port spécifié et les ACLs réseau.');
+            recommendations.push('Verify target service is listening on specified port and check security ACLs.');
         } else if (lat < 150) {
             computedScore = 100;
             verdict = 'optimal';
-            primaryReason = `Établissement TCP ultra-rapide (${lat.toFixed(1)} ms < 150 ms).`;
+            primaryReason = `Ultra-fast TCP handshake (${lat.toFixed(1)} ms < 150 ms).`;
             factors.push({
                 name: 'TCP Connect',
                 category: 'latency',
                 value: `${lat.toFixed(1)} ms`,
                 impact: 0,
                 status: 'optimal',
-                detail: 'Seuil SLA TCP : sous 150 ms, score parfait 100/100.',
+                detail: 'TCP SLA threshold: under 150 ms, perfect 100/100 score.',
                 formula: 'lat < 150 ms ➔ Score 100/100'
             });
         } else if (lat <= 800) {
             const ded = Math.round(((lat - 150) / 650) * 100 * 10) / 10;
             computedScore = Math.max(0, Math.min(100, Math.round(100 - ded)));
             verdict = computedScore >= 70 ? 'good' : 'degraded';
-            primaryReason = `Connexion TCP ralentie (${lat.toFixed(1)} ms).`;
+            primaryReason = `Slow TCP connection (${lat.toFixed(1)} ms).`;
             factors.push({
                 name: 'TCP Connect',
                 category: 'latency',
                 value: `${lat.toFixed(1)} ms`,
                 impact: -ded,
                 status: ded <= 25 ? 'warning' : 'penalty',
-                detail: `Déduction linéaire entre 150 ms et 800 ms sur une plage de 650 ms.`,
+                detail: `Linear penalty applied between 150 ms and 800 ms across a 650 ms range.`,
                 formula: `100 - ((${lat.toFixed(1)} - 150) / 650) × 100 = ${computedScore}/100`
             });
         } else {
             computedScore = 0;
             verdict = 'critical';
-            primaryReason = `Délai TCP Connect excessif (${lat.toFixed(1)} ms > 800 ms).`;
+            primaryReason = `Excessive TCP Connect delay (${lat.toFixed(1)} ms > 800 ms).`;
             factors.push({
                 name: 'TCP Connect',
                 category: 'latency',
                 value: `${lat.toFixed(1)} ms`,
                 impact: -100,
                 status: 'penalty',
-                detail: 'Au-delà de 800 ms de handshake TCP, le score tombe à 0.',
+                detail: 'TCP handshake exceeding 800 ms incurs a zero score.',
                 isCritical: true
             });
         }
@@ -404,55 +404,55 @@ export function explainDEMScore(probe: any, result?: any): DEMScoreExplanation {
         if (!reachable) {
             computedScore = 0;
             verdict = 'down';
-            primaryReason = 'Échec de résolution DNS (SERVFAIL, timeout ou requête sans réponse).';
+            primaryReason = 'DNS resolution failure (SERVFAIL, timeout, or no answer received).';
             factors.push({
-                name: 'Requête DNS',
+                name: 'DNS Query',
                 category: 'connectivity',
-                value: 'Échec',
+                value: 'Failed',
                 impact: -100,
                 status: 'penalty',
-                detail: 'Le serveur DNS interrogé n’a retourné aucun enregistrement.',
+                detail: 'Target DNS resolver returned no records.',
                 isCritical: true
             });
-            recommendations.push('Vérifiez l’IP du résolveur DNS et l’autorisation UDP/TCP 53.');
+            recommendations.push('Verify DNS resolver IP and ensure UDP/TCP port 53 is allowed.');
         } else if (lat < 80) {
             computedScore = 100;
             verdict = 'optimal';
-            primaryReason = `Résolution DNS instantanée (${lat.toFixed(1)} ms < 80 ms).`;
+            primaryReason = `Instant DNS resolution (${lat.toFixed(1)} ms < 80 ms).`;
             factors.push({
-                name: 'Temps de Résolution',
+                name: 'Resolution Time',
                 category: 'latency',
                 value: `${lat.toFixed(1)} ms`,
                 impact: 0,
                 status: 'optimal',
-                detail: 'Seuil SLA DNS : sous 80 ms, score 100/100.',
+                detail: 'DNS SLA threshold: under 80 ms, score 100/100.',
                 formula: 'lat < 80 ms ➔ Score 100/100'
             });
         } else if (lat <= 400) {
             const ded = Math.round(((lat - 80) / 320) * 100 * 10) / 10;
             computedScore = Math.max(0, Math.min(100, Math.round(100 - ded)));
             verdict = computedScore >= 70 ? 'good' : 'degraded';
-            primaryReason = `Résolution DNS ralentie (${lat.toFixed(1)} ms).`;
+            primaryReason = `Slow DNS resolution (${lat.toFixed(1)} ms).`;
             factors.push({
-                name: 'Temps de Résolution',
+                name: 'Resolution Time',
                 category: 'latency',
                 value: `${lat.toFixed(1)} ms`,
                 impact: -ded,
                 status: ded <= 25 ? 'warning' : 'penalty',
-                detail: `Déduction linéaire entre 80 ms et 400 ms sur une plage de 320 ms.`,
+                detail: `Linear penalty applied between 80 ms and 400 ms across a 320 ms range.`,
                 formula: `100 - ((${lat.toFixed(1)} - 80) / 320) × 100 = ${computedScore}/100`
             });
         } else {
             computedScore = 0;
             verdict = 'critical';
-            primaryReason = `Résolution DNS excessivement lente (${lat.toFixed(1)} ms > 400 ms).`;
+            primaryReason = `Excessively slow DNS resolution (${lat.toFixed(1)} ms > 400 ms).`;
             factors.push({
-                name: 'Temps de Résolution',
+                name: 'Resolution Time',
                 category: 'latency',
                 value: `${lat.toFixed(1)} ms`,
                 impact: -100,
                 status: 'penalty',
-                detail: 'Au-delà de 400 ms de résolution DNS, le score tombe à 0.',
+                detail: 'DNS resolution exceeding 400 ms drops score to 0.',
                 isCritical: true
             });
         }
@@ -468,14 +468,14 @@ export function explainDEMScore(probe: any, result?: any): DEMScoreExplanation {
         if (!reachable) {
             computedScore = 0;
             verdict = 'down';
-            primaryReason = 'Serveur de test UDP inaccessible.';
+            primaryReason = 'UDP test server unreachable.';
             factors.push({
-                name: 'Liaison UDP',
+                name: 'UDP Link',
                 category: 'connectivity',
-                value: 'Injoignable',
+                value: 'Unreachable',
                 impact: -100,
                 status: 'penalty',
-                detail: 'Aucun flux UDP reçu en retour par iperf3.',
+                detail: 'No return UDP stream received by iperf3.',
                 isCritical: true
             });
         } else {
@@ -486,32 +486,32 @@ export function explainDEMScore(probe: any, result?: any): DEMScoreExplanation {
             }
 
             factors.push({
-                name: 'Perte de Paquets',
+                name: 'Packet Loss',
                 category: 'loss',
                 value: `${loss.toFixed(1)}%`,
                 impact: -lossDed,
                 status: loss <= 0.5 ? 'optimal' : loss <= 3 ? 'warning' : 'penalty',
-                detail: `Sanction de -10 pts par tranche de 1% de perte. 10% de perte = score 0.`,
+                detail: `-10 pts penalty per 1% packet loss. 10% loss = score 0.`,
                 formula: `- (${loss.toFixed(1)}% × 10) = -${lossDed} pts`
             });
 
             factors.push({
-                name: 'Gigue (Jitter)',
+                name: 'Jitter',
                 category: 'jitter',
                 value: `${jitter.toFixed(1)} ms`,
                 impact: -jitterDed,
                 status: jitter <= 15 ? 'optimal' : jitter <= 30 ? 'neutral' : 'warning',
                 detail: jitter <= 30
-                    ? 'Gigue sous le seuil de tolérance (≤ 30 ms). Aucun malus.'
-                    : `Gigue excessive (> 30 ms). Malus de 0.7 pt par ms supplémentaire (max -50 pts).`,
+                    ? 'Jitter within tolerance threshold (≤ 30 ms). No penalty.'
+                    : `Excessive jitter (> 30 ms). Penalty of 0.7 pt per additional ms (max -50 pts).`,
                 formula: jitter > 30 ? `- min(50, (${jitter.toFixed(1)} - 30) × 0.7) = -${jitterDed} pts` : 'jitter ≤ 30 ms ➔ 0 pt'
             });
 
             computedScore = Math.max(0, Math.min(100, Math.round(100 - (lossDed + jitterDed))));
             verdict = computedScore >= 80 ? 'optimal' : computedScore >= 60 ? 'good' : computedScore >= 40 ? 'degraded' : 'critical';
             primaryReason = computedScore >= 80
-                ? 'Qualité de transmission UDP optimale.'
-                : `Altération de flux UDP liée à ${loss > 0 ? `des pertes (${loss.toFixed(1)}%)` : ''}${loss > 0 && jitter > 30 ? ' et ' : ''}${jitter > 30 ? `de la gigue (${jitter.toFixed(1)} ms)` : ''}.`;
+                ? 'Optimal UDP transmission quality.'
+                : `UDP stream degraded due to ${loss > 0 ? `packet loss (${loss.toFixed(1)}%)` : ''}${loss > 0 && jitter > 30 ? ' and ' : ''}${jitter > 30 ? `jitter (${jitter.toFixed(1)} ms)` : ''}.`;
         }
     }
 
@@ -522,27 +522,27 @@ export function explainDEMScore(probe: any, result?: any): DEMScoreExplanation {
         if (!reachable) {
             computedScore = 0;
             verdict = 'down';
-            primaryReason = 'Sonde Cloudflare / Scénario Cloud non exécuté ou en échec.';
+            primaryReason = 'Cloudflare Worker / Cloud probe test execution failed.';
             factors.push({
-                name: 'Scénario Cloud',
+                name: 'Cloud Scenario',
                 category: 'connectivity',
-                value: 'Échec',
+                value: 'Failed',
                 impact: -100,
                 status: 'penalty',
-                detail: 'Le probe exécuté a retourné un statut négatif.',
+                detail: 'Executed probe returned failure status.',
                 isCritical: true
             });
         } else {
             computedScore = recordedScore !== undefined ? recordedScore : 100;
             verdict = computedScore >= 80 ? 'optimal' : computedScore >= 50 ? 'degraded' : 'critical';
-            primaryReason = `Résultat synthétique Cloudflare (${computedScore}/100).`;
+            primaryReason = `Cloud synthetic score (${computedScore}/100).`;
             factors.push({
-                name: 'Évaluation Cloud',
+                name: 'Cloud Evaluation',
                 category: 'connectivity',
                 value: `${lat.toFixed(1)} ms`,
                 impact: 0,
                 status: 'optimal',
-                detail: 'Résultat agrégé calculé par le connecteur Stigix Target.'
+                detail: 'Aggregated result calculated by Stigix Target connector.'
             });
         }
     }
@@ -556,7 +556,7 @@ export function explainDEMScore(probe: any, result?: any): DEMScoreExplanation {
         isReachable: reachable,
         verdict,
         primaryReason,
-        summary: `Score DEM : ${finalScore}/100 (${verdict.toUpperCase()})`,
+        summary: `DEM Score: ${finalScore}/100 (${verdict.toUpperCase()})`,
         factors,
         recommendations,
         allowedStatusCodes,
