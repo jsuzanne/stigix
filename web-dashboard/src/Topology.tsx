@@ -1282,7 +1282,7 @@ function TopologyContent({ token }: TopologyProps) {
     const [error, setError] = useState<string | null>(null);
     const [selectedObject, setSelectedObject] = useState<any>(null);
     const [searchQuery, setSearchQuery] = useState('');
-    const [pathFilter, setPathFilter] = useState<'ALL' | 'ACTIVE' | 'BACKUP' | 'DOWN' | 'HUB'>('ALL');
+    const [pathFilter, setPathFilter] = useState<'ALL' | 'ACTIVE' | 'INACTIVE' | 'DOWN' | 'HUB'>('ALL');
     const [logicalViewSiteId, setLogicalViewSiteId] = useState<string | null>(null);
     const [bgLayout, setBgLayout] = useState<'flank' | 'top'>('flank');
     const [showBranchMesh, setShowBranchMesh] = useState<boolean>(false);
@@ -1309,7 +1309,8 @@ function TopologyContent({ token }: TopologyProps) {
     // View & Underlay state
     const [topologyViewMode, setTopologyViewMode] = useState<'physical' | 'overlay' | 'sase' | 'underlay'>('physical');
     const [selectedNetwork, setSelectedNetwork] = useState<'INTERNET' | 'MPLS' | null>(null);
-    const [networkTunnelFilter, setNetworkTunnelFilter] = useState<'ALL' | 'ACTIVE' | 'BACKUP' | 'DOWN'>('ALL');
+    const [networkTunnelFilter, setNetworkTunnelFilter] = useState<'ALL' | 'ACTIVE' | 'INACTIVE' | 'DOWN'>('ALL');
+    const [overlayTunnelStateFilter, setOverlayTunnelStateFilter] = useState<'ALL' | 'ACTIVE' | 'INACTIVE' | 'DOWN'>('ALL');
     const [networkTunnelSearch, setNetworkTunnelSearch] = useState('');
     const [underlayData, setUnderlayData] = useState<UnderlayPayload | null>(null);
     const [underlayMode, setUnderlayMode] = useState<'off' | 'badges'>('off');
@@ -1325,7 +1326,7 @@ function TopologyContent({ token }: TopologyProps) {
     const [popTunnelFilter, setPopTunnelFilter] = useState<'ALL' | 'ACTIVE' | 'BACKUP' | 'DOWN'>('ALL');
     const [saseTunnelTypeFilter, setSaseTunnelTypeFilter] = useState<'ALL' | 'ACTIVE' | 'BACKUP' | 'DOWN'>('ALL');
     const [selectedCircuit, setSelectedCircuit] = useState<any | null>(null);
-    const [circuitTunnelFilter, setCircuitTunnelFilter] = useState<'ALL' | 'ACTIVE' | 'BACKUP' | 'DOWN'>('ALL');
+    const [circuitTunnelFilter, setCircuitTunnelFilter] = useState<'ALL' | 'ACTIVE' | 'INACTIVE' | 'DOWN'>('ALL');
     const [circuitTunnelSearch, setCircuitTunnelSearch] = useState('');
 
     const handleSelectCircuit = useCallback((circuitInfo: any) => {
@@ -2203,19 +2204,25 @@ function TopologyContent({ token }: TopologyProps) {
                             }
 
                             const isUp = c.status === 'UP' || c.active || c.usable;
-                            let strokeColor = '#64748b'; // Slate Grey: Inactive / Passive Standby
-                            let strokeClass = '';
+                            let strokeColor = '#3b82f6'; // Blue: Inactive / Passive Standby
+                            let strokeClass = '5,5';
                             let animated = false;
+                            let tunnelState: 'ACTIVE' | 'INACTIVE' | 'DOWN' = 'INACTIVE';
 
                             if (c.active) {
+                                tunnelState = 'ACTIVE';
                                 strokeColor = '#10b981'; // Emerald Green: Active (UP)
                                 strokeClass = '2,6';
                                 animated = true;
-                            } else if (c.usable) {
-                                strokeColor = '#3b82f6'; // Royal Blue: Backup (Standby Ready)
-                                strokeClass = '5,5';
-                            } else if (c.status === 'DOWN') {
+                            } else if (c.status === 'DOWN' || (!isUp && !c.usable)) {
+                                tunnelState = 'DOWN';
                                 strokeColor = '#ef4444'; // Red: Down
+                                strokeClass = '';
+                            } else {
+                                // Inactive (Standby - Up without Transit in Prisma SD-WAN)
+                                tunnelState = 'INACTIVE';
+                                strokeColor = '#3b82f6'; // Blue: Inactive Standby
+                                strokeClass = '5,5';
                             }
 
                             const edgeType = (isSpokeToSpoke || isHubToHub) ? 'archedBridge' : 'default';
@@ -2245,7 +2252,8 @@ function TopologyContent({ token }: TopologyProps) {
                                     hideLabel: true,
                                     isOverlayTunnel: true,
                                     wan_network: isMplsCircuit ? 'MPLS' : 'INTERNET',
-                                    network: isMplsCircuit ? 'MPLS' : 'INTERNET'
+                                    network: isMplsCircuit ? 'MPLS' : 'INTERNET',
+                                    tunnelState
                                 }
                             });
                         });
@@ -2756,6 +2764,37 @@ function TopologyContent({ token }: TopologyProps) {
                 }
             }
 
+            if (edgeData?.isOverlayTunnel && overlayTunnelStateFilter !== 'ALL') {
+                const edgeState = edgeData.tunnelState || (edgeData.active ? 'ACTIVE' : (edgeData.status === 'DOWN' ? 'DOWN' : 'INACTIVE'));
+                const isMatch = edgeState === overlayTunnelStateFilter;
+                if (!isMatch) {
+                    currentEdge = {
+                        ...currentEdge,
+                        animated: false,
+                        zIndex: 1,
+                        style: {
+                            ...currentEdge.style,
+                            strokeWidth: 1,
+                            opacity: 0.05,
+                            pointerEvents: 'none',
+                            transition: 'opacity 0.15s ease, stroke-width 0.15s ease'
+                        }
+                    };
+                } else {
+                    currentEdge = {
+                        ...currentEdge,
+                        zIndex: 40,
+                        style: {
+                            ...currentEdge.style,
+                            opacity: 1,
+                            strokeWidth: edgeData.active ? 4.5 : 3,
+                            filter: edgeData.active ? 'drop-shadow(0 0 6px rgba(16,185,129,0.7))' : (edgeState === 'INACTIVE' ? 'drop-shadow(0 0 6px rgba(59,130,246,0.6))' : 'drop-shadow(0 0 6px rgba(239,68,68,0.7))'),
+                            transition: 'opacity 0.15s ease, stroke-width 0.15s ease'
+                        }
+                    };
+                }
+            }
+
             if (searchQuery) {
                 const nodeMatch = currentEdge.id.toLowerCase().includes(searchQuery.toLowerCase());
                 return {
@@ -2766,7 +2805,7 @@ function TopologyContent({ token }: TopologyProps) {
 
             return currentEdge;
         });
-    }, [edges, searchQuery, selectedObject, saseTunnelTypeFilter, selectedCircuit]);
+    }, [edges, searchQuery, selectedObject, saseTunnelTypeFilter, selectedCircuit, overlayTunnelStateFilter]);
 
     const handleFitView = useCallback(() => {
         fitView({ padding: 0.12, duration: 450, minZoom: 0.12 });
@@ -3580,22 +3619,92 @@ function TopologyContent({ token }: TopologyProps) {
 
                         {/* Legend Panel */}
                         <Panel position="bottom-left" className="font-sans">
-                            <div className="bg-card/80 backdrop-blur-md border border-border p-4 rounded-2xl shadow-xl flex flex-col gap-2 min-w-[150px]">
-                                <div className="text-[9px] font-black text-text-muted uppercase tracking-[0.2em] mb-1">Topology Legend</div>
+                            <div className="bg-card/80 backdrop-blur-md border border-border p-3.5 rounded-2xl shadow-xl flex flex-col gap-1.5 min-w-[170px]">
+                                <div className="flex items-center justify-between gap-2 mb-1">
+                                    <div className="text-[9px] font-black text-text-muted uppercase tracking-[0.2em]">Topology Legend</div>
+                                    {(logicalViewSiteId || topologyViewMode === 'overlay') && overlayTunnelStateFilter !== 'ALL' && (
+                                        <button
+                                            onClick={() => {
+                                                setOverlayTunnelStateFilter('ALL');
+                                                setNetworkTunnelFilter('ALL');
+                                            }}
+                                            className="text-[8px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-400 hover:bg-blue-500/30 transition-colors cursor-pointer"
+                                        >
+                                            Show All
+                                        </button>
+                                    )}
+                                </div>
                                 {(logicalViewSiteId || topologyViewMode === 'overlay') ? (
                                     <>
-                                        <div className="flex items-center gap-2 text-[10px] font-bold text-emerald-400">
-                                            <div className="w-6 h-1 bg-emerald-500 rounded-full" /> Overlay: Active (UP)
-                                        </div>
-                                        <div className="flex items-center gap-2 text-[10px] font-bold text-blue-400">
-                                            <div className="w-6 h-1 bg-blue-500 border-t border-dashed rounded-full" /> Overlay: Backup
-                                        </div>
-                                        <div className="flex items-center gap-2 text-[10px] font-bold text-slate-400">
-                                            <div className="w-6 h-1 bg-slate-500 rounded-full" /> Overlay: Inactive (Standby)
-                                        </div>
-                                        <div className="flex items-center gap-2 text-[10px] font-bold text-rose-400">
-                                            <div className="w-6 h-1 bg-rose-500 rounded-full" /> Overlay: Down
-                                        </div>
+                                        <button
+                                            onClick={() => {
+                                                const next = overlayTunnelStateFilter === 'ACTIVE' ? 'ALL' : 'ACTIVE';
+                                                setOverlayTunnelStateFilter(next);
+                                                setNetworkTunnelFilter(next);
+                                            }}
+                                            className={cn(
+                                                "flex items-center justify-between gap-2 px-2 py-1.5 rounded-xl text-[10px] font-bold text-left transition-all cursor-pointer border",
+                                                overlayTunnelStateFilter === 'ACTIVE'
+                                                    ? "bg-emerald-500/20 text-emerald-300 border-emerald-500/50 shadow-sm shadow-emerald-500/20"
+                                                    : "text-emerald-400 hover:bg-white/5 border-transparent"
+                                            )}
+                                            title="Click to isolate Active tunnels"
+                                        >
+                                            <div className="flex items-center gap-2">
+                                                <div className="w-5 h-1 bg-emerald-500 rounded-full" />
+                                                <span>Overlay: Active (UP)</span>
+                                            </div>
+                                            {overlayTunnelStateFilter === 'ACTIVE' && (
+                                                <span className="text-[8px] font-black uppercase px-1 py-0.2 rounded bg-emerald-500/30 text-emerald-300">Filtered</span>
+                                            )}
+                                        </button>
+
+                                        <button
+                                            onClick={() => {
+                                                const next = overlayTunnelStateFilter === 'INACTIVE' ? 'ALL' : 'INACTIVE';
+                                                setOverlayTunnelStateFilter(next);
+                                                setNetworkTunnelFilter(next);
+                                            }}
+                                            className={cn(
+                                                "flex items-center justify-between gap-2 px-2 py-1.5 rounded-xl text-[10px] font-bold text-left transition-all cursor-pointer border",
+                                                overlayTunnelStateFilter === 'INACTIVE'
+                                                    ? "bg-blue-500/20 text-blue-300 border-blue-500/50 shadow-sm shadow-blue-500/20"
+                                                    : "text-blue-400 hover:bg-white/5 border-transparent"
+                                            )}
+                                            title="Click to isolate Inactive / Standby tunnels"
+                                        >
+                                            <div className="flex items-center gap-2">
+                                                <div className="w-5 h-1 border-t-2 border-dashed border-blue-400" />
+                                                <span>Overlay: Inactive (Standby)</span>
+                                            </div>
+                                            {overlayTunnelStateFilter === 'INACTIVE' && (
+                                                <span className="text-[8px] font-black uppercase px-1 py-0.2 rounded bg-blue-500/30 text-blue-300">Filtered</span>
+                                            )}
+                                        </button>
+
+                                        <button
+                                            onClick={() => {
+                                                const next = overlayTunnelStateFilter === 'DOWN' ? 'ALL' : 'DOWN';
+                                                setOverlayTunnelStateFilter(next);
+                                                setNetworkTunnelFilter(next);
+                                            }}
+                                            className={cn(
+                                                "flex items-center justify-between gap-2 px-2 py-1.5 rounded-xl text-[10px] font-bold text-left transition-all cursor-pointer border",
+                                                overlayTunnelStateFilter === 'DOWN'
+                                                    ? "bg-rose-500/20 text-rose-300 border-rose-500/50 shadow-sm shadow-rose-500/20"
+                                                    : "text-rose-400 hover:bg-white/5 border-transparent"
+                                            )}
+                                            title="Click to isolate Down tunnels"
+                                        >
+                                            <div className="flex items-center gap-2">
+                                                <div className="w-5 h-1 bg-rose-500 rounded-full" />
+                                                <span>Overlay: Down</span>
+                                            </div>
+                                            {overlayTunnelStateFilter === 'DOWN' && (
+                                                <span className="text-[8px] font-black uppercase px-1 py-0.2 rounded bg-rose-500/30 text-rose-300">Filtered</span>
+                                            )}
+                                        </button>
+
                                         <div className="pt-1 mt-1 border-t border-border/50 flex items-center justify-between text-[9px] text-text-muted font-mono gap-2">
                                             <span className="text-sky-400 font-bold">Circuits: Cyan (Internet)</span>
                                             <span className="text-purple-400 font-bold">Purple (MPLS)</span>
@@ -3879,7 +3988,7 @@ function TopologyContent({ token }: TopologyProps) {
 
                                             const filteredTunnels = allTunnels.filter(t => {
                                                 if (circuitTunnelFilter === 'ACTIVE' && !t.isRoutingActive) return false;
-                                                if (circuitTunnelFilter === 'BACKUP' && (t.isRoutingActive || (!t.isRoutingUsable && !t.isLinkUp))) return false;
+                                                if (circuitTunnelFilter === 'INACTIVE' && (t.isRoutingActive || (!t.isRoutingUsable && !t.isLinkUp))) return false;
                                                 if (circuitTunnelFilter === 'DOWN' && (t.isRoutingActive || t.isRoutingUsable || t.isLinkUp)) return false;
 
                                                 if (circuitTunnelSearch) {
@@ -3994,15 +4103,15 @@ function TopologyContent({ token }: TopologyProps) {
                                                             </span>
                                                         </button>
                                                         <button
-                                                            onClick={() => setCircuitTunnelFilter('BACKUP')}
+                                                            onClick={() => setCircuitTunnelFilter('INACTIVE')}
                                                             className={cn(
                                                                 "flex-1 py-1.5 rounded-lg font-bold text-[11px] transition-all flex items-center justify-center gap-1",
-                                                                circuitTunnelFilter === 'BACKUP'
+                                                                circuitTunnelFilter === 'INACTIVE'
                                                                     ? "bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 shadow-sm"
                                                                     : "text-text-muted hover:text-cyan-400"
                                                             )}
                                                         >
-                                                            <span>Backup</span>
+                                                            <span>Inactive</span>
                                                             <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 font-mono">
                                                                 {backupCount}
                                                             </span>
@@ -4101,7 +4210,7 @@ function TopologyContent({ token }: TopologyProps) {
                                                                                     </span>
                                                                                 ) : (t.isRoutingUsable || t.isLinkUp) ? (
                                                                                     <span className="px-2 py-0.5 rounded-full text-[9px] font-bold bg-cyan-500/15 text-cyan-400 border border-cyan-500/30">
-                                                                                        BACKUP
+                                                                                        INACTIVE
                                                                                     </span>
                                                                                 ) : (
                                                                                     <span className="px-2 py-0.5 rounded-full text-[9px] font-bold bg-rose-500/15 text-rose-400 border border-rose-500/30">
@@ -4517,7 +4626,7 @@ function TopologyContent({ token }: TopologyProps) {
                                                                 <Share2 size={12} /> Detailed Overlay Paths
                                                             </div>
                                                             <div className="flex gap-1">
-                                                                {(['ALL', 'ACTIVE', 'BACKUP', 'DOWN', 'HUB'] as const).map(f => (
+                                                                {(['ALL', 'ACTIVE', 'INACTIVE', 'DOWN', 'HUB'] as const).map(f => (
                                                                     <button
                                                                         key={f}
                                                                         onClick={(e) => { e.stopPropagation(); setPathFilter(f); }}
@@ -4565,7 +4674,7 @@ function TopologyContent({ token }: TopologyProps) {
                                                                         const filteredPaths = paths.filter(p => {
                                                                             if (pathFilter === 'ALL') return true;
                                                                             if (pathFilter === 'ACTIVE') return p.isRoutingActive;
-                                                                            if (pathFilter === 'BACKUP') return (p.isRoutingUsable || p.isLinkUp) && !p.isRoutingActive;
+                                                                            if (pathFilter === 'INACTIVE') return (p.isRoutingUsable || p.isLinkUp) && !p.isRoutingActive;
                                                                             if (pathFilter === 'DOWN') return !p.isRoutingActive && !p.isRoutingUsable && !p.isLinkUp;
                                                                             if (pathFilter === 'HUB') {
                                                                                 return siteHubStatus.get(p.peerSite) === true;
@@ -4582,7 +4691,7 @@ function TopologyContent({ token }: TopologyProps) {
                                                                             let tagText = "text-text-muted";
                                                                             let label = "UNKNOWN";
                                                                             if (p.isRoutingActive) { tagBg = "bg-green-500/10"; tagText = "text-green-500"; label = "ACTIVE"; }
-                                                                            else if (p.isRoutingUsable || p.isLinkUp) { tagBg = "bg-blue-500/10"; tagText = "text-blue-500"; label = "BACKUP"; }
+                                                                            else if (p.isRoutingUsable || p.isLinkUp) { tagBg = "bg-blue-500/10"; tagText = "text-blue-500"; label = "INACTIVE"; }
                                                                             else { tagBg = "bg-red-500/10"; tagText = "text-red-500"; label = "DOWN"; }
 
                                                                             return (
@@ -4673,7 +4782,7 @@ function TopologyContent({ token }: TopologyProps) {
 
                                                     const filteredNetworkPaths = allNetworkPaths.filter(p => {
                                                         if (networkTunnelFilter === 'ACTIVE') return p.isRoutingActive;
-                                                        if (networkTunnelFilter === 'BACKUP') return !p.isRoutingActive && (p.isRoutingUsable || p.isLinkUp);
+                                                        if (networkTunnelFilter === 'INACTIVE') return !p.isRoutingActive && (p.isRoutingUsable || p.isLinkUp);
                                                         if (networkTunnelFilter === 'DOWN') return !p.isRoutingActive && !p.isRoutingUsable && !p.isLinkUp;
                                                         return true;
                                                     }).filter(p => {
@@ -4739,7 +4848,7 @@ function TopologyContent({ token }: TopologyProps) {
                                                                     <div className="text-sm font-black text-emerald-400 mt-0.5">{activePaths}</div>
                                                                 </div>
                                                                 <div className="bg-sky-500/10 border border-sky-500/20 p-2 rounded-xl text-center">
-                                                                    <div className="text-[8px] font-black uppercase tracking-wider text-sky-400">Backup</div>
+                                                                    <div className="text-[8px] font-black uppercase tracking-wider text-sky-400">Inactive</div>
                                                                     <div className="text-sm font-black text-sky-400 mt-0.5">{backupPaths}</div>
                                                                 </div>
                                                                 <div className="bg-rose-500/10 border border-rose-500/20 p-2 rounded-xl text-center">
@@ -4751,10 +4860,13 @@ function TopologyContent({ token }: TopologyProps) {
                                                             {/* Filter Tabs & Search */}
                                                             <div className="flex items-center justify-between gap-1.5">
                                                                 <div className="flex gap-1">
-                                                                    {(['ALL', 'ACTIVE', 'BACKUP', 'DOWN'] as const).map(f => (
+                                                                    {(['ALL', 'ACTIVE', 'INACTIVE', 'DOWN'] as const).map(f => (
                                                                         <button
                                                                             key={f}
-                                                                            onClick={() => setNetworkTunnelFilter(f)}
+                                                                            onClick={() => {
+                                                                                setNetworkTunnelFilter(f);
+                                                                                setOverlayTunnelStateFilter(f);
+                                                                            }}
                                                                             className={cn(
                                                                                 "px-1.5 py-0.5 rounded-lg text-[8px] font-black uppercase tracking-wider transition-all border cursor-pointer",
                                                                                 networkTunnelFilter === f
@@ -4823,7 +4935,7 @@ function TopologyContent({ token }: TopologyProps) {
                                                                                                 ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/30"
                                                                                                 : (isBk ? "bg-sky-500/10 text-sky-400 border-sky-500/30" : "bg-rose-500/10 text-rose-400 border-rose-500/30")
                                                                                         )}>
-                                                                                            {isAct ? 'ACTIVE' : (isBk ? 'BACKUP' : 'DOWN')}
+                                                                                            {isAct ? 'ACTIVE' : (isBk ? 'INACTIVE' : 'DOWN')}
                                                                                         </span>
                                                                                     </div>
 
@@ -5036,7 +5148,7 @@ function TopologyContent({ token }: TopologyProps) {
                                                                     "w-2 h-2 rounded-full",
                                                                     isAct ? "bg-emerald-400 animate-pulse" : isBk ? "bg-sky-400" : "bg-rose-400"
                                                                 )} />
-                                                                <span>STATUS: {isAct ? 'ROUTING ACTIVE (Best Path)' : isBk ? 'BACKUP PATH (Standby)' : 'TUNNEL DOWN'}</span>
+                                                                <span>STATUS: {isAct ? 'ROUTING ACTIVE (Flow Forwarding)' : isBk ? 'INACTIVE (Standby - Up without Transit)' : 'TUNNEL DOWN'}</span>
                                                             </div>
                                                             <span className="font-mono text-[10px] px-2 py-0.5 rounded bg-black/20">
                                                                 {selectedObject.vpState || selectedObject.status || 'UP'}
