@@ -417,16 +417,30 @@ YOUR ROLE & BEHAVIOR:
         }
 
         const rawModel = modelOverride || session.model || this.config.defaultModel;
-        const model = normalizeModelId(rawModel);
+        let model = normalizeModelId(rawModel);
+
+        const hasAnthropicKey = Boolean(this.config.apiKey && this.config.apiKey.startsWith('sk-ant-'));
+        const hasDeepseekKey = Boolean(this.config.deepseekApiKey || (this.config.apiKey && !this.config.apiKey.startsWith('sk-ant-')));
+
+        // Smart Provider & Model Reconciliation:
+        // 1. If session was set to Claude but user ONLY has a DeepSeek key, auto-switch to DeepSeek!
+        if (model.startsWith('claude-') && !hasAnthropicKey && hasDeepseekKey) {
+            model = this.config.defaultModel?.startsWith('deepseek-') ? this.config.defaultModel : 'deepseek-chat';
+        }
+        // 2. If session was set to DeepSeek but user ONLY has an Anthropic key, auto-switch to Claude!
+        else if (model.startsWith('deepseek-') && !hasDeepseekKey && hasAnthropicKey) {
+            model = this.config.defaultModel?.startsWith('claude-') ? this.config.defaultModel : 'claude-sonnet-4-5-20250929';
+        }
+
         session.model = model;
         session.updatedAt = Date.now();
 
         // Determine active provider & API key
-        const isDeepSeek = model.startsWith('deepseek-') || (this.config.provider === 'deepseek' && !model.startsWith('claude-'));
+        const isDeepSeek = model.startsWith('deepseek-');
         const activeProvider: AiProvider = isDeepSeek ? 'deepseek' : 'anthropic';
         const activeApiKey = isDeepSeek
-            ? (this.config.deepseekApiKey || this.config.apiKey)
-            : (this.config.apiKey || this.config.deepseekApiKey);
+            ? (this.config.deepseekApiKey || (this.config.apiKey?.startsWith('sk-ant-') ? '' : this.config.apiKey))
+            : (this.config.apiKey?.startsWith('sk-ant-') ? this.config.apiKey : '');
 
         if (!activeApiKey) {
             const providerName = isDeepSeek ? 'DeepSeek' : 'Anthropic';

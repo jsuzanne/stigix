@@ -162,7 +162,11 @@ export default function Copilot({ token, onOpenSettings, isDrawer = false, onClo
                     setModalProvider('deepseek');
                 }
                 if (cfg.defaultModel) {
-                    setSelectedModel(cfg.defaultModel);
+                    if (cfg.provider === 'deepseek' || (cfg.hasDeepseekKey && !cfg.hasKey)) {
+                        setSelectedModel(cfg.defaultModel.startsWith('deepseek-') ? cfg.defaultModel : 'deepseek-chat');
+                    } else {
+                        setSelectedModel(cfg.defaultModel);
+                    }
                 }
             }
         } catch (e: any) {
@@ -198,7 +202,13 @@ export default function Copilot({ token, onOpenSettings, isDrawer = false, onClo
                 const data = await res.json();
                 const session: CopilotSession = data.session || data;
                 setMessages(session.messages || []);
-                if (session.model) setSelectedModel(session.model);
+                if (session.model) {
+                    if (session.model.startsWith('claude-') && config && !config.hasKey && config.hasDeepseekKey) {
+                        setSelectedModel(config.defaultModel?.startsWith('deepseek-') ? config.defaultModel : 'deepseek-chat');
+                    } else {
+                        setSelectedModel(session.model);
+                    }
+                }
             }
         } catch (e: any) {
             console.error('Failed to load session:', e);
@@ -808,7 +818,9 @@ export default function Copilot({ token, onOpenSettings, isDrawer = false, onClo
                         </div>
                     </form>
                     <div className="flex items-center justify-between text-[10px] text-text-muted mt-2 px-1">
-                        <span>Anthropic Claude API (BYOK) • Local Tool Execution • Zero Log Sharing</span>
+                        <span>
+                            {selectedModel.startsWith('deepseek-') ? 'DeepSeek API (BYOK) • Local Tool Execution • Zero Log Sharing' : 'Anthropic Claude API (BYOK) • Local Tool Execution • Zero Log Sharing'}
+                        </span>
                         <span>Shift + Enter for new line</span>
                     </div>
                 </div>
