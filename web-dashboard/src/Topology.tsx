@@ -3633,6 +3633,14 @@ function TopologyContent({ token }: TopologyProps) {
                                             Show All
                                         </button>
                                     )}
+                                    {topologyViewMode === 'sase' && saseTunnelTypeFilter !== 'ALL' && (
+                                        <button
+                                            onClick={() => setSaseTunnelTypeFilter('ALL')}
+                                            className="text-[8px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded bg-purple-500/20 text-purple-400 hover:bg-purple-500/30 transition-colors cursor-pointer"
+                                        >
+                                            Show All
+                                        </button>
+                                    )}
                                 </div>
                                 {(logicalViewSiteId || topologyViewMode === 'overlay') ? (
                                     <>
@@ -3712,18 +3720,68 @@ function TopologyContent({ token }: TopologyProps) {
                                     </>
                                 ) : topologyViewMode === 'sase' ? (
                                     <>
-                                        <div className="flex items-center gap-2 text-[10px] font-bold text-emerald-400">
-                                            <div className="w-5 h-1 bg-emerald-500 rounded-full shadow-[0_0_8px_rgba(16,185,129,0.5)]" /> Active SASE Tunnel (UP)
+                                        <button
+                                            onClick={() => setSaseTunnelTypeFilter(prev => prev === 'ACTIVE' ? 'ALL' : 'ACTIVE')}
+                                            className={cn(
+                                                "flex items-center justify-between gap-2 px-2 py-1.5 rounded-xl text-[10px] font-bold text-left transition-all cursor-pointer border",
+                                                saseTunnelTypeFilter === 'ACTIVE'
+                                                    ? "bg-emerald-500/20 text-emerald-300 border-emerald-500/50 shadow-sm shadow-emerald-500/20"
+                                                    : "text-emerald-400 hover:bg-white/5 border-transparent"
+                                            )}
+                                            title="Click to isolate Active SASE tunnels"
+                                        >
+                                            <div className="flex items-center gap-2">
+                                                <div className="w-5 h-1 bg-emerald-500 rounded-full shadow-[0_0_8px_rgba(16,185,129,0.5)]" />
+                                                <span>Active SASE Tunnel (UP)</span>
+                                            </div>
+                                            {saseTunnelTypeFilter === 'ACTIVE' && (
+                                                <span className="text-[8px] font-black uppercase px-1 py-0.2 rounded bg-emerald-500/30 text-emerald-300">Filtered</span>
+                                            )}
+                                        </button>
+
+                                        <button
+                                            onClick={() => setSaseTunnelTypeFilter(prev => prev === 'BACKUP' ? 'ALL' : 'BACKUP')}
+                                            className={cn(
+                                                "flex items-center justify-between gap-2 px-2 py-1.5 rounded-xl text-[10px] font-bold text-left transition-all cursor-pointer border",
+                                                saseTunnelTypeFilter === 'BACKUP'
+                                                    ? "bg-cyan-500/20 text-cyan-300 border-cyan-500/50 shadow-sm shadow-cyan-500/20"
+                                                    : "text-cyan-400 hover:bg-white/5 border-transparent"
+                                            )}
+                                            title="Click to isolate Backup SASE tunnels"
+                                        >
+                                            <div className="flex items-center gap-2">
+                                                <div className="w-5 h-1 border-t-2 border-dashed border-cyan-400" />
+                                                <span>Backup SASE Tunnel (UP)</span>
+                                            </div>
+                                            {saseTunnelTypeFilter === 'BACKUP' && (
+                                                <span className="text-[8px] font-black uppercase px-1 py-0.2 rounded bg-cyan-500/30 text-cyan-300">Filtered</span>
+                                            )}
+                                        </button>
+
+                                        <div className="flex items-center gap-2 px-2 py-1 text-[10px] font-bold text-amber-400/80 opacity-80">
+                                            <div className="w-5 h-1 border-t-2 border-dashed border-amber-400" />
+                                            <span>Standby Spoke Path</span>
                                         </div>
-                                        <div className="flex items-center gap-2 text-[10px] font-bold text-cyan-400">
-                                            <div className="w-5 h-1 border-t-2 border-dashed border-cyan-400" /> Backup SASE Tunnel (UP)
-                                        </div>
-                                        <div className="flex items-center gap-2 text-[10px] font-bold text-amber-400">
-                                            <div className="w-5 h-1 border-t-2 border-dashed border-amber-400" /> Standby Spoke Path
-                                        </div>
-                                        <div className="flex items-center gap-2 text-[10px] font-bold text-rose-400">
-                                            <div className="w-5 h-1 border-t-2 border-dashed border-rose-500" /> Down / Retransmission
-                                        </div>
+
+                                        <button
+                                            onClick={() => setSaseTunnelTypeFilter(prev => prev === 'DOWN' ? 'ALL' : 'DOWN')}
+                                            className={cn(
+                                                "flex items-center justify-between gap-2 px-2 py-1.5 rounded-xl text-[10px] font-bold text-left transition-all cursor-pointer border",
+                                                saseTunnelTypeFilter === 'DOWN'
+                                                    ? "bg-rose-500/20 text-rose-300 border-rose-500/50 shadow-sm shadow-rose-500/20"
+                                                    : "text-rose-400 hover:bg-white/5 border-transparent"
+                                            )}
+                                            title="Click to isolate Down / Retransmission SASE paths"
+                                        >
+                                            <div className="flex items-center gap-2">
+                                                <div className="w-5 h-1 border-t-2 border-dashed border-rose-500" />
+                                                <span>Down / Retransmission</span>
+                                            </div>
+                                            {saseTunnelTypeFilter === 'DOWN' && (
+                                                <span className="text-[8px] font-black uppercase px-1 py-0.2 rounded bg-rose-500/30 text-rose-300">Filtered</span>
+                                            )}
+                                        </button>
+
                                         <div className="pt-1 mt-1 border-t border-border/50 flex items-center justify-between text-[9px] text-text-muted font-mono">
                                             <span className="text-purple-400 font-bold">LEFT: Prisma Access</span>
                                             <span className="text-blue-400 font-bold">RIGHT: Zscaler</span>
