@@ -122,7 +122,7 @@ export function ReachabilityMatrix({ token }: { token?: string }) {
         loss_critical_pct: 5.0,
         jitter_warning_ms: 10,
         jitter_critical_ms: 30,
-        mesh_topology: 'hub_and_spoke'
+        mesh_topology: 'full_mesh'
     });
     const [savingThresholds, setSavingThresholds] = useState(false);
     const [thresholdsSaved, setThresholdsSaved] = useState(false);
@@ -427,7 +427,7 @@ export function ReachabilityMatrix({ token }: { token?: string }) {
                             disabled={switchingTopology}
                             className={twMerge(
                                 "px-2.5 py-1 rounded-md text-[11px] font-bold transition-all flex items-center gap-1",
-                                (thresholds.mesh_topology || 'hub_and_spoke') === 'hub_and_spoke'
+                                (thresholds.mesh_topology || 'full_mesh') === 'hub_and_spoke'
                                     ? "bg-purple-600 text-white shadow-sm font-black"
                                     : "text-text-muted hover:text-text-primary hover:bg-white/5"
                             )}

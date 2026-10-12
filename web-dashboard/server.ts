@@ -4329,12 +4329,15 @@ const retryProbe = async <T>(fn: () => Promise<T>, maxRetries: number = 2, delay
 
 const performConnectivityCheck = async (endpoint: any): Promise<ConnectivityResult> => {
     const startTime = Date.now();
+    const endpointTargetIp = endpoint.target_ip || (endpoint.target ? (endpoint.target.match(/\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b/)?.[0] ?? '') : '');
     let result: ConnectivityResult = {
         timestamp: startTime,
         endpointId: endpoint.name.toLowerCase().replace(/\s+/g, '-'),
         endpointName: endpoint.name,
         endpointType: endpoint.type.toUpperCase() as 'HTTP' | 'HTTPS' | 'PING' | 'TCP' | 'UDP' | 'DNS' | 'CLOUD',
         url: endpoint.target,
+        remoteIp: endpointTargetIp,
+        peer_instance_id: endpoint.peer_instance_id || '',
         reachable: false,
         metrics: { total_ms: 0 },
         score: 0
@@ -4629,7 +4632,7 @@ const DEFAULT_MATRIX_THRESHOLDS: MatrixThresholds = {
     loss_critical_pct: 5.0,
     jitter_warning_ms: 10,
     jitter_critical_ms: 30,
-    mesh_topology: 'hub_and_spoke'
+    mesh_topology: 'full_mesh'
 };
 
 function getMatrixThresholds(): MatrixThresholds {
@@ -4651,7 +4654,7 @@ const isHubSite = (name: string, siteType?: string): boolean => {
 const getAutoMeshProbes = (): any[] => {
     try {
         const thresholds = getMatrixThresholds();
-        const topology = thresholds.mesh_topology || 'hub_and_spoke';
+        const topology = thresholds.mesh_topology || 'full_mesh';
         if (topology === 'disabled') return [];
 
         const status = typeof registryManager?.getStatus === 'function' ? registryManager.getStatus() : null;
@@ -4690,7 +4693,7 @@ const getAutoMeshProbes = (): any[] => {
                 url: peerIp,
                 target_ip: peerIp,
                 peer_instance_id: peer.instance_id,
-                frequency: 20,
+                frequency: 30,
                 timeout: 4000,
                 enabled: true,
                 source: 'auto-mesh',
@@ -4737,6 +4740,10 @@ const saveCustomConnectivityEndpoints = (endpoints: any[]) => {
 app.post('/api/probes/discovery/sync', authenticateToken, async (req, res) => {
     try {
         const result = await discoveryManager.syncProbes();
+        // If on Leader, auto-broadcast updated probes bundle to fleet if sites were created/updated
+        if (result && (result.created > 0 || result.updated > 0 || result.staleMarked > 0)) {
+            triggerAutoSyncFleetBundle('connectivity-probes', 1000);
+        }
         res.json(result);
     } catch (e: any) {
         res.status(500).json({ success: false, error: e.message });
@@ -5091,9 +5098,13 @@ const applyCustomConnectivityEndpoints = async (endpoints: any[]): Promise<boole
         discoveryManager.updateProbesFromUI(discoveredProbes);
     }
 
-    // Save field-level local overrides if global provisioning is active
+    // Save field-level local overrides and sync all configured probes across the fleet
     if (provisioningManager) {
-        provisioningManager.handleLocalSave('connectivity-probes', customAndEnvProbes);
+        const fleetProbesToSync = [
+            ...customAndEnvProbes,
+            ...discoveredProbes
+        ];
+        provisioningManager.handleLocalSave('connectivity-probes', fleetProbesToSync);
         triggerAutoSyncFleetBundle('connectivity-probes');
     }
 
@@ -5309,12 +5320,23 @@ const startConnectivityMonitor = () => {
     console.log(`[DEM] Starting background connectivity monitoring (Tick every 10s)`);
 
     const runMonitorTick = async () => {
-        const testEndpoints: any[] = [
+        const rawEndpoints: any[] = [
             ...getEnvConnectivityEndpoints(),
             ...getCustomConnectivityEndpoints(),
             ...discoveryManager.getProbes(),
             ...getAutoMeshProbes()
         ].filter(p => p.enabled !== false); // Only run probes that are not disabled
+
+        // Deduplicate endpoints by type:name to avoid collision
+        const seenKeys = new Set<string>();
+        const testEndpoints: any[] = [];
+        for (const ep of rawEndpoints) {
+            const k = `${(ep.type || 'PING').toUpperCase()}:${(ep.name || '').toLowerCase()}`;
+            if (!seenKeys.has(k)) {
+                seenKeys.add(k);
+                testEndpoints.push(ep);
+            }
+        }
 
         if (testEndpoints.length === 0) return;
 
@@ -13526,6 +13548,7 @@ const collectFleetTelemetrySummary = async () => {
         target_id: string;
         target_url: string;
         target_ip?: string;
+        peer_instance_id?: string;
         type: string;
         reachable: boolean;
         latency_ms: number;
@@ -13549,6 +13572,7 @@ const collectFleetTelemetrySummary = async () => {
                 target_id: r.endpointId,
                 target_url: r.url || '',
                 target_ip: r.remoteIp || (r.url ? (r.url.match(/\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b/)?.[0] ?? '') : ''),
+                peer_instance_id: (r as any).peer_instance_id || '',
                 type: (r.endpointType || 'PING').toUpperCase(),
                 reachable: !!r.reachable,
                 latency_ms: Math.round((r.metrics?.total_ms ?? 0) * 100) / 100,
@@ -13939,7 +13963,7 @@ app.get('/api/fleet/matrix', authenticateToken, async (req, res) => {
         };
 
         const thresholds = getMatrixThresholds();
-        const topology = thresholds.mesh_topology || 'hub_and_spoke';
+        const topology = thresholds.mesh_topology || 'full_mesh';
 
         // 3. Assemble N x N Matrix Pairs
         const matrixPairs: Array<any> = [];
@@ -14911,12 +14935,21 @@ provisioningManager.onBundleApplied((type, payload) => {
 const buildConnectivityProbesPayload = () => {
     const envProbes = getEnvConnectivityEndpoints();
     const rawCustom = getCustomConnectivityEndpoints();
+    const discovered = discoveryManager ? discoveryManager.getProbes() : [];
+
     const mergedEnvProbes = envProbes.map((p: any) => {
         const override = rawCustom.find((cp: any) => cp.name === p.name);
         return override ? { ...p, ...override } : p;
     });
     const pureCustom = rawCustom.filter((p: any) => !envProbes.find(ep => ep.name === p.name));
-    return [...mergedEnvProbes, ...pureCustom];
+    const combined = [...mergedEnvProbes, ...pureCustom];
+
+    for (const dp of discovered) {
+        if (!combined.some((p: any) => p.name === dp.name || (p.target && p.target === dp.target))) {
+            combined.push(dp);
+        }
+    }
+    return combined;
 };
 
 // ── Debounced Auto-Sync Helper (Leader -> Peers) ───────────────────────────

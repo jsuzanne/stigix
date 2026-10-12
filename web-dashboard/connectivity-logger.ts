@@ -19,6 +19,7 @@ export interface ConnectivityResult {
     httpCode?: number;
     remoteIp?: string;
     remotePort?: number;
+    peer_instance_id?: string;
     metrics: {
         dns_ms?: number;
         tcp_ms?: number;
