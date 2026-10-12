@@ -475,6 +475,17 @@ export default function Copilot({ token, onOpenSettings, isDrawer = false, onClo
         toast.success('Copied to clipboard');
     };
 
+    const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null);
+
+    const handleCopyMessage = (msgId: string, text: string) => {
+        if (!text) return;
+        copyToClipboard(text);
+        setCopiedMessageId(msgId);
+        setTimeout(() => {
+            setCopiedMessageId(prev => prev === msgId ? null : prev);
+        }, 2000);
+    };
+
     return (
         <div className="flex flex-col lg:flex-row h-[calc(100vh-140px)] min-h-[600px] bg-card border border-border rounded-2xl overflow-hidden shadow-2xl relative">
             {/* ── Sessions Sidebar ── */}
@@ -732,7 +743,7 @@ export default function Copilot({ token, onOpenSettings, isDrawer = false, onClo
 
                             <div className={`flex flex-col ${m.role === 'user' ? 'max-w-[85%] sm:max-w-[75%] items-end' : 'w-full max-w-full items-start'}`}>
                                 <div
-                                    className={`rounded-2xl p-4 sm:p-5 text-xs leading-relaxed shadow-sm ${
+                                    className={`relative group/msg rounded-2xl p-4 sm:p-5 text-xs leading-relaxed shadow-sm ${
                                         m.role === 'user'
                                             ? 'bg-blue-600 text-white rounded-tr-sm font-medium'
                                             : 'bg-card-secondary/50 border border-border text-text-primary rounded-tl-sm w-full'
@@ -745,6 +756,21 @@ export default function Copilot({ token, onOpenSettings, isDrawer = false, onClo
                                                 <ToolCallCard key={tool.id} tool={tool} onCopy={copyToClipboard} />
                                             ))}
                                         </div>
+                                    )}
+
+                                    {/* Quick floating copy button on hover for assistant messages */}
+                                    {m.role === 'assistant' && m.content && (
+                                        <button
+                                            onClick={() => handleCopyMessage(m.id, m.content)}
+                                            className="absolute top-3 right-3 opacity-0 group-hover/msg:opacity-100 p-1.5 rounded-lg bg-card/90 hover:bg-card border border-border/80 text-text-muted hover:text-text-primary transition-all shadow-sm cursor-pointer z-10"
+                                            title="Copy response to clipboard"
+                                        >
+                                            {copiedMessageId === m.id ? (
+                                                <Check size={13} className="text-emerald-400" />
+                                            ) : (
+                                                <Copy size={13} />
+                                            )}
+                                        </button>
                                     )}
 
                                     {/* Render Markdown Content */}
@@ -760,12 +786,34 @@ export default function Copilot({ token, onOpenSettings, isDrawer = false, onClo
                                     )}
                                 </div>
 
-                                <div className="flex items-center gap-2 text-[10px] text-text-muted mt-1 px-1">
+                                <div className="flex items-center gap-2 text-[10px] text-text-muted mt-1.5 px-1">
                                     <span>{new Date(m.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
                                     {m.model && (
                                         <>
                                             <span>•</span>
                                             <span className="font-mono">{m.model}</span>
+                                        </>
+                                    )}
+                                    {m.role === 'assistant' && m.content && (
+                                        <>
+                                            <span>•</span>
+                                            <button
+                                                onClick={() => handleCopyMessage(m.id, m.content)}
+                                                className="flex items-center gap-1 px-1.5 py-0.5 rounded hover:bg-card-secondary hover:text-text-primary text-text-muted transition-colors cursor-pointer"
+                                                title="Copy full response"
+                                            >
+                                                {copiedMessageId === m.id ? (
+                                                    <>
+                                                        <Check size={11} className="text-emerald-400" />
+                                                        <span className="text-emerald-400 font-bold">Copied!</span>
+                                                    </>
+                                                ) : (
+                                                    <>
+                                                        <Copy size={11} />
+                                                        <span>Copy</span>
+                                                    </>
+                                                )}
+                                            </button>
                                         </>
                                     )}
                                 </div>
