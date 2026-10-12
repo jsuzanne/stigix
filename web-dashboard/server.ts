@@ -2868,7 +2868,9 @@ const handleDirectVyosAction = async (req: any, res: any) => {
         const routerId = body.routerId || body.router_id;
         const routerName = body.routerName || body.router_name;
         const iface = body.interface;
-        const command = body.command;
+        let command = body.command;
+        if (command === 'set-impairment') command = 'set-qos';
+        if (command === 'clear-impairment') command = 'clear-qos';
         const source = body.source || (req.path.includes('adhoc') ? 'AdHoc Action' : 'Topology Action');
         const params = body.params || body.parameters || {
             latency_ms: body.latency_ms,
@@ -15485,6 +15487,20 @@ app.get('/api/registry/status', authenticateToken, (req, res) => {
     };
 
     res.json(status);
+});
+
+// Compatibility alias for mesh controller status
+app.get('/api/mesh/status', authenticateToken, (req, res) => {
+    const mgrStatus = registryManager.getStatus();
+    const mode = mgrStatus.current_mode || process.env.STIGIX_REGISTRY_MODE || 'peer';
+    res.json({
+        ...mgrStatus,
+        mode: mode,
+        local_registry_active: mode === 'leader',
+        local_instances: mode === 'leader' ? localRegistryServer.getInstances() : [],
+        tunnel_active: fleetTunnelManager.hasActiveLeaderTunnel(),
+        leader_tunnel_info: fleetTunnelManager.getActiveLeaderInfo()
+    });
 });
 
 app.get('/api/registry/site-name', authenticateToken, (_req, res) => {

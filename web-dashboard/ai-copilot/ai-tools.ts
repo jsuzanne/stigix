@@ -39,13 +39,21 @@ export function resolveNodeContext(
     const activeToken = ctx.systemToken || ctx.token;
     if (activeToken) defaultHeaders['Authorization'] = `Bearer ${activeToken}`;
 
-    const localSite = ctx.registryManager?.getSiteName?.() || 'LOCAL';
+    const localSite = String(ctx.registryManager?.getSiteName?.() || process.env.STIGIX_SITE_NAME || 'LOCAL').toLowerCase();
+    const localId = String(ctx.registryManager?.getStatus?.()?.instance_id || '').toLowerCase();
+    const query = String(nodeNameOrIp || '').toLowerCase().trim();
 
-    if (!nodeNameOrIp || ['local', 'self', 'current', localSite.toLowerCase()].includes(String(nodeNameOrIp).toLowerCase().trim())) {
-        return { baseUrl: `http://127.0.0.1:${defaultPort}`, headers: defaultHeaders, siteName: localSite, isLocal: true };
+    const isExplicitLocal = !query ||
+        ['local', 'self', 'current', 'localhost', '127.0.0.1'].includes(query) ||
+        query === localSite ||
+        query.includes(localSite) ||
+        localSite.includes(query) ||
+        (localId && (query === localId || query.includes(localId) || localId.includes(query))) ||
+        (query.includes('br8') && localSite.includes('br8'));
+
+    if (isExplicitLocal) {
+        return { baseUrl: `http://127.0.0.1:${defaultPort}`, headers: defaultHeaders, siteName: localSite.toUpperCase(), isLocal: true };
     }
-
-    const query = String(nodeNameOrIp).toLowerCase().trim();
 
     if (query.startsWith('http://') || query.startsWith('https://')) {
         return {
@@ -167,8 +175,10 @@ export function resolveTargetEndpoint(targetQuery: string | undefined, ctx: Tool
 
 async function fetchApi(nodeCtx: { baseUrl: string; headers: Record<string, string> }, path: string, options: RequestInit = {}): Promise<any> {
     const url = `${nodeCtx.baseUrl}${path}`;
+    const signal = options.signal || AbortSignal.timeout(5000);
     const res = await fetch(url, {
         ...options,
+        signal,
         headers: {
             ...nodeCtx.headers,
             ...(options.headers || {})
@@ -588,8 +598,8 @@ export const COPILOT_TOOLS: AnthropicToolDefinition[] = [
                 },
                 command: {
                     type: 'string',
-                    enum: ['interface-down', 'interface-up', 'set-impairment', 'clear-qos', 'deny-traffic', 'allow-traffic', 'clear-all-blocks', 'show-denied'],
-                    description: 'Action command.'
+                    enum: ['set-qos', 'set-impairment', 'clear-qos', 'interface-down', 'interface-up', 'deny-traffic', 'allow-traffic', 'clear-all-blocks', 'show-denied'],
+                    description: 'Action command: "set-qos" (inject latency_ms, loss_pct, etc.), "clear-qos" (restore normal link), "interface-down" (simulate link shutdown/cut), "interface-up" (restore interface), "deny-traffic" (firewall block IP/host), "allow-traffic" (unblock).'
                 },
                 interface: {
                     type: 'string',
@@ -2243,8 +2253,8 @@ export async function executeCopilotTool(
                 for (const r of routers) {
                     if (args.router_id && r.id !== args.router_id && r.name !== args.router_id) continue;
                     try {
-                        const state = await fetchApi(nodeCtx, `/api/vyos/routers/${r.id}/state`).catch(() => 
-                            fetchApi(nodeCtx, `/api/vyos/state?router_id=${r.id}`)
+                        const state = await fetchApi(nodeCtx, `/api/vyos/routers/${r.id}/state`, { signal: AbortSignal.timeout(2000) }).catch(() => 
+                            fetchApi(nodeCtx, `/api/vyos/state?router_id=${r.id}`, { signal: AbortSignal.timeout(2000) })
                         );
                         const ifaces = (state.interfaces || []).filter((i: any) => i.description && i.description.trim() !== '');
                         results.push({
@@ -2316,19 +2326,22 @@ export async function executeCopilotTool(
 
             case 'vyos_execute_action': {
                 const nodeCtx = resolveNodeContext(args.agent_id, ctx);
+                const rawCmd = String(args.command || 'set-qos');
+                const command = rawCmd === 'set-impairment' ? 'set-qos' : rawCmd;
+                const params: any = {
+                    latency_ms: args.latency_ms ?? args.latency ?? args.ms,
+                    loss_pct: args.loss_pct ?? args.loss ?? args.percent,
+                    corruption_pct: args.corruption_pct ?? args.corruption,
+                    rate: args.rate,
+                    ip: args.ip
+                };
                 return await fetchApi(nodeCtx, '/api/vyos/direct-action', {
                     method: 'POST',
                     body: JSON.stringify({
                         routerId: args.router_id,
-                        command: args.command,
+                        command,
                         interface: args.interface,
-                        params: {
-                            latency_ms: args.latency_ms,
-                            loss_pct: args.loss_pct,
-                            corruption_pct: args.corruption_pct,
-                            rate: args.rate,
-                            ip: args.ip
-                        },
+                        params,
                         source: 'AI Copilot'
                     })
                 }).catch(async () => {
@@ -2337,13 +2350,9 @@ export async function executeCopilotTool(
                         method: 'POST',
                         body: JSON.stringify({
                             router_id: args.router_id,
-                            command: args.command,
+                            command,
                             interface: args.interface,
-                            latency_ms: args.latency_ms,
-                            loss_pct: args.loss_pct,
-                            corruption_pct: args.corruption_pct,
-                            rate: args.rate,
-                            ip: args.ip
+                            ...params
                         })
                     });
                 });
@@ -3357,12 +3366,21 @@ export async function executeCopilotTool(
 
             case 'get_controller_status': {
                 const nodeCtx = resolveNodeContext(args.agent_id, ctx);
-                return await fetchApi(nodeCtx, '/api/mesh/status');
+                if (nodeCtx.isLocal && ctx.registryManager?.getStatus) {
+                    return ctx.registryManager.getStatus();
+                }
+                return await fetchApi(nodeCtx, '/api/registry/status').catch(async () => {
+                    return await fetchApi(nodeCtx, '/api/mesh/status');
+                });
             }
 
             case 'list_controller_peers': {
                 const nodeCtx = resolveNodeContext(args.agent_id, ctx);
-                return await fetchApi(nodeCtx, '/api/discovery/peers');
+                if (nodeCtx.isLocal && ctx.registryManager?.getPeers) {
+                    return ctx.registryManager.getPeers();
+                }
+                const status = await fetchApi(nodeCtx, '/api/registry/status').catch(() => ({}));
+                return status?.peers || status?.instances || status?.local_instances || [];
             }
 
             case 'set_controller_leader': {

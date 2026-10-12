@@ -409,7 +409,8 @@ YOUR ROLE & BEHAVIOR:
         sessionId: string,
         userPrompt: string,
         modelOverride: string | undefined,
-        sendEvent: (event: string, data: any) => void
+        sendEvent: (event: string, data: any) => void,
+        isAborted?: () => boolean
     ): Promise<void> {
         let session = this.sessions.get(sessionId);
         if (!session) {
@@ -477,9 +478,9 @@ YOUR ROLE & BEHAVIOR:
         };
 
         if (activeProvider === 'deepseek') {
-            await this.streamDeepSeekChat(model, activeApiKey, systemPrompt, session, assistantMsg, sendEvent);
+            await this.streamDeepSeekChat(model, activeApiKey, systemPrompt, session, assistantMsg, sendEvent, isAborted);
         } else {
-            await this.streamAnthropicChat(model, activeApiKey, systemPrompt, session, assistantMsg, sendEvent);
+            await this.streamAnthropicChat(model, activeApiKey, systemPrompt, session, assistantMsg, sendEvent, isAborted);
         }
 
         session.messages.push(assistantMsg);
@@ -503,7 +504,8 @@ YOUR ROLE & BEHAVIOR:
         systemPrompt: string,
         session: CopilotSession,
         assistantMsg: CopilotMessage,
-        sendEvent: (event: string, data: any) => void
+        sendEvent: (event: string, data: any) => void,
+        isAborted?: () => boolean
     ): Promise<void> {
         const deepseekMessages: any[] = [
             { role: 'system', content: systemPrompt },
@@ -529,6 +531,10 @@ YOUR ROLE & BEHAVIOR:
         const MAX_TOOL_LOOPS = 10;
 
         while (continueLoop && loopCount < MAX_TOOL_LOOPS) {
+            if (isAborted?.()) {
+                log('AI-COPILOT', 'Chat stream aborted by client');
+                break;
+            }
             loopCount++;
             continueLoop = false;
 
@@ -681,7 +687,8 @@ YOUR ROLE & BEHAVIOR:
         systemPrompt: string,
         session: CopilotSession,
         assistantMsg: CopilotMessage,
-        sendEvent: (event: string, data: any) => void
+        sendEvent: (event: string, data: any) => void,
+        isAborted?: () => boolean
     ): Promise<void> {
         const anthropicMessages: any[] = session.messages.map(m => ({
             role: m.role,
@@ -693,6 +700,10 @@ YOUR ROLE & BEHAVIOR:
         const MAX_TOOL_LOOPS = 10;
 
         while (continueLoop && loopCount < MAX_TOOL_LOOPS) {
+            if (isAborted?.()) {
+                log('AI-COPILOT', 'Anthropic stream aborted by client');
+                break;
+            }
             loopCount++;
             continueLoop = false;
 
