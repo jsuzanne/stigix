@@ -64,6 +64,7 @@ export class CopilotTestSuite {
 
         // 2. Try common JWT secrets
         const candidateSecrets = [
+            'your-secure-secret-here',
             'super-secret-key-change-this',
             'stigix-local-dev-secret-key-123456',
             'stigix-default-secret-2026',
@@ -690,6 +691,69 @@ export class CopilotTestSuite {
             }, remoteCtx);
             if (res.error) throw new Error(res.error);
             return { healthy: res.healthy ?? true };
+        });
+
+        // 40. Regression Test: list_custom_tcp_apps (Local Context using getSanitizedConfig)
+        await this.runTest('40. Tool "list_custom_tcp_apps" (Local Context Sanitized Config)', async () => {
+            const mockTcpMgr = {
+                getSanitizedConfig: () => ({
+                    applications: [{ id: 'app-pos-test', name: 'app-pos-test', listener: { port: 18443 } }]
+                }),
+                getAllAppsStatus: () => [{ appId: 'app-pos-test', state: 'running', listenerActive: true }]
+            };
+            const localMockCtx: ToolExecutionContext = {
+                ...remoteCtx,
+                tcpAppManager: mockTcpMgr
+            };
+            const res = await executeCopilotTool('list_custom_tcp_apps', {
+                agent_id: 'local'
+            }, localMockCtx);
+            if (res.error) throw new Error(res.error);
+            const apps = Array.isArray(res) ? res : (res.applications || []);
+            if (!apps || apps.length === 0) throw new Error('Expected at least 1 app returned from local tcpAppManager');
+            if (apps[0].id !== 'app-pos-test') throw new Error(`Unexpected app id: ${apps[0].id}`);
+            if (!apps[0].status || apps[0].status.state !== 'running') throw new Error('Expected live status attached to app');
+            return { appCount: apps.length, appStatus: apps[0].status.state };
+        });
+
+        // 41. Regression Test: get_dem_summary (Ensures health_score & probes are returned)
+        await this.runTest('41. Tool "get_dem_summary" (Health score & probes presence)', async () => {
+            const res = await executeCopilotTool('get_dem_summary', {
+                agent_id: this.host
+            }, remoteCtx);
+            if (res.error) throw new Error(res.error);
+            if (!Array.isArray(res.probes)) throw new Error('Expected probes array in get_dem_summary');
+            return { total_probes: res.total_probes, health_score: res.health_score };
+        });
+
+        // 42. Regression Test: get_probe_details (Enriched probe with status/score/details)
+        await this.runTest('42. Tool "get_probe_details" (Live metrics and status enrichment)', async () => {
+            // Pick first available probe from active list
+            const activeRes = await this.request('/api/connectivity/active-probes');
+            const firstProbe = activeRes.probes?.[0];
+            if (!firstProbe) return { skipped: true, reason: 'No active probes configured' };
+
+            const res = await executeCopilotTool('get_probe_details', {
+                agent_id: this.host,
+                probe_name: firstProbe.name
+            }, remoteCtx);
+            if (res.error) throw new Error(res.error);
+            if (!res.status) throw new Error('Expected status field on enriched probe');
+            return { probe: res.name, status: res.status, score: res.score, latency_ms: res.latency_ms };
+        });
+
+        // 43. Regression Test: VyOS State & Direct Action endpoints
+        await this.runTest('43. VyOS Routes (Direct action & state API without 404 fallback)', async () => {
+            // Verify /api/vyos/state route does not return SPA fallback HTML
+            const res = await fetch(`${this.host}/api/vyos/state`, {
+                headers: { 'Authorization': `Bearer ${this.token}` }
+            });
+            // It should be 400 (missing router_id) or JSON, NOT 404 HTML fallback!
+            const text = await res.text();
+            if (text.includes('<!doctype html') || text.includes('<!DOCTYPE html')) {
+                throw new Error('/api/vyos/state returned SPA fallback HTML');
+            }
+            return { status: res.status, ok: true };
         });
 
         // Summary

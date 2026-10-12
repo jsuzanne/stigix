@@ -5,6 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.0.2] - 2026-10-12
+
+### Fixed
+- **DEM Engine Fleet Probes Execution on Spoke Nodes (`server.ts`)**:
+  - Unified `getFullEffectiveConnectivityProbes()` across background connectivity monitoring (`startConnectivityMonitor`), manual test triggers (`/api/connectivity/test`), active probe inventory (`/api/connectivity/active-probes`), and aggregated stats (`/api/connectivity/stats`).
+  - Fixed an issue where spoke/peer nodes (e.g. BR1) were not executing fleet-provisioned probes (e.g. Aircall) due to querying local `connectivity-custom.json` instead of effective provisioning cache.
+- **AI Copilot DEM Metrics & Details Enrichment (`ai-tools.ts`)**:
+  - Enriched `get_probe_details` to cross-reference `/api/connectivity/results` and provide live `score`, `status`, `latency_ms`, `http_code`, `metrics`, and historical summary statistics (`samples`, `success_rate_pct`, `min/avg/max latency`).
+  - Enriched `get_dem_summary` to include live `health_score` alongside probe lists.
+- **AI Copilot Local Custom TCP Apps Handler (`ai-tools.ts`)**:
+  - Fixed `TypeError: getApplications is not a function` when running `list_custom_tcp_apps` in local context by calling `getSanitizedConfig()` and mapping active listener statuses via `getAllAppsStatus()`.
+- **VyOS Underlay Routes & Action Routing (`server.ts`, `ai-tools.ts`)**:
+  - Aligned `vyos_execute_action` and `get_vyos_router_state` with canonical endpoints `/api/vyos/direct-action`, `/api/vyos/routers/:id/state`, and legacy aliases to eliminate 404 SPA fallback responses.
+
+### Added
+- **Automated Regression Suite Expansion (`tests/test-copilot-suite.ts`)**:
+  - Added test cases 40, 41, 42, and 43 covering local TCP app sanitization, DEM health scores, probe metrics enrichment, and VyOS direct routes. All 47 suite tests verified passing.
+
 ## [3.0.0] - 2026-10-11 — Major Release: Modernized Navigation & Command Center
 
 ### Added

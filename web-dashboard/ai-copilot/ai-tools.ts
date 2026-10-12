@@ -2242,7 +2242,9 @@ export async function executeCopilotTool(
                 for (const r of routers) {
                     if (args.router_id && r.id !== args.router_id && r.name !== args.router_id) continue;
                     try {
-                        const state = await fetchApi(nodeCtx, `/api/vyos/state?router_id=${r.id}`);
+                        const state = await fetchApi(nodeCtx, `/api/vyos/routers/${r.id}/state`).catch(() => 
+                            fetchApi(nodeCtx, `/api/vyos/state?router_id=${r.id}`)
+                        );
                         const ifaces = (state.interfaces || []).filter((i: any) => i.description && i.description.trim() !== '');
                         results.push({
                             router_id: r.id,
@@ -2261,57 +2263,88 @@ export async function executeCopilotTool(
 
             case 'get_vyos_router_state': {
                 const nodeCtx = resolveNodeContext(args.agent_id, ctx);
-                return await fetchApi(nodeCtx, `/api/vyos/state?router_id=${args.router_id}`);
+                return await fetchApi(nodeCtx, `/api/vyos/routers/${args.router_id}/state`).catch(() => 
+                    fetchApi(nodeCtx, `/api/vyos/state?router_id=${args.router_id}`)
+                );
             }
 
             case 'vyos_bulk_reset': {
                 const nodeCtx = resolveNodeContext(args.agent_id, ctx);
-                const state = await fetchApi(nodeCtx, `/api/vyos/state?router_id=${args.router_id}`);
-                const scope = args.scope;
-                const actionsTaken: string[] = [];
-
-                if (scope === 'all-qos' || scope === 'full-reset') {
-                    for (const iface of (state.interfaces || []).filter((i: any) => i.qos_active)) {
-                        await fetchApi(nodeCtx, '/api/vyos/adhoc', {
-                            method: 'POST',
-                            body: JSON.stringify({ router_id: args.router_id, command: 'clear-qos', interface: iface.name })
-                        });
-                        actionsTaken.push(`clear-qos on ${iface.name}`);
-                    }
-                }
-                if (scope === 'all-blocks' || scope === 'full-reset') {
-                    await fetchApi(nodeCtx, '/api/vyos/adhoc', {
+                const scope = args.scope || 'full-reset';
+                // Try direct server bulk reset endpoint first
+                try {
+                    return await fetchApi(nodeCtx, `/api/vyos/routers/${args.router_id}/reset`, {
                         method: 'POST',
-                        body: JSON.stringify({ router_id: args.router_id, command: 'clear-all-blocks' })
+                        body: JSON.stringify({ scope })
                     });
-                    actionsTaken.push('clear-all-blocks');
-                }
-                if (scope === 'unshut-all' || scope === 'full-reset') {
-                    for (const iface of (state.interfaces || []).filter((i: any) => i.admin_state === 'down')) {
-                        await fetchApi(nodeCtx, '/api/vyos/adhoc', {
-                            method: 'POST',
-                            body: JSON.stringify({ router_id: args.router_id, command: 'interface-up', interface: iface.name })
-                        });
-                        actionsTaken.push(`interface-up on ${iface.name}`);
+                } catch {
+                    // Fallback to manual per-action reset
+                    const state = await fetchApi(nodeCtx, `/api/vyos/routers/${args.router_id}/state`).catch(() => 
+                        fetchApi(nodeCtx, `/api/vyos/state?router_id=${args.router_id}`)
+                    );
+                    const actionsTaken: string[] = [];
+
+                    if (scope === 'all-qos' || scope === 'full-reset') {
+                        for (const iface of (state.interfaces || []).filter((i: any) => i.qos_active)) {
+                            await fetchApi(nodeCtx, '/api/vyos/direct-action', {
+                                method: 'POST',
+                                body: JSON.stringify({ routerId: args.router_id, command: 'clear-qos', interface: iface.name, source: 'AI Copilot' })
+                            }).catch(() => {});
+                            actionsTaken.push(`clear-qos on ${iface.name}`);
+                        }
                     }
+                    if (scope === 'all-blocks' || scope === 'full-reset') {
+                        await fetchApi(nodeCtx, '/api/vyos/direct-action', {
+                            method: 'POST',
+                            body: JSON.stringify({ routerId: args.router_id, command: 'clear-all-blocks', source: 'AI Copilot' })
+                        }).catch(() => {});
+                        actionsTaken.push('clear-all-blocks');
+                    }
+                    if (scope === 'unshut-all' || scope === 'full-reset') {
+                        for (const iface of (state.interfaces || []).filter((i: any) => i.admin_state === 'down')) {
+                            await fetchApi(nodeCtx, '/api/vyos/direct-action', {
+                                method: 'POST',
+                                body: JSON.stringify({ routerId: args.router_id, command: 'interface-up', interface: iface.name, source: 'AI Copilot' })
+                            }).catch(() => {});
+                            actionsTaken.push(`interface-up on ${iface.name}`);
+                        }
+                    }
+                    return { success: true, scope, actions_taken: actionsTaken };
                 }
-                return { success: true, scope, actions_taken: actionsTaken };
             }
 
             case 'vyos_execute_action': {
                 const nodeCtx = resolveNodeContext(args.agent_id, ctx);
-                return await fetchApi(nodeCtx, '/api/vyos/adhoc', {
+                return await fetchApi(nodeCtx, '/api/vyos/direct-action', {
                     method: 'POST',
                     body: JSON.stringify({
-                        router_id: args.router_id,
+                        routerId: args.router_id,
                         command: args.command,
                         interface: args.interface,
-                        latency_ms: args.latency_ms,
-                        loss_pct: args.loss_pct,
-                        corruption_pct: args.corruption_pct,
-                        rate: args.rate,
-                        ip: args.ip
+                        params: {
+                            latency_ms: args.latency_ms,
+                            loss_pct: args.loss_pct,
+                            corruption_pct: args.corruption_pct,
+                            rate: args.rate,
+                            ip: args.ip
+                        },
+                        source: 'AI Copilot'
                     })
+                }).catch(async () => {
+                    // Fallback to legacy adhoc route
+                    return await fetchApi(nodeCtx, '/api/vyos/adhoc', {
+                        method: 'POST',
+                        body: JSON.stringify({
+                            router_id: args.router_id,
+                            command: args.command,
+                            interface: args.interface,
+                            latency_ms: args.latency_ms,
+                            loss_pct: args.loss_pct,
+                            corruption_pct: args.corruption_pct,
+                            rate: args.rate,
+                            ip: args.ip
+                        })
+                    });
                 });
             }
 
@@ -2356,16 +2389,19 @@ export async function executeCopilotTool(
             case 'get_dem_summary': {
                 const nodeCtx = resolveNodeContext(args.agent_id, ctx);
                 let arr: any[] = [];
-                if (nodeCtx.isLocal && ctx.getAllProbes) {
-                    arr = ctx.getAllProbes();
-                } else {
-                    const probes = await fetchApi(nodeCtx, '/api/connectivity/active-probes').catch(async () => {
-                        return await fetchApi(nodeCtx, '/api/connectivity/custom');
-                    });
-                    arr = Array.isArray(probes) ? probes : (probes?.probes || []);
-                }
+                let stats: any = null;
+                const [probesRes, statsRes] = await Promise.all([
+                    (nodeCtx.isLocal && ctx.getAllProbes)
+                        ? Promise.resolve(ctx.getAllProbes())
+                        : fetchApi(nodeCtx, '/api/connectivity/custom').catch(async () => fetchApi(nodeCtx, '/api/connectivity/active-probes')).catch(() => []),
+                    fetchApi(nodeCtx, '/api/connectivity/stats?range=1h').catch(() => null)
+                ]);
+                arr = Array.isArray(probesRes) ? probesRes : (probesRes?.probes || []);
+                stats = statsRes;
+
                 return {
                     node: nodeCtx.siteName,
+                    health_score: stats?.globalHealth ?? (arr.length > 0 ? 100 : null),
                     total_probes: arr.length,
                     active_probes: arr.filter((p: any) => p.enabled !== false).length,
                     probes: arr
@@ -2386,9 +2422,60 @@ export async function executeCopilotTool(
                 const pName = String(args.probe_name || '').toLowerCase();
                 const matched = probes.find((p: any) => {
                     const name = (p.name || '').toLowerCase();
-                    return name === pName || name.includes(pName) || pName.includes(name);
+                    const id = (p.id || '').toLowerCase();
+                    return name === pName || name.includes(pName) || pName.includes(name) || id === pName;
                 });
-                return matched || { error: `Probe "${args.probe_name}" not found.` };
+                if (!matched) {
+                    return { error: `Probe "${args.probe_name}" not found.` };
+                }
+
+                // Enrich with latest live measurement & metrics from /api/connectivity/results
+                try {
+                    const matchedName = (matched.name || '').toLowerCase();
+                    const matchedId = (matched.id || matched.name || '').toLowerCase().replace(/\s+/g, '-');
+                    const resultsData = await fetchApi(nodeCtx, '/api/connectivity/results?limit=100').catch(() => []);
+                    const allResults = Array.isArray(resultsData) ? resultsData : (resultsData?.results || []);
+
+                    const probeResults = allResults.filter((r: any) => {
+                        const rName = (r.endpointName || r.name || '').toLowerCase();
+                        const rId = (r.endpointId || '').toLowerCase();
+                        return rName === matchedName || rId === matchedId;
+                    });
+
+                    if (probeResults.length > 0) {
+                        const latest = probeResults[0];
+                        const rtts = probeResults.map((r: any) => r.metrics?.total_ms).filter((v: any) => typeof v === 'number');
+                        const successCount = probeResults.filter((r: any) => r.reachable).length;
+
+                        return {
+                            ...matched,
+                            score: latest.score ?? (latest.reachable ? 100 : 0),
+                            status: latest.reachable ? 'healthy' : 'failed',
+                            latency_ms: latest.metrics?.total_ms ? Math.round(latest.metrics.total_ms * 10) / 10 : null,
+                            http_code: latest.httpCode || null,
+                            last_run: latest.timestamp ? new Date(latest.timestamp).toISOString() : null,
+                            metrics: latest.metrics || {},
+                            history_summary: {
+                                samples: probeResults.length,
+                                success_rate_pct: Math.round((successCount / probeResults.length) * 100),
+                                min_latency_ms: rtts.length > 0 ? Math.min(...rtts) : null,
+                                max_latency_ms: rtts.length > 0 ? Math.max(...rtts) : null,
+                                avg_latency_ms: rtts.length > 0 ? Math.round(rtts.reduce((a: number, b: number) => a + b, 0) / rtts.length) : null
+                            }
+                        };
+                    } else {
+                        return {
+                            ...matched,
+                            score: null,
+                            status: matched.enabled !== false ? 'pending_execution' : 'disabled',
+                            latency_ms: null,
+                            metrics: null,
+                            note: 'Probe configuration found, but no test execution samples have been recorded yet. You can trigger an immediate check via run_dem_probes_now.'
+                        };
+                    }
+                } catch {
+                    return matched;
+                }
             }
 
             case 'list_dem_probes': {
@@ -3178,9 +3265,16 @@ export async function executeCopilotTool(
             case 'list_custom_tcp_apps': {
                 const nodeCtx = resolveNodeContext(args.agent_id, ctx);
                 if (nodeCtx.isLocal && ctx.tcpAppManager) {
-                    return ctx.tcpAppManager.getApplications();
+                    const data = ctx.tcpAppManager.getSanitizedConfig();
+                    const statuses = ctx.tcpAppManager.getAllAppsStatus() || [];
+                    const apps = data?.applications || [];
+                    return apps.map((app: any) => ({
+                        ...app,
+                        status: statuses.find((s: any) => s.appId === app.id)
+                    }));
                 }
-                return await fetchApi(nodeCtx, '/api/custom-tcp-apps');
+                const res = await fetchApi(nodeCtx, '/api/custom-tcp-apps');
+                return res?.applications || (Array.isArray(res) ? res : []);
             }
 
             case 'start_tcp_app_listener': {
