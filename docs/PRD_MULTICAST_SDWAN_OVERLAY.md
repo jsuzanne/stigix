@@ -25,10 +25,11 @@ Extend the existing **Custom Apps** subsystem (`web-dashboard/custom-tcp-apps/`)
 
 | Goals | Non-Goals (v1) |
 |---|---|
-| IPv4 ASM (`239/8`) and SSM (`232/8`) streams | IPv6 / MLD |
-| Per-receiver loss, duplicates, jitter, throughput, join latency | Configuring the SD-WAN fabric (PIM, IGMP proxy, RP) — the network is assumed pre-configured |
-| Convergence-time measurement during underlay chaos (VyOS) | Real video/audio codecs or decoding |
-| Copilot/MCP/CLI parity | Multicast routing daemon inside Stigix (no PIM speaker) |
+| IPv4 ASM (`239/8`) and SSM (`232/8`) streams | IPv6 / MLD, MSDP, anycast RP |
+| Per-receiver loss, duplicates, reordering, jitter, throughput, join latency | Configuring the SD-WAN fabric (PIM, IGMP proxy, RP) — the network is assumed pre-configured |
+| Convergence-time measurement during underlay chaos | Real video/audio codecs or decoding; multicast encryption validation |
+| DC-side source **and branch-side source (BSS)** streams | Multicast routing daemon inside Stigix (no PIM speaker) |
+| Copilot/MCP/CLI parity | Line-rate stress (> 50 Mbps) |
 | Run inside existing container (host networking) | Bridge-mode Docker support |
 
 ```mermaid
@@ -66,11 +67,14 @@ flowchart TD
 | **Security Engineer** | Verify segmentation | Prove a non-member node (or other VRF) receives **nothing** (negative test) |
 
 Core test scenarios:
-- **S1 – Baseline:** all receivers joined, loss = 0, duplicates = 0.
-- **S2 – Late join:** a receiver joins mid-stream; measure time-to-first-packet.
-- **S3 – Failover:** inject `interface-down` on the primary underlay link; measure interruption per receiver.
-- **S4 – Leak test:** receiver on an unauthorized segment must see 0 packets (expected-state `NO_TRAFFIC`).
-- **S5 – Leave:** after stop, traffic must stop reaching the branch (prune check).
+- **S1 – Baseline:** DC source, all receivers joined, 5 Mbps for 10 min: loss < 0.1%, 0 duplicates, jitter < 5 ms, join latency reported per receiver.
+- **S2 – Branch-side source (BSS):** a branch node is the sender; DC and other branches receive. Same criteria as S1 (Prisma ION 6.1.1+ required, see Appendix A).
+- **S3 – Failover:** primary WAN link down during the stream; report max gap per receiver; stream must resume without manual action (default threshold < 10 s, configurable).
+- **S4 – Late join:** a receiver joins an already active group; join latency reported, no impact on other receivers.
+- **S5 – Leak test:** receiver on an unauthorized segment/VRF must see 0 packets (`EXPECT_NONE`; any valid packet = FAIL).
+- **S6 – SSM:** `232/8` with `source_ip`; only the declared source is received, a second source is ignored.
+- **S7 – HER detection (informational):** duplicates = 0 at the receiver; an underlay capture shows N unicast copies vs. one multicast flow.
+- **S8 – Leave:** after stop, traffic stops reaching the branch (prune check).
 
 ---
 
@@ -78,12 +82,14 @@ Core test scenarios:
 
 ### 3.1 Sender
 1. **Addressing:** ASM `239.0.0.0/8` (administratively scoped) and SSM `232.0.0.0/8`. Reject other ranges in validation, and reject reserved `224.0.0.0/24` (link-local).
-2. **Parameters:** UDP port (default `5000`), egress interface (resolved to an IP; `IP_MULTICAST_IF`), TTL (default `64`), DSCP (`BE`, `CS5`, `EF`, custom), payload size (default `1316` bytes = 7 TS packets; range 64–1400 to avoid fragmentation).
+2. **Parameters:** UDP port (default `5000`), egress interface (resolved to an IP; `IP_MULTICAST_IF`), TTL (default `64`), DSCP (`BE`, `CS5`, `EF`, custom), payload size (default `1316` bytes = 7 TS packets; range 64–1400 to avoid fragmentation). Use larger datagrams above 10 Mbps.
+   - **Pacing:** `time.perf_counter()` with catch-up logic; fallback to `sendmmsg` or a native helper if Python cannot hold the target rate within ±2%.
+   - DSCP is applied with `IP_TOS = dscp << 2`.
 3. **Rate modes:**
    - **CBR:** 64 kbps – 50 Mbps (v1 cap, see 4.3).
    - **Burst:** N packets every T ms (e.g., 50 pkts every 100 ms).
 4. **`IP_MULTICAST_LOOP` = 0** so a co-located receiver does not see its own traffic and skew tests.
-5. **Packet header** (network byte order, packed, 24 bytes), followed by padding:
+5. **Packet header** (network byte order, packed, 24 bytes — `struct.pack("!IQQHH", ...)`; a naturally-aligned C struct would be padded to 32 bytes, so the wire format is explicitly packed), followed by padding:
 
    | Offset | Size | Field | Notes |
    |---|---|---|---|
@@ -96,13 +102,15 @@ Core test scenarios:
 ### 3.2 Receiver
 1. **Membership:**
    - ASM: `IP_ADD_MEMBERSHIP`.
-   - SSM: `IP_ADD_SOURCE_MEMBERSHIP` with the sender's source IP (requires IGMPv3 in the network; the UI warns if the host is forced to IGMPv2).
-   - Leave via `IP_DROP_MEMBERSHIP` on stop. Periodic report replies to IGMP queries are handled by the **Linux kernel**, not by the application.
+   - SSM: `IP_ADD_SOURCE_MEMBERSHIP` (Linux constant `39`) with the sender's source IP (new `source_ip` field; requires IGMPv3 in the network; the UI warns if the host is forced to IGMPv2).
+   - The receiver socket **binds to the group IP and port** (not `0.0.0.0`) so unrelated multicast traffic on the same port is filtered by the kernel.
+   - Leave via `IP_DROP_MEMBERSHIP` (or `IP_DROP_SOURCE_MEMBERSHIP`) on stop. Periodic report replies to IGMP queries are handled by the **Linux kernel**, not by the application. The engine only **reports** the effective IGMP version (`/proc/net/igmp`, `force_igmp_version`) and may optionally enforce it.
 2. **Metrics (per 1-second window and cumulative):**
    - Loss (gaps in `sequence_id`), reordering, **duplicates**, `foreign` packets.
    - Throughput (kbps) and pps.
    - **Jitter** per RFC 3550 using sender timestamps (clock offset cancels out in inter-arrival differences).
-   - **Time-to-first-packet:** time from `IP_ADD_MEMBERSHIP` call to first valid packet. Documented as an approximation (the kernel sends the IGMP report asynchronously).
+   - **One-way delay (optional):** shown **only** when both nodes report a synchronized clock (NTP/PTP offset below a configurable threshold, default 5 ms); otherwise hidden.
+   - **Time-to-first-packet:** time from `IP_ADD_MEMBERSHIP` call to first valid packet. Documented as an approximation (the kernel sends the IGMP report asynchronously); it is an end-to-end figure that includes IGMP + PIM propagation.
    - **Max interruption (gap) in ms:** longest inter-arrival gap — the primary failover/convergence metric.
 3. **Expectation mode:** `EXPECT_TRAFFIC` (default) or `EXPECT_NONE` (leak test). The verdict is computed locally.
 4. **Health verdict:**
@@ -160,8 +168,11 @@ Start order is **receivers first**, so the baseline is measured without join tra
   - Interface must have the `MULTICAST` flag.
   - Local firewall must allow UDP to the group/port.
   - Detect and show the effective IGMP version (`/proc/net/igmp`).
+  - `rp_filter` loose (`2`) or disabled on the receiver interface when paths are asymmetric.
+  - **RPF check (most common lab failure):** if the source subnet is not reachable by unicast through the incoming interface, PIM drops the stream. When a join succeeds but no packet arrives, the UI shows a diagnostic banner (RPF / `rp_filter` / host networking hints).
+  - **Self-test:** local sender→receiver test on the same segment, to separate host problems from network problems.
 - **Performance:** a Python sender is suitable up to ~50 Mbps with 1316-byte payloads (~4.7 kpps) using a paced loop. Above that, a Node/C sender is a v2 item. The CBR limit is therefore 50 Mbps in v1.
-- **Time:** wall-clock timestamps are only used for jitter. One-way delay is explicitly **not** reported (no clock sync guarantee).
+- **Time:** wall-clock timestamps are used for jitter. One-way delay is reported only when clock sync is verified (see 3.2).
 - **Safety limits:** max 10 concurrent multicast apps per node, max 50 Mbps aggregate, mandatory TTL ≤ 64 by default, and a confirmation when TTL > 16 (leak risk).
 - **Persistence:** apps in `config/custom-tcp-apps.json` (same store); run history in the existing history store with per-receiver summary.
 
@@ -229,6 +240,9 @@ Per the `stigix-mcp-sync` convention, every tool is mirrored in the CLI and the 
 | `start_multicast_app` / `stop_multicast_app` | `app_id` | Orchestrated start/stop |
 | `get_multicast_stats` | `app_id` | Per-receiver loss, jitter, gap, verdict |
 | `run_multicast_failover_test` | `app_id, vyos_action` | Runs a stream, injects the chaos action, returns max interruption per receiver |
+| `run_multicast_scenario` | `scenario_id (S1–S8), app_id` | Runs a predefined scenario and returns pass/fail per receiver |
+
+**Chaos fallback:** if the lab VyOS cannot route multicast, trigger the failover on the SD-WAN edge (link disable) or on the underlay switch instead.
 
 RBAC mapping (see `PRD_ENTERPRISE_RBAC.md`): new capabilities `multicast:read` and `multicast:execute` (included in the *Test Operator* preset, `read` only in *Demo / Read-Only*).
 
@@ -285,6 +299,23 @@ Total ≈ 8–11 days for full scope; an MVP (phases 1–2 plus a minimal UI) is
 ### A.2 Prisma SD-WAN (reference target)
 Prisma SD-WAN supports multicast with **IGMP (v2/v3) on the LAN** and **PIM-SM across the fabric**, with a configured Rendezvous Point.
 
+> [!WARNING]
+> The version/feature details below come from a third-party technical review of Prisma SD-WAN TechDocs ("Multicast Routing"). They must be verified against the official documentation and the lab ION release before being relied upon.
+
+| Item | Detail |
+|---|---|
+| Versions | LAN multicast from 5.6.1; LAN + WAN from 6.0.1; **Branch Side Source (BSS)** from 6.1.1 |
+| Branch site | LAN senders and receivers; receives multicast from the WAN |
+| Datacenter | Sends to branches over the VPN; **no LAN receivers on the DC** (so DC Stigix nodes act as senders only) |
+| Branch ION settings | *L3 Direct Private WAN Forwarding* and *L3 LAN Forwarding* enabled; LAN interface: Multicast = Yes + IGMP version |
+| DC ION interface | Type Port, *Peer with a Network*, Multicast = Yes |
+| RP | Static RP (same address on all multicast routers) or dynamically learned |
+| WAN | Multicast WAN configuration profile attached to the branch site; multicast enabled on the DC ION |
+| BSS | Enable *Receive traffic from branch side sources* in the WAN multicast profile; define source + group on the sending site |
+| Test helper | IGMP **Static Joins** on the branch interface, to separate IGMP failures from transport failures |
+
+Stigix placement: the DC Stigix sender must sit on the segment peered with the ION (*Peer with a Network*), otherwise no PIM adjacency is formed.
+
 Typical operator checklist:
 1. Enable multicast on the Layer 3 LAN interfaces (receiver branches) and on the DC interface facing the source.
 2. Create a **WAN multicast profile** and associate it with the participating sites.
@@ -307,4 +338,5 @@ Any solution transporting multicast (e.g., other SD-WAN or router-based overlays
 |---|---|---|---|
 | 2026-10-13 | `v3.0.3` | Stigix Core Team | Initial PRD creation for SD-WAN Overlay Multicast Validation Engine |
 | 2026-10-13 | `v3.0.3` | Stigix Core Team | Revision: aligned with real code layout (`custom-tcp-apps/`), fixed SSM and IGMP handling, added `run_id`, leak/failover scenarios, pre-flight, data model, API, RBAC mapping, acceptance criteria, risks, realistic estimates |
-| 2026-10-13 | `v3.0.3` | Stigix Core Team | Vendor-neutral design with Prisma SD-WAN as reference target (Appendix A); receivers limited to Stigix nodes
+| 2026-10-13 | `v3.0.3` | Stigix Core Team | Vendor-neutral design with Prisma SD-WAN as reference target (Appendix A); receivers limited to Stigix nodes |
+| 2026-10-13 | `v3.0.3` | Perplexity technical review | Merged: BSS scope and scenario, SSM bind/constant, pacing, reordering, optional one-way delay, RPF/self-test diagnostics, scenarios S6–S8, `run_multicast_scenario`, VyOS chaos fallback, Prisma version/settings table (flagged for verification) |
