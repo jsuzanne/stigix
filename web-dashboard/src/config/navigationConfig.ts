@@ -37,6 +37,7 @@ export interface NavItemConfig {
     featureFlag?: 'xfr_enabled' | 'pcap_enabled' | 'copilot_enabled';
     runningKey?: string; // Key in active tasks state
     subTab?: string; // Target sub-tab when navigating to settings or vyos
+    keywords?: string[]; // Searchable aliases, protocol names, and keywords
 }
 
 export interface NavDomainConfig {
@@ -58,7 +59,8 @@ export const STIGIX_NAVIGATION_DOMAINS: NavDomainConfig[] = [
                 label: 'System Overview',
                 icon: Home,
                 route: '#/home',
-                description: 'Real-time Command Center, System Health Matrix & cluster telemetry'
+                description: 'Real-time Command Center, System Health Matrix & cluster telemetry',
+                keywords: ['overview', 'health', 'matrix', 'telemetry', 'status', 'dashboard', 'home']
             }
         ]
     },
@@ -74,7 +76,8 @@ export const STIGIX_NAVIGATION_DOMAINS: NavDomainConfig[] = [
                 icon: Activity,
                 route: '#/generate/saas',
                 description: 'Multi-app background SaaS traffic load and APM telemetry',
-                runningKey: 'traffic'
+                runningKey: 'traffic',
+                keywords: ['traffic', 'generator', 'saas', 'load', 'simulation', 'bandwidth', 'workload', 'apm']
             },
             {
                 id: 'voice',
@@ -82,7 +85,8 @@ export const STIGIX_NAVIGATION_DOMAINS: NavDomainConfig[] = [
                 icon: Phone,
                 route: '#/generate/voice',
                 description: 'RTP voice call emulation, MOS scoring and jitter measurement',
-                runningKey: 'voice'
+                runningKey: 'voice',
+                keywords: ['voice', 'rtp', 'mos', 'voip', 'jitter', 'call', 'audio', 'sip', 'codec']
             },
             {
                 id: 'iot',
@@ -90,7 +94,8 @@ export const STIGIX_NAVIGATION_DOMAINS: NavDomainConfig[] = [
                 icon: Cpu,
                 route: '#/generate/iot',
                 description: 'Physical IoT device emulation & security attack profiles (Real-on-Wire)',
-                runningKey: 'iot'
+                runningKey: 'iot',
+                keywords: ['iot', 'mqtt', 'modbus', 'camera', 'medical', 'sensor', 'device', 'attack', 'c2']
             },
             {
                 id: 'custom_apps',
@@ -98,7 +103,8 @@ export const STIGIX_NAVIGATION_DOMAINS: NavDomainConfig[] = [
                 icon: Boxes,
                 route: '#/generate/custom-apps',
                 description: 'Enterprise private apps emulation across SD-WAN overlays and breakouts',
-                runningKey: 'custom_apps'
+                runningKey: 'custom_apps',
+                keywords: ['custom', 'tcp', 'http', 'apps', 'enterprise', 'overlay', 'breakout', 'port', 'private']
             },
             {
                 id: 'pcap_replay',
@@ -106,7 +112,8 @@ export const STIGIX_NAVIGATION_DOMAINS: NavDomainConfig[] = [
                 icon: Repeat,
                 route: '#/generate/pcap-replay',
                 description: 'Stateful L7 PCAP replay with zero-config profiles & SASE verdicts',
-                featureFlag: 'pcap_enabled'
+                featureFlag: 'pcap_enabled',
+                keywords: ['pcap', 'replay', 'wireshark', 'packet', 'capture', 'trace', 'verdict', 'l7']
             }
         ]
     },
@@ -121,7 +128,8 @@ export const STIGIX_NAVIGATION_DOMAINS: NavDomainConfig[] = [
                 label: 'Digital Experience (DEM)',
                 icon: LineChart,
                 route: '#/validate/dem',
-                description: 'Synthetic path probes, SLAs and user digital experience monitoring'
+                description: 'Synthetic path probes, SLAs and user digital experience monitoring',
+                keywords: ['dem', 'sla', 'latency', 'jitter', 'loss', 'probes', 'synthetic', 'digital experience', 'score', 'apdex']
             },
             {
                 id: 'speedtest',
@@ -129,14 +137,16 @@ export const STIGIX_NAVIGATION_DOMAINS: NavDomainConfig[] = [
                 icon: Gauge,
                 route: '#/validate/bandwidth',
                 description: 'Multi-stream WAN throughput testing, TCP retransmits & latency benchmark',
-                featureFlag: 'xfr_enabled'
+                featureFlag: 'xfr_enabled',
+                keywords: ['xfr', 'speedtest', 'bandwidth', 'throughput', 'iperf', 'wan', 'retransmits', 'latency']
             },
             {
                 id: 'security',
                 label: 'Security Validation',
                 icon: Shield,
                 route: '#/validate/security',
-                description: 'Validate SASE / NGFW security policy enforcement (URL, DNS, EICAR, Threats)'
+                description: 'Validate SASE / NGFW security policy enforcement (URL, DNS, EICAR, Threats)',
+                keywords: ['security', 'eicar', 'malware', 'threat', 'url filtering', 'dns security', 'c2', 'antivirus', 'firewall', 'ngfw', 'sase']
             },
             {
                 id: 'convergence',
@@ -144,7 +154,8 @@ export const STIGIX_NAVIGATION_DOMAINS: NavDomainConfig[] = [
                 icon: GitFork,
                 route: '#/validate/failover',
                 description: 'Sub-second blackout, path convergence and failover packet loss tracking',
-                runningKey: 'failover'
+                runningKey: 'failover',
+                keywords: ['failover', 'blackout', 'convergence', 'sub-second', 'packet loss', 'sla breach', 'path recovery']
             }
         ]
     },
@@ -159,14 +170,16 @@ export const STIGIX_NAVIGATION_DOMAINS: NavDomainConfig[] = [
                 label: 'Packet Capture',
                 icon: Radio,
                 route: '#/observe/capture',
-                description: 'Live BPF packet sniffer & Wireshark-grade 3-pane web inspector'
+                description: 'Live BPF packet sniffer & Wireshark-grade 3-pane web inspector',
+                keywords: ['packet capture', 'wireshark', 'pcap', 'bpf', 'filter', 'sniff', 'tcpdump', 'inspector']
             },
             {
                 id: 'events',
                 label: 'Live Events Stream',
                 icon: List,
                 route: '#/observe/events',
-                description: 'Streaming real-time network, security, and orchestrator event logs'
+                description: 'Streaming real-time network, security, and orchestrator event logs',
+                keywords: ['events', 'logs', 'audit', 'stream', 'history', 'syslog', 'orchestrator']
             }
         ]
     },
@@ -181,14 +194,16 @@ export const STIGIX_NAVIGATION_DOMAINS: NavDomainConfig[] = [
                 label: 'Topology Map',
                 icon: Network,
                 route: '#/network/topology',
-                description: 'Visual underlay mesh, SD-WAN tunnels, and active SASE circuit paths'
+                description: 'Visual underlay mesh, SD-WAN tunnels, and active SASE circuit paths',
+                keywords: ['topology', 'map', 'mesh', 'underlay', 'overlay', 'circuits', 'network', 'tunnels']
             },
             {
                 id: 'vyos',
                 label: 'VyOS Router Control',
                 icon: Monitor,
                 route: '#/network/vyos',
-                description: 'Inject WAN impairments (latency, loss, jitter) & orchestrate routers'
+                description: 'Inject WAN impairments (latency, loss, jitter) & orchestrate routers',
+                keywords: ['vyos', 'router', 'impairment', 'latency injection', 'packet loss injection', 'jitter', 'wan impairment', 'netem']
             },
             {
                 id: 'fleet',
@@ -196,7 +211,8 @@ export const STIGIX_NAVIGATION_DOMAINS: NavDomainConfig[] = [
                 icon: Server,
                 route: '#/network/fleet',
                 description: 'Centralized cluster observability, peer updates & maintenance',
-                leaderOnly: true
+                leaderOnly: true,
+                keywords: ['fleet', 'cluster', 'nodes', 'mesh', 'peers', 'centralized', 'maintenance', 'docker']
             }
         ]
     },
@@ -213,7 +229,8 @@ export const STIGIX_NAVIGATION_DOMAINS: NavDomainConfig[] = [
                 icon: SlidersHorizontal,
                 route: '#/settings/distribution',
                 description: 'Weights & SaaS traffic load ratios by category or app',
-                group: 'Simulation Profiles'
+                group: 'Simulation Profiles',
+                keywords: ['distribution', 'weights', 'load ratio', 'saas profiles', 'traffic']
             },
             {
                 id: 'settings',
@@ -222,7 +239,8 @@ export const STIGIX_NAVIGATION_DOMAINS: NavDomainConfig[] = [
                 icon: Activity,
                 route: '#/settings/probes',
                 description: 'Synthetic path probe targets, SLAs, intervals & HTTP URLs',
-                group: 'Simulation Profiles'
+                group: 'Simulation Profiles',
+                keywords: ['probes', 'synthetic probes', 'intervals', 'probe targets', 'http url probes', 'sla']
             },
             {
                 id: 'settings',
@@ -231,7 +249,8 @@ export const STIGIX_NAVIGATION_DOMAINS: NavDomainConfig[] = [
                 icon: Boxes,
                 route: '#/settings/custom-tcp',
                 description: 'Enterprise TCP/HTTP workloads & private branch apps',
-                group: 'Simulation Profiles'
+                group: 'Simulation Profiles',
+                keywords: ['custom tcp', 'enterprise profiles', 'workload port', 'tcp apps', 'ports']
             },
             {
                 id: 'settings',
@@ -240,7 +259,8 @@ export const STIGIX_NAVIGATION_DOMAINS: NavDomainConfig[] = [
                 icon: GitFork,
                 route: '#/settings/failover',
                 description: 'Blackout detection thresholds, alerting & path recovery',
-                group: 'Simulation Profiles'
+                group: 'Simulation Profiles',
+                keywords: ['failover settings', 'blackout detection', 'thresholds', 'recovery']
             },
             {
                 id: 'settings',
@@ -249,7 +269,8 @@ export const STIGIX_NAVIGATION_DOMAINS: NavDomainConfig[] = [
                 icon: Layers,
                 route: '#/settings/targets',
                 description: 'Underlay WAN destinations matrix & probe endpoints',
-                group: 'Cluster & Controller'
+                group: 'Cluster & Controller',
+                keywords: ['targets config', 'destinations', 'matrix', 'probe endpoints']
             },
             {
                 id: 'settings',
@@ -258,7 +279,8 @@ export const STIGIX_NAVIGATION_DOMAINS: NavDomainConfig[] = [
                 icon: Globe,
                 route: '#/settings/target-controller',
                 description: 'Cluster mesh enrollment, join tokens & leader peering',
-                group: 'Cluster & Controller'
+                group: 'Cluster & Controller',
+                keywords: ['target controller', 'controller', 'magic join', 'enrollment', 'tokens', 'leader peering', 'cloudflare']
             },
             {
                 id: 'settings',
@@ -267,7 +289,8 @@ export const STIGIX_NAVIGATION_DOMAINS: NavDomainConfig[] = [
                 icon: Shield,
                 route: '#/settings/prisma-api',
                 description: 'Palo Alto Strata/Prisma credentials, TSG & telemetry sync',
-                group: 'Integrations & AI'
+                group: 'Integrations & AI',
+                keywords: ['prisma', 'sase', 'palo alto', 'api', 'tsg', 'credentials', 'strata']
             },
             {
                 id: 'settings',
@@ -276,7 +299,8 @@ export const STIGIX_NAVIGATION_DOMAINS: NavDomainConfig[] = [
                 icon: Globe,
                 route: '#/settings/api-studio',
                 description: 'Interactive OpenAPI test console & curl/Python snippets',
-                group: 'Integrations & AI'
+                group: 'Integrations & AI',
+                keywords: ['api studio', 'openapi', 'swagger', 'rest', 'curl', 'python', 'docs']
             },
             {
                 id: 'settings',
@@ -286,7 +310,8 @@ export const STIGIX_NAVIGATION_DOMAINS: NavDomainConfig[] = [
                 route: '#/settings/ai-copilot',
                 description: 'Anthropic Claude API key, model options & tool permissions',
                 group: 'Integrations & AI',
-                featureFlag: 'copilot_enabled'
+                featureFlag: 'copilot_enabled',
+                keywords: ['copilot', 'claude', 'anthropic', 'api key', 'llm', 'ai settings']
             },
             {
                 id: 'settings',
@@ -295,7 +320,8 @@ export const STIGIX_NAVIGATION_DOMAINS: NavDomainConfig[] = [
                 icon: Monitor,
                 route: '#/settings/system',
                 description: 'Hardware resources, OS kernel, Docker & interfaces',
-                group: 'System & Maintenance'
+                group: 'System & Maintenance',
+                keywords: ['system info', 'hardware', 'cpu', 'memory', 'kernel', 'docker', 'interfaces']
             },
             {
                 id: 'settings',
@@ -304,7 +330,8 @@ export const STIGIX_NAVIGATION_DOMAINS: NavDomainConfig[] = [
                 icon: Server,
                 route: '#/settings/maintenance',
                 description: 'One-click image upgrades, Docker prune & fleet sync',
-                group: 'System & Maintenance'
+                group: 'System & Maintenance',
+                keywords: ['maintenance', 'update', 'upgrade', 'docker prune', 'backup', 'fleet sync']
             }
         ]
     }
