@@ -262,7 +262,7 @@ A single `useRbac()` hook (data from `/api/auth/me`) exposes `can('traffic:execu
 | Existing scripts/CLI/MCP use a human login | Provide API tokens; document migration; keep password login working |
 | Breaking Remote View when removing the implicit admin | Phase the identity propagation behind `RBAC_MODE`, test with leader -> spoke scenarios |
 | Some GETs mix public and secret fields | Redaction layer + review list in the route map |
-| Should the 14 public routes all stay public (e.g. `/api/stats`, `/api/status`)? | Open — review each; `iperf/server` and `internal/log-event` should at least be restricted to local/loopback |
+| Public routes policy | **Decided:** `/api/stats`, `/api/status`, `/api/health`, `/api/version`, `/api/features`, `/api/config/ui` (GET) and the login/join flows stay `PUBLIC` (non-sensitive, needed pre-login or for health checks). `/api/connectivity/iperf/server` and `/api/internal/log-event` are restricted to loopback/peer-authenticated callers. Each `PUBLIC` entry is reviewed and listed explicitly in `route-map.ts` |
 | Offline spokes with stale profiles | Use presets (never allow-all); resync on reconnect |
 | Dockerfile sync for new `rbac/` and `audit/` files and dependency | Run `stigix-docker-audit` checklist |
 | Future SSO | `profile_id` mapping from IdP groups is compatible; out of scope |
