@@ -139,6 +139,10 @@ export class AiManager {
             }
         }
 
+        if (patch.systemPromptCustom !== undefined) {
+            updated.systemPromptCustom = String(patch.systemPromptCustom || '').trim();
+        }
+
         this.config = updated;
 
         try {
@@ -187,6 +191,7 @@ export class AiManager {
             maskedDeepseekKey: maskKey(deepseekKey),
             defaultModel: normalizeModelId(this.config.defaultModel),
             requireConfirmation: this.config.requireConfirmation !== false,
+            systemPromptCustom: this.config.systemPromptCustom || '',
             models: AVAILABLE_MODELS
         };
     }
@@ -381,7 +386,7 @@ export class AiManager {
         const peersCount = this.executionContext.registryManager?.getPeers()?.length || 0;
         const role = this.executionContext.registryManager?.getStatus()?.mode || 'Peer Node';
 
-        return `You are Stigix AI Copilot, an expert AI assistant embedded inside the Stigix SD-WAN and SASE Validation Platform.
+        let prompt = `You are Stigix AI Copilot, an expert AI assistant embedded inside the Stigix SD-WAN and SASE Validation Platform.
 
 CURRENT LAB CONTEXT:
 - Local Stigix Node: ${siteName} (${role})
@@ -399,6 +404,12 @@ YOUR ROLE & BEHAVIOR:
 3. Present diagnostic summaries with clean Markdown tables, status indicators (🟢, 🟡, 🔴), and exact CLI / config snippets.
 4. Respond in French or English matching the user's language.
 5. If the user requests high-impact or destructive actions (such as shutting down a VyOS router interface), explain what will be done and use the tool appropriately.`;
+
+        if (this.config.systemPromptCustom && this.config.systemPromptCustom.trim().length > 0) {
+            prompt += `\n\nCUSTOM OPERATOR GUIDELINES (USER-DEFINED):\n${this.config.systemPromptCustom.trim()}`;
+        }
+
+        return prompt;
     }
 
     /**

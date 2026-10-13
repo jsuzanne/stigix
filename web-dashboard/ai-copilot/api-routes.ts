@@ -23,14 +23,15 @@ export function createAiCopilotRouter(aiManager: AiManager): Router {
     // POST /api/copilot/config — Update AI configuration
     router.post('/config', (req: Request, res: Response) => {
         try {
-            const { apiKey, deepseekApiKey, provider, defaultModel, requireConfirmation, enabled } = req.body;
+            const { apiKey, deepseekApiKey, provider, defaultModel, requireConfirmation, enabled, systemPromptCustom } = req.body;
             const updated = aiManager.saveConfig({
                 ...(apiKey !== undefined ? { apiKey: String(apiKey).trim() } : {}),
                 ...(deepseekApiKey !== undefined ? { deepseekApiKey: String(deepseekApiKey).trim() } : {}),
                 ...(provider !== undefined ? { provider } : {}),
                 ...(defaultModel ? { defaultModel: String(defaultModel).trim() } : {}),
                 ...(requireConfirmation !== undefined ? { requireConfirmation: Boolean(requireConfirmation) } : {}),
-                ...(enabled !== undefined ? { enabled: Boolean(enabled) } : {})
+                ...(enabled !== undefined ? { enabled: Boolean(enabled) } : {}),
+                ...(systemPromptCustom !== undefined ? { systemPromptCustom: String(systemPromptCustom) } : {})
             });
             res.json({ success: true, config: updated, ...updated });
         } catch (e: any) {

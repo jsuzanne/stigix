@@ -4,7 +4,7 @@ import {
     Network, Sliders, ChevronDown, ChevronRight, Server, CheckCircle2, Upload, Power,
     Settings as SettingsIcon, Database, Activity, Cpu, Plus, Edit2, Trash2, MapPin, Zap, Info, XCircle, ShieldAlert, Layers, X, Radio,
     Clipboard, ExternalLink, BarChart3, AlertTriangle, Gauge, Bug, TrendingUp, Search, Users, Copy, History, ChevronUp, PhoneCall, Bot,
-    Key, ShieldCheck, FileText, FileCode
+    Key, ShieldCheck, FileText, FileCode, Sparkles, Check
 } from 'lucide-react';
 import {
     LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as ReTooltip,
@@ -743,6 +743,8 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
     const [copilotApiKey, setCopilotApiKey] = useState('');
     const [isSavingCopilot, setIsSavingCopilot] = useState(false);
     const [isTestingCopilot, setIsTestingCopilot] = useState(false);
+    const [customGuidelines, setCustomGuidelines] = useState('');
+    const [isSavingGuidelines, setIsSavingGuidelines] = useState(false);
     const [slsConfig, setSlsConfig] = useState<any>(null);
     const [isTestingPrisma, setIsTestingPrisma] = useState(false);
     const [prismaTestResult, setPrismaTestResult] = useState<{ success?: boolean; error?: string } | null>(null);
@@ -1019,6 +1021,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                         setCopilotConfig(cfg);
                         if (cfg.provider) setCopilotProvider(cfg.provider);
                         else if (cfg.hasDeepseekKey && !cfg.hasKey) setCopilotProvider('deepseek');
+                        if (cfg.systemPromptCustom !== undefined) setCustomGuidelines(cfg.systemPromptCustom || '');
                     }
                 })
                 .catch(() => {});
@@ -7101,6 +7104,61 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                                             }}
                                             className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500"
                                         />
+                                    </div>
+                                </div>
+
+                                {/* Custom Guidelines (Directives Système Personnalisées) */}
+                                <div className="bg-card-secondary/30 border border-border rounded-xl p-4 space-y-3">
+                                    <div className="flex items-center justify-between">
+                                        <div className="flex items-center gap-2">
+                                            <Sparkles size={15} className="text-amber-400" />
+                                            <label className="text-xs font-black uppercase tracking-wider text-text-primary">
+                                                Custom Guidelines (Directives Système Personnalisées)
+                                            </label>
+                                        </div>
+                                        <span className="text-[10px] text-text-muted">Injected into System Prompt</span>
+                                    </div>
+                                    <p className="text-[11px] text-text-muted leading-relaxed">
+                                        Cadrez le comportement du Copilot selon vos besoins réseau (ex: conventions de nommage, seuils critiques de latence, format de réponse concis, priorités de sites).
+                                    </p>
+                                    <textarea
+                                        value={customGuidelines}
+                                        onChange={(e) => setCustomGuidelines(e.target.value)}
+                                        rows={3}
+                                        placeholder="Ex: Réponds toujours en français de façon très concise. Alerte dès qu'une latence dépasse 40ms. Considère DC1 comme le site primaire et BR1 comme le site secondaire."
+                                        className="w-full bg-card border border-border focus:border-blue-500 rounded-xl p-3 text-xs text-text-primary placeholder:text-text-muted/50 focus:outline-none resize-y custom-scrollbar"
+                                    />
+                                    <div className="flex justify-end">
+                                        <button
+                                            type="button"
+                                            onClick={async () => {
+                                                setIsSavingGuidelines(true);
+                                                try {
+                                                    const res = await apiFetch('/api/copilot/config', {
+                                                        method: 'POST',
+                                                        headers: authHeaders,
+                                                        body: JSON.stringify({ systemPromptCustom: customGuidelines.trim() })
+                                                    });
+                                                    if (res.ok) {
+                                                        const d = await res.json();
+                                                        setCopilotConfig(d.config || d);
+                                                        toast.success('Custom guidelines saved successfully!');
+                                                        onUpdateCopilotConfig?.();
+                                                    } else {
+                                                        toast.error('Failed to save guidelines');
+                                                    }
+                                                } catch (e: any) {
+                                                    toast.error(e.message || 'Error saving guidelines');
+                                                } finally {
+                                                    setIsSavingGuidelines(false);
+                                                }
+                                            }}
+                                            disabled={isSavingGuidelines}
+                                            className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold rounded-xl transition-all shadow-md active:scale-95 flex items-center gap-1.5 disabled:opacity-50"
+                                        >
+                                            <Check size={14} />
+                                            {isSavingGuidelines ? 'Saving...' : 'Save Guidelines'}
+                                        </button>
                                     </div>
                                 </div>
                             </div>
