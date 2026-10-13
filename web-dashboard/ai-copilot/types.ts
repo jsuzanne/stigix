@@ -27,6 +27,7 @@ export interface AiPublicConfig {
     maskedDeepseekKey?: string;
     defaultModel: string;
     requireConfirmation: boolean;
+    systemPromptCustom?: string;
     models?: Array<{ id: string; name: string; description: string; provider?: AiProvider }>;
 }
 

@@ -69,6 +69,7 @@ interface AiPublicConfig {
     maskedDeepseekKey?: string;
     defaultModel: string;
     requireConfirmation: boolean;
+    systemPromptCustom?: string;
     models: Array<{ id: string; name: string; description: string; provider?: 'anthropic' | 'deepseek' }>;
 }
 
@@ -122,6 +123,7 @@ export default function Copilot({ token, onOpenSettings, isDrawer = false, onClo
     const [newApiKey, setNewApiKey] = useState('');
     const [isTestingKey, setIsTestingKey] = useState(false);
     const [isSavingKey, setIsSavingKey] = useState(false);
+    const [customGuidelines, setCustomGuidelines] = useState('');
 
     const chatEndRef = useRef<HTMLDivElement>(null);
     const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -169,6 +171,9 @@ export default function Copilot({ token, onOpenSettings, isDrawer = false, onClo
                     } else {
                         setSelectedModel(cfg.defaultModel);
                     }
+                }
+                if (cfg.systemPromptCustom !== undefined) {
+                    setCustomGuidelines(cfg.systemPromptCustom || '');
                 }
             }
         } catch (e: any) {
@@ -266,23 +271,27 @@ export default function Copilot({ token, onOpenSettings, isDrawer = false, onClo
     };
 
     const handleSaveKey = async () => {
-        if (!newApiKey.trim()) return;
         setIsSavingKey(true);
         try {
             const bodyPayload: any = {
-                provider: modalProvider,
-                ...(modalProvider === 'deepseek'
-                    ? { deepseekApiKey: newApiKey.trim() }
-                    : { apiKey: newApiKey.trim() }
-                )
+                systemPromptCustom: customGuidelines.trim()
             };
 
-            if (modalProvider === 'deepseek' && selectedModel.startsWith('claude-')) {
-                bodyPayload.defaultModel = 'deepseek-chat';
-                setSelectedModel('deepseek-chat');
-            } else if (modalProvider === 'anthropic' && selectedModel.startsWith('deepseek-')) {
-                bodyPayload.defaultModel = 'claude-sonnet-4-5-20250929';
-                setSelectedModel('claude-sonnet-4-5-20250929');
+            if (newApiKey.trim()) {
+                bodyPayload.provider = modalProvider;
+                if (modalProvider === 'deepseek') {
+                    bodyPayload.deepseekApiKey = newApiKey.trim();
+                } else {
+                    bodyPayload.apiKey = newApiKey.trim();
+                }
+
+                if (modalProvider === 'deepseek' && selectedModel.startsWith('claude-')) {
+                    bodyPayload.defaultModel = 'deepseek-chat';
+                    setSelectedModel('deepseek-chat');
+                } else if (modalProvider === 'anthropic' && selectedModel.startsWith('deepseek-')) {
+                    bodyPayload.defaultModel = 'claude-sonnet-4-5-20250929';
+                    setSelectedModel('claude-sonnet-4-5-20250929');
+                }
             }
 
             const res = await fetch('/api/copilot/config', {
@@ -296,12 +305,12 @@ export default function Copilot({ token, onOpenSettings, isDrawer = false, onClo
                 setConfig(updated);
                 setShowKeyModal(false);
                 setNewApiKey('');
-                toast.success(`${modalProvider === 'deepseek' ? 'DeepSeek' : 'Anthropic'} API key saved securely!`);
+                toast.success('Copilot settings saved securely!');
             } else {
-                toast.error('Failed to save API key');
+                toast.error('Failed to save settings');
             }
         } catch (e: any) {
-            toast.error(e.message || 'Error saving API key');
+            toast.error(e.message || 'Error saving settings');
         } finally {
             setIsSavingKey(false);
         }
@@ -1001,6 +1010,24 @@ export default function Copilot({ token, onOpenSettings, isDrawer = false, onClo
                                     </a>
                                 )}
                             </div>
+                        </div>
+
+                        {/* Custom Guidelines Section */}
+                        <div className="space-y-1.5 pt-2 border-t border-border">
+                            <div className="flex items-center justify-between">
+                                <label className="text-[11px] font-black uppercase tracking-wider text-text-primary flex items-center gap-1.5">
+                                    <Sparkles size={13} className="text-amber-400" />
+                                    <span>Custom Operator Guidelines</span>
+                                </label>
+                                <span className="text-[9px] text-text-muted">Injected into System Prompt</span>
+                            </div>
+                            <textarea
+                                value={customGuidelines}
+                                onChange={(e) => setCustomGuidelines(e.target.value)}
+                                rows={2}
+                                placeholder="Ex: Réponds toujours de façon concise. Alerte dès qu'une latence dépasse 40ms. Considère DC1 comme site primaire."
+                                className="w-full bg-card-secondary border border-border focus:border-blue-500 rounded-xl px-3 py-2 text-xs text-text-primary placeholder:text-text-muted/50 focus:outline-none resize-none custom-scrollbar"
+                            />
                         </div>
 
                         <div className="flex items-center justify-end gap-3 pt-3 border-t border-border">
