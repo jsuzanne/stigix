@@ -2,7 +2,9 @@
 
 # PRD — SD-WAN Overlay Multicast Validation Engine
 
-**Status:** Draft v2 (revised) | **Owner:** Stigix Core Team | **Target:** v3.1.x
+**Status:** Draft v3 (revised) | **Owner:** Stigix Core Team | **Target:** v3.1.x
+
+**Reference platform:** Palo Alto Networks **Prisma SD-WAN** (first validated target). **Design principle:** the engine is *vendor-neutral* — it only speaks standard IGMP/UDP multicast from the edge of the LAN, so it works with any SD-WAN solution that transports multicast. Vendor-specific knowledge is limited to documentation (Appendix A) and optional pre-flight hints.
 
 ---
 
@@ -248,8 +250,9 @@ RBAC mapping (see `PRD_ENTERPRISE_RBAC.md`): new capabilities `multicast:read` a
 | Fabric is not multicast-enabled → apparent "failure" | Pre-flight + clear `NO_TRAFFIC` diagnostics, document network prerequisites |
 | Multicast leakage onto the Internet | Default TTL 64 restricted to 239/8, explicit warning for high TTL |
 | Python pacing jitter at high rates | 50 Mbps cap in v1; native sender in v2 |
-| Which vendors on the fabric (VyOS, Prisma SD-WAN, VeloCloud)? | Open — document per-vendor multicast config appendix |
-| Should receivers be allowed on non-Stigix hosts? | Open — out of scope v1 |
+| Which vendors on the fabric? | **Decided:** Prisma SD-WAN first; engine stays vendor-neutral (standard IGMP/UDP). Per-vendor notes in Appendix A |
+| Receivers on non-Stigix hosts? | **Decided:** out of scope — receivers are Stigix nodes only (v1) |
+| Prisma multicast feature/version prerequisites (ION software, WAN multicast profile) may differ per release | Validate against the current Prisma SD-WAN documentation and lab before GA; keep the appendix versioned |
 | Docker `Dockerfile` sync | Run the `stigix-docker-audit` checklist for the new `engines/` and `custom-tcp-apps/` files |
 
 ## 9. Phased Roadmap (effort-based)
@@ -265,9 +268,43 @@ Total ≈ 8–11 days for full scope; an MVP (phases 1–2 plus a minimal UI) is
 
 ---
 
+## Appendix A — Vendor Notes (v1: Prisma SD-WAN)
+
+> [!NOTE]
+> Vendor behavior below must be validated against the Prisma SD-WAN release in use before GA. Stigix never configures the fabric; this appendix documents what the operator must have in place.
+
+### A.1 Generic requirements (any SD-WAN)
+| Layer | Requirement |
+|---|---|
+| Receiver LAN | Edge router runs **IGMPv2 or v3** (v3 mandatory for SSM) on the LAN interface facing the Stigix node |
+| Source LAN | Edge router accepts multicast from the sender subnet (PIM/RPF on the source-facing interface) |
+| Overlay | Either native multicast routing (PIM) or head-end replication, as supported by the vendor |
+| Rendezvous | A reachable RP (ASM), consistent on all participating routers |
+| Policy | Multicast not blocked by the vendor's security/path policy; DSCP/QoS class mapped if tested |
+
+### A.2 Prisma SD-WAN (reference target)
+Prisma SD-WAN supports multicast with **IGMP (v2/v3) on the LAN** and **PIM-SM across the fabric**, with a configured Rendezvous Point.
+
+Typical operator checklist:
+1. Enable multicast on the Layer 3 LAN interfaces (receiver branches) and on the DC interface facing the source.
+2. Create a **WAN multicast profile** and associate it with the participating sites.
+3. Configure the multicast global parameters, then a **Static RP** (same RP address on every participating node), or dynamic RP learning if the design requires it.
+4. Verify on the ION with the multicast diagnostics (`dump routing multicast status | pim | igmp | mroute`).
+
+Stigix hints (optional, vendor-neutral output):
+- If a receiver reports `FAILED` / no packets while the pre-flight is green, the diagnostic suggests checking: IGMP membership visible on the edge, PIM neighbor/RP reachability, and the `mroute` entry for the group.
+- Failover scenario (S3) on Prisma: use the existing underlay chaos actions on the WAN circuit and observe **max gap** per branch; compare native PIM vs. any HER-style behavior observed (duplicates indicate double delivery).
+
+### A.3 Future vendors
+Any solution transporting multicast (e.g., other SD-WAN or router-based overlays such as VyOS) is expected to work unchanged. Adding a vendor requires only an appendix entry and, optionally, extra pre-flight hint text — **no engine change**.
+
+---
+
 ## 📜 Revision History
+
 
 | Date | Stigix Version | Author / Trigger | Summary of Changes |
 |---|---|---|---|
 | 2026-10-13 | `v3.0.3` | Stigix Core Team | Initial PRD creation for SD-WAN Overlay Multicast Validation Engine |
 | 2026-10-13 | `v3.0.3` | Stigix Core Team | Revision: aligned with real code layout (`custom-tcp-apps/`), fixed SSM and IGMP handling, added `run_id`, leak/failover scenarios, pre-flight, data model, API, RBAC mapping, acceptance criteria, risks, realistic estimates |
+| 2026-10-13 | `v3.0.3` | Stigix Core Team | Vendor-neutral design with Prisma SD-WAN as reference target (Appendix A); receivers limited to Stigix nodes
