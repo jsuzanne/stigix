@@ -439,66 +439,66 @@ export const COPILOT_TOOLS: AnthropicToolDefinition[] = [
     // -----------------------------------------------------------------------------
     {
         name: 'list_vyos_routers',
-        description: 'List all VyOS routers managed by a specific Stigix node.',
+        description: 'List all VyOS routers managed by this node (or a specific remote Stigix node if agent_id is provided).',
         input_schema: {
             type: 'object',
             properties: {
                 agent_id: {
                     type: 'string',
-                    description: 'ID of the Stigix node.'
+                    description: 'Optional ID or site name of the Stigix node (e.g. "BR8", "DC1"). Defaults to the current local node hosting Copilot if omitted.'
                 }
             },
-            required: ['agent_id']
+            required: []
         }
     },
     {
         name: 'list_vyos_scenarios',
-        description: 'List available VyOS configuration sequences (scenarios) on a specific Stigix node.',
+        description: 'List available VyOS configuration sequences (scenarios) on this node or a specific node.',
         input_schema: {
             type: 'object',
             properties: {
                 agent_id: {
                     type: 'string',
-                    description: 'ID of the Stigix node.'
+                    description: 'Optional ID of the Stigix node. Defaults to the current local node hosting Copilot if omitted.'
                 }
             },
-            required: ['agent_id']
+            required: []
         }
     },
     {
         name: 'run_vyos_scenario',
-        description: 'Execute a VyOS configuration sequence (scenario) on a specific Stigix node.',
+        description: 'Execute a VyOS configuration sequence (scenario) on this node or a specific node.',
         input_schema: {
             type: 'object',
             properties: {
                 agent_id: {
                     type: 'string',
-                    description: 'ID of the Stigix node.'
+                    description: 'Optional ID of the Stigix node. Defaults to the current local node hosting Copilot if omitted.'
                 },
                 scenario_id: {
                     type: 'string',
                     description: 'ID of the sequence to run (e.g. "failover-paris").'
                 }
             },
-            required: ['agent_id', 'scenario_id']
+            required: ['scenario_id']
         }
     },
     {
         name: 'get_vyos_timeline',
-        description: 'Get the history of recent VyOS configuration changes on a specific Stigix node.',
+        description: 'Get the history of recent VyOS configuration changes on this node or a specific node.',
         input_schema: {
             type: 'object',
             properties: {
                 agent_id: {
                     type: 'string',
-                    description: 'ID of the Stigix node.'
+                    description: 'Optional ID of the Stigix node. Defaults to the current local node hosting Copilot if omitted.'
                 },
                 limit: {
                     type: 'number',
                     description: 'Number of recent actions to fetch (default: 20).'
                 }
             },
-            required: ['agent_id']
+            required: []
         }
     },
     {
@@ -509,7 +509,7 @@ export const COPILOT_TOOLS: AnthropicToolDefinition[] = [
             properties: {
                 agent_id: {
                     type: 'string',
-                    description: 'ID of the Stigix node.'
+                    description: 'Optional ID of the Stigix node. Defaults to the current local node hosting Copilot if omitted.'
                 },
                 scenario_id: {
                     type: 'string',
@@ -520,25 +520,25 @@ export const COPILOT_TOOLS: AnthropicToolDefinition[] = [
                     description: 'True to enable/start, False to disable/stop.'
                 }
             },
-            required: ['agent_id', 'scenario_id', 'enabled']
+            required: ['scenario_id', 'enabled']
         }
     },
     {
         name: 'get_vyos_interfaces',
-        description: 'List VyOS routers and their CHAOS-ELIGIBLE interfaces managed by a Stigix node. Filters out management interfaces and provides admin status.',
+        description: 'List VyOS routers and their CHAOS-ELIGIBLE interfaces. Filters out management interfaces and provides admin status.',
         input_schema: {
             type: 'object',
             properties: {
                 agent_id: {
                     type: 'string',
-                    description: 'ID of the Stigix node managing the VyOS router.'
+                    description: 'Optional ID of the Stigix node managing the VyOS router. Defaults to the current local node hosting Copilot if omitted.'
                 },
                 router_id: {
                     type: 'string',
-                    description: 'Optional router ID filter.'
+                    description: 'Optional router ID filter (e.g. "vyosrouter").'
                 }
             },
-            required: ['agent_id']
+            required: []
         }
     },
     {
@@ -549,14 +549,14 @@ export const COPILOT_TOOLS: AnthropicToolDefinition[] = [
             properties: {
                 agent_id: {
                     type: 'string',
-                    description: 'ID of the Stigix node.'
+                    description: 'Optional ID of the Stigix node. Defaults to the current local node hosting Copilot if omitted.'
                 },
                 router_id: {
                     type: 'string',
                     description: 'ID of the VyOS router (e.g. "vyosrouter", "vyoslandc1").'
                 }
             },
-            required: ['agent_id', 'router_id']
+            required: ['router_id']
         }
     },
     {
@@ -567,7 +567,7 @@ export const COPILOT_TOOLS: AnthropicToolDefinition[] = [
             properties: {
                 agent_id: {
                     type: 'string',
-                    description: 'ID of the Stigix node.'
+                    description: 'Optional ID of the Stigix node. Defaults to the current local node hosting Copilot if omitted.'
                 },
                 router_id: {
                     type: 'string',
@@ -579,7 +579,7 @@ export const COPILOT_TOOLS: AnthropicToolDefinition[] = [
                     description: 'Reset scope.'
                 }
             },
-            required: ['agent_id', 'router_id', 'scope']
+            required: ['router_id', 'scope']
         }
     },
     {
@@ -590,7 +590,7 @@ export const COPILOT_TOOLS: AnthropicToolDefinition[] = [
             properties: {
                 agent_id: {
                     type: 'string',
-                    description: 'ID of the Stigix node.'
+                    description: 'Optional ID of the Stigix node. Defaults to the current local node hosting Copilot if omitted.'
                 },
                 router_id: {
                     type: 'string',
@@ -626,7 +626,7 @@ export const COPILOT_TOOLS: AnthropicToolDefinition[] = [
                     description: 'IP address for firewall block/allow.'
                 }
             },
-            required: ['agent_id', 'router_id', 'command']
+            required: ['router_id', 'command']
         }
     },
 
