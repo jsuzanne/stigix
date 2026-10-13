@@ -2,172 +2,147 @@
 
 # PRD — Enterprise Role-Based Access Control (RBAC) & Profile System
 
+**Status:** Draft v2 (revised against the current code base) | **Owner:** Stigix Core Team | **Target:** v3.1.x
+
 ---
 
 ## 1. Executive Summary & Vision
 
-### 1.1 The Challenge
-Stigix currently features a basic authentication mechanism where users are stored in `config/users.json` with a binary role (`admin` vs. `user`). This creates major operational limitations in enterprise environments:
-- **Demonstration & Customer Showcases:** Operators cannot create a safe, Read-Only demo user without risking an accidental click on "Stop Traffic", "VyOS Interface Shut", or probe deletion.
-- **Auditing & Compliance:** Security teams require access to audit security logs and run automated compliance scans without having the ability to alter cluster settings or underlay routing.
-- **Operations vs. Administration Separation:** Daily SD-WAN test engineers need the freedom to launch speedtests, simulate voice calls, and inject VyOS impairments without having permission to edit cluster tokens, cloud API keys, or user accounts.
+### 1.1 Current State (as implemented today)
+Verified in `web-dashboard/server.ts`:
+
+| Aspect | Today |
+|---|---|
+| Users | `config/users.json` = `[{ username, passwordHash }]`. **There is no `role` field.** |
+| "Admin" | Hard-coded: `username === 'admin'`. Only used to guard `POST /api/auth/users` (create user). There is no list/edit/delete user API. |
+| Token | JWT `{ username }`, 24 h, signed with `JWT_SECRET` (falls back to a hard-coded default if unset). No revocation. |
+| Authorization | **None beyond authentication.** Any authenticated user can call any of the ~242 routes in `server.ts` (plus routes in `custom-tcp-apps/` and `pcap-routes.ts`). |
+| Public routes | 14 routes in `server.ts` have no `authenticateToken` (login, health, status, version, features, join flows, internal log event, etc.). |
+| Fleet identity | Requests dispatched by the reverse tunnel (loopback + `x-gateway-source`) and requests proxied by the leader (JWT `{ username: 'stigix-gateway', role: 'admin' }`, 30 s) are **always admin**, and the end user's identity is lost. |
+| Other clients | SSE streams accept `?token=`; Copilot tools, MCP server and CLI all call the same API as an authenticated user. |
+| Brute-force protection | None (no rate limiter dependency). |
+
+Consequence: every non-`admin` account is effectively an administrator, and a "demo" account is impossible without risking a click on "Stop Traffic", a VyOS interface shutdown, or a probe deletion.
 
 ### 1.2 The Solution
-The **Stigix Enterprise RBAC System** introduces a hybrid **Capability-Based Permission Matrix with Custom API Route Scoping**:
-1. **Granular Permissions (Capabilities):** Intuitive feature-level permissions (e.g., `traffic:run`, `vyos:chaos`, `dem:edit`, `system:read`).
-2. **Clonable Profile Presets:** Built-in enterprise presets (`Super Admin`, `SD-WAN Test Operator`, `Demo / Read-Only Observer`, `Security Auditor`) that can be used directly or cloned into custom tenant profiles.
-3. **Advanced API URL Route Scoping (Allow/Deny Filters):** For advanced needs, profiles can specify exact HTTP Method + Path rules (e.g., `ALLOW GET /api/*`, `DENY POST /api/vyos/*`) ensuring defense-in-depth at the API gateway layer.
-4. **Adaptive UI Synchronization:** The frontend automatically hides or disables action buttons with informative tooltips based on the active user profile.
+A hybrid **Capability + Route-Rule** model with clonable profiles:
+1. **Capabilities** (`domain:action`, e.g. `traffic:execute`) drive clean UI checkboxes, UI locking and coarse enforcement.
+2. **Profiles** bundle capabilities. Four immutable presets plus unlimited clones.
+3. **Route rules** (optional, advanced): `ALLOW`/`DENY` on method + path glob for defense in depth and special cases.
+4. **Identity propagation** so that Copilot, MCP, CLI, the fleet gateway and automation tokens are all subject to the same checks.
+5. **Audit trail** of every denied and every mutating action.
+
+### 1.3 Goals and Non-Goals
+
+| Goals | Non-Goals (v1) |
+|---|---|
+| Default-deny authorization on all `/api/*` routes | SSO / OIDC / LDAP (design must not prevent it later) |
+| 4 presets + clone/edit custom profiles | Per-object (row-level) permissions, e.g. "only probe X" |
+| Read-only demo that cannot leak secrets | Multi-tenancy inside one node |
+| Same enforcement for UI, Copilot, MCP, CLI, fleet gateway | MFA |
+| Audit log + safe, reversible rollout (audit-only mode) | Time-boxed / scheduled access |
 
 ```mermaid
 flowchart TD
-    User["Authenticated User (JWT Token)"] --> AuthMiddleware["Express Auth Middleware (authenticateToken)"]
-    AuthMiddleware --> ProfileLookup["Profile & Capability Resolver"]
-    
-    subgraph Enforcement_Engine["Dual-Layer Security Enforcement"]
-        ProfileLookup --> Layer1["Layer 1: Functional Capability Check<br/>(e.g., has 'vyos:chaos'?)"]
-        Layer1 --> Layer2["Layer 2: API Route Filter Matrix<br/>(Allow/Deny METHOD + Path Pattern)"]
-    end
-    
-    Layer2 -->|Authorized| Controller["API Handler Execution (200 OK)"]
-    Layer2 -->|Forbidden| Deny["403 Forbidden<br/>'Insufficient capability: vyos:chaos'"]
-
-    subgraph UI_Adaptation["Adaptive Web Dashboard"]
-        ProfileLookup -.-> FrontendState["React UserContext & RBAC Hook"]
-        FrontendState -.-> DisableButtons["Disable / Hide Mutating Buttons (Lock Icon)"]
-        FrontendState -.-> ProtectViews["Restrict Restricted Settings Tabs"]
-    end
+    Req["Request (JWT / API token / Gateway)"] --> Authn["authenticate: resolve identity"]
+    Authn --> Resolve["Resolve user -> profile (server-side, every request)"]
+    Resolve --> L1["Layer 1: Route -> capability map (default-deny)"]
+    L1 --> L2["Layer 2: Profile route rules (DENY wins)"]
+    L2 -->|allowed| Handler["Route handler"]
+    L1 -->|missing capability| Deny["403 + audit event"]
+    L2 -->|denied| Deny
+    Resolve -.-> Me["GET /api/auth/me (capabilities for UI)"]
+    Me -.-> UI["React RBAC hook: lock buttons, hide tabs"]
 ```
 
 ---
 
-## 2. Personas & Core Use Cases
+## 2. Personas & Presets
 
-| Persona | Operational Scenario | Assigned Profile | Key Permissions |
-|---|---|---|---|
-| **Platform Administrator** | Manages licenses, cluster enrollment, fleet tokens, user accounts, and AI Copilot BYOK keys. | `Super Admin` | Full Read-Write across all subsystems (`*`). |
-| **SD-WAN QA / Lab Engineer** | Runs traffic simulations, launches speedtests, injects VyOS delay/loss, and creates custom apps. Cannot alter cluster tokens or manage users. | `Test Operator` | Full execution rights on tests and impairments; Read-Only on system configuration. |
-| **Executive / Customer Demo** | Walks through live dashboards, inspects charts, views topology, and observes DEM metrics during customer presentations. Zero mutation allowed. | `Read-Only Viewer` | Pure Read-Only across all API endpoints (`GET /api/*`). All action buttons locked. |
-| **SASE Security Auditor** | Validates URL filtering, executes EICAR and threat tests, inspects flow logs, and generates reports. | `Security Auditor` | Full Read-Write on `/api/security/*` and `/api/prisma/*`; Read-Only on network tests. |
-
----
-
-## 3. Architecture & Functional Specifications
-
-### 3.1 Permission Hierarchy & Capabilities
-
-Permissions follow a clean `domain:action` taxonomy:
-
-| Domain | Capability ID | Description | Allowed Endpoints (Representative) |
-|---|---|---|---|
-| **Traffic** | `traffic:read`<br/>`traffic:execute` | View traffic metrics.<br/>Start, stop, and change traffic generation intensity. | `GET /api/traffic/status`<br/>`POST /api/traffic/start`, `POST /api/traffic/stop` |
-| **Tests** | `tests:read`<br/>`tests:execute` | View test history and active jobs.<br/>Launch XFR speedtests, convergence, and voice calls. | `GET /api/tests/*`<br/>`POST /api/tests/xfr`, `POST /api/voice/start` |
-| **VyOS** | `vyos:read`<br/>`vyos:chaos` | View router status, interfaces, and history.<br/>Inject QoS latency/loss, shut/no-shut interfaces, and run chaos scenarios. | `GET /api/vyos/*`<br/>`POST /api/vyos/direct-action`, `POST /api/vyos/bulk-reset` |
-| **DEM** | `dem:read`<br/>`dem:manage` | View synthetic probe scores and latency charts.<br/>Create, edit, enable/disable, and delete DEM probes. | `GET /api/connectivity/*`<br/>`POST /api/connectivity/custom`, `DELETE /api/connectivity/custom/:id` |
-| **Security** | `security:read`<br/>`security:execute` | View security verdicts, EICAR stats, and Prisma flows.<br/>Run URL batches, DNS batches, and EICAR threat simulations. | `GET /api/security/*`, `POST /api/prisma/flows`<br/>`POST /api/security/url-batch`, `POST /api/security/threat-test` |
-| **Apps** | `apps:read`<br/>`apps:manage` | View custom TCP/UDP apps and active flows.<br/>Create, edit, import, and delete East-West custom apps. | `GET /api/custom-tcp/apps`<br/>`POST /api/custom-tcp/apps`, `DELETE /api/custom-tcp/apps/:id` |
-| **Capture** | `capture:read`<br/>`capture:execute` | Download existing PCAP captures.<br/>Start live packet sniffing (BPF filter) or run PCAP replay. | `GET /api/pcap/*`<br/>`POST /api/pcap/start`, `POST /api/pcap/replay` |
-| **Copilot** | `copilot:use`<br/>`copilot:admin` | Chat with AI Copilot.<br/>Configure BYOK API keys, change model provider, and edit system guidelines. | `POST /api/copilot/chat`<br/>`POST /api/copilot/config` |
-| **System** | `system:read`<br/>`system:admin` | View health matrix, license info, and system status.<br/>Cluster enrollment, site renaming, factory reset, user management. | `GET /api/system/*`, `GET /api/registry/*`<br/>`POST /api/admin/*`, `POST /api/auth/users/*` |
+| Persona | Scenario | Preset |
+|---|---|---|
+| **Platform Administrator** | Cluster, users, keys, fleet, licenses | `Super Administrator` |
+| **SD-WAN QA / Lab Engineer** | Runs traffic, speedtests, voice, chaos, custom apps; cannot manage users, keys, fleet | `SD-WAN Test Operator` |
+| **Executive / Customer Demo** | Dashboards, charts, topology; zero mutation, zero secrets | `Demo / Read-Only Observer` |
+| **SASE Security Auditor** | Security tests, Prisma flows, reports | `Security & Compliance Auditor` |
+| **Automation / Integration** | MCP server, CLI, CI | Dedicated **API token** bound to any profile (see 4.5) |
 
 ---
 
-### 3.2 Built-in Profile Presets
+## 3. Functional Specifications
 
-Stigix provides 4 immutable out-of-the-box presets, plus support for unlimited user-defined custom profiles:
+### 3.1 Capability Taxonomy
 
+Naming is strictly `domain:action` with actions limited to `read`, `execute` (start/stop/run something transient), `manage` (create/edit/delete persistent config) and `admin`.
+
+| Domain | `read` | `execute` | `manage` / `admin` |
+|---|---|---|---|
+| **traffic** | status, stats | start/stop generator, change intensity | edit application list (`manage`) |
+| **tests** | XFR history, test results | launch XFR, iperf client, convergence, voice | — |
+| **vyos** | router state, history, sequences | direct actions, run sequences (chaos) | routers, sequences, config import/reset (`manage`) |
+| **dem** | probe results | run probe now | create/edit/delete probes (`manage`) |
+| **security** | verdicts, stats | URL/DNS batches, EICAR, threat tests | edit security config (`manage`) |
+| **prisma** | flows, SD-WAN topology data | — | credentials/config (`admin`) |
+| **apps** | custom apps and flows | start/stop apps | create/edit/import/delete (`manage`) |
+| **multicast** | streams and stats | start/stop, scenarios | create/edit/delete (`manage`) — see `PRD_MULTICAST_SDWAN_OVERLAY.md` |
+| **capture** | list captures | start capture, run PCAP replay | delete captures (`manage`) |
+| **capture:download** | download PCAP/payload data (**sensitive**) | | |
+| **copilot** | — | `use` (chat) | BYOK keys, provider, guidelines (`admin`) |
+| **system** | health, version, status, logs | — | settings, site rename, license, backups (`admin`) |
+| **fleet** | peer list and status | — | enrollment, tokens, provisioning, remote access (`admin`) |
+| **users** | — | — | users, profiles, API tokens (`admin`) |
+| **secrets** | `secrets:read` — any endpoint that returns credentials, keys, tokens or full config exports (**sensitive**) | | |
+
+Hierarchy: `manage` implies `execute` and `read`; `execute` implies `read`; `admin` implies all actions in its domain. `*` = everything.
+
+### 3.2 Sensitive reads are not "read-only"
+A `GET` is not necessarily safe. Endpoints such as cloud/Prisma config, VyOS config export, BYOK keys, fleet/join tokens, PCAP downloads or full backups return secrets or sensitive data. They are classified `secrets:read` / `capture:download` and are **excluded from the Demo preset**, even though they are `GET`. Where the UI needs part of such a payload, the server returns a **redacted** version for callers lacking `secrets:read`.
+
+### 3.3 Built-in Presets (immutable, clonable)
+
+| Preset | Capabilities | Route rules |
+|---|---|---|
+| `Super Administrator` (`profile-super-admin`) | `*` | none |
+| `SD-WAN Test Operator` (`profile-operator`) | all `read`; `traffic:execute`; `tests:execute`; `vyos:execute`; `dem:manage`; `apps:manage`; `multicast:manage`; `capture:execute`; `copilot:use`; `security:read` | `DENY * /api/auth/users*`, `DENY * /api/fleet/*`, `DENY * /api/copilot/config` |
+| `Demo / Read-Only Observer` (`profile-readonly`) | all `read` **except** `secrets:read` and `capture:download`; `copilot:use` (restricted, see 3.5) | none (capability gating is sufficient; `DENY` for non-GET as a safety net) |
+| `Security & Compliance Auditor` (`profile-security-auditor`) | all `read`; `security:manage`; `prisma:read`; `capture:read` | `DENY * /api/vyos/*` for non-GET, `DENY POST /api/tests/*` |
+
+Precise capability lists live in `web-dashboard/rbac/presets.ts` (single source of truth, unit-tested).
+
+### 3.4 Route Rules: semantics (normative)
+The previous draft allowed contradictory rules (e.g. `ALLOW POST /api/copilot/chat` vs `DENY POST /api/*`). Evaluation is now defined as:
+
+1. Candidate rules are those whose method and path glob match the request.
+2. **Most specific path wins** (longest literal prefix; exact > glob). At equal specificity, **`DENY` wins**.
+3. If no rule matches, the decision is left to Layer 1 (capabilities). Route rules can therefore only **narrow** (DENY) or explicitly **grant a single route inside an already-allowed domain**; an `ALLOW` rule can never grant a route whose capability the profile lacks, except where `grant_override: true` is set by a Super Administrator (audited).
+4. Matching is done on the **normalized** `req.originalUrl` path: query string stripped, `//` and trailing `/` collapsed, `.`/`..` resolved, case-sensitive, and URL-decoded once. Express mount points (`app.use('/api/x', ...)`) therefore cannot cause bypasses.
+
+### 3.5 Route -> Capability Map (default-deny)
+With ~242 routes spread across `server.ts`, `custom-tcp-apps/api-routes.ts`, `pcap-routes.ts` and others, annotating handlers one by one is error-prone. Instead:
+
+- A central table `web-dashboard/rbac/route-map.ts` maps `METHOD + path pattern` to the required capability.
+- Any `/api/*` route **not in the table** is denied unless it is in an explicit `PUBLIC` list (the 14 current public routes, individually reviewed).
+- **Coverage test (CI):** boots the app, enumerates registered routes, and fails if one is neither mapped nor `PUBLIC`. New endpoints therefore cannot ship unprotected.
+- Mutating methods on unmapped routes always require `system:admin` as a safe fallback in `audit` mode.
+
+### 3.6 Copilot, MCP, CLI and fleet: identity propagation
+These are the highest-risk bypasses because they act on behalf of a user:
+
+| Channel | Requirement |
+|---|---|
+| **AI Copilot** | Tools in `ai-tools.ts` call the local API; each call must carry the **chatting user's** identity. A Demo user asking "stop all traffic" must get a 403 from the tool, surfaced to the model. `copilot:use` never implies tool execution rights. |
+| **MCP server / CLI** | Authenticate with an **API token** (4.5) bound to a profile, e.g. a read-only token for dashboards. |
+| **Reverse tunnel / leader proxy (Remote View)** | Today always `admin`. Must instead forward the end user's identity: the leader signs a short-lived JWT containing `{ sub, profile_id, capabilities_hash, peer }`; the peer resolves the profile **locally** if known, otherwise uses the signed claims. The hard-coded `role: 'admin'` is removed (kept only for `stigix-leader` service calls such as provisioning, scoped to `fleet:*`). |
+| **Loopback shortcut** | `x-gateway-source` on loopback must additionally verify a per-process secret header, not just the source IP, so a local process cannot impersonate the gateway. |
+
+---
+
+## 4. Technical Specifications
+
+### 4.1 Storage (`config/rbac-profiles.json`)
 ```json
 {
-  "presets": [
-    {
-      "id": "profile-super-admin",
-      "name": "Super Administrator",
-      "description": "Full unconstrained administrative access across all platform subsystems.",
-      "is_preset": true,
-      "capabilities": ["*"],
-      "route_rules": []
-    },
-    {
-      "id": "profile-operator",
-      "name": "SD-WAN Test Operator",
-      "description": "Can execute traffic generation, WAN impairments, voice, and speedtests. Configuration and user administration are restricted.",
-      "is_preset": true,
-      "capabilities": [
-        "traffic:read", "traffic:execute",
-        "tests:read", "tests:execute",
-        "vyos:read", "vyos:chaos",
-        "dem:read",
-        "apps:read", "apps:manage",
-        "capture:read", "capture:execute",
-        "copilot:use",
-        "system:read"
-      ],
-      "route_rules": [
-        { "effect": "DENY", "method": "*", "path": "/api/auth/users*" },
-        { "effect": "DENY", "method": "*", "path": "/api/registry/cluster*" },
-        { "effect": "DENY", "method": "POST", "path": "/api/copilot/config" }
-      ]
-    },
-    {
-      "id": "profile-readonly",
-      "name": "Demo / Read-Only Observer",
-      "description": "Safe preview profile for demonstrations and dashboards. Completely prevents any network modification or test execution.",
-      "is_preset": true,
-      "capabilities": [
-        "traffic:read", "tests:read", "vyos:read",
-        "dem:read", "security:read", "apps:read",
-        "capture:read", "copilot:use", "system:read"
-      ],
-      "route_rules": [
-        { "effect": "ALLOW", "method": "GET", "path": "/api/*" },
-        { "effect": "ALLOW", "method": "POST", "path": "/api/copilot/chat" },
-        { "effect": "DENY", "method": "POST", "path": "/api/*" },
-        { "effect": "DENY", "method": "DELETE", "path": "/api/*" },
-        { "effect": "DENY", "method": "PUT", "path": "/api/*" }
-      ]
-    },
-    {
-      "id": "profile-security-auditor",
-      "name": "Security & Compliance Auditor",
-      "description": "Specialized profile for SecOps. Full control over security probes and Prisma flow inspection; Read-Only on underlay networks.",
-      "is_preset": true,
-      "capabilities": [
-        "security:read", "security:execute",
-        "traffic:read", "dem:read", "system:read",
-        "capture:read"
-      ],
-      "route_rules": [
-        { "effect": "ALLOW", "method": "*", "path": "/api/security/*" },
-        { "effect": "ALLOW", "method": "*", "path": "/api/prisma/*" },
-        { "effect": "DENY", "method": "POST", "path": "/api/vyos/*" },
-        { "effect": "DENY", "method": "POST", "path": "/api/tests/*" }
-      ]
-    }
-  ]
-}
-```
-
----
-
-### 3.3 Custom Profile Cloning & Route Filtering
-Administrators can:
-1. **Clone** any existing preset (e.g., clone `SD-WAN Test Operator` as `Junior Field Tester`).
-2. **Toggle individual capabilities** via an intuitive matrix of checkboxes.
-3. **Add custom Route Filter Rules** (Advanced Tab):
-   - **Effect:** `ALLOW` or `DENY`.
-   - **HTTP Method:** `*`, `GET`, `POST`, `PUT`, `DELETE`.
-   - **Path Pattern:** Glob expression (e.g. `/api/vyos/direct-action`, `/api/speedtest/*`).
-   - **Evaluation Order:** Deny rules take precedence over Allow rules (Standard Principle of Least Privilege).
-
----
-
-## 4. Technical Specifications & Data Models
-
-### 4.1 Storage Model (`config/rbac-profiles.json`)
-A new persistent file in the `config/` directory stores profile definitions:
-
-```json
-{
+  "version": 1,
   "profiles": [
     {
       "id": "prof-custom-partner",
@@ -176,136 +151,133 @@ A new persistent file in the `config/` directory stores profile definitions:
       "is_preset": false,
       "cloned_from": "profile-operator",
       "created_at": 1791878000000,
+      "updated_at": 1791878000000,
       "capabilities": ["tests:execute", "dem:read", "traffic:read"],
       "route_rules": [
-        { "effect": "ALLOW", "method": "POST", "path": "/api/tests/xfr" }
+        { "effect": "DENY", "method": "POST", "path": "/api/tests/xfr/*" }
       ]
     }
   ]
 }
 ```
+Presets are defined in code and are **not** stored, so upgrades can add capabilities to presets safely. The file stores custom profiles only. Writes are atomic (temp file + rename) and backed up.
 
-### 4.2 Updated User Model (`config/users.json`)
-The existing user schema expands backwards-compatibly:
-
+### 4.2 Users (`config/users.json`) and migration
+Target schema (backwards compatible reader):
 ```json
-[
-  {
-    "id": "usr-admin-01",
-    "username": "admin",
-    "passwordHash": "$2a$10$...",
-    "profile_id": "profile-super-admin",
-    "created_at": 1791870000000,
-    "last_login": 1791878200000,
-    "role": "admin" // Kept for v2 backwards-compatibility
-  },
-  {
-    "id": "usr-demo-02",
-    "username": "demo",
-    "passwordHash": "$2a$10$...",
-    "profile_id": "profile-readonly",
-    "created_at": 1791871000000,
-    "last_login": 1791877000000,
-    "role": "user"
-  }
-]
+[{ "username": "admin", "passwordHash": "$2a$...", "profile_id": "profile-super-admin",
+   "token_version": 1, "created_at": 1791870000000, "last_login": 1791878200000, "disabled": false }]
 ```
+The legacy `role` field never existed on disk and is **not** introduced; the legacy "admin" check becomes `profile_id === 'profile-super-admin'`.
 
-### 4.3 JWT Token & Middleware Enforcement
+**Migration (first start on v3.1):**
+- `admin` -> `Super Administrator`.
+- Every other existing user currently has near-admin power. To avoid breaking anyone, they are mapped to a preset **`Legacy User`** (all capabilities except `users:admin`, `fleet:admin`, `secrets:read`, `copilot:admin`, matching today's practical limits as closely as possible). A banner invites the admin to reassign them. `Legacy User` is hidden for new assignments.
+- A backup `users.json.pre-rbac` is written before migration.
+- Last Super Administrator can never be deleted, disabled or downgraded.
 
-1. **JWT Payload:**
-   On login (`/api/auth/login`), the generated JWT includes the user's active capabilities:
-   ```json
-   {
-     "username": "demo",
-     "profile_id": "profile-readonly",
-     "capabilities": ["traffic:read", "tests:read", "vyos:read", ...],
-     "exp": 1791964600
-   }
-   ```
+### 4.3 Authentication and enforcement
+1. **Login** (`/api/auth/login`) issues a JWT `{ sub, profile_id, token_version }` only. **Capabilities are not embedded**: they are resolved from the profile store on every request (cheap, in-memory cache invalidated on profile save). This gives instant effect of profile edits and avoids stale/oversized tokens.
+2. **Revocation:** a request is rejected if `token_version` in the JWT differs from the user's current value. Changing a profile, password or disabling a user bumps `token_version`.
+3. **Single middleware** `rbacGate` registered once after `authenticateToken` for the whole `/api` prefix (see 3.5), then Layer 2 route rules. Per-route `requireCapability()` remains available for sensitive handlers that need a second check.
+4. **SSE `?token=` query tokens** must be short-lived stream tickets (see 4.6) rather than the full session JWT, so a leaked URL does not grant a 24 h session.
+5. **`JWT_SECRET`:** startup fails (or generates and persists a random secret) if the hard-coded default would be used, once RBAC enforcement is enabled.
+6. **Login hardening:** rate limiting and temporary lockout per username/IP (e.g. 5 failures -> 5 min), constant-time failure message. (Adds a dependency such as `express-rate-limit`; Docker audit applies.)
 
-2. **Express Middleware Guard (`rbacGuard`):**
-   ```ts
-   // Example Route Annotation
-   app.post('/api/vyos/direct-action', authenticateToken, requireCapability('vyos:chaos'), handleDirectVyosAction);
-   app.post('/api/traffic/start', authenticateToken, requireCapability('traffic:execute'), handleTrafficStart);
-   ```
+### 4.4 API
 
-3. **Fallback Route Rule Interceptor:**
-   Before reaching the route handler, a global RBAC validator inspects custom `route_rules` for the user's profile:
-   ```ts
-   function enforceRouteRules(req: Request, res: Response, next: NextFunction) {
-       const userProfile = rbacManager.getProfile(req.user.profile_id);
-       if (!userProfile) return next();
-       
-       const matchedRule = rbacManager.matchRule(userProfile.route_rules, req.method, req.path);
-       if (matchedRule?.effect === 'DENY') {
-           return res.status(403).json({
-               success: false,
-               error: 'Access Denied',
-               message: `Your profile (${userProfile.name}) does not permit ${req.method} on ${req.path}.`
-           });
-       }
-       next();
-   }
-   ```
+| Method | Path | Capability | Purpose |
+|---|---|---|---|
+| `GET` | `/api/auth/me` | any authenticated | Username, profile, **resolved capabilities**, rules summary — consumed by the UI hook |
+| `GET/POST/PUT/DELETE` | `/api/auth/users[/:username]` | `users:admin` | List, create, change profile, reset password, disable, delete |
+| `GET/POST/PUT/DELETE` | `/api/rbac/profiles[/:id]` | `users:admin` | List, create, edit, delete custom profiles |
+| `POST` | `/api/rbac/profiles/:id/clone` | `users:admin` | Clone preset or custom profile |
+| `GET` | `/api/rbac/capabilities` | `users:admin` | Taxonomy for the editor |
+| `POST` | `/api/rbac/simulate` | `users:admin` | "Can profile X do `METHOD /path`?" — dry-run for the editor |
+| `GET/POST/DELETE` | `/api/auth/tokens[/:id]` | `users:admin` (or own tokens) | API tokens |
+| `GET` | `/api/audit` | `system:admin` | Audit log query/export |
 
----
+Existing `POST /api/auth/users` stays (adds optional `profile_id`, default `Test Operator`).
 
-## 5. UI/UX Specifications (Web Dashboard)
+### 4.5 API tokens (service accounts)
+For MCP, CLI and CI: opaque tokens (`stx_...`, shown once, stored hashed), bound to a profile, with optional expiry and last-used tracking, revocable. They replace sharing a human password. Token requests go through the same `rbacGate`.
 
-### 5.1 Settings ➔ User Management & Profiles Tab
-The User Management tab in **Settings** ([`Settings.tsx`](file:///Users/jsuzanne/Github/stigix/web-dashboard/src/Settings.tsx)) is restructured into two sub-views:
-1. **Users View:**
-   - Table of users showing: Avatar, Username, Assigned Profile (badge), Created Date, Last Active, and Actions (Edit Profile, Change Password, Delete).
-   - "Add User" modal featuring a dropdown to select the assigned Profile.
-2. **Access Profiles View:**
-   - Cards displaying the 4 Presets (with "Preset" lock badge) and custom profiles.
-   - **"Clone Profile"** button on every card.
-   - Profile Editor Modal:
-     - Profile Name & Description.
-     - Interactive Grid of Capabilities with "Select All" / "Deselect All" per domain.
-     - Advanced Tab: Table of Route Filter Rules (`ALLOW` / `DENY`, Method, Path pattern).
+### 4.6 Stream tickets
+`POST /api/auth/stream-ticket` returns a single-use ticket (TTL 30 s) bound to the user and the stream path, accepted via `?ticket=` on SSE/EventSource endpoints only.
 
-### 5.2 Adaptive UI & Action Button States
-When an operator with a restricted profile (e.g. `Read-Only Observer`) logs into Stigix:
-1. **Mutating Buttons (Start Traffic, Run Speedtest, Inject QoS, Delete Probe):**
-   - Rendered in a disabled state with a sleek lock icon (`<Lock size={12} />`).
-   - Hover tooltip displays:  
-     `🔒 Action restricted by profile: "Demo / Read-Only Observer" (Requires capability: traffic:execute)`
-2. **Protected Settings Sub-Tabs (Cluster & Mesh, User Management, BYOK Copilot Keys):**
-   - Hidden or replaced with an access-denied state explaining required permissions.
+### 4.7 Audit log
+Append-only JSONL in `config/audit/`, rotated by size, containing: timestamp, user/token, profile, source (UI/Copilot/MCP/gateway + peer), method, normalized path, decision (`allow`/`deny`), capability, status code, and a redacted body summary for mutations. All `deny` decisions and all non-GET allowed actions are logged. Surfaced in Settings -> Access -> Audit and exportable. Secrets are never logged.
+
+### 4.8 Fleet / cluster behavior
+- **Profiles are synchronized** from the leader to spokes as a new `ProvisioningManager` bundle type (`rbac-profiles`), following the existing pattern used for `applications`, `connectivity-probes`, `cloud-config`, `ca-certificates` and `pcap-profiles`.
+- **User accounts and password hashes are not synchronized** (explicitly not a goal; each node owns its local users). Remote access through the leader uses the identity propagation in 3.6.
+- A spoke that has not received the bundle yet uses the built-in presets, never "allow all".
 
 ---
 
-## 6. Security, Compliance & Safety Constraints
+## 5. UI/UX Specification (Web Dashboard)
 
-1. **Immutable Super Admin Guard:**
-   - The default `admin` user cannot be deleted or assigned a profile other than `Super Administrator`.
-   - The `Super Administrator` preset cannot be modified or deleted.
-2. **Local Peer & Spoke Replication:**
-   - In Fleet / Cluster mode, user profiles defined on the Leader (DC1) automatically sync to spoke nodes via the `provisioningManager` to ensure unified access control across all fabric instances.
-3. **Session Revocation:**
-   - If an administrator changes a user's profile or revokes permissions, active JWT sessions are invalidated on next verification via a user `token_version` check.
+### 5.1 Settings -> Access (restructure of the Users tab in `Settings.tsx`)
+1. **Users:** table (username, profile badge, created, last login, status) with *Add*, *Change profile*, *Reset password*, *Disable*, *Delete*. Banner for users still on `Legacy User`.
+2. **Profiles:** cards for presets (lock badge) and custom profiles; *Clone*, *Edit*, *Delete* (blocked if assigned to a user).
+   - Editor: name/description; capability grid grouped by domain with select-all per domain; **Advanced** tab for route rules with the **"Test a request"** simulator (uses `/api/rbac/simulate`) and a visible diff of what the clone changed versus its source.
+3. **API tokens** and **Audit log** tabs.
+
+### 5.2 Adaptive UI
+A single `useRbac()` hook (data from `/api/auth/me`) exposes `can('traffic:execute')`. Mutating controls use a shared `<RbacButton capability="...">`:
+- Disabled with a lock icon and tooltip: *"Requires `traffic:execute` - not allowed by profile Demo / Read-Only Observer"*.
+- Sensitive tabs (Fleet, Access, Copilot keys) are hidden when the user lacks the capability and show an access-denied state on direct navigation.
+- Persistent profile badge in the header.
+- **The UI is a convenience only.** Every rule is enforced on the server; 403 responses are handled globally with a toast.
 
 ---
 
-## 7. Phased Implementation Roadmap
+## 6. Security Requirements
+1. Default-deny with CI coverage test (3.5); no route can be added unmapped.
+2. Last Super Administrator protection; presets cannot be edited or deleted.
+3. Privilege-escalation guard: a user with `users:admin` cannot grant capabilities they do not hold unless they are a Super Administrator; only Super Administrators can set `grant_override`.
+4. Secrets redaction for callers without `secrets:read` (3.2).
+5. Identity propagation for Copilot, MCP, CLI, tunnel and leader proxy (3.6).
+6. Revocation through `token_version`; short-lived stream tickets; login rate limiting.
+7. All denies and mutations audited.
+8. Rollout safety: environment/config switch `RBAC_MODE = off | audit | enforce`. **`audit`** (default for the first release) evaluates every request, logs would-be denies, never blocks. `enforce` becomes default one release later.
 
-```mermaid
-gantt
-    title Stigix Enterprise RBAC Roadmap
-    dateFormat  YYYY-MM-DD
-    section Phase 1: Core Engine & Presets
-    RBAC Manager & Profile JSON Storage     :2026-10-15, 4d
-    Express Capabilities Middleware & Token Update :2026-10-19, 4d
-    section Phase 2: Dashboard & Profile UI
-    Settings User & Profile Manager Interface :2026-10-23, 5d
-    Adaptive UI Disabled Button States & Hooks:2026-10-28, 4d
-    section Phase 3: Advanced Scoping & Fleet Sync
-    Route Regex Filter Engine (Allow/Deny)  :2026-11-01, 3d
-    Fleet Provisioning Sync to Spoke Nodes  :2026-11-04, 3d
-```
+---
+
+## 7. Success Metrics & Acceptance Criteria
+- 100% of registered `/api/*` routes are mapped or explicitly `PUBLIC` (CI coverage test green).
+- With the Demo preset: every non-GET request and every `secrets:read` / `capture:download` endpoint returns 403 (automated matrix test over the whole route map).
+- Copilot as Demo user cannot start traffic, run VyOS actions or edit probes via tools.
+- Remote View through the leader no longer grants admin to a non-admin user.
+- Migration: all pre-existing users can still log in and keep their effective access (`Legacy User`); `users.json.pre-rbac` exists.
+- Profile edit takes effect on the user's next request without re-login.
+- Latency overhead of the gate < 1 ms p95 (in-memory resolution).
+- Existing automated suites (Copilot, MCP, custom-tcp) pass with an admin token.
+
+## 8. Risks & Open Questions
+
+| Risk / Question | Mitigation / Status |
+|---|---|
+| Large route surface (~242 + sub-routers) makes the map incomplete | Coverage test; `audit` mode first release; fallback `system:admin` for unmapped mutations |
+| Existing scripts/CLI/MCP use a human login | Provide API tokens; document migration; keep password login working |
+| Breaking Remote View when removing the implicit admin | Phase the identity propagation behind `RBAC_MODE`, test with leader -> spoke scenarios |
+| Some GETs mix public and secret fields | Redaction layer + review list in the route map |
+| Should the 14 public routes all stay public (e.g. `/api/stats`, `/api/status`)? | Open — review each; `iperf/server` and `internal/log-event` should at least be restricted to local/loopback |
+| Offline spokes with stale profiles | Use presets (never allow-all); resync on reconnect |
+| Dockerfile sync for new `rbac/` and `audit/` files and dependency | Run `stigix-docker-audit` checklist |
+| Future SSO | `profile_id` mapping from IdP groups is compatible; out of scope |
+
+## 9. Phased Roadmap (effort-based)
+
+| Phase | Scope | Est. effort |
+|---|---|---|
+| **1 – Foundations** | `rbac/` module (taxonomy, presets, store), user schema + migration, `/api/auth/me`, `rbacGate` in `audit` mode, audit log | 4-5 days |
+| **2 – Route map** | Build `route-map.ts` for all routers, coverage test, Demo-matrix test, redaction of sensitive GETs | 4-5 days |
+| **3 – Identity propagation** | Copilot tools, tunnel/leader proxy, loopback secret, API tokens, stream tickets, login rate limiting | 4 days |
+| **4 – UI** | Access tab (users, profiles, simulator, tokens, audit), `useRbac`, `RbacButton`, adaptive locking | 5 days |
+| **5 – Fleet & rollout** | `rbac-profiles` bundle sync, `enforce` mode, docs, FAQ, MCP/CLI updates | 3 days |
+
+Total about 20-22 days for full scope. A useful MVP (Demo vs Admin vs Operator with default-deny, `audit`/`enforce` switch and the UI lock) is achievable in about 8-10 days (phases 1, 2 and the minimum of 4).
 
 ---
 
@@ -314,3 +286,4 @@ gantt
 | Date | Stigix Version | Author / Trigger | Summary of Changes |
 |---|---|---|---|
 | 2026-10-13 | `v3.0.3` | Stigix Core Team | Initial PRD creation for Enterprise RBAC & Profile System |
+| 2026-10-13 | `v3.0.3` | Stigix Core Team | Revision against the actual code: corrected current-state description (no `role` field, `username === 'admin'`, implicit admin for gateway), defined rule semantics, default-deny route map with CI coverage test, sensitive-read concept, Copilot/MCP/tunnel identity propagation, API tokens, stream tickets, audit log, migration (`Legacy User`), `RBAC_MODE` rollout, server-side capability resolution and revocation, fleet bundle sync, acceptance criteria, risks, realistic estimates |
