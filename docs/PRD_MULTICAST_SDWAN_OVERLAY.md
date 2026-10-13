@@ -2,224 +2,266 @@
 
 # PRD — SD-WAN Overlay Multicast Validation Engine
 
+**Status:** Draft v2 (revised) | **Owner:** Stigix Core Team | **Target:** v3.1.x
+
 ---
 
 ## 1. Executive Summary & Vision
 
 ### 1.1 The Challenge
-Enterprise SD-WAN deployments increasingly transport mission-critical IP Multicast traffic:
-- **Financial Market Data:** Ultra-low latency, zero-loss multicast feeds (L2/L3 order books, ticker plants).
-- **Enterprise Video & IPTV:** Corporate broadcasts, CCTV surveillance streaming, video conferencing.
-- **Industrial Automation & Telemetry:** SCADA, IoT telemetry distribution, and Ghost/PXE bulk imaging.
+Enterprise SD-WAN deployments increasingly transport IP multicast: financial market data, corporate video/IPTV/CCTV, and industrial/IoT telemetry or bulk imaging.
 
-Validating multicast over SD-WAN is notoriously complex:
-1. Multicast packets do not utilize TCP handshakes or ACKs, making packet loss catastrophic for consumers.
-2. SD-WAN solutions must either implement **Head-End Replication (HER)** (converting multicast into multiple unicast overlay tunnels) or maintain dynamic **PIM-SM (Protocol Independent Multicast Sparse Mode)** trees over IPsec/GRE overlays.
-3. Network engineers lack lightweight, automated validation tools to test **IGMP Join latency**, **underlay failover impact on overlay multicast streams**, and **packet drop rates** across branch offices.
+Validating multicast over an SD-WAN overlay is hard:
+1. Multicast is UDP-only, with no handshake or ACK. Loss is silent for the application.
+2. The overlay must either do **Head-End Replication (HER)** (multicast converted into N unicast tunnels) or run **PIM-SM / PIM-SSM** across the overlay. The two behave very differently on failover.
+3. Engineers lack a lightweight tool to measure **join latency**, **loss/duplication per receiver**, and **convergence time on WAN failure**.
 
 ### 1.2 The Solution
-The **Stigix Multicast Validation Engine** integrates seamlessly into the Stigix platform, extending the **Custom Apps** framework to support distributed **UDP Multicast (1-to-N)** traffic generation, automated IGMPv2/v3 group subscription, and real-time telemetry analysis across the SD-WAN mesh fabric.
+Extend the existing **Custom Apps** subsystem (`web-dashboard/custom-tcp-apps/`) with a new **Multicast Stream** app type: a distributed 1-to-N UDP multicast sender plus receivers that join the group, track sequence numbers, and report telemetry to the dashboard.
+
+### 1.3 Goals and Non-Goals
+
+| Goals | Non-Goals (v1) |
+|---|---|
+| IPv4 ASM (`239/8`) and SSM (`232/8`) streams | IPv6 / MLD |
+| Per-receiver loss, duplicates, jitter, throughput, join latency | Configuring the SD-WAN fabric (PIM, IGMP proxy, RP) — the network is assumed pre-configured |
+| Convergence-time measurement during underlay chaos (VyOS) | Real video/audio codecs or decoding |
+| Copilot/MCP/CLI parity | Multicast routing daemon inside Stigix (no PIM speaker) |
+| Run inside existing container (host networking) | Bridge-mode Docker support |
 
 ```mermaid
 flowchart TD
-    subgraph Core_Datacenter["Core Datacenter (DC1)"]
-        Sender["Stigix Multicast Sender (Source)<br/>Group: 239.255.1.100:5000<br/>CBR: 5 Mbps | TTL: 64"]
-        Edge1["SD-WAN Edge Router (DC1)<br/>IGMP Snooping / PIM-SM RP"]
+    subgraph DC["Datacenter (DC1)"]
+        Sender["Stigix Multicast Sender<br/>Group 239.255.1.100:5000<br/>CBR 5 Mbps, TTL 64"]
+        Edge1["SD-WAN Edge DC1<br/>IGMP / PIM RP"]
     end
-
-    subgraph SDWAN_Overlay["SD-WAN Secure Overlay Fabric (IPsec / GRE Tunnels)"]
-        Tunnel1["Overlay WAN Path 1 (Primary)"]
-        Tunnel2["Overlay WAN Path 2 (Backup / MPLS)"]
+    subgraph Overlay["SD-WAN Overlay"]
+        T1["Path 1 (Primary)"]
+        T2["Path 2 (Backup)"]
     end
-
-    subgraph Branch_Offices["Remote Branches (BR1, BR2, BR8)"]
-        Edge2["SD-WAN Edge (BR1)"]
-        Edge3["SD-WAN Edge (BR2)"]
-        Edge4["SD-WAN Edge (BR8)"]
-        
-        Receiver1["Stigix Receiver (BR1)<br/>IGMP Join: 239.255.1.100"]
-        Receiver2["Stigix Receiver (BR2)<br/>IGMP Join: 239.255.1.100"]
-        Receiver3["Stigix Receiver (BR8)<br/>IGMP Join: 239.255.1.100"]
+    subgraph Branches["Branches"]
+        E2["Edge BR1"] --> R1["Receiver BR1"]
+        E3["Edge BR2"] --> R2["Receiver BR2"]
+        E4["Edge BR8"] --> R3["Receiver BR8"]
     end
-
-    Sender -->|Multicast UDP| Edge1
-    Edge1 --> Tunnel1
-    Edge1 -.-> Tunnel2
-    Tunnel1 --> Edge2
-    Tunnel1 --> Edge3
-    Tunnel1 --> Edge4
-    Edge2 -->|IGMP Delivery| Receiver1
-    Edge3 -->|IGMP Delivery| Receiver2
-    Edge4 -->|IGMP Delivery| Receiver3
+    Sender --> Edge1
+    Edge1 --> T1
+    Edge1 -.-> T2
+    T1 --> E2
+    T1 --> E3
+    T1 --> E4
 ```
 
 ---
 
-## 2. Personas & Core Use Cases
+## 2. Personas & Use Cases
 
-| Persona | Operational Goal | Stigix Value Proposition |
+| Persona | Goal | Value |
 |---|---|---|
-| **SD-WAN Network Architect** | Certify multicast forwarding mode (Head-End Replication vs. Native Overlay PIM-SM). | Verify that all subscribed branches receive the stream with zero packet duplication. |
-| **NOC / Operations Engineer** | Measure packet loss and audio/video artifacts during underlay brownouts and link cuts. | Quantify exact packet drop count and convergence time when a WAN circuit fails. |
-| **Financial / Trading Engineer** | Validate sub-millisecond market feed replication across DC and branch nodes. | Precise sequence tracking, jitter profiling, and micro-burst packet loss measurement. |
-| **Security Engineer** | Ensure multicast streams remain strictly contained within their designated VRF/Segment. | Confirm no cross-talk or leakage into non-subscribed tenant segments or the public Internet. |
+| **SD-WAN Architect** | Certify HER vs. native PIM behavior | Confirm every subscribed branch receives the stream with zero duplicates |
+| **NOC Engineer** | Measure impact of a link cut | Exact lost-packet count and **stream interruption time** |
+| **Trading / Financial Engineer** | Validate low-jitter feed replication | Sequence tracking, jitter and micro-burst loss |
+| **Security Engineer** | Verify segmentation | Prove a non-member node (or other VRF) receives **nothing** (negative test) |
+
+Core test scenarios:
+- **S1 – Baseline:** all receivers joined, loss = 0, duplicates = 0.
+- **S2 – Late join:** a receiver joins mid-stream; measure time-to-first-packet.
+- **S3 – Failover:** inject `interface-down` on the primary underlay link; measure interruption per receiver.
+- **S4 – Leak test:** receiver on an unauthorized segment must see 0 packets (expected-state `NO_TRAFFIC`).
+- **S5 – Leave:** after stop, traffic must stop reaching the branch (prune check).
 
 ---
 
 ## 3. Functional Specifications
 
-### 3.1 Multicast Sender Engine (Source)
-The sender runs on any designated Stigix node (typically DC1 or a central hub):
-1. **Multicast Group Addressing:**
-   - Supports Administratively Scoped IPv4 Multicast: `239.0.0.0/8` (e.g., `239.255.1.100`).
-   - Supports Global/Source-Specific Multicast (SSM): `232.0.0.0/8`.
-2. **Transmission Parameters:**
-   - **Destination Port:** Configurable UDP port (default: `5000`–`5008`).
-   - **Source Interface Binding:** Binds strictly to the SD-WAN LAN overlay interface (e.g., `eth1`, `enp2s0`).
-   - **Bitrate Modes:**
-     - Constant Bitrate (CBR): Configurable from `64 kbps` up to `100 Mbps`.
-     - Burst Mode: Generates periodic micro-bursts (e.g., 10 ms bursts at 50 Mbps every 1 second).
-   - **IP TTL (Time-To-Live):** Configurable `TTL` (default: `64`), ensuring packets traverse multi-hop SD-WAN router overlays without being dropped at the first boundary.
-   - **DSCP / TOS Tagging:** Custom QoS markings (e.g., `CS5`, `EF` for broadcast video/voice, or `BE`).
-3. **Packet Header Format:**
-   Every generated UDP payload includes a 24-byte structured telemetry header:
-   ```c
-   struct StigixMulticastHeader {
-       uint32_t magic;         // 0x53544758 ("STGX")
-       uint64_t sequence_id;   // Monotonically increasing sequence number
-       uint64_t timestamp_ns;  // Sender epoch timestamp in nanoseconds
-       uint16_t stream_id;     // Unique identifier for the multicast app
-       uint16_t payload_len;   // Payload length
-   };
-   ```
+### 3.1 Sender
+1. **Addressing:** ASM `239.0.0.0/8` (administratively scoped) and SSM `232.0.0.0/8`. Reject other ranges in validation, and reject reserved `224.0.0.0/24` (link-local).
+2. **Parameters:** UDP port (default `5000`), egress interface (resolved to an IP; `IP_MULTICAST_IF`), TTL (default `64`), DSCP (`BE`, `CS5`, `EF`, custom), payload size (default `1316` bytes = 7 TS packets; range 64–1400 to avoid fragmentation).
+3. **Rate modes:**
+   - **CBR:** 64 kbps – 50 Mbps (v1 cap, see 4.3).
+   - **Burst:** N packets every T ms (e.g., 50 pkts every 100 ms).
+4. **`IP_MULTICAST_LOOP` = 0** so a co-located receiver does not see its own traffic and skew tests.
+5. **Packet header** (network byte order, packed, 24 bytes), followed by padding:
 
-### 3.2 Multicast Receiver Engine (Subscribers / Listeners)
-Receivers run on one or more distributed Stigix spoke instances (e.g., BR1, BR2, BR8):
-1. **Automated IGMP Group Membership:**
-   - Issues an **IGMPv2/v3 Join** (`IP_ADD_MEMBERSHIP`) on startup.
-   - Periodically responds to **IGMP Queries** from the local SD-WAN Edge router to maintain membership.
-   - Issues an **IGMP Leave** (`IP_DROP_MEMBERSHIP`) when the test is stopped.
-2. **Telemetry Calculation:**
-   - **Packet Loss:** Tracks missing `sequence_id` instances in real time.
-   - **Throughput:** Computes 1-second rolling bitrate (kbps / Mbps) and packet rate (pps).
-   - **Jitter:** Computes RFC 3550 inter-arrival jitter variance across consecutive packets.
-   - **Join Latency (Time-To-First-Packet):** Milliseconds elapsed between sending the IGMP Join report and receiving the first multicast data packet.
-   - **Duplicate Detection:** Flags duplicate sequence numbers caused by improper SD-WAN replication.
+   | Offset | Size | Field | Notes |
+   |---|---|---|---|
+   | 0 | 4 | `magic` | `0x53544758` ("STGX") — non-matching packets are counted as `foreign` and ignored |
+   | 4 | 8 | `sequence_id` | per-stream, starts at 0 on each run |
+   | 12 | 8 | `timestamp_ns` | sender wall clock; used for **jitter only**, never one-way delay |
+   | 20 | 2 | `stream_id` | app identifier |
+   | 22 | 2 | `run_id` | increments on sender restart so receivers can detect a reset instead of reporting huge loss |
+
+### 3.2 Receiver
+1. **Membership:**
+   - ASM: `IP_ADD_MEMBERSHIP`.
+   - SSM: `IP_ADD_SOURCE_MEMBERSHIP` with the sender's source IP (requires IGMPv3 in the network; the UI warns if the host is forced to IGMPv2).
+   - Leave via `IP_DROP_MEMBERSHIP` on stop. Periodic report replies to IGMP queries are handled by the **Linux kernel**, not by the application.
+2. **Metrics (per 1-second window and cumulative):**
+   - Loss (gaps in `sequence_id`), reordering, **duplicates**, `foreign` packets.
+   - Throughput (kbps) and pps.
+   - **Jitter** per RFC 3550 using sender timestamps (clock offset cancels out in inter-arrival differences).
+   - **Time-to-first-packet:** time from `IP_ADD_MEMBERSHIP` call to first valid packet. Documented as an approximation (the kernel sends the IGMP report asynchronously).
+   - **Max interruption (gap) in ms:** longest inter-arrival gap — the primary failover/convergence metric.
+3. **Expectation mode:** `EXPECT_TRAFFIC` (default) or `EXPECT_NONE` (leak test). The verdict is computed locally.
+4. **Health verdict:**
+
+   | State | Rule (configurable thresholds) |
+   |---|---|
+   | `HEALTHY` | loss ≤ 0.1%, 0 duplicates |
+   | `DEGRADED` | loss 0.1–2% or duplicates > 0 |
+   | `FAILED` | loss > 2% or no packet for > 3 s |
+   | `NO_TRAFFIC` | expected for `EXPECT_NONE` (shown as pass) |
 
 ---
 
 ## 4. Technical Architecture
 
-### 4.1 Daemon Execution & Socket Implementation
-The Multicast Engine is implemented as a lightweight daemon running inside the Stigix container:
+### 4.1 Where it fits in the codebase
+The existing Custom Apps backend lives in `web-dashboard/custom-tcp-apps/` (`tcp-app-manager.ts`, `api-routes.ts`, `config-store.ts`, `history-store.ts`, `validation.ts`, `types.ts`). The frontend is `web-dashboard/src/CustomApps.tsx` and `web-dashboard/src/components/custom-tcp/CustomAppWizardModal.tsx`.
+
+Proposed additions:
+- `engines/multicast_engine.py` — daemon (single process per role, `--role sender|receiver`), emits JSON stats lines on stdout / local Unix socket. Follows the pattern of other Python engines in `engines/`.
+- `web-dashboard/custom-tcp-apps/multicast-manager.ts` — spawns/stops the daemon and ingests stats.
+- Extend `types.ts` with `kind: 'tcp' | 'multicast'` (default `'tcp'`, so existing configs remain valid), and extend `validation.ts`.
+- Reuse the existing leader→peer config sync and peer API so receivers run on the other nodes.
+
+### 4.2 Orchestration
 
 ```mermaid
 sequenceDiagram
     autonumber
     actor User as Engineer / Copilot
-    participant Leader as Stigix Leader (DC1)
-    participant Sender as Multicast Sender (DC1)
-    participant SDWAN as SD-WAN Overlay (VyOS / Velo / Prisma)
-    participant Receiver as Multicast Receiver (BR1)
+    participant Leader as Stigix Leader
+    participant Recv as Receiver nodes
+    participant Send as Sender node
+    participant Net as SD-WAN Overlay
 
-    User->>Leader: Create Multicast App (239.255.1.100:5000, 5Mbps)
-    Leader->>Receiver: Provision Listener (Join 239.255.1.100)
-    Receiver->>SDWAN: IGMPv2/v3 Membership Report (Join Group)
-    Leader->>Sender: Start Stream (CBR 5 Mbps, TTL=64)
-    Sender->>SDWAN: UDP Multicast Stream (seq=1, 2, 3...)
-    SDWAN->>Receiver: Forward stream across Overlay
-    Receiver->>Receiver: Validate Seq, Compute Bitrate & Jitter
-    Receiver-->>Leader: Stream Telemetry (Loss: 0%, Jitter: 1.2ms)
+    User->>Leader: Create + Start multicast app
+    Leader->>Recv: Start receivers (join group)
+    Recv->>Net: IGMP membership report
+    Recv-->>Leader: ready (joined)
+    Leader->>Send: Start stream (only once receivers are ready)
+    Send->>Net: UDP multicast, seq=0,1,2...
+    Net->>Recv: Replicated stream
+    Recv-->>Leader: Telemetry every 1-5 s
+    User->>Leader: Stop
+    Leader->>Send: Stop
+    Leader->>Recv: Leave group, final report
 ```
 
-#### Socket Configuration (Linux OS):
-```python
-# Receiver IGMP Join Socket Implementation
-import socket, struct
+Start order is **receivers first**, so the baseline is measured without join transients (unless the *late join* scenario is chosen).
 
-sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
-sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-sock.bind(('', 5000))
+### 4.3 Implementation notes and constraints
+- **Networking:** requires `network_mode: host` (already used in `docker-compose.yml`). In bridge mode, multicast does not cross the container boundary; the UI/CLI refuse to start and explain why.
+- **Host prerequisites to surface in a pre-flight check:**
+  - `rp_filter` may drop multicast on asymmetric paths.
+  - Interface must have the `MULTICAST` flag.
+  - Local firewall must allow UDP to the group/port.
+  - Detect and show the effective IGMP version (`/proc/net/igmp`).
+- **Performance:** a Python sender is suitable up to ~50 Mbps with 1316-byte payloads (~4.7 kpps) using a paced loop. Above that, a Node/C sender is a v2 item. The CBR limit is therefore 50 Mbps in v1.
+- **Time:** wall-clock timestamps are only used for jitter. One-way delay is explicitly **not** reported (no clock sync guarantee).
+- **Safety limits:** max 10 concurrent multicast apps per node, max 50 Mbps aggregate, mandatory TTL ≤ 64 by default, and a confirmation when TTL > 16 (leak risk).
+- **Persistence:** apps in `config/custom-tcp-apps.json` (same store); run history in the existing history store with per-receiver summary.
 
-# IGMP Join Group on local interface
-mreq = struct.pack("4s4s", socket.inet_aton("239.255.1.100"), socket.inet_aton(interface_ip))
-sock.setsockopt(socket.IPPROTO_IP, socket.IP_ADD_MEMBERSHIP, mreq)
+### 4.4 Data model (excerpt)
+```json
+{
+  "id": "mc-001",
+  "kind": "multicast",
+  "name": "Market Data Feed",
+  "group": "239.255.1.100",
+  "port": 5000,
+  "ssm_source": null,
+  "sender_node": "DC1",
+  "receivers": [
+    {"node": "BR1", "expect": "traffic"},
+    {"node": "BR2", "expect": "traffic"},
+    {"node": "BR5", "expect": "none"}
+  ],
+  "rate": {"mode": "cbr", "kbps": 5000},
+  "payload_bytes": 1316,
+  "ttl": 64,
+  "dscp": "CS5",
+  "duration_s": 0
+}
 ```
 
-```python
-# Sender Multicast Socket Implementation
-sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
-# Set TTL to traverse SD-WAN routers
-sock.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_TTL, 64)
-# Bind multicast traffic to SD-WAN LAN interface
-sock.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_IF, socket.inet_aton(interface_ip))
-```
+### 4.5 API (under existing `/api/custom-tcp`)
 
----
-
-## 5. UI/UX Specifications in Stigix Dashboard
-
-### 5.1 Custom Apps Wizard Extension
-In **Generate ➔ Custom TCP/HTTP Apps** ([`CustomApps.tsx`](file:///Users/jsuzanne/Github/stigix/web-dashboard/src/CustomApps.tsx)), the creation wizard expands to include:
-- **Protocol Selector:** `[ TCP Unicast | UDP Unicast | ⚡ Multicast Stream ]`
-- **When Multicast is selected:**
-  - **Multicast Group IP:** Default `239.255.1.100`.
-  - **Port:** Default `5000`.
-  - **Sender Node:** Select 1 source node (e.g., `DC1-Ubuntu`).
-  - **Receiver Nodes (Multi-Select):** Select 1 or more listener nodes (`BR1`, `BR2`, `BR5`, `BR8`).
-  - **Bitrate:** Slider / Input (`256 kbps` – `50 Mbps`).
-  - **QoS Marking (DSCP):** Dropdown (`Best Effort`, `CS5 - Broadcast Video`, `EF - Telephony`).
-
-### 5.2 Real-Time Monitoring Drawer
-Clicking on an active Multicast App opens a dedicated drawer showing:
-1. **Source Status:** Active bitrate, transmitted packet count, uptime.
-2. **Subscribers Table:**
-   | Receiver Node | IGMP State | Received Bitrate | Packet Loss (%) | Jitter (ms) | Join Latency | Status |
-   |---|---|---|---|---|---|---|
-   | **BR1-Ubuntu** | Joined (v3) | 4.98 Mbps | **0.00%** | 1.1 ms | 42 ms | 🟢 Healthy |
-   | **BR2-Ubuntu** | Joined (v3) | 4.97 Mbps | **0.02%** | 1.4 ms | 38 ms | 🟢 Healthy |
-   | **BR8-Ubuntu** | Joined (v3) | 4.99 Mbps | **0.00%** | 0.9 ms | 55 ms | 🟢 Healthy |
-
----
-
-## 6. AI Copilot & MCP Tooling Integration
-
-The engine will expose dedicated tools to the Stigix Copilot and FastMCP server:
-
-| Tool Name | Parameters | Description |
+| Method | Path | Purpose |
 |---|---|---|
-| `create_multicast_app` | `name, group_ip, port, sender_node, receiver_nodes, bitrate_kbps` | Deploys a distributed multicast test stream across the SD-WAN mesh. |
-| `get_multicast_stats` | `app_id` | Fetches real-time loss, bitrate, and jitter across all receivers. |
-| `stop_multicast_app` | `app_id` | Sends IGMP Leave across all receivers and terminates the source stream. |
+| `POST` | `/api/custom-tcp/multicast` | Create multicast app |
+| `POST` | `/api/custom-tcp/multicast/:id/start` · `/stop` | Orchestrated start/stop |
+| `GET` | `/api/custom-tcp/multicast/:id/stats` | Per-receiver live stats |
+| `POST` | `/api/custom-tcp/multicast/:id/preflight` | Host/interface checks on all nodes |
 
 ---
 
-## 7. Phased Implementation Roadmap
+## 5. UI/UX Specification
 
-```mermaid
-gantt
-    title Stigix Multicast Engine Implementation
-    dateFormat  YYYY-MM-DD
-    section Phase 1: Core Engine
-    Python/Node Multicast Daemon & Sockets   :2026-10-15, 5d
-    Sequence Tracking & Telemetry Packet Format:2026-10-20, 3d
-    section Phase 2: Platform Integration
-    CustomAppManager & Backend REST Routes   :2026-10-23, 4d
-    Frontend Wizard & Multicast Drawer UI   :2026-10-27, 4d
-    section Phase 3: Validation & Automation
-    AI Copilot & FastMCP Tool Parity        :2026-10-31, 3d
-    VyOS Chaos & Failover Test Suite        :2026-11-03, 3d
-```
+### 5.1 Wizard extension
+`CustomAppWizardModal.tsx` gets a type step: `[ TCP | ⚡ Multicast Stream ]`. For multicast:
+- Group IP (validated, with ASM/SSM badge), port, sender node, receiver multi-select (each with *Expect traffic / Expect none*), rate mode + value, payload size, DSCP, TTL (advanced), duration.
+- Pre-flight button; result list per node (✅/⚠️/❌ with remediation text).
 
-1. **Phase 1 (Core Engine):**
-   - Implement `engines/multicast_engine.py` (daemon handling sender and receiver loops).
-   - Ensure IGMPv2/v3 join/leave and sequence telemetry operate cleanly in host networking mode.
-2. **Phase 2 (Dashboard Integration):**
-   - Integrate into `CustomAppManager` on backend (`server.ts`).
-   - Add Multicast mode to `CustomAppWizardModal.tsx` and create real-time subscriber metrics view.
-3. **Phase 3 (Chaos & Copilot Automation):**
-   - Add FastMCP & Copilot tool definitions.
-   - Run underlay chaos test (`vyos_execute_action`: `interface-down`) during active multicast streaming to validate SD-WAN overlay convergence time.
+### 5.2 Live monitoring drawer
+- Source: bitrate, packets sent, uptime.
+- Receivers table:
+
+  | Receiver | IGMP | Rx Mbps | Loss % | Dups | Jitter ms | Max gap ms | Join ms | Verdict |
+  |---|---|---|---|---|---|---|---|---|
+  | BR1 | v3 | 4.98 | 0.00 | 0 | 1.1 | 20 | 42 | 🟢 |
+  | BR5 | v3 | 0.00 | — | 0 | — | — | — | 🟢 (expected none) |
+
+- Timeline chart of per-receiver throughput with failover events overlaid (links to VyOS chaos actions).
+
+---
+
+## 6. Copilot, MCP & CLI Integration
+
+Per the `stigix-mcp-sync` convention, every tool is mirrored in the CLI and the MCP manifest.
+
+| Tool | Parameters | Description |
+|---|---|---|
+| `create_multicast_app` | `name, group, port, sender_node, receivers[], bitrate_kbps, ttl, dscp` | Create a stream |
+| `start_multicast_app` / `stop_multicast_app` | `app_id` | Orchestrated start/stop |
+| `get_multicast_stats` | `app_id` | Per-receiver loss, jitter, gap, verdict |
+| `run_multicast_failover_test` | `app_id, vyos_action` | Runs a stream, injects the chaos action, returns max interruption per receiver |
+
+RBAC mapping (see `PRD_ENTERPRISE_RBAC.md`): new capabilities `multicast:read` and `multicast:execute` (included in the *Test Operator* preset, `read` only in *Demo / Read-Only*).
+
+---
+
+## 7. Success Metrics & Acceptance Criteria
+
+- Sender holds configured CBR within ±3% at 5, 20 and 50 Mbps.
+- Loss detection accuracy: injected 1% `tc netem` loss reported within ±0.2%.
+- Duplicates correctly flagged when a HER setup double-delivers.
+- Failover test returns max interruption within ±100 ms of an external packet capture.
+- Leak test (`EXPECT_NONE`) reports a failure when any valid packet is received.
+- Existing TCP custom apps and their JSON configs are unaffected (regression suite `test-custom-tcp-*` passes).
+
+## 8. Risks & Open Questions
+
+| Risk / Question | Mitigation |
+|---|---|
+| Fabric is not multicast-enabled → apparent "failure" | Pre-flight + clear `NO_TRAFFIC` diagnostics, document network prerequisites |
+| Multicast leakage onto the Internet | Default TTL 64 restricted to 239/8, explicit warning for high TTL |
+| Python pacing jitter at high rates | 50 Mbps cap in v1; native sender in v2 |
+| Which vendors on the fabric (VyOS, Prisma SD-WAN, VeloCloud)? | Open — document per-vendor multicast config appendix |
+| Should receivers be allowed on non-Stigix hosts? | Open — out of scope v1 |
+| Docker `Dockerfile` sync | Run the `stigix-docker-audit` checklist for the new `engines/` and `custom-tcp-apps/` files |
+
+## 9. Phased Roadmap (effort-based)
+
+| Phase | Scope | Est. effort |
+|---|---|---|
+| **1 – Engine** | `multicast_engine.py` (sender/receiver, header, metrics), CLI standalone test | 2–3 days |
+| **2 – Platform** | `multicast-manager.ts`, validation, routes, orchestration order, history | 2–3 days |
+| **3 – UI** | Wizard mode, pre-flight, drawer and chart | 2–3 days |
+| **4 – Automation** | Copilot/MCP/CLI tools, failover test, docs, FAQ, RBAC capabilities | 2 days |
+
+Total ≈ 8–11 days for full scope; an MVP (phases 1–2 plus a minimal UI) is achievable in ~4–5 days.
 
 ---
 
@@ -228,3 +270,4 @@ gantt
 | Date | Stigix Version | Author / Trigger | Summary of Changes |
 |---|---|---|---|
 | 2026-10-13 | `v3.0.3` | Stigix Core Team | Initial PRD creation for SD-WAN Overlay Multicast Validation Engine |
+| 2026-10-13 | `v3.0.3` | Stigix Core Team | Revision: aligned with real code layout (`custom-tcp-apps/`), fixed SSM and IGMP handling, added `run_id`, leak/failover scenarios, pre-flight, data model, API, RBAC mapping, acceptance criteria, risks, realistic estimates |
