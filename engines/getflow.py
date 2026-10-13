@@ -1527,10 +1527,24 @@ def build_full_topology(sdk: API, sites_data: dict, debug: bool = False, debug_t
                         vlink_source_device = source_device_name
                         if local_element_id and local_element_id in id_to_el_name:
                             vlink_source_device = id_to_el_name[local_element_id]
-                        
+
+                        # Cluster site deduplication:
+                        # If this VPN link terminates on a specific element, ensure it only attaches to that element
+                        if local_element_id and el_id and str(local_element_id) != str(el_id):
+                            continue
+                        if vlink_source_device and el_name and vlink_source_device not in ('Unknown', el_name):
+                            other_el_names = {e.get('name') for e in elements_by_site.get(site_id, []) if e.get('name') != el_name}
+                            if vlink_source_device in other_el_names:
+                                continue
+
                         # Apply strict UP/DOWN status from hydration logic
                         strict_status = vl.get('status', 'UNKNOWN')
-                        
+
+                        # Fallback for debug IPs so UI never renders N/A when known
+                        raw_src_ip = vl.get('source_ip') or vl.get('local_ip')
+                        resolved_src_ip = raw_src_ip if (raw_src_ip and raw_src_ip != 'N/A') else (wan_ip or 'N/A')
+                        resolved_peer_ip = vlink_peer_ip if (vlink_peer_ip and vlink_peer_ip != 'N/A') else (peer_wan_obj.get('ip') or 'N/A')
+
                         connections_out.append({
                             'peer_site_id': peer_site_id,
                             'peer_site_name': peer_site_name,
@@ -1547,8 +1561,8 @@ def build_full_topology(sdk: API, sites_data: dict, debug: bool = False, debug_t
                             'vpState': vl.get('state', 'unknown'),
                             # Debugging fields requested by user
                             'debug_vpn_id': vl.get('id', 'N/A'),
-                            'debug_source_ip': vl.get('source_ip') or vl.get('local_ip', 'N/A'),
-                            'debug_peer_ip': vlink_peer_ip or 'N/A',
+                            'debug_source_ip': resolved_src_ip,
+                            'debug_peer_ip': resolved_peer_ip,
                             # Runtime IP & Gateway
                             'ip': wan_ip,
                             'interface_ip': wan_ip,

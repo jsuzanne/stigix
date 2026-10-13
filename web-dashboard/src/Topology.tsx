@@ -1283,6 +1283,7 @@ function TopologyContent({ token }: TopologyProps) {
     const [selectedObject, setSelectedObject] = useState<any>(null);
     const [searchQuery, setSearchQuery] = useState('');
     const [pathFilter, setPathFilter] = useState<'ALL' | 'ACTIVE' | 'INACTIVE' | 'DOWN' | 'HUB'>('ALL');
+    const [overlaySearchQuery, setOverlaySearchQuery] = useState('');
     const [logicalViewSiteId, setLogicalViewSiteId] = useState<string | null>(null);
     const [bgLayout, setBgLayout] = useState<'flank' | 'top'>('flank');
     const [showBranchMesh, setShowBranchMesh] = useState<boolean>(false);
@@ -2170,6 +2171,10 @@ function TopologyContent({ token }: TopologyProps) {
                         if (selectedNetwork === 'MPLS' && !isMplsCircuit) return;
 
                         w.connections?.forEach((c: any, cIdx: number) => {
+                            // Cluster dual-ION deduplication:
+                            // If connection specifies source_device_name, ensure it matches current device d.device_name
+                            if (c.source_device_name && d.device_name && c.source_device_name !== 'Unknown' && d.device_name !== 'Unknown' && c.source_device_name !== d.device_name) return;
+
                             const isSourceSelected = site.site_id === logicalViewSiteId;
                             const isTargetSelected = c.peer_site_id === logicalViewSiteId;
 
@@ -2271,8 +2276,8 @@ function TopologyContent({ token }: TopologyProps) {
                                     peer_device_name: c.peer_device_name,
                                     peer_wan_interface: c.peer_wan_interface,
                                     debug_vpn_id: c.debug_vpn_id,
-                                    debug_source_ip: c.debug_source_ip || w.ip,
-                                    debug_peer_ip: c.debug_peer_ip,
+                                    debug_source_ip: (c.debug_source_ip && c.debug_source_ip !== 'N/A') ? c.debug_source_ip : (w.ip || c.ip || 'N/A'),
+                                    debug_peer_ip: (c.debug_peer_ip && c.debug_peer_ip !== 'N/A') ? c.debug_peer_ip : (c.peer_ip || 'N/A'),
                                     hideLabel: true,
                                     isOverlayTunnel: true,
                                     wan_network: isMplsCircuit ? 'MPLS' : 'INTERNET',
@@ -3931,9 +3936,9 @@ function TopologyContent({ token }: TopologyProps) {
                                         {/* Subline: Source IP ➔ Remote IP · VPN ID · Transport · Latency */}
                                         <div className="flex items-center gap-2 mt-1 pt-1 border-t border-border/40 text-[10px] font-mono text-text-muted">
                                             <div className="flex items-center gap-1">
-                                                <span className="text-text-primary font-bold">{hoveredEdge.data.debug_source_ip || hoveredEdge.data.ip || 'N/A'}</span>
+                                                <span className="text-text-primary font-bold">{(hoveredEdge.data.debug_source_ip && hoveredEdge.data.debug_source_ip !== 'N/A') ? hoveredEdge.data.debug_source_ip : (hoveredEdge.data.ip || 'N/A')}</span>
                                                 <span className="text-text-muted font-bold">➔</span>
-                                                <span className="text-text-primary font-bold">{hoveredEdge.data.debug_peer_ip || 'N/A'}</span>
+                                                <span className="text-text-primary font-bold">{(hoveredEdge.data.debug_peer_ip && hoveredEdge.data.debug_peer_ip !== 'N/A') ? hoveredEdge.data.debug_peer_ip : (hoveredEdge.data.peer_ip || 'N/A')}</span>
                                             </div>
                                             {hoveredEdge.data.debug_vpn_id && hoveredEdge.data.debug_vpn_id !== 'N/A' && (
                                                 <>
@@ -5035,26 +5040,61 @@ function TopologyContent({ token }: TopologyProps) {
                                                                 ))}
                                                             </div>
                                                         </div>
+
+                                                        {/* Quick search input for overlay tunnels */}
+                                                        <div className="relative">
+                                                            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-text-muted pointer-events-none" />
+                                                            <input
+                                                                type="text"
+                                                                placeholder="Search site, device, circuit, VPN ID, IP..."
+                                                                value={overlaySearchQuery}
+                                                                onChange={(e) => setOverlaySearchQuery(e.target.value)}
+                                                                className="w-full bg-card/40 border border-border/50 rounded-lg pl-8 pr-7 py-1 text-[10px] text-text-primary placeholder:text-text-muted/60 focus:outline-none focus:border-blue-500/60 focus:ring-1 focus:ring-blue-500/30 transition-all font-mono"
+                                                            />
+                                                            {overlaySearchQuery && (
+                                                                <button
+                                                                    onClick={() => setOverlaySearchQuery('')}
+                                                                    className="absolute right-2 top-1/2 -translate-y-1/2 text-text-muted hover:text-text-primary text-[10px] p-0.5 rounded"
+                                                                    title="Clear filter"
+                                                                >
+                                                                    ✕
+                                                                </button>
+                                                            )}
+                                                        </div>
+
                                                         <div className="w-full overflow-x-auto pb-2">
                                                             <table className="w-full text-left border-separate" style={{ borderSpacing: '0 4px' }}>
                                                                 <tbody className="text-[10px]">
                                                                     {(() => {
                                                                         // Aggregate all connections across all devices and interfaces into a rich format
                                                                         const paths: any[] = [];
+                                                                        const seenPaths = new Set<string>();
+
                                                                         selectedObject.devices?.forEach((d: any) => {
                                                                             d.wan_interfaces?.forEach((w: any) => {
                                                                                 w.connections?.forEach((c: any) => {
+                                                                                    // Cluster branch dual-ION deduplication:
+                                                                                    if (c.source_device_name && d.device_name && c.source_device_name !== 'Unknown' && d.device_name !== 'Unknown' && c.source_device_name !== d.device_name) {
+                                                                                        return;
+                                                                                    }
+
+                                                                                    const vpnKey = (c.debug_vpn_id && c.debug_vpn_id !== 'N/A')
+                                                                                        ? String(c.debug_vpn_id)
+                                                                                        : `${d.device_name}-${w.name}-${c.peer_site_name}-${c.peer_device_name}-${c.peer_wan_interface}`;
+                                                                                    if (seenPaths.has(vpnKey)) return;
+                                                                                    seenPaths.add(vpnKey);
+
                                                                                     paths.push({
                                                                                         sourceSite: selectedObject.name,
-                                                                                        sourceDevice: c.source_device_name || 'ION',
+                                                                                        sourceDevice: c.source_device_name || d.device_name || 'ION',
                                                                                         sourceCircuit: w.name || 'WAN',
                                                                                         peerSite: c.peer_site_name,
                                                                                         peerDevice: c.peer_device_name || 'ION',
                                                                                         destCircuit: c.peer_wan_interface || 'WAN',
                                                                                         network: w.wan_network || 'UNKNOWN',
                                                                                         vpnId: c.debug_vpn_id,
-                                                                                        srcIp: c.debug_source_ip,
-                                                                                        dstIp: c.debug_peer_ip,
+                                                                                        srcIp: (c.debug_source_ip && c.debug_source_ip !== 'N/A') ? c.debug_source_ip : (w.ip || c.ip || 'N/A'),
+                                                                                        dstIp: (c.debug_peer_ip && c.debug_peer_ip !== 'N/A') ? c.debug_peer_ip : (c.peer_ip || 'N/A'),
                                                                                         isRoutingActive: c.active,
                                                                                         isRoutingUsable: c.usable,
                                                                                         isLinkUp: c.link_up,
@@ -5065,13 +5105,27 @@ function TopologyContent({ token }: TopologyProps) {
                                                                         });
 
                                                                         const filteredPaths = paths.filter(p => {
-                                                                            if (pathFilter === 'ALL') return true;
-                                                                            if (pathFilter === 'ACTIVE') return p.isRoutingActive;
-                                                                            if (pathFilter === 'INACTIVE') return (p.isRoutingUsable || p.isLinkUp) && !p.isRoutingActive;
-                                                                            if (pathFilter === 'DOWN') return !p.isRoutingActive && !p.isRoutingUsable && !p.isLinkUp;
-                                                                            if (pathFilter === 'HUB') {
-                                                                                return siteHubStatus.get(p.peerSite) === true;
+                                                                            if (pathFilter === 'ACTIVE' && !p.isRoutingActive) return false;
+                                                                            if (pathFilter === 'INACTIVE' && !((p.isRoutingUsable || p.isLinkUp) && !p.isRoutingActive)) return false;
+                                                                            if (pathFilter === 'DOWN' && (p.isRoutingActive || p.isRoutingUsable || p.isLinkUp)) return false;
+                                                                            if (pathFilter === 'HUB' && siteHubStatus.get(p.peerSite) !== true) return false;
+
+                                                                            if (overlaySearchQuery.trim()) {
+                                                                                const q = overlaySearchQuery.toLowerCase().trim();
+                                                                                const matches =
+                                                                                    (p.sourceSite && p.sourceSite.toLowerCase().includes(q)) ||
+                                                                                    (p.sourceDevice && p.sourceDevice.toLowerCase().includes(q)) ||
+                                                                                    (p.sourceCircuit && p.sourceCircuit.toLowerCase().includes(q)) ||
+                                                                                    (p.peerSite && p.peerSite.toLowerCase().includes(q)) ||
+                                                                                    (p.peerDevice && p.peerDevice.toLowerCase().includes(q)) ||
+                                                                                    (p.destCircuit && p.destCircuit.toLowerCase().includes(q)) ||
+                                                                                    (p.vpnId && String(p.vpnId).toLowerCase().includes(q)) ||
+                                                                                    (p.srcIp && String(p.srcIp).toLowerCase().includes(q)) ||
+                                                                                    (p.dstIp && String(p.dstIp).toLowerCase().includes(q)) ||
+                                                                                    (p.network && p.network.toLowerCase().includes(q));
+                                                                                if (!matches) return false;
                                                                             }
+
                                                                             return true;
                                                                         });
 
@@ -5087,8 +5141,10 @@ function TopologyContent({ token }: TopologyProps) {
                                                                             else if (p.isRoutingUsable || p.isLinkUp) { tagBg = "bg-blue-500/10"; tagText = "text-blue-500"; label = "INACTIVE"; }
                                                                             else { tagBg = "bg-red-500/10"; tagText = "text-red-500"; label = "DOWN"; }
 
+                                                                            const rowTitle = `VPN ID: ${p.vpnId || 'N/A'}\n${p.sourceSite} (${p.srcIp || 'N/A'}) ➔ ${p.peerSite} (${p.dstIp || 'N/A'})\nNetwork: ${p.network}\nStatus: ${label}`;
+
                                                                             return (
-                                                                                <tr key={idx} className="group hover:bg-card/40 transition-colors">
+                                                                                <tr key={idx} title={rowTitle} className="group hover:bg-card/40 transition-colors cursor-pointer">
                                                                                     <td className="py-2 pl-3 rounded-l-lg border-y border-l bg-card/20 border-border/20 group-hover:border-border/60 text-right whitespace-nowrap min-w-[50px]">
                                                                                         <div className="flex items-center justify-end gap-1 text-[9px] font-mono">
                                                                                             <span className="text-text-primary hidden lg:inline">{p.sourceSite}</span>
@@ -5141,10 +5197,14 @@ function TopologyContent({ token }: TopologyProps) {
                                                                 const isCircuitMpls = (w.wan_network || '').toUpperCase().includes('MPLS') || (w.name || '').toUpperCase().includes('MPLS');
                                                                 if (isTargetMpls ? isCircuitMpls : !isCircuitMpls) {
                                                                     (w.connections || []).forEach((c: any) => {
+                                                                        // Cluster branch dual-ION deduplication:
+                                                                        if (c.source_device_name && d.device_name && c.source_device_name !== 'Unknown' && d.device_name !== 'Unknown' && c.source_device_name !== d.device_name) {
+                                                                            return;
+                                                                        }
                                                                         allNetworkPaths.push({
                                                                             sourceSite: s.site_name,
                                                                             sourceSiteId: s.site_id,
-                                                                            sourceDevice: d.device_name,
+                                                                            sourceDevice: c.source_device_name || d.device_name || 'ION',
                                                                             sourceCircuit: w.name || 'WAN',
                                                                             peerSite: c.peer_site_name,
                                                                             peerSiteId: c.peer_site_id,
@@ -5152,8 +5212,8 @@ function TopologyContent({ token }: TopologyProps) {
                                                                             destCircuit: c.peer_wan_interface || 'WAN',
                                                                             network: targetNetworkName,
                                                                             vpnId: c.debug_vpn_id,
-                                                                            srcIp: c.debug_source_ip || w.ip,
-                                                                            dstIp: c.debug_peer_ip,
+                                                                            srcIp: (c.debug_source_ip && c.debug_source_ip !== 'N/A') ? c.debug_source_ip : (w.ip || c.ip || 'N/A'),
+                                                                            dstIp: (c.debug_peer_ip && c.debug_peer_ip !== 'N/A') ? c.debug_peer_ip : (c.peer_ip || 'N/A'),
                                                                             isRoutingActive: c.active,
                                                                             isRoutingUsable: c.usable,
                                                                             isLinkUp: c.link_up,
@@ -5180,11 +5240,16 @@ function TopologyContent({ token }: TopologyProps) {
                                                         return true;
                                                     }).filter(p => {
                                                         if (!networkTunnelSearch) return true;
-                                                        const q = networkTunnelSearch.toLowerCase();
+                                                        const q = networkTunnelSearch.toLowerCase().trim();
                                                         return p.sourceSite.toLowerCase().includes(q) ||
                                                                p.peerSite.toLowerCase().includes(q) ||
+                                                               (p.sourceDevice && p.sourceDevice.toLowerCase().includes(q)) ||
+                                                               (p.peerDevice && p.peerDevice.toLowerCase().includes(q)) ||
                                                                p.sourceCircuit.toLowerCase().includes(q) ||
-                                                               p.destCircuit.toLowerCase().includes(q);
+                                                               p.destCircuit.toLowerCase().includes(q) ||
+                                                               (p.vpnId && String(p.vpnId).toLowerCase().includes(q)) ||
+                                                               (p.srcIp && String(p.srcIp).toLowerCase().includes(q)) ||
+                                                               (p.dstIp && String(p.dstIp).toLowerCase().includes(q));
                                                     });
 
                                                     return (
@@ -5313,7 +5378,7 @@ function TopologyContent({ token }: TopologyProps) {
                                                                                         setLogicalViewSiteId(p.sourceSiteId);
                                                                                     }}
                                                                                     className="bg-card-secondary/30 hover:bg-card-secondary/60 border border-border/50 hover:border-blue-500/40 p-2 rounded-xl transition-all cursor-pointer group space-y-1"
-                                                                                    title="Click to focus this site on canvas"
+                                                                                    title={`Click to focus site on canvas\nVPN ID: ${p.vpnId || 'N/A'}\n${p.sourceSite} (${p.srcIp || 'N/A'}) ➔ ${p.peerSite} (${p.dstIp || 'N/A'})\nNetwork: ${p.network}`}
                                                                                 >
                                                                                     {/* Row 1: Source Site ➔ Peer Site + Status Badge */}
                                                                                     <div className="flex items-center justify-between gap-2">
