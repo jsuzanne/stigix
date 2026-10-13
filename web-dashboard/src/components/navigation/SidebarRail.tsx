@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import type { NavDomainConfig } from '../../config/navigationConfig';
 import { STIGIX_NAVIGATION_DOMAINS } from '../../config/navigationConfig';
 import { cn } from '../../lib/utils';
-import { Bot, User, Sun, Moon, UserPlus, Key, LogOut } from 'lucide-react';
+import { Bot, User, Sun, Moon, UserPlus, Key, LogOut, Search } from 'lucide-react';
 import { SidebarFlyout } from './SidebarFlyout';
 
 interface SidebarRailProps {
@@ -18,6 +18,8 @@ interface SidebarRailProps {
     activeTasks?: Record<string, boolean>;
     copilotDrawerOpen?: boolean;
     onToggleCopilot?: () => void;
+    onOpenSearch?: () => void;
+    isSearchOpen?: boolean;
     username?: string | null;
     theme?: 'dark' | 'light';
     onToggleTheme?: () => void;
@@ -35,6 +37,8 @@ export const SidebarRail: React.FC<SidebarRailProps> = ({
     activeTasks = {},
     copilotDrawerOpen,
     onToggleCopilot,
+    onOpenSearch,
+    isSearchOpen = false,
     username = 'admin',
     theme = 'dark',
     onToggleTheme,
@@ -148,7 +152,8 @@ export const SidebarRail: React.FC<SidebarRailProps> = ({
                         );
 
                         return (
-                            <div key={domain.id} className="relative group/rail flex items-center justify-center">
+                            <React.Fragment key={domain.id}>
+                                <div className="relative group/rail flex items-center justify-center">
                                 <button
                                     onClick={() => handleDomainClick(domain)}
                                     onMouseEnter={() => handleMouseEnterDomain(domain)}
@@ -194,6 +199,38 @@ export const SidebarRail: React.FC<SidebarRailProps> = ({
                                     </div>
                                 )}
                             </div>
+
+                            {domain.id === 'home' && (
+                                <React.Fragment key="rail-search-trigger">
+                                    <div className="relative group/rail flex items-center justify-center">
+                                        <button
+                                            onClick={() => {
+                                                setActiveDomain(null);
+                                                setIsPinned(false);
+                                                onOpenSearch?.();
+                                            }}
+                                            title="Search navigation & tools (⌘K)"
+                                            className={cn(
+                                                "w-10 h-10 rounded-xl flex items-center justify-center transition-all duration-150 relative cursor-pointer",
+                                                isSearchOpen
+                                                    ? "bg-blue-600/15 dark:bg-blue-600/25 text-blue-600 dark:text-blue-400 border border-blue-400 dark:border-blue-500/50 shadow-md shadow-blue-500/20"
+                                                    : "text-slate-500 dark:text-text-muted hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-[#161f36]/80"
+                                            )}
+                                        >
+                                            <Search size={17} className="transition-transform group-hover/rail:scale-110" />
+                                        </button>
+
+                                        {!isFlyoutOpen && !isSearchOpen && (
+                                            <div className="absolute left-full ml-2 px-2.5 py-1 bg-slate-900 dark:bg-[#0f172a] text-white text-[11px] font-bold rounded-lg border border-slate-700 dark:border-[#1e293b] shadow-2xl opacity-0 scale-95 pointer-events-none group-hover/rail:opacity-100 group-hover/rail:scale-100 transition-all z-50 whitespace-nowrap flex items-center gap-1.5">
+                                                <span>Search Menus</span>
+                                                <kbd className="px-1.5 py-0.2 text-[9px] font-mono bg-slate-800 dark:bg-slate-700/60 rounded border border-slate-600 text-slate-300">⌘K</kbd>
+                                            </div>
+                                        )}
+                                    </div>
+                                    <div className="w-5 h-[1px] bg-slate-200 dark:bg-[#1e293b]/70 my-0.5" />
+                                </React.Fragment>
+                            )}
+                        </React.Fragment>
                         );
                     })}
                 </div>

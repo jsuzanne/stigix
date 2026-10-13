@@ -23,6 +23,7 @@ import { SystemHealthModal } from './components/health/SystemHealthModal';
 import { TopLoadingBar } from './components/common/TopLoadingBar';
 import { MagicJoinModal } from './components/MagicJoinModal';
 import { SidebarRail } from './components/navigation/SidebarRail';
+import { SearchPaletteModal } from './components/navigation/SearchPaletteModal';
 import { HomeOverview } from './components/navigation/HomeOverview';
 import { Activity, Server, AlertCircle, LayoutDashboard, Settings, LogOut, Key, UserPlus, BarChart3, Wifi, Shield, ChevronDown, ChevronUp, Clock, CheckCircle, XCircle, Play, Pause, Phone, Gauge, Network, Plus, Zap, Monitor, Cpu, Sun, Moon, Globe, Terminal, Sliders, Layers, Code, Bot, Sparkles, Binary, Radio } from 'lucide-react';
 import { clsx } from 'clsx';
@@ -267,6 +268,7 @@ export default function App() {
   const [features, setFeatures] = useState<{ xfr_enabled: boolean }>({ xfr_enabled: false });
   const [initialSettingsTab, setInitialSettingsTab] = useState<any>(null);
   const [copilotDrawerOpen, setCopilotDrawerOpen] = useState(false);
+  const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [copilotConfig, setCopilotConfig] = useState<{ enabled: boolean; featureEnabled?: boolean; hasKey: boolean } | null>(null);
   const [isLeader, setIsLeader] = useState<boolean>(false);
   // Tracks whether a remote peer is active (set via PeerContextProvider callback).
@@ -318,20 +320,27 @@ export default function App() {
     } catch (e) { }
   };
 
-  // Global shortcut to toggle AI Copilot drawer (Cmd+J / Ctrl+J or Escape to close)
+  // Global shortcuts: Cmd+K / Ctrl+K for Search Palette, Cmd+J / Ctrl+J for AI Copilot
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && (e.key === 'j' || e.key === 'J')) {
+      if ((e.metaKey || e.ctrlKey) && (e.key === 'k' || e.key === 'K')) {
+        e.preventDefault();
+        setIsSearchOpen(prev => !prev);
+      } else if ((e.metaKey || e.ctrlKey) && (e.key === 'j' || e.key === 'J')) {
         if (!copilotConfig?.featureEnabled || !copilotConfig?.hasKey) return; // Only toggle if feature is enabled and key is configured
         e.preventDefault();
         setCopilotDrawerOpen(prev => !prev);
-      } else if (e.key === 'Escape' && copilotDrawerOpen) {
-        setCopilotDrawerOpen(false);
+      } else if (e.key === 'Escape') {
+        if (isSearchOpen) {
+          setIsSearchOpen(false);
+        } else if (copilotDrawerOpen) {
+          setCopilotDrawerOpen(false);
+        }
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [copilotDrawerOpen, copilotConfig?.featureEnabled, copilotConfig?.hasKey]);
+  }, [isSearchOpen, copilotDrawerOpen, copilotConfig?.featureEnabled, copilotConfig?.hasKey]);
 
   // --- Theme Management ---
   const [theme, setTheme] = useState<'light' | 'dark'>(() => {
@@ -1109,6 +1118,8 @@ export default function App() {
         activeTasks={activeTasks}
         copilotDrawerOpen={copilotDrawerOpen}
         onToggleCopilot={() => setCopilotDrawerOpen(prev => !prev)}
+        onOpenSearch={() => setIsSearchOpen(true)}
+        isSearchOpen={isSearchOpen}
         username={username}
         theme={theme}
         onToggleTheme={toggleTheme}
@@ -1784,15 +1795,14 @@ export default function App() {
         <button
           onClick={() => setCopilotDrawerOpen(true)}
           title="Open Stigix AI Copilot Assistant (⌘J)"
-          className="fixed bottom-6 right-6 z-40 bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 hover:from-blue-500 hover:to-indigo-500 text-white shadow-2xl shadow-indigo-600/30 border border-white/20 rounded-full px-4 py-2.5 flex items-center gap-2.5 text-xs font-black tracking-wider transition-all duration-300 hover:scale-105 active:scale-95 group backdrop-blur-md"
+          className="fixed bottom-4 right-4 z-20 bg-slate-900/90 hover:bg-slate-800 text-slate-300 hover:text-white border border-slate-700/70 hover:border-indigo-500/50 rounded-full px-2.5 py-1.5 flex items-center gap-1.5 text-[11px] font-semibold tracking-tight transition-all duration-150 hover:scale-105 active:scale-95 group backdrop-blur-md shadow-lg shadow-black/40"
         >
-          <div className="relative">
-            <Bot size={18} className="text-white group-hover:rotate-12 transition-transform" />
-            <span className="absolute -top-1 -right-1 w-2 h-2 bg-emerald-400 rounded-full animate-ping" />
-            <span className="absolute -top-1 -right-1 w-2 h-2 bg-emerald-400 rounded-full" />
+          <div className="relative flex items-center justify-center">
+            <Bot size={14} className="text-indigo-400 group-hover:text-indigo-300 transition-colors" />
+            <span className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 bg-emerald-400 rounded-full" />
           </div>
-          <span>AI Copilot</span>
-          <span className="px-1.5 py-0.5 rounded text-[9px] font-mono bg-white/20 text-white/90 border border-white/20">⌘J</span>
+          <span>Copilot</span>
+          <span className="px-1 py-0.2 rounded text-[8px] font-mono bg-white/10 text-slate-400 group-hover:text-white border border-white/10">⌘J</span>
         </button>
       )}
 
@@ -1842,6 +1852,22 @@ export default function App() {
         isOpen={showMagicJoinModal}
         onClose={() => setShowMagicJoinModal(false)}
         token={token}
+      />
+
+      <SearchPaletteModal
+        isOpen={isSearchOpen}
+        onClose={() => setIsSearchOpen(false)}
+        onNavigate={handleNavigate}
+        isLeader={isLeader}
+        features={{
+          xfr_enabled: features.xfr_enabled,
+          pcap_enabled: isPcapEnabled,
+          copilot_enabled: Boolean(copilotConfig?.featureEnabled && copilotConfig?.hasKey)
+        }}
+        onOpenMagicJoin={() => setShowMagicJoinModal(true)}
+        onToggleCopilot={() => setCopilotDrawerOpen(prev => !prev)}
+        theme={theme}
+        onToggleTheme={toggleTheme}
       />
     </div>
     </PeerContextProvider>

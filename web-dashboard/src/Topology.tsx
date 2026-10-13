@@ -196,7 +196,7 @@ const SiteEdge = ({
 
     return (
         <>
-            <BaseEdge path={edgePath} markerEnd={markerEnd} style={{ ...style, stroke: strokeColor }} />
+            <BaseEdge path={edgePath} markerEnd={markerEnd} style={{ ...style, stroke: strokeColor }} interactionWidth={24} />
             {showLabel && (
                 <EdgeLabelRenderer>
                     <div
@@ -261,7 +261,7 @@ const ArchedBridgeEdge = ({
 
     return (
         <>
-            <BaseEdge path={edgePath} markerEnd={markerEnd} style={{ ...style, stroke: strokeColor }} />
+            <BaseEdge path={edgePath} markerEnd={markerEnd} style={{ ...style, stroke: strokeColor }} interactionWidth={24} />
             {showLabel && (
                 <EdgeLabelRenderer>
                     <div
@@ -1283,6 +1283,7 @@ function TopologyContent({ token }: TopologyProps) {
     const [selectedObject, setSelectedObject] = useState<any>(null);
     const [searchQuery, setSearchQuery] = useState('');
     const [pathFilter, setPathFilter] = useState<'ALL' | 'ACTIVE' | 'INACTIVE' | 'DOWN' | 'HUB'>('ALL');
+    const [overlaySearchQuery, setOverlaySearchQuery] = useState('');
     const [logicalViewSiteId, setLogicalViewSiteId] = useState<string | null>(null);
     const [bgLayout, setBgLayout] = useState<'flank' | 'top'>('flank');
     const [showBranchMesh, setShowBranchMesh] = useState<boolean>(false);
@@ -1323,6 +1324,7 @@ function TopologyContent({ token }: TopologyProps) {
     const [diagnosticsSearch, setDiagnosticsSearch] = useState('');
     const [tracerouteTarget, setTracerouteTarget] = useState<string | null>(null);
     const [inspectedLink, setInspectedLink] = useState<any | null>(null);
+    const [hoveredEdge, setHoveredEdge] = useState<{ data: any; x: number; y: number } | null>(null);
     const [popTunnelFilter, setPopTunnelFilter] = useState<'ALL' | 'ACTIVE' | 'BACKUP' | 'DOWN'>('ALL');
     const [saseTunnelTypeFilter, setSaseTunnelTypeFilter] = useState<'ALL' | 'ACTIVE' | 'BACKUP' | 'DOWN'>('ALL');
     const [selectedCircuit, setSelectedCircuit] = useState<any | null>(null);
@@ -1355,6 +1357,7 @@ function TopologyContent({ token }: TopologyProps) {
         setSelectedNetwork(null);
         setLogicalViewSiteId(null);
         setInspectedLink(null);
+        setHoveredEdge(null);
         setSelectedCircuit(null);
         setSelectedObject(null);
         setEdges([]); // Clean React Flow canvas edges immediately to avoid stale cross-mode edge persistence
@@ -1747,6 +1750,47 @@ function TopologyContent({ token }: TopologyProps) {
         return map;
     }, [topology, effectiveBgAsHub]);
 
+    // Map site/device/wan-interface to WAN IP address for resolving remote peer endpoints
+    const peerWanIpMap = useMemo(() => {
+        const map = new Map<string, string>();
+        if (!topology?.sites) return map;
+        topology.sites.forEach((s: any) => {
+            const siteName = (s.site_name || '').toLowerCase().trim();
+            const siteId = s.site_id;
+            (s.devices || []).forEach((d: any) => {
+                const devName = (d.device_name || '').toLowerCase().trim();
+                const devId = d.id || d.element_id;
+                (d.wan_interfaces || []).forEach((w: any) => {
+                    const ip = w.ip || w.public_ip;
+                    if (!ip || ip === 'N/A') return;
+                    const wanName = (w.name || '').toLowerCase().trim();
+                    const wanLabel = (w.circuit_label || '').toLowerCase().trim();
+                    const wanId = w.id;
+
+                    if (siteName && devName && wanName) map.set(`${siteName}:${devName}:${wanName}`, ip);
+                    if (siteName && devName && wanLabel) map.set(`${siteName}:${devName}:${wanLabel}`, ip);
+                    if (siteName && wanName) map.set(`${siteName}:${wanName}`, ip);
+                    if (siteName && wanLabel) map.set(`${siteName}:${wanLabel}`, ip);
+                    if (siteId && wanId) map.set(`${siteId}:${wanId}`, ip);
+                    if (devId && wanId) map.set(`${devId}:${wanId}`, ip);
+                    if (wanId) map.set(String(wanId), ip);
+                });
+            });
+        });
+        return map;
+    }, [topology]);
+
+    const resolveWanIp = useCallback((siteName?: string, devName?: string, wanName?: string, fallback?: string): string => {
+        if (fallback && fallback !== 'N/A' && fallback !== '') return fallback;
+        if (!siteName || !wanName) return fallback || 'N/A';
+        const s = siteName.toLowerCase().trim();
+        const d = (devName || '').toLowerCase().trim();
+        const w = wanName.toLowerCase().trim();
+        if (d && peerWanIpMap.has(`${s}:${d}:${w}`)) return peerWanIpMap.get(`${s}:${d}:${w}`)!;
+        if (peerWanIpMap.has(`${s}:${w}`)) return peerWanIpMap.get(`${s}:${w}`)!;
+        return fallback || 'N/A';
+    }, [peerWanIpMap]);
+
     const isHubLike = useCallback((s: any) => {
         if (!s) return false;
         // Optimization: if we have the map and the name, use it. Otherwise compute.
@@ -1760,6 +1804,42 @@ function TopologyContent({ token }: TopologyProps) {
 
     const processTopology = useCallback((data: any) => {
         if (!data.sites) return;
+
+        // Precompute local WAN IP lookup map from data.sites
+        const localWanIpMap = new Map<string, string>();
+        data.sites.forEach((s: any) => {
+            const sName = (s.site_name || '').toLowerCase().trim();
+            const sId = s.site_id;
+            (s.devices || []).forEach((d: any) => {
+                const dName = (d.device_name || '').toLowerCase().trim();
+                const dId = d.id || d.element_id;
+                (d.wan_interfaces || []).forEach((w: any) => {
+                    const ip = w.ip || w.public_ip;
+                    if (!ip || ip === 'N/A') return;
+                    const wName = (w.name || '').toLowerCase().trim();
+                    const wLabel = (w.circuit_label || '').toLowerCase().trim();
+                    const wId = w.id;
+                    if (sName && dName && wName) localWanIpMap.set(`${sName}:${dName}:${wName}`, ip);
+                    if (sName && dName && wLabel) localWanIpMap.set(`${sName}:${dName}:${wLabel}`, ip);
+                    if (sName && wName) localWanIpMap.set(`${sName}:${wName}`, ip);
+                    if (sName && wLabel) localWanIpMap.set(`${sName}:${wLabel}`, ip);
+                    if (sId && wId) localWanIpMap.set(`${sId}:${wId}`, ip);
+                    if (dId && wId) localWanIpMap.set(`${dId}:${wId}`, ip);
+                    if (wId) localWanIpMap.set(String(wId), ip);
+                });
+            });
+        });
+
+        const lookupLocalPeerIp = (peerSite?: string, peerDev?: string, peerWan?: string, curIp?: string) => {
+            if (curIp && curIp !== 'N/A' && curIp !== '') return curIp;
+            if (!peerSite || !peerWan) return curIp || 'N/A';
+            const s = peerSite.toLowerCase().trim();
+            const d = (peerDev || '').toLowerCase().trim();
+            const w = peerWan.toLowerCase().trim();
+            if (d && localWanIpMap.has(`${s}:${d}:${w}`)) return localWanIpMap.get(`${s}:${d}:${w}`)!;
+            if (localWanIpMap.has(`${s}:${w}`)) return localWanIpMap.get(`${s}:${w}`)!;
+            return curIp || 'N/A';
+        };
 
         // Apply Visibility Filter
         const filteredSites = visibleSiteIds
@@ -2168,6 +2248,10 @@ function TopologyContent({ token }: TopologyProps) {
                         if (selectedNetwork === 'MPLS' && !isMplsCircuit) return;
 
                         w.connections?.forEach((c: any, cIdx: number) => {
+                            // Cluster dual-ION deduplication:
+                            // If connection specifies source_device_name, ensure it matches current device d.device_name
+                            if (c.source_device_name && d.device_name && c.source_device_name !== 'Unknown' && d.device_name !== 'Unknown' && c.source_device_name !== d.device_name) return;
+
                             const isSourceSelected = site.site_id === logicalViewSiteId;
                             const isTargetSelected = c.peer_site_id === logicalViewSiteId;
 
@@ -2245,6 +2329,8 @@ function TopologyContent({ token }: TopologyProps) {
                                 targetHandle: `target-circuit:${c.peer_device_name}:${c.peer_wan_interface}`,
                                 type: edgeType,
                                 animated,
+                                interactionWidth: 24,
+                                className: 'cursor-pointer',
                                 style: {
                                     stroke: strokeColor,
                                     strokeWidth: c.active ? 4 : 2,
@@ -2256,9 +2342,19 @@ function TopologyContent({ token }: TopologyProps) {
                                     interface_ip: w.ip || c.interface_ip,
                                     gateway: w.gateway || c.gateway,
                                     isMplsCircuit,
+                                    sourceSiteId: site.site_id,
                                     sourceSiteName: site.site_name,
                                     sourceCircuitName: w.name,
+                                    sourceCircuitLabel: w.circuit_label || w.name,
                                     sourceDeviceName: d.device_name,
+                                    sourceWan: w,
+                                    peer_site_id: c.peer_site_id,
+                                    peer_site_name: c.peer_site_name,
+                                    peer_device_name: c.peer_device_name,
+                                    peer_wan_interface: c.peer_wan_interface,
+                                    debug_vpn_id: c.debug_vpn_id,
+                                    debug_source_ip: (c.debug_source_ip && c.debug_source_ip !== 'N/A') ? c.debug_source_ip : (w.ip || c.ip || 'N/A'),
+                                    debug_peer_ip: lookupLocalPeerIp(c.peer_site_name, c.peer_device_name, c.peer_wan_interface, (c.debug_peer_ip && c.debug_peer_ip !== 'N/A') ? c.debug_peer_ip : c.peer_ip),
                                     hideLabel: true,
                                     isOverlayTunnel: true,
                                     wan_network: isMplsCircuit ? 'MPLS' : 'INTERNET',
@@ -2519,10 +2615,12 @@ function TopologyContent({ token }: TopologyProps) {
             setSelectedNetwork(null);
             setLogicalViewSiteId(prev => prev === nodeData.site_id ? null : nodeData.site_id);
             setSelectedObject({ type: 'node', ...nodeData });
+            setHoveredEdge(null);
             return;
         }
 
         setSelectedObject({ type: 'node', ...nodeData });
+        setHoveredEdge(null);
         if (node.type === 'underlayGateway' && nodeData?.resolution) {
             setUnderlayDrawerResolution(nodeData.resolution);
         } else if (node.type === 'vyosRouter' && Array.isArray(nodeData?.resolutions) && nodeData.resolutions.length > 0) {
@@ -2535,9 +2633,31 @@ function TopologyContent({ token }: TopologyProps) {
         setInspectedLink(edgeData);
         setSelectedObject(null);
         setSelectedCircuit(null);
+        setHoveredEdge(null);
         if (edgeData?.resolution) {
             setUnderlayDrawerResolution(edgeData.resolution);
         }
+    }, []);
+
+    const onEdgeMouseEnter = useCallback((event: React.MouseEvent, edge: Edge) => {
+        if (!edge.data) return;
+        setHoveredEdge({
+            data: edge.data,
+            x: event.clientX,
+            y: event.clientY
+        });
+    }, []);
+
+    const onEdgeMouseMove = useCallback((event: React.MouseEvent, edge: Edge) => {
+        if (!edge.data) return;
+        setHoveredEdge(prev => {
+            if (!prev) return { data: edge.data, x: event.clientX, y: event.clientY };
+            return { ...prev, x: event.clientX, y: event.clientY };
+        });
+    }, []);
+
+    const onEdgeMouseLeave = useCallback(() => {
+        setHoveredEdge(null);
     }, []);
 
     const handleRefresh = async () => {
@@ -3381,6 +3501,9 @@ function TopologyContent({ token }: TopologyProps) {
                         onEdgesChange={onEdgesChange}
                         onNodeClick={onNodeClick}
                         onEdgeClick={onEdgeClick}
+                        onEdgeMouseEnter={onEdgeMouseEnter}
+                        onEdgeMouseMove={onEdgeMouseMove}
+                        onEdgeMouseLeave={onEdgeMouseLeave}
                         onPaneClick={() => {
                             setSelectedObject(null);
                             setSelectedCircuit(null);
@@ -3388,6 +3511,7 @@ function TopologyContent({ token }: TopologyProps) {
                             setLogicalViewSiteId(null);
                             setShowUnderlayPanel(false);
                             setInspectedLink(null);
+                            setHoveredEdge(null);
                         }}
                         minZoom={0.12}
                         maxZoom={2.5}
@@ -3833,85 +3957,359 @@ function TopologyContent({ token }: TopologyProps) {
                             </div>
                         </Panel>
 
-                        {/* Floating Link Inspector Card (Zero Canvas Push) */}
-                        {inspectedLink && (
-                            <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-40 bg-card/95 backdrop-blur-xl border border-border/80 rounded-2xl shadow-2xl p-3.5 w-[380px] max-w-[92vw] animate-in fade-in slide-in-from-bottom-3 duration-200 pointer-events-auto">
-                                <div className="flex items-center justify-between pb-2 border-b border-border/60">
-                                    <div className="flex items-center gap-2 min-w-0">
-                                        <div className={cn(
-                                            "p-1.5 rounded-lg shrink-0",
-                                            inspectedLink.wan_network === 'MPLS' || inspectedLink.isCircuitMpls || inspectedLink.isMplsCircuit
-                                                ? "bg-purple-500/20 text-purple-400"
-                                                : "bg-sky-500/20 text-sky-400"
-                                        )}>
-                                            {inspectedLink.isOverlayTunnel ? <Share2 size={14} /> : inspectedLink.service_endpoint_name ? <Shield size={14} /> : <Route size={14} />}
-                                        </div>
-                                        <div className="min-w-0">
-                                            <h4 className="text-xs font-black text-text-primary tracking-tight truncate">
-                                                {inspectedLink.name || inspectedLink.label || inspectedLink.circuit_name || 'Circuit Link'}
-                                            </h4>
-                                            <p className="text-[9px] text-text-muted font-bold tracking-wider truncate">
-                                                {inspectedLink.sourceSiteName || inspectedLink.sourceSite ? (
-                                                    `${inspectedLink.sourceSiteName || inspectedLink.sourceSite} ➔ ${inspectedLink.peer_site_name || inspectedLink.peerSite || 'Peer'}`
-                                                ) : (
-                                                    `${inspectedLink.site_name || 'Site'} · ${(inspectedLink.wan_network || inspectedLink.network || 'WAN').toUpperCase()}`
+                        {/* Floating Edge Hover Tooltip */}
+                        {hoveredEdge && hoveredEdge.data && (
+                            <div
+                                className="fixed z-50 pointer-events-none transition-transform duration-75 ease-out select-none"
+                                style={{
+                                    left: `${Math.max(240, Math.min(window.innerWidth - 240, hoveredEdge.x))}px`,
+                                    top: `${hoveredEdge.y}px`,
+                                    transform: hoveredEdge.y > 150 ? 'translate(-50%, -100%) translateY(-14px)' : 'translate(-50%, 0) translateY(18px)',
+                                }}
+                            >
+                                {hoveredEdge.data.isOverlayTunnel ? (
+                                    <div className="bg-card/95 backdrop-blur-xl border border-border/80 shadow-2xl rounded-2xl px-3.5 py-2 text-xs pointer-events-none whitespace-nowrap min-w-max">
+                                        {/* Main Row: <Src Site> : <Src Circuit> <= [STATE] => <Dest Circuit> : <Dest Site> */}
+                                        <div className="flex items-center gap-2 font-mono">
+                                            {/* Source Endpoint */}
+                                            <div className="flex items-center gap-1.5 text-text-primary">
+                                                <span className="font-black text-text-primary">{hoveredEdge.data.sourceSiteName || 'Source'}</span>
+                                                {hoveredEdge.data.sourceDeviceName && hoveredEdge.data.sourceDeviceName !== hoveredEdge.data.sourceSiteName && (
+                                                    <span className="text-[10px] text-text-muted">({hoveredEdge.data.sourceDeviceName})</span>
                                                 )}
-                                            </p>
+                                                <span className="px-1.5 py-0.5 rounded bg-card-secondary/80 border border-border/50 text-[10px] text-cyan-400 font-bold">
+                                                    {hoveredEdge.data.sourceCircuitLabel || hoveredEdge.data.sourceCircuitName || 'WAN'}
+                                                </span>
+                                            </div>
+
+                                            {/* State Badge with Directional Arrows */}
+                                            <div className={cn(
+                                                "px-2 py-0.5 rounded-full border text-[9px] font-black uppercase tracking-wider flex items-center gap-1",
+                                                hoveredEdge.data.tunnelState === 'ACTIVE' && "bg-emerald-500/20 text-emerald-400 border-emerald-500/40 shadow-[0_0_10px_rgba(16,185,129,0.3)]",
+                                                hoveredEdge.data.tunnelState === 'INACTIVE' && "bg-blue-500/20 text-blue-400 border-blue-500/40",
+                                                hoveredEdge.data.tunnelState === 'DOWN' && "bg-rose-500/20 text-rose-400 border-rose-500/40"
+                                            )}>
+                                                <span className="text-[9px]">⇐</span>
+                                                <span className={cn(
+                                                    "w-1.5 h-1.5 rounded-full",
+                                                    hoveredEdge.data.tunnelState === 'ACTIVE' ? "bg-emerald-400 animate-pulse" : hoveredEdge.data.tunnelState === 'INACTIVE' ? "bg-blue-400" : "bg-rose-400"
+                                                )} />
+                                                <span>{hoveredEdge.data.tunnelState || (hoveredEdge.data.active ? 'ACTIVE' : hoveredEdge.data.status === 'DOWN' ? 'DOWN' : 'INACTIVE')}</span>
+                                                <span className="text-[9px]">⇒</span>
+                                            </div>
+
+                                            {/* Destination Endpoint */}
+                                            <div className="flex items-center gap-1.5 text-text-primary">
+                                                <span className="px-1.5 py-0.5 rounded bg-card-secondary/80 border border-border/50 text-[10px] text-cyan-400 font-bold">
+                                                    {hoveredEdge.data.peer_wan_interface || 'WAN'}
+                                                </span>
+                                                {hoveredEdge.data.peer_device_name && hoveredEdge.data.peer_device_name !== hoveredEdge.data.peer_site_name && (
+                                                    <span className="text-[10px] text-text-muted">({hoveredEdge.data.peer_device_name})</span>
+                                                )}
+                                                <span className="font-black text-text-primary">{hoveredEdge.data.peer_site_name || 'Dest'}</span>
+                                            </div>
+                                        </div>
+
+                                        {/* Subline: Source IP ➔ Remote IP · VPN ID · Transport · Latency */}
+                                        <div className="flex items-center gap-2 mt-1 pt-1 border-t border-border/40 text-[10px] font-mono text-text-muted">
+                                            <div className="flex items-center gap-1">
+                                                <span className="text-text-primary font-bold">{(hoveredEdge.data.debug_source_ip && hoveredEdge.data.debug_source_ip !== 'N/A') ? hoveredEdge.data.debug_source_ip : (hoveredEdge.data.ip || 'N/A')}</span>
+                                                <span className="text-text-muted font-bold">➔</span>
+                                                <span className="text-text-primary font-bold">{(hoveredEdge.data.debug_peer_ip && hoveredEdge.data.debug_peer_ip !== 'N/A') ? hoveredEdge.data.debug_peer_ip : (hoveredEdge.data.peer_ip || 'N/A')}</span>
+                                            </div>
+                                            {hoveredEdge.data.debug_vpn_id && hoveredEdge.data.debug_vpn_id !== 'N/A' && (
+                                                <>
+                                                    <span className="text-border">·</span>
+                                                    <span>VPN: <span className="text-text-secondary font-bold">{hoveredEdge.data.debug_vpn_id}</span></span>
+                                                </>
+                                            )}
+                                            <span className="text-border">·</span>
+                                            <span className={cn(
+                                                "font-bold uppercase tracking-wider",
+                                                hoveredEdge.data.wan_network === 'MPLS' || hoveredEdge.data.isMplsCircuit ? "text-purple-400" : "text-sky-400"
+                                            )}>
+                                                {hoveredEdge.data.wan_network || (hoveredEdge.data.isMplsCircuit ? 'MPLS' : 'INTERNET')}
+                                            </span>
+                                            {hoveredEdge.data.latency && (
+                                                <>
+                                                    <span className="text-border">·</span>
+                                                    <span className="text-emerald-400 font-bold">{hoveredEdge.data.latency}ms</span>
+                                                </>
+                                            )}
                                         </div>
                                     </div>
-                                    <button
-                                        onClick={() => setInspectedLink(null)}
-                                        className="p-1 hover:bg-card-secondary rounded-lg text-text-muted hover:text-text-primary transition-colors cursor-pointer shrink-0"
-                                        title="Close"
-                                    >
-                                        <X size={14} />
-                                    </button>
-                                </div>
-
-                                {/* Dynamic Key Specs */}
-                                <div className="grid grid-cols-2 gap-2 my-2 text-xs font-mono">
-                                    <div className="bg-card-secondary/40 p-2 rounded-xl border border-border/40">
-                                        <div className="text-[8px] font-black text-text-muted uppercase">Public IP / Remote</div>
-                                        <div className="text-[11px] font-bold text-text-primary truncate">{inspectedLink.public_ip || inspectedLink.remote_ip || 'N/A'}</div>
-                                    </div>
-                                    <div className="bg-card-secondary/40 p-2 rounded-xl border border-border/40">
-                                        <div className="text-[8px] font-black text-text-muted uppercase">Interface IP</div>
-                                        <div className="text-[11px] font-bold text-text-secondary truncate">{inspectedLink.ip || inspectedLink.interface_ip || 'DHCP'}</div>
-                                    </div>
-                                </div>
-                                {inspectedLink.gateway && (
-                                    <div className="bg-card-secondary/30 px-2.5 py-1 mb-2 rounded-lg border border-border/30 flex items-center justify-between text-xs font-mono">
-                                        <span className="text-[8px] font-black text-text-muted uppercase">Default Gateway</span>
-                                        <span className="text-[10px] font-bold text-emerald-400">{inspectedLink.gateway}</span>
-                                    </div>
-                                )}
-
-                                {/* Status Pill & Action */}
-                                <div className="flex items-center justify-between pt-1 border-t border-border/30 text-xs">
-                                    <div className="flex items-center gap-1.5">
-                                        <span className={cn(
-                                            "w-2 h-2 rounded-full",
-                                            (inspectedLink.status === 'down' || inspectedLink.active === false) ? "bg-rose-500" : "bg-emerald-500 animate-pulse"
-                                        )} />
-                                        <span className="text-[9px] font-black uppercase text-text-primary">
-                                            {inspectedLink.status || (inspectedLink.active !== undefined ? (inspectedLink.active ? 'Active' : 'Backup') : 'Operational')}
-                                        </span>
-                                        {inspectedLink.latency && (
-                                            <span className="text-[9px] font-mono text-emerald-400 font-bold ml-1">
-                                                · {inspectedLink.latency}ms
+                                ) : (
+                                    <div className="bg-card/95 backdrop-blur-xl border border-border/80 shadow-2xl rounded-xl px-3 py-1.5 text-xs pointer-events-none whitespace-nowrap min-w-max flex items-center gap-2">
+                                        <span className="font-bold text-text-primary">{hoveredEdge.data.name || hoveredEdge.data.label || 'Link'}</span>
+                                        {hoveredEdge.data.ip && <span className="font-mono text-[10px] text-text-muted font-bold">{hoveredEdge.data.ip}</span>}
+                                        {hoveredEdge.data.status && (
+                                            <span className={cn(
+                                                "px-1.5 py-0.5 rounded text-[9px] font-bold uppercase",
+                                                hoveredEdge.data.status === 'down' ? "bg-rose-500/20 text-rose-400" : "bg-emerald-500/20 text-emerald-400"
+                                            )}>
+                                                {hoveredEdge.data.status}
                                             </span>
                                         )}
                                     </div>
-                                    {(inspectedLink.public_ip || inspectedLink.ip || inspectedLink.remote_ip) && (
-                                        <button
-                                            onClick={() => setTracerouteTarget(inspectedLink.public_ip || inspectedLink.ip || inspectedLink.remote_ip || '')}
-                                            className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 border border-blue-500/20 text-[10px] font-bold transition-all cursor-pointer"
-                                        >
-                                            <Route size={11} /> Trace Path
-                                        </button>
-                                    )}
-                                </div>
+                                )}
                             </div>
+                        )}
+
+                        {/* Floating Link Inspector Card (Zero Canvas Push) */}
+                        {inspectedLink && (
+                            inspectedLink.isOverlayTunnel ? (
+                                <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-40 bg-card/95 backdrop-blur-xl border border-border/80 rounded-2xl shadow-2xl p-4 w-[520px] max-w-[95vw] animate-in fade-in slide-in-from-bottom-3 duration-200 pointer-events-auto">
+                                    {/* Header */}
+                                    <div className="flex items-center justify-between pb-2.5 border-b border-border/60">
+                                        <div className="flex items-center gap-2.5 min-w-0">
+                                            <div className={cn(
+                                                "p-2 rounded-xl shrink-0",
+                                                inspectedLink.tunnelState === 'ACTIVE'
+                                                    ? "bg-emerald-500/20 text-emerald-400"
+                                                    : inspectedLink.tunnelState === 'DOWN'
+                                                        ? "bg-rose-500/20 text-rose-400"
+                                                        : "bg-blue-500/20 text-blue-400"
+                                            )}>
+                                                <Share2 size={16} />
+                                            </div>
+                                            <div className="min-w-0">
+                                                <div className="flex items-center gap-2">
+                                                    <h4 className="text-xs font-black text-text-primary tracking-tight uppercase whitespace-nowrap">
+                                                        SD-WAN Overlay Tunnel
+                                                    </h4>
+                                                    <span className={cn(
+                                                        "px-2 py-0.5 rounded-full border text-[9px] font-black uppercase tracking-wider flex items-center gap-1 whitespace-nowrap",
+                                                        inspectedLink.tunnelState === 'ACTIVE' && "bg-emerald-500/20 text-emerald-400 border-emerald-500/40 shadow-[0_0_10px_rgba(16,185,129,0.2)]",
+                                                        inspectedLink.tunnelState === 'INACTIVE' && "bg-blue-500/20 text-blue-400 border-blue-500/40",
+                                                        inspectedLink.tunnelState === 'DOWN' && "bg-rose-500/20 text-rose-400 border-rose-500/40"
+                                                    )}>
+                                                        <span className={cn(
+                                                            "w-1.5 h-1.5 rounded-full shrink-0",
+                                                            inspectedLink.tunnelState === 'ACTIVE' ? "bg-emerald-400 animate-pulse" : inspectedLink.tunnelState === 'INACTIVE' ? "bg-blue-400" : "bg-rose-400"
+                                                        )} />
+                                                        {inspectedLink.tunnelState || (inspectedLink.active ? 'ACTIVE' : inspectedLink.status === 'DOWN' ? 'DOWN' : 'INACTIVE')}
+                                                    </span>
+                                                </div>
+                                                <p className="text-[10px] text-text-muted font-mono tracking-wide truncate whitespace-nowrap">
+                                                    {inspectedLink.sourceSiteName || 'Source'} ➔ {inspectedLink.peer_site_name || 'Peer'}
+                                                </p>
+                                            </div>
+                                        </div>
+                                        <button
+                                            onClick={() => setInspectedLink(null)}
+                                            className="p-1.5 hover:bg-card-secondary rounded-lg text-text-muted hover:text-text-primary transition-colors cursor-pointer shrink-0"
+                                            title="Close"
+                                        >
+                                            <X size={15} />
+                                        </button>
+                                    </div>
+
+                                    {/* Dual Endpoints (Source vs Remote Peer) */}
+                                    <div className="grid grid-cols-2 gap-2.5 my-3">
+                                        {/* Source Endpoint Box */}
+                                        <div className="bg-card-secondary/40 p-2.5 rounded-xl border border-border/50 flex flex-col gap-1 min-w-0 overflow-hidden">
+                                            <div className="flex items-center justify-between text-[9px] font-black uppercase tracking-wider text-text-muted">
+                                                <span className="text-cyan-400">SOURCE ENDPOINT</span>
+                                                <span className="font-mono text-[8px] bg-cyan-500/10 text-cyan-400 px-1 rounded">LOCAL</span>
+                                            </div>
+                                            <div className="text-xs font-black text-text-primary truncate whitespace-nowrap" title={inspectedLink.sourceSiteName}>
+                                                {inspectedLink.sourceSiteName || 'Site'}
+                                            </div>
+                                            <div className="text-[10px] text-text-secondary truncate whitespace-nowrap font-mono" title={inspectedLink.sourceDeviceName}>
+                                                Dev: <span className="text-text-primary">{inspectedLink.sourceDeviceName || 'Device'}</span>
+                                            </div>
+                                            <div className="text-[10px] text-text-muted truncate whitespace-nowrap font-mono" title={inspectedLink.sourceCircuitLabel || inspectedLink.sourceCircuitName}>
+                                                WAN: <span className="text-cyan-400 font-bold">{inspectedLink.sourceCircuitLabel || inspectedLink.sourceCircuitName || 'WAN'}</span>
+                                            </div>
+                                            <div className="text-[10px] text-text-secondary truncate whitespace-nowrap font-mono pt-1 border-t border-border/30" title={inspectedLink.debug_source_ip || inspectedLink.ip}>
+                                                IP: <span className="text-emerald-400 font-bold">{inspectedLink.debug_source_ip || inspectedLink.ip || inspectedLink.interface_ip || 'N/A'}</span>
+                                            </div>
+                                        </div>
+
+                                        {/* Remote Peer Endpoint Box */}
+                                        <div className="bg-card-secondary/40 p-2.5 rounded-xl border border-border/50 flex flex-col gap-1 min-w-0 overflow-hidden">
+                                            <div className="flex items-center justify-between text-[9px] font-black uppercase tracking-wider text-text-muted">
+                                                <span className="text-purple-400">REMOTE ENDPOINT</span>
+                                                <span className="font-mono text-[8px] bg-purple-500/10 text-purple-400 px-1 rounded">PEER</span>
+                                            </div>
+                                            <div className="text-xs font-black text-text-primary truncate whitespace-nowrap" title={inspectedLink.peer_site_name}>
+                                                {inspectedLink.peer_site_name || 'Peer Site'}
+                                            </div>
+                                            <div className="text-[10px] text-text-secondary truncate whitespace-nowrap font-mono" title={inspectedLink.peer_device_name}>
+                                                Dev: <span className="text-text-primary">{inspectedLink.peer_device_name || 'Peer Device'}</span>
+                                            </div>
+                                            <div className="text-[10px] text-text-muted truncate whitespace-nowrap font-mono" title={inspectedLink.peer_wan_interface}>
+                                                WAN: <span className="text-purple-400 font-bold">{inspectedLink.peer_wan_interface || 'WAN'}</span>
+                                            </div>
+                                            <div className="text-[10px] text-text-secondary truncate whitespace-nowrap font-mono pt-1 border-t border-border/30" title={inspectedLink.debug_peer_ip}>
+                                                IP: <span className="text-purple-400 font-bold">{resolveWanIp(inspectedLink.peer_site_name || inspectedLink.peerSite, inspectedLink.peer_device_name || inspectedLink.peerDevice, inspectedLink.peer_wan_interface || inspectedLink.destCircuit, inspectedLink.debug_peer_ip)}</span>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* Technical Specs 4-Column Bar */}
+                                    <div className="grid grid-cols-4 gap-2 mb-3 text-xs font-mono">
+                                        <div className="bg-card-secondary/30 p-2 rounded-xl border border-border/40 min-w-0 overflow-hidden">
+                                            <div className="text-[8px] font-black text-text-muted uppercase tracking-wider truncate whitespace-nowrap">VPN LINK ID</div>
+                                            <div className="text-[10px] font-bold text-text-primary truncate whitespace-nowrap" title={inspectedLink.debug_vpn_id || inspectedLink.id}>
+                                                {inspectedLink.debug_vpn_id || 'N/A'}
+                                            </div>
+                                        </div>
+                                        <div className="bg-card-secondary/30 p-2 rounded-xl border border-border/40 min-w-0 overflow-hidden">
+                                            <div className="text-[8px] font-black text-text-muted uppercase tracking-wider truncate whitespace-nowrap">TRANSPORT</div>
+                                            <div className={cn(
+                                                "text-[10px] font-bold truncate whitespace-nowrap",
+                                                inspectedLink.wan_network === 'MPLS' || inspectedLink.isMplsCircuit ? "text-purple-400" : "text-sky-400"
+                                            )}>
+                                                {inspectedLink.wan_network || (inspectedLink.isMplsCircuit ? 'MPLS' : 'INTERNET')}
+                                            </div>
+                                        </div>
+                                        <div className="bg-card-secondary/30 p-2 rounded-xl border border-border/40 min-w-0 overflow-hidden">
+                                            <div className="text-[8px] font-black text-text-muted uppercase tracking-wider truncate whitespace-nowrap">LATENCY</div>
+                                            <div className="text-[10px] font-bold text-emerald-400 truncate whitespace-nowrap">
+                                                {inspectedLink.latency ? `${inspectedLink.latency}ms` : 'N/A'}
+                                            </div>
+                                        </div>
+                                        <div className="bg-card-secondary/30 p-2 rounded-xl border border-border/40 min-w-0 overflow-hidden">
+                                            <div className="text-[8px] font-black text-text-muted uppercase tracking-wider truncate whitespace-nowrap">PKT LOSS</div>
+                                            <div className="text-[10px] font-bold text-text-secondary truncate whitespace-nowrap">
+                                                {inspectedLink.packet_loss != null ? `${inspectedLink.packet_loss}%` : '0%'}
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* Status Pill & Action Buttons */}
+                                    <div className="flex items-center justify-between pt-2 border-t border-border/40 text-xs">
+                                        <div className="flex items-center gap-1.5 min-w-0">
+                                            <span className={cn(
+                                                "w-2 h-2 rounded-full shrink-0",
+                                                inspectedLink.tunnelState === 'ACTIVE' ? "bg-emerald-500 animate-pulse" : inspectedLink.tunnelState === 'DOWN' ? "bg-rose-500" : "bg-blue-500"
+                                            )} />
+                                            <span className="text-[9px] font-black uppercase text-text-primary truncate whitespace-nowrap">
+                                                {inspectedLink.tunnelState === 'ACTIVE'
+                                                    ? 'Operational Transit Path'
+                                                    : inspectedLink.tunnelState === 'INACTIVE'
+                                                        ? 'Standby Path (Up, No Transit)'
+                                                        : 'Tunnel Down (Offline)'}
+                                            </span>
+                                        </div>
+                                        <div className="flex items-center gap-2 shrink-0">
+                                            {inspectedLink.sourceWan && inspectedLink.sourceSiteId && (
+                                                <button
+                                                    onClick={() => {
+                                                        handleSelectCircuit({
+                                                            siteId: inspectedLink.sourceSiteId,
+                                                            siteName: inspectedLink.sourceSiteName,
+                                                            devName: inspectedLink.sourceDeviceName,
+                                                            circuitKey: `${inspectedLink.sourceSiteId}:${inspectedLink.sourceDeviceName}:${inspectedLink.sourceCircuitName}`,
+                                                            wan: inspectedLink.sourceWan
+                                                        });
+                                                        setInspectedLink(null);
+                                                    }}
+                                                    className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-sky-500/10 hover:bg-sky-500/20 text-sky-400 border border-sky-500/20 text-[10px] font-bold transition-all cursor-pointer whitespace-nowrap"
+                                                    title="Open side drawer showing all tunnels on this circuit"
+                                                >
+                                                    <Layers size={11} /> All Circuit Tunnels
+                                                </button>
+                                            )}
+                                            {(() => {
+                                                const resolvedTargetIp = resolveWanIp(
+                                                    inspectedLink.peer_site_name || inspectedLink.peerSite,
+                                                    inspectedLink.peer_device_name || inspectedLink.peerDevice,
+                                                    inspectedLink.peer_wan_interface || inspectedLink.destCircuit,
+                                                    inspectedLink.debug_peer_ip || inspectedLink.public_ip || inspectedLink.ip
+                                                );
+                                                return (resolvedTargetIp && resolvedTargetIp !== 'N/A') ? (
+                                                    <button
+                                                        onClick={() => setTracerouteTarget(resolvedTargetIp)}
+                                                        className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 border border-blue-500/20 text-[10px] font-bold transition-all cursor-pointer whitespace-nowrap"
+                                                    >
+                                                        <Route size={11} /> Trace Path
+                                                    </button>
+                                                ) : null;
+                                            })()}
+                                        </div>
+                                    </div>
+                                </div>
+                            ) : (
+                                <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-40 bg-card/95 backdrop-blur-xl border border-border/80 rounded-2xl shadow-2xl p-3.5 w-[380px] max-w-[92vw] animate-in fade-in slide-in-from-bottom-3 duration-200 pointer-events-auto">
+                                    <div className="flex items-center justify-between pb-2 border-b border-border/60">
+                                        <div className="flex items-center gap-2 min-w-0">
+                                            <div className={cn(
+                                                "p-1.5 rounded-lg shrink-0",
+                                                inspectedLink.wan_network === 'MPLS' || inspectedLink.isCircuitMpls || inspectedLink.isMplsCircuit
+                                                    ? "bg-purple-500/20 text-purple-400"
+                                                    : "bg-sky-500/20 text-sky-400"
+                                            )}>
+                                                {inspectedLink.isOverlayTunnel ? <Share2 size={14} /> : inspectedLink.service_endpoint_name ? <Shield size={14} /> : <Route size={14} />}
+                                            </div>
+                                            <div className="min-w-0">
+                                                <h4 className="text-xs font-black text-text-primary tracking-tight truncate whitespace-nowrap">
+                                                    {inspectedLink.name || inspectedLink.label || inspectedLink.circuit_name || 'Circuit Link'}
+                                                </h4>
+                                                <p className="text-[9px] text-text-muted font-bold tracking-wider truncate whitespace-nowrap">
+                                                    {inspectedLink.sourceSiteName || inspectedLink.sourceSite ? (
+                                                        `${inspectedLink.sourceSiteName || inspectedLink.sourceSite} ➔ ${inspectedLink.peer_site_name || inspectedLink.peerSite || 'Peer'}`
+                                                    ) : (
+                                                        `${inspectedLink.site_name || 'Site'} · ${(inspectedLink.wan_network || inspectedLink.network || 'WAN').toUpperCase()}`
+                                                    )}
+                                                </p>
+                                            </div>
+                                        </div>
+                                        <button
+                                            onClick={() => setInspectedLink(null)}
+                                            className="p-1 hover:bg-card-secondary rounded-lg text-text-muted hover:text-text-primary transition-colors cursor-pointer shrink-0"
+                                            title="Close"
+                                        >
+                                            <X size={14} />
+                                        </button>
+                                    </div>
+
+                                    {/* Dynamic Key Specs */}
+                                    <div className="grid grid-cols-2 gap-2 my-2 text-xs font-mono">
+                                        <div className="bg-card-secondary/40 p-2 rounded-xl border border-border/40 min-w-0 overflow-hidden">
+                                            <div className="text-[8px] font-black text-text-muted uppercase truncate whitespace-nowrap">Public IP / Remote</div>
+                                            <div className="text-[11px] font-bold text-text-primary truncate whitespace-nowrap">{inspectedLink.public_ip || inspectedLink.remote_ip || 'N/A'}</div>
+                                        </div>
+                                        <div className="bg-card-secondary/40 p-2 rounded-xl border border-border/40 min-w-0 overflow-hidden">
+                                            <div className="text-[8px] font-black text-text-muted uppercase truncate whitespace-nowrap">Interface IP</div>
+                                            <div className="text-[11px] font-bold text-text-secondary truncate whitespace-nowrap">{inspectedLink.ip || inspectedLink.interface_ip || 'DHCP'}</div>
+                                        </div>
+                                    </div>
+                                    {inspectedLink.gateway && (
+                                        <div className="bg-card-secondary/30 px-2.5 py-1 mb-2 rounded-lg border border-border/30 flex items-center justify-between text-xs font-mono">
+                                            <span className="text-[8px] font-black text-text-muted uppercase whitespace-nowrap">Default Gateway</span>
+                                            <span className="text-[10px] font-bold text-emerald-400 truncate whitespace-nowrap">{inspectedLink.gateway}</span>
+                                        </div>
+                                    )}
+
+                                    {/* Status Pill & Action */}
+                                    <div className="flex items-center justify-between pt-1 border-t border-border/30 text-xs">
+                                        <div className="flex items-center gap-1.5 min-w-0">
+                                            <span className={cn(
+                                                "w-2 h-2 rounded-full shrink-0",
+                                                (inspectedLink.status === 'down' || inspectedLink.active === false) ? "bg-rose-500" : "bg-emerald-500 animate-pulse"
+                                            )} />
+                                            <span className="text-[9px] font-black uppercase text-text-primary truncate whitespace-nowrap">
+                                                {inspectedLink.status || (inspectedLink.active !== undefined ? (inspectedLink.active ? 'Active' : 'Backup') : 'Operational')}
+                                            </span>
+                                            {inspectedLink.latency && (
+                                                <span className="text-[9px] font-mono text-emerald-400 font-bold ml-1 truncate whitespace-nowrap">
+                                                    · {inspectedLink.latency}ms
+                                                </span>
+                                            )}
+                                        </div>
+                                        {(inspectedLink.public_ip || inspectedLink.ip || inspectedLink.remote_ip) && (
+                                            <button
+                                                onClick={() => setTracerouteTarget(inspectedLink.public_ip || inspectedLink.ip || inspectedLink.remote_ip || '')}
+                                                className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 border border-blue-500/20 text-[10px] font-bold transition-all cursor-pointer whitespace-nowrap shrink-0"
+                                            >
+                                                <Route size={11} /> Trace Path
+                                            </button>
+                                        )}
+                                    </div>
+                                </div>
+                            )
                         )}
                     </ReactFlow>
                     </div>
@@ -3994,7 +4392,7 @@ function TopologyContent({ token }: TopologyProps) {
                                                     peerCircuit: c.peer_wan_interface || 'WAN',
                                                     vpnId: c.debug_vpn_id,
                                                     srcIp: c.debug_source_ip || circuitWan?.ip,
-                                                    dstIp: c.debug_peer_ip,
+                                                    dstIp: resolveWanIp(c.peer_site_name, c.peer_device_name, c.peer_wan_interface, c.debug_peer_ip),
                                                     isRoutingActive: Boolean(c.active),
                                                     isRoutingUsable: Boolean(c.usable),
                                                     isLinkUp: Boolean(c.link_up),
@@ -4030,8 +4428,8 @@ function TopologyContent({ token }: TopologyProps) {
                                                                         peerDevice: d.device_name || 'ION',
                                                                         peerCircuit: w.circuit_label || w.name,
                                                                         vpnId: c.debug_vpn_id,
-                                                                        srcIp: c.debug_peer_ip || circuitWan?.ip,
-                                                                        dstIp: c.debug_source_ip,
+                                                                        srcIp: resolveWanIp(s.site_name, d.device_name, w.name, c.debug_peer_ip) || circuitWan?.ip,
+                                                                        dstIp: resolveWanIp(siteName, selectedObject.devName, circuitWan?.name, c.debug_source_ip),
                                                                         isRoutingActive: Boolean(c.active),
                                                                         isRoutingUsable: Boolean(c.usable),
                                                                         isLinkUp: Boolean(c.link_up),
@@ -4705,119 +5103,224 @@ function TopologyContent({ token }: TopologyProps) {
                                                         </div>
                                                     )}
 
-                                                    <div className="space-y-3">
-                                                        <div className="flex justify-between items-center">
-                                                            <div className="text-[10px] font-black text-text-muted uppercase tracking-widest flex items-center gap-2">
-                                                                <Share2 size={12} /> Detailed Overlay Paths
-                                                            </div>
-                                                            <div className="flex gap-1">
-                                                                {(['ALL', 'ACTIVE', 'INACTIVE', 'DOWN', 'HUB'] as const).map(f => (
-                                                                    <button
-                                                                        key={f}
-                                                                        onClick={(e) => { e.stopPropagation(); setPathFilter(f); }}
-                                                                        className={cn(
-                                                                            "px-1.5 py-0.5 rounded text-[8px] font-black tracking-tighter transition-all border",
-                                                                            pathFilter === f
-                                                                                ? "bg-blue-600 border-blue-500 text-white shadow-lg shadow-blue-500/20"
-                                                                                : "bg-card-secondary/40 border-border/40 text-text-muted hover:text-text-primary"
+                                                    {(() => {
+                                                        // Aggregate all connections across all devices and interfaces into a rich format
+                                                        const paths: any[] = [];
+                                                        const seenPaths = new Set<string>();
+
+                                                        selectedObject.devices?.forEach((d: any) => {
+                                                            d.wan_interfaces?.forEach((w: any) => {
+                                                                w.connections?.forEach((c: any) => {
+                                                                    // Cluster branch dual-ION deduplication:
+                                                                    if (c.source_device_name && d.device_name && c.source_device_name !== 'Unknown' && d.device_name !== 'Unknown' && c.source_device_name !== d.device_name) {
+                                                                        return;
+                                                                    }
+
+                                                                    const vpnKey = (c.debug_vpn_id && c.debug_vpn_id !== 'N/A')
+                                                                        ? String(c.debug_vpn_id)
+                                                                        : `${d.device_name}-${w.name}-${c.peer_site_name}-${c.peer_device_name}-${c.peer_wan_interface}`;
+                                                                    if (seenPaths.has(vpnKey)) return;
+                                                                    seenPaths.add(vpnKey);
+
+                                                                    const resolvedDstIp = resolveWanIp(
+                                                                        c.peer_site_name,
+                                                                        c.peer_device_name,
+                                                                        c.peer_wan_interface,
+                                                                        (c.debug_peer_ip && c.debug_peer_ip !== 'N/A') ? c.debug_peer_ip : (c.peer_ip || 'N/A')
+                                                                    );
+
+                                                                    const isRoutingActive = Boolean(c.active);
+                                                                    const isRoutingUsable = Boolean(c.usable);
+                                                                    const isLinkUp = Boolean(c.link_up);
+                                                                    const tunnelState = isRoutingActive ? 'ACTIVE' : (isRoutingUsable || isLinkUp) ? 'INACTIVE' : 'DOWN';
+
+                                                                    paths.push({
+                                                                        sourceSite: selectedObject.name,
+                                                                        sourceSiteId: selectedObject.id || selectedObject.site_id,
+                                                                        sourceDevice: c.source_device_name || d.device_name || 'ION',
+                                                                        sourceCircuit: w.name || 'WAN',
+                                                                        sourceCircuitLabel: w.circuit_label || w.name || 'WAN',
+                                                                        sourceWan: w,
+                                                                        peerSite: c.peer_site_name,
+                                                                        peerSiteId: c.peer_site_id,
+                                                                        peerDevice: c.peer_device_name || 'ION',
+                                                                        destCircuit: c.peer_wan_interface || 'WAN',
+                                                                        network: w.wan_network || 'UNKNOWN',
+                                                                        vpnId: c.debug_vpn_id,
+                                                                        srcIp: (c.debug_source_ip && c.debug_source_ip !== 'N/A') ? c.debug_source_ip : (w.ip || c.ip || 'N/A'),
+                                                                        dstIp: resolvedDstIp,
+                                                                        isRoutingActive,
+                                                                        isRoutingUsable,
+                                                                        isLinkUp,
+                                                                        tunnelState,
+                                                                        vpState: c.vpState,
+                                                                        raw: c
+                                                                    });
+                                                                });
+                                                            });
+                                                        });
+
+                                                        const filteredPaths = paths.filter(p => {
+                                                            if (pathFilter === 'ACTIVE' && !p.isRoutingActive) return false;
+                                                            if (pathFilter === 'INACTIVE' && !((p.isRoutingUsable || p.isLinkUp) && !p.isRoutingActive)) return false;
+                                                            if (pathFilter === 'DOWN' && (p.isRoutingActive || p.isRoutingUsable || p.isLinkUp)) return false;
+                                                            if (pathFilter === 'HUB' && siteHubStatus.get(p.peerSite) !== true) return false;
+
+                                                            if (overlaySearchQuery.trim()) {
+                                                                const q = overlaySearchQuery.toLowerCase().trim();
+                                                                const matches =
+                                                                    (p.sourceSite && p.sourceSite.toLowerCase().includes(q)) ||
+                                                                    (p.sourceDevice && p.sourceDevice.toLowerCase().includes(q)) ||
+                                                                    (p.sourceCircuit && p.sourceCircuit.toLowerCase().includes(q)) ||
+                                                                    (p.peerSite && p.peerSite.toLowerCase().includes(q)) ||
+                                                                    (p.peerDevice && p.peerDevice.toLowerCase().includes(q)) ||
+                                                                    (p.destCircuit && p.destCircuit.toLowerCase().includes(q)) ||
+                                                                    (p.vpnId && String(p.vpnId).toLowerCase().includes(q)) ||
+                                                                    (p.srcIp && String(p.srcIp).toLowerCase().includes(q)) ||
+                                                                    (p.dstIp && String(p.dstIp).toLowerCase().includes(q)) ||
+                                                                    (p.network && p.network.toLowerCase().includes(q));
+                                                                if (!matches) return false;
+                                                            }
+
+                                                            return true;
+                                                        });
+
+                                                        filteredPaths.sort((a, b) => a.peerSite.localeCompare(b.peerSite));
+
+                                                        return (
+                                                            <div className="space-y-3">
+                                                                <div className="flex justify-between items-center">
+                                                                    <div className="text-[10px] font-black text-text-muted uppercase tracking-widest flex items-center gap-2">
+                                                                        <Share2 size={12} className="text-blue-400" /> Detailed Overlay Paths
+                                                                    </div>
+                                                                    <div className="flex gap-1">
+                                                                        {(['ALL', 'ACTIVE', 'INACTIVE', 'DOWN', 'HUB'] as const).map(f => (
+                                                                            <button
+                                                                                key={f}
+                                                                                onClick={(e) => { e.stopPropagation(); setPathFilter(f); }}
+                                                                                className={cn(
+                                                                                    "px-1.5 py-0.5 rounded text-[8px] font-black tracking-tighter transition-all border",
+                                                                                    pathFilter === f
+                                                                                        ? "bg-blue-600 border-blue-500 text-white shadow-lg shadow-blue-500/20"
+                                                                                        : "bg-card-secondary/40 border-border/40 text-text-muted hover:text-text-primary"
+                                                                                )}
+                                                                            >
+                                                                                {f}
+                                                                            </button>
+                                                                        ))}
+                                                                    </div>
+                                                                </div>
+
+                                                                {/* Prominent Overlay Tunnel Search Bar with live match counter */}
+                                                                <div className="flex items-center gap-2 bg-slate-900/90 p-1.5 rounded-xl border border-blue-500/40 shadow-md">
+                                                                    <div className="relative flex-1">
+                                                                        <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-blue-400 pointer-events-none" />
+                                                                        <input
+                                                                            type="text"
+                                                                            placeholder="Filter tunnels by site, circuit, IP, or VPN ID..."
+                                                                            value={overlaySearchQuery}
+                                                                            onChange={(e) => setOverlaySearchQuery(e.target.value)}
+                                                                            className="w-full bg-slate-950/90 border border-slate-700/60 rounded-lg pl-8 pr-7 py-1 text-xs text-white placeholder:text-slate-400 focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-400/40 font-mono transition-all"
+                                                                        />
+                                                                        {overlaySearchQuery && (
+                                                                            <button
+                                                                                onClick={() => setOverlaySearchQuery('')}
+                                                                                className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white text-xs p-0.5 rounded transition-colors"
+                                                                                title="Clear filter"
+                                                                            >
+                                                                                ✕
+                                                                            </button>
                                                                         )}
-                                                                    >
-                                                                        {f}
-                                                                    </button>
-                                                                ))}
+                                                                    </div>
+                                                                    <div className="shrink-0 px-2 py-0.5 rounded-lg bg-blue-500/20 border border-blue-500/40 text-[10px] font-mono font-bold text-blue-300 whitespace-nowrap" title="Filtered paths / Total paths">
+                                                                        {filteredPaths.length} / {paths.length}
+                                                                    </div>
+                                                                </div>
+
+                                                                <div className="w-full overflow-x-auto pb-2">
+                                                                    <table className="w-full text-left border-separate" style={{ borderSpacing: '0 4px' }}>
+                                                                        <tbody className="text-[10px]">
+                                                                            {filteredPaths.length === 0 ? (
+                                                                                <tr><td colSpan={5} className="text-text-muted italic opacity-50 py-4 text-center">No matching overlay peers discovered</td></tr>
+                                                                            ) : (
+                                                                                filteredPaths.map((p: any, idx: number) => {
+                                                                                    let tagBg = "bg-card-secondary/20";
+                                                                                    let tagText = "text-text-muted";
+                                                                                    let label = "UNKNOWN";
+                                                                                    if (p.isRoutingActive) { tagBg = "bg-green-500/10"; tagText = "text-green-500"; label = "ACTIVE"; }
+                                                                                    else if (p.isRoutingUsable || p.isLinkUp) { tagBg = "bg-blue-500/10"; tagText = "text-blue-500"; label = "INACTIVE"; }
+                                                                                    else { tagBg = "bg-red-500/10"; tagText = "text-red-500"; label = "DOWN"; }
+
+                                                                                    const rowTitle = `VPN ID: ${p.vpnId || 'N/A'}\n${p.sourceSite} (${p.srcIp || 'N/A'}) ➔ ${p.peerSite} (${p.dstIp || 'N/A'})\nNetwork: ${p.network}\nStatus: ${label}\nClick to inspect tunnel details`;
+
+                                                                                    return (
+                                                                                        <tr
+                                                                                            key={idx}
+                                                                                            title={rowTitle}
+                                                                                            onClick={() => {
+                                                                                                setInspectedLink({
+                                                                                                    ...p.raw,
+                                                                                                    isOverlayTunnel: true,
+                                                                                                    sourceSiteName: p.sourceSite,
+                                                                                                    sourceSiteId: p.sourceSiteId,
+                                                                                                    sourceDeviceName: p.sourceDevice,
+                                                                                                    sourceCircuitName: p.sourceCircuit,
+                                                                                                    sourceCircuitLabel: p.sourceCircuitLabel,
+                                                                                                    sourceWan: p.sourceWan,
+                                                                                                    debug_source_ip: p.srcIp,
+                                                                                                    peer_site_name: p.peerSite,
+                                                                                                    peer_site_id: p.peerSiteId,
+                                                                                                    peer_device_name: p.peerDevice,
+                                                                                                    peer_wan_interface: p.destCircuit,
+                                                                                                    debug_peer_ip: p.dstIp,
+                                                                                                    debug_vpn_id: p.vpnId,
+                                                                                                    wan_network: p.network,
+                                                                                                    tunnelState: p.tunnelState,
+                                                                                                    latency: p.raw?.latency ?? p.raw?.delay_ms,
+                                                                                                    packet_loss: p.raw?.loss_pct ?? p.raw?.packet_loss
+                                                                                                });
+                                                                                            }}
+                                                                                            className="group hover:bg-blue-500/15 transition-colors cursor-pointer"
+                                                                                        >
+                                                                                            <td className="py-2 pl-3 rounded-l-lg border-y border-l bg-card/20 border-border/20 group-hover:border-blue-500/40 text-right whitespace-nowrap min-w-[50px]">
+                                                                                                <div className="flex items-center justify-end gap-1 text-[9px] font-mono">
+                                                                                                    <span className="text-text-primary hidden lg:inline">{p.sourceSite}</span>
+                                                                                                    <span className="text-text-muted/50 hidden lg:inline">:</span>
+                                                                                                    <span className="text-blue-500 font-bold">{p.sourceDevice}</span>
+                                                                                                </div>
+                                                                                            </td>
+                                                                                            <td className="py-2 px-1 border-y bg-card/20 border-border/20 group-hover:border-blue-500/40 text-right whitespace-nowrap w-[1%]">
+                                                                                                <span className="text-[9px] font-mono text-text-secondary bg-card-secondary/50 px-1 py-0.5 rounded uppercase tracking-tighter inline-block">{p.sourceCircuit}</span>
+                                                                                            </td>
+                                                                                            <td className="py-2 px-2 border-y bg-card/20 border-border/20 group-hover:border-blue-500/40 text-center whitespace-nowrap w-[1%]">
+                                                                                                <div className="flex justify-center items-center opacity-90 pb-[1px]">
+                                                                                                    <span className="text-[9px] font-mono text-text-muted tracking-tighter hidden sm:inline">&lt;=</span>
+                                                                                                    <span className={cn("px-1.5 py-[1px] mx-1 rounded font-black text-[8px] tracking-wider text-center border min-w-[45px]", tagBg, tagText, p.isRoutingActive ? "border-green-500/20" : p.isRoutingUsable ? "border-blue-500/20" : "border-red-500/20")}>
+                                                                                                        {label}
+                                                                                                    </span>
+                                                                                                    <span className="text-[9px] font-mono text-text-muted tracking-tighter hidden sm:inline">=&gt;</span>
+                                                                                                </div>
+                                                                                            </td>
+                                                                                            <td className="py-2 px-1 border-y bg-card/20 border-border/20 group-hover:border-blue-500/40 text-left whitespace-nowrap w-[1%]">
+                                                                                                <span className="text-[9px] font-mono text-text-secondary bg-card-secondary/50 px-1 py-0.5 rounded uppercase tracking-tighter inline-block">{p.destCircuit}</span>
+                                                                                            </td>
+                                                                                            <td className="py-2 pr-3 rounded-r-lg border-y border-r bg-card/20 border-border/20 group-hover:border-blue-500/40 text-left whitespace-nowrap min-w-[50px]">
+                                                                                                <div className="flex items-center justify-start gap-1 text-[9px] font-mono">
+                                                                                                    <span className="text-blue-500 font-bold">{p.peerDevice}</span>
+                                                                                                    <span className="text-text-muted/50 hidden lg:inline">:</span>
+                                                                                                    <span className="text-text-primary hidden lg:inline">{p.peerSite}</span>
+                                                                                                </div>
+                                                                                            </td>
+                                                                                        </tr>
+                                                                                    );
+                                                                                })
+                                                                            )}
+                                                                        </tbody>
+                                                                    </table>
+                                                                </div>
                                                             </div>
-                                                        </div>
-                                                        <div className="w-full overflow-x-auto pb-2">
-                                                            <table className="w-full text-left border-separate" style={{ borderSpacing: '0 4px' }}>
-                                                                <tbody className="text-[10px]">
-                                                                    {(() => {
-                                                                        // Aggregate all connections across all devices and interfaces into a rich format
-                                                                        const paths: any[] = [];
-                                                                        selectedObject.devices?.forEach((d: any) => {
-                                                                            d.wan_interfaces?.forEach((w: any) => {
-                                                                                w.connections?.forEach((c: any) => {
-                                                                                    paths.push({
-                                                                                        sourceSite: selectedObject.name,
-                                                                                        sourceDevice: c.source_device_name || 'ION',
-                                                                                        sourceCircuit: w.name || 'WAN',
-                                                                                        peerSite: c.peer_site_name,
-                                                                                        peerDevice: c.peer_device_name || 'ION',
-                                                                                        destCircuit: c.peer_wan_interface || 'WAN',
-                                                                                        network: w.wan_network || 'UNKNOWN',
-                                                                                        vpnId: c.debug_vpn_id,
-                                                                                        srcIp: c.debug_source_ip,
-                                                                                        dstIp: c.debug_peer_ip,
-                                                                                        isRoutingActive: c.active,
-                                                                                        isRoutingUsable: c.usable,
-                                                                                        isLinkUp: c.link_up,
-                                                                                        vpState: c.vpState
-                                                                                    });
-                                                                                });
-                                                                            });
-                                                                        });
-
-                                                                        const filteredPaths = paths.filter(p => {
-                                                                            if (pathFilter === 'ALL') return true;
-                                                                            if (pathFilter === 'ACTIVE') return p.isRoutingActive;
-                                                                            if (pathFilter === 'INACTIVE') return (p.isRoutingUsable || p.isLinkUp) && !p.isRoutingActive;
-                                                                            if (pathFilter === 'DOWN') return !p.isRoutingActive && !p.isRoutingUsable && !p.isLinkUp;
-                                                                            if (pathFilter === 'HUB') {
-                                                                                return siteHubStatus.get(p.peerSite) === true;
-                                                                            }
-                                                                            return true;
-                                                                        });
-
-                                                                        if (filteredPaths.length === 0) {
-                                                                            return <tr><td colSpan={5} className="text-text-muted italic opacity-50 py-4 text-center">No matching overlay peers discovered</td></tr>;
-                                                                        }
-                                                                        filteredPaths.sort((a, b) => a.peerSite.localeCompare(b.peerSite));
-                                                                        return filteredPaths.map((p: any, idx: number) => {
-                                                                            let tagBg = "bg-card-secondary/20";
-                                                                            let tagText = "text-text-muted";
-                                                                            let label = "UNKNOWN";
-                                                                            if (p.isRoutingActive) { tagBg = "bg-green-500/10"; tagText = "text-green-500"; label = "ACTIVE"; }
-                                                                            else if (p.isRoutingUsable || p.isLinkUp) { tagBg = "bg-blue-500/10"; tagText = "text-blue-500"; label = "INACTIVE"; }
-                                                                            else { tagBg = "bg-red-500/10"; tagText = "text-red-500"; label = "DOWN"; }
-
-                                                                            return (
-                                                                                <tr key={idx} className="group hover:bg-card/40 transition-colors">
-                                                                                    <td className="py-2 pl-3 rounded-l-lg border-y border-l bg-card/20 border-border/20 group-hover:border-border/60 text-right whitespace-nowrap min-w-[50px]">
-                                                                                        <div className="flex items-center justify-end gap-1 text-[9px] font-mono">
-                                                                                            <span className="text-text-primary hidden lg:inline">{p.sourceSite}</span>
-                                                                                            <span className="text-text-muted/50 hidden lg:inline">:</span>
-                                                                                            <span className="text-blue-500 font-bold">{p.sourceDevice}</span>
-                                                                                        </div>
-                                                                                    </td>
-                                                                                    <td className="py-2 px-1 border-y bg-card/20 border-border/20 group-hover:border-border/60 text-right whitespace-nowrap w-[1%]">
-                                                                                        <span className="text-[9px] font-mono text-text-secondary bg-card-secondary/50 px-1 py-0.5 rounded uppercase tracking-tighter inline-block">{p.sourceCircuit}</span>
-                                                                                    </td>
-                                                                                    <td className="py-2 px-2 border-y bg-card/20 border-border/20 group-hover:border-border/60 text-center whitespace-nowrap w-[1%]">
-                                                                                        <div className="flex justify-center items-center opacity-90 pb-[1px]">
-                                                                                            <span className="text-[9px] font-mono text-text-muted tracking-tighter hidden sm:inline">&lt;=</span>
-                                                                                            <span className={cn("px-1.5 py-[1px] mx-1 rounded font-black text-[8px] tracking-wider text-center border min-w-[45px]", tagBg, tagText, p.isRoutingActive ? "border-green-500/20" : p.isRoutingUsable ? "border-blue-500/20" : "border-red-500/20")}>
-                                                                                                {label}
-                                                                                            </span>
-                                                                                            <span className="text-[9px] font-mono text-text-muted tracking-tighter hidden sm:inline">=&gt;</span>
-                                                                                        </div>
-                                                                                    </td>
-                                                                                    <td className="py-2 px-1 border-y bg-card/20 border-border/20 group-hover:border-border/60 text-left whitespace-nowrap w-[1%]">
-                                                                                        <span className="text-[9px] font-mono text-text-secondary bg-card-secondary/50 px-1 py-0.5 rounded uppercase tracking-tighter inline-block">{p.destCircuit}</span>
-                                                                                    </td>
-                                                                                    <td className="py-2 pr-3 rounded-r-lg border-y border-r bg-card/20 border-border/20 group-hover:border-border/60 text-left whitespace-nowrap min-w-[50px]">
-                                                                                        <div className="flex items-center justify-start gap-1 text-[9px] font-mono">
-                                                                                            <span className="text-blue-500 font-bold">{p.peerDevice}</span>
-                                                                                            <span className="text-text-muted/50 hidden lg:inline">:</span>
-                                                                                            <span className="text-text-primary hidden lg:inline">{p.peerSite}</span>
-                                                                                        </div>
-                                                                                    </td>
-                                                                                </tr>
-                                                                            );
-                                                                        });
-                                                                    })()}
-                                                                </tbody>
-                                                            </table>
-                                                        </div>
-                                                    </div>
+                                                        );
+                                                    })()}
                                                 </>
                                             ) : (
                                                 /* Cloud Network SD-WAN Dashboard */
@@ -4833,10 +5336,14 @@ function TopologyContent({ token }: TopologyProps) {
                                                                 const isCircuitMpls = (w.wan_network || '').toUpperCase().includes('MPLS') || (w.name || '').toUpperCase().includes('MPLS');
                                                                 if (isTargetMpls ? isCircuitMpls : !isCircuitMpls) {
                                                                     (w.connections || []).forEach((c: any) => {
+                                                                        // Cluster branch dual-ION deduplication:
+                                                                        if (c.source_device_name && d.device_name && c.source_device_name !== 'Unknown' && d.device_name !== 'Unknown' && c.source_device_name !== d.device_name) {
+                                                                            return;
+                                                                        }
                                                                         allNetworkPaths.push({
                                                                             sourceSite: s.site_name,
                                                                             sourceSiteId: s.site_id,
-                                                                            sourceDevice: d.device_name,
+                                                                            sourceDevice: c.source_device_name || d.device_name || 'ION',
                                                                             sourceCircuit: w.name || 'WAN',
                                                                             peerSite: c.peer_site_name,
                                                                             peerSiteId: c.peer_site_id,
@@ -4844,8 +5351,8 @@ function TopologyContent({ token }: TopologyProps) {
                                                                             destCircuit: c.peer_wan_interface || 'WAN',
                                                                             network: targetNetworkName,
                                                                             vpnId: c.debug_vpn_id,
-                                                                            srcIp: c.debug_source_ip || w.ip,
-                                                                            dstIp: c.debug_peer_ip,
+                                                                            srcIp: (c.debug_source_ip && c.debug_source_ip !== 'N/A') ? c.debug_source_ip : (w.ip || c.ip || 'N/A'),
+                                                                            dstIp: resolveWanIp(c.peer_site_name, c.peer_device_name, c.peer_wan_interface, (c.debug_peer_ip && c.debug_peer_ip !== 'N/A') ? c.debug_peer_ip : (c.peer_ip || 'N/A')),
                                                                             isRoutingActive: c.active,
                                                                             isRoutingUsable: c.usable,
                                                                             isLinkUp: c.link_up,
@@ -4872,11 +5379,16 @@ function TopologyContent({ token }: TopologyProps) {
                                                         return true;
                                                     }).filter(p => {
                                                         if (!networkTunnelSearch) return true;
-                                                        const q = networkTunnelSearch.toLowerCase();
+                                                        const q = networkTunnelSearch.toLowerCase().trim();
                                                         return p.sourceSite.toLowerCase().includes(q) ||
                                                                p.peerSite.toLowerCase().includes(q) ||
+                                                               (p.sourceDevice && p.sourceDevice.toLowerCase().includes(q)) ||
+                                                               (p.peerDevice && p.peerDevice.toLowerCase().includes(q)) ||
                                                                p.sourceCircuit.toLowerCase().includes(q) ||
-                                                               p.destCircuit.toLowerCase().includes(q);
+                                                               p.destCircuit.toLowerCase().includes(q) ||
+                                                               (p.vpnId && String(p.vpnId).toLowerCase().includes(q)) ||
+                                                               (p.srcIp && String(p.srcIp).toLowerCase().includes(q)) ||
+                                                               (p.dstIp && String(p.dstIp).toLowerCase().includes(q));
                                                     });
 
                                                     return (
@@ -5005,7 +5517,7 @@ function TopologyContent({ token }: TopologyProps) {
                                                                                         setLogicalViewSiteId(p.sourceSiteId);
                                                                                     }}
                                                                                     className="bg-card-secondary/30 hover:bg-card-secondary/60 border border-border/50 hover:border-blue-500/40 p-2 rounded-xl transition-all cursor-pointer group space-y-1"
-                                                                                    title="Click to focus this site on canvas"
+                                                                                    title={`Click to focus site on canvas\nVPN ID: ${p.vpnId || 'N/A'}\n${p.sourceSite} (${p.srcIp || 'N/A'}) ➔ ${p.peerSite} (${p.dstIp || 'N/A'})\nNetwork: ${p.network}`}
                                                                                 >
                                                                                     {/* Row 1: Source Site ➔ Peer Site + Status Badge */}
                                                                                     <div className="flex items-center justify-between gap-2">

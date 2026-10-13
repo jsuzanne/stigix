@@ -126,8 +126,10 @@ export default function Copilot({ token, onOpenSettings, isDrawer = false, onClo
     const [customGuidelines, setCustomGuidelines] = useState('');
 
     const chatEndRef = useRef<HTMLDivElement>(null);
+    const chatContainerRef = useRef<HTMLDivElement>(null);
     const textareaRef = useRef<HTMLTextAreaElement>(null);
     const abortControllerRef = useRef<AbortController | null>(null);
+    const isInitialSessionLoadRef = useRef(true);
 
     const authHeaders = {
         'Content-Type': 'application/json',
@@ -142,7 +144,28 @@ export default function Copilot({ token, onOpenSettings, isDrawer = false, onClo
 
     // Auto-scroll to bottom of chat
     useEffect(() => {
-        chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+        if (!chatEndRef.current) return;
+
+        if (isInitialSessionLoadRef.current) {
+            // Instantly display bottom of conversation (no full scroll from top)
+            if (chatContainerRef.current) {
+                chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
+            }
+            chatEndRef.current.scrollIntoView({ behavior: 'auto', block: 'end' });
+
+            const timer = setTimeout(() => {
+                if (chatContainerRef.current) {
+                    chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
+                }
+                chatEndRef.current?.scrollIntoView({ behavior: 'auto', block: 'end' });
+                isInitialSessionLoadRef.current = false;
+            }, 60);
+
+            return () => clearTimeout(timer);
+        } else {
+            // Live conversation: smooth scroll on new message or auto while streaming
+            chatEndRef.current.scrollIntoView({ behavior: isStreaming ? 'auto' : 'smooth', block: 'end' });
+        }
     }, [messages, isStreaming]);
 
     // Auto-resize textarea
@@ -202,6 +225,7 @@ export default function Copilot({ token, onOpenSettings, isDrawer = false, onClo
     };
 
     const selectSession = async (sessionId: string) => {
+        isInitialSessionLoadRef.current = true;
         setCurrentSessionId(sessionId);
         try {
             const res = await fetch(`/api/copilot/sessions/${sessionId}`, { headers: authHeaders });
@@ -223,6 +247,7 @@ export default function Copilot({ token, onOpenSettings, isDrawer = false, onClo
     };
 
     const createNewSession = async () => {
+        isInitialSessionLoadRef.current = true;
         try {
             const res = await fetch('/api/copilot/sessions', {
                 method: 'POST',
@@ -376,6 +401,7 @@ export default function Copilot({ token, onOpenSettings, isDrawer = false, onClo
         const controller = new AbortController();
         abortControllerRef.current = controller;
 
+        isInitialSessionLoadRef.current = false;
         setMessages(prev => [...prev, userMsg, assistantMsg]);
         setInputPrompt('');
         setIsStreaming(true);
@@ -695,7 +721,7 @@ export default function Copilot({ token, onOpenSettings, isDrawer = false, onClo
                 </div>
 
                 {/* Chat Feed */}
-                <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-6 custom-scrollbar">
+                <div ref={chatContainerRef} className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-6 custom-scrollbar">
                     {/* Missing Key Warning Banner */}
                     {!config?.hasKey && (
                         <div className="bg-amber-500/10 border border-amber-500/30 p-4 rounded-2xl flex items-start justify-between gap-4">
