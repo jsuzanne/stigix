@@ -173,9 +173,14 @@ export function resolveTargetEndpoint(targetQuery: string | undefined, ctx: Tool
     return { host: raw, port: 9000, name: raw };
 }
 
-async function fetchApi(nodeCtx: { baseUrl: string; headers: Record<string, string> }, path: string, options: RequestInit = {}): Promise<any> {
+async function fetchApi(
+    nodeCtx: { baseUrl: string; headers: Record<string, string> },
+    path: string,
+    options: RequestInit = {},
+    timeoutMs: number = 25000
+): Promise<any> {
     const url = `${nodeCtx.baseUrl}${path}`;
-    const signal = options.signal || AbortSignal.timeout(5000);
+    const signal = options.signal || AbortSignal.timeout(timeoutMs);
     const res = await fetch(url, {
         ...options,
         signal,
@@ -2253,8 +2258,8 @@ export async function executeCopilotTool(
                 for (const r of routers) {
                     if (args.router_id && r.id !== args.router_id && r.name !== args.router_id) continue;
                     try {
-                        const state = await fetchApi(nodeCtx, `/api/vyos/routers/${r.id}/state`, { signal: AbortSignal.timeout(2000) }).catch(() => 
-                            fetchApi(nodeCtx, `/api/vyos/state?router_id=${r.id}`, { signal: AbortSignal.timeout(2000) })
+                        const state = await fetchApi(nodeCtx, `/api/vyos/routers/${r.id}/state`, { signal: AbortSignal.timeout(10000) }).catch(() => 
+                            fetchApi(nodeCtx, `/api/vyos/state?router_id=${r.id}`, { signal: AbortSignal.timeout(10000) })
                         );
                         const ifaces = (state.interfaces || []).filter((i: any) => i.description && i.description.trim() !== '');
                         results.push({
@@ -2344,18 +2349,7 @@ export async function executeCopilotTool(
                         params,
                         source: 'AI Copilot'
                     })
-                }).catch(async () => {
-                    // Fallback to legacy adhoc route
-                    return await fetchApi(nodeCtx, '/api/vyos/adhoc', {
-                        method: 'POST',
-                        body: JSON.stringify({
-                            router_id: args.router_id,
-                            command,
-                            interface: args.interface,
-                            ...params
-                        })
-                    });
-                });
+                }, 35000);
             }
 
             case 'get_node_status': {
@@ -2939,23 +2933,23 @@ export async function executeCopilotTool(
 
             case 'run_security_url_batch': {
                 const nodeCtx = resolveNodeContext(args.agent_id, ctx);
-                return await fetchApi(nodeCtx, '/api/security/url-batch', { method: 'POST' });
+                return await fetchApi(nodeCtx, '/api/security/url-batch', { method: 'POST' }, 35000);
             }
 
             case 'run_security_dns_batch': {
                 const nodeCtx = resolveNodeContext(args.agent_id, ctx);
-                return await fetchApi(nodeCtx, '/api/security/dns-batch', { method: 'POST' });
+                return await fetchApi(nodeCtx, '/api/security/dns-batch', { method: 'POST' }, 35000);
             }
 
             case 'run_full_security_audit': {
                 const nodeCtx = resolveNodeContext(args.agent_id, ctx);
                 const [urlBatch, dnsBatch, eicar] = await Promise.all([
-                    fetchApi(nodeCtx, '/api/security/url-batch', { method: 'POST' }).catch(e => ({ error: e.message })),
-                    fetchApi(nodeCtx, '/api/security/dns-batch', { method: 'POST' }).catch(e => ({ error: e.message })),
+                    fetchApi(nodeCtx, '/api/security/url-batch', { method: 'POST' }, 35000).catch(e => ({ error: e.message })),
+                    fetchApi(nodeCtx, '/api/security/dns-batch', { method: 'POST' }, 35000).catch(e => ({ error: e.message })),
                     fetchApi(nodeCtx, '/api/security/threat-test', {
                         method: 'POST',
                         body: JSON.stringify({ scenarioId: 'STIGIX-EICAR-01', testName: 'EICAR Audit' })
-                    }).catch(e => ({ error: e.message }))
+                    }, 35000).catch(e => ({ error: e.message }))
                 ]);
                 return { url_batch: urlBatch, dns_batch: dnsBatch, threat_eicar: eicar };
             }
@@ -3081,7 +3075,7 @@ export async function executeCopilotTool(
                 return await fetchApi(nodeCtx, '/api/prisma/flows', {
                     method: 'POST',
                     body: JSON.stringify(args)
-                });
+                }, 45000);
             }
 
             case 'get_health_matrix': {
