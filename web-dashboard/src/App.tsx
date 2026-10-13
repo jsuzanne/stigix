@@ -1795,15 +1795,14 @@ export default function App() {
         <button
           onClick={() => setCopilotDrawerOpen(true)}
           title="Open Stigix AI Copilot Assistant (⌘J)"
-          className="fixed bottom-6 right-6 z-40 bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 hover:from-blue-500 hover:to-indigo-500 text-white shadow-2xl shadow-indigo-600/30 border border-white/20 rounded-full px-4 py-2.5 flex items-center gap-2.5 text-xs font-black tracking-wider transition-all duration-300 hover:scale-105 active:scale-95 group backdrop-blur-md"
+          className="fixed bottom-4 right-4 z-20 bg-slate-900/90 hover:bg-slate-800 text-slate-300 hover:text-white border border-slate-700/70 hover:border-indigo-500/50 rounded-full px-2.5 py-1.5 flex items-center gap-1.5 text-[11px] font-semibold tracking-tight transition-all duration-150 hover:scale-105 active:scale-95 group backdrop-blur-md shadow-lg shadow-black/40"
         >
-          <div className="relative">
-            <Bot size={18} className="text-white group-hover:rotate-12 transition-transform" />
-            <span className="absolute -top-1 -right-1 w-2 h-2 bg-emerald-400 rounded-full animate-ping" />
-            <span className="absolute -top-1 -right-1 w-2 h-2 bg-emerald-400 rounded-full" />
+          <div className="relative flex items-center justify-center">
+            <Bot size={14} className="text-indigo-400 group-hover:text-indigo-300 transition-colors" />
+            <span className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 bg-emerald-400 rounded-full" />
           </div>
-          <span>AI Copilot</span>
-          <span className="px-1.5 py-0.5 rounded text-[9px] font-mono bg-white/20 text-white/90 border border-white/20">⌘J</span>
+          <span>Copilot</span>
+          <span className="px-1 py-0.2 rounded text-[8px] font-mono bg-white/10 text-slate-400 group-hover:text-white border border-white/10">⌘J</span>
         </button>
       )}
 
