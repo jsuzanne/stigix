@@ -1261,6 +1261,50 @@ def build_full_topology(sdk: API, sites_data: dict, debug: bool = False, debug_t
     # --- Step 5: Operational Bulk IPs (for DHCP) ---
     op_ip_map = get_operational_ips(sdk, all_site_ids, debug=debug)
 
+    # Pre-calculate global WAN interface IPs for reliable remote peer resolution
+    global_wan_ip_by_el_and_wan_id = {}
+    global_wan_ip_by_wan_id = {}
+    global_wan_ip_by_site_and_wan_name = {}
+
+    for s_id in all_site_ids:
+        for elem in elements_by_site.get(s_id, []):
+            elem_id = elem.get('id')
+            elem_name = elem.get('name')
+            elem_intfs = el_interfaces_map.get(elem_id, [])
+            for intf in elem_intfs:
+                swi_ids = intf.get('site_wan_interface_ids') or []
+                if not swi_ids:
+                    continue
+                cand_ip = None
+                ipv4_cfg = intf.get('ipv4_config') or {}
+                cfg_type = ipv4_cfg.get('type')
+                if cfg_type == 'static':
+                    st = ipv4_cfg.get('static_config') or {}
+                    ip_raw = st.get('address')
+                    if ip_raw:
+                        cand_ip = ip_raw.split('/')[0]
+                elif cfg_type in ('dhcp', 'pppoe'):
+                    op_st = op_ip_map.get((elem_id, intf.get('name'))) or op_ip_map.get((elem_id, intf.get('id')), {})
+                    op_ips = op_st.get('ips', []) if isinstance(op_st, dict) else op_st
+                    if op_ips:
+                        cand_ip = op_ips[0].split('/')[0]
+
+                if cand_ip:
+                    for swi_id in swi_ids:
+                        global_wan_ip_by_el_and_wan_id[(elem_id, swi_id)] = cand_ip
+                        global_wan_ip_by_wan_id[swi_id] = cand_ip
+                        w_obj = wan_if_by_id.get(swi_id, {})
+                        w_name = w_obj.get('name')
+                        w_lbl = w_obj.get('label')
+                        if w_name:
+                            global_wan_ip_by_site_and_wan_name[(s_id, w_name)] = cand_ip
+                            if elem_name:
+                                global_wan_ip_by_site_and_wan_name[(s_id, elem_name, w_name)] = cand_ip
+                        if w_lbl:
+                            global_wan_ip_by_site_and_wan_name[(s_id, w_lbl)] = cand_ip
+                            if elem_name:
+                                global_wan_ip_by_site_and_wan_name[(s_id, elem_name, w_lbl)] = cand_ip
+
     # --- Step 6: Assemble per-site output ---
     for site_id in all_site_ids:
         site_obj = site_id_to_obj[site_id]
@@ -1465,7 +1509,17 @@ def build_full_topology(sdk: API, sites_data: dict, debug: bool = False, debug_t
                         # Fallback for debug IPs so UI never renders N/A when known
                         raw_src_ip = vl.get('source_ip') or vl.get('local_ip')
                         resolved_src_ip = raw_src_ip if (raw_src_ip and raw_src_ip != 'N/A') else (wan_ip or 'N/A')
-                        resolved_peer_ip = vlink_peer_ip if (vlink_peer_ip and vlink_peer_ip != 'N/A') else (peer_wan_obj.get('ip') or 'N/A')
+                        resolved_peer_ip = vlink_peer_ip if (vlink_peer_ip and vlink_peer_ip != 'N/A') else None
+                        if not resolved_peer_ip and peer_element_id and peer_wan_id:
+                            resolved_peer_ip = global_wan_ip_by_el_and_wan_id.get((peer_element_id, peer_wan_id))
+                        if not resolved_peer_ip and peer_wan_id:
+                            resolved_peer_ip = global_wan_ip_by_wan_id.get(peer_wan_id)
+                        if not resolved_peer_ip and peer_site_id and peer_wan_name:
+                            if vlink_peer_device and vlink_peer_device != 'Unknown':
+                                resolved_peer_ip = global_wan_ip_by_site_and_wan_name.get((peer_site_id, vlink_peer_device, peer_wan_name))
+                            if not resolved_peer_ip:
+                                resolved_peer_ip = global_wan_ip_by_site_and_wan_name.get((peer_site_id, peer_wan_name))
+                        resolved_peer_ip = resolved_peer_ip or peer_wan_obj.get('ip') or 'N/A'
 
                         connections_out.append({
                             'peer_site_id': peer_site_id,
