@@ -5896,56 +5896,6 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                                     )}
                                 </div>
                             </div>
-
-                            {/* Secondary: Onboard Command */}
-                            <div className="bg-emerald-500/5 border-2 border-dashed border-emerald-500/20 rounded-2xl p-6 space-y-5">
-                                <div className="flex items-center gap-3">
-                                    <div className="p-2 bg-emerald-500/10 rounded-xl text-emerald-500">
-                                        <Plus size={18} />
-                                    </div>
-                                    <div>
-                                        <h3 className="text-sm font-black text-text-primary tracking-tight">Onboard a Remote Peer</h3>
-                                        <p className="text-[10px] text-text-muted mt-0.5">Paste this command on any Linux host to install Stigix and join it to this leader automatically.</p>
-                                    </div>
-                                </div>
-
-                                <div className="space-y-1.5">
-                                    <label className="text-[10px] font-extrabold text-text-muted uppercase tracking-widest pl-1">Leader URL (this instance)</label>
-                                    <input
-                                        id="peer-install-leader-url"
-                                        type="text"
-                                        value={peerInstallLeaderUrl}
-                                        onChange={(e) => { setPeerInstallLeaderUrl(e.target.value); setPeerInstallLeaderUrlEdited(true); }}
-                                        placeholder={`http://${detectedIp}:8080`}
-                                        className="w-full bg-card hover:bg-card-hover border border-border focus:border-emerald-500/50 rounded-xl px-4 py-2.5 text-xs font-mono transition-all max-w-md"
-                                    />
-                                    <p className="text-[9px] text-text-muted italic opacity-60 pl-1">Edit if this instance is behind a reverse proxy or a public FQDN.</p>
-                                </div>
-
-                                <div className="space-y-2">
-                                    <label className="text-[10px] font-extrabold text-text-muted uppercase tracking-widest pl-1">Install command — copy and paste on the remote host:</label>
-                                    <div className="relative group">
-                                        <div className="bg-card border border-border rounded-xl p-4 pr-28 font-mono text-[11px] text-emerald-400 break-all leading-relaxed">
-                                            {`curl -fsSL https://raw.githubusercontent.com/jsuzanne/stigix/main/install.sh | sudo bash -s -- --controller ${peerInstallLeaderUrl || `http://${detectedIp}:8080`}`}
-                                        </div>
-                                        <button
-                                            id="copy-peer-install-command"
-                                            onClick={handleCopyPeerCommand}
-                                            title="Copy command"
-                                            className={cn(
-                                                "absolute top-2 right-2 p-2 rounded-lg border transition-all flex items-center gap-1.5",
-                                                peerCommandCopied
-                                                    ? "bg-emerald-500/20 border-emerald-500/40 text-emerald-400"
-                                                    : "bg-card-secondary hover:bg-card-hover border-border text-text-muted hover:text-emerald-400 hover:border-emerald-500/30"
-                                            )}
-                                        >
-                                            {peerCommandCopied
-                                                ? <><CheckCircle size={13} /><span className="text-[9px] font-black uppercase tracking-widest">Copied!</span></>
-                                                : <><Copy size={13} /><span className="text-[9px] font-black uppercase tracking-widest">Copy</span></>}
-                                        </button>
-                                    </div>
-                                </div>
-                            </div>
                         </>
                     )}
 
