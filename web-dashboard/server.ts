@@ -13692,6 +13692,27 @@ app.get('/api/fleet/overview', authenticateToken, (req, res) => {
     }
     const localLeaderId = registryManager.getInstanceId();
     const overview = localRegistryServer.getFleetOverview(localLeaderId);
+    const liveTunnels = fleetTunnelManager.getConnectedTunnels();
+    if (overview && Array.isArray(overview.instances)) {
+        overview.instances = overview.instances.map((inst: any) => {
+            const matchedTunnel = liveTunnels.find(t => 
+                t.instanceId === inst.instance_id || 
+                (inst.ip_private && (t.remoteIp === inst.ip_private || t.sourceIp === inst.ip_private || t.destIp === inst.ip_private))
+            );
+            if (matchedTunnel) {
+                return {
+                    ...inst,
+                    tunnel_direction: matchedTunnel.direction,
+                    tunnel_source_ip: matchedTunnel.sourceIp || inst.tunnel_source_ip,
+                    tunnel_dest_ip: matchedTunnel.destIp || inst.tunnel_dest_ip,
+                    tunnel_source_port: matchedTunnel.sourcePort || inst.tunnel_source_port,
+                    tunnel_dest_port: matchedTunnel.destPort || inst.tunnel_dest_port,
+                    rtt_ms: matchedTunnel.rttMs ?? inst.rtt_ms
+                };
+            }
+            return inst;
+        });
+    }
     res.json(overview);
 });
 log('FLEET', `🏢 Fleet Control Plane mounted at /api/fleet/overview (Leader only)`);

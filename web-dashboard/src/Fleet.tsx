@@ -23,6 +23,10 @@ interface PeerInstance {
     is_leader?: boolean;
     has_tunnel?: boolean;
     tunnel_direction?: string;
+    tunnel_source_ip?: string;
+    tunnel_dest_ip?: string;
+    tunnel_source_port?: number;
+    tunnel_dest_port?: number;
     status: 'online' | 'offline';
     is_stale: boolean;
     last_seen_seconds_ago: number;
@@ -209,13 +213,16 @@ export default function Fleet({ token, onNavigate: _onNavigate }: FleetProps) {
             const json: FleetOverviewResponse = await res.json();
 
             const tunnelKeys = new Set<string>();
+            let tunnelsList: any[] = [];
             if (tunnelsRes && tunnelsRes.ok) {
                 try {
                     const tData = await tunnelsRes.json();
-                    (tData.tunnels || []).forEach((t: any) => {
+                    tunnelsList = tData.tunnels || [];
+                    tunnelsList.forEach((t: any) => {
                         if (t.instanceId) tunnelKeys.add(t.instanceId.toLowerCase());
                         if (t.siteName) tunnelKeys.add(t.siteName.toLowerCase());
                         if (t.ip) tunnelKeys.add(t.ip.toLowerCase());
+                        if (t.remoteIp) tunnelKeys.add(t.remoteIp.toLowerCase());
                     });
                 } catch {}
             }
@@ -225,9 +232,24 @@ export default function Fleet({ token, onNavigate: _onNavigate }: FleetProps) {
                     const id = (inst.instance_id || '').toLowerCase();
                     const site = (inst.meta?.site || inst.instance_id || '').toLowerCase();
                     const ip = (inst.ip_private || '').toLowerCase();
+                    const matchedTunnel = tunnelsList.find((t: any) => 
+                        (t.instanceId && t.instanceId.toLowerCase() === id) ||
+                        (t.siteName && t.siteName.toLowerCase() === site) ||
+                        (t.ip && t.ip.toLowerCase() === ip) ||
+                        (t.remoteIp && t.remoteIp.toLowerCase() === ip) ||
+                        (t.sourceIp && t.sourceIp.toLowerCase() === ip) ||
+                        (t.destIp && t.destIp.toLowerCase() === ip)
+                    );
+                    const hasTunnel = tunnelKeys.has(id) || tunnelKeys.has(site) || (ip ? tunnelKeys.has(ip) : false) || !!matchedTunnel;
                     return {
                         ...inst,
-                        has_tunnel: tunnelKeys.has(id) || tunnelKeys.has(site) || (ip ? tunnelKeys.has(ip) : false)
+                        has_tunnel: hasTunnel,
+                        tunnel_direction: matchedTunnel?.direction || inst.tunnel_direction,
+                        tunnel_source_ip: matchedTunnel?.sourceIp || inst.tunnel_source_ip,
+                        tunnel_dest_ip: matchedTunnel?.destIp || inst.tunnel_dest_ip,
+                        tunnel_source_port: matchedTunnel?.sourcePort || inst.tunnel_source_port,
+                        tunnel_dest_port: matchedTunnel?.destPort || inst.tunnel_dest_port,
+                        rtt_ms: matchedTunnel?.rttMs ?? inst.rtt_ms
                     };
                 });
             }
@@ -556,18 +578,55 @@ export default function Fleet({ token, onNavigate: _onNavigate }: FleetProps) {
                                                 ) : peer.status === 'online' ? (
                                                     peer.has_tunnel ? (
                                                         peer.tunnel_direction === 'outbound' || peer.tunnel_direction === 'outbound_dial' ? (
-                                                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-wider bg-cyan-500/15 text-cyan-700 dark:text-cyan-300 border border-cyan-500/30 shadow-sm" title="Connected via Outbound WebSocket Tunnel (Leader ➔ Peer)">
-                                                                ↗️ OUTBOUND WS
-                                                            </span>
+                                                            <div className="flex flex-col gap-1 items-start">
+                                                                <div className="flex items-center gap-1.5">
+                                                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-wider bg-cyan-500/15 text-cyan-700 dark:text-cyan-300 border border-cyan-500/30 shadow-sm" title="Outbound WebSocket Tunnel (Initiator: Leader ➔ Receiver: Peer)">
+                                                                        ↗️ OUTBOUND WS
+                                                                    </span>
+                                                                    {peer.rtt_ms !== undefined && (
+                                                                        <span className="text-[10px] font-mono text-cyan-600 dark:text-cyan-400 font-semibold" title="Tunnel Round-Trip Time">{peer.rtt_ms}ms</span>
+                                                                    )}
+                                                                </div>
+                                                                <div className="flex items-center gap-1 text-[10px] font-mono" title={`Tunnel Path: Initiator ${peer.tunnel_source_ip || 'Leader'} connects to Receiver ${peer.tunnel_dest_ip || peer.ip_private}`}>
+                                                                    <span className="text-text-muted font-sans font-bold text-[9px] uppercase tracking-wide">Src:</span>
+                                                                    <span className="bg-card-secondary/80 px-1.5 py-0.5 rounded border border-border/50 text-text font-semibold">{peer.tunnel_source_ip || 'Leader'}{peer.tunnel_source_port ? `:${peer.tunnel_source_port}` : ''}</span>
+                                                                    <span className="text-cyan-500 font-bold px-0.5">➔</span>
+                                                                    <span className="text-text-muted font-sans font-bold text-[9px] uppercase tracking-wide">Dst:</span>
+                                                                    <span className="bg-card-secondary/80 px-1.5 py-0.5 rounded border border-border/50 text-text font-semibold">{peer.tunnel_dest_ip || peer.ip_private}{peer.tunnel_dest_port ? `:${peer.tunnel_dest_port}` : ''}</span>
+                                                                </div>
+                                                            </div>
                                                         ) : (
-                                                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-wider bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30 shadow-sm" title="Connected via Inbound Reverse WebSocket Tunnel (Peer ➔ Leader, NAT Traversal)">
-                                                                ↘️ INBOUND WS
-                                                            </span>
+                                                            <div className="flex flex-col gap-1 items-start">
+                                                                <div className="flex items-center gap-1.5">
+                                                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-wider bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30 shadow-sm" title="Inbound Reverse WebSocket Tunnel (Initiator: Peer ➔ Receiver: Leader, NAT Traversal)">
+                                                                        ↘️ INBOUND WS
+                                                                    </span>
+                                                                    {peer.rtt_ms !== undefined && (
+                                                                        <span className="text-[10px] font-mono text-emerald-600 dark:text-emerald-400 font-semibold" title="Tunnel Round-Trip Time">{peer.rtt_ms}ms</span>
+                                                                    )}
+                                                                </div>
+                                                                <div className="flex items-center gap-1 text-[10px] font-mono" title={`Tunnel Path: Initiator ${peer.tunnel_source_ip || peer.ip_private} connects to Receiver ${peer.tunnel_dest_ip || 'Leader'}`}>
+                                                                    <span className="text-text-muted font-sans font-bold text-[9px] uppercase tracking-wide">Src:</span>
+                                                                    <span className="bg-card-secondary/80 px-1.5 py-0.5 rounded border border-border/50 text-text font-semibold">{peer.tunnel_source_ip || peer.ip_private}{peer.tunnel_source_port ? `:${peer.tunnel_source_port}` : ''}</span>
+                                                                    <span className="text-emerald-500 font-bold px-0.5">➔</span>
+                                                                    <span className="text-text-muted font-sans font-bold text-[9px] uppercase tracking-wide">Dst:</span>
+                                                                    <span className="bg-card-secondary/80 px-1.5 py-0.5 rounded border border-border/50 text-text font-semibold">{peer.tunnel_dest_ip || 'Leader'}{peer.tunnel_dest_port ? `:${peer.tunnel_dest_port}` : ''}</span>
+                                                                </div>
+                                                            </div>
                                                         )
                                                     ) : (
-                                                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-semibold text-text-muted bg-card-secondary/80 border border-border/60" title="Direct LAN HTTP Connection">
-                                                            🌐 Direct HTTP
-                                                        </span>
+                                                        <div className="flex flex-col gap-1 items-start">
+                                                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-semibold text-text-muted bg-card-secondary/80 border border-border/60" title="Direct LAN HTTP Connection">
+                                                                🌐 Direct HTTP
+                                                            </span>
+                                                            <div className="flex items-center gap-1 text-[10px] font-mono">
+                                                                <span className="text-text-muted font-sans font-bold text-[9px] uppercase tracking-wide">Src:</span>
+                                                                <span className="bg-card-secondary/80 px-1.5 py-0.5 rounded border border-border/50 text-text font-semibold">Leader</span>
+                                                                <span className="text-text-muted font-bold px-0.5">➔</span>
+                                                                <span className="text-text-muted font-sans font-bold text-[9px] uppercase tracking-wide">Dst:</span>
+                                                                <span className="bg-card-secondary/80 px-1.5 py-0.5 rounded border border-border/50 text-text font-semibold">{peer.ip_private}:8080</span>
+                                                            </div>
+                                                        </div>
                                                     )
                                                 ) : (
                                                     <span className="text-xs text-text-muted font-mono">—</span>
@@ -865,6 +924,54 @@ export default function Fleet({ token, onNavigate: _onNavigate }: FleetProps) {
                                     💡 Tip: The Traffic IP used for WAN packet generation can differ from the Management IP. You can set <code className="text-blue-400">STIGIX_MANAGEMENT_URL=http://&lt;mgmt-ip&gt;:8080</code> in the peer's environment to customize the direct UI link.
                                 </p>
                             </div>
+
+                            {/* WebSocket Control Plane Tunnel */}
+                            {(selectedPeer.has_tunnel || selectedPeer.tunnel_source_ip || selectedPeer.tunnel_dest_ip) && (
+                                <div className="space-y-2">
+                                    <div className="flex items-center justify-between">
+                                        <h3 className="text-xs uppercase font-mono tracking-wider text-text-muted font-bold">
+                                            Mesh Tunnel Control Plane
+                                        </h3>
+                                        {selectedPeer.rtt_ms !== undefined && (
+                                            <span className="text-[11px] font-mono font-bold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">
+                                                RTT: {selectedPeer.rtt_ms} ms
+                                            </span>
+                                        )}
+                                    </div>
+                                    <div className="p-3 rounded-xl bg-card/60 border border-border space-y-3">
+                                        <div className="flex items-center justify-between text-xs">
+                                            <span className="text-text-muted font-medium">Tunnel Direction</span>
+                                            {selectedPeer.tunnel_direction === 'outbound' || selectedPeer.tunnel_direction === 'outbound_dial' ? (
+                                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-wider bg-cyan-500/15 text-cyan-400 border border-cyan-500/30">
+                                                    ↗️ OUTBOUND WS (Leader ➔ Spoke)
+                                                </span>
+                                            ) : (
+                                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-wider bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
+                                                    ↘️ INBOUND WS (Spoke ➔ Leader, NAT Traversal)
+                                                </span>
+                                            )}
+                                        </div>
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 border-t border-border/40">
+                                            <div className="bg-card-secondary/70 p-2.5 rounded-lg border border-border/50">
+                                                <div className="text-[10px] uppercase font-bold text-text-muted">Initiator (Source)</div>
+                                                <div className="text-sm font-mono font-bold text-text mt-0.5 truncate">
+                                                    {selectedPeer.tunnel_direction === 'outbound' || selectedPeer.tunnel_direction === 'outbound_dial'
+                                                        ? `${selectedPeer.tunnel_source_ip || 'Leader'}${selectedPeer.tunnel_source_port ? `:${selectedPeer.tunnel_source_port}` : ''}`
+                                                        : `${selectedPeer.tunnel_source_ip || selectedPeer.ip_private}${selectedPeer.tunnel_source_port ? `:${selectedPeer.tunnel_source_port}` : ''}`}
+                                                </div>
+                                            </div>
+                                            <div className="bg-card-secondary/70 p-2.5 rounded-lg border border-border/50">
+                                                <div className="text-[10px] uppercase font-bold text-text-muted">Receiver (Destination)</div>
+                                                <div className="text-sm font-mono font-bold text-text mt-0.5 truncate">
+                                                    {selectedPeer.tunnel_direction === 'outbound' || selectedPeer.tunnel_direction === 'outbound_dial'
+                                                        ? `${selectedPeer.tunnel_dest_ip || selectedPeer.ip_private}${selectedPeer.tunnel_dest_port ? `:${selectedPeer.tunnel_dest_port}` : ''}`
+                                                        : `${selectedPeer.tunnel_dest_ip || 'Leader'}${selectedPeer.tunnel_dest_port ? `:${selectedPeer.tunnel_dest_port}` : ''}`}
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
 
                             {/* Top Telemetry Highlight (Clean typography, no wrap, proportional widths) */}
                             <div className="grid grid-cols-2 sm:grid-cols-[1.3fr_1.4fr_0.7fr_0.6fr] gap-3 bg-card-secondary/40 p-4 rounded-xl border border-border">

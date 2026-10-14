@@ -23,6 +23,11 @@ export interface TunnelPeerInfo {
     activeRevision?: number;
     transport: string;
     direction: 'inbound' | 'outbound_dial';
+    sourceIp?: string;
+    destIp?: string;
+    socketRemoteIp?: string;
+    sourcePort?: number;
+    destPort?: number;
 }
 
 export interface ForwardRequestPayload {
@@ -228,6 +233,27 @@ export class FleetTunnelManager {
             const clientIp: string = auth.ip || socket.handshake.address.replace(/^.*:/, '') || '127.0.0.1';
             const isLeaderDial: boolean = !!auth.isLeaderDial;
 
+            const rawRemote = (socket.conn as any)?.remoteAddress || (socket.request?.socket as any)?.remoteAddress || socket.handshake.address || '';
+            const socketRemoteIp = rawRemote.replace(/^::ffff:/, '').replace(/^.*:/, '');
+            const rawLocal = (socket.conn as any)?.localAddress || (socket.request?.socket as any)?.localAddress || '';
+            const socketLocalIp = rawLocal.replace(/^::ffff:/, '').replace(/^.*:/, '');
+            const leaderCurrentIp = this.registryManager?.getCurrentIp?.() || this.registryManager?.getStatus?.()?.detected_ip || '127.0.0.1';
+
+            let destHost = '';
+            if (socket.request?.headers?.host) {
+                destHost = socket.request.headers.host.split(':')[0];
+            }
+            const leaderDestIp = (destHost && destHost !== '0.0.0.0' && destHost !== 'localhost') 
+                ? destHost 
+                : (socketLocalIp && socketLocalIp !== '0.0.0.0' && socketLocalIp !== '127.0.0.1')
+                ? socketLocalIp
+                : leaderCurrentIp;
+
+            const sourceIp = isLeaderDial ? leaderCurrentIp : (clientIp || socketRemoteIp || '127.0.0.1');
+            const destIp = isLeaderDial ? clientIp : leaderDestIp;
+            const sourcePort = (socket.request?.socket as any)?.remotePort || (socket.conn as any)?.remotePort;
+            const destPort = (socket.request?.socket as any)?.localPort || (socket.conn as any)?.localPort || this.port;
+
             const info: TunnelPeerInfo = {
                 instanceId,
                 siteName,
@@ -235,7 +261,12 @@ export class FleetTunnelManager {
                 connectedAt: Date.now(),
                 lastPing: Date.now(),
                 transport: 'websocket',
-                direction: isLeaderDial ? 'outbound_dial' : 'inbound'
+                direction: isLeaderDial ? 'outbound_dial' : 'inbound',
+                sourceIp,
+                destIp,
+                socketRemoteIp: socketRemoteIp || clientIp,
+                sourcePort,
+                destPort
             };
 
             this.activeTunnels.set(instanceId, { socket, info });
@@ -244,7 +275,20 @@ export class FleetTunnelManager {
             }
             this.siteToInstanceMap.set(clientIp.toLowerCase(), instanceId);
 
-            log('TUNNEL', `⚡ Reverse tunnel connected: ${siteName} (${instanceId}) [${clientIp}] via WebSocket (${info.direction})`);
+            if (this.localRegistryServer) {
+                this.localRegistryServer.updatePeerTunnelMetrics(
+                    instanceId,
+                    0,
+                    Date.now(),
+                    info.direction,
+                    info.sourceIp,
+                    info.destIp,
+                    info.sourcePort,
+                    info.destPort
+                );
+            }
+
+            log('TUNNEL', `⚡ Reverse tunnel connected: ${siteName} (${instanceId}) [${clientIp}] via WebSocket (${info.direction}) [${sourceIp} ➔ ${destIp}]`);
 
             // If this node is acting as Spoke dialed by Leader (M6)
             let dialHeartbeatInterval: NodeJS.Timeout | null = null;
@@ -829,6 +873,7 @@ export class FleetTunnelManager {
             // Register Leader services (Provisioning, Manifest, Targets, Ping) on this outbound socket
             this.registerLeaderHandlers(socket);
 
+            const leaderSrcIp = this.registryManager?.getCurrentIp?.() || this.registryManager?.getStatus?.()?.detected_ip || '127.0.0.1';
             const info: TunnelPeerInfo = {
                 instanceId: targetId,
                 siteName: targetSiteName,
@@ -836,12 +881,28 @@ export class FleetTunnelManager {
                 connectedAt: Date.now(),
                 lastPing: Date.now(),
                 transport: 'websocket',
-                direction: 'outbound_dial'
+                direction: 'outbound_dial',
+                sourceIp: leaderSrcIp,
+                destIp: host,
+                destPort: port
             };
 
             this.activeTunnels.set(targetId, { socket, info });
             this.siteToInstanceMap.set(targetSiteName.toLowerCase(), targetId);
             this.siteToInstanceMap.set(host.toLowerCase(), targetId);
+
+            if (this.localRegistryServer) {
+                this.localRegistryServer.updatePeerTunnelMetrics(
+                    targetId,
+                    0,
+                    Date.now(),
+                    info.direction,
+                    info.sourceIp,
+                    info.destIp,
+                    undefined,
+                    info.destPort
+                );
+            }
 
             // Initial query for remote peer's telemetry
             socket.emit('peer:query_status', (remoteStatus: any) => {
