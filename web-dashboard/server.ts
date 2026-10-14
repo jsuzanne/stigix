@@ -4708,7 +4708,7 @@ const getAutoMeshProbes = (): any[] => {
 
         for (const peer of rawPeers) {
             if (!peer || peer.instance_id === localId) continue;
-            const peerName = (peer.meta?.site || peer.instance_id || 'PEER').toUpperCase();
+            const peerName = (peer.meta?.site || peer.instance_id || 'PEER').trim();
             const peerIp = (peer.ip_private || '').trim();
             if (!peerIp || peerIp === '127.0.0.1' || peerIp === localIp) continue;
 
@@ -13979,7 +13979,7 @@ app.get('/api/fleet/matrix', authenticateToken, async (req, res) => {
         for (const peer of rawPeers) {
             if (!peer || !peer.instance_id) continue;
             if (!nodes.find(n => n.id === peer.instance_id)) {
-                const peerName = (peer.meta?.site || peer.instance_id || 'PEER').toUpperCase();
+                const peerName = (peer.meta?.site || peer.instance_id || 'PEER').trim();
                 nodes.push({
                     id: peer.instance_id,
                     name: peerName,
@@ -14719,14 +14719,14 @@ app.post('/api/fleet/join-redeem', async (req: any, res: any) => {
             return res.status(400).json({ error: 'join_failed', message: redeemResult.error });
         }
 
-        const effectiveSite = (site_name || instance_id || 'PEER').toUpperCase();
+        const effectiveSite = (site_name || instance_id || 'PEER').trim();
         log('FLEET', `✨ Magic Join node successfully onboarded: ${instance_id} (${effectiveSite}) IP: ${public_ip || 'LAN'}`);
 
         // Automatically create or update target in TargetsManager if public IP is provided
         if (public_ip && typeof targetsManager?.createTarget === 'function') {
             try {
                 const existingTargets = targetsManager.loadTargets();
-                const existing = existingTargets.find((t: any) => t.host === public_ip || (t.name || t.label || '').toUpperCase() === effectiveSite);
+                const existing = existingTargets.find((t: any) => t.host === public_ip || (t.name || t.label || '').toUpperCase() === effectiveSite.toUpperCase());
                 if (!existing) {
                     targetsManager.createTarget({
                         name: effectiveSite,
@@ -15734,7 +15734,7 @@ app.post('/api/registry/join-with-token', async (req: any, res: any) => {
             }
 
             const myIp = registryManager.getCurrentIp();
-            const effectiveSite = (req.body.site_name || payload.site_hint || registryManager.getSiteName() || os.hostname() || 'PEER').toUpperCase();
+            const effectiveSite = (req.body.site_name || payload.site_hint || registryManager.getSiteName() || os.hostname() || 'PEER').trim();
             const myInstanceId = registryManager.getInstanceId() || `peer-${Math.random().toString(16).slice(2, 8)}`;
 
             log('REGISTRY', `Redeeming join token with Leader ${winningEndpoint}...`);
