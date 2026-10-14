@@ -4817,6 +4817,8 @@ app.get('/api/connectivity/active-probes', authenticateToken, (req, res) => {
 
         res.json({
             success: true,
+            engine_enabled: getSystemSettings().auto_restart_probes ?? true,
+            engine_running: isConnectivityMonitorActive,
             probes: allProbes.map(p => ({
                 id: (p.name || p.id || '').toLowerCase().replace(/\s+/g, '-'),
                 name: p.name,
@@ -4828,6 +4830,14 @@ app.get('/api/connectivity/active-probes', authenticateToken, (req, res) => {
     } catch (error) {
         res.status(500).json({ error: 'Failed to fetch active probes' });
     }
+});
+
+app.get('/api/connectivity/engine-status', authenticateToken, (_req, res) => {
+    const settings = getSystemSettings();
+    res.json({
+        enabled: settings.auto_restart_probes ?? true,
+        running: isConnectivityMonitorActive
+    });
 });
 
 app.get('/api/connectivity/test', authenticateToken, async (req, res) => {
@@ -5387,10 +5397,25 @@ const processProbeQueue = async () => {
 };
 
 // Background connectivity monitoring
+let connectivityMonitorInterval: NodeJS.Timeout | null = null;
+let connectivityMonitorTimeout: NodeJS.Timeout | null = null;
+let isConnectivityMonitorActive = false;
+
 const startConnectivityMonitor = () => {
+    if (connectivityMonitorInterval) {
+        clearInterval(connectivityMonitorInterval);
+        connectivityMonitorInterval = null;
+    }
+    if (connectivityMonitorTimeout) {
+        clearTimeout(connectivityMonitorTimeout);
+        connectivityMonitorTimeout = null;
+    }
+
+    isConnectivityMonitorActive = true;
     console.log(`[DEM] Starting background connectivity monitoring (Tick every 10s)`);
 
     const runMonitorTick = async () => {
+        if (!isConnectivityMonitorActive) return;
         const rawEndpoints: any[] = getFullEffectiveConnectivityProbes()
             .filter((p: any) => p.enabled !== false); // Only run probes that are not disabled
 
@@ -5427,9 +5452,24 @@ const startConnectivityMonitor = () => {
     };
 
     // Run tick every 10 seconds
-    setInterval(runMonitorTick, 10000);
+    connectivityMonitorInterval = setInterval(runMonitorTick, 10000);
     // Initial immediate tick after 5s to let system settle
-    setTimeout(runMonitorTick, 5000);
+    connectivityMonitorTimeout = setTimeout(runMonitorTick, 5000);
+};
+
+const stopConnectivityMonitor = () => {
+    isConnectivityMonitorActive = false;
+    if (connectivityMonitorInterval) {
+        clearInterval(connectivityMonitorInterval);
+        connectivityMonitorInterval = null;
+    }
+    if (connectivityMonitorTimeout) {
+        clearTimeout(connectivityMonitorTimeout);
+        connectivityMonitorTimeout = null;
+    }
+    probeQueue.length = 0;
+    isRunning.clear();
+    console.log('[DEM] Connectivity monitoring suspended');
 };
 
 // Start monitor — gated by system-settings.json auto_restart_probes (default: true)
@@ -6005,8 +6045,18 @@ app.post('/api/convergence/stop', authenticateToken, (req, res) => {
 });
 
 const lastConvergenceStatsCache = new Map<string, any>();
+let lastIdleConvergenceScanTime = 0;
+let cachedIdleConvergenceResults: any[] = [];
 
 app.get('/api/convergence/status', authenticateToken, (req, res) => {
+    const now = Date.now();
+    // Fast path: if no tests are actively running, reuse cached idle results for up to 2.5s
+    // to avoid continuously blocking the Event Loop with fs.readdirSync('/tmp').
+    // When tests are running (convergenceProcesses.size > 0), this is bypassed completely for real-time 0ms live metrics.
+    if (convergenceProcesses.size === 0 && (now - lastIdleConvergenceScanTime < 2500) && cachedIdleConvergenceResults.length >= 0) {
+        return res.json(cachedIdleConvergenceResults);
+    }
+
     const results: any[] = [];
     try {
         const files = fs.readdirSync('/tmp').filter(f => f.startsWith('convergence_stats_') && f.endsWith('.json') && !f.includes('.tmp.'));
@@ -6036,6 +6086,11 @@ app.get('/api/convergence/status', authenticateToken, (req, res) => {
             }
         }
     } catch (e) { }
+
+    if (convergenceProcesses.size === 0) {
+        lastIdleConvergenceScanTime = now;
+        cachedIdleConvergenceResults = results;
+    }
 
     res.json(results);
 });
@@ -16205,10 +16260,28 @@ app.get('/api/config/system-settings', authenticateToken, (_req, res) => {
 
 app.post('/api/config/system-settings', authenticateToken, async (req, res) => {
     try {
-        const { auto_restart_iot, auto_restart_voice, auto_sync_probes_to_fleet, registry_mode } = req.body;
+        const {
+            auto_restart_iot,
+            auto_restart_voice,
+            auto_restart_traffic,
+            auto_restart_probes,
+            auto_restart_custom_tcp,
+            auto_sync_probes_to_fleet,
+            registry_mode
+        } = req.body;
         const patch: Partial<SystemSettings> = {};
         if (typeof auto_restart_iot === 'boolean') patch.auto_restart_iot = auto_restart_iot;
         if (typeof auto_restart_voice === 'boolean') patch.auto_restart_voice = auto_restart_voice;
+        if (typeof auto_restart_traffic === 'boolean') patch.auto_restart_traffic = auto_restart_traffic;
+        if (typeof auto_restart_custom_tcp === 'boolean') patch.auto_restart_custom_tcp = auto_restart_custom_tcp;
+        if (typeof auto_restart_probes === 'boolean') {
+            patch.auto_restart_probes = auto_restart_probes;
+            if (auto_restart_probes) {
+                startConnectivityMonitor();
+            } else {
+                stopConnectivityMonitor();
+            }
+        }
         if (typeof auto_sync_probes_to_fleet === 'boolean') patch.auto_sync_probes_to_fleet = auto_sync_probes_to_fleet;
         if (registry_mode === 'auto' || registry_mode === 'leader' || registry_mode === 'peer') {
             patch.registry_mode = registry_mode;
