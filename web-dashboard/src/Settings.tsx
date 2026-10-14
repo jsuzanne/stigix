@@ -565,10 +565,11 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
     };
 
     useEffect(() => {
+        if (activeTab !== 'targetService') return;
         fetchTargetServiceStatus();
         const interval = setInterval(fetchTargetServiceStatus, 5000);
         return () => clearInterval(interval);
-    }, [activePeerId]);
+    }, [activePeerId, activeTab]);
     const [latestEgressResult, setLatestEgressResult] = useState<any>(null);
     const [containerStats, setContainerStats] = useState<any[]>([]);
     const [isGeneratingTechSupport, setIsGeneratingTechSupport] = useState(false);
@@ -648,10 +649,20 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
 
     useEffect(() => {
         if (!targets.length) return;
+        // Only ping targets when user is viewing the targets or convergence tab
+        if (activeTab !== 'targets' && activeTab !== 'convergence') return;
+
         const checkReachability = async () => {
             const targetsToPing = targets.map(t => ({ id: t.id, host: t.host, port: t.ports?.convergence ?? 6200 }));
-            for (const t of targetsToPing) {
-                setTargetReachability(prev => ({ ...prev, [t.id]: 'loading' }));
+            // Set all to loading in one batch
+            setTargetReachability(prev => {
+                const next = { ...prev };
+                targetsToPing.forEach(t => { next[t.id] = 'loading'; });
+                return next;
+            });
+
+            // Parallelize checks via Promise.allSettled to avoid sequential blocking
+            await Promise.allSettled(targetsToPing.map(async (t) => {
                 try {
                     const res = await apiFetch('/api/convergence/reachability', {
                         method: 'POST',
@@ -663,13 +674,13 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                 } catch {
                     setTargetReachability(prev => ({ ...prev, [t.id]: false }));
                 }
-            }
+            }));
         };
 
         checkReachability();
         const interval = setInterval(checkReachability, 60000);
         return () => clearInterval(interval);
-    }, [targets, token, activePeerId]);
+    }, [targets, token, activePeerId, activeTab]);
 
     const authHeaders = {
         'Authorization': `Bearer ${token}`,
@@ -863,93 +874,6 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
         const coreConfigInterval = setInterval(fetchCoreConfig, 30000);
         const targetsInterval = setInterval(fetchTargets, 30000);
 
-        // System/Maintenance data - Decoupled to avoid blocking initial load
-        const fetchMaintenanceStatus = () => {
-            apiFetch('/api/admin/maintenance/version', { headers: { 'Authorization': `Bearer ${token}` } })
-                .then(r => r.json())
-                .then(maintenanceData => {
-                    setStatus(maintenanceData);
-                })
-                .catch(() => { });
-
-            apiFetch('/api/admin/maintenance/status', { headers: { 'Authorization': `Bearer ${token}` } })
-                .then(r => r.json())
-                .then(upgradeData => {
-                    setUpgradeStatus(upgradeData);
-                    if (upgradeData.inProgress) setUpgrading(true);
-                })
-                .catch(() => { });
-        };
-        fetchMaintenanceStatus();
-
-        // Fetch System Info
-        const fetchSystemInfo = () => {
-            apiFetch('/api/admin/system/info', { headers: { 'Authorization': `Bearer ${token}` } })
-                .then(r => r.json())
-                .then(newInfo => {
-                    setSystemInfo((prev: any) => {
-                        const now = Date.now();
-                        if (prev && prev.network && newInfo.network && prev.timestamp) {
-                            const timeDiff = (now - prev.timestamp) / 1000;
-                            if (timeDiff > 0) {
-                                const rxSpeed = ((newInfo.network.rx - prev.network.rx) * 8) / 1000000 / timeDiff;
-                                const txSpeed = ((newInfo.network.tx - prev.network.tx) * 8) / 1000000 / timeDiff;
-                                return { ...newInfo, networkSpeed: { rx: Math.max(0, rxSpeed), tx: Math.max(0, txSpeed) }, timestamp: now };
-                            }
-                        }
-                        return { ...newInfo, networkSpeed: { rx: 0, tx: 0 }, timestamp: now };
-                    });
-                })
-                .catch(() => { });
-        };
-        fetchSystemInfo();
-        const sysInfoInterval = setInterval(fetchSystemInfo, 5000);
-
-        // Fetch Telemetry History (CPU & RAM ring buffer)
-        const fetchTelemetryHistory = () => {
-            apiFetch('/api/admin/system/metrics-history', { headers: { 'Authorization': `Bearer ${token}` } })
-                .then(r => r.json())
-                .then(data => {
-                    if (data && data.success) {
-                        setTelemetryData(data);
-                    }
-                })
-                .catch(() => { });
-        };
-        fetchTelemetryHistory();
-        const telemetryInterval = setInterval(fetchTelemetryHistory, 15000);
-
-        // Fetch Live Container Stats
-        const fetchContainerStats = () => {
-            apiFetch('/api/containers/stats', { headers: authHeaders })
-                .then(r => r.json())
-                .then(setContainerStats)
-                .catch(() => { });
-        };
-        fetchContainerStats();
-        const containerStatsInterval = setInterval(fetchContainerStats, 5000);
-
-        // Fetch Latest Egress Info
-        const fetchEgressInfo = () => {
-            apiFetch('/api/connectivity/results?limit=50', { headers: { 'Authorization': `Bearer ${token}` } })
-                .then(r => r.json())
-                .then(data => {
-                    const results = data.results || [];
-                    // Look for 'egress-info' (case insensitive) or a probe of type CLOUD that has geo data
-                    const egress = results.find((r: any) => 
-                        r.endpointName.toLowerCase().includes('egress-info') || 
-                        (r.endpointType === 'CLOUD' && r.data?.ip)
-                    );
-                    if (egress) setLatestEgressResult(egress);
-                })
-                .catch(() => { });
-        };
-        fetchEgressInfo();
-        const egressInterval = setInterval(fetchEgressInfo, 30000);
-
-        // Convergence thresholds and traffic thresholds are now fetched inside
-        // fetchCoreConfig() above and polled on a 30 s interval.
-
         // Fetch Registry Status
         const fetchRegistryStatus = () => {
             apiFetch('/api/registry/status', { headers: authHeaders })
@@ -995,24 +919,6 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
         };
         fetchCertificates();
 
-        const fetchMcpStatus = () => {
-            apiFetch('/api/admin/system/mcp-status', { headers: authHeaders })
-                .then(r => r.json())
-                .then(setMcpStatus)
-                .catch(e => console.error("Failed to fetch MCP status", e));
-        };
-        fetchMcpStatus();
-        const mcpInterval = setInterval(fetchMcpStatus, 15000);
-
-        const fetchMcpHistory = () => {
-            apiFetch('/api/admin/mcp/history?limit=30', { headers: authHeaders })
-                .then(r => r.json())
-                .then(setMcpHistory)
-                .catch(() => {});
-        };
-        fetchMcpHistory();
-        const mcpHistoryInterval = setInterval(fetchMcpHistory, 3000);
-
         const fetchCopilotConfig = () => {
             apiFetch('/api/copilot/config', { headers: authHeaders })
                 .then(r => r.ok ? r.json() : null)
@@ -1032,15 +938,121 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
         return () => {
             clearInterval(coreConfigInterval);
             clearInterval(targetsInterval);
-            clearInterval(sysInfoInterval);
-            clearInterval(telemetryInterval);
-            clearInterval(mcpInterval);
-            clearInterval(mcpHistoryInterval);
-            clearInterval(egressInterval);
-            clearInterval(containerStatsInterval);
         };
 
     }, [token, activePeerId]);
+
+    // System tab metrics & live monitoring — only active when System tab is open
+    useEffect(() => {
+        if (activeTab !== 'system') return;
+
+        const fetchSystemInfo = () => {
+            apiFetch('/api/admin/system/info', { headers: { 'Authorization': `Bearer ${token}` } })
+                .then(r => r.json())
+                .then(newInfo => {
+                    setSystemInfo((prev: any) => {
+                        const now = Date.now();
+                        if (prev && prev.network && newInfo.network && prev.timestamp) {
+                            const timeDiff = (now - prev.timestamp) / 1000;
+                            if (timeDiff > 0) {
+                                const rxSpeed = ((newInfo.network.rx - prev.network.rx) * 8) / 1000000 / timeDiff;
+                                const txSpeed = ((newInfo.network.tx - prev.network.tx) * 8) / 1000000 / timeDiff;
+                                return { ...newInfo, networkSpeed: { rx: Math.max(0, rxSpeed), tx: Math.max(0, txSpeed) }, timestamp: now };
+                            }
+                        }
+                        return { ...newInfo, networkSpeed: { rx: 0, tx: 0 }, timestamp: now };
+                    });
+                })
+                .catch(() => { });
+        };
+        fetchSystemInfo();
+        const sysInfoInterval = setInterval(fetchSystemInfo, 5000);
+
+        const fetchTelemetryHistory = () => {
+            apiFetch('/api/admin/system/metrics-history', { headers: { 'Authorization': `Bearer ${token}` } })
+                .then(r => r.json())
+                .then(data => {
+                    if (data && data.success) {
+                        setTelemetryData(data);
+                    }
+                })
+                .catch(() => { });
+        };
+        fetchTelemetryHistory();
+        const telemetryInterval = setInterval(fetchTelemetryHistory, 15000);
+
+        const fetchContainerStats = () => {
+            apiFetch('/api/containers/stats', { headers: authHeaders })
+                .then(r => r.json())
+                .then(setContainerStats)
+                .catch(() => { });
+        };
+        fetchContainerStats();
+        const containerStatsInterval = setInterval(fetchContainerStats, 5000);
+
+        const fetchEgressInfo = () => {
+            apiFetch('/api/connectivity/results?limit=50', { headers: { 'Authorization': `Bearer ${token}` } })
+                .then(r => r.json())
+                .then(data => {
+                    const results = data.results || [];
+                    const egress = results.find((r: any) => 
+                        r.endpointName.toLowerCase().includes('egress-info') || 
+                        (r.endpointType === 'CLOUD' && r.data?.ip)
+                    );
+                    if (egress) setLatestEgressResult(egress);
+                })
+                .catch(() => { });
+        };
+        fetchEgressInfo();
+        const egressInterval = setInterval(fetchEgressInfo, 30000);
+
+        return () => {
+            clearInterval(sysInfoInterval);
+            clearInterval(telemetryInterval);
+            clearInterval(containerStatsInterval);
+            clearInterval(egressInterval);
+        };
+    }, [token, activePeerId, activeTab]);
+
+    // MCP tab status & history — only active when MCP tab is open
+    useEffect(() => {
+        if (activeTab !== 'mcp') return;
+
+        const fetchMcpStatus = () => {
+            apiFetch('/api/admin/system/mcp-status', { headers: authHeaders })
+                .then(r => r.json())
+                .then(setMcpStatus)
+                .catch(e => console.error("Failed to fetch MCP status", e));
+        };
+        fetchMcpStatus();
+        const mcpInterval = setInterval(fetchMcpStatus, 15000);
+
+        const fetchMcpHistory = () => {
+            apiFetch('/api/admin/mcp/history?limit=30', { headers: authHeaders })
+                .then(r => r.json())
+                .then(setMcpHistory)
+                .catch(() => {});
+        };
+        fetchMcpHistory();
+        const mcpHistoryInterval = setInterval(fetchMcpHistory, 3000);
+
+        return () => {
+            clearInterval(mcpInterval);
+            clearInterval(mcpHistoryInterval);
+        };
+    }, [token, activePeerId, activeTab]);
+
+    // Maintenance & version status — only fetched when viewing Maintenance or System tabs
+    useEffect(() => {
+        if (activeTab !== 'maintenance' && activeTab !== 'system') return;
+
+        apiFetch('/api/admin/maintenance/version', { headers: { 'Authorization': `Bearer ${token}` } })
+            .then(r => r.json())
+            .then(maintenanceData => {
+                setStatus(maintenanceData);
+            })
+            .catch(() => { });
+    }, [token, activePeerId, activeTab]);
 
     // Fetch system settings (startup behaviour)
     useEffect(() => {
