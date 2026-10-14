@@ -43,6 +43,7 @@ export class MulticastAppManager {
     private nodeForwarder?: ClusterNodeForwarder;
     private localNodeMatcher?: LocalNodeMatcher;
     private getLocalSiteNameFn?: () => string;
+    private resolveNodeInterfaceIpFn?: (nodeId: string) => string | undefined;
 
     constructor(configStore: CustomTcpConfigStore) {
         this.configStore = configStore;
@@ -52,10 +53,26 @@ export class MulticastAppManager {
         nodeForwarder: ClusterNodeForwarder;
         localNodeMatcher: LocalNodeMatcher;
         getLocalSiteName?: () => string;
+        resolveNodeInterfaceIp?: (nodeId: string) => string | undefined;
     }): void {
         this.nodeForwarder = options.nodeForwarder;
         this.localNodeMatcher = options.localNodeMatcher;
         this.getLocalSiteNameFn = options.getLocalSiteName;
+        this.resolveNodeInterfaceIpFn = options.resolveNodeInterfaceIp;
+    }
+
+    public resolveEffectiveInterfaceIp(nodeId: string, configuredIp?: string | null): string {
+        const trimmed = (configuredIp || '').trim();
+        if (trimmed && trimmed.toLowerCase() !== 'auto') {
+            return trimmed;
+        }
+        if (this.resolveNodeInterfaceIpFn && nodeId) {
+            const knownIp = (this.resolveNodeInterfaceIpFn(nodeId) || '').trim();
+            if (knownIp && knownIp !== '127.0.0.1' && knownIp.toLowerCase() !== 'auto') {
+                return knownIp;
+            }
+        }
+        return 'auto';
     }
 
     public getLocalNodeId(): string {
@@ -240,11 +257,15 @@ export class MulticastAppManager {
     ): Promise<MulticastSenderStats> {
         const baseConfig = this.resolveEffectiveConfig(appId, overrideConfig);
         const effectiveConfig: CustomMulticastApplicationConfig = JSON.parse(JSON.stringify(baseConfig));
-        if (interfaceIpOverride !== undefined && interfaceIpOverride !== null) {
-            effectiveConfig.senderInterfaceIp = interfaceIpOverride;
-        }
-
         const localNodeId = this.getLocalNodeId();
+        const rawIp = interfaceIpOverride !== undefined && interfaceIpOverride !== null
+            ? interfaceIpOverride
+            : effectiveConfig.senderInterfaceIp;
+        effectiveConfig.senderInterfaceIp = this.resolveEffectiveInterfaceIp(
+            effectiveConfig.senderNode || localNodeId,
+            rawIp
+        );
+
         let sender = this.activeSenders.get(effectiveConfig.id);
         if (sender && sender.isRunning()) {
             await sender.stop();
@@ -290,9 +311,10 @@ export class MulticastAppManager {
 
         const rawExpect = options?.expect || matchedReceiver?.expect || 'traffic';
         const expectMode: MulticastExpectationMode = rawExpect === 'none' ? 'none' : 'traffic';
-        const interfaceIp = options?.interfaceIp !== undefined && options?.interfaceIp !== null
+        const rawInterfaceIp = options?.interfaceIp !== undefined && options?.interfaceIp !== null
             ? options.interfaceIp
             : (matchedReceiver?.interfaceIp || 'auto');
+        const interfaceIp = this.resolveEffectiveInterfaceIp(localNodeId, rawInterfaceIp);
 
         const existing = this.activeReceivers.get(effectiveConfig.id);
         if (existing) {
@@ -339,11 +361,12 @@ export class MulticastAppManager {
         const localNodeId = this.getLocalNodeId();
         const isSender = cfg.senderNode.toLowerCase() === localNodeId.toLowerCase();
 
-        const resolvedIp = preferredIp !== undefined && preferredIp !== null
+        const rawIp = preferredIp !== undefined && preferredIp !== null
             ? preferredIp
             : (isSender
                 ? cfg.senderInterfaceIp
                 : cfg.receivers.find(r => r.node.toLowerCase() === localNodeId.toLowerCase())?.interfaceIp || 'auto');
+        const resolvedIp = this.resolveEffectiveInterfaceIp(localNodeId, rawIp);
 
         return await inspectLocalMulticastPreflight(
             localNodeId,
@@ -417,7 +440,7 @@ export class MulticastAppManager {
             enabledReceivers.map(r =>
                 this.dispatchToNode(r.node, 'POST', `/multicast/${encodeURIComponent(app.id)}/local-join`, {
                     expect: r.expect,
-                    interfaceIp: r.interfaceIp,
+                    interfaceIp: this.resolveEffectiveInterfaceIp(r.node, r.interfaceIp),
                     config: app
                 })
             )
@@ -432,7 +455,7 @@ export class MulticastAppManager {
             'POST',
             `/multicast/${encodeURIComponent(app.id)}/local-sender/start`,
             {
-                interfaceIp: app.senderInterfaceIp,
+                interfaceIp: this.resolveEffectiveInterfaceIp(app.senderNode, app.senderInterfaceIp),
                 config: app
             }
         );
@@ -493,7 +516,7 @@ export class MulticastAppManager {
                 `/multicast/${encodeURIComponent(app.id)}/local-join`,
                 {
                     expect: expectOverride || rcvCfg?.expect || 'traffic',
-                    interfaceIp: rcvCfg?.interfaceIp || 'auto',
+                    interfaceIp: this.resolveEffectiveInterfaceIp(nodeId, rcvCfg?.interfaceIp),
                     config: app
                 }
             );
@@ -692,10 +715,10 @@ export class MulticastAppManager {
     }> {
         const app = this.resolveEffectiveConfig(appId);
         const uniqueNodes = new Map<string, string | null>();
-        uniqueNodes.set(app.senderNode, app.senderInterfaceIp || null);
+        uniqueNodes.set(app.senderNode, this.resolveEffectiveInterfaceIp(app.senderNode, app.senderInterfaceIp));
         for (const r of app.receivers) {
             if (!uniqueNodes.has(r.node)) {
-                uniqueNodes.set(r.node, r.interfaceIp || null);
+                uniqueNodes.set(r.node, this.resolveEffectiveInterfaceIp(r.node, r.interfaceIp));
             }
         }
 

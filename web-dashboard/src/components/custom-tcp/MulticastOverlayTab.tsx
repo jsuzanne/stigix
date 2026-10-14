@@ -61,13 +61,14 @@ function formatBytes(bytes: number): string {
 }
 
 export const MulticastOverlayTab: React.FC<MulticastOverlayTabProps> = ({ token, localSiteName }) => {
-    const { gFetch } = usePeerContext();
+    const { peers } = usePeerContext();
     const [profiles, setProfiles] = useState<CustomMulticastApplicationConfig[]>([]);
     const [selectedAppId, setSelectedAppId] = useState<string>('');
     const [clusterStatus, setClusterStatus] = useState<MulticastClusterStatus | null>(null);
     const [loading, setLoading] = useState<boolean>(true);
     const [actionBusy, setActionBusy] = useState<boolean>(false);
     const [knownNodes, setKnownNodes] = useState<string[]>([]);
+    const [knownTargets, setKnownTargets] = useState<{ name: string; host: string; isSelf?: boolean }[]>([]);
 
     // Pre-Flight Modal State
     const [preflightOpen, setPreflightOpen] = useState<boolean>(false);
@@ -118,9 +119,25 @@ export const MulticastOverlayTab: React.FC<MulticastOverlayTabProps> = ({ token,
         [token]
     );
 
+    const resolveTargetHost = useCallback(
+        (nodeName: string): string => {
+            if (!nodeName) return 'auto';
+            const needle = nodeName.trim().toLowerCase();
+            const match = knownTargets.find(
+                (t) =>
+                    t.name.toLowerCase() === needle ||
+                    t.host.toLowerCase() === needle ||
+                    t.name.toLowerCase().startsWith(needle + '-') ||
+                    needle.startsWith(t.name.toLowerCase() + '-')
+            );
+            return match?.host || 'auto';
+        },
+        [knownTargets]
+    );
+
     const fetchProfiles = useCallback(async () => {
         try {
-            const res = await gFetch('/api/custom-tcp-apps/multicast', { headers: headers() });
+            const res = await fetch('/api/custom-tcp-apps/multicast', { headers: headers() });
             if (!res.ok) return;
             const data = await res.json();
             const list: CustomMulticastApplicationConfig[] = data.multicastApplications || [];
@@ -133,32 +150,65 @@ export const MulticastOverlayTab: React.FC<MulticastOverlayTabProps> = ({ token,
         } finally {
             setLoading(false);
         }
-    }, [gFetch, headers, selectedAppId]);
+    }, [headers, selectedAppId]);
 
     const fetchKnownNodes = useCallback(async () => {
+        const targetMap = new Map<string, { name: string; host: string; isSelf?: boolean }>();
+
         try {
-            const res = await gFetch('/api/fabric/peers', { headers: headers() });
-            if (!res.ok) return;
-            const data = await res.json();
-            const nodes = new Set<string>();
-            if (localSiteName) nodes.add(localSiteName);
-            if (Array.isArray(data.peers)) {
-                for (const p of data.peers) {
-                    const name = p.id || p.site_name || p.name;
-                    if (name) nodes.add(name);
+            const res = await fetch('/api/targets', { headers: headers() });
+            if (res.ok) {
+                const list = await res.json();
+                if (Array.isArray(list)) {
+                    for (const t of list) {
+                        const name = (t.name || t.id || '').trim();
+                        const host = (t.host || '').trim();
+                        if (name) {
+                            targetMap.set(name.toLowerCase(), {
+                                name,
+                                host: host || 'auto',
+                                isSelf: Boolean(t.meta?.isSelf),
+                            });
+                        }
+                    }
                 }
             }
-            setKnownNodes(Array.from(nodes));
         } catch {
-            if (localSiteName) setKnownNodes([localSiteName]);
+            // Fallback to PeerContext below
         }
-    }, [gFetch, headers, localSiteName]);
+
+        if (Array.isArray(peers)) {
+            for (const p of peers) {
+                const name = (p.site || p.meta?.site || p.instance_id || '').trim();
+                const host = (p.ip_private || '').trim();
+                if (name && !targetMap.has(name.toLowerCase())) {
+                    targetMap.set(name.toLowerCase(), {
+                        name,
+                        host: host || 'auto',
+                        isSelf: Boolean(p.is_leader),
+                    });
+                }
+            }
+        }
+
+        if (localSiteName && !targetMap.has(localSiteName.toLowerCase())) {
+            targetMap.set(localSiteName.toLowerCase(), {
+                name: localSiteName,
+                host: 'auto',
+                isSelf: true,
+            });
+        }
+
+        const targetsList = Array.from(targetMap.values());
+        setKnownTargets(targetsList);
+        setKnownNodes(targetsList.map((t) => t.name));
+    }, [headers, localSiteName, peers]);
 
     const fetchClusterStats = useCallback(
         async (appId: string) => {
             if (!appId) return;
             try {
-                const res = await gFetch(`/api/custom-tcp-apps/multicast/${encodeURIComponent(appId)}/stats`, {
+                const res = await fetch(`/api/custom-tcp-apps/multicast/${encodeURIComponent(appId)}/stats`, {
                     headers: headers(),
                 });
                 if (!res.ok) return;
@@ -170,7 +220,7 @@ export const MulticastOverlayTab: React.FC<MulticastOverlayTabProps> = ({ token,
                 // Silent during polling
             }
         },
-        [gFetch, headers]
+        [headers]
     );
 
     useEffect(() => {
@@ -198,7 +248,7 @@ export const MulticastOverlayTab: React.FC<MulticastOverlayTabProps> = ({ token,
         if (!selectedProfile) return;
         setActionBusy(true);
         try {
-            const res = await gFetch(`/api/custom-tcp-apps/multicast/${encodeURIComponent(selectedProfile.id)}/start`, {
+            const res = await fetch(`/api/custom-tcp-apps/multicast/${encodeURIComponent(selectedProfile.id)}/start`, {
                 method: 'POST',
                 headers: headers(),
                 body: JSON.stringify({}),
@@ -220,7 +270,7 @@ export const MulticastOverlayTab: React.FC<MulticastOverlayTabProps> = ({ token,
         if (!selectedProfile) return;
         setActionBusy(true);
         try {
-            const res = await gFetch(`/api/custom-tcp-apps/multicast/${encodeURIComponent(selectedProfile.id)}/stop`, {
+            const res = await fetch(`/api/custom-tcp-apps/multicast/${encodeURIComponent(selectedProfile.id)}/stop`, {
                 method: 'POST',
                 headers: headers(),
                 body: JSON.stringify({}),
@@ -241,7 +291,7 @@ export const MulticastOverlayTab: React.FC<MulticastOverlayTabProps> = ({ token,
     const handleToggleReceiver = async (nodeId: string, action: 'join' | 'leave', expect?: MulticastExpectationMode) => {
         if (!selectedProfile) return;
         try {
-            const res = await gFetch(
+            const res = await fetch(
                 `/api/custom-tcp-apps/multicast/${encodeURIComponent(selectedProfile.id)}/receiver/${encodeURIComponent(nodeId)}/toggle`,
                 {
                     method: 'POST',
@@ -265,7 +315,7 @@ export const MulticastOverlayTab: React.FC<MulticastOverlayTabProps> = ({ token,
         setPreflightOpen(true);
         setPreflightBusy(true);
         try {
-            const res = await gFetch(`/api/custom-tcp-apps/multicast/${encodeURIComponent(selectedProfile.id)}/preflight`, {
+            const res = await fetch(`/api/custom-tcp-apps/multicast/${encodeURIComponent(selectedProfile.id)}/preflight`, {
                 method: 'POST',
                 headers: headers(),
                 body: JSON.stringify({}),
@@ -285,6 +335,7 @@ export const MulticastOverlayTab: React.FC<MulticastOverlayTabProps> = ({ token,
     // ─── Create / Edit / Delete Profile ───────────────────────────────────────
 
     const openNewProfileModal = () => {
+        fetchKnownNodes();
         setEditingProfile(null);
         const defaultSender = localSiteName || knownNodes[0] || 'DC1';
         const defaultRx = knownNodes.filter((n) => n !== defaultSender);
@@ -296,7 +347,7 @@ export const MulticastOverlayTab: React.FC<MulticastOverlayTabProps> = ({ token,
         setFormPort(5000);
         setFormSsmSource('');
         setFormSenderNode(defaultSender);
-        setFormSenderIfaceIp('auto');
+        setFormSenderIfaceIp(resolveTargetHost(defaultSender));
         setFormRateMode('cbr');
         setFormKbps(1000);
         setFormBurstPackets(30);
@@ -310,13 +361,27 @@ export const MulticastOverlayTab: React.FC<MulticastOverlayTabProps> = ({ token,
         setFormMaxGapMs(3000);
         setFormReceivers(
             defaultRx.length > 0
-                ? defaultRx.map((n) => ({ node: n, expect: 'traffic', interfaceIp: 'auto', enabled: true }))
-                : [{ node: defaultSender, expect: 'traffic', interfaceIp: 'auto', enabled: true }]
+                ? defaultRx.map((n) => ({
+                      node: n,
+                      expect: 'traffic',
+                      interfaceIp: resolveTargetHost(n),
+                      enabled: true,
+                  }))
+                : [
+                      {
+                          node: defaultSender,
+                          expect: 'traffic',
+                          interfaceIp: resolveTargetHost(defaultSender),
+                          enabled: true,
+                      },
+                  ]
         );
+        setNewReceiverNode('');
         setEditorOpen(true);
     };
 
     const openEditProfileModal = (profile: CustomMulticastApplicationConfig) => {
+        fetchKnownNodes();
         setEditingProfile(profile);
         setFormId(profile.id);
         setFormName(profile.name);
@@ -326,7 +391,11 @@ export const MulticastOverlayTab: React.FC<MulticastOverlayTabProps> = ({ token,
         setFormPort(profile.port);
         setFormSsmSource(profile.ssmSource || '');
         setFormSenderNode(profile.senderNode);
-        setFormSenderIfaceIp(profile.senderInterfaceIp || 'auto');
+        setFormSenderIfaceIp(
+            profile.senderInterfaceIp && profile.senderInterfaceIp !== 'auto'
+                ? profile.senderInterfaceIp
+                : resolveTargetHost(profile.senderNode)
+        );
         setFormRateMode(profile.rate?.mode || 'cbr');
         setFormKbps(profile.rate?.kbps || 1000);
         setFormBurstPackets(profile.rate?.burstPackets || 30);
@@ -338,16 +407,44 @@ export const MulticastOverlayTab: React.FC<MulticastOverlayTabProps> = ({ token,
         setFormMaxLossPct(profile.thresholds?.maxLossPct ?? 0.1);
         setFormDegradedLossPct(profile.thresholds?.degradedLossPct ?? 2.0);
         setFormMaxGapMs(profile.thresholds?.maxGapMs ?? 3000);
-        setFormReceivers(profile.receivers ? [...profile.receivers] : []);
+        setFormReceivers(
+            profile.receivers
+                ? profile.receivers.map((r) => ({
+                      ...r,
+                      interfaceIp:
+                          r.interfaceIp && r.interfaceIp !== 'auto' ? r.interfaceIp : resolveTargetHost(r.node),
+                  }))
+                : []
+        );
+        setNewReceiverNode('');
         setEditorOpen(true);
     };
 
     const handleSaveProfile = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (formReceivers.length === 0) {
-            toast.error('Please add at least one receiver node');
+        let effectiveReceivers = formReceivers.map((r) => ({
+            ...r,
+            interfaceIp: r.interfaceIp && r.interfaceIp !== 'auto' ? r.interfaceIp : resolveTargetHost(r.node),
+        }));
+        const pendingRx = newReceiverNode.trim();
+        if (pendingRx && !effectiveReceivers.some((r) => r.node.toLowerCase() === pendingRx.toLowerCase())) {
+            effectiveReceivers.push({
+                node: pendingRx,
+                expect: newReceiverExpect,
+                interfaceIp: resolveTargetHost(pendingRx),
+                enabled: true,
+            });
+            setFormReceivers(effectiveReceivers);
+            setNewReceiverNode('');
+        }
+        if (effectiveReceivers.length === 0) {
+            toast.error('Please add at least one receiver node (e.g. BR5)');
             return;
         }
+        const resolvedSenderIp =
+            formSenderIfaceIp && formSenderIfaceIp !== 'auto'
+                ? formSenderIfaceIp.trim()
+                : resolveTargetHost(formSenderNode);
         const payload: CustomMulticastApplicationConfig = {
             id: formId.trim(),
             name: formName.trim(),
@@ -358,8 +455,8 @@ export const MulticastOverlayTab: React.FC<MulticastOverlayTabProps> = ({ token,
             mode: formMode,
             ssmSource: formMode === 'ssm' ? formSsmSource.trim() : undefined,
             senderNode: formSenderNode.trim(),
-            senderInterfaceIp: formSenderIfaceIp.trim() || 'auto',
-            receivers: formReceivers,
+            senderInterfaceIp: resolvedSenderIp || 'auto',
+            receivers: effectiveReceivers,
             rate: {
                 mode: formRateMode,
                 kbps: Number(formKbps),
@@ -382,7 +479,7 @@ export const MulticastOverlayTab: React.FC<MulticastOverlayTabProps> = ({ token,
                 ? `/api/custom-tcp-apps/multicast/${encodeURIComponent(editingProfile.id)}`
                 : '/api/custom-tcp-apps/multicast';
             const method = editingProfile ? 'PUT' : 'POST';
-            const res = await gFetch(url, {
+            const res = await fetch(url, {
                 method,
                 headers: headers(),
                 body: JSON.stringify(payload),
@@ -407,7 +504,7 @@ export const MulticastOverlayTab: React.FC<MulticastOverlayTabProps> = ({ token,
         if (!selectedProfile) return;
         if (!window.confirm(`Delete multicast profile "${selectedProfile.name}"?`)) return;
         try {
-            const res = await gFetch(`/api/custom-tcp-apps/multicast/${encodeURIComponent(selectedProfile.id)}`, {
+            const res = await fetch(`/api/custom-tcp-apps/multicast/${encodeURIComponent(selectedProfile.id)}`, {
                 method: 'DELETE',
                 headers: headers(),
             });
@@ -423,15 +520,21 @@ export const MulticastOverlayTab: React.FC<MulticastOverlayTabProps> = ({ token,
         }
     };
 
-    const addReceiverToForm = () => {
-        const node = newReceiverNode.trim();
+    const addReceiverToForm = (nodeOverride?: string) => {
+        const node = (typeof nodeOverride === 'string' ? nodeOverride : newReceiverNode).trim();
         if (!node) return;
         if (formReceivers.some((r) => r.node.toLowerCase() === node.toLowerCase())) {
             toast.error(`Receiver "${node}" is already in the list`);
             return;
         }
-        setFormReceivers([...formReceivers, { node, expect: newReceiverExpect, interfaceIp: 'auto', enabled: true }]);
-        setNewReceiverNode('');
+        const hostIp = resolveTargetHost(node);
+        setFormReceivers([
+            ...formReceivers,
+            { node, expect: newReceiverExpect, interfaceIp: hostIp, enabled: true },
+        ]);
+        if (typeof nodeOverride !== 'string') {
+            setNewReceiverNode('');
+        }
     };
 
     if (loading) {
@@ -1118,18 +1221,62 @@ export const MulticastOverlayTab: React.FC<MulticastOverlayTabProps> = ({ token,
                                     <label className="block text-[10px] font-bold uppercase text-text-muted mb-1">
                                         Sender Node (Source DR)
                                     </label>
-                                    <input
-                                        type="text"
-                                        required
-                                        list="known-mc-nodes"
-                                        value={formSenderNode}
-                                        onChange={(e) => setFormSenderNode(e.target.value)}
-                                        placeholder="e.g. DC1 or BR1"
-                                        className="w-full bg-background border border-border rounded-lg px-3 py-2 text-text-primary font-bold"
-                                    />
+                                    {knownTargets.length > 0 ? (
+                                        <select
+                                            value={formSenderNode}
+                                            onChange={(e) => {
+                                                const val = e.target.value;
+                                                setFormSenderNode(val);
+                                                const resolvedIp = resolveTargetHost(val);
+                                                setFormSenderIfaceIp(resolvedIp);
+                                                if (formMode === 'ssm' && resolvedIp !== 'auto') {
+                                                    setFormSsmSource(resolvedIp);
+                                                }
+                                            }}
+                                            className="w-full bg-background border border-border rounded-lg px-3 py-2 text-text-primary font-bold"
+                                        >
+                                            {!knownTargets.some(
+                                                (t) => t.name.toLowerCase() === formSenderNode.toLowerCase()
+                                            ) &&
+                                                formSenderNode && (
+                                                    <option value={formSenderNode}>
+                                                        {formSenderNode} ({formSenderIfaceIp || 'auto'})
+                                                    </option>
+                                                )}
+                                            {knownTargets.map((t) => (
+                                                <option key={t.name} value={t.name}>
+                                                    {t.name} ({t.host !== 'auto' ? t.host : 'auto-detect'})
+                                                    {t.isSelf ? ' — Local' : ''}
+                                                </option>
+                                            ))}
+                                        </select>
+                                    ) : (
+                                        <input
+                                            type="text"
+                                            required
+                                            list="known-mc-nodes"
+                                            value={formSenderNode}
+                                            onChange={(e) => {
+                                                setFormSenderNode(e.target.value);
+                                                setFormSenderIfaceIp(resolveTargetHost(e.target.value));
+                                            }}
+                                            placeholder="e.g. DC1 or BR1"
+                                            className="w-full bg-background border border-border rounded-lg px-3 py-2 text-text-primary font-bold"
+                                        />
+                                    )}
+                                    <div className="mt-1 text-[10px] font-mono text-cyan-400">
+                                        Source LAN IP:{' '}
+                                        {formSenderIfaceIp && formSenderIfaceIp !== 'auto'
+                                            ? formSenderIfaceIp
+                                            : resolveTargetHost(formSenderNode)}
+                                    </div>
                                     <datalist id="known-mc-nodes">
-                                        {knownNodes.map((n) => (
-                                            <option key={n} value={n} />
+                                        {knownTargets.map((t) => (
+                                            <option
+                                                key={t.name}
+                                                value={t.name}
+                                                label={t.host !== 'auto' ? `${t.name} (${t.host})` : t.name}
+                                            />
                                         ))}
                                     </datalist>
                                 </div>
@@ -1205,15 +1352,87 @@ export const MulticastOverlayTab: React.FC<MulticastOverlayTabProps> = ({ token,
                                     </span>
                                 </div>
 
+                                {/* 1-Click Discovered Stigix Targets */}
+                                {knownTargets.length > 0 && (
+                                    <div className="space-y-1.5">
+                                        <div className="text-[10px] font-semibold text-text-muted">
+                                            Known Stigix Targets (click to add as Receiver with its LAN IP):
+                                        </div>
+                                        <div className="flex flex-wrap gap-1.5">
+                                            {knownTargets.map((t) => {
+                                                const alreadyAdded = formReceivers.some(
+                                                    (r) => r.node.toLowerCase() === t.name.toLowerCase()
+                                                );
+                                                const isSender =
+                                                    formSenderNode.trim().toLowerCase() === t.name.toLowerCase();
+                                                return (
+                                                    <button
+                                                        key={t.name}
+                                                        type="button"
+                                                        disabled={alreadyAdded}
+                                                        onClick={() => addReceiverToForm(t.name)}
+                                                        className={`px-2.5 py-1 rounded-lg text-[11px] font-bold border transition-all flex items-center gap-1.5 ${
+                                                            alreadyAdded
+                                                                ? 'bg-emerald-500/15 border-emerald-500/40 text-emerald-300 cursor-default'
+                                                                : isSender
+                                                                  ? 'bg-card/60 hover:bg-purple-600/20 border-border text-text-muted hover:text-purple-300'
+                                                                  : 'bg-purple-600/15 hover:bg-purple-600/30 border-purple-500/30 text-purple-300'
+                                                        }`}
+                                                        title={
+                                                            alreadyAdded
+                                                                ? `${t.name} is already in the Receivers list`
+                                                                : `Click to add ${t.name} (LAN IP: ${t.host}) as a Receiver`
+                                                        }
+                                                    >
+                                                        <span>{alreadyAdded ? '✓' : '+'}</span>
+                                                        <span>{t.name}</span>
+                                                        <span className="font-mono text-[10px] opacity-80">
+                                                            ({t.host})
+                                                        </span>
+                                                        {isSender && (
+                                                            <span className="text-[9px] uppercase px-1 rounded bg-blue-500/20 text-blue-300">
+                                                                Sender
+                                                            </span>
+                                                        )}
+                                                    </button>
+                                                );
+                                            })}
+                                        </div>
+                                    </div>
+                                )}
+
                                 <div className="flex gap-2">
-                                    <input
-                                        type="text"
-                                        list="known-mc-nodes"
-                                        placeholder="Branch node name (e.g. BR1, BR2, BR8)"
-                                        value={newReceiverNode}
-                                        onChange={(e) => setNewReceiverNode(e.target.value)}
-                                        className="flex-1 bg-background border border-border rounded-lg px-3 py-1.5 text-text-primary"
-                                    />
+                                    {knownTargets.length > 0 ? (
+                                        <select
+                                            value={newReceiverNode}
+                                            onChange={(e) => setNewReceiverNode(e.target.value)}
+                                            className="flex-1 bg-background border border-border rounded-lg px-3 py-1.5 text-text-primary font-bold"
+                                        >
+                                            <option value="">
+                                                -- Select a Stigix Target to add as Receiver --
+                                            </option>
+                                            {knownTargets.map((t) => {
+                                                const alreadyAdded = formReceivers.some(
+                                                    (r) => r.node.toLowerCase() === t.name.toLowerCase()
+                                                );
+                                                return (
+                                                    <option key={t.name} value={t.name} disabled={alreadyAdded}>
+                                                        {t.name} — LAN IP: {t.host}
+                                                        {alreadyAdded ? ' (Already added)' : ''}
+                                                    </option>
+                                                );
+                                            })}
+                                        </select>
+                                    ) : (
+                                        <input
+                                            type="text"
+                                            list="known-mc-nodes"
+                                            placeholder="Branch node name (e.g. BR1, BR2, BR5, BR8)"
+                                            value={newReceiverNode}
+                                            onChange={(e) => setNewReceiverNode(e.target.value)}
+                                            className="flex-1 bg-background border border-border rounded-lg px-3 py-1.5 text-text-primary"
+                                        />
+                                    )}
                                     <select
                                         value={newReceiverExpect}
                                         onChange={(e) => setNewReceiverExpect(e.target.value as MulticastExpectationMode)}
@@ -1224,43 +1443,57 @@ export const MulticastOverlayTab: React.FC<MulticastOverlayTabProps> = ({ token,
                                     </select>
                                     <button
                                         type="button"
-                                        onClick={addReceiverToForm}
+                                        onClick={() => addReceiverToForm()}
                                         className="px-3 py-1.5 rounded-lg bg-purple-600/20 hover:bg-purple-600/30 text-purple-300 border border-purple-500/30 font-bold"
                                     >
                                         + Add Receiver
                                     </button>
                                 </div>
 
-                                <div className="space-y-1.5 max-h-40 overflow-y-auto">
-                                    {formReceivers.map((r, idx) => (
-                                        <div
-                                            key={r.node}
-                                            className="flex items-center justify-between bg-card border border-border rounded-lg px-3 py-1.5"
-                                        >
-                                            <div className="flex items-center gap-2">
-                                                <span className="font-bold text-text-primary">{r.node}</span>
-                                                <select
-                                                    value={r.expect}
-                                                    onChange={(e) => {
-                                                        const next = [...formReceivers];
-                                                        next[idx] = { ...r, expect: e.target.value as MulticastExpectationMode };
-                                                        setFormReceivers(next);
-                                                    }}
-                                                    className="bg-background border border-border rounded px-2 py-0.5 text-[10px] font-bold text-text-secondary"
-                                                >
-                                                    <option value="traffic">EXPECT_TRAFFIC</option>
-                                                    <option value="none">EXPECT_NONE (Deny Test)</option>
-                                                </select>
-                                            </div>
-                                            <button
-                                                type="button"
-                                                onClick={() => setFormReceivers(formReceivers.filter((_, i) => i !== idx))}
-                                                className="text-rose-400 hover:text-rose-300 text-[11px] font-bold"
+                                <div className="space-y-1.5 max-h-44 overflow-y-auto">
+                                    {formReceivers.map((r, idx) => {
+                                        const resolvedIp =
+                                            r.interfaceIp && r.interfaceIp !== 'auto'
+                                                ? r.interfaceIp
+                                                : resolveTargetHost(r.node);
+                                        return (
+                                            <div
+                                                key={r.node}
+                                                className="flex items-center justify-between bg-card border border-border rounded-lg px-3 py-1.5"
                                             >
-                                                Remove
-                                            </button>
-                                        </div>
-                                    ))}
+                                                <div className="flex items-center gap-2 flex-wrap">
+                                                    <span className="font-bold text-text-primary">{r.node}</span>
+                                                    <span className="px-1.5 py-0.5 rounded bg-cyan-500/10 border border-cyan-500/30 text-cyan-300 font-mono text-[10px]">
+                                                        LAN IP: {resolvedIp}
+                                                    </span>
+                                                    <select
+                                                        value={r.expect}
+                                                        onChange={(e) => {
+                                                            const next = [...formReceivers];
+                                                            next[idx] = {
+                                                                ...r,
+                                                                expect: e.target.value as MulticastExpectationMode,
+                                                            };
+                                                            setFormReceivers(next);
+                                                        }}
+                                                        className="bg-background border border-border rounded px-2 py-0.5 text-[10px] font-bold text-text-secondary"
+                                                    >
+                                                        <option value="traffic">EXPECT_TRAFFIC</option>
+                                                        <option value="none">EXPECT_NONE (Deny Test)</option>
+                                                    </select>
+                                                </div>
+                                                <button
+                                                    type="button"
+                                                    onClick={() =>
+                                                        setFormReceivers(formReceivers.filter((_, i) => i !== idx))
+                                                    }
+                                                    className="text-rose-400 hover:text-rose-300 text-[11px] font-bold"
+                                                >
+                                                    Remove
+                                                </button>
+                                            </div>
+                                        );
+                                    })}
                                 </div>
                             </div>
 

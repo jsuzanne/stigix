@@ -12,6 +12,7 @@
 import dgram from 'dgram';
 import os from 'os';
 import fs from 'fs';
+import path from 'path';
 import {
     CustomMulticastApplicationConfig,
     MulticastExpectationMode,
@@ -98,6 +99,27 @@ export function resolveMulticastInterface(preferredIp?: string): ResolvedMultica
     const virtualPrefixRegex = /^(lo|docker|br-|veth|virbr|tailscale|wg|tun|tap|utun|zt|cni|flannel|calico)/i;
     const preferredNicRegex = /^(eth|ens|enp|eno|en|bond|wlan|vlan)/i;
 
+    // Read Stigix primary configured traffic interface/IP if available
+    let configuredIfaceOrIp = (process.env.STIGIX_IP || process.env.STIGIX_INTERFACE || '').trim();
+    if (!configuredIfaceOrIp) {
+        for (const cfgPath of ['/app/config/interfaces.txt', path.join(process.cwd(), 'config', 'interfaces.txt')]) {
+            try {
+                if (fs.existsSync(cfgPath)) {
+                    const lines = fs.readFileSync(cfgPath, 'utf8')
+                        .split('\n')
+                        .map(l => l.trim())
+                        .filter(l => l.length > 0 && !l.startsWith('#'));
+                    if (lines.length > 0) {
+                        configuredIfaceOrIp = lines[0].split(/\s+/)[0];
+                        break;
+                    }
+                }
+            } catch {
+                // Ignore read errors
+            }
+        }
+    }
+
     const isPrivateIpv4 = (ip: string): boolean => {
         if (ip.startsWith('10.') || ip.startsWith('192.168.')) return true;
         if (ip.startsWith('172.')) {
@@ -105,6 +127,17 @@ export function resolveMulticastInterface(preferredIp?: string): ResolvedMultica
             return second >= 16 && second <= 31;
         }
         return false;
+    };
+
+    const getSubnetHeuristicBonus = (ip: string): number => {
+        if (ip.startsWith('192.168.')) {
+            const third = parseInt(ip.split('.')[2] || '0', 10);
+            // Prisma SD-WAN Lab LAN subnets are typically 192.168.200.0/24 .. 192.168.254.0/24 (e.g., .201.x on DC1, .217.x on BR5)
+            if (third >= 200 && third <= 254) return 120;
+            // Common KVM / Proxmox / OOB management subnets (.122.x libvirt, .175.x OOB WAN/Mgmt)
+            if (third === 122 || third === 175) return -60;
+        }
+        return 0;
     };
 
     for (const [name, addrs] of Object.entries(nets)) {
@@ -122,6 +155,11 @@ export function resolveMulticastInterface(preferredIp?: string): ResolvedMultica
             if (!isVirtual) score += 50;
             if (isPriv) score += 30;
             if (isPreferredNic) score += 20;
+            score += getSubnetHeuristicBonus(addr.address);
+
+            if (configuredIfaceOrIp && (name === configuredIfaceOrIp || addr.address === configuredIfaceOrIp)) {
+                score += 250;
+            }
 
             allCandidates.push({
                 name,
@@ -137,7 +175,9 @@ export function resolveMulticastInterface(preferredIp?: string): ResolvedMultica
 
     if (preferredIp && preferredIp.trim() && preferredIp.trim().toLowerCase() !== 'auto') {
         const target = preferredIp.trim();
-        const matched = allCandidates.find(c => c.address === target || c.name === target);
+        const matched = allCandidates.find(
+            c => c.address === target || c.name === target || c.address.startsWith(target)
+        );
         if (matched) {
             return {
                 interfaceName: matched.name,

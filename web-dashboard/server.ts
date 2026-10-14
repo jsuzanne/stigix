@@ -15002,6 +15002,50 @@ tcpAppManager.multicastManager.setClusterHooks({
             target === os.hostname().toLowerCase()
         );
     },
+    resolveNodeInterfaceIp: (nodeId: string) => {
+        const target = (nodeId || '').trim().toLowerCase();
+        if (!target) return undefined;
+        const regStatus = registryManager.getStatus();
+        const localIp = (getLocalNodePrimaryIp(registryManager) || regStatus?.detected_ip || '').trim();
+        const isLocal =
+            target === 'local' ||
+            target === 'localhost' ||
+            target === (regStatus.instance_id || '').toLowerCase() ||
+            target === (regStatus.site_name || '').toLowerCase() ||
+            target === localIp.toLowerCase() ||
+            target === os.hostname().toLowerCase();
+        if (isLocal && localIp && localIp !== '127.0.0.1') {
+            return localIp;
+        }
+        try {
+            const allTargets = targetsManager.getMergedTargets();
+            const matchedTarget = allTargets.find(
+                (t) =>
+                    (t.name || '').trim().toLowerCase() === target ||
+                    (t.id || '').trim().toLowerCase() === target ||
+                    (t.host || '').trim().toLowerCase() === target
+            );
+            if (matchedTarget?.host && /^\d{1,3}(\.\d{1,3}){3}$/.test(matchedTarget.host.trim())) {
+                return matchedTarget.host.trim();
+            }
+        } catch {}
+        try {
+            const allInstances = [
+                ...(localRegistryServer?.getInstances?.() || []),
+                ...(registryManager?.getEndpoints?.() || [])
+            ];
+            const peer = allInstances.find(
+                (inst: any) =>
+                    (inst.instance_id || '').toLowerCase() === target ||
+                    (inst.meta?.site || '').toLowerCase() === target ||
+                    (inst.ip_private || '').toLowerCase() === target
+            );
+            if (peer?.ip_private && /^\d{1,3}(\.\d{1,3}){3}$/.test(peer.ip_private.trim())) {
+                return peer.ip_private.trim();
+            }
+        } catch {}
+        return undefined;
+    },
     nodeForwarder: async (nodeId: string, method: 'GET' | 'POST', subPath: string, body?: any) => {
         const peerId = nodeId.trim();
         const targetPath = `/api/custom-tcp-apps${subPath.startsWith('/') ? subPath : '/' + subPath}`;

@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.0.20] - 2026-10-14
+
+### Fixed & Enhanced
+- **Automatic Stigix Target & SD-WAN LAN Interface Discovery in Multicast Overlay (`MulticastOverlayTab.tsx`, `multicast-manager.ts`, `multicast-runtime.ts`, `server.ts`)**:
+  - Automatic discovery of all registered Stigix Targets (`GET /api/targets` + fleet peers) and their SD-WAN LAN IP addresses (e.g., `DC1-Ubuntu`, `BR5 (192.168.217.5)`, `BR8`, `BR1`) directly in the Multicast Profile editor.
+  - Added 1-click Stigix Target receiver pills and dropdown selectors showing each target's resolved LAN IP, automatically binding `IP_MULTICAST_IF` and `addMembership(group, interfaceIp)` to the target's SD-WAN LAN interface instead of KVM/OOB management NICs (`192.168.122.x` / `192.168.175.x`).
+  - Fixed cluster-level multicast API calls in `MulticastOverlayTab.tsx` to always address the Leader orchestrator directly rather than being intercepted by the active peer gateway context.
+
 ## [3.0.19] - 2026-10-14
 
 ### Added
