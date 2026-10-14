@@ -11,7 +11,7 @@ Validating IP Multicast across an SD-WAN fabric is traditionally complex because
 **Stigix** simplifies this entire process into a single button click from a central web dashboard. This White Paper explains in simple, network-oriented terms:
 1. **How Stigix coordinates a multicast test** between the **Leader Controller**, the **Sender**, and the **Receivers**.
 2. **What happens step-by-step on the network** when you start a stream (both Data Center-to-Branch and Branch-to-Branch).
-3. **How to configure Prisma SD-WAN (`ION`) and transit routers (`VyOS`)** using a validated reference lab (`DC1` $\rightarrow$ `BR5`).
+3. **How to configure Prisma SD-WAN (`ION`) and transit routers (`VyOS`)** using a validated reference lab (`DC1` → `BR5`).
 4. **How to read the results and troubleshoot** multicast drops in seconds.
 
 ---
@@ -32,30 +32,9 @@ Every Stigix probe in your network can play one or more of three simple roles:
 > **Multicast traffic never passes through the Stigix management tunnel.**
 > The management connection between the Leader and the remote branches is only used to send "Start/Stop" orders and collect statistics. The multicast packets themselves are injected directly onto the physical LAN and must traverse your real routers and SD-WAN tunnels.
 
-```mermaid
-flowchart TB
-    subgraph ControlPlane["1. Stigix Control Plane (Management Only)"]
-        Leader["Stigix Leader Controller<br/>(Central Dashboard)"]
-    end
-
-    subgraph SiteA["Source Site (e.g., Data Center DC1)"]
-        Sender["Stigix Sender<br/>192.168.203.100"]
-        RouterA["Local Router / Hub ION<br/>(PIM / Rendezvous Point)"]
-        Sender -->|"2. Sends UDP Multicast<br/>239.1.1.100:5001 (DSCP EF)"| RouterA
-    end
-
-    subgraph SiteB["Receiver Site (e.g., Branch BR5)"]
-        RouterB["Branch Router / ION<br/>192.168.217.254"]
-        Receiver["Stigix Receiver<br/>192.168.217.5"]
-        Receiver -->|"1. Sends IGMPv3 Join<br/>(Subscribes to 239.1.1.100)"| RouterB
-        RouterB -->|"4. Delivers Multicast Stream<br/>to Branch LAN"| Receiver
-    end
-
-    Leader -.->|"Order: Join Group First"| Receiver
-    Leader -.->|"Order: Start Sending"| Sender
-    RouterA ===|"3. SD-WAN Multicast Replication"| RouterB
-    Receiver -.->|"5. Live Stats (Bitrate, Loss %, Jitter)"| Leader
-```
+<p align="center">
+  <img src="screenshots/15-Multicast-Overlay/diagram-01-control-vs-data-plane.png" width="780" alt="Stigix Multicast Control Plane vs Data Plane" />
+</p>
 
 ### What Happens When You Click "Start Stream"?
 
@@ -87,43 +66,19 @@ When you click **Start Stream** on the Leader dashboard, Stigix executes a 4-ste
 
 Because the **Leader Controller** role is independent from the **Sender** role, you can run tests from any site to any other site from the exact same `DC1` dashboard.
 
-### Case A: Data Center to Branch (`DC1` Source $\rightarrow$ `BR5` Receiver)
+### Case A: Data Center to Branch (`DC1` Source → `BR5` Receiver)
 - **Stigix Roles**: `DC1-Ubuntu` is both the **Leader Controller** and the **Sender**. `BR5-Ubuntu` is the **Receiver**.
 - **Network Path**:
   1. `BR5-Ubuntu` sends an **IGMPv3 Join** to its local `BR5` ION (`192.168.217.254`).
   2. `BR5` ION sends a **PIM Join** over the SD-WAN tunnel to the Hub `DC1-R1` ION (which acts as the Rendezvous Point at `192.168.201.3`).
   3. `DC1-Ubuntu` sends the UDP multicast stream on its LAN (`192.168.203.100`), which reaches `DC1-R1` ION and is replicated across the SD-WAN tunnel to `BR5`.
 
-### Case B: Branch to Branch (`BR8` Source $\rightarrow$ `BR5` Receiver)
+### Case B: Branch to Branch (`BR8` Source → `BR5` Receiver)
 What happens if you stay on the `DC1` dashboard, but select **`BR8-Ubuntu` as the Sender** and **`BR5-Ubuntu` as the Receiver**?
 
-```mermaid
-flowchart LR
-    Leader["Stigix Leader (DC1)<br/>(Orchestrates Test & Collects Stats)"]
-    
-    subgraph Branch8["Branch 8 (Sender Site)"]
-        BR8["BR8-Ubuntu (Sender)"]
-        ION8["Prisma ION BR8"]
-        BR8 -->|"UDP Multicast<br/>239.1.1.100"| ION8
-    end
-
-    subgraph HubDC1["Data Center 1 (Rendezvous Point)"]
-        RP["Prisma ION DC1-R1<br/>(RP 192.168.201.3)"]
-    end
-
-    subgraph Branch5["Branch 5 (Receiver Site)"]
-        ION5["Prisma ION BR5"]
-        BR5["BR5-Ubuntu (Receiver)"]
-        BR5 -->|"IGMPv3 Join"| ION5
-        ION5 -->|"Multicast Stream"| BR5
-    end
-
-    Leader -.->|"1. Start Command"| BR8
-    Leader -.->|"1. Join Command"| BR5
-    ION8 -->|"2. Initial Packets via RP<br/>(PIM Register)"| RP
-    RP -->|"2. Shared Tree (*,G)"| ION5
-    ION8 ===|"3. Direct Tunnel (SPT Switchover)<br/>Bypasses DC1 Hub!"| ION5
-```
+<p align="center">
+  <img src="screenshots/15-Multicast-Overlay/diagram-02-branch-to-branch-spt.png" width="780" alt="Stigix Branch-to-Branch Multicast with SPT Switchover" />
+</p>
 
 1. **`DC1` Only Gives the Orders**: `DC1-Ubuntu` tells `BR5-Ubuntu` to listen and `BR8-Ubuntu` to transmit. `DC1-Ubuntu` does not generate or receive any multicast traffic itself.
 2. **Initial Meeting at the Hub RP (`*,G`)**:
@@ -135,21 +90,17 @@ flowchart LR
 
 ---
 
-## 3. Step-by-Step Configuration Guide (`DC1` $\rightarrow$ `BR5`)
+## 3. Step-by-Step Configuration Guide (`DC1` → `BR5`)
 
 Below is the complete configuration used in our lab to validate multicast between `DC1` (`192.168.203.100`) and `BR5` (`192.168.217.5`).
 
-```mermaid
-flowchart LR
-    DC1["DC1-Ubuntu (Sender)<br/>192.168.203.100"] -->|"192.168.203.0/24"| VYOS["VyOS Transit Router<br/>eth5: .203.10 | eth1: .201.10"]
-    VYOS -->|"192.168.201.0/24<br/>PIM Neighbor"| DC1R1["Prisma ION DC1-R1 (RP)<br/>Port 1: 192.168.201.3"]
-    DC1R1 ===|"Prisma SD-WAN Overlay<br/>Secure Fabric (BR5-INET)"| BR5ION["Prisma ION BR5<br/>Sub-Int 217: 192.168.217.254"]
-    BR5ION -->|"192.168.217.0/24<br/>IGMPv3"| BR5["BR5-Ubuntu (Receiver)<br/>192.168.217.5"]
-```
+<p align="center">
+  <img src="screenshots/15-Multicast-Overlay/diagram-03-dc1-br5-lab-topology.png" width="820" alt="DC1 to BR5 End-to-End Lab Topology" />
+</p>
 
 ### 3.1 Step 1 — Configure the Multicast Test Profile in Stigix
 
-In the Stigix Web Dashboard (**Custom Apps $\rightarrow$ Multicast Overlay**), create your test profile:
+In the Stigix Web Dashboard (**Custom Apps → Multicast Overlay**), create your test profile:
 
 <p align="center">
   <img src="screenshots/15-Multicast-Overlay/01-stigix-multicast-profile-config.png" width="500" alt="Stigix Multicast Profile Configuration" />
@@ -169,7 +120,7 @@ In the Stigix Web Dashboard (**Custom Apps $\rightarrow$ Multicast Overlay**), c
 On the branch router (`BR5`), two settings are required so it listens to the local Receiver and requests the stream from the Hub:
 
 #### A. Enable Multicast & IGMPv3 on the Branch LAN Interface
-Go to **Interfaces $\rightarrow$ Port 3 $\rightarrow$ Sub-Interface (217) (`192.168.217.254/24`) $\rightarrow$ Advanced Settings**, set **Multicast** to **`Yes`**, and select **`IGMPv3`**:
+Go to **Interfaces → Port 3 → Sub-Interface (217) (`192.168.217.254/24`) → Advanced Settings**, set **Multicast** to **`Yes`**, and select **`IGMPv3`**:
 
 <p align="center">
   <img src="screenshots/15-Multicast-Overlay/06-prisma-sdwan-lan-interface-igmpv3.png" width="580" alt="Prisma SD-WAN Branch Interface IGMPv3 Configuration" />
@@ -179,7 +130,7 @@ Go to **Interfaces $\rightarrow$ Port 3 $\rightarrow$ Sub-Interface (217) (`192.
 > **Why IGMPv3?** Modern Linux servers (Ubuntu 22.04 / 24.04) use **IGMPv3** by default when subscribing to a multicast group. Selecting `IGMPv3` on the Prisma SD-WAN LAN interface ensures the router immediately recognizes the subscription.
 
 #### B. Point the Branch to the Rendezvous Point (RP)
-Go to **Routing $\rightarrow$ Multicast $\rightarrow$ RP** and configure the Static RP address (`192.168.201.3`, which is `DC1-R1`'s LAN IP) for the multicast range `224.0.0.0/4`:
+Go to **Routing → Multicast → RP** and configure the Static RP address (`192.168.201.3`, which is `DC1-R1`'s LAN IP) for the multicast range `224.0.0.0/4`:
 
 <p align="center">
   <img src="screenshots/15-Multicast-Overlay/08-prisma-sdwan-dc1-static-rp.png" width="740" alt="Prisma SD-WAN Static RP Configuration" />
@@ -237,13 +188,13 @@ vyos@vyoslandc1:~$ show ip multicast route
 When a stream is running, you can verify the 3 stages of the multicast tree directly in the Prisma SD-WAN UI:
 
 1. **On `BR5` — Did the branch router hear the local server's IGMP Join?**
-   Check **Routing $\rightarrow$ Multicast $\rightarrow$ IGMP**. You should see `GROUP: 239.1.1.100` on `Sub-Interface (217) on Port 3` with `FORWARD?: Yes`:
+   Check **Routing → Multicast → IGMP**. You should see `GROUP: 239.1.1.100` on `Sub-Interface (217) on Port 3` with `FORWARD?: Yes`:
    <p align="center">
      <img src="screenshots/15-Multicast-Overlay/09-prisma-sdwan-br5-igmp-membership.png" width="740" alt="Prisma SD-WAN BR5 IGMP Membership" />
    </p>
 
 2. **On `BR5` & `DC1-R1` — Did the branch request the stream over the SD-WAN WAN tunnel?**
-   Check **Routing $\rightarrow$ Multicast $\rightarrow$ WAN Statistics**. You should see `Join Prune TX PKTS` incrementing on `BR5` and `Join Prune RX PKTS` incrementing on `DC1-R1`:
+   Check **Routing → Multicast → WAN Statistics**. You should see `Join Prune TX PKTS` incrementing on `BR5` and `Join Prune RX PKTS` incrementing on `DC1-R1`:
    <p align="center">
      <img src="screenshots/15-Multicast-Overlay/10-prisma-sdwan-br5-wan-pim-stats.png" width="580" alt="Prisma SD-WAN BR5 WAN PIM Statistics" />
    </p>
@@ -252,7 +203,7 @@ When a stream is running, you can verify the 3 stages of the multicast tree dire
    </p>
 
 3. **On `DC1-R1` & `BR5` — Is the WAN Multicast Route installed end-to-end?**
-   Check **Routing $\rightarrow$ Multicast $\rightarrow$ WAN Multicast Route**.
+   Check **Routing → Multicast → WAN Multicast Route**.
    - On **`DC1-R1`**, `INCOMING` is `Port 1` (DC LAN) and `OUTGOING` is `Site name: BR5, Secure fabric: BR5-INET`:
      <p align="center">
        <img src="screenshots/15-Multicast-Overlay/13-prisma-sdwan-dc1-wan-mroute-table.png" width="740" alt="Prisma SD-WAN DC1-R1 WAN Multicast Route Table" />
