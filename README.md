@@ -1,9 +1,9 @@
-> **Last Updated:** 2026-10-11 | **Created:** 2026-01-25 (v1.0.0)
+> **Last Updated:** 2026-10-14 | **Created:** 2026-01-25 (v1.0.0)
 
 # 🕸️ Stigix — Advanced Networking & Security Simulation Environment
 
-[![Version](https://img.shields.io/badge/Version-3.0.3-blue.svg)](https://github.com/jsuzanne/stigix/releases)
-[![Last Updated](https://img.shields.io/badge/Updated-2026--10--11-brightgreen.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/Version-3.0.14-blue.svg)](https://github.com/jsuzanne/stigix/releases)
+[![Last Updated](https://img.shields.io/badge/Updated-2026--10--14-brightgreen.svg)](CHANGELOG.md)
 [![Docker Pulls](https://img.shields.io/docker/pulls/jlsuzanne/stigix)](https://hub.docker.com/r/jlsuzanne/stigix)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
@@ -123,6 +123,14 @@ This project is my way to turn all that lab and demo experience into an open-sou
 ## 🆕 What's New
 
 The project is evolving rapidly with major features, engines, and UX refinements in every release.
+
+### 🚀 Stigix 3.0.14 — Performance Acceleration, DEM Master Control & Failover Optimization *(v3.0.14)*
+
+- **⏸️ DEM Local Engine Master Switch** — 1-click toggle to suspend or resume synthetic probes on local management/out-of-band nodes while propagating configurations fleet-wide.
+- **⚡ In-Memory Ring Buffer & Sub-200ms DEM Loading** — In-memory ring buffer (5,000 samples) and parallelized history fetch eliminating disk scan bottlenecks on the Digital Experience page.
+- **⏱️ Adaptive Real-Time Failover Telemetry** — Ultra-responsive 500ms polling during active SD-WAN convergence tests, relaxing to 2.5s when idle to save CPU and network bandwidth.
+- **☁️ BYOC Cloudflare Worker Setup Wizard** — 1-click Bring-Your-Own-Cloud deployment wizard with automated Master Key setup and daily free tier quota telemetry (100k req/day).
+- **🚀 Lazy-Loaded Instant Settings** — Tab lazy-loading and parallelized remote reachability checks for instantaneous settings navigation.
 
 ### 🚀 Stigix 3.0 — Mission Control, Unified SASE Rail Navigation & Fleet Mesh Intelligence *(v3.0.0)*
 

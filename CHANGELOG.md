@@ -5,6 +5,26 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.0.14] - 2026-10-14
+
+### Added
+- **DEM Local Engine Master Switch (`ConnectivityPerformance.tsx`, `server.ts`)**:
+  - Added a master toggle button in the header and persistent setting (`auto_restart_probes`) to suspend or resume synthetic probes locally. Allows out-of-band/management leaders to propagate probes across the fleet without local execution overhead.
+- **BYOC Cloudflare Worker Setup Wizard (`Settings.tsx`)**:
+  - 1-click Bring-Your-Own-Cloud deployment wizard for custom Cloudflare autodiscovery registries with real-time daily quota gauge (100k requests/day free tier).
+- **Multi-IP Leader Failover (`server.ts`, `fleet-tunnel.ts`)**:
+  - Dynamic discovery and automated failover across multi-homed leader IP endpoints.
+
+### Changed & Performance
+- **DEM In-Memory Ring Buffer (`connectivity-logger.ts`)**:
+  - Replaced synchronous disk file reading with a fixed-size in-memory ring buffer (up to 5,000 samples) and parallelized history queries, reducing DEM dashboard load times from ~1.5s to <200ms.
+- **Failover Convergence Lab Latency (`Failover.tsx`, `server.ts`)**:
+  - Adaptive polling: Maintains 500ms real-time metric updates during active tests, relaxing to 2.5s when idle.
+  - Added 2.5s backend status caching when idle (bypassed instantly with 0ms latency when tests are running).
+  - Eliminated React re-render cascades and stabilized UDP reachability checks (no badge flickering).
+- **Settings Page Lazy Loading (`Settings.tsx`)**:
+  - Lazy-loaded tab content, cached maintenance versions, and parallelized node reachability checks to deliver instant page navigation.
+
 ## [3.0.3] - 2026-10-12
 
 ### Fixed
