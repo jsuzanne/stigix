@@ -217,6 +217,23 @@ body {
   animation: cyanGlow 2.5s infinite ease-in-out 1.25s;
 }
 
+@keyframes blueGlowLight {
+  0%, 100% {
+    box-shadow: 0 0 4px rgba(37, 99, 235, 0.5), 0 0 8px rgba(2, 132, 199, 0.25);
+    transform: scale(1);
+  }
+  50% {
+    box-shadow: 0 0 6px rgba(37, 99, 235, 0.7), 0 0 12px rgba(2, 132, 199, 0.45);
+    transform: scale(1.12);
+  }
+}
+:root[data-theme='light'] .neon-dot {
+  animation: blueGlowLight 2.5s infinite ease-in-out;
+}
+:root[data-theme='light'] .neon-dot-delay {
+  animation: blueGlowLight 2.5s infinite ease-in-out 1.25s;
+}
+
 @keyframes borderPulse {
   0%, 100% {
     filter: drop-shadow(0 0 8px rgba(59, 130, 246, 0.35)) drop-shadow(0 0 16px rgba(147, 51, 234, 0.2));
@@ -229,10 +246,30 @@ body {
   animation: borderPulse 3s infinite ease-in-out;
 }
 
+@keyframes borderPulseLight {
+  0%, 100% {
+    filter: drop-shadow(0 4px 6px rgba(37, 99, 235, 0.12)) drop-shadow(0 1px 2px rgba(0, 0, 0, 0.05));
+  }
+  50% {
+    filter: drop-shadow(0 6px 12px rgba(37, 99, 235, 0.22)) drop-shadow(0 2px 4px rgba(0, 0, 0, 0.06));
+  }
+}
+:root[data-theme='light'] .neon-squircle {
+  animation: borderPulseLight 3s infinite ease-in-out;
+}
+
 @keyframes wavePulse {
   0%, 100% { opacity: 0.85; stroke: #38bdf8; }
   50% { opacity: 1; stroke: #67e8f9; filter: drop-shadow(0 0 6px #38bdf8); }
 }
 .pulse-path {
   animation: wavePulse 2s infinite ease-in-out;
+}
+
+@keyframes wavePulseLight {
+  0%, 100% { opacity: 0.9; stroke: #0284c7; filter: none; }
+  50% { opacity: 1; stroke: #2563eb; filter: drop-shadow(0 1px 2px rgba(37, 99, 235, 0.3)); }
+}
+:root[data-theme='light'] .pulse-path {
+  animation: wavePulseLight 2s infinite ease-in-out;
 }
