@@ -61,9 +61,17 @@ export class ConnectivityLogger {
 
     async logResult(result: ConnectivityResult): Promise<void> {
         try {
+            await this.ensureInitialized();
             await this.rotateIfNeeded();
             const line = JSON.stringify(result) + '\n';
             await appendFile(this.currentLogFile, line, 'utf8');
+
+            // Prepend new result to in-memory ring buffer (newest first)
+            this.memoryResults.unshift(result);
+            if (this.memoryResults.length > this.MAX_IN_MEMORY) {
+                this.memoryResults.pop();
+            }
+
             // Invalidate stats cache so the next request reflects fresh data
             this.statsCache = null;
         } catch (error) {
@@ -113,6 +121,30 @@ export class ConnectivityLogger {
     }
 
     private statsCache: { data: any, timestamp: number, range: string } | null = null;
+    private memoryResults: ConnectivityResult[] = [];
+    private readonly MAX_IN_MEMORY = 8000;
+    private initialized: boolean = false;
+    private initPromise: Promise<void> | null = null;
+
+    private async ensureInitialized(): Promise<void> {
+        if (this.initialized) return;
+        if (this.initPromise) return this.initPromise;
+
+        this.initPromise = (async () => {
+            try {
+                if (fs.existsSync(this.currentLogFile)) {
+                    const tail = await this.loadTailFromFile(this.currentLogFile, this.MAX_IN_MEMORY);
+                    this.memoryResults = tail.results;
+                }
+            } catch (err) {
+                log('CONNECTIVITY_LOGGER', `Failed to initialize memory buffer: ${err}`, 'error');
+            } finally {
+                this.initialized = true;
+            }
+        })();
+
+        return this.initPromise;
+    }
 
     private parseTimeRangeCutoff(timeRange?: string): number {
         if (!timeRange) return 0;
@@ -128,19 +160,42 @@ export class ConnectivityLogger {
         return 0;
     }
 
+    private async getEffectiveResults(maxResults?: number, minTimestamp?: number): Promise<ConnectivityResult[]> {
+        await this.ensureInitialized();
+
+        const hasData = this.memoryResults.length > 0;
+        const oldestMemoryTs = hasData ? this.memoryResults[this.memoryResults.length - 1].timestamp : Infinity;
+
+        // Check if the in-memory ring buffer fully covers the request
+        const coversTimeRange = minTimestamp !== undefined && minTimestamp > 0 && hasData && oldestMemoryTs <= minTimestamp;
+        const coversCount = (!minTimestamp || minTimestamp <= 0) && maxResults !== undefined && this.memoryResults.length >= maxResults;
+
+        if (coversTimeRange || coversCount) {
+            if (minTimestamp && minTimestamp > 0) {
+                const filtered = this.memoryResults.filter(r => r.timestamp >= minTimestamp);
+                return maxResults && filtered.length > maxResults ? filtered.slice(0, maxResults) : filtered;
+            }
+            return maxResults ? this.memoryResults.slice(0, maxResults) : this.memoryResults;
+        }
+
+        // Fall back to reading from disk
+        return this.readAllResults(maxResults, minTimestamp);
+    }
+
     async getResults(options: { limit?: number; offset?: number; type?: string; endpointId?: string; timeRange?: string } = {}): Promise<{ results: ConnectivityResult[]; total: number }> {
         try {
             const cutoff = this.parseTimeRangeCutoff(options.timeRange);
 
-            // If we have a strict limit and no specific time range required for the query results specifically
-            // (other than general retention), we can optimize reading.
-            const allResults = await this.readAllResults(options.limit ? (options.limit + (options.offset || 0)) * 2 : undefined, cutoff);
+            const allResults = await this.getEffectiveResults(
+                options.limit ? (options.limit + (options.offset || 0)) * 2 : undefined, 
+                cutoff
+            );
             let filtered = allResults;
 
             if (options.type) filtered = filtered.filter(r => r.endpointType === options.type);
             if (options.endpointId) filtered = filtered.filter(r => r.endpointId === options.endpointId);
 
-            // Time range filter is already partially applied in readAllResults, but let's be precise
+            // Time range filter is already partially applied, but ensure precision
             if (cutoff > 0) filtered = filtered.filter(r => r.timestamp >= cutoff);
 
             filtered.sort((a, b) => b.timestamp - a.timestamp);
@@ -157,8 +212,8 @@ export class ConnectivityLogger {
     }
 
     async getStats(options: { timeRange?: string, activeProbeIds?: string[], globalScoreTypes?: string[] } = {}): Promise<any> {
-        // Cache aligned with probe interval (5 minutes) — invalidated on each logResult()
-        const STATS_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+        // Cache aligned with probe interval (5 seconds TTL)
+        const STATS_CACHE_TTL = 5 * 1000;
         const now = Date.now();
         const cacheRange = options.timeRange || '24h';
         if (this.statsCache && (now - this.statsCache.timestamp < STATS_CACHE_TTL) && (this.statsCache.range === cacheRange)) {
@@ -168,7 +223,7 @@ export class ConnectivityLogger {
         try {
             const cutoff = this.parseTimeRangeCutoff(options.timeRange);
 
-            const allResults = await this.readAllResults(undefined, cutoff);
+            const allResults = await this.getEffectiveResults(undefined, cutoff);
             if (allResults.length === 0) return null;
 
             let filtered = allResults;
@@ -270,6 +325,58 @@ export class ConnectivityLogger {
         }
     }
 
+    private async loadTailFromFile(filePath: string, maxResults: number, minTimestamp?: number): Promise<{ results: ConnectivityResult[], reachedBeginning: boolean }> {
+        try {
+            const fileStat = await stat(filePath);
+            if (fileStat.size === 0) return { results: [], reachedBeginning: true };
+
+            const chunkSize = Math.min(fileStat.size, 4 * 1024 * 1024);
+            const reachedBeginning = chunkSize === fileStat.size;
+
+            const buffer = Buffer.alloc(chunkSize);
+            const fd = fs.openSync(filePath, 'r');
+            try {
+                fs.readSync(fd, buffer, 0, chunkSize, fileStat.size - chunkSize);
+            } finally {
+                fs.closeSync(fd);
+            }
+
+            let text = buffer.toString('utf8');
+            if (!reachedBeginning) {
+                const firstNewline = text.indexOf('\n');
+                if (firstNewline !== -1) {
+                    text = text.slice(firstNewline + 1);
+                }
+            }
+
+            const lines = text.trim().split('\n').reverse(); // Newest first
+            const results: ConnectivityResult[] = [];
+            let staleInARow = 0;
+
+            for (const line of lines) {
+                if (!line.trim()) continue;
+                try {
+                    const result = JSON.parse(line) as ConnectivityResult;
+                    if (minTimestamp && result.timestamp < minTimestamp) {
+                        staleInARow++;
+                        if (staleInARow > 5) break;
+                        continue;
+                    }
+                    staleInARow = 0;
+                    results.push(result);
+                    if (maxResults && results.length >= maxResults) break;
+                } catch {
+                    // Ignore malformed lines
+                }
+            }
+
+            return { results, reachedBeginning };
+        } catch (error) {
+            log('CONNECTIVITY_LOGGER', `Failed to load tail from ${filePath}: ${error}`, 'error');
+            return { results: [], reachedBeginning: true };
+        }
+    }
+
     private async readAllResults(maxResults?: number, minTimestamp?: number): Promise<ConnectivityResult[]> {
         try {
             const files = await readdir(this.logDir);
@@ -279,43 +386,30 @@ export class ConnectivityLogger {
                 .reverse(); // Newest first
 
             const allResults: ConnectivityResult[] = [];
-            
+
             for (const file of logFiles) {
                 const filePath = path.join(this.logDir, file);
                 const stats = await stat(filePath);
-                
-                // If the entire file is older than our cutoff, skip it
+
+                // If the entire file was modified before our cutoff, skip it
                 if (minTimestamp && stats.mtimeMs < minTimestamp) continue;
 
-                // For large files, we still want to read from the end.
-                // Simple optimization: if the file is small, read it all. 
-                // If large, we'd ideally use a stream or read-from-end buffer, 
-                // but for now, we'll just parse lines more carefully.
-                const content = await readFile(filePath, 'utf8');
-                const lines = content.trim().split('\n').reverse(); // Newest lines first
+                const needed = maxResults ? maxResults - allResults.length : 15000;
+                const tail = await this.loadTailFromFile(filePath, needed, minTimestamp);
+                allResults.push(...tail.results);
 
-                let staleInARow = 0;
-                for (const line of lines) {
-                    if (!line.trim()) continue;
-                    try {
-                        const result = JSON.parse(line) as ConnectivityResult;
-                        if (minTimestamp && result.timestamp < minTimestamp) {
-                            staleInARow++;
-                            // If we see 5 lines in a row (newest-first) that are older than our cutoff,
-                            // the rest of this file (and older files) are definitely too old.
-                            if (staleInARow > 5) break; 
-                            continue;
-                        }
-                        staleInARow = 0;
-                        allResults.push(result);
-                        if (maxResults && allResults.length >= maxResults) return allResults;
-                    } catch (e) { }
+                if (maxResults && allResults.length >= maxResults) {
+                    return allResults.slice(0, maxResults);
                 }
-                
-                if (minTimestamp && staleInARow > 5) break;
+
+                // If this file had records older than minTimestamp, older files will be even older
+                if (minTimestamp && tail.results.some(r => r.timestamp < minTimestamp)) {
+                    break;
+                }
             }
             return allResults;
         } catch (error) {
+            log('CONNECTIVITY_LOGGER', `Failed to read all results: ${error}`, 'error');
             return [];
         }
     }

@@ -4,7 +4,7 @@ import {
     Network, Sliders, ChevronDown, ChevronRight, Server, CheckCircle2, Upload, Power,
     Settings as SettingsIcon, Database, Activity, Cpu, Plus, Edit2, Trash2, MapPin, Zap, Info, XCircle, ShieldAlert, Layers, X, Radio,
     Clipboard, ExternalLink, BarChart3, AlertTriangle, Gauge, Bug, TrendingUp, Search, Users, Copy, History, ChevronUp, PhoneCall, Bot,
-    Key, ShieldCheck, FileText, FileCode, Sparkles, Check
+    Key, ShieldCheck, FileText, FileCode, Sparkles, Check, Cloud
 } from 'lucide-react';
 import {
     LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as ReTooltip,
@@ -454,7 +454,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
     initialTab?: 'probes' | 'distribution' | 'maintenance' | 'system' | 'targets' | 'convergence' | 'registry' | 'targetService' | 'mcp' | 'prisma-api' | 'strata' | 'custom-tcp' | 'api-studio' | 'cloud'
 }) {
     // Route all API calls through the peer gateway when in remote view
-    const { gFetch, activePeerId } = usePeerContext();
+    const { gFetch, activePeerId, peers } = usePeerContext();
     const isRemoteView = activePeerId !== null;
     const apiFetch = gFetch;
 
@@ -565,10 +565,11 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
     };
 
     useEffect(() => {
+        if (activeTab !== 'targetService') return;
         fetchTargetServiceStatus();
         const interval = setInterval(fetchTargetServiceStatus, 5000);
         return () => clearInterval(interval);
-    }, [activePeerId]);
+    }, [activePeerId, activeTab]);
     const [latestEgressResult, setLatestEgressResult] = useState<any>(null);
     const [containerStats, setContainerStats] = useState<any[]>([]);
     const [isGeneratingTechSupport, setIsGeneratingTechSupport] = useState(false);
@@ -648,10 +649,20 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
 
     useEffect(() => {
         if (!targets.length) return;
+        // Only ping targets when user is viewing the targets or convergence tab
+        if (activeTab !== 'targets' && activeTab !== 'convergence') return;
+
         const checkReachability = async () => {
             const targetsToPing = targets.map(t => ({ id: t.id, host: t.host, port: t.ports?.convergence ?? 6200 }));
-            for (const t of targetsToPing) {
-                setTargetReachability(prev => ({ ...prev, [t.id]: 'loading' }));
+            // Set all to loading in one batch
+            setTargetReachability(prev => {
+                const next = { ...prev };
+                targetsToPing.forEach(t => { next[t.id] = 'loading'; });
+                return next;
+            });
+
+            // Parallelize checks via Promise.allSettled to avoid sequential blocking
+            await Promise.allSettled(targetsToPing.map(async (t) => {
                 try {
                     const res = await apiFetch('/api/convergence/reachability', {
                         method: 'POST',
@@ -663,13 +674,13 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                 } catch {
                     setTargetReachability(prev => ({ ...prev, [t.id]: false }));
                 }
-            }
+            }));
         };
 
         checkReachability();
         const interval = setInterval(checkReachability, 60000);
         return () => clearInterval(interval);
-    }, [targets, token, activePeerId]);
+    }, [targets, token, activePeerId, activeTab]);
 
     const authHeaders = {
         'Authorization': `Bearer ${token}`,
@@ -719,9 +730,10 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
     };
 
     const [cloudScenarios, setCloudScenarios] = useState<any[]>([]);
-    const [cloudConfig, setCloudConfig] = useState<{ baseUrl: string; hasKey: boolean; isUiDefined?: boolean } | null>(null);
+    const [cloudConfig, setCloudConfig] = useState<{ baseUrl: string; hasKey: boolean; isUiDefined?: boolean; stats?: { dateUtc: string; countToday: number } } | null>(null);
     const [cloudMasterKey, setCloudMasterKey] = useState('');
     const [showCloudKey, setShowCloudKey] = useState(false);
+    const [showMasterKeyHelp, setShowMasterKeyHelp] = useState(false);
     const [isSavingCloud, setIsSavingCloud] = useState(false);
     const [isTestingCloud, setIsTestingCloud] = useState(false);
     const [cloudTestResult, setCloudTestResult] = useState<{ success?: boolean; error?: string } | null>(null);
@@ -862,93 +874,6 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
         const coreConfigInterval = setInterval(fetchCoreConfig, 30000);
         const targetsInterval = setInterval(fetchTargets, 30000);
 
-        // System/Maintenance data - Decoupled to avoid blocking initial load
-        const fetchMaintenanceStatus = () => {
-            apiFetch('/api/admin/maintenance/version', { headers: { 'Authorization': `Bearer ${token}` } })
-                .then(r => r.json())
-                .then(maintenanceData => {
-                    setStatus(maintenanceData);
-                })
-                .catch(() => { });
-
-            apiFetch('/api/admin/maintenance/status', { headers: { 'Authorization': `Bearer ${token}` } })
-                .then(r => r.json())
-                .then(upgradeData => {
-                    setUpgradeStatus(upgradeData);
-                    if (upgradeData.inProgress) setUpgrading(true);
-                })
-                .catch(() => { });
-        };
-        fetchMaintenanceStatus();
-
-        // Fetch System Info
-        const fetchSystemInfo = () => {
-            apiFetch('/api/admin/system/info', { headers: { 'Authorization': `Bearer ${token}` } })
-                .then(r => r.json())
-                .then(newInfo => {
-                    setSystemInfo((prev: any) => {
-                        const now = Date.now();
-                        if (prev && prev.network && newInfo.network && prev.timestamp) {
-                            const timeDiff = (now - prev.timestamp) / 1000;
-                            if (timeDiff > 0) {
-                                const rxSpeed = ((newInfo.network.rx - prev.network.rx) * 8) / 1000000 / timeDiff;
-                                const txSpeed = ((newInfo.network.tx - prev.network.tx) * 8) / 1000000 / timeDiff;
-                                return { ...newInfo, networkSpeed: { rx: Math.max(0, rxSpeed), tx: Math.max(0, txSpeed) }, timestamp: now };
-                            }
-                        }
-                        return { ...newInfo, networkSpeed: { rx: 0, tx: 0 }, timestamp: now };
-                    });
-                })
-                .catch(() => { });
-        };
-        fetchSystemInfo();
-        const sysInfoInterval = setInterval(fetchSystemInfo, 5000);
-
-        // Fetch Telemetry History (CPU & RAM ring buffer)
-        const fetchTelemetryHistory = () => {
-            apiFetch('/api/admin/system/metrics-history', { headers: { 'Authorization': `Bearer ${token}` } })
-                .then(r => r.json())
-                .then(data => {
-                    if (data && data.success) {
-                        setTelemetryData(data);
-                    }
-                })
-                .catch(() => { });
-        };
-        fetchTelemetryHistory();
-        const telemetryInterval = setInterval(fetchTelemetryHistory, 15000);
-
-        // Fetch Live Container Stats
-        const fetchContainerStats = () => {
-            apiFetch('/api/containers/stats', { headers: authHeaders })
-                .then(r => r.json())
-                .then(setContainerStats)
-                .catch(() => { });
-        };
-        fetchContainerStats();
-        const containerStatsInterval = setInterval(fetchContainerStats, 5000);
-
-        // Fetch Latest Egress Info
-        const fetchEgressInfo = () => {
-            apiFetch('/api/connectivity/results?limit=50', { headers: { 'Authorization': `Bearer ${token}` } })
-                .then(r => r.json())
-                .then(data => {
-                    const results = data.results || [];
-                    // Look for 'egress-info' (case insensitive) or a probe of type CLOUD that has geo data
-                    const egress = results.find((r: any) => 
-                        r.endpointName.toLowerCase().includes('egress-info') || 
-                        (r.endpointType === 'CLOUD' && r.data?.ip)
-                    );
-                    if (egress) setLatestEgressResult(egress);
-                })
-                .catch(() => { });
-        };
-        fetchEgressInfo();
-        const egressInterval = setInterval(fetchEgressInfo, 30000);
-
-        // Convergence thresholds and traffic thresholds are now fetched inside
-        // fetchCoreConfig() above and polled on a 30 s interval.
-
         // Fetch Registry Status
         const fetchRegistryStatus = () => {
             apiFetch('/api/registry/status', { headers: authHeaders })
@@ -994,24 +919,6 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
         };
         fetchCertificates();
 
-        const fetchMcpStatus = () => {
-            apiFetch('/api/admin/system/mcp-status', { headers: authHeaders })
-                .then(r => r.json())
-                .then(setMcpStatus)
-                .catch(e => console.error("Failed to fetch MCP status", e));
-        };
-        fetchMcpStatus();
-        const mcpInterval = setInterval(fetchMcpStatus, 15000);
-
-        const fetchMcpHistory = () => {
-            apiFetch('/api/admin/mcp/history?limit=30', { headers: authHeaders })
-                .then(r => r.json())
-                .then(setMcpHistory)
-                .catch(() => {});
-        };
-        fetchMcpHistory();
-        const mcpHistoryInterval = setInterval(fetchMcpHistory, 3000);
-
         const fetchCopilotConfig = () => {
             apiFetch('/api/copilot/config', { headers: authHeaders })
                 .then(r => r.ok ? r.json() : null)
@@ -1031,15 +938,121 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
         return () => {
             clearInterval(coreConfigInterval);
             clearInterval(targetsInterval);
-            clearInterval(sysInfoInterval);
-            clearInterval(telemetryInterval);
-            clearInterval(mcpInterval);
-            clearInterval(mcpHistoryInterval);
-            clearInterval(egressInterval);
-            clearInterval(containerStatsInterval);
         };
 
     }, [token, activePeerId]);
+
+    // System tab metrics & live monitoring — only active when System tab is open
+    useEffect(() => {
+        if (activeTab !== 'system') return;
+
+        const fetchSystemInfo = () => {
+            apiFetch('/api/admin/system/info', { headers: { 'Authorization': `Bearer ${token}` } })
+                .then(r => r.json())
+                .then(newInfo => {
+                    setSystemInfo((prev: any) => {
+                        const now = Date.now();
+                        if (prev && prev.network && newInfo.network && prev.timestamp) {
+                            const timeDiff = (now - prev.timestamp) / 1000;
+                            if (timeDiff > 0) {
+                                const rxSpeed = ((newInfo.network.rx - prev.network.rx) * 8) / 1000000 / timeDiff;
+                                const txSpeed = ((newInfo.network.tx - prev.network.tx) * 8) / 1000000 / timeDiff;
+                                return { ...newInfo, networkSpeed: { rx: Math.max(0, rxSpeed), tx: Math.max(0, txSpeed) }, timestamp: now };
+                            }
+                        }
+                        return { ...newInfo, networkSpeed: { rx: 0, tx: 0 }, timestamp: now };
+                    });
+                })
+                .catch(() => { });
+        };
+        fetchSystemInfo();
+        const sysInfoInterval = setInterval(fetchSystemInfo, 5000);
+
+        const fetchTelemetryHistory = () => {
+            apiFetch('/api/admin/system/metrics-history', { headers: { 'Authorization': `Bearer ${token}` } })
+                .then(r => r.json())
+                .then(data => {
+                    if (data && data.success) {
+                        setTelemetryData(data);
+                    }
+                })
+                .catch(() => { });
+        };
+        fetchTelemetryHistory();
+        const telemetryInterval = setInterval(fetchTelemetryHistory, 15000);
+
+        const fetchContainerStats = () => {
+            apiFetch('/api/containers/stats', { headers: authHeaders })
+                .then(r => r.json())
+                .then(setContainerStats)
+                .catch(() => { });
+        };
+        fetchContainerStats();
+        const containerStatsInterval = setInterval(fetchContainerStats, 5000);
+
+        const fetchEgressInfo = () => {
+            apiFetch('/api/connectivity/results?limit=50', { headers: { 'Authorization': `Bearer ${token}` } })
+                .then(r => r.json())
+                .then(data => {
+                    const results = data.results || [];
+                    const egress = results.find((r: any) => 
+                        r.endpointName.toLowerCase().includes('egress-info') || 
+                        (r.endpointType === 'CLOUD' && r.data?.ip)
+                    );
+                    if (egress) setLatestEgressResult(egress);
+                })
+                .catch(() => { });
+        };
+        fetchEgressInfo();
+        const egressInterval = setInterval(fetchEgressInfo, 30000);
+
+        return () => {
+            clearInterval(sysInfoInterval);
+            clearInterval(telemetryInterval);
+            clearInterval(containerStatsInterval);
+            clearInterval(egressInterval);
+        };
+    }, [token, activePeerId, activeTab]);
+
+    // MCP tab status & history — only active when MCP tab is open
+    useEffect(() => {
+        if (activeTab !== 'mcp') return;
+
+        const fetchMcpStatus = () => {
+            apiFetch('/api/admin/system/mcp-status', { headers: authHeaders })
+                .then(r => r.json())
+                .then(setMcpStatus)
+                .catch(e => console.error("Failed to fetch MCP status", e));
+        };
+        fetchMcpStatus();
+        const mcpInterval = setInterval(fetchMcpStatus, 15000);
+
+        const fetchMcpHistory = () => {
+            apiFetch('/api/admin/mcp/history?limit=30', { headers: authHeaders })
+                .then(r => r.json())
+                .then(setMcpHistory)
+                .catch(() => {});
+        };
+        fetchMcpHistory();
+        const mcpHistoryInterval = setInterval(fetchMcpHistory, 3000);
+
+        return () => {
+            clearInterval(mcpInterval);
+            clearInterval(mcpHistoryInterval);
+        };
+    }, [token, activePeerId, activeTab]);
+
+    // Maintenance & version status — only fetched when viewing Maintenance or System tabs
+    useEffect(() => {
+        if (activeTab !== 'maintenance' && activeTab !== 'system') return;
+
+        apiFetch('/api/admin/maintenance/version', { headers: { 'Authorization': `Bearer ${token}` } })
+            .then(r => r.json())
+            .then(maintenanceData => {
+                setStatus(maintenanceData);
+            })
+            .catch(() => { });
+    }, [token, activePeerId, activeTab]);
 
     // Fetch system settings (startup behaviour)
     useEffect(() => {
@@ -3627,130 +3640,362 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
 
                     </div>
                 )}
-                {activeTab === 'cloud' && (
-                    <div className="bg-card border border-border rounded-2xl p-8 shadow-sm space-y-8 animate-in fade-in duration-300">
-                        {/* ── Stigix Cloudflare Worker Credentials (Cloud Probes) ── */}
-                        <div className="bg-card-secondary/30 border border-border/70 rounded-2xl p-6 space-y-6">
-                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-border/40 pb-4">
-                                <div className="flex items-center gap-3">
-                                    <div className="p-2.5 bg-blue-600/10 rounded-xl text-blue-500">
-                                        <Globe size={22} />
-                                    </div>
-                                    <div>
+                {activeTab === 'cloud' && (() => {
+                    const activeCloudProbes = customProbes.filter(p => p.type === 'CLOUD' && p.enabled !== false);
+                    const clusterNodeCount = registryStatus?.local_instances && Array.isArray(registryStatus.local_instances) && registryStatus.local_instances.length > 0
+                        ? registryStatus.local_instances.length
+                        : (peers.length + 1);
+                    const totalNodes = Math.max(peers.length + 1, clusterNodeCount);
+                    const dailyRequestsPerNode = activeCloudProbes.reduce((sum, p) => sum + Math.round(86400 / Math.max(1, p.frequency || 60)), 0);
+                    const fleetDailyForecast = totalNodes * dailyRequestsPerNode;
+                    const dailyFreeLimit = 100000;
+                    const quotaUsagePct = Math.min(100, Math.round((fleetDailyForecast / dailyFreeLimit) * 100));
+                    const todayRecorded = cloudConfig?.stats?.countToday ?? 0;
+
+                    return (
+                        <div className="bg-card border border-border rounded-2xl p-8 shadow-sm space-y-8 animate-in fade-in duration-300">
+                            {/* ── BYOC (Bring Your Own Cloudflare) 1-Click Deploy Banner ── */}
+                            <div className="bg-gradient-to-br from-amber-500/10 via-orange-500/5 to-transparent border border-amber-500/30 rounded-2xl p-6 relative overflow-hidden shadow-sm">
+                                <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6">
+                                    <div className="space-y-2 max-w-2xl">
                                         <div className="flex items-center gap-2">
-                                            <h3 className="text-sm font-black text-text-primary tracking-tight">Stigix Cloud Probes — Credentials &amp; Worker URL</h3>
-                                            {cloudConfig?.hasKey && (
-                                                <span className="flex items-center gap-1.5 text-[8.5px] font-black text-emerald-500 uppercase tracking-widest bg-emerald-500/10 px-2.5 py-0.5 rounded-full border border-emerald-500/20 shadow-sm">
-                                                    <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                                                    Active
-                                                </span>
-                                            )}
+                                            <span className="p-2 bg-amber-500/20 text-amber-500 rounded-xl">
+                                                <Zap size={20} />
+                                            </span>
+                                            <div>
+                                                <div className="flex items-center gap-2">
+                                                    <h3 className="text-sm font-black text-text-primary tracking-tight">Bring Your Own Cloudflare (BYOC)</h3>
+                                                    <span className="text-[9px] font-black uppercase tracking-widest bg-amber-500/20 text-amber-600 dark:text-amber-400 px-2.5 py-0.5 rounded-full border border-amber-500/30">
+                                                        100,000 Req/Day Free
+                                                    </span>
+                                                </div>
+                                                <p className="text-[11px] text-text-muted mt-0.5">
+                                                    Deploy a dedicated Stigix Cloud Target on your personal Cloudflare account with a single click.
+                                                </p>
+                                            </div>
                                         </div>
-                                        <p className="text-[10px] text-text-muted mt-0.5 opacity-70">
-                                            HMAC-SHA256 signature credentials required for Synthetic Cloud Probes targeting the Cloudflare edge
+                                        <p className="text-xs text-text-muted leading-relaxed pl-1">
+                                            Running synthetic SaaS, payload inspection, and TTFB layer benchmarks against your private Cloudflare Worker target prevents rate limits, guarantees 100% data sovereignty, and operates entirely within Cloudflare's permanent Free Tier.
+                                        </p>
+                                    </div>
+
+                                    <div className="flex flex-col sm:flex-row items-center gap-3">
+                                        <a
+                                            href="https://deploy.workers.cloudflare.com/?url=https://github.com/jsuzanne/stigix/tree/v3/stigix-cloudflare-target"
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="w-full sm:w-auto px-5 py-3 bg-[#F38020] hover:bg-[#E56A05] text-white rounded-xl text-xs font-black uppercase tracking-wider flex items-center justify-center gap-2 shadow-lg shadow-orange-500/20 transition-all hover:scale-[1.02] active:scale-[0.98]"
+                                        >
+                                            <Cloud size={16} />
+                                            <span>Deploy with Cloudflare</span>
+                                            <ExternalLink size={13} className="opacity-80" />
+                                        </a>
+                                    </div>
+                                </div>
+
+                                {/* Step-by-step Setup Pipeline */}
+                                <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5 mt-6 pt-5 border-t border-amber-500/20 text-xs">
+                                    <div className="bg-card/70 border border-border/80 rounded-xl p-3.5 space-y-1">
+                                        <div className="flex items-center gap-2 text-amber-500 font-black text-[11px] uppercase tracking-wider">
+                                            <span className="w-5 h-5 rounded-full bg-amber-500/20 flex items-center justify-center text-[10px]">1</span>
+                                            <span>Deploy Worker</span>
+                                        </div>
+                                        <p className="text-[11px] text-text-muted leading-relaxed">
+                                            Click the button above to authorize Cloudflare. Cloudflare automatically builds and provisions the worker from GitHub.
+                                        </p>
+                                    </div>
+                                    <div className="bg-card/70 border border-border/80 rounded-xl p-3.5 space-y-1">
+                                        <div className="flex items-center gap-2 text-blue-500 font-black text-[11px] uppercase tracking-wider">
+                                            <span className="w-5 h-5 rounded-full bg-blue-500/20 flex items-center justify-center text-[10px]">2</span>
+                                            <span>Copy Worker URL</span>
+                                        </div>
+                                        <p className="text-[11px] text-text-muted leading-relaxed">
+                                            In your Cloudflare dashboard, copy your deployed Worker URL (e.g. <span className="font-mono text-[10px] text-text-primary">https://stigix-target.xxx.workers.dev</span>).
+                                        </p>
+                                    </div>
+                                    <div className="bg-card/70 border border-border/80 rounded-xl p-3.5 space-y-1">
+                                        <div className="flex items-center gap-2 text-emerald-500 font-black text-[11px] uppercase tracking-wider">
+                                            <span className="w-5 h-5 rounded-full bg-emerald-500/20 flex items-center justify-center text-[10px]">3</span>
+                                            <span>Save &amp; Auto-Sync</span>
+                                        </div>
+                                        <p className="text-[11px] text-text-muted leading-relaxed">
+                                            Paste your URL below and save. Stigix Leader automatically replicates this cloud target to all spoke peers via WebSocket.
                                         </p>
                                     </div>
                                 </div>
                             </div>
 
-                            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
-                                {/* Left inputs */}
-                                <div className="lg:col-span-2 space-y-4">
-                                    <div className="space-y-1.5">
-                                        <div className="flex items-center justify-between pl-1">
-                                            <label className="text-[10px] font-black text-text-muted uppercase tracking-[0.2em]">Master Key</label>
-                                            {cloudConfig?.hasKey && (
-                                                <span className="text-[9px] font-bold text-text-muted opacity-60">
-                                                    Saved key active on disk
+                            {/* ── Daily Quota & Fleet Consumption Budget ── */}
+                            <div className="bg-card-secondary/30 border border-border/70 rounded-2xl p-6 space-y-5">
+                                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-border/40 pb-4">
+                                    <div className="flex items-center gap-3">
+                                        <div className="p-2.5 bg-purple-600/10 rounded-xl text-purple-500">
+                                            <Gauge size={22} />
+                                        </div>
+                                        <div>
+                                            <div className="flex items-center gap-2">
+                                                <h3 className="text-sm font-black text-text-primary tracking-tight">Daily Cloud Quota &amp; Fleet Budget</h3>
+                                                <span className={cn(
+                                                    "text-[8.5px] font-black uppercase tracking-widest px-2.5 py-0.5 rounded-full border shadow-sm",
+                                                    fleetDailyForecast < 60000 
+                                                        ? "bg-emerald-500/10 text-emerald-500 border-emerald-500/20"
+                                                        : fleetDailyForecast < 100000 
+                                                            ? "bg-amber-500/10 text-amber-500 border-amber-500/20"
+                                                            : "bg-red-500/10 text-red-500 border-red-500/20"
+                                                )}>
+                                                    {fleetDailyForecast < 100000 ? "Within Free Quota" : "Exceeds Free Tier (100k)"}
                                                 </span>
-                                            )}
-                                        </div>
-                                        <div className="relative">
-                                            <input
-                                                type={showCloudKey ? "text" : "password"}
-                                                autoComplete="new-password"
-                                                placeholder={cloudConfig?.hasKey ? "•••••••••••••••• (Leave empty to keep saved key)" : "Enter Master Key..."}
-                                                value={cloudMasterKey}
-                                                onChange={e => { setCloudMasterKey(e.target.value); setCloudDirty(true); setCloudTestResult(null); }}
-                                                className="w-full bg-card hover:bg-card-hover border border-border text-xs font-mono text-text-primary rounded-xl px-4 py-2.5 outline-none focus:ring-1 focus:ring-blue-500 transition-all pr-12"
-                                            />
-                                            <button
-                                                type="button"
-                                                onClick={() => setShowCloudKey(!showCloudKey)}
-                                                className="absolute right-3 top-1/2 -translate-y-1/2 p-1 hover:bg-card-secondary rounded-lg text-text-muted transition-colors"
-                                                title={showCloudKey ? "Hide key" : "Show key"}
-                                            >
-                                                <Globe size={13} className={showCloudKey ? "text-blue-500" : "opacity-40"} />
-                                            </button>
-                                        </div>
-                                    </div>
-
-                                    <div className="space-y-1.5">
-                                        <label className="text-[10px] font-black text-text-muted uppercase tracking-[0.2em] pl-1">Worker Base URL</label>
-                                        <input
-                                            type="text"
-                                            placeholder="https://target.stigix.io"
-                                            value={cloudConfig?.baseUrl || ''}
-                                            onChange={e => { setCloudConfig(prev => prev ? { ...prev, baseUrl: e.target.value } : null); setCloudDirty(true); setCloudTestResult(null); }}
-                                            className="w-full bg-card hover:bg-card-hover border border-border text-xs font-mono text-text-primary rounded-xl px-4 py-2.5 outline-none focus:ring-1 focus:ring-blue-500 transition-all"
-                                        />
-                                    </div>
-
-                                    <div className="flex flex-wrap items-center gap-2.5 pt-1">
-                                        <button
-                                            onClick={handleTestCloud}
-                                            disabled={isTestingCloud || !cloudConfig?.baseUrl}
-                                            className="px-4 py-2 bg-card hover:bg-card-hover border border-border hover:border-blue-500/40 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-2 shadow-sm disabled:opacity-50"
-                                        >
-                                            {isTestingCloud ? <RefreshCw size={12} className="animate-spin text-blue-500" /> : <Activity size={12} className="text-blue-500" />}
-                                            Test
-                                        </button>
-                                        <button
-                                            onClick={saveCloudConfig}
-                                            disabled={isSavingCloud || (!cloudMasterKey && !cloudDirty)}
-                                            className={cn(
-                                                "px-5 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-2 shadow-sm disabled:opacity-50",
-                                                isSavingCloud ? "bg-card-secondary text-text-muted border border-border" : "bg-blue-600 hover:bg-blue-500 text-white shadow-blue-900/20"
-                                            )}
-                                        >
-                                            {isSavingCloud ? <RefreshCw size={12} className="animate-spin" /> : <CheckCircle2 size={12} />}
-                                            Save
-                                        </button>
-                                        {cloudTestResult && (
-                                            <div className={cn(
-                                                "px-3 py-1.5 rounded-xl text-[9px] font-black uppercase tracking-widest border flex items-center gap-1.5",
-                                                cloudTestResult.success ? "bg-emerald-500/10 text-emerald-500 border-emerald-500/30" : "bg-red-500/10 text-red-500 border-red-500/30"
-                                            )}>
-                                                {cloudTestResult.success ? (
-                                                    <>
-                                                        <CheckCircle2 size={11} />
-                                                        <span>Worker Reachable • Signature OK</span>
-                                                    </>
-                                                ) : (
-                                                    <>
-                                                        <XCircle size={11} />
-                                                        <span>{cloudTestResult.error || 'Test Failed'}</span>
-                                                    </>
-                                                )}
                                             </div>
-                                        )}
+                                            <p className="text-[10px] text-text-muted mt-0.5 opacity-70">
+                                                Mathematical forecast based on configured probe frequencies across all active fleet nodes vs actual telemetry
+                                            </p>
+                                        </div>
                                     </div>
                                 </div>
 
-                                {/* Right Info Box */}
-                                <div className="p-4 bg-blue-600/5 border border-dashed border-blue-500/20 rounded-xl space-y-2.5">
-                                    <div className="flex items-center gap-2 text-blue-500">
-                                        <Info size={14} />
-                                        <h4 className="text-[11px] font-black uppercase tracking-wider">What does this enable?</h4>
+                                {/* Quota Stats Grid */}
+                                <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                                    <div className="bg-card border border-border/80 rounded-xl p-3.5 space-y-1">
+                                        <span className="text-[9px] font-black uppercase tracking-widest text-text-muted">Cloudflare Free Limit</span>
+                                        <div className="text-lg font-black text-text-primary">100,000 <span className="text-[10px] font-normal text-text-muted">req/day</span></div>
+                                        <p className="text-[9.5px] text-text-muted opacity-70">Default per account</p>
                                     </div>
-                                    <p className="text-[10px] text-text-muted leading-relaxed opacity-85">
-                                        Allows executing <strong>CLOUD synthetic probes</strong> (SaaS emulation, payload downloads, EICAR security inspection, speedtest) against Stigix-managed Cloudflare Workers with precise DNS, TCP, TLS, and TTFB layer timing metrics.
-                                    </p>
+
+                                    <div className="bg-card border border-border/80 rounded-xl p-3.5 space-y-1">
+                                        <span className="text-[9px] font-black uppercase tracking-widest text-text-muted">Fleet Size</span>
+                                        <div className="text-lg font-black text-text-primary">{totalNodes} <span className="text-[10px] font-normal text-text-muted">nodes</span></div>
+                                        <p className="text-[9.5px] text-text-muted opacity-70">
+                                            {registryStatus?.mode === 'spoke' ? `${totalNodes} cluster nodes (Spoke view)` : `1 Leader + ${Math.max(0, totalNodes - 1)} Spokes`}
+                                        </p>
+                                    </div>
+
+                                    <div className="bg-card border border-border/80 rounded-xl p-3.5 space-y-1">
+                                        <span className="text-[9px] font-black uppercase tracking-widest text-text-muted">Active Cloud Probes</span>
+                                        <div className="text-lg font-black text-text-primary">{activeCloudProbes.length} <span className="text-[10px] font-normal text-text-muted">probes</span></div>
+                                        <p className="text-[9.5px] text-text-muted opacity-70">Scheduled per node</p>
+                                    </div>
+
+                                    <div className="bg-card border border-border/80 rounded-xl p-3.5 space-y-1">
+                                        <span className="text-[9px] font-black uppercase tracking-widest text-text-muted">Theoretical Daily Load</span>
+                                        <div className={cn(
+                                            "text-lg font-black",
+                                            fleetDailyForecast < 60000 ? "text-emerald-500" : fleetDailyForecast < 100000 ? "text-amber-500" : "text-red-500"
+                                        )}>
+                                            {fleetDailyForecast.toLocaleString()} <span className="text-[10px] font-normal text-text-muted">req/day</span>
+                                        </div>
+                                        <p className="text-[9.5px] text-text-muted opacity-70">{quotaUsagePct}% of daily allowance</p>
+                                    </div>
+                                </div>
+
+                                {/* Progress Bar */}
+                                <div className="space-y-2 pt-1">
+                                    <div className="flex items-center justify-between text-[10px] font-black uppercase tracking-wider text-text-muted">
+                                        <span>Quota Consumption Budget</span>
+                                        <span className={fleetDailyForecast >= 100000 ? "text-red-500 font-bold" : "text-text-primary"}>
+                                            {fleetDailyForecast.toLocaleString()} / 100,000 reqs ({quotaUsagePct}%)
+                                        </span>
+                                    </div>
+                                    <div className="h-2.5 w-full bg-card border border-border/80 rounded-full overflow-hidden p-0.5">
+                                        <div 
+                                            className={cn(
+                                                "h-full rounded-full transition-all duration-500",
+                                                fleetDailyForecast < 60000 ? "bg-emerald-500" : fleetDailyForecast < 100000 ? "bg-amber-500" : "bg-red-500"
+                                            )}
+                                            style={{ width: `${quotaUsagePct}%` }}
+                                        />
+                                    </div>
+                                </div>
+
+                                {/* Recorded Requests Telemetry */}
+                                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 p-3.5 bg-card/60 border border-border/80 rounded-xl text-xs">
+                                    <div className="flex items-center gap-2.5">
+                                        <Activity size={15} className="text-blue-500" />
+                                        <div>
+                                            <span className="font-bold text-text-primary">Recorded Probes Sent Today: </span>
+                                            <span className="font-mono font-black text-blue-500">{todayRecorded.toLocaleString()}</span>
+                                            <span className="text-[10px] text-text-muted ml-1.5">(Local node counter • UTC {cloudConfig?.stats?.dateUtc || 'today'})</span>
+                                        </div>
+                                    </div>
+                                    <span className="text-[10px] text-text-muted opacity-80">
+                                        Calculated based on <code className="text-text-primary font-mono">{totalNodes} nodes × Σ(86,400s / probe_interval)</code>
+                                    </span>
+                                </div>
+                            </div>
+
+                            {/* ── Stigix Cloudflare Worker Credentials & Fleet Propagation ── */}
+                            <div className="bg-card-secondary/30 border border-border/70 rounded-2xl p-6 space-y-6">
+                                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-border/40 pb-4">
+                                    <div className="flex items-center gap-3">
+                                        <div className="p-2.5 bg-blue-600/10 rounded-xl text-blue-500">
+                                            <Globe size={22} />
+                                        </div>
+                                        <div>
+                                            <div className="flex items-center gap-2">
+                                                <h3 className="text-sm font-black text-text-primary tracking-tight">Worker Target Configuration &amp; Fleet Propagation</h3>
+                                                {cloudConfig?.hasKey && (
+                                                    <span className="flex items-center gap-1.5 text-[8.5px] font-black text-emerald-500 uppercase tracking-widest bg-emerald-500/10 px-2.5 py-0.5 rounded-full border border-emerald-500/20 shadow-sm">
+                                                        <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                                                        Active
+                                                    </span>
+                                                )}
+                                            </div>
+                                            <p className="text-[10px] text-text-muted mt-0.5 opacity-70">
+                                                HMAC-SHA256 signature credentials required for Synthetic Cloud Probes targeting the Cloudflare edge
+                                            </p>
+                                        </div>
+                                    </div>
+                                    {!isRemoteView && (
+                                        <div className="flex items-center gap-1.5 text-[9px] font-black uppercase tracking-widest text-blue-500 bg-blue-500/10 px-3 py-1 rounded-xl border border-blue-500/20">
+                                            <Layers size={12} />
+                                            <span>Leader Node • Auto-Replicates to Fleet</span>
+                                        </div>
+                                    )}
+                                </div>
+
+                                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
+                                    {/* Left inputs */}
+                                    <div className="lg:col-span-2 space-y-4">
+                                        <div className="space-y-1.5">
+                                            <div className="flex flex-wrap items-center justify-between gap-2 pl-1">
+                                                <div className="flex items-center gap-2">
+                                                    <label className="text-[10px] font-black text-text-muted uppercase tracking-[0.2em]">Master Key</label>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setShowMasterKeyHelp(!showMasterKeyHelp)}
+                                                        className="text-[9.5px] font-bold text-blue-500 hover:text-blue-400 flex items-center gap-1 transition-colors group"
+                                                    >
+                                                        <Key size={10} className="group-hover:scale-110 transition-transform" />
+                                                        <span>How to set a custom key?</span>
+                                                        <ChevronDown size={10} className={cn("transition-transform duration-200", showMasterKeyHelp && "rotate-180")} />
+                                                    </button>
+                                                </div>
+                                                {cloudConfig?.hasKey && (
+                                                    <span className="text-[9px] font-bold text-text-muted opacity-60">
+                                                        Saved key active on disk
+                                                    </span>
+                                                )}
+                                            </div>
+
+                                            {showMasterKeyHelp && (
+                                                <div className="p-3.5 bg-blue-500/5 border border-blue-500/20 rounded-xl text-xs space-y-2.5 animate-in fade-in duration-200">
+                                                    <div className="flex items-center gap-1.5 font-bold text-text-primary text-[11px]">
+                                                        <Key size={12} className="text-blue-500" />
+                                                        <span>How to configure a private Master Key in Cloudflare:</span>
+                                                    </div>
+                                                    <ol className="list-decimal list-inside space-y-1.5 text-[10.5px] text-text-muted leading-relaxed pl-1">
+                                                        <li>Open <a href="https://dash.cloudflare.com" target="_blank" rel="noopener noreferrer" className="text-blue-500 hover:underline inline-flex items-center gap-0.5 font-semibold">Cloudflare Dashboard <ExternalLink size={9} /></a> &rarr; <strong>Workers &amp; Pages</strong> &rarr; Click <code className="bg-card px-1.5 py-0.5 rounded text-text-primary font-mono text-[9.5px]">stigix-target</code>.</li>
+                                                        <li>Navigate to the <strong>Settings</strong> tab &rarr; <strong>Variables and Secrets</strong>.</li>
+                                                        <li>Add or edit the secret named <code className="bg-card px-1.5 py-0.5 rounded text-blue-400 font-mono text-[9.5px]">MASTER_SIGNATURE_KEY</code>:
+                                                            <div className="pl-4 pt-1 text-text-muted space-y-0.5 text-[10px]">
+                                                                <div>• <strong>Value</strong>: Type your private secret passphrase.</div>
+                                                                <div>• <strong>Type</strong>: Select <strong>Encrypt</strong> (Secret) to secure it.</div>
+                                                                <div>• Click <strong>Deploy</strong> to apply worldwide.</div>
+                                                            </div>
+                                                        </li>
+                                                        <li>Paste this exact passphrase into the <strong>Master Key</strong> field below, then click <strong>Save &amp; Sync Fleet 📢</strong>.</li>
+                                                    </ol>
+                                                    <div className="text-[9.5px] text-text-muted/80 italic pt-1.5 border-t border-border/40">
+                                                        💡 Default Key: If you haven't configured a custom secret in Cloudflare yet, the template defaults to <code className="font-mono text-text-primary font-bold">Stigix2026</code>.
+                                                    </div>
+                                                </div>
+                                            )}
+                                            <div className="relative">
+                                                <input
+                                                    type={showCloudKey ? "text" : "password"}
+                                                    autoComplete="new-password"
+                                                    placeholder={cloudConfig?.hasKey ? "•••••••••••••••• (Leave empty to keep saved key)" : "Enter Master Key (e.g. Stigix2026)..."}
+                                                    value={cloudMasterKey}
+                                                    onChange={e => { setCloudMasterKey(e.target.value); setCloudDirty(true); setCloudTestResult(null); }}
+                                                    className="w-full bg-card hover:bg-card-hover border border-border text-xs font-mono text-text-primary rounded-xl px-4 py-2.5 outline-none focus:ring-1 focus:ring-blue-500 transition-all pr-12"
+                                                />
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setShowCloudKey(!showCloudKey)}
+                                                    className="absolute right-3 top-1/2 -translate-y-1/2 p-1 hover:bg-card-secondary rounded-lg text-text-muted transition-colors"
+                                                    title={showCloudKey ? "Hide key" : "Show key"}
+                                                >
+                                                    <Globe size={13} className={showCloudKey ? "text-blue-500" : "opacity-40"} />
+                                                </button>
+                                            </div>
+                                        </div>
+
+                                        <div className="space-y-1.5">
+                                            <label className="text-[10px] font-black text-text-muted uppercase tracking-[0.2em] pl-1">Worker Base URL</label>
+                                            <input
+                                                type="text"
+                                                placeholder="https://stigix-target.<subdomain>.workers.dev"
+                                                value={cloudConfig?.baseUrl || ''}
+                                                onChange={e => { setCloudConfig(prev => prev ? { ...prev, baseUrl: e.target.value } : null); setCloudDirty(true); setCloudTestResult(null); }}
+                                                className="w-full bg-card hover:bg-card-hover border border-border text-xs font-mono text-text-primary rounded-xl px-4 py-2.5 outline-none focus:ring-1 focus:ring-blue-500 transition-all"
+                                            />
+                                        </div>
+
+                                        <div className="flex flex-wrap items-center gap-2.5 pt-1">
+                                            <button
+                                                onClick={handleTestCloud}
+                                                disabled={isTestingCloud || !cloudConfig?.baseUrl}
+                                                className="px-4 py-2 bg-card hover:bg-card-hover border border-border hover:border-blue-500/40 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-2 shadow-sm disabled:opacity-50"
+                                            >
+                                                {isTestingCloud ? <RefreshCw size={12} className="animate-spin text-blue-500" /> : <Activity size={12} className="text-blue-500" />}
+                                                Test Reachability
+                                            </button>
+                                            <button
+                                                onClick={saveCloudConfig}
+                                                disabled={isSavingCloud || (!cloudMasterKey && !cloudDirty)}
+                                                className={cn(
+                                                    "px-5 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-2 shadow-sm disabled:opacity-50",
+                                                    isSavingCloud ? "bg-card-secondary text-text-muted border border-border" : "bg-blue-600 hover:bg-blue-500 text-white shadow-blue-900/20"
+                                                )}
+                                            >
+                                                {isSavingCloud ? <RefreshCw size={12} className="animate-spin" /> : <CheckCircle2 size={12} />}
+                                                <span>Save &amp; Sync Fleet 📢</span>
+                                            </button>
+                                            {cloudTestResult && (
+                                                <div className={cn(
+                                                    "px-3 py-1.5 rounded-xl text-[9px] font-black uppercase tracking-widest border flex items-center gap-1.5",
+                                                    cloudTestResult.success ? "bg-emerald-500/10 text-emerald-500 border-emerald-500/30" : "bg-red-500/10 text-red-500 border-red-500/30"
+                                                )}>
+                                                    {cloudTestResult.success ? (
+                                                        <>
+                                                            <CheckCircle2 size={11} />
+                                                            <span>Worker Reachable • Signature OK</span>
+                                                        </>
+                                                    ) : (
+                                                        <>
+                                                            <XCircle size={11} />
+                                                            <span>{cloudTestResult.error || 'Test Failed'}</span>
+                                                        </>
+                                                    )}
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+
+                                    {/* Right Info Box */}
+                                    <div className="p-4 bg-blue-600/5 border border-dashed border-blue-500/20 rounded-xl space-y-3">
+                                        <div className="flex items-center gap-2 text-blue-500">
+                                            <Info size={14} />
+                                            <h4 className="text-[11px] font-black uppercase tracking-wider">Fleet Automatic Propagation</h4>
+                                        </div>
+                                        <p className="text-[10px] text-text-muted leading-relaxed opacity-85">
+                                            When you save on the Leader, the Worker Base URL and Master Key are securely bundled and pushed to all active spoke peers in real-time over the encrypted WebSocket tunnel.
+                                        </p>
+                                        <div className="pt-2 border-t border-border/40 text-[9.5px] text-text-muted space-y-1">
+                                            <div className="flex items-center gap-1.5">
+                                                <ShieldCheck size={12} className="text-emerald-500" />
+                                                <span>Zero configuration required on spoke nodes</span>
+                                            </div>
+                                            <div className="flex items-center gap-1.5">
+                                                <Zap size={12} className="text-amber-500" />
+                                                <span>Hot-reloaded without node restart</span>
+                                            </div>
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
                         </div>
-                    </div>
-                )}
+                    );
+                })()}
                 {activeTab === 'distribution' && (
                     <div className="bg-card border border-border rounded-2xl p-8 shadow-sm space-y-8">
                         <div className="flex items-center justify-between">
@@ -6263,8 +6508,8 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                                 <MapPin size={20} />
                             </div>
                             <div>
-                                <h2 className="text-lg font-black text-text-primary tracking-tight">Stigix Targets Repository</h2>
-                                <p className="text-[10px] font-bold text-text-muted tracking-widest mt-1 opacity-70">Shared stigix endpoints — reused across Speedtest, Voice, Security &amp; Failover</p>
+                                <h2 className="text-lg font-black text-text-primary tracking-tight">External &amp; Generic Targets</h2>
+                                <p className="text-[10px] font-bold text-text-muted tracking-widest mt-1 opacity-70">Passive test endpoints (gateways, DNS, cloud/local servers) — Stigix cluster peers are discovered automatically via Fleet / Add Node</p>
                             </div>
                         </div>
                         <div className="flex gap-2">
@@ -6273,7 +6518,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                                 className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-2 shadow-lg shadow-emerald-900/20"
                             >
                                 <Plus size={14} />
-                                Add Target
+                                Add External Target
                             </button>
                             <button
                                 onClick={handleExportTargets}
@@ -6318,10 +6563,10 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                                         </div>
                                         <div>
                                             <h3 className="text-lg font-black text-text-primary tracking-tight">
-                                                {editingTargetId ? 'Edit Target' : 'Configure New Target'}
+                                                {editingTargetId ? 'Edit Target' : 'Configure External Target'}
                                             </h3>
                                             <p className="text-text-muted text-[10px] font-bold uppercase tracking-wider">
-                                                {editingTargetId ? `MODIFYING ${newTarget.name || 'TARGET'}` : 'DEFINE A NEW STIGIX ENDPOINT'}
+                                                {editingTargetId ? `MODIFYING ${newTarget.name || 'TARGET'}` : 'DEFINE A PASSIVE ENDPOINT (GATEWAY, DNS, EXTERNAL SERVER)'}
                                             </p>
                                         </div>
                                     </div>
@@ -6335,6 +6580,29 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
 
                                 {/* Body */}
                                 <div className="p-6 space-y-5">
+                                    {/* Clarification banner between Stigix fleet nodes and external targets */}
+                                    <div className="flex items-start gap-2.5 text-[11px] bg-sky-500/10 border border-sky-500/20 text-sky-400 rounded-xl p-3">
+                                        <Info size={16} className="text-sky-400 shrink-0 mt-0.5" />
+                                        <div>
+                                            <span className="font-bold text-sky-300">Adding another Stigix node?</span> If this host runs Stigix, use <span className="font-bold text-white underline decoration-sky-400/50">Fleet &rarr; Add Node</span> instead so it establishes an encrypted bi-directional WebSocket tunnel. Use this form for passive targets (Gateways, Public DNS, HTTP/iPerf servers).
+                                        </div>
+                                    </div>
+
+                                    {/* Warning if IP matches an active fleet peer */}
+                                    {(() => {
+                                        const cleanHost = newTarget.host?.trim();
+                                        const matchedPeer = cleanHost ? peers.find(p => p.ip_private?.trim() === cleanHost || p.instance_id?.trim() === cleanHost) : null;
+                                        if (!matchedPeer) return null;
+                                        return (
+                                            <div className="flex items-start gap-2.5 text-[11px] bg-amber-500/10 border border-amber-500/20 text-amber-400 rounded-xl p-3">
+                                                <AlertTriangle size={16} className="text-amber-400 shrink-0 mt-0.5" />
+                                                <div>
+                                                    <span className="font-bold text-amber-300">Note:</span> This IP matches active Fleet Node <span className="font-bold text-white">"{matchedPeer.site || matchedPeer.instance_id}"</span>. Cluster nodes are already probed automatically. Adding it here creates a manual static duplicate.
+                                                </div>
+                                            </div>
+                                        );
+                                    })()}
+
                                     {targetError && (
                                         <div className="flex items-center gap-2 text-red-500 text-[10px] font-bold bg-red-500/10 border border-red-500/20 rounded-xl px-4 py-2.5">
                                             <AlertCircle size={14} />{targetError}

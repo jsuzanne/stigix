@@ -20,6 +20,8 @@ try:
     import argparse
     from datetime import datetime
     from pathlib import Path
+    import re
+    import shutil
 
     try:
         import requests
@@ -39,6 +41,8 @@ try:
         HAS_PROMPT_TOOLKIT = True
     except ImportError:
         HAS_PROMPT_TOOLKIT = False
+        Completer = object
+        Completion = object
         print("[warn] prompt_toolkit not found — pip install prompt_toolkit for best experience")
 except KeyboardInterrupt:
     print("\nInterrupted.")
@@ -223,6 +227,38 @@ def write_json_file(filepath, data):
 
 # ─── Colors / output helpers ──────────────────────────────────────────────────
 
+ANSI_RE = re.compile(r'\033\[[0-9;]*m')
+
+def clean_ansi(s):
+    """Strip ANSI escape sequences from a string."""
+    return ANSI_RE.sub('', str(s))
+
+def truncate_ansi(s, max_w):
+    """Truncate string to max_w visible characters, preserving active ANSI codes."""
+    s_str = str(s)
+    clean = clean_ansi(s_str)
+    if len(clean) <= max_w:
+        return s_str
+    if max_w <= 1:
+        return "…" if max_w == 1 else ""
+    target_len = max_w - 1
+    out = []
+    visible_count = 0
+    i = 0
+    n = len(s_str)
+    while i < n and visible_count < target_len:
+        if s_str[i] == '\033' and i + 1 < n and s_str[i+1] == '[':
+            m = ANSI_RE.match(s_str, i)
+            if m:
+                out.append(m.group(0))
+                i = m.end()
+                continue
+        out.append(s_str[i])
+        visible_count += 1
+        i += 1
+    out.append("…\033[0m")
+    return "".join(out)
+
 def c(code, text): return f"\033[{code}m{text}\033[0m" if sys.stdout.isatty() else text
 def ok(msg):    print(c("32",  "✓ ") + msg)
 def err(msg):   print(c("31",  "✗ ") + msg)
@@ -265,29 +301,46 @@ def table(headers, rows):
     if not rows:
         dim("  (empty)")
         return
-    import re
-    def clean_ansi(s):
-        return re.sub(r'\033\[[0-9;]*m', '', str(s))
-    
-    widths = []
-    for i, h in enumerate(headers):
-        w = len(clean_ansi(h))
-        for r in rows:
+
+    term_w = shutil.get_terminal_size((80, 24)).columns
+    max_table_w = max(40, term_w - 2)
+
+    num_cols = len(headers)
+    widths = [len(clean_ansi(h)) for h in headers]
+    for r in rows:
+        for i in range(num_cols):
             if i < len(r):
-                w = max(w, len(clean_ansi(r[i])))
-        widths.append(w)
-        
+                widths[i] = max(widths[i], len(clean_ansi(r[i])))
+
+    col_spacing = 2
+    fixed_overhead = 2 + col_spacing * (num_cols - 1)
+    avail_cols_w = max_table_w - fixed_overhead
+
+    # Proportionately shrink wide columns if total exceeds terminal width
+    if sum(widths) > avail_cols_w:
+        min_widths = [max(4, min(len(clean_ansi(h)), 8)) for h in headers]
+        while sum(widths) > avail_cols_w:
+            candidates = [i for i in range(num_cols) if widths[i] > min_widths[i]]
+            if not candidates:
+                candidates = [i for i in range(num_cols) if widths[i] > 4]
+                if not candidates:
+                    break
+            widest_idx = max(candidates, key=lambda i: widths[i])
+            widths[widest_idx] -= 1
+
     def format_row(row):
         cols = []
-        for i in range(len(widths)):
+        for i in range(num_cols):
             val = row[i] if i < len(row) else ""
             w = widths[i]
-            s_str = str(val)
-            cols.append(s_str + (" " * max(0, w - len(clean_ansi(s_str)))))
-        return "  " + "  ".join(cols)
+            t = truncate_ansi(val, w)
+            clean_len = len(clean_ansi(t))
+            pad = " " * max(0, w - clean_len)
+            cols.append(t + pad)
+        return "  " + (" " * col_spacing).join(cols)
 
     print(c("1", format_row(headers)))
-    print("  " + "  ".join("─" * w for w in widths))
+    print("  " + (" " * col_spacing).join("─" * w for w in widths))
     for row in rows:
         print(format_row(row))
 
@@ -630,16 +683,16 @@ def cmd_status(args):
         is_prov = prov.get("state", {}).get("enabled", False)
         rows.append(("Provisioning", "🟢 ON (Sync active)" if is_prov else "⚪ OFF (Standalone)"))
 
-    # Print the beautiful card
+    # Print the status card
     max_label_len = max(len(r[0]) for r in rows if r is not None)
     card_width = 64
-    inner_width = card_width - 4  # 2 border chars + 2 padding spaces
+    inner_width = card_width - 2  # 62 characters between borders
     # Visible label width = 2 (indent) + max_label_len + 3 (" : ")
     label_visible_len = 2 + max_label_len + 3
 
     print(c("2;34", "┏" + "━" * (card_width - 2) + "┓"))
     title_str = " Stigix Status Overview "
-    title_pad = (inner_width - len(title_str)) // 2
+    title_pad = max(0, (inner_width - len(title_str)) // 2)
     title_line = " " * title_pad + title_str + " " * (inner_width - len(title_str) - title_pad)
     print(c("2;34", "┃") + c("1;34", title_line) + c("2;34", "┃"))
     print(c("2;34", "┣" + "━" * (card_width - 2) + "┫"))
@@ -951,9 +1004,9 @@ def render_traffic_dashboard(stats, status_str, app_to_group, truncated_to_group
         if delta_time > 0 and delta_req >= 0:
             pps = delta_req / delta_time
             rpm = pps * 60
-            rpm_str = f"{rpm:.1f} req/min ({pps:.1f} pps)"
+            rpm_str = f"{rpm:.0f} rpm ({pps:.1f}/s)"
         elif delta_req >= 0:
-            rpm_str = "0.0 req/min (0.0 pps)"
+            rpm_str = "0 rpm (0.0/s)"
             
     # Update previous stats for rate tracking
     PREV_STATS["total_requests"] = total_req
@@ -961,34 +1014,33 @@ def render_traffic_dashboard(stats, status_str, app_to_group, truncated_to_group
 
     status_text = status_str.upper()
     status_color = "32" if status_str == "running" else "31"
-    status_val = f"[{status_text}]"
-    col1_row1 = " Status: " + c(status_color, status_val.ljust(9))
+    status_val = f"[{status_text}]"[:9].ljust(9)
+    col1_row1 = " Status: " + c(status_color, status_val)
     
     success_color = "32" if success_rate >= 95 else ("33" if success_rate >= 80 else "31")
     success_val = f"{success_rate:>5.1f}%"
     col2_row1 = " Success Rate: " + c(success_color, success_val) + " "
     
-    col3_row1 = " Rate: " + c("36", rpm_str.ljust(14)) + " "
+    rate_val = rpm_str[:16].ljust(16)
+    col3_row1 = " Rate: " + c("36", rate_val) + " "
     
     col1_row2 = f" Active Apps: {active_apps:>3} "
-    col2_row2 = f" Total Requests: {total_req:>5} "
+    col2_row2 = f" Total Requests: {total_req:>4} "
     
     errors_color = "31" if total_errors > 0 else "32"
-    col3_row2 = " Errors: " + c(errors_color, f"{total_errors}".ljust(12)) + " "
+    err_val = f"{total_errors}"[:14].ljust(14)
+    col3_row2 = " Errors: " + c(errors_color, err_val) + " "
     
-    row1 = f"║{col1_row1}║{col2_row1}║{col3_row1}║"
-    row2 = f"║{col1_row2}║{col2_row2}║{col3_row2}║"
-    
-    hdr("╔══════════════════╦══════════════════════╦══════════════════════╗")
-    hdr("║" + "TRAFFIC DASHBOARD".center(64) + "║")
-    hdr("╠══════════════════╬══════════════════════╬══════════════════════╣")
-    hdr(row1)
-    hdr(row2)
-    hdr("╚══════════════════╩══════════════════════╩══════════════════════╝")
+    hdr("╔══════════════════╦══════════════════════╦════════════════════════╗")
+    hdr("║" + "TRAFFIC DASHBOARD".center(66) + "║")
+    hdr("╠══════════════════╬══════════════════════╬════════════════════════╣")
+    print(c("1;34", "║") + col1_row1 + c("1;34", "║") + col2_row1 + c("1;34", "║") + col3_row1 + c("1;34", "║"))
+    print(c("1;34", "║") + col1_row2 + c("1;34", "║") + col2_row2 + c("1;34", "║") + col3_row2 + c("1;34", "║"))
+    hdr("╚══════════════════╩══════════════════════╩════════════════════════╝")
     print()
     
     # Print App Table
-    hdr("━━ Active Applications ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+    hdr("━━ Active Applications ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
     
     app_rows = []
     for app, reqs in requests_by_app.items():
@@ -2006,17 +2058,17 @@ def cmd_experience(args):
         global_health = stats_data.get("globalHealth", 0) if stats_data else 0
         health_color = "32" if global_health >= 80 else ("33" if global_health >= 50 else "31")
         
-        score_text = f"Global Score: {global_health}/100"
-        padding_total = 64 - len(score_text)
+        score_val = f"{global_health}/100"
+        score_label = "Global Health Score: "
+        inner_content = score_label + score_val
+        padding_total = max(0, 62 - len(inner_content))
         left_pad = padding_total // 2
         right_pad = padding_total - left_pad
-        score_part = c(health_color, f"{global_health}/100")
-        row_content = " " * left_pad + "Global Score: " + score_part + " " * right_pad
         
         hdr("╔══════════════════════════════════════════════════════════════╗")
-        hdr("║" + "DIGITAL EXPERIENCE GLOBAL SUMMARY".center(64) + "║")
+        hdr("║" + "DIGITAL EXPERIENCE GLOBAL SUMMARY".center(62) + "║")
         hdr("╠══════════════════════════════════════════════════════════════╣")
-        hdr(f"║{row_content}║")
+        print(c("1;34", "║") + (" " * left_pad) + score_label + c(health_color, score_val) + (" " * right_pad) + c("1;34", "║"))
         hdr("╚══════════════════════════════════════════════════════════════╝")
         print()
         
@@ -2094,23 +2146,31 @@ def cmd_experience(args):
             dim("  No synthetic probes configured")
             return
             
+        has_content_match = any(
+            (p.get("content_match", {}) or {}).get("enabled")
+            for p in probes_config
+        )
+
         rows.sort(key=lambda x: x[0].lower())
-        for row in rows:
-            pname_raw = row[0]
-            pcfg = next((p for p in probes_config if p.get("name","")[:20] == pname_raw), {})
-            cm = pcfg.get("content_match", {})
-            if cm.get("enabled"):
-                # Find last content_match result for this probe
-                pid = re.sub(r'\s+', '-', pcfg.get("name", "").lower())
-                presults = results_by_id.get(pid, [])
-                last_cm_ok = presults[0].get("content_match_ok") if presults else None
-                last_cm_res = presults[0].get("content_match_result", "no data") if presults else "no data"
-                cm_color = "32" if last_cm_ok else ("31" if last_cm_ok is False else "35")
-                cm_status = c(cm_color, "\u2713 " + last_cm_res) if last_cm_ok else c("31", "\u2717 " + last_cm_res) if last_cm_ok is False else c("35", "? no data")
-                row.append(f"\U0001f50d {cm.get('mode','contains')}: \"{cm.get('value','?')[:15]}\" {cm_status}")
-            else:
-                row.append("-")
-        table(["Probe Name", "Target/URL", "Type", "Status", "Score", "Latency (avg)", "Reliability", "Content Match"], rows)
+        if has_content_match:
+            for row in rows:
+                pname_raw = row[0]
+                pcfg = next((p for p in probes_config if p.get("name","")[:20] == pname_raw), {})
+                cm = pcfg.get("content_match", {})
+                if cm.get("enabled"):
+                    # Find last content_match result for this probe
+                    pid = re.sub(r'\s+', '-', pcfg.get("name", "").lower())
+                    presults = results_by_id.get(pid, [])
+                    last_cm_ok = presults[0].get("content_match_ok") if presults else None
+                    last_cm_res = presults[0].get("content_match_result", "no data") if presults else "no data"
+                    cm_color = "32" if last_cm_ok else ("31" if last_cm_ok is False else "35")
+                    cm_status = c(cm_color, "\u2713 " + last_cm_res) if last_cm_ok else c("31", "\u2717 " + last_cm_res) if last_cm_ok is False else c("35", "? no data")
+                    row.append(f"\U0001f50d {cm.get('mode','contains')}: \"{cm.get('value','?')[:15]}\" {cm_status}")
+                else:
+                    row.append("-")
+            table(["Probe Name", "Target/URL", "Type", "Status", "Score", "Latency (avg)", "Reliability", "Content Match"], rows)
+        else:
+            table(["Probe Name", "Target/URL", "Type", "Status", "Score", "Latency (avg)", "Reliability"], rows)
 
     else:
         _help_section("TARGET PROBES", [
@@ -4948,22 +5008,24 @@ def cmd_health(args):
     events = sub.get("events", {})
 
     card_width = 72
-    print(c("2;34", "┏" + "━" * (card_width - 2) + "┓"))
+    inner_width = card_width - 2
+    print(c("2;34", "┏" + "━" * inner_width + "┓"))
     title = f" Stigix System Health Matrix — {score}% OPERATIONAL "
-    tpad = (card_width - 2 - len(title)) // 2
-    print(c("2;34", "┃") + " " * tpad + c("1;32" if score >= 90 else "1;33", title) + " " * (card_width - 2 - len(title) - tpad) + c("2;34", "┃"))
-    print(c("2;34", "┣" + "━" * (card_width - 2) + "┫"))
+    tpad = max(0, (inner_width - len(title)) // 2)
+    print(c("2;34", "┃") + " " * tpad + c("1;32" if score >= 90 else "1;33", title) + " " * (inner_width - len(title) - tpad) + c("2;34", "┃"))
+    print(c("2;34", "┣" + "━" * inner_width + "┫"))
 
     def row(label, val):
-        llen = len(label)
-        vlen = len(re.sub(r'\033\[[0-9;]*m', '', str(val)))
-        pad = max(0, card_width - 4 - llen - 3 - vlen)
-        print(c("2;34", "┃ ") + c("1;36", f"{label:<18}") + c("2;37", " : ") + str(val) + " " * pad + c("2;34", " ┃"))
+        llen = max(len(label), 18)
+        vlen = len(clean_ansi(val))
+        pad = max(0, inner_width - 5 - llen - vlen)
+        print(c("2;34", "┃ ") + c("1;36", f"{label:<18}") + c("2;37", " : ") + str(val) + (" " * pad) + c("2;34", " ┃"))
 
     def section(name):
-        print(c("2;34", "┣" + "─" * (card_width - 2) + "⫫"[0] if False else "┣" + "─" * (card_width - 2) + "┫"))
-        print(c("2;34", "┃ ") + c("1;35", f"▶ {name.upper()}") + " " * (card_width - 6 - len(name)) + c("2;34", " ┃"))
-        print(c("2;34", "┣" + "─" * (card_width - 2) + "┫"))
+        pad = max(0, inner_width - 4 - len(name))
+        print(c("2;34", "┣" + "─" * inner_width + "┫"))
+        print(c("2;34", "┃ ") + c("1;35", f"▶ {name.upper()}") + (" " * pad) + c("2;34", " ┃"))
+        print(c("2;34", "┣" + "─" * inner_width + "┫"))
 
     section("1. Network & Cloud Integrations")
     p_status = "CONNECTED" if prisma.get("status") == "connected" else "STANDALONE"

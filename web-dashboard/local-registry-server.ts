@@ -133,7 +133,16 @@ export class LocalRegistryServer {
         }
     }
 
-        public updatePeerTunnelMetrics(instanceId: string, rttMs: number, lastPong: number, direction?: string): void {
+    public updatePeerTunnelMetrics(
+        instanceId: string, 
+        rttMs: number, 
+        lastPong: number, 
+        direction?: string,
+        sourceIp?: string,
+        destIp?: string,
+        sourcePort?: number,
+        destPort?: number
+    ): void {
         let inst = this.instances.get(instanceId);
         if (!inst) {
             for (const [, v] of this.instances.entries()) {
@@ -149,12 +158,26 @@ export class LocalRegistryServer {
             if (direction) {
                 (inst as any).tunnel_direction = direction;
             }
+            if (sourceIp) {
+                (inst as any).tunnel_source_ip = sourceIp;
+            }
+            if (destIp) {
+                (inst as any).tunnel_dest_ip = destIp;
+            }
+            if (sourcePort) {
+                (inst as any).tunnel_source_port = sourcePort;
+            }
+            if (destPort) {
+                (inst as any).tunnel_dest_port = destPort;
+            }
             if (!inst.meta) inst.meta = {};
             inst.meta.rtt_ms = rttMs;
             inst.meta.last_pong = (inst as any).last_pong;
-            if (direction) {
-                inst.meta.tunnel_direction = direction;
-            }
+            if (direction) inst.meta.tunnel_direction = direction;
+            if (sourceIp) inst.meta.tunnel_source_ip = sourceIp;
+            if (destIp) inst.meta.tunnel_dest_ip = destIp;
+            if (sourcePort) inst.meta.tunnel_source_port = sourcePort;
+            if (destPort) inst.meta.tunnel_dest_port = destPort;
         }
     }
 
@@ -377,6 +400,10 @@ export class LocalRegistryServer {
                 rtt_ms: (inst as any).rtt_ms ?? inst.meta?.rtt_ms,
                 last_pong: (inst as any).last_pong ?? inst.meta?.last_pong,
                 tunnel_direction: (inst as any).tunnel_direction ?? inst.meta?.tunnel_direction ?? (isLeader ? 'leader' : 'inbound'),
+                tunnel_source_ip: (inst as any).tunnel_source_ip ?? inst.meta?.tunnel_source_ip,
+                tunnel_dest_ip: (inst as any).tunnel_dest_ip ?? inst.meta?.tunnel_dest_ip,
+                tunnel_source_port: (inst as any).tunnel_source_port ?? inst.meta?.tunnel_source_port,
+                tunnel_dest_port: (inst as any).tunnel_dest_port ?? inst.meta?.tunnel_dest_port,
                 is_leader: isLeader,
                 status,
                 is_stale: isStale,

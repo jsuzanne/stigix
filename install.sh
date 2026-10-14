@@ -17,7 +17,8 @@ show_help() {
     echo ""
     echo "Options:"
     echo "  --mode <target|source|both>  Set the deployment mode (Default: both)"
-    echo "  --controller <URL>           Join a remote Stigix leader as a peer (direct mode)"
+    echo "  --controller, --controller-ip <URL|IP> Join a remote Stigix leader as a peer (direct mode)"
+    echo "  --token, -t <STX-token>      Enroll into a cluster using single-use Magic Join Token"
     echo "  --ip, -i <IP>                Explicitly select IP to advertise to Leader (bypasses prompt)"
     echo "  --site, -s <Name>            Override site name for this node"
     echo "  --dry-run, -d                Download files and show what would happen without starting Docker"
@@ -26,6 +27,8 @@ show_help() {
     echo "Examples:"
     echo "  curl -fsSL $REPO_URL/install.sh | sudo bash"
     echo "  curl -fsSL $REPO_URL/install.sh | sudo bash -s -- --controller https://stigix-central.example.net"
+    echo "  curl -fsSL $REPO_URL/install.sh | sudo bash -s -- --controller-ip 192.168.10.1"
+    echo "  curl -fsSL $REPO_URL/install.sh | sudo bash -s -- STX-..."
     echo "  curl -fsSL $REPO_URL/install.sh | sudo bash -s -- --mode both"
     exit 0
 }
@@ -133,16 +136,33 @@ ADVERTISED_IP_OVERRIDE=""
 while [[ "$#" -gt 0 ]]; do
     case $1 in
         --mode|-m) INSTALL_MODE="$2"; shift 2 ;;
-        --controller|-c) CONTROLLER_URL="$2"; shift 2 ;;
+        --mode=*) INSTALL_MODE="${1#*=}"; shift ;;
+        --controller|--controller-ip|-c) CONTROLLER_URL="$2"; shift 2 ;;
+        --controller=*|--controller-ip=*) CONTROLLER_URL="${1#*=}"; shift ;;
         --token|-t) JOIN_TOKEN="$2"; shift 2 ;;
+        --token=*) JOIN_TOKEN="${1#*=}"; shift ;;
         --site|--site-name|--site_name|-s) SITE_NAME_OVERRIDE="$2"; shift 2 ;;
+        --site=*|--site-name=*|--site_name=*) SITE_NAME_OVERRIDE="${1#*=}"; shift ;;
         --ip|-i) ADVERTISED_IP_OVERRIDE="$2"; shift 2 ;;
+        --ip=*) ADVERTISED_IP_OVERRIDE="${1#*=}"; shift ;;
         --dry-run|-d) DRY_RUN=true; shift ;;
         --help|-h) show_help ;;
         STX-*) JOIN_TOKEN="$1"; shift ;;
         *) echo "Unknown parameter passed: $1"; show_help ;;
     esac
 done
+
+# Normalize CONTROLLER_URL if provided (auto-prefix http:// and port 8080 if bare IP/host)
+if [ -n "$CONTROLLER_URL" ]; then
+    CONTROLLER_URL="${CONTROLLER_URL%/}"
+    if [[ ! "$CONTROLLER_URL" =~ ^https?:// ]]; then
+        if [[ "$CONTROLLER_URL" =~ :[0-9]+$ ]]; then
+            CONTROLLER_URL="http://${CONTROLLER_URL}"
+        else
+            CONTROLLER_URL="http://${CONTROLLER_URL}:8080"
+        fi
+    fi
+fi
 
 # Magic Join Token Resolution
 if [ -n "$JOIN_TOKEN" ]; then
@@ -602,6 +622,30 @@ chmod -R 777 ./config ./logs ./mcp-data 2>/dev/null || true
 
 FINAL_SITE_NAME="${SITE_NAME_OVERRIDE:-$(hostname | cut -d'.' -f1)}"
 echo "{\"siteName\":\"$FINAL_SITE_NAME\"}" > ./config/site-name.json
+
+# Persist candidate controller endpoints and static leader config into ./config
+if [ ${#CANDIDATES[@]} -gt 0 ]; then
+    if command -v python3 &>/dev/null; then
+        printf '%s\n' "${CANDIDATES[@]}" | python3 -c 'import sys, json; print(json.dumps([line.strip() for line in sys.stdin if line.strip()], indent=2))' > ./config/controller-endpoints.json 2>/dev/null || true
+    elif command -v node &>/dev/null; then
+        printf '%s\n' "${CANDIDATES[@]}" | node -e 'const fs=require("fs"); const lines=fs.readFileSync(0,"utf-8").split("\n").map(l=>l.trim()).filter(Boolean); console.log(JSON.stringify(lines, null, 2));' > ./config/controller-endpoints.json 2>/dev/null || true
+    fi
+elif [ -n "$CONTROLLER_URL" ]; then
+    echo "[\"$CONTROLLER_URL\"]" > ./config/controller-endpoints.json 2>/dev/null || true
+fi
+
+if [ -n "$CONTROLLER_URL" ]; then
+    CTRL_REG_URL="${CONTROLLER_URL%/}"
+    if [[ ! "$CTRL_REG_URL" =~ /api/registry$ ]]; then
+        CTRL_REG_URL="$CTRL_REG_URL/api/registry"
+    fi
+    echo "{\"url\":\"$CTRL_REG_URL\",\"updatedAt\":\"$(date -u +"%Y-%m-%dT%H:%M:%SZ" 2>/dev/null || date)\"}" > ./config/static-leader.json 2>/dev/null || true
+fi
+
+if [ -n "$JOIN_TOKEN" ] && [ -n "$CONTROLLER_URL" ]; then
+    TOKEN_PFX="${JOIN_TOKEN:0:12}..."
+    echo "{\"enrolled\":true,\"tokenPrefix\":\"$TOKEN_PFX\",\"leaderUrl\":\"$CONTROLLER_URL\",\"siteName\":\"$FINAL_SITE_NAME\",\"enrolledAt\":\"$(date -u +"%Y-%m-%dT%H:%M:%SZ" 2>/dev/null || date)\"}" > ./config/cluster-enrollment.json 2>/dev/null || true
+fi
 
 if [ -n "$CHOSEN_PRIMARY_IP" ]; then
     IFACE_FOR_IP=$(ip -4 -o addr show 2>/dev/null | grep "$CHOSEN_PRIMARY_IP" | awk '{print $2}' | head -n 1)

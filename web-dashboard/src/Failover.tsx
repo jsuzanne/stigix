@@ -79,13 +79,21 @@ export default function Failover(props: FailoverProps) {
 
     const fetchEndpoints = async () => {
         try {
-            const res = await gFetch('/api/convergence/endpoints', { headers: authHeaders() });
+            const [res, ifaceRes] = await Promise.all([
+                gFetch('/api/convergence/endpoints', { headers: authHeaders() }),
+                gFetch('/api/config/interfaces', { headers: authHeaders() })
+            ]);
             const data = await res.json();
-            setEndpoints(data);
+            setEndpoints(prev => {
+                if (JSON.stringify(prev) === JSON.stringify(data)) return prev;
+                return data;
+            });
 
-            const ifaceRes = await gFetch('/api/config/interfaces', { headers: authHeaders() });
             const ifaceData = await ifaceRes.json();
-            setActiveInterfaces(ifaceData);
+            setActiveInterfaces(prev => {
+                if (JSON.stringify(prev) === JSON.stringify(ifaceData)) return prev;
+                return ifaceData;
+            });
         } catch (e) { }
     };
 
@@ -93,7 +101,15 @@ export default function Failover(props: FailoverProps) {
         try {
             const res = await gFetch('/api/convergence/status', { headers: authHeaders() });
             const data = await res.json();
-            setActiveTests(data.filter((t: any) => t.running !== false));
+            const running = (Array.isArray(data) ? data : []).filter((t: any) => t.running !== false);
+            setActiveTests(prev => {
+                // If both are empty, retain existing reference to prevent re-render cascades
+                if (prev.length === 0 && running.length === 0) return prev;
+                if (prev.length === running.length && JSON.stringify(prev) === JSON.stringify(running)) {
+                    return prev;
+                }
+                return running;
+            });
         } catch (e) { }
     };
 
@@ -107,12 +123,15 @@ export default function Failover(props: FailoverProps) {
         }
     };
 
-    // Dedicated fast polling for live test metrics (every 500ms while Failover Lab is mounted)
+    // Dedicated adaptive polling: 500ms when tests are running (ultra-responsive live charts & sequence bar),
+    // 2500ms when idle to save CPU, network, and avoid background disk reads.
+    const hasActiveTests = activeTests.length > 0;
     useEffect(() => {
         fetchStatus();
-        const intv = setInterval(fetchStatus, 500);
+        const intervalMs = hasActiveTests ? 500 : 2500;
+        const intv = setInterval(fetchStatus, intervalMs);
         return () => clearInterval(intv);
-    }, [activePeerId]);
+    }, [activePeerId, hasActiveTests]);
 
     useEffect(() => {
         if (externalStatus) {
@@ -121,6 +140,7 @@ export default function Failover(props: FailoverProps) {
     }, [externalStatus]);
 
     useEffect(() => {
+        if (activeTests.length === 0) return;
         setLiveMetricsSeries(prev => {
             const next = { ...prev };
             activeTests.forEach(t => {
@@ -177,7 +197,7 @@ export default function Failover(props: FailoverProps) {
     useEffect(() => {
         fetchEndpoints();
         fetchHistory();
-        // Fetch Thresholds
+        // Fetch Thresholds once on mount or active peer change
         const fetchThresholds = async () => {
             try {
                 const res = await gFetch('/api/config/convergence', {
@@ -198,13 +218,19 @@ export default function Failover(props: FailoverProps) {
         // Fetch shared targets with convergence capability
         gFetch('/api/targets', { headers: authHeaders() })
             .then(r => r.json())
-            .then(data => setConvergenceTargets((Array.isArray(data) ? data : []).filter((t: any) => t.enabled && t.capabilities?.convergence)))
+            .then(data => {
+                const filtered = (Array.isArray(data) ? data : []).filter((t: any) => t.enabled && t.capabilities?.convergence);
+                setConvergenceTargets(prev => {
+                    if (JSON.stringify(prev) === JSON.stringify(filtered)) return prev;
+                    return filtered;
+                });
+            })
             .catch(() => { });
-        // Poll endpoints every 5s. Always poll history to pick up async enrichments (egress path).
+
+        // Poll endpoints and history every 5s to pick up async enrichments (egress path)
         const interval = setInterval(() => {
             fetchEndpoints();
             fetchHistory();
-            fetchThresholds();
         }, 5000);
         return () => clearInterval(interval);
     }, [activePeerId]);
@@ -215,12 +241,14 @@ export default function Failover(props: FailoverProps) {
         // Skip entirely in remote view mode.
         if (activePeerId) return;
 
+        let isCancelled = false;
+
         const checkReachability = async () => {
             if (allTargets.length === 0) return;
             await Promise.all(allTargets.map(async (target) => {
-                setReachability(prev => ({ ...prev, [target.id]: 'loading' }));
                 let isReachable = false;
-                for (let attempt = 0; attempt < 3; attempt++) {
+                for (let attempt = 0; attempt < 2; attempt++) {
+                    if (isCancelled) return;
                     try {
                         const res = await gFetch('/api/convergence/reachability', {
                             method: 'POST',
@@ -235,15 +263,23 @@ export default function Failover(props: FailoverProps) {
                             }
                         }
                     } catch {}
-                    if (attempt < 2) await new Promise(r => setTimeout(r, 1000));
+                    if (attempt < 1 && !isCancelled) await new Promise(r => setTimeout(r, 600));
                 }
-                setReachability(prev => ({ ...prev, [target.id]: isReachable }));
+                if (!isCancelled) {
+                    setReachability(prev => {
+                        if (prev[target.id] === isReachable) return prev;
+                        return { ...prev, [target.id]: isReachable };
+                    });
+                }
             }));
         };
 
         checkReachability();
-        const intv = setInterval(checkReachability, 10000);
-        return () => clearInterval(intv);
+        const intv = setInterval(checkReachability, 15000);
+        return () => {
+            isCancelled = true;
+            clearInterval(intv);
+        };
     }, [allTargets, activePeerId]);
 
     const addEndpoint = async () => {

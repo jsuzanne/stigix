@@ -23,6 +23,11 @@ export interface TunnelPeerInfo {
     activeRevision?: number;
     transport: string;
     direction: 'inbound' | 'outbound_dial';
+    sourceIp?: string;
+    destIp?: string;
+    socketRemoteIp?: string;
+    sourcePort?: number;
+    destPort?: number;
 }
 
 export interface ForwardRequestPayload {
@@ -87,6 +92,11 @@ export class FleetTunnelManager {
     private activeLeaderTunnelSocket: Socket | ClientSocket | null = null;
     private activeLeaderInfo: { instanceId?: string; siteName?: string; ip?: string; direction?: string } | null = null;
 
+    // Multi-IP candidate pool and failover tracking for Spoke outbound tunnel
+    private candidateLeaderUrls: string[] = [];
+    private currentCandidateIndex: number = 0;
+    private consecutiveConnectErrors: number = 0;
+
     // Leader state: outbound dialed client sockets to Cloud/Manual peers (M6)
     private outboundDialedSockets: Map<string, ClientSocket> = new Map();
     private rendezvousDialTimestamps: Map<string, number> = new Map();
@@ -130,6 +140,20 @@ export class FleetTunnelManager {
         log('TUNNEL', '🔒 Secret key dynamically updated for Fleet Tunnel');
     }
 
+    public setCandidateLeaderUrls(endpoints: string[]): void {
+        const cleaned = endpoints
+            .map(ep => ep.trim().replace(/\/$/, ''))
+            .filter(ep => ep.length > 0);
+        this.candidateLeaderUrls = Array.from(new Set(cleaned));
+        this.currentCandidateIndex = 0;
+        this.consecutiveConnectErrors = 0;
+        log('TUNNEL', `Registered ${this.candidateLeaderUrls.length} candidate Leader endpoints: ${this.candidateLeaderUrls.join(', ')}`);
+    }
+
+    public getCandidateLeaderUrls(): string[] {
+        return [...this.candidateLeaderUrls];
+    }
+
     public reconnectSpoke(): void {
         if (this.spokeClientSocket) {
             log('TUNNEL', 'Force reconnecting Spoke outbound tunnel with updated credentials');
@@ -139,6 +163,7 @@ export class FleetTunnelManager {
             this.spokeClientSocket = null;
         }
         this.spokeCurrentLeaderUrl = null;
+        this.consecutiveConnectErrors = 0;
         this.syncSpokeOutboundTunnel();
     }
 
@@ -228,6 +253,27 @@ export class FleetTunnelManager {
             const clientIp: string = auth.ip || socket.handshake.address.replace(/^.*:/, '') || '127.0.0.1';
             const isLeaderDial: boolean = !!auth.isLeaderDial;
 
+            const rawRemote = (socket.conn as any)?.remoteAddress || (socket.request?.socket as any)?.remoteAddress || socket.handshake.address || '';
+            const socketRemoteIp = rawRemote.replace(/^::ffff:/, '').replace(/^.*:/, '');
+            const rawLocal = (socket.conn as any)?.localAddress || (socket.request?.socket as any)?.localAddress || '';
+            const socketLocalIp = rawLocal.replace(/^::ffff:/, '').replace(/^.*:/, '');
+            const leaderCurrentIp = this.registryManager?.getCurrentIp?.() || this.registryManager?.getStatus?.()?.detected_ip || '127.0.0.1';
+
+            let destHost = '';
+            if (socket.request?.headers?.host) {
+                destHost = socket.request.headers.host.split(':')[0];
+            }
+            const leaderDestIp = (destHost && destHost !== '0.0.0.0' && destHost !== 'localhost') 
+                ? destHost 
+                : (socketLocalIp && socketLocalIp !== '0.0.0.0' && socketLocalIp !== '127.0.0.1')
+                ? socketLocalIp
+                : leaderCurrentIp;
+
+            const sourceIp = isLeaderDial ? leaderCurrentIp : (clientIp || socketRemoteIp || '127.0.0.1');
+            const destIp = isLeaderDial ? clientIp : leaderDestIp;
+            const sourcePort = (socket.request?.socket as any)?.remotePort || (socket.conn as any)?.remotePort;
+            const destPort = (socket.request?.socket as any)?.localPort || (socket.conn as any)?.localPort || this.port;
+
             const info: TunnelPeerInfo = {
                 instanceId,
                 siteName,
@@ -235,7 +281,12 @@ export class FleetTunnelManager {
                 connectedAt: Date.now(),
                 lastPing: Date.now(),
                 transport: 'websocket',
-                direction: isLeaderDial ? 'outbound_dial' : 'inbound'
+                direction: isLeaderDial ? 'outbound_dial' : 'inbound',
+                sourceIp,
+                destIp,
+                socketRemoteIp: socketRemoteIp || clientIp,
+                sourcePort,
+                destPort
             };
 
             this.activeTunnels.set(instanceId, { socket, info });
@@ -244,7 +295,20 @@ export class FleetTunnelManager {
             }
             this.siteToInstanceMap.set(clientIp.toLowerCase(), instanceId);
 
-            log('TUNNEL', `⚡ Reverse tunnel connected: ${siteName} (${instanceId}) [${clientIp}] via WebSocket (${info.direction})`);
+            if (this.localRegistryServer) {
+                this.localRegistryServer.updatePeerTunnelMetrics(
+                    instanceId,
+                    0,
+                    Date.now(),
+                    info.direction,
+                    info.sourceIp,
+                    info.destIp,
+                    info.sourcePort,
+                    info.destPort
+                );
+            }
+
+            log('TUNNEL', `⚡ Reverse tunnel connected: ${siteName} (${instanceId}) [${clientIp}] via WebSocket (${info.direction}) [${sourceIp} ➔ ${destIp}]`);
 
             // If this node is acting as Spoke dialed by Leader (M6)
             let dialHeartbeatInterval: NodeJS.Timeout | null = null;
@@ -511,34 +575,73 @@ export class FleetTunnelManager {
      */
     private syncSpokeOutboundTunnel(): void {
         const status = this.registryManager.getStatus();
-        let targetHost: string | null = null;
-        let targetPort: number = 8080;
 
-        if (status.leader_info?.ip && status.leader_info.ip !== '127.0.0.1') {
-            targetHost = status.leader_info.ip;
-        } else if (status.static_leader_url) {
-            try {
-                const u = new URL(status.static_leader_url);
-                targetHost = u.hostname;
-                targetPort = u.port ? parseInt(u.port) : 8080;
-            } catch {}
-        } else if (process.env.STIGIX_CONTROLLER_URL) {
-            try {
-                const u = new URL(process.env.STIGIX_CONTROLLER_URL.startsWith('http') ? process.env.STIGIX_CONTROLLER_URL : `http://${process.env.STIGIX_CONTROLLER_URL}`);
-                targetHost = u.hostname;
-                targetPort = u.port ? parseInt(u.port) : 8080;
-            } catch {}
-        } else if (process.env.STIGIX_LEADER_URL) {
-            try {
-                const u = new URL(process.env.STIGIX_LEADER_URL.startsWith('http') ? process.env.STIGIX_LEADER_URL : `http://${process.env.STIGIX_LEADER_URL}`);
-                targetHost = u.hostname;
-                targetPort = u.port ? parseInt(u.port) : 8080;
-            } catch {}
+        // Populate candidateLeaderUrls if empty
+        if (this.candidateLeaderUrls.length === 0) {
+            const savedCandidates = this.registryManager.getControllerEndpoints();
+            const pool: string[] = [];
+            if (savedCandidates && savedCandidates.length > 0) {
+                pool.push(...savedCandidates);
+            }
+            if (status.static_leader_url) {
+                pool.push(status.static_leader_url.replace(/\/api\/registry$/, ''));
+            }
+            if (process.env.STIGIX_CONTROLLER_URL) {
+                pool.push(process.env.STIGIX_CONTROLLER_URL.startsWith('http') ? process.env.STIGIX_CONTROLLER_URL : `http://${process.env.STIGIX_CONTROLLER_URL}`);
+            }
+            if (process.env.STIGIX_LEADER_URL) {
+                pool.push(process.env.STIGIX_LEADER_URL.startsWith('http') ? process.env.STIGIX_LEADER_URL : `http://${process.env.STIGIX_LEADER_URL}`);
+            }
+            if (status.leader_info?.ip && status.leader_info.ip !== '127.0.0.1') {
+                pool.push(`http://${status.leader_info.ip}:8080`);
+            }
+            this.candidateLeaderUrls = Array.from(new Set(pool.map(u => u.trim().replace(/\/$/, '')).filter(Boolean)));
         }
 
-        if (!targetHost) return;
+        let targetHost: string | null = null;
+        let targetPort: number = 8080;
+        let targetUrl: string | null = null;
 
-        const targetUrl = `http://${targetHost}:${targetPort}`;
+        if (this.candidateLeaderUrls.length > 0) {
+            if (this.currentCandidateIndex >= this.candidateLeaderUrls.length) {
+                this.currentCandidateIndex = 0;
+            }
+            targetUrl = this.candidateLeaderUrls[this.currentCandidateIndex];
+            try {
+                const u = new URL(targetUrl);
+                targetHost = u.hostname;
+                targetPort = u.port ? parseInt(u.port) : 8080;
+            } catch {
+                targetHost = null;
+            }
+        } else {
+            if (status.leader_info?.ip && status.leader_info.ip !== '127.0.0.1') {
+                targetHost = status.leader_info.ip;
+            } else if (status.static_leader_url) {
+                try {
+                    const u = new URL(status.static_leader_url);
+                    targetHost = u.hostname;
+                    targetPort = u.port ? parseInt(u.port) : 8080;
+                } catch {}
+            } else if (process.env.STIGIX_CONTROLLER_URL) {
+                try {
+                    const u = new URL(process.env.STIGIX_CONTROLLER_URL.startsWith('http') ? process.env.STIGIX_CONTROLLER_URL : `http://${process.env.STIGIX_CONTROLLER_URL}`);
+                    targetHost = u.hostname;
+                    targetPort = u.port ? parseInt(u.port) : 8080;
+                } catch {}
+            } else if (process.env.STIGIX_LEADER_URL) {
+                try {
+                    const u = new URL(process.env.STIGIX_LEADER_URL.startsWith('http') ? process.env.STIGIX_LEADER_URL : `http://${process.env.STIGIX_LEADER_URL}`);
+                    targetHost = u.hostname;
+                    targetPort = u.port ? parseInt(u.port) : 8080;
+                } catch {}
+            }
+            if (targetHost) {
+                targetUrl = `http://${targetHost}:${targetPort}`;
+            }
+        }
+
+        if (!targetHost || !targetUrl) return;
 
         if (this.spokeClientSocket && this.spokeCurrentLeaderUrl !== targetUrl) {
             log('TUNNEL', `Leader endpoint changed to ${targetUrl} — reconnecting tunnel`);
@@ -577,9 +680,18 @@ export class FleetTunnelManager {
         });
 
         socket.on('connect', () => {
-            log('TUNNEL', `⚡ Outbound reverse tunnel ESTABLISHED to Leader (${host}:${port})`);
+            this.consecutiveConnectErrors = 0;
+            const candidateInfo = this.candidateLeaderUrls.length > 1
+                ? ` [Candidate ${this.currentCandidateIndex + 1}/${this.candidateLeaderUrls.length}]`
+                : '';
+            log('TUNNEL', `⚡ Outbound reverse tunnel ESTABLISHED to Leader (${host}:${port})${candidateInfo}`);
             this.activeLeaderTunnelSocket = socket;
             this.activeLeaderInfo = { instanceId: 'Leader', siteName: host, ip: host, direction: 'outbound_spoke' };
+
+            // Update static leader so local node preserves the verified reachable endpoint
+            try {
+                this.registryManager.saveStaticLeader(`${targetUrl}/api/registry`);
+            } catch {}
 
             this.pushLocalTelemetryToSocket(socket);
             if (this.spokeTelemetryInterval) clearInterval(this.spokeTelemetryInterval);
@@ -625,7 +737,23 @@ export class FleetTunnelManager {
         });
 
         socket.on('connect_error', (err: any) => {
-            log('TUNNEL', `Outbound reverse tunnel connection failed (${host}:${port}): ${err.message}`, 'warn');
+            this.consecutiveConnectErrors++;
+            log('TUNNEL', `Outbound reverse tunnel connection failed (${host}:${port}) [attempt ${this.consecutiveConnectErrors}]: ${err.message}`, 'warn');
+
+            // Trigger failover if multiple candidate endpoints exist and current endpoint failed 3 times
+            if (this.candidateLeaderUrls.length > 1 && this.consecutiveConnectErrors >= 3) {
+                const oldIndex = this.currentCandidateIndex;
+                this.currentCandidateIndex = (this.currentCandidateIndex + 1) % this.candidateLeaderUrls.length;
+                const nextUrl = this.candidateLeaderUrls[this.currentCandidateIndex];
+                log('TUNNEL', `🔄 Multi-IP Failover: Leader ${targetUrl} unreachable after ${this.consecutiveConnectErrors} attempts. Switching to candidate ${this.currentCandidateIndex + 1}/${this.candidateLeaderUrls.length}: ${nextUrl}`);
+                this.consecutiveConnectErrors = 0;
+                try {
+                    socket.disconnect();
+                } catch {}
+                this.spokeClientSocket = null;
+                this.spokeCurrentLeaderUrl = null;
+                setTimeout(() => this.syncSpokeOutboundTunnel(), 1000);
+            }
         });
 
         socket.on('disconnect', (reason: string) => {
@@ -829,6 +957,7 @@ export class FleetTunnelManager {
             // Register Leader services (Provisioning, Manifest, Targets, Ping) on this outbound socket
             this.registerLeaderHandlers(socket);
 
+            const leaderSrcIp = this.registryManager?.getCurrentIp?.() || this.registryManager?.getStatus?.()?.detected_ip || '127.0.0.1';
             const info: TunnelPeerInfo = {
                 instanceId: targetId,
                 siteName: targetSiteName,
@@ -836,12 +965,28 @@ export class FleetTunnelManager {
                 connectedAt: Date.now(),
                 lastPing: Date.now(),
                 transport: 'websocket',
-                direction: 'outbound_dial'
+                direction: 'outbound_dial',
+                sourceIp: leaderSrcIp,
+                destIp: host,
+                destPort: port
             };
 
             this.activeTunnels.set(targetId, { socket, info });
             this.siteToInstanceMap.set(targetSiteName.toLowerCase(), targetId);
             this.siteToInstanceMap.set(host.toLowerCase(), targetId);
+
+            if (this.localRegistryServer) {
+                this.localRegistryServer.updatePeerTunnelMetrics(
+                    targetId,
+                    0,
+                    Date.now(),
+                    info.direction,
+                    info.sourceIp,
+                    info.destIp,
+                    undefined,
+                    info.destPort
+                );
+            }
 
             // Initial query for remote peer's telemetry
             socket.emit('peer:query_status', (remoteStatus: any) => {
@@ -998,11 +1143,13 @@ export class FleetTunnelManager {
         connect();
 
         if (!this.cloudflareKvPollInterval) {
+            // Safeguard poll: reduced from 10s to 5 minutes (300s) to conserve Cloudflare quotas.
+            // SSE Push is already real-time (<10ms) and initial sync happens on connection.
             this.cloudflareKvPollInterval = setInterval(() => {
                 if (this.isListeningCloudflare && this.registryManager.isLeader()) {
                     this.syncEphemeralPeersFromCloudflare();
                 }
-            }, 10000);
+            }, 300000);
         }
     }
 

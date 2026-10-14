@@ -184,6 +184,29 @@ export class RegistryManager {
         }
     }
 
+    public getControllerEndpoints(): string[] {
+        try {
+            const f = path.join(this.configDir, 'controller-endpoints.json');
+            if (fs.existsSync(f)) {
+                const data = JSON.parse(fs.readFileSync(f, 'utf8'));
+                if (Array.isArray(data)) return data;
+            }
+        } catch {}
+        return [];
+    }
+
+    public saveControllerEndpoints(endpoints: string[]): void {
+        try {
+            const f = path.join(this.configDir, 'controller-endpoints.json');
+            if (Array.isArray(endpoints) && endpoints.length > 0) {
+                fs.writeFileSync(f, JSON.stringify(endpoints, null, 2), 'utf8');
+                log('REGISTRY', `Saved ${endpoints.length} controller fallback endpoints to controller-endpoints.json`);
+            }
+        } catch (e: any) {
+            log('REGISTRY', `Failed to write controller-endpoints.json: ${e.message}`, 'warn');
+        }
+    }
+
     /**
      * Updates the site name (STIGIX_SITE_NAME) at runtime.
      * - Updates process.env so any future fromEnv() calls pick it up
@@ -495,24 +518,36 @@ export class RegistryManager {
     private setupIntervals() {
         const config = this.client.getConfig();
         const mode = process.env.STIGIX_REGISTRY_MODE_CURRENT || 'peer';
+        const isRemote = config.registryUrl === config.remoteUrl;
+        const isEnrolled = !!(this.getClusterEnrollment()?.enrolled || this.staticLeaderUrl);
 
         // Clear existing
         if (this.heartbeatInterval) clearInterval(this.heartbeatInterval);
         if (this.discoveryInterval) clearInterval(this.discoveryInterval);
 
-        // Discovery is always 30s (Read-only, 100k/day quota is safe)
-        const discoveryMs = (config.discoveryIntervalSec || 30) * 1000;
+        // If peer is enrolled in a cluster and pointing to Cloudflare remote fallback,
+        // completely disable polling Cloudflare to preserve quota (fleet-tunnel handles connectivity).
+        if (mode === 'peer' && isRemote && isEnrolled) {
+            log('REGISTRY', `Peer is enrolled in cluster; Cloudflare remote polling disabled to preserve quota.`);
+            return;
+        }
+
+        // Discovery interval:
+        // - Local mode (Leader or Peer talking to local Leader): 30s
+        // - Cloudflare remote fallback: 300s (5 minutes) to protect quota
+        const defaultDiscoverySec = isRemote ? 300 : 30;
+        const discoveryMs = (config.discoveryIntervalSec || defaultDiscoverySec) * 1000;
         this.discoveryInterval = setInterval(() => this.performDiscovery(), discoveryMs);
 
         // Heartbeat interval:
-        // - Local mode (Leader or Peer talking to local Leader): 30 seconds
-        // - Cloudflare remote fallback: configured interval (default 60s)
+        // - Local mode: 30s
+        // - Cloudflare remote fallback: 300s (5 minutes)
         let heartbeatMs = 30000;
-        if (config.registryUrl === config.remoteUrl) {
-            heartbeatMs = (config.heartbeatIntervalSec || 60) * 1000;
+        if (isRemote) {
+            heartbeatMs = (config.heartbeatIntervalSec || 300) * 1000;
         }
 
-        log('REGISTRY', `Heartbeat interval set to ${heartbeatMs / 1000}s (mode: ${mode}, target: ${config.registryUrl})`);
+        log('REGISTRY', `Heartbeat interval set to ${heartbeatMs / 1000}s, discovery to ${discoveryMs / 1000}s (mode: ${mode}, target: ${config.registryUrl})`);
         this.heartbeatInterval = setInterval(() => this.performHeartbeat(), heartbeatMs);
     }
 
@@ -552,23 +587,24 @@ export class RegistryManager {
 
         // 1. Peer Recovery: If using Remote, try to reconnect to the leader
         if (mode === 'peer' && config.registryUrl === config.remoteUrl) {
-            if (this.staticLeaderUrl) {
-                // Static leader configured: retry it directly instead of going through Cloudflare.
-                // This handles the case where a transient startup failure caused resetToRemote(),
-                // leaving the node stuck with no way back to the static leader.
-                log('REGISTRY', `Peer on remote fallback but staticLeaderUrl is set. Re-connecting to ${this.staticLeaderUrl}...`);
-                this.client.setLocalRegistryByUrl(this.staticLeaderUrl);
-                let displayName = 'static';
-                try { displayName = new URL(this.staticLeaderUrl).hostname; } catch {}
-                this.leaderInfo = { ip: displayName, id: displayName };
-            } else {
-                const connected = await this.tryConnectToLocalLeader();
-                if (!connected) {
-                    // Safeguard: If no leader is found, do NOT register (POST) to Cloudflare.
-                    // This ensures Cloudflare is only contacted in READ ONLY mode (findLeader/fetchInstances).
-                    log('REGISTRY', `No local leader found. Skipping registration to save Cloudflare KV Quota.`);
-                    return;
+            const isEnrolled = !!(this.getClusterEnrollment()?.enrolled || this.staticLeaderUrl);
+            if (isEnrolled) {
+                // If staticLeaderUrl is known, try re-pointing to it directly
+                if (this.staticLeaderUrl) {
+                    this.client.setLocalRegistryByUrl(this.staticLeaderUrl);
+                    let displayName = 'static';
+                    try { displayName = new URL(this.staticLeaderUrl).hostname; } catch {}
+                    this.leaderInfo = { ip: displayName, id: displayName };
                 }
+                // Do not send heartbeat (POST /instances) to remote Cloudflare Worker
+                return;
+            }
+            const connected = await this.tryConnectToLocalLeader();
+            if (!connected) {
+                // Safeguard: If no leader is found, do NOT register (POST) to Cloudflare.
+                // This ensures Cloudflare is only contacted in READ ONLY mode (findLeader/fetchInstances).
+                log('REGISTRY', `No local leader found. Skipping registration to save Cloudflare KV Quota.`);
+                return;
             }
         }
 
@@ -629,18 +665,19 @@ export class RegistryManager {
         const mode = process.env.STIGIX_REGISTRY_MODE_CURRENT || 'peer';
 
         // 1. Recovery Check: If on Fallback, try to find the Leader in the discovery phase
-        // (Discovery is 30s/120s vs Heartbeat 300s, so this makes recovery much faster)
         if (mode === 'peer' && config.registryUrl === config.remoteUrl) {
-            if (this.staticLeaderUrl) {
-                // Static URL configured: bypass Cloudflare findLeader() and reconnect directly.
-                log('REGISTRY', `Discovery: peer on remote fallback with staticLeaderUrl. Reconnecting directly...`);
-                this.client.setLocalRegistryByUrl(this.staticLeaderUrl);
-                let displayName = 'static';
-                try { displayName = new URL(this.staticLeaderUrl).hostname; } catch {}
-                this.leaderInfo = { ip: displayName, id: displayName };
-            } else {
-                await this.tryConnectToLocalLeader();
+            const isEnrolled = !!(this.getClusterEnrollment()?.enrolled || this.staticLeaderUrl);
+            if (isEnrolled) {
+                if (this.staticLeaderUrl) {
+                    this.client.setLocalRegistryByUrl(this.staticLeaderUrl);
+                    let displayName = 'static';
+                    try { displayName = new URL(this.staticLeaderUrl).hostname; } catch {}
+                    this.leaderInfo = { ip: displayName, id: displayName };
+                }
+                // Do not query Cloudflare Worker (GET /instances) when enrolled in a cluster
+                return;
             }
+            await this.tryConnectToLocalLeader();
         }
 
         const instances = await this.client.fetchInstances();

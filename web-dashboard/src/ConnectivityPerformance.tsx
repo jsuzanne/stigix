@@ -412,6 +412,27 @@ export default function ConnectivityPerformance({ token, uiConfig, onManage, isL
     const [tracerouteTarget, setTracerouteTarget] = useState<string | null>(null);
     const [viewMode, setViewMode] = useState<'catalog' | 'matrix'>('catalog');
     const [inspectedCapture, setInspectedCapture] = useState<any>(null);
+    const [isProbeEngineEnabled, setIsProbeEngineEnabled] = useState<boolean>(true);
+    const [isTogglingEngine, setIsTogglingEngine] = useState<boolean>(false);
+
+    const toggleProbeEngine = async () => {
+        const nextState = !isProbeEngineEnabled;
+        setIsTogglingEngine(true);
+        try {
+            const res = await gFetch('/api/config/system-settings', {
+                method: 'POST',
+                headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+                body: JSON.stringify({ auto_restart_probes: nextState })
+            });
+            if (res.ok) {
+                setIsProbeEngineEnabled(nextState);
+            }
+        } catch (e) {
+            console.error('Failed to toggle probe engine', e);
+        } finally {
+            setIsTogglingEngine(false);
+        }
+    };
 
     useEffect(() => {
         if (propIsLeader !== undefined) {
@@ -491,6 +512,9 @@ export default function ConnectivityPerformance({ token, uiConfig, onManage, isL
             ]);
             if (activeData.success) {
                 setActiveProbes(activeData.probes.map((p: any) => p.id));
+                if (typeof activeData.engine_enabled === 'boolean') {
+                    setIsProbeEngineEnabled(activeData.engine_enabled);
+                }
             }
             if (Array.isArray(scenariosData)) {
                 setCloudScenarios(scenariosData);
@@ -514,7 +538,7 @@ export default function ConnectivityPerformance({ token, uiConfig, onManage, isL
     const fetchStatsAndResults = async () => {
         setLoadingStats(true);
         try {
-            const dynamicLimit = timeRange === '15m' ? 300 : timeRange === '1h' ? 1500 : timeRange === '6h' ? 5000 : timeRange === '24h' ? 12000 : 30000;
+            const dynamicLimit = timeRange === '15m' ? 300 : timeRange === '1h' ? 1000 : timeRange === '6h' ? 3000 : timeRange === '24h' ? 6000 : 15000;
             const [statsRes, resultsRes] = await Promise.all([
                 gFetch(`/api/connectivity/stats?range=${timeRange}`, { headers: authHeaders() }),
                 gFetch(`/api/connectivity/results?timeRange=${timeRange}&limit=${dynamicLimit}`, { headers: authHeaders() })
@@ -533,8 +557,10 @@ export default function ConnectivityPerformance({ token, uiConfig, onManage, isL
     };
 
     const fetchData = async () => {
-        await fetchProbesConfig();
-        await fetchStatsAndResults();
+        await Promise.all([
+            fetchProbesConfig(),
+            fetchStatsAndResults()
+        ]);
     };
 
     const startEditProbe = (endpoint: any) => {
@@ -921,6 +947,25 @@ export default function ConnectivityPerformance({ token, uiConfig, onManage, isL
 
     return (
         <div className="space-y-6 animate-in fade-in duration-500">
+            {/* Suspended Alert Banner */}
+            {!isProbeEngineEnabled && (
+                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 p-3.5 bg-amber-500/10 border border-amber-500/30 rounded-2xl text-xs shadow-sm animate-in fade-in">
+                    <div className="flex items-center gap-2.5 text-amber-200">
+                        <Pause size={18} className="text-amber-400 shrink-0" />
+                        <span>
+                            <strong className="text-amber-300 font-semibold">Local probe execution is suspended on this node.</strong> Probes are maintained and synchronized to fleet peers via SD-WAN, but no probes are actively executed locally.
+                        </span>
+                    </div>
+                    <button
+                        onClick={toggleProbeEngine}
+                        disabled={isTogglingEngine}
+                        className="px-3 py-1.5 bg-amber-500 hover:bg-amber-400 text-black font-bold rounded-lg text-xs transition-colors shrink-0 shadow cursor-pointer"
+                    >
+                        {isTogglingEngine ? 'Resuming...' : 'Resume Local Engine'}
+                    </button>
+                </div>
+            )}
+
             {/* Header Analytics */}
             <div className="flex flex-col gap-4">
                 
@@ -1220,6 +1265,21 @@ export default function ConnectivityPerformance({ token, uiConfig, onManage, isL
                         </select>
                     </div>
 
+
+                    <button
+                        onClick={toggleProbeEngine}
+                        disabled={isTogglingEngine}
+                        className={cn(
+                            "flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-bold transition-all shadow-sm border",
+                            isProbeEngineEnabled
+                                ? "bg-card-secondary hover:bg-card-secondary/80 border-border text-text-primary"
+                                : "bg-amber-500/10 border-amber-500/30 text-amber-300 hover:bg-amber-500/20"
+                        )}
+                        title={isProbeEngineEnabled ? "Local probe execution is running on this node. Click to pause." : "Local probe execution is suspended. Click to resume."}
+                    >
+                        <span className={cn("w-2 h-2 rounded-full shrink-0", isProbeEngineEnabled ? "bg-emerald-500 animate-pulse" : "bg-amber-400")} />
+                        <span>{isProbeEngineEnabled ? "Local Engine: Running" : "Local Engine: Paused"}</span>
+                    </button>
 
                     <button
                         onClick={() => setTracerouteTarget('')}
