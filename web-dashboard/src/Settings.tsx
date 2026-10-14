@@ -1045,8 +1045,8 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
     // Maintenance & version status — only fetched when viewing Maintenance or System tabs
     useEffect(() => {
         if (activeTab !== 'maintenance' && activeTab !== 'system') return;
-
-        apiFetch('/api/admin/maintenance/version', { headers: { 'Authorization': `Bearer ${token}` } })
+        const query = activeTab === 'maintenance' ? '?force=true' : '';
+        apiFetch(`/api/admin/maintenance/version${query}`, { headers: { 'Authorization': `Bearer ${token}` } })
             .then(r => r.json())
             .then(maintenanceData => {
                 setStatus(maintenanceData);
@@ -1226,14 +1226,17 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
         }
     }, [upgradeModal.open, upgradeModal.phase, upgradeModal.countdown]);
 
+    const [checkingVersion, setCheckingVersion] = useState(false);
+
     // Leader-Orchestrated Peer Maintenance Handlers
-    const fetchPeerMaintStatus = useCallback(async (peerId: string, _force = false) => {
+    const fetchPeerMaintStatus = useCallback(async (peerId: string, force = false) => {
         setPeerMaintStatus(prev => ({
             ...prev,
             [peerId]: { ...prev[peerId], loading: true, error: null }
         }));
         try {
-            const res = await apiFetch(`/api/gateway/${peerId}/api/admin/maintenance/version`, {
+            const query = force ? '?force=true' : '';
+            const res = await apiFetch(`/api/gateway/${peerId}/api/admin/maintenance/version${query}`, {
                 headers: authHeaders
             });
             if (res.ok) {
@@ -1284,14 +1287,39 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
         );
     }, [fleetUpgradingPeers]);
 
+    const handleCheckNewVersion = useCallback(async (showToast = true) => {
+        setCheckingVersion(true);
+        try {
+            const res = await apiFetch('/api/admin/maintenance/version?force=true', {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            if (res.ok) {
+                const data = await res.json();
+                setStatus(data);
+                if (showToast) {
+                    if (data.updateAvailable) {
+                        toast.success(`New version available: ${data.latest}`);
+                    } else {
+                        toast.success(`Up to date (${data.current})`);
+                    }
+                }
+            }
+        } catch {
+            if (showToast) toast.error('Failed to check latest version');
+        } finally {
+            setCheckingVersion(false);
+        }
+    }, [token]);
+
     const checkAllPeersVersions = useCallback(() => {
+        handleCheckNewVersion(true);
         if (!remoteFleetNodes.length) return;
         remoteFleetNodes.forEach((inst: any) => {
             if (inst.instance_id) {
                 fetchPeerMaintStatus(inst.instance_id, true);
             }
         });
-    }, [remoteFleetNodes, fetchPeerMaintStatus]);
+    }, [remoteFleetNodes, fetchPeerMaintStatus, handleCheckNewVersion]);
 
     // Auto-fetch peer versions when viewing registry or maintenance tab as leader
     useEffect(() => {
@@ -4470,14 +4498,25 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
 
                 {activeTab === 'maintenance' && (
                     <div className="bg-card border border-border rounded-2xl p-8 shadow-sm space-y-8">
-                        <div className="flex items-center gap-3">
-                            <div className="p-2 bg-blue-600/10 rounded-lg text-blue-600 dark:text-blue-400 font-bold">
-                                <RefreshCw size={24} className={upgrading ? "animate-spin" : ""} />
+                        <div className="flex items-center justify-between gap-3">
+                            <div className="flex items-center gap-3">
+                                <div className="p-2 bg-blue-600/10 rounded-lg text-blue-600 dark:text-blue-400 font-bold">
+                                    <RefreshCw size={24} className={(upgrading || checkingVersion) ? "animate-spin" : ""} />
+                                </div>
+                                <div>
+                                    <h2 className="text-lg font-black text-text-primary tracking-tight">System Maintenance</h2>
+                                    <p className="text-[10px] font-bold text-text-muted tracking-widest mt-0.5 opacity-70">Update system logic and engine</p>
+                                </div>
                             </div>
-                            <div>
-                                <h2 className="text-lg font-black text-text-primary tracking-tight">System Maintenance</h2>
-                                <p className="text-[10px] font-bold text-text-muted tracking-widest mt-0.5 opacity-70">Update system logic and engine</p>
-                            </div>
+                            <button
+                                onClick={checkAllPeersVersions}
+                                disabled={checkingVersion || upgrading}
+                                title="Bypass cache and check Docker Hub immediately for new versions"
+                                className="px-3.5 py-2 rounded-xl text-[10px] font-black uppercase tracking-wider bg-card-secondary hover:bg-card-hover border border-border text-text-muted hover:text-text-primary transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                            >
+                                <RefreshCw size={12} className={cn(checkingVersion && "animate-spin text-blue-400")} />
+                                {checkingVersion ? 'Checking...' : 'Check New Version'}
+                            </button>
                         </div>
 
                         {status?.dockerReady === false && (
@@ -4502,7 +4541,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                                     <span className="text-sm font-mono text-blue-600 font-bold">{status?.current}</span>
                                 </div>
                                 <div className="flex justify-between items-center p-4 bg-card-secondary/50 rounded-xl border border-border">
-                                    <span className="text-[10px] text-text-muted font-black tracking-widest">{status?.channel === "v2" ? "Latest v2 Build" : "Latest Stable"}</span>
+                                    <span className="text-[10px] text-text-muted font-black tracking-widest">{status?.channel?.startsWith("v3") ? "Latest v3 Build" : status?.channel === "v2" ? "Latest v2 Build" : "Latest Stable"}</span>
                                     <span className="text-sm font-mono text-green-600 font-bold">{status?.latest}</span>
                                 </div>
                             </div>
@@ -4511,8 +4550,8 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                                 <p className="text-[11px] font-bold text-text-primary leading-relaxed">
                                     {status?.updateAvailable
                                         ? `A newer build (${status.latest}) is available on Docker Hub and ready to pull.`
-                                        : status?.channel === "v2"
-                                            ? `Your system is currently running the latest development build (${status?.current}) on branch v2.`
+                                        : (status?.channel?.startsWith("v3") || status?.channel === "v2")
+                                            ? `Your system is currently running the latest development build (${status?.current}) on branch ${status?.channel}.`
                                             : "Your system is currently running the latest stable release of the Stigix platform."}
                                 </p>
                                 <div className="flex flex-col sm:flex-row gap-3">
@@ -4622,9 +4661,10 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                                     <div className="flex items-center gap-2">
                                         <button
                                             onClick={checkAllPeersVersions}
-                                            className="px-3 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-wider bg-card-secondary hover:bg-card-hover border border-border text-text-muted hover:text-text-primary transition-all flex items-center gap-1.5 cursor-pointer"
+                                            disabled={checkingVersion}
+                                            className="px-3 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-wider bg-card-secondary hover:bg-card-hover border border-border text-text-muted hover:text-text-primary transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
                                         >
-                                            <RefreshCw size={11} />
+                                            <RefreshCw size={11} className={cn(checkingVersion && "animate-spin text-purple-400")} />
                                             Check Fleet Updates
                                         </button>
                                         {remoteFleetNodes.length > 0 && (

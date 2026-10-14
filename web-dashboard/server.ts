@@ -12335,7 +12335,7 @@ async function detectLocalDockerChannel(): Promise<{ channel: string; fullImage:
 
 // In-memory cache for maintenance version check to avoid blocking UI loads on slow Docker Hub / GitHub API calls
 let maintenanceVersionCache: { timestamp: number; data: any } | null = null;
-const MAINTENANCE_VERSION_CACHE_TTL = 15 * 60 * 1000; // 15 minutes
+const MAINTENANCE_VERSION_CACHE_TTL = 60 * 1000; // 60 seconds
 
 app.get('/api/admin/maintenance/version', authenticateToken, async (req, res) => {
     try {

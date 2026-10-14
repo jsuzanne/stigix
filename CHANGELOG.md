@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.0.21] - 2026-10-14
+
+### Fixed & Enhanced
+- **Live Version & Fleet Update Check (`Settings.tsx`, `server.ts`)**:
+  - Fixed `Check Fleet Updates` (`fetchPeerMaintStatus`) so it passes `?force=true` to remote fleet peers (bypassing the backend version cache) and simultaneously refreshes the local Leader node's version status.
+  - Added a **`Check New Version`** button in the **System Maintenance** header and reduced the backend Docker Hub version cache TTL from 15 minutes to 60 seconds.
+
 ## [3.0.20] - 2026-10-14
 
 ### Fixed & Enhanced
