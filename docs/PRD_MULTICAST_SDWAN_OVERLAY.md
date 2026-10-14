@@ -1,4 +1,4 @@
-> **Last Updated:** 2026-10-14 | **Created:** 2026-10-13 (v3.0.3)
+> **Last Updated:** 2026-10-15 | **Created:** 2026-10-13 (v3.0.3)
 
 # PRD — SD-WAN Overlay Multicast Validation Engine
 
@@ -97,6 +97,13 @@ Core test scenarios:
    | 12 | 8 | `timestamp_ns` | `uint64` (`writeBigUInt64BE`), sender wall clock in ns; used for **jitter only**, never one-way delay unless clock sync is verified |
    | 20 | 2 | `stream_id` | `uint16` (`writeUInt16BE`), deterministic numeric hash of app ID |
    | 22 | 2 | `run_id` | `uint16` (`writeUInt16BE`), increments on sender restart so receivers can detect a reset instead of reporting huge loss |
+
+6. **Phase 5 Enhancement — Optional L7 RTP v2 / MPEG-TS Framing (`payloadFormat: "raw-stgx" | "rtp-mpegts" | "rtp-g711"`):**
+   - To ensure **Palo Alto NGFW L7 App-ID**, **Prisma SD-WAN Flow Browser**, and **Wireshark** natively classify and dissect Stigix multicast streams as standard enterprise media (`rtp`, `mpeg-ts`) during customer demonstrations without losing sequence/jitter telemetry:
+     - When `payloadFormat: "rtp-mpegts"` is selected (default for IPTV / Video presets on UDP `5004` with `1316`-byte payload):
+       - Bytes `0..11`: Valid **12-byte RFC 3550 RTP v2 header** (`0x80` Version 2, Payload Type `0x21` = `33` `MP2T`, 16-bit RTP sequence number, 32-bit 90kHz RTP timestamp, 32-bit SSRC derived from `stream_id`).
+       - Bytes `12..1315`: Seven 188-byte **MPEG-2 Transport Stream (MPEG-TS)** frames, each starting with the mandatory `0x47` MPEG-TS sync byte (`offset 12, 200, 388, 576, 764, 952, 1140`), with the 24-byte `STGX` telemetry header embedded inside the first MPEG-TS adaptation/payload field (`offset 16..39`).
+     - The Stigix Receiver auto-detects `STGX` at either `offset 0` (`raw-stgx`) or `offset 16` (`rtp-mpegts` / `rtp-g711`), maintaining 100% backward compatibility while passing strict L7 Deep Packet Inspection.
 
 ### 3.2 Receiver (`MulticastReceiverRuntime`)
 1. **Membership (Node.js `dgram`):**
@@ -247,6 +254,22 @@ Start order is **receivers first** (unless a receiver is manually joined late fo
   | **BR1** | `EXPECT_TRAFFIC` | v3 (`eth1`) | 1.99 Mbps | 1,890 / 0 | 0.00% | 0 / 0 | 0.8 ms | 12 ms | 38 ms | 🟢 `HEALTHY` | `[Leave]` |
   | **BR5** | `EXPECT_NONE` | v3 (`eth1`) | 0.00 Mbps | 0 / 0 | 0.00% | 0 / 0 | — | — | — | 🟢 `PASS (No Leak)` | `[Leave]` |
 
+### 5.3 Phase 5 — Built-in Enterprise Multicast Application Presets (One-Click Demo Profiles)
+To make customer demonstrations and lab validations effortless, the Multicast Wizard (and empty-state quick-launch bar) includes a **"Load Industry Preset"** selector that pre-populates standard IANA ports, payload sizes, DSCP markings, rate modes, and L7 framing so **Prisma SD-WAN Flow Browser**, **Palo Alto NGFW App-ID**, and **Wireshark** recognize the application out of the box:
+
+| Preset ID | Display Name & Badge | Group IP | UDP Port | Rate Mode | Payload Size | DSCP | TTL | L7 Framing (`payloadFormat`) | App-ID / Flow Browser Recognition |
+|---|---|---|---|---|---|---|---|---|---|
+| `iptv-ceo-townhall` | 📺 **CEO Townhall HD IPTV (`RTP / MPEG-TS`)** | `239.1.1.100` | **`5004`** | `CBR` `1500 kbps` | **`1316 B`** (`7×188B` TS) | `AF41` | `16` | `rtp-mpegts` | Recognized as **`rtp` / `mpeg-ts`** Real-Time Broadcast Video |
+| `market-data-itch` | 📈 **Financial Market Data (`NASDAQ ITCH / FIX`)** | `239.192.1.10` | **`5004`** (or `14001`) | `Burst` `20 pkts / 100ms` | **`256 B`** | `EF` | `16` | `raw-stgx` | Micro-burst low-latency ticker feed in **Real-Time (`EF`)** queue |
+| `voip-emergency-paging` | 📢 **Emergency VoIP Audio Paging (`RTP G.711`)** | `239.255.0.1` | **`5004`** | `CBR` `80 kbps` (`50 pps`) | **`200 B`** (`20ms` voice) | `EF` | `16` | `rtp-g711` | Recognized as **`rtp`** Voice Paging stream |
+| `cctv-surveillance` | 🎥 **Branch CCTV Security Camera Matrix** | `239.192.20.1` | **`5004`** | `CBR` `2500 kbps` | **`1316 B`** | `CS4` | `16` | `rtp-mpegts` | High-throughput branch-side source (BSS) or hub video stream |
+| `sap-session-directory` | 📡 **SAP / SDP Enterprise Session Directory** | `239.255.255.255` | **`9875`** | `CBR` `64 kbps` | **`512 B`** | `CS2` | `16` | `raw-stgx` | Standard IANA **SAP (`sap` — UDP 9875)** session announcement |
+
+**UX Workflow in the Wizard:**
+1. At the top of the **"Create / Edit Multicast Profile"** modal, a row of clickable preset cards (`[📺 CEO Townhall IPTV]`, `[📈 Market Data Feed]`, `[📢 VoIP Paging]`, `[🎥 CCTV Matrix]`) lets the user populate all network/QoS parameters in **one click**.
+2. The user only has to pick their **Sender Node** (e.g., `DC1`) and **Receiver Node(s)** (e.g., `BR5`, `BR1`) and click **Save & Start**.
+3. An inline **"Prisma SD-WAN Demo Tip"** tooltip in the preset card displays the exact `Group + UDP Port + DSCP` match if the engineer wants to create a named Custom App badge in Prisma SD-WAN.
+
 ---
 
 ## 6. Copilot, MCP & CLI Integration
@@ -255,7 +278,7 @@ Per the `stigix-mcp-sync` convention, tools are exposed for automation:
 
 | Tool | Parameters | Description |
 |---|---|---|
-| `create_multicast_app` | `name, group, port, sender_node, receivers[], bitrate_kbps, ttl, dscp` | Create a multicast stream profile |
+| `create_multicast_app` | `name, group, port, sender_node, receivers[], bitrate_kbps, ttl, dscp, preset?` | Create a multicast stream profile (optionally from a built-in preset) |
 | `start_multicast_app` / `stop_multicast_app` | `app_id` | Orchestrated cluster start/stop |
 | `get_multicast_stats` | `app_id` | Per-receiver loss, jitter, max gap, verdict |
 | `run_multicast_preflight` | `app_id` | Host/IGMP/interface pre-flight across participating nodes |
@@ -285,10 +308,11 @@ Per the `stigix-mcp-sync` convention, tools are exposed for automation:
 
 | Phase | Scope | Status |
 |---|---|---|
-| **1 – Engine** | `multicast-runtime.ts` (Node.js `dgram` sender/receiver, 24B `STGX` header, RFC 3550 jitter, sliding bitset, pre-flight) | Ready to implement |
-| **2 – Platform** | `multicast-manager.ts`, cluster orchestration (Leader $\leftrightarrow$ Peers), API routes, config store sync | Ready to implement |
-| **3 – UI** | `[ TCP Applications \| Multicast Overlay ]` switcher in `CustomApps.tsx`, live receiver matrix, wizard, pre-flight modal | Ready to implement |
-| **4 – Automation** | Self-test validation & Copilot integration | Ready to implement |
+| **1 – Engine** | `multicast-runtime.ts` (Node.js `dgram` sender/receiver, 24B `STGX` header, RFC 3550 jitter, sliding bitset, pre-flight) | ✅ Completed (`v3.0.14`) |
+| **2 – Platform** | `multicast-manager.ts`, cluster orchestration (Leader $\leftrightarrow$ Peers), API routes, config store sync | ✅ Completed (`v3.0.14`–`v3.0.19`) |
+| **3 – UI** | `[ TCP Applications \| Multicast Overlay ]` switcher in `CustomApps.tsx`, live receiver matrix, wizard, pre-flight modal, `NO_TRAFFIC` RPF diagnostics | ✅ Completed (`v3.0.15`–`v3.0.21`) |
+| **4 – Automation** | Self-test validation, Copilot & FastMCP integration, Technical White Paper & Testing Guide | ✅ Completed (`v3.0.20`–`v3.0.21`) |
+| **5 – Demo Presets & L7 App-ID Framing** | One-click Enterprise Multicast Application Presets (`CEO Townhall IPTV`, `Market Data ITCH`, `VoIP Paging`, `CCTV Matrix`, `SAP`) in UI Wizard + optional RFC 3550 RTP v2 / MPEG-TS (`0x47`) header encapsulation for native App-ID / Wireshark recognition | 📋 Planned (Next Phase) |
 
 ---
 
@@ -346,6 +370,7 @@ Any solution transporting multicast (e.g., other SD-WAN or router-based overlays
 
 | Date | Stigix Version | Author / Trigger | Summary of Changes |
 |---|---|---|---|
+| 2026-10-15 | `v3.0.21` | Stigix Core Team | Added Phase 5 specification: One-Click Enterprise Multicast Application Presets (CEO Townhall IPTV, Financial Market Data ITCH, Emergency VoIP Paging, CCTV Matrix, SAP Directory) and optional L7 RFC 3550 RTP v2 + MPEG-TS (0x47) packet framing for native Palo Alto App-ID, Prisma SD-WAN Flow Browser, and Wireshark recognition |
 | 2026-10-14 | `v3.0.14` | Stigix Core Team | Finalized v4 architecture: native TypeScript/Node.js `dgram` engine in `custom-tcp-apps/`, node-local vs cluster-orchestrated APIs, `first_seq` late-join baseline, LAN interface auto-detection, isolated `multicastApplications` config array, and Custom Apps sub-tab switcher |
 | 2026-10-13 | `v3.0.3` | Stigix Core Team | Initial PRD creation for SD-WAN Overlay Multicast Validation Engine |
 | 2026-10-13 | `v3.0.3` | Stigix Core Team | Revision: aligned with real code layout (`custom-tcp-apps/`), fixed SSM and IGMP handling, added `run_id`, leak/failover scenarios, pre-flight, data model, API, RBAC mapping, acceptance criteria, risks, realistic estimates |
