@@ -2780,16 +2780,75 @@ function TopologyContent({ token }: TopologyProps) {
                 }
                 : n;
 
-            if (!searchQuery) return enriched;
-            return {
-                ...enriched,
-                style: {
-                    ...(enriched as any).style,
-                    opacity: nodeData.name?.toLowerCase().includes(searchQuery.toLowerCase()) ? 1 : 0.2
+            let nodeOpacity: number | undefined = undefined;
+            let nodeFilter: string | undefined = undefined;
+
+            if (topologyViewMode === 'sase') {
+                if (n.type === 'site') {
+                    const hasSaseLinks = Boolean(nodeData.devices?.some((d: any) => Array.isArray(d.service_links) && d.service_links.length > 0));
+                    const isSiteSelected = Boolean(logicalViewSiteId && (nodeData.site_id === logicalViewSiteId || nodeData.id === logicalViewSiteId));
+
+                    if (logicalViewSiteId) {
+                        if (isSiteSelected) {
+                            nodeOpacity = 1;
+                        } else {
+                            // Dim other sites when one site is focused
+                            nodeOpacity = hasSaseLinks ? 0.2 : 0.12;
+                            nodeFilter = 'grayscale(0.85)';
+                        }
+                    } else {
+                        // Global SASE view: Hubs/DCs without direct SASE service links rendered as "Ghost" nodes (Option B)
+                        if (!hasSaseLinks) {
+                            nodeOpacity = 0.25;
+                            nodeFilter = 'grayscale(0.7)';
+                        }
+                    }
+                } else if (n.type === 'sasePop') {
+                    if (logicalViewSiteId) {
+                        // Check if this PoP is connected to the selected site
+                        const selectedSite = nodes.find(sn => (sn.data as any)?.site_id === logicalViewSiteId || (sn.data as any)?.id === logicalViewSiteId || sn.id === `site:${logicalViewSiteId}`);
+                        const selectedSiteData = selectedSite?.data as any;
+                        const connectsToThisPop = Boolean(selectedSiteData?.devices?.some((d: any) =>
+                            d.service_links?.some((sl: any) => {
+                                const popId = n.id.replace('cloud:', '');
+                                return (sl.remote_ip && sl.remote_ip === nodeData.primary_peer_ip) ||
+                                       (n.id === `cloud:${sl.service_endpoint_name}`) ||
+                                       (popId === 'prisma-france-south' && ((sl.remote_ip === '130.41.124.164') || (sl.name || '').toLowerCase().includes('france-south'))) ||
+                                       (popId === 'prisma-france-central' && (sl.name || '').toLowerCase().includes('france-central')) ||
+                                       (popId === 'prisma-ireland' && (sl.remote_ip === '74.221.137.55' || (sl.name || '').toLowerCase().includes('ireland'))) ||
+                                       (popId === 'zscaler-cloud' && (sl.provider === 'Zscaler' || (sl.name || '').toLowerCase().includes('zscaler')));
+                            })
+                        ));
+                        if (!connectsToThisPop) {
+                            nodeOpacity = 0.25;
+                            nodeFilter = 'grayscale(0.6)';
+                        } else {
+                            nodeOpacity = 1;
+                        }
+                    }
                 }
-            };
+            }
+
+            if (searchQuery) {
+                const matches = nodeData.name?.toLowerCase().includes(searchQuery.toLowerCase());
+                nodeOpacity = matches ? (nodeOpacity ?? 1) : 0.15;
+            }
+
+            if (nodeOpacity !== undefined || nodeFilter !== undefined) {
+                return {
+                    ...enriched,
+                    style: {
+                        ...(enriched as any).style,
+                        ...(nodeOpacity !== undefined ? { opacity: nodeOpacity } : {}),
+                        ...(nodeFilter !== undefined ? { filter: nodeFilter } : {}),
+                        transition: 'opacity 0.2s ease, filter 0.2s ease'
+                    }
+                };
+            }
+
+            return enriched;
         });
-    }, [nodes, topologyViewMode, searchQuery, underlayMode, underlayResolutionMap, underlayData, selectedCircuit, handleSelectCircuit]);
+    }, [nodes, topologyViewMode, searchQuery, underlayMode, underlayResolutionMap, underlayData, selectedCircuit, handleSelectCircuit, logicalViewSiteId]);
 
 
     const filteredEdges = useMemo(() => {
@@ -2797,6 +2856,7 @@ function TopologyContent({ token }: TopologyProps) {
         const selectedPopId = selectedObject?.isSasePop ? selectedObject.id : null;
         const selectedPopPeer = selectedObject?.isSasePop ? selectedObject.primary_peer_ip : null;
         const hasCircuitSelection = Boolean(selectedCircuit);
+        const hasSiteSelection = Boolean(logicalViewSiteId);
 
         // Strict View Mode Isolation:
         // Ensure edges strictly correspond to the current active topology view mode.
@@ -2841,9 +2901,19 @@ function TopologyContent({ token }: TopologyProps) {
                     e.target === `cloud:${selectedPopId}` ||
                     (selectedPopPeer && edgeData.remote_ip === selectedPopPeer)
                 ));
-                let isDimmed = isFilteredOut || (hasPopSelection && !isTargetingSelectedPop);
 
-                // 3. Instantaneous Focus Spotlight by selected Circuit
+                // 3. Instantaneous Focus Spotlight by selected Site (e.g. clicking BR1)
+                const isTargetingSelectedSite = Boolean(hasSiteSelection && (
+                    e.source === `site:${logicalViewSiteId}` ||
+                    edgeData.site_name === logicalViewSiteId ||
+                    edgeData.site_id === logicalViewSiteId
+                ));
+
+                let isDimmed = isFilteredOut ||
+                    (hasPopSelection && !isTargetingSelectedPop) ||
+                    (hasSiteSelection && !isTargetingSelectedSite);
+
+                // 4. Instantaneous Focus Spotlight by selected Circuit
                 if (hasCircuitSelection) {
                     const isCircuitSaseMatch = Boolean(
                         (e.source === `site:${selectedCircuit.siteId}` || edgeData.site_name === selectedCircuit.siteName) &&
@@ -2871,7 +2941,7 @@ function TopologyContent({ token }: TopologyProps) {
                         strokeWidth: isDimmed ? 1 : (isAct ? 3 : 2.2),
                         strokeDasharray: isAct && isUp ? undefined : (isUp ? '6 6' : '4 4'),
                         opacity: isDimmed ? 0.08 : 1,
-                        filter: isTargetingSelectedPop 
+                        filter: (isTargetingSelectedPop || isTargetingSelectedSite) 
                             ? (isAct ? 'drop-shadow(0 0 8px rgba(16,185,129,0.8))' : 'drop-shadow(0 0 8px rgba(6,182,212,0.8))')
                             : (isUp && isAct && !isDimmed ? 'drop-shadow(0 0 5px rgba(16,185,129,0.5))' : undefined),
                         pointerEvents: isDimmed ? 'none' : 'all',
@@ -2879,7 +2949,7 @@ function TopologyContent({ token }: TopologyProps) {
                     }
                 };
             } else if (hasCircuitSelection) {
-                // Instantaneous Circuit Spotlight for SD-WAN Mesh Overlay, Physical WAN, and Underlay edges
+                // Instantaneous Circuit Spotlight for SD-WAN Overlay, Physical WAN, and Underlay edges
                 let isCircuitMatch = false;
 
                 if (edgeData?.isOverlayTunnel) {
@@ -2972,7 +3042,7 @@ function TopologyContent({ token }: TopologyProps) {
 
             return currentEdge;
         });
-    }, [edges, topologyViewMode, searchQuery, selectedObject, saseTunnelTypeFilter, selectedCircuit, overlayTunnelStateFilter]);
+    }, [edges, topologyViewMode, searchQuery, selectedObject, saseTunnelTypeFilter, selectedCircuit, overlayTunnelStateFilter, logicalViewSiteId]);
 
     const handleFitView = useCallback(() => {
         fitView({ padding: 0.12, duration: 450, minZoom: 0.12 });
@@ -3086,7 +3156,7 @@ function TopologyContent({ token }: TopologyProps) {
                                     <h1 className="text-sm font-black text-text-primary uppercase tracking-tight">
                                         {logicalViewSiteId ? (
                                             <>
-                                                Site Overlay Focus
+                                                {topologyViewMode === 'sase' ? 'Site SASE Focus' : 'Site Overlay Focus'}
                                                 <span className="text-purple-400 font-mono text-xs font-bold lowercase ml-1.5">
                                                     ({topology?.sites?.find((s: any) => s.site_id === logicalViewSiteId)?.site_name || logicalViewSiteId})
                                                 </span>
@@ -3099,7 +3169,7 @@ function TopologyContent({ token }: TopologyProps) {
                                                 </span>
                                             </>
                                         ) : topologyViewMode === 'overlay' ? (
-                                            'SD-WAN Overlay Mesh'
+                                            'SD-WAN Overlay'
                                         ) : topologyViewMode === 'underlay' ? (
                                             'VyOS Underlay Hardware'
                                         ) : topologyViewMode === 'sase' ? (
@@ -3150,7 +3220,7 @@ function TopologyContent({ token }: TopologyProps) {
                                     <span>WAN Transport</span>
                                 </button>
 
-                                {/* Mode 2: SD-WAN Mesh */}
+                                {/* Mode 2: SD-WAN Overlay */}
                                 <button
                                     onClick={() => handleViewModeChange('overlay')}
                                     className={cn(
@@ -3159,10 +3229,10 @@ function TopologyContent({ token }: TopologyProps) {
                                             ? "bg-blue-600 text-white shadow-sm shadow-blue-500/25"
                                             : "text-text-muted hover:text-text-primary hover:bg-card/80"
                                     )}
-                                    title="Logical SD-WAN Mesh View"
+                                    title="Logical SD-WAN Overlay View"
                                 >
                                     <Share2 size={12} />
-                                    <span>SD-WAN Mesh</span>
+                                    <span>SD-WAN Overlay</span>
                                 </button>
 
                                 {/* Mode 3: SASE Fabric */}
@@ -3335,6 +3405,37 @@ function TopologyContent({ token }: TopologyProps) {
                                         <span className="w-1.5 h-1.5 rounded-full bg-rose-400" />
                                         <span>Down</span>
                                     </button>
+                                    {logicalViewSiteId && (
+                                        <div className="pl-1.5 border-l border-border/60 flex items-center gap-1 shrink-0">
+                                            <span className="text-[9px] font-black text-purple-400 bg-purple-500/10 border border-purple-500/20 px-2 py-0.5 rounded-md">
+                                                Site: {topology?.sites?.find((s: any) => s.site_id === logicalViewSiteId)?.site_name || logicalViewSiteId}
+                                            </span>
+                                            <button
+                                                onClick={() => {
+                                                    setLogicalViewSiteId(null);
+                                                    if (selectedObject?.site_id) setSelectedObject(null);
+                                                }}
+                                                className="p-1 hover:bg-card text-text-muted hover:text-rose-400 rounded-md transition-colors cursor-pointer"
+                                                title="Clear Site Focus"
+                                            >
+                                                <X size={11} />
+                                            </button>
+                                        </div>
+                                    )}
+                                    {selectedObject?.isSasePop && (
+                                        <div className="pl-1.5 border-l border-border/60 flex items-center gap-1 shrink-0">
+                                            <span className="text-[9px] font-black text-cyan-400 bg-cyan-500/10 border border-cyan-500/20 px-2 py-0.5 rounded-md">
+                                                PoP: {selectedObject.name || selectedObject.id}
+                                            </span>
+                                            <button
+                                                onClick={() => setSelectedObject(null)}
+                                                className="p-1 hover:bg-card text-text-muted hover:text-rose-400 rounded-md transition-colors cursor-pointer"
+                                                title="Clear PoP Focus"
+                                            >
+                                                <X size={11} />
+                                            </button>
+                                        </div>
+                                    )}
                                 </div>
                             )}
 
