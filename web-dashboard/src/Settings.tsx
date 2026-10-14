@@ -454,7 +454,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
     initialTab?: 'probes' | 'distribution' | 'maintenance' | 'system' | 'targets' | 'convergence' | 'registry' | 'targetService' | 'mcp' | 'prisma-api' | 'strata' | 'custom-tcp' | 'api-studio' | 'cloud'
 }) {
     // Route all API calls through the peer gateway when in remote view
-    const { gFetch, activePeerId } = usePeerContext();
+    const { gFetch, activePeerId, peers } = usePeerContext();
     const isRemoteView = activePeerId !== null;
     const apiFetch = gFetch;
 
@@ -6263,8 +6263,8 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                                 <MapPin size={20} />
                             </div>
                             <div>
-                                <h2 className="text-lg font-black text-text-primary tracking-tight">Stigix Targets Repository</h2>
-                                <p className="text-[10px] font-bold text-text-muted tracking-widest mt-1 opacity-70">Shared stigix endpoints — reused across Speedtest, Voice, Security &amp; Failover</p>
+                                <h2 className="text-lg font-black text-text-primary tracking-tight">External &amp; Generic Targets</h2>
+                                <p className="text-[10px] font-bold text-text-muted tracking-widest mt-1 opacity-70">Passive test endpoints (gateways, DNS, cloud/local servers) — Stigix cluster peers are discovered automatically via Fleet / Add Node</p>
                             </div>
                         </div>
                         <div className="flex gap-2">
@@ -6273,7 +6273,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                                 className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-2 shadow-lg shadow-emerald-900/20"
                             >
                                 <Plus size={14} />
-                                Add Target
+                                Add External Target
                             </button>
                             <button
                                 onClick={handleExportTargets}
@@ -6318,10 +6318,10 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                                         </div>
                                         <div>
                                             <h3 className="text-lg font-black text-text-primary tracking-tight">
-                                                {editingTargetId ? 'Edit Target' : 'Configure New Target'}
+                                                {editingTargetId ? 'Edit Target' : 'Configure External Target'}
                                             </h3>
                                             <p className="text-text-muted text-[10px] font-bold uppercase tracking-wider">
-                                                {editingTargetId ? `MODIFYING ${newTarget.name || 'TARGET'}` : 'DEFINE A NEW STIGIX ENDPOINT'}
+                                                {editingTargetId ? `MODIFYING ${newTarget.name || 'TARGET'}` : 'DEFINE A PASSIVE ENDPOINT (GATEWAY, DNS, EXTERNAL SERVER)'}
                                             </p>
                                         </div>
                                     </div>
@@ -6335,6 +6335,29 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
 
                                 {/* Body */}
                                 <div className="p-6 space-y-5">
+                                    {/* Clarification banner between Stigix fleet nodes and external targets */}
+                                    <div className="flex items-start gap-2.5 text-[11px] bg-sky-500/10 border border-sky-500/20 text-sky-400 rounded-xl p-3">
+                                        <Info size={16} className="text-sky-400 shrink-0 mt-0.5" />
+                                        <div>
+                                            <span className="font-bold text-sky-300">Adding another Stigix node?</span> If this host runs Stigix, use <span className="font-bold text-white underline decoration-sky-400/50">Fleet &rarr; Add Node</span> instead so it establishes an encrypted bi-directional WebSocket tunnel. Use this form for passive targets (Gateways, Public DNS, HTTP/iPerf servers).
+                                        </div>
+                                    </div>
+
+                                    {/* Warning if IP matches an active fleet peer */}
+                                    {(() => {
+                                        const cleanHost = newTarget.host?.trim();
+                                        const matchedPeer = cleanHost ? peers.find(p => p.ip_private?.trim() === cleanHost || p.instance_id?.trim() === cleanHost) : null;
+                                        if (!matchedPeer) return null;
+                                        return (
+                                            <div className="flex items-start gap-2.5 text-[11px] bg-amber-500/10 border border-amber-500/20 text-amber-400 rounded-xl p-3">
+                                                <AlertTriangle size={16} className="text-amber-400 shrink-0 mt-0.5" />
+                                                <div>
+                                                    <span className="font-bold text-amber-300">Note:</span> This IP matches active Fleet Node <span className="font-bold text-white">"{matchedPeer.site || matchedPeer.instance_id}"</span>. Cluster nodes are already probed automatically. Adding it here creates a manual static duplicate.
+                                                </div>
+                                            </div>
+                                        );
+                                    })()}
+
                                     {targetError && (
                                         <div className="flex items-center gap-2 text-red-500 text-[10px] font-bold bg-red-500/10 border border-red-500/20 rounded-xl px-4 py-2.5">
                                             <AlertCircle size={14} />{targetError}

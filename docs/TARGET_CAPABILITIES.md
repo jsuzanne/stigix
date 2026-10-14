@@ -1,4 +1,4 @@
-> **Last Updated:** 2026-09-27 | **Created:** 2026-02-08 (v1.2.1-patch.4)
+> **Last Updated:** 2026-10-14 | **Created:** 2026-02-08 (v1.2.1-patch.4)
 
 # Target Site Capabilities
 
@@ -35,6 +35,19 @@ In **Settings > Targets**, the **Local Node & Services** card displays:
 
 > 💡 **Note on Latency & Brownout Simulation**:  
 > In Stigix V2, WAN brownouts, fixed/random delay, packet drops, and degraded server behaviors are handled natively and with higher precision in the **Custom TCP Apps** engine (`/custom-apps`).
+
+---
+
+## ⚖️ Fleet Mesh Nodes vs External & Generic Targets
+
+Stigix distinguishes between two fundamentally different types of test destinations:
+
+| Category | Onboarding Method | Communication & Security | Best Used For |
+|---|---|---|---|
+| **Stigix Fleet Nodes** | **Fleet > Add Node** (`STX-...` token) or `install.sh --controller-ip` | Bidirectional encrypted WebSocket reverse tunnel (`/fleet-tunnel`). Dynamic heartbeat, automatic capability negotiation, remote execution. | Other Stigix appliances/VMs in the mesh (e.g. Branch offices, Cloud VMs, Data Centers). |
+| **External & Generic Targets** | **Settings > Targets > Add External Target** (Manual entry or JSON import) | Passive probing only (ICMP Ping, TCP syn, HTTP status code). No WebSocket, no remote control agent. | Third-party equipment: Default gateways, WAN routers, Public DNS (`8.8.8.8`), external iPerf3/HTTP web servers. |
+
+> ⚠️ **Rule of Thumb**: Never add a Stigix node manually via "Add External Target". Instead, use **Fleet > Add Node** so the node joins the cluster mesh automatically and registers all of its embedded capabilities.
 
 ---
 
@@ -77,5 +90,6 @@ curl -s http://<target-ip>:8082/api/status
 
 | Date | Stigix Version | Author / Trigger | Summary of Changes |
 |---|---|---|---|
+| 2026-10-14 | `v3.0.3` | Stigix Core Team | Documented Fleet Mesh Nodes vs External & Generic Targets distinction. |
 | 2026-09-27 | `v2.0.66` | Stigix Core Team | Updated terminology: Local Node & Services, Discovered & Static Targets. |
 | 2026-02-08 | `v1.2.1-patch.4` | Stigix Core Team | Initial document creation |

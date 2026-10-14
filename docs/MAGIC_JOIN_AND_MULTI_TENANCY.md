@@ -1,4 +1,4 @@
-> **Last Updated:** 2026-10-10 | **Created:** 2026-10-01 (v2.0.120)
+> **Last Updated:** 2026-10-14 | **Created:** 2026-10-01 (v2.0.120)
 
 # Stigix « Magic Join » & Multi-Tenant Security Architecture
 
@@ -205,10 +205,47 @@ stigix-cli join STX-eyJhbGciOiJIUzI1NiIsInR5cCI6IlNUWC1KT0lOIn0... --site BR5
 
 ---
 
+## 9. Multi-Endpoint Failover Pool & Outbound Reconnection Resilience
+
+In real-world enterprise deployments and lab topologies, the Leader may possess multiple network paths:
+- **In-Band SD-WAN Path**: Direct overlay path over the enterprise WAN.
+- **Out-of-Band (OOB) Management Path**: Dedicated management VLAN / subnet isolated from traffic stress tests.
+- **Public FQDN / External IP**: Internet-facing or cloud-routed controller address.
+
+### 9.1 Candidate Endpoint Persistence (`controller-endpoints.json`)
+When a node redeems a Join Token or registers a controller address, Stigix automatically extracts all candidate Leader URLs provided in the token payload and persists them locally to `config/controller-endpoints.json`.
+
+```json
+[
+  "http://192.168.203.100:8080",
+  "http://10.255.0.1:8080",
+  "https://dc1-leader.example.internal:8080"
+]
+```
+
+### 9.2 Automatic Failover on Connection Failure
+If the active Leader URL becomes unreachable:
+1. The spoke's `fleet-tunnel` client attempts reconnections using exponential backoff (starting at 3s up to 60s).
+2. If **3 consecutive connection attempts fail** against the active URL, Stigix automatically cycles to the next candidate endpoint in the pool.
+3. Once a connection successfully handshakes with a candidate endpoint, `config/static-leader.json` is updated with the active working URL.
+
+### 9.3 Headless Deployment via `--controller-ip`
+For automated bootstrap scripts, `install.sh` supports the `--controller-ip` argument:
+```bash
+./install.sh --controller-ip=192.168.203.100
+```
+This automatically configures the spoke to establish an outbound WebSocket tunnel to `http://192.168.203.100:8080` without requiring interactive UI onboarding.
+
+### 9.4 Seamless Leader Reassignment
+A spoke node can be dynamically reassigned to a new or standalone Leader at any time. Pasting a new Join Token (via UI or `stigix-cli join <TOKEN>`) tears down the previous tunnel and connects immediately to the new Leader, updating all cluster certificates without needing a container reboot.
+
+---
+
 ## 📜 Revision History
 
 | Date | Stigix Version | Author / Trigger | Summary of Changes |
 |---|---|---|---|
+| 2026-10-14 | `v3.0.3` | Stigix Core Team | Added Multi-Endpoint Failover Pool, automatic candidate rotation on 3 consecutive errors, `--controller-ip` installation flag, and seamless Leader reassignment. |
 | 2026-10-10 | `v2.2.8` | Stigix Core Team | Documented single-token copy/paste enrollment across Web UI and CLI (`stigix-cli join`), ReadOnly locked view, and live WebSocket hot-reload without container restart. |
 | 2026-10-01 | `v2.0.120` | Stigix Core Team | Initial documentation of Magic Join zero-touch onboarding, multi-tenant realm isolation, and Cloudflare SSE rendezvous relay. |
 

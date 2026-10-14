@@ -15701,9 +15701,11 @@ app.post('/api/registry/join-with-token', async (req: any, res: any) => {
                 registryManager.setSiteName(effectiveSite);
             }
 
-            // 2. Set static leader URL for registry syncing
+            // 2. Set static leader URL for registry syncing and multi-IP pool
             const leaderRegUrl = `${winningEndpoint}/api/registry`;
             await registryManager.saveStaticLeader(leaderRegUrl);
+            registryManager.saveControllerEndpoints(endpoints);
+            fleetTunnelManager.setCandidateLeaderUrls(endpoints);
 
             // 3. Save cluster enrollment metadata
             const tokenPrefix = rawToken.slice(0, 12) + '...';
@@ -15711,6 +15713,7 @@ app.post('/api/registry/join-with-token', async (req: any, res: any) => {
                 enrolled: true,
                 tokenPrefix,
                 leaderUrl: winningEndpoint,
+                candidateEndpoints: endpoints,
                 siteName: effectiveSite,
                 nodeId,
                 enrolledAt: new Date().toISOString()
