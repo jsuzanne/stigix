@@ -722,6 +722,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
     const [cloudConfig, setCloudConfig] = useState<{ baseUrl: string; hasKey: boolean; isUiDefined?: boolean; stats?: { dateUtc: string; countToday: number } } | null>(null);
     const [cloudMasterKey, setCloudMasterKey] = useState('');
     const [showCloudKey, setShowCloudKey] = useState(false);
+    const [showMasterKeyHelp, setShowMasterKeyHelp] = useState(false);
     const [isSavingCloud, setIsSavingCloud] = useState(false);
     const [isTestingCloud, setIsTestingCloud] = useState(false);
     const [cloudTestResult, setCloudTestResult] = useState<{ success?: boolean; error?: string } | null>(null);
@@ -3629,7 +3630,10 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                 )}
                 {activeTab === 'cloud' && (() => {
                     const activeCloudProbes = customProbes.filter(p => p.type === 'CLOUD' && p.enabled !== false);
-                    const totalNodes = peers.length + 1;
+                    const clusterNodeCount = registryStatus?.local_instances && Array.isArray(registryStatus.local_instances) && registryStatus.local_instances.length > 0
+                        ? registryStatus.local_instances.length
+                        : (peers.length + 1);
+                    const totalNodes = Math.max(peers.length + 1, clusterNodeCount);
                     const dailyRequestsPerNode = activeCloudProbes.reduce((sum, p) => sum + Math.round(86400 / Math.max(1, p.frequency || 60)), 0);
                     const fleetDailyForecast = totalNodes * dailyRequestsPerNode;
                     const dailyFreeLimit = 100000;
@@ -3748,7 +3752,9 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                                     <div className="bg-card border border-border/80 rounded-xl p-3.5 space-y-1">
                                         <span className="text-[9px] font-black uppercase tracking-widest text-text-muted">Fleet Size</span>
                                         <div className="text-lg font-black text-text-primary">{totalNodes} <span className="text-[10px] font-normal text-text-muted">nodes</span></div>
-                                        <p className="text-[9.5px] text-text-muted opacity-70">1 Leader + {peers.length} Spokes</p>
+                                        <p className="text-[9.5px] text-text-muted opacity-70">
+                                            {registryStatus?.mode === 'spoke' ? `${totalNodes} cluster nodes (Spoke view)` : `1 Leader + ${Math.max(0, totalNodes - 1)} Spokes`}
+                                        </p>
                                     </div>
 
                                     <div className="bg-card border border-border/80 rounded-xl p-3.5 space-y-1">
@@ -3838,14 +3844,49 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                                     {/* Left inputs */}
                                     <div className="lg:col-span-2 space-y-4">
                                         <div className="space-y-1.5">
-                                            <div className="flex items-center justify-between pl-1">
-                                                <label className="text-[10px] font-black text-text-muted uppercase tracking-[0.2em]">Master Key</label>
+                                            <div className="flex flex-wrap items-center justify-between gap-2 pl-1">
+                                                <div className="flex items-center gap-2">
+                                                    <label className="text-[10px] font-black text-text-muted uppercase tracking-[0.2em]">Master Key</label>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setShowMasterKeyHelp(!showMasterKeyHelp)}
+                                                        className="text-[9.5px] font-bold text-blue-500 hover:text-blue-400 flex items-center gap-1 transition-colors group"
+                                                    >
+                                                        <Key size={10} className="group-hover:scale-110 transition-transform" />
+                                                        <span>How to set a custom key?</span>
+                                                        <ChevronDown size={10} className={cn("transition-transform duration-200", showMasterKeyHelp && "rotate-180")} />
+                                                    </button>
+                                                </div>
                                                 {cloudConfig?.hasKey && (
                                                     <span className="text-[9px] font-bold text-text-muted opacity-60">
                                                         Saved key active on disk
                                                     </span>
                                                 )}
                                             </div>
+
+                                            {showMasterKeyHelp && (
+                                                <div className="p-3.5 bg-blue-500/5 border border-blue-500/20 rounded-xl text-xs space-y-2.5 animate-in fade-in duration-200">
+                                                    <div className="flex items-center gap-1.5 font-bold text-text-primary text-[11px]">
+                                                        <Key size={12} className="text-blue-500" />
+                                                        <span>How to configure a private Master Key in Cloudflare:</span>
+                                                    </div>
+                                                    <ol className="list-decimal list-inside space-y-1.5 text-[10.5px] text-text-muted leading-relaxed pl-1">
+                                                        <li>Open <a href="https://dash.cloudflare.com" target="_blank" rel="noopener noreferrer" className="text-blue-500 hover:underline inline-flex items-center gap-0.5 font-semibold">Cloudflare Dashboard <ExternalLink size={9} /></a> &rarr; <strong>Workers &amp; Pages</strong> &rarr; Click <code className="bg-card px-1.5 py-0.5 rounded text-text-primary font-mono text-[9.5px]">stigix-target</code>.</li>
+                                                        <li>Navigate to the <strong>Settings</strong> tab &rarr; <strong>Variables and Secrets</strong>.</li>
+                                                        <li>Add or edit the secret named <code className="bg-card px-1.5 py-0.5 rounded text-blue-400 font-mono text-[9.5px]">MASTER_SIGNATURE_KEY</code>:
+                                                            <div className="pl-4 pt-1 text-text-muted space-y-0.5 text-[10px]">
+                                                                <div>• <strong>Value</strong>: Type your private secret passphrase.</div>
+                                                                <div>• <strong>Type</strong>: Select <strong>Encrypt</strong> (Secret) to secure it.</div>
+                                                                <div>• Click <strong>Deploy</strong> to apply worldwide.</div>
+                                                            </div>
+                                                        </li>
+                                                        <li>Paste this exact passphrase into the <strong>Master Key</strong> field below, then click <strong>Save &amp; Sync Fleet 📢</strong>.</li>
+                                                    </ol>
+                                                    <div className="text-[9.5px] text-text-muted/80 italic pt-1.5 border-t border-border/40">
+                                                        💡 Default Key: If you haven't configured a custom secret in Cloudflare yet, the template defaults to <code className="font-mono text-text-primary font-bold">Stigix2026</code>.
+                                                    </div>
+                                                </div>
+                                            )}
                                             <div className="relative">
                                                 <input
                                                     type={showCloudKey ? "text" : "password"}
