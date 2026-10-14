@@ -22,6 +22,7 @@ import { SystemHealthBadge } from './components/health/SystemHealthBadge';
 import { SystemHealthModal } from './components/health/SystemHealthModal';
 import { TopLoadingBar } from './components/common/TopLoadingBar';
 import { MagicJoinModal } from './components/MagicJoinModal';
+import { NodeRoleModal } from './components/NodeRoleModal';
 import { SidebarRail } from './components/navigation/SidebarRail';
 import { SearchPaletteModal } from './components/navigation/SearchPaletteModal';
 import { HomeOverview } from './components/navigation/HomeOverview';
@@ -304,6 +305,7 @@ export default function App() {
       const res = await fetch('/api/registry/status', { headers: { 'Authorization': `Bearer ${token}` } });
       if (res.ok) {
         const data = await res.json();
+        setRegistryStatus(data);
         setIsLeader(data.mode === 'leader' || data.current_mode === 'leader' || data.local_registry_active === true);
       }
     } catch (e) { }
@@ -425,6 +427,7 @@ export default function App() {
   const [isHealthLoading, setIsHealthLoading] = useState(false);
   const [showHealthModal, setShowHealthModal] = useState(false);
   const [showMagicJoinModal, setShowMagicJoinModal] = useState(false);
+  const [showNodeRoleModal, setShowNodeRoleModal] = useState(false);
 
 
   // Rate Calculation State - Use Refs to avoid stale closures in setInterval
@@ -1210,17 +1213,48 @@ export default function App() {
                   </span>
                 </>
               )}
-              {registryStatus?.is_registered && (
-                <span className={cn(
-                  "px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider border shadow-sm inline-flex items-center gap-1.5",
-                  registryStatus?.mode === 'leader'
-                    ? "bg-purple-500/15 text-purple-600 dark:text-purple-400 border-purple-500/30"
-                    : "bg-blue-500/15 text-blue-600 dark:text-blue-400 border-blue-500/30"
-                )}>
-                  <span className={cn("w-2 h-2 rounded-full", registryStatus.mode === 'leader' ? "bg-purple-500 animate-pulse" : "bg-blue-500")} />
-                  {registryStatus.mode === 'leader' ? 'Leader' : 'Peer'}
-                </span>
-              )}
+              {/* Discrete Node Mode Badge (Leader / Peer / Standalone) */}
+              {(() => {
+                const isLeaderNode = isLeader || registryStatus?.mode === 'leader' || registryStatus?.current_mode === 'leader';
+                const isEnrolledPeer = !isLeaderNode && Boolean(registryStatus?.is_cluster_enrolled || registryStatus?.static_leader_url);
+                const isStandalone = !isLeaderNode && !isEnrolledPeer;
+
+                return (
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      onClick={() => setShowNodeRoleModal(true)}
+                      title={
+                        isLeaderNode
+                          ? "Cluster Leader — Orchestrating mesh fleet (Click to manage)"
+                          : isEnrolledPeer
+                          ? `Enrolled Spoke Peer (Connected to ${registryStatus?.enrolled_leader_url || registryStatus?.static_leader_url || 'Leader'}) — Click to manage`
+                          : "Standalone Autonomous Node (Click to join fleet or promote)"
+                      }
+                      className={cn(
+                        "px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider border shadow-sm inline-flex items-center gap-1.5 transition-all hover:scale-105 cursor-pointer select-none",
+                        isLeaderNode
+                          ? "bg-purple-500/15 text-purple-600 dark:text-purple-400 border-purple-500/30 hover:border-purple-500/60"
+                          : isEnrolledPeer
+                          ? "bg-blue-500/15 text-blue-600 dark:text-blue-400 border-blue-500/30 hover:border-blue-500/60"
+                          : "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border-emerald-500/30 hover:border-emerald-500/60"
+                      )}
+                    >
+                      <span className={cn("w-2 h-2 rounded-full", isLeaderNode ? "bg-purple-500 animate-pulse" : isEnrolledPeer ? "bg-blue-500" : "bg-emerald-400")} />
+                      {isLeaderNode ? 'Leader' : isEnrolledPeer ? 'Peer' : 'Standalone'}
+                    </button>
+                    {isStandalone && (
+                      <button
+                        onClick={() => setShowNodeRoleModal(true)}
+                        title="Connect this standalone node to a Stigix Leader"
+                        className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-blue-500/10 hover:bg-blue-500/20 text-blue-500 dark:text-blue-400 border border-blue-500/30 transition-all flex items-center gap-1 cursor-pointer"
+                      >
+                        <Sparkles size={10} className="text-blue-400" />
+                        <span className="hidden sm:inline">Join Fleet</span>
+                      </button>
+                    )}
+                  </div>
+                );
+              })()}
             </div>
           </div>
         </div>
@@ -1852,6 +1886,15 @@ export default function App() {
         isOpen={showMagicJoinModal}
         onClose={() => setShowMagicJoinModal(false)}
         token={token}
+      />
+
+      <NodeRoleModal
+        isOpen={showNodeRoleModal}
+        onClose={() => setShowNodeRoleModal(false)}
+        token={token}
+        registryStatus={registryStatus}
+        onRefreshStatus={fetchRegistryLeaderStatus}
+        onOpenMagicJoin={() => setShowMagicJoinModal(true)}
       />
 
       <SearchPaletteModal
