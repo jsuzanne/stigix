@@ -109,6 +109,28 @@ export class TargetManager {
     private jsonConfigPath: string;
     private baseUrl: string = '';
     private sharedKey: string = '';
+    private cloudStats = {
+        dateUtc: new Date().toISOString().slice(0, 10),
+        countToday: 0
+    };
+
+    public recordCloudRequest(): void {
+        const todayUtc = new Date().toISOString().slice(0, 10);
+        if (this.cloudStats.dateUtc !== todayUtc) {
+            this.cloudStats.dateUtc = todayUtc;
+            this.cloudStats.countToday = 0;
+        }
+        this.cloudStats.countToday++;
+    }
+
+    public getCloudRequestStats(): { dateUtc: string; countToday: number } {
+        const todayUtc = new Date().toISOString().slice(0, 10);
+        if (this.cloudStats.dateUtc !== todayUtc) {
+            this.cloudStats.dateUtc = todayUtc;
+            this.cloudStats.countToday = 0;
+        }
+        return { ...this.cloudStats };
+    }
 
     constructor(configDir: string, baseUrl?: string) {
         this.configDir = configDir;
@@ -306,6 +328,7 @@ export class TargetManager {
             const curlCmd = `curl -f -sS -L -w "%{time_namelookup},%{time_connect},%{time_appconnect},%{time_starttransfer},%{time_total},%{http_code},%{size_download},%{speed_download},%{remote_ip},%{remote_port}" -o "${tmpFile}" --connect-timeout 5 --max-time ${timeoutSec} --retry 2 --retry-delay ${retryDelaySec} --retry-max-time ${timeoutSec} "${signedUrl}"`;
             
             log('TARGET', `[CLOUD PROBE] Executing: ${curlCmd}`, 'debug');
+            this.recordCloudRequest();
             
             let stdout = '';
             let stderr = '';

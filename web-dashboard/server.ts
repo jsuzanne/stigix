@@ -3167,7 +3167,8 @@ app.get('/api/config/cloud', authenticateToken, (req, res) => {
     res.json({
         baseUrl: effectiveBaseUrl,
         hasKey: hasKey,
-        isUiDefined: !!config.masterKey
+        isUiDefined: !!config.masterKey,
+        stats: typeof (targetManager as any)?.getCloudRequestStats === 'function' ? (targetManager as any).getCloudRequestStats() : { countToday: 0 }
     });
 });
 
