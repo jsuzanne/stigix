@@ -514,7 +514,7 @@ export default function ConnectivityPerformance({ token, uiConfig, onManage, isL
     const fetchStatsAndResults = async () => {
         setLoadingStats(true);
         try {
-            const dynamicLimit = timeRange === '15m' ? 300 : timeRange === '1h' ? 1500 : timeRange === '6h' ? 5000 : timeRange === '24h' ? 12000 : 30000;
+            const dynamicLimit = timeRange === '15m' ? 300 : timeRange === '1h' ? 1000 : timeRange === '6h' ? 3000 : timeRange === '24h' ? 6000 : 15000;
             const [statsRes, resultsRes] = await Promise.all([
                 gFetch(`/api/connectivity/stats?range=${timeRange}`, { headers: authHeaders() }),
                 gFetch(`/api/connectivity/results?timeRange=${timeRange}&limit=${dynamicLimit}`, { headers: authHeaders() })
@@ -533,8 +533,10 @@ export default function ConnectivityPerformance({ token, uiConfig, onManage, isL
     };
 
     const fetchData = async () => {
-        await fetchProbesConfig();
-        await fetchStatsAndResults();
+        await Promise.all([
+            fetchProbesConfig(),
+            fetchStatsAndResults()
+        ]);
     };
 
     const startEditProbe = (endpoint: any) => {
