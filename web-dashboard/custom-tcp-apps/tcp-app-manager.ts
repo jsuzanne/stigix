@@ -19,6 +19,7 @@ import { AppMetricsTracker } from './metrics.js';
 import { TcpServerRuntime } from './tcp-server-runtime.js';
 import { TcpClientRuntime } from './tcp-client-runtime.js';
 import { validateApplicationConfig, checkHostPortAvailable } from './validation.js';
+import { MulticastAppManager } from './multicast-manager.js';
 
 interface AppInstanceContext {
     config: CustomTcpApplicationConfig;
@@ -32,6 +33,7 @@ interface AppInstanceContext {
 export class TcpAppManager extends EventEmitter {
     private readonly configStore: CustomTcpConfigStore;
     private readonly historyStore: CustomTcpHistoryStore;
+    public readonly multicastManager: MulticastAppManager;
     private readonly appInstances = new Map<string, AppInstanceContext>();
     private isInitialized: boolean = false;
 
@@ -39,6 +41,7 @@ export class TcpAppManager extends EventEmitter {
         super();
         this.configStore = new CustomTcpConfigStore(configDir);
         this.historyStore = new CustomTcpHistoryStore(configDir);
+        this.multicastManager = new MulticastAppManager(this.configStore);
     }
 
     public async init(defaultSiteName?: string, autoRestart: boolean = true): Promise<void> {
@@ -71,6 +74,10 @@ export class TcpAppManager extends EventEmitter {
         }
 
         this.isInitialized = true;
+    }
+
+    public getConfigStore(): CustomTcpConfigStore {
+        return this.configStore;
     }
 
     public getConfig(): CustomTcpApplicationsFile {
@@ -590,10 +597,18 @@ export class TcpAppManager extends EventEmitter {
         return this.historyStore.getRecords(appId, limit);
     }
 
-    public async hotReload(newApps?: CustomTcpApplicationConfig[]): Promise<void> {
+    public async hotReload(newApps?: CustomTcpApplicationConfig[], newMulticastApps?: any[]): Promise<void> {
         const file = await this.configStore.load();
+        let needsSave = false;
         if (newApps && Array.isArray(newApps)) {
             file.applications = newApps;
+            needsSave = true;
+        }
+        if (newMulticastApps && Array.isArray(newMulticastApps)) {
+            file.multicastApplications = newMulticastApps;
+            needsSave = true;
+        }
+        if (needsSave) {
             await this.configStore.save(file);
         }
 
@@ -742,6 +757,7 @@ export class TcpAppManager extends EventEmitter {
             try { await ctx.serverRuntime.stop(); } catch {}
         }
         this.appInstances.clear();
+        try { await this.multicastManager.stopAll(); } catch {}
     }
 
     private registerAppInstance(app: CustomTcpApplicationConfig, identity: any): void {

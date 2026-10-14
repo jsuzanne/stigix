@@ -9,6 +9,7 @@ import os from 'os';
 import {
     CustomTcpApplicationsFile,
     CustomTcpApplicationConfig,
+    CustomMulticastApplicationConfig,
     InstanceIdentityConfig
 } from './types.js';
 
@@ -59,13 +60,21 @@ export class CustomTcpConfigStore {
                 const data = await fs.promises.readFile(this.filePath, 'utf8');
                 const parsed = JSON.parse(data) as CustomTcpApplicationsFile;
                 if (parsed && parsed.version && Array.isArray(parsed.applications)) {
+                    let needsSave = false;
                     // Ensure instance identity exists and matches the current resolved target site name
                     if (!parsed.instance || !parsed.instance.instanceId) {
                         parsed.instance = this.generateDefaultIdentity(resolvedSiteName);
-                        await this.save(parsed);
+                        needsSave = true;
                     } else if (parsed.instance.siteName !== resolvedSiteName) {
                         parsed.instance.siteName = resolvedSiteName;
                         parsed.instance.displayName = resolvedSiteName;
+                        needsSave = true;
+                    }
+                    if (!Array.isArray(parsed.multicastApplications)) {
+                        parsed.multicastApplications = [this.generateDefaultSampleMulticastApp(resolvedSiteName)];
+                        needsSave = true;
+                    }
+                    if (needsSave) {
                         await this.save(parsed);
                     }
                     this.cachedConfig = parsed;
@@ -82,7 +91,8 @@ export class CustomTcpConfigStore {
         const initialConfig: CustomTcpApplicationsFile = {
             version: 1,
             instance: this.generateDefaultIdentity(resolvedSiteName),
-            applications: [this.generateDefaultSampleApp()]
+            applications: [this.generateDefaultSampleApp()],
+            multicastApplications: [this.generateDefaultSampleMulticastApp(resolvedSiteName)]
         };
 
         await this.save(initialConfig);
@@ -206,4 +216,35 @@ export class CustomTcpConfigStore {
             }
         };
     }
+
+    private generateDefaultSampleMulticastApp(siteName: string = 'DC1'): CustomMulticastApplicationConfig {
+        return {
+            id: 'mc-sdwan-feed',
+            name: 'SD-WAN Multicast Feed',
+            description: 'Enterprise IPTV / Market Data overlay replication validation stream',
+            enabled: true,
+            group: '239.1.1.100',
+            port: 5001,
+            mode: 'asm',
+            senderNode: siteName || 'DC1',
+            senderInterfaceIp: 'auto',
+            receivers: [],
+            rate: {
+                mode: 'cbr',
+                kbps: 1000,
+                burstPackets: 10,
+                burstIntervalMs: 1000
+            },
+            payloadBytes: 1200,
+            ttl: 8,
+            dscp: 'EF',
+            durationSec: 0,
+            thresholds: {
+                maxLossPct: 0.1,
+                degradedLossPct: 2.0,
+                maxGapMs: 3000
+            }
+        };
+    }
 }
+

@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.0.15] - 2026-10-14
+
+### Added
+- **SD-WAN Overlay Multicast Validation Engine (`custom-tcp-apps/multicast-runtime.ts`, `multicast-manager.ts`, `MulticastOverlayTab.tsx`)**:
+  - Added a 100% native TypeScript/Node.js (`dgram`) UDP/IGMPv2 & IGMPv3 multicast generator and receiver engine supporting **ASM (`239.0.0.0/8`)** and **SSM (`232.0.0.0/8` + `(S,G)` source filter)** with a 24-byte `STGX` binary header (`!IQQHH`).
+  - Added distributed cluster orchestration (Leader-to-Peer fan-out via fleet tunnels and HTTP fallback) to coordinate `1 Sender -> N Receivers` across SD-WAN branches, including per-branch **IGMP Join / IGMP Leave** live controls for Late-Join (S4) and Prune (S8) testing.
+  - Added a 4096-bit sliding sequence window initialized on `firstSeq` (zero phantom loss on Late-Join), RFC 3550 inter-arrival jitter, join latency (`T_first_packet - T_igmp_join`), and automated SD-WAN root-cause diagnostics (*TTL Decay*, *PIM Blackhole*, *Replication Asymmetry*).
+  - Added a top-level **`[ TCP Applications ] | [ Multicast Overlay ]`** tab switcher in `CustomApps.tsx` with a live `1 -> N` replication tree matrix, sparklines, and multi-node Pre-Flight Check modal (`/proc/net/igmp`, `ip mroute`, and auto-detected LAN interface).
+- **SASE Fabric & SD-WAN Overlay Topology Enhancements (`Topology.tsx`)**:
+  - Renamed *SD-WAN Mesh* tab to **SD-WAN Overlay** and unified interactive site spotlight filtering across both views.
+  - Added Ghost DC Context nodes and Hybrid Gateway (`BR-GW`) visualization in the SASE Fabric view.
+- **Header Lifecycle & Adaptive Brand Logo (`App.tsx`, `index.css`)**:
+  - Added a discreet 3-way node mode selector (`Leader`, `Peer`, `Standalone`) and lifecycle modal in the header, plus adaptive light/dark mode logo styling.
+
 ## [3.0.14] - 2026-10-14
 
 ### Added

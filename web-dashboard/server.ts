@@ -14984,9 +14984,152 @@ app.all('/api/gateway/:peerId/*path', authenticateToken, async (req: any, res: a
 });
 log('FLEET', `🔀 Fleet Gateway Reverse Proxy mounted at /api/gateway/:peerId/* (Leader only)`);
 
-// --- Custom TCP Inter-Site Applications API ---
-app.use('/api/custom-tcp-apps', authenticateToken, createCustomTcpApiRouter(tcpAppManager));
-log('CUSTOM_TCP', `🖧 Custom TCP Applications API mounted at /api/custom-tcp-apps`);
+// --- Custom TCP & SD-WAN Multicast Inter-Site Applications API ---
+tcpAppManager.multicastManager.setClusterHooks({
+    getLocalSiteName: () => {
+        const regStatus = registryManager.getStatus();
+        return regStatus.site_name || regStatus.instance_id || '';
+    },
+    localNodeMatcher: (nodeId: string) => {
+        const target = (nodeId || '').trim().toLowerCase();
+        if (!target || target === 'local' || target === 'localhost' || target === '127.0.0.1') return true;
+        const regStatus = registryManager.getStatus();
+        const localIp = (getLocalNodePrimaryIp(registryManager) || '').toLowerCase();
+        return (
+            target === (regStatus.instance_id || '').toLowerCase() ||
+            target === (regStatus.site_name || '').toLowerCase() ||
+            target === localIp ||
+            target === os.hostname().toLowerCase()
+        );
+    },
+    nodeForwarder: async (nodeId: string, method: 'GET' | 'POST', subPath: string, body?: any) => {
+        const peerId = nodeId.trim();
+        const targetPath = `/api/custom-tcp-apps${subPath.startsWith('/') ? subPath : '/' + subPath}`;
+        const allInstances = [
+            ...(localRegistryServer?.getInstances?.() || []),
+            ...(registryManager?.getEndpoints?.() || [])
+        ];
+        const peer = allInstances.find(
+            (inst: any) =>
+                (inst.instance_id || '').toLowerCase() === peerId.toLowerCase() ||
+                (inst.meta?.site || '').toLowerCase() === peerId.toLowerCase() ||
+                (inst.ip_private || '').toLowerCase() === peerId.toLowerCase() ||
+                (inst.ip_public || '').toLowerCase() === peerId.toLowerCase()
+        );
+
+        const peerInstanceId = peer?.instance_id || peerId;
+        const peerSiteName = peer?.meta?.site || '';
+
+        const hasWsTunnel =
+            fleetTunnelManager.hasTunnel(peerId) ||
+            fleetTunnelManager.hasTunnel(peerInstanceId) ||
+            (peerSiteName ? fleetTunnelManager.hasTunnel(peerSiteName) : false);
+
+        let peerIp = peer?.ip_private || peer?.ip_public;
+        let peerPort = peer?.port || (peer as any)?.meta?.port || 8080;
+
+        if (!peerIp) {
+            const allTargets = targetsManager.getMergedTargets();
+            const target = allTargets.find(
+                (t) =>
+                    (t.id || '').toLowerCase() === peerId.toLowerCase() ||
+                    (t.name || '').toLowerCase() === peerId.toLowerCase() ||
+                    (t.host || '').toLowerCase() === peerId.toLowerCase()
+            );
+            if (target) {
+                peerIp = target.host;
+                peerPort = target.ports?.dashboard || 8080;
+            } else if (/^\d{1,3}(\.\d{1,3}){3}$/.test(peerId)) {
+                peerIp = peerId;
+            }
+        }
+
+        const gatewayToken = jwt.sign(
+            { username: 'stigix-multicast-orchestrator', role: 'admin', peer: peerId },
+            SECRET_KEY,
+            { expiresIn: '30s' }
+        );
+        const headers: Record<string, string> = {
+            'authorization': `Bearer ${gatewayToken}`,
+            'content-type': 'application/json',
+            'x-gateway-source': 'stigix-leader'
+        };
+
+        if (hasWsTunnel) {
+            const tunnelTargetId = fleetTunnelManager.hasTunnel(peerId)
+                ? peerId
+                : fleetTunnelManager.hasTunnel(peerInstanceId)
+                    ? peerInstanceId
+                    : peerSiteName;
+            try {
+                const tunnelRes = await fleetTunnelManager.forwardRequest(
+                    tunnelTargetId,
+                    {
+                        method,
+                        path: targetPath,
+                        headers,
+                        body: method === 'POST' ? (body || {}) : undefined
+                    },
+                    10000
+                );
+                if (tunnelRes && tunnelRes.status >= 200 && tunnelRes.status < 300) {
+                    const parsed = typeof tunnelRes.body === 'string' ? JSON.parse(tunnelRes.body) : tunnelRes.body;
+                    return parsed;
+                }
+            } catch {}
+        }
+
+        if (!peerIp) {
+            throw new Error(`Node '${peerId}' not found in Fleet Registry or Targets`);
+        }
+
+        // Direct HTTP fallback
+        return await new Promise<any>((resolve, reject) => {
+            const bodyStr = method === 'POST' ? JSON.stringify(body || {}) : '';
+            if (method === 'POST') {
+                headers['content-length'] = String(Buffer.byteLength(bodyStr));
+            }
+            const req = http.request(
+                {
+                    hostname: peerIp,
+                    port: peerPort,
+                    path: targetPath,
+                    method,
+                    headers,
+                    timeout: 8000
+                },
+                (res) => {
+                    let raw = '';
+                    res.on('data', (chunk) => { raw += chunk.toString(); });
+                    res.on('end', () => {
+                        try {
+                            const json = JSON.parse(raw);
+                            if ((res.statusCode || 500) >= 400) {
+                                reject(new Error(json.error || `HTTP ${res.statusCode}`));
+                            } else {
+                                resolve(json);
+                            }
+                        } catch {
+                            reject(new Error(`Invalid JSON response from ${peerId} (${peerIp}:${peerPort})`));
+                        }
+                    });
+                }
+            );
+            req.on('timeout', () => {
+                req.destroy();
+                reject(new Error(`Timeout reaching node ${peerId} (${peerIp}:${peerPort})`));
+            });
+            req.on('error', (err) => reject(err));
+            if (method === 'POST' && bodyStr) req.write(bodyStr);
+            req.end();
+        });
+    }
+});
+
+app.use('/api/custom-tcp-apps', authenticateToken, createCustomTcpApiRouter(tcpAppManager, () => {
+    try { triggerAutoSyncFleetBundle('custom-tcp-apps'); } catch {}
+}));
+log('CUSTOM_TCP', `🖧 Custom TCP & SD-WAN Multicast API mounted at /api/custom-tcp-apps`);
 
 const buildPcapProfilesPayload = (includeContent = true): { profiles: any[]; skipped_count: number } => {
     if (process.env.ENABLE_PCAP_REPLAY !== 'true') {
@@ -15138,8 +15281,9 @@ log('COPILOT', `🤖 Stigix In-App AI Copilot mounted at /api/copilot`);
 provisioningManager.onBundleApplied((type, payload) => {
     if (type === 'custom-tcp-apps') {
         const apps = payload?.applications || (Array.isArray(payload) ? payload : []);
-        log('PROVISIONING', `⚡ Hot-reloading ${apps.length} Custom TCP Application(s) on peer...`);
-        tcpAppManager.hotReload(apps);
+        const mcApps = Array.isArray(payload?.multicastApplications) ? payload.multicastApplications : undefined;
+        log('PROVISIONING', `⚡ Hot-reloading ${apps.length} Custom TCP + ${mcApps?.length || 0} Multicast Application(s) on peer...`);
+        tcpAppManager.hotReload(apps, mcApps);
     } else if (type === 'cloud-config') {
         log('PROVISIONING', `⚡ Hot-reloading Cloud Probes credentials and Worker URL on peer...`);
         targetManager.reload();

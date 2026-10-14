@@ -4,7 +4,7 @@
 
 import { Router, Request, Response } from 'express';
 import { TcpAppManager } from './tcp-app-manager.js';
-import { validateApplicationConfig, checkHostPortAvailable } from './validation.js';
+import { validateApplicationConfig, validateMulticastApplicationConfig, checkHostPortAvailable } from './validation.js';
 import crypto from 'crypto';
 import path from 'path';
 import fs from 'fs';
@@ -14,8 +14,9 @@ import { fileURLToPath } from 'url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-export function createCustomTcpApiRouter(tcpAppManager: TcpAppManager): Router {
+export function createCustomTcpApiRouter(tcpAppManager: TcpAppManager, onConfigChanged?: () => void): Router {
     const router = Router();
+    const mcManager = tcpAppManager.multicastManager;
 
     // ─── Configuration Endpoints ──────────────────────────────────────────────
 
@@ -304,6 +305,203 @@ export function createCustomTcpApiRouter(tcpAppManager: TcpAppManager): Router {
             res.status(500).json({ success: false, error: err.message });
         }
     });
+
+    // ─── SD-WAN Overlay Multicast Validation Endpoints (Static prefix before /:id) ─
+
+    // GET /api/custom-tcp-apps/multicast — List all multicast application profiles
+    router.get('/multicast', (_req: Request, res: Response) => {
+        try {
+            const apps = mcManager.listApplications();
+            res.json({
+                success: true,
+                localNodeId: mcManager.getLocalNodeId(),
+                multicastApplications: apps
+            });
+        } catch (err: any) {
+            res.status(500).json({ success: false, error: err.message });
+        }
+    });
+
+    // POST /api/custom-tcp-apps/multicast/validate — Validate multicast profile
+    router.post('/multicast/validate', (req: Request, res: Response) => {
+        try {
+            const apps = mcManager.listApplications();
+            const validation = validateMulticastApplicationConfig(req.body || {}, apps);
+            res.json(validation);
+        } catch (err: any) {
+            res.status(400).json({ valid: false, errors: [err.message], warnings: [] });
+        }
+    });
+
+    // POST /api/custom-tcp-apps/multicast — Create new multicast profile
+    router.post('/multicast', async (req: Request, res: Response) => {
+        try {
+            const saved = await mcManager.saveApplication(req.body || {});
+            if (onConfigChanged) onConfigChanged();
+            res.json({ success: true, application: saved });
+        } catch (err: any) {
+            res.status(400).json({ success: false, error: err.message });
+        }
+    });
+
+    // PUT /api/custom-tcp-apps/multicast/:id — Update multicast profile
+    router.put('/multicast/:id', async (req: Request, res: Response) => {
+        try {
+            const payload = { ...(req.body || {}), id: req.params.id };
+            const saved = await mcManager.saveApplication(payload);
+            if (onConfigChanged) onConfigChanged();
+            res.json({ success: true, application: saved });
+        } catch (err: any) {
+            res.status(400).json({ success: false, error: err.message });
+        }
+    });
+
+    // DELETE /api/custom-tcp-apps/multicast/:id — Delete multicast profile
+    router.delete('/multicast/:id', async (req: Request, res: Response) => {
+        try {
+            await mcManager.deleteApplication(req.params.id);
+            if (onConfigChanged) onConfigChanged();
+            res.json({ success: true });
+        } catch (err: any) {
+            res.status(400).json({ success: false, error: err.message });
+        }
+    });
+
+    // POST /api/custom-tcp-apps/multicast/:id/start — Cluster-orchestrated start (receivers join -> sender starts)
+    router.post('/multicast/:id/start', async (req: Request, res: Response) => {
+        try {
+            const status = await mcManager.startClusterStream(req.params.id);
+            res.json({ success: true, status });
+        } catch (err: any) {
+            res.status(400).json({ success: false, error: err.message });
+        }
+    });
+
+    // POST /api/custom-tcp-apps/multicast/:id/stop — Cluster-orchestrated stop (sender stops -> receivers leave)
+    router.post('/multicast/:id/stop', async (req: Request, res: Response) => {
+        try {
+            const status = await mcManager.stopClusterStream(req.params.id);
+            res.json({ success: true, status });
+        } catch (err: any) {
+            res.status(400).json({ success: false, error: err.message });
+        }
+    });
+
+    // GET /api/custom-tcp-apps/multicast/:id/stats — Cluster-wide 1 Sender -> N Receivers telemetry matrix
+    router.get('/multicast/:id/stats', async (req: Request, res: Response) => {
+        try {
+            const status = await mcManager.getClusterStats(req.params.id);
+            res.json({ success: true, status });
+        } catch (err: any) {
+            res.status(404).json({ success: false, error: err.message });
+        }
+    });
+
+    // POST & GET /api/custom-tcp-apps/multicast/:id/preflight — Cluster-wide pre-flight check
+    const clusterPreflightHandler = async (req: Request, res: Response) => {
+        try {
+            const result = await mcManager.runClusterPreflight(req.params.id);
+            res.json({ success: true, ...result });
+        } catch (err: any) {
+            res.status(400).json({ success: false, error: err.message });
+        }
+    };
+    router.get('/multicast/:id/preflight', clusterPreflightHandler);
+    router.post('/multicast/:id/preflight', clusterPreflightHandler);
+
+    // POST /api/custom-tcp-apps/multicast/:id/receiver/:nodeId/toggle — Dynamic Late Join / IGMP Leave
+    router.post('/multicast/:id/receiver/:nodeId/toggle', async (req: Request, res: Response) => {
+        try {
+            const action = req.body?.action === 'leave' ? 'leave' : 'join';
+            const expectMode = req.body?.expect;
+            const status = await mcManager.toggleClusterReceiver(
+                req.params.id,
+                req.params.nodeId,
+                action,
+                expectMode
+            );
+            res.json({ success: true, status });
+        } catch (err: any) {
+            res.status(400).json({ success: false, error: err.message });
+        }
+    });
+
+    // ─── Node-Local Multicast Execution Endpoints (Peer / Local Invocations) ──
+
+    // POST /api/custom-tcp-apps/multicast/:id/local-sender/start
+    router.post('/multicast/:id/local-sender/start', async (req: Request, res: Response) => {
+        try {
+            const stats = await mcManager.startLocalSender(
+                req.params.id,
+                req.body?.config,
+                req.body?.interfaceIp
+            );
+            res.json({ success: true, sender: stats });
+        } catch (err: any) {
+            res.status(400).json({ success: false, error: err.message });
+        }
+    });
+
+    // POST /api/custom-tcp-apps/multicast/:id/local-sender/stop
+    router.post('/multicast/:id/local-sender/stop', async (req: Request, res: Response) => {
+        try {
+            const stats = await mcManager.stopLocalSender(req.params.id);
+            res.json({ success: true, sender: stats });
+        } catch (err: any) {
+            res.status(400).json({ success: false, error: err.message });
+        }
+    });
+
+    // POST /api/custom-tcp-apps/multicast/:id/local-join
+    router.post('/multicast/:id/local-join', async (req: Request, res: Response) => {
+        try {
+            const stats = await mcManager.joinLocalReceiver(req.params.id, {
+                expect: req.body?.expect,
+                interfaceIp: req.body?.interfaceIp,
+                config: req.body?.config,
+                nodeId: req.body?.nodeId
+            });
+            res.json({ success: true, receiver: stats });
+        } catch (err: any) {
+            res.status(400).json({ success: false, error: err.message });
+        }
+    });
+
+    // POST /api/custom-tcp-apps/multicast/:id/local-leave
+    router.post('/multicast/:id/local-leave', async (req: Request, res: Response) => {
+        try {
+            const stats = await mcManager.leaveLocalReceiver(req.params.id);
+            res.json({ success: true, receiver: stats });
+        } catch (err: any) {
+            res.status(400).json({ success: false, error: err.message });
+        }
+    });
+
+    // GET /api/custom-tcp-apps/multicast/:id/local-stats
+    router.get('/multicast/:id/local-stats', (req: Request, res: Response) => {
+        try {
+            const localStats = mcManager.getLocalStats(req.params.id);
+            res.json({ success: true, ...localStats });
+        } catch (err: any) {
+            res.status(400).json({ success: false, error: err.message });
+        }
+    });
+
+    // GET & POST /api/custom-tcp-apps/multicast/:id/local-preflight
+    const localPreflightHandler = async (req: Request, res: Response) => {
+        try {
+            const preflight = await mcManager.getLocalPreflight(
+                req.params.id,
+                req.body?.config,
+                req.body?.interfaceIp
+            );
+            res.json({ success: true, preflight });
+        } catch (err: any) {
+            res.status(400).json({ success: false, error: err.message });
+        }
+    };
+    router.get('/multicast/:id/local-preflight', localPreflightHandler);
+    router.post('/multicast/:id/local-preflight', localPreflightHandler);
 
     // ─── Individual Application Routes ────────────────────────────────────────
 
