@@ -110,6 +110,11 @@ export class FleetTunnelManager {
     private backgroundLoopInterval: NodeJS.Timeout | null = null;
     private rttPingInterval: NodeJS.Timeout | null = null;
 
+    // Startup grace period for Leader M6 proactive outbound dialing (allowing spokes to reconnect inbound first)
+    private leaderModeStartedAt: number = Date.now();
+    private wasLeader: boolean = false;
+    private static readonly LEADER_DIAL_GRACE_PERIOD_MS = 25000; // 25s startup grace period
+
     constructor(
         ioServer: SocketIOServer,
         registryManager: RegistryManager,
@@ -288,6 +293,33 @@ export class FleetTunnelManager {
                 sourcePort,
                 destPort
             };
+
+            // Inbound Preemption: If Leader had an active or pending outbound dial (M6) to this Spoke,
+            // terminate the outbound dial socket in favor of this inbound reverse tunnel.
+            if (!isLeaderDial) {
+                for (const [targetKey, dialedSock] of this.outboundDialedSockets.entries()) {
+                    const [sockHost] = targetKey.split(':');
+                    if (sockHost === clientIp || (socketRemoteIp && sockHost === socketRemoteIp)) {
+                        log('TUNNEL', `[PREEMPTION] Spoke ${siteName} (${instanceId}) connected INBOUND; closing redundant Leader outbound dial to ${targetKey}`);
+                        try { dialedSock.disconnect(); } catch {}
+                        this.outboundDialedSockets.delete(targetKey);
+                        this.rendezvousDialTimestamps.delete(targetKey);
+                    }
+                }
+
+                for (const [tId, tEntry] of this.activeTunnels.entries()) {
+                    if (tEntry.info.direction === 'outbound_dial') {
+                        const matchIp = tEntry.info.ip === clientIp || tEntry.info.destIp === clientIp;
+                        const matchSite = Boolean(tEntry.info.siteName && siteName && tEntry.info.siteName.toLowerCase() === siteName.toLowerCase());
+                        const matchId = tId === instanceId;
+                        if (matchIp || matchSite || matchId) {
+                            log('TUNNEL', `[PREEMPTION] Evicting outbound dialed tunnel entry (${tId}) in favor of fresh INBOUND tunnel from ${siteName}`);
+                            try { tEntry.socket.disconnect(); } catch {}
+                            this.activeTunnels.delete(tId);
+                        }
+                    }
+                }
+            }
 
             this.activeTunnels.set(instanceId, { socket, info });
             if (siteName) {
@@ -544,6 +576,12 @@ export class FleetTunnelManager {
         const isLeader = this.registryManager.isLeader();
 
         if (isLeader) {
+            if (!this.wasLeader) {
+                this.wasLeader = true;
+                this.leaderModeStartedAt = Date.now();
+                log('TUNNEL', `👑 Leader mode active — ${FleetTunnelManager.LEADER_DIAL_GRACE_PERIOD_MS / 1000}s startup grace period initiated (waiting for spokes to reconnect inbound)`);
+            }
+
             // 1. Leader mode: Clean up spoke socket if previously active
             if (this.spokeClientSocket) {
                 log('TUNNEL', `Node is Leader — disconnecting spoke outbound client`);
@@ -562,6 +600,8 @@ export class FleetTunnelManager {
             // 3. Leader mode (M6): Check manual & cloud targets for outbound reverse dialing
             this.syncLeaderOutboundDials();
         } else {
+            this.wasLeader = false;
+
             // Spoke mode: Stop Cloudflare listener if running
             this.stopCloudflareRendezvousListener();
 
@@ -819,6 +859,9 @@ export class FleetTunnelManager {
                 inboundSpokeKeys.add(id.toLowerCase());
                 if (entry.info.siteName) inboundSpokeKeys.add(entry.info.siteName.toLowerCase());
                 if (entry.info.ip) inboundSpokeKeys.add(entry.info.ip.toLowerCase());
+                if (entry.info.socketRemoteIp) inboundSpokeKeys.add(entry.info.socketRemoteIp.toLowerCase());
+                if (entry.info.sourceIp) inboundSpokeKeys.add(entry.info.sourceIp.toLowerCase());
+                if (entry.info.destIp) inboundSpokeKeys.add(entry.info.destIp.toLowerCase());
             }
         }
 
@@ -860,7 +903,32 @@ export class FleetTunnelManager {
         }
 
         // 2. Dial candidate external cloud/manual targets
+        // During startup grace period (25s), skip proactive dials so normal spokes have time to connect inbound (M5)
+        const inStartupGracePeriod = (Date.now() - this.leaderModeStartedAt) < FleetTunnelManager.LEADER_DIAL_GRACE_PERIOD_MS;
+        if (inStartupGracePeriod) {
+            return;
+        }
+
         for (const target of externalTargets) {
+            // Enterprise SD-WAN Policy:
+            // Do NOT proactively reverse-dial targets classified as BRANCH or auto-onboarded magic-join spokes
+            // unless explicitly tagged for outbound dialing (e.g. cloud, vps, dial_outbound: true).
+            // Branch CPEs always initiate inbound reverse tunnels towards the Leader.
+            const tags = Array.isArray(target.tags) ? target.tags : [];
+            const isCloudOrHub = Boolean(
+                target.is_cloud ||
+                target.role === 'cloud' ||
+                target.role === 'hub' ||
+                tags.includes('cloud') ||
+                tags.includes('vps') ||
+                target.dial_outbound === true
+            );
+            const isAutoBranch = tags.includes('magic-join') || tags.includes('auto-onboarded') || target.site_type === 'BRANCH';
+
+            if (isAutoBranch && !isCloudOrHub) {
+                continue;
+            }
+
             const host = target.host.trim();
             const port = target.ports?.dashboard || 8080;
             const targetKey = `${host.toLowerCase()}:${port}`;
