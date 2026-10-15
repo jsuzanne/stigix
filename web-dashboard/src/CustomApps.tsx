@@ -8,7 +8,7 @@ import {
     Copy, Trash2, Edit3, Shield, AlertTriangle, CheckCircle2,
     Clock, Cpu, ArrowDownRight, ArrowUpRight, Zap, ExternalLink,
     Layers, Cloud, Search, X, Info, ChevronDown, Upload, Download, FileJson,
-    Network, RotateCcw, BarChart3, ShieldCheck, Radio
+    Network, RotateCcw, BarChart3, ShieldCheck
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { usePeerContext } from './PeerContext';
@@ -79,7 +79,6 @@ import { CustomAppImportModal } from './components/custom-tcp/CustomAppImportMod
 import { PrismaAppSyncModal } from './components/custom-tcp/PrismaAppSyncModal';
 import { MicroSparkline } from './components/custom-tcp/MicroSparkline';
 import { SessionDeepDiveDrawer } from './components/custom-tcp/SessionDeepDiveDrawer';
-import { MulticastOverlayTab } from './components/custom-tcp/MulticastOverlayTab';
 
 interface CustomAppsProps {
     token: string | null;
@@ -90,7 +89,6 @@ export const CustomApps: React.FC<CustomAppsProps> = ({ token }) => {
     const { gFetch, activePeerId } = usePeerContext();
     const isRemoteView = activePeerId !== null;
 
-    const [activeSubTab, setActiveSubTab] = useState<'tcp' | 'multicast'>('tcp');
     const [applications, setApplications] = useState<CustomTcpApplicationConfig[]>([]);
     const [allAppSummaries, setAllAppSummaries] = useState<Record<string, any>>({});
     const [instanceInfo, setInstanceInfo] = useState<{ instanceId: string; siteName: string; hostname: string } | null>(null);
@@ -676,40 +674,11 @@ const secs = seconds % 60;
                             </span>
                         </div>
                         <p className="text-xs text-text-muted mt-0.5">
-                            Simulate stateful multi-site TCP, HTTP &amp; UDP/IGMP Multicast application traffic across SD-WAN overlays with live telemetry.
+                            Simulate stateful multi-site TCP &amp; HTTP application traffic across SD-WAN overlays with live telemetry.
                         </p>
-                    </div>
-
-                    {/* Top-Level Sub-Tab Switcher (Option A) */}
-                    <div className="flex items-center bg-card-secondary p-1 rounded-xl border border-border ml-0 xl:ml-3">
-                        <button
-                            onClick={() => setActiveSubTab('tcp')}
-                            className={cn(
-                                'flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer',
-                                activeSubTab === 'tcp'
-                                    ? 'bg-indigo-600 text-white shadow-sm'
-                                    : 'text-text-muted hover:text-text-primary'
-                            )}
-                        >
-                            <Activity size={13} />
-                            <span>TCP Applications</span>
-                        </button>
-                        <button
-                            onClick={() => setActiveSubTab('multicast')}
-                            className={cn(
-                                'flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer',
-                                activeSubTab === 'multicast'
-                                    ? 'bg-purple-600 text-white shadow-sm'
-                                    : 'text-text-muted hover:text-text-primary'
-                            )}
-                        >
-                            <Radio size={13} />
-                            <span>Multicast Overlay</span>
-                        </button>
                     </div>
                 </div>
 
-                {activeSubTab === 'tcp' && (
                 <div className="flex flex-wrap items-center gap-2.5">
                     {/* Catalog Management: New App, Import, Export */}
                     <div className="flex items-center gap-2">
@@ -933,13 +902,8 @@ const secs = seconds % 60;
                         <RefreshCw size={13} className={isActionLoading ? 'animate-spin' : ''} />
                     </button>
                 </div>
-                )}
             </div>
 
-            {activeSubTab === 'multicast' ? (
-                <MulticastOverlayTab token={token} localSiteName={instanceInfo?.siteName} />
-            ) : (
-                <>
             {/* Global Fleet Telemetry Ribbon (Low-height, high-density compact bar) */}
             <div className="bg-card border border-border rounded-xl px-4 py-2 shadow-sm">
                 <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 sm:gap-4 items-center">
@@ -1727,8 +1691,6 @@ const secs = seconds % 60;
                         </div>
                     </div>
                 </div>
-            )}
-                </>
             )}
 
             {/* Import Modal */}
