@@ -496,13 +496,13 @@ export class MulticastAppManager {
     ): Promise<MulticastNodePreflightResult> {
         const cfg = this.resolveEffectiveConfig(appId, overrideConfig);
         const localNodeId = this.getLocalNodeId();
-        const isSender = cfg.senderNode.toLowerCase() === localNodeId.toLowerCase();
+        const isSender = this.isLocalNode(cfg.senderNode);
 
         const rawIp = preferredIp !== undefined && preferredIp !== null
             ? preferredIp
             : (isSender
                 ? cfg.senderInterfaceIp
-                : cfg.receivers.find(r => r.node.toLowerCase() === localNodeId.toLowerCase())?.interfaceIp || 'auto');
+                : cfg.receivers.find(r => this.isLocalNode(r.node))?.interfaceIp || 'auto');
         const resolvedIp = this.resolveEffectiveInterfaceIp(localNodeId, rawIp);
 
         return await inspectLocalMulticastPreflight(
@@ -515,7 +515,7 @@ export class MulticastAppManager {
 
     // ─── Cluster-Orchestrated Operations (Leader -> Peers Fan-Out) ────────────
 
-    private async dispatchToNode(
+    public async dispatchToNode(
         nodeId: string,
         method: 'GET' | 'POST',
         subPath: string,

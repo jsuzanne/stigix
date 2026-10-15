@@ -1973,7 +1973,7 @@ export const MulticastOverlayTab: React.FC<MulticastOverlayTabProps> = ({
                                         </label>
                                         <input
                                             type="number"
-                                            step="0.01"
+                                            step="any"
                                             min={0}
                                             max={50}
                                             value={formMaxLossPct}
@@ -1987,8 +1987,8 @@ export const MulticastOverlayTab: React.FC<MulticastOverlayTabProps> = ({
                                         </label>
                                         <input
                                             type="number"
-                                            step="0.1"
-                                            min={0.05}
+                                            step="any"
+                                            min={0}
                                             max={100}
                                             value={formDegradedLossPct}
                                             onChange={(e) => setFormDegradedLossPct(Number(e.target.value))}
@@ -2001,8 +2001,8 @@ export const MulticastOverlayTab: React.FC<MulticastOverlayTabProps> = ({
                                         </label>
                                         <input
                                             type="number"
-                                            step="1"
-                                            min={1}
+                                            step="any"
+                                            min={0}
                                             max={500}
                                             value={formMaxJitterMs}
                                             onChange={(e) => setFormMaxJitterMs(Number(e.target.value))}
@@ -2030,8 +2030,8 @@ export const MulticastOverlayTab: React.FC<MulticastOverlayTabProps> = ({
                                         </label>
                                         <input
                                             type="number"
-                                            step="100"
-                                            min={500}
+                                            step="any"
+                                            min={100}
                                             max={60000}
                                             value={formMaxGapMs}
                                             onChange={(e) => setFormMaxGapMs(Number(e.target.value))}

@@ -14990,6 +14990,9 @@ app.all('/api/gateway/:peerId/*path', authenticateToken, async (req: any, res: a
 log('FLEET', `🔀 Fleet Gateway Reverse Proxy mounted at /api/gateway/:peerId/* (Leader only)`);
 
 // --- Custom TCP & SD-WAN Multicast Inter-Site Applications API ---
+const normalizeMulticastNodeName = (s?: string) =>
+    (s || '').trim().toLowerCase().replace(/-(ubuntu|debian|linux|node|vm|host|srv|server)$/i, '');
+
 tcpAppManager.multicastManager.setClusterHooks({
     getLocalSiteName: () => {
         const regStatus = registryManager.getStatus();
@@ -14998,27 +15001,59 @@ tcpAppManager.multicastManager.setClusterHooks({
     localNodeMatcher: (nodeId: string) => {
         const target = (nodeId || '').trim().toLowerCase();
         if (!target || target === 'local' || target === 'localhost' || target === '127.0.0.1') return true;
+        const targetNorm = normalizeMulticastNodeName(target);
         const regStatus = registryManager.getStatus();
-        const localIp = (getLocalNodePrimaryIp(registryManager) || '').toLowerCase();
-        return (
-            target === (regStatus.instance_id || '').toLowerCase() ||
-            target === (regStatus.site_name || '').toLowerCase() ||
+        const localIp = (getLocalNodePrimaryIp(registryManager) || regStatus?.detected_ip || '').toLowerCase();
+        const instId = (regStatus.instance_id || '').toLowerCase();
+        const siteName = (regStatus.site_name || '').toLowerCase();
+        const hostName = os.hostname().toLowerCase();
+        if (
+            target === instId ||
+            target === siteName ||
             target === localIp ||
-            target === os.hostname().toLowerCase()
-        );
+            target === hostName ||
+            (targetNorm && (
+                targetNorm === normalizeMulticastNodeName(instId) ||
+                targetNorm === normalizeMulticastNodeName(siteName) ||
+                targetNorm === normalizeMulticastNodeName(hostName)
+            ))
+        ) {
+            return true;
+        }
+        try {
+            const allTargets = targetsManager.getMergedTargets();
+            const selfTarget = allTargets.find(
+                (t) =>
+                    Boolean(t.meta?.isSelf) &&
+                    ((t.name || '').trim().toLowerCase() === target ||
+                        (t.id || '').trim().toLowerCase() === target ||
+                        normalizeMulticastNodeName(t.name) === targetNorm)
+            );
+            if (selfTarget) return true;
+        } catch {}
+        return false;
     },
     resolveNodeInterfaceIp: (nodeId: string) => {
         const target = (nodeId || '').trim().toLowerCase();
         if (!target) return undefined;
+        const targetNorm = normalizeMulticastNodeName(target);
         const regStatus = registryManager.getStatus();
         const localIp = (getLocalNodePrimaryIp(registryManager) || regStatus?.detected_ip || '').trim();
+        const instId = (regStatus.instance_id || '').toLowerCase();
+        const siteName = (regStatus.site_name || '').toLowerCase();
+        const hostName = os.hostname().toLowerCase();
         const isLocal =
             target === 'local' ||
             target === 'localhost' ||
-            target === (regStatus.instance_id || '').toLowerCase() ||
-            target === (regStatus.site_name || '').toLowerCase() ||
+            target === instId ||
+            target === siteName ||
             target === localIp.toLowerCase() ||
-            target === os.hostname().toLowerCase();
+            target === hostName ||
+            (targetNorm && (
+                targetNorm === normalizeMulticastNodeName(instId) ||
+                targetNorm === normalizeMulticastNodeName(siteName) ||
+                targetNorm === normalizeMulticastNodeName(hostName)
+            ));
         if (isLocal && localIp && localIp !== '127.0.0.1') {
             return localIp;
         }
@@ -15028,7 +15063,8 @@ tcpAppManager.multicastManager.setClusterHooks({
                 (t) =>
                     (t.name || '').trim().toLowerCase() === target ||
                     (t.id || '').trim().toLowerCase() === target ||
-                    (t.host || '').trim().toLowerCase() === target
+                    (t.host || '').trim().toLowerCase() === target ||
+                    (targetNorm && normalizeMulticastNodeName(t.name) === targetNorm)
             );
             if (matchedTarget?.host && /^\d{1,3}(\.\d{1,3}){3}$/.test(matchedTarget.host.trim())) {
                 return matchedTarget.host.trim();
@@ -15043,7 +15079,11 @@ tcpAppManager.multicastManager.setClusterHooks({
                 (inst: any) =>
                     (inst.instance_id || '').toLowerCase() === target ||
                     (inst.meta?.site || '').toLowerCase() === target ||
-                    (inst.ip_private || '').toLowerCase() === target
+                    (inst.ip_private || '').toLowerCase() === target ||
+                    (targetNorm && (
+                        normalizeMulticastNodeName(inst.meta?.site) === targetNorm ||
+                        normalizeMulticastNodeName(inst.instance_id) === targetNorm
+                    ))
             );
             if (peer?.ip_private && /^\d{1,3}(\.\d{1,3}){3}$/.test(peer.ip_private.trim())) {
                 return peer.ip_private.trim();
@@ -15053,7 +15093,18 @@ tcpAppManager.multicastManager.setClusterHooks({
     },
     nodeForwarder: async (nodeId: string, method: 'GET' | 'POST', subPath: string, body?: any) => {
         const peerId = nodeId.trim();
+        const peerNorm = normalizeMulticastNodeName(peerId);
         const targetPath = `/api/custom-tcp-apps${subPath.startsWith('/') ? subPath : '/' + subPath}`;
+
+        const allTargets = targetsManager.getMergedTargets();
+        const target = allTargets.find(
+            (t) =>
+                (t.id || '').toLowerCase() === peerId.toLowerCase() ||
+                (t.name || '').toLowerCase() === peerId.toLowerCase() ||
+                (t.host || '').toLowerCase() === peerId.toLowerCase() ||
+                (peerNorm && normalizeMulticastNodeName(t.name) === peerNorm)
+        );
+
         const allInstances = [
             ...(localRegistryServer?.getInstances?.() || []),
             ...(registryManager?.getEndpoints?.() || [])
@@ -15063,35 +15114,21 @@ tcpAppManager.multicastManager.setClusterHooks({
                 (inst.instance_id || '').toLowerCase() === peerId.toLowerCase() ||
                 (inst.meta?.site || '').toLowerCase() === peerId.toLowerCase() ||
                 (inst.ip_private || '').toLowerCase() === peerId.toLowerCase() ||
-                (inst.ip_public || '').toLowerCase() === peerId.toLowerCase()
+                (inst.ip_public || '').toLowerCase() === peerId.toLowerCase() ||
+                (target?.host && (inst.ip_private || '').toLowerCase() === target.host.toLowerCase()) ||
+                (peerNorm && (
+                    normalizeMulticastNodeName(inst.meta?.site) === peerNorm ||
+                    normalizeMulticastNodeName(inst.instance_id) === peerNorm
+                ))
         );
 
         const peerInstanceId = peer?.instance_id || peerId;
-        const peerSiteName = peer?.meta?.site || '';
+        const peerSiteName = peer?.meta?.site || peerNorm.toUpperCase();
 
-        const hasWsTunnel =
-            fleetTunnelManager.hasTunnel(peerId) ||
-            fleetTunnelManager.hasTunnel(peerInstanceId) ||
-            (peerSiteName ? fleetTunnelManager.hasTunnel(peerSiteName) : false);
-
-        let peerIp = peer?.ip_private || peer?.ip_public;
-        let peerPort = peer?.port || (peer as any)?.meta?.port || 8080;
-
-        if (!peerIp) {
-            const allTargets = targetsManager.getMergedTargets();
-            const target = allTargets.find(
-                (t) =>
-                    (t.id || '').toLowerCase() === peerId.toLowerCase() ||
-                    (t.name || '').toLowerCase() === peerId.toLowerCase() ||
-                    (t.host || '').toLowerCase() === peerId.toLowerCase()
-            );
-            if (target) {
-                peerIp = target.host;
-                peerPort = target.ports?.dashboard || 8080;
-            } else if (/^\d{1,3}(\.\d{1,3}){3}$/.test(peerId)) {
-                peerIp = peerId;
-            }
-        }
+        const tunnelCandidates = Array.from(
+            new Set([peerId, peerNorm, peerNorm.toUpperCase(), peerInstanceId, peerSiteName].filter(Boolean))
+        );
+        const matchedTunnelId = tunnelCandidates.find((cand) => fleetTunnelManager.hasTunnel(cand));
 
         const gatewayToken = jwt.sign(
             { username: 'stigix-multicast-orchestrator', role: 'admin', peer: peerId },
@@ -15104,15 +15141,11 @@ tcpAppManager.multicastManager.setClusterHooks({
             'x-gateway-source': 'stigix-leader'
         };
 
-        if (hasWsTunnel) {
-            const tunnelTargetId = fleetTunnelManager.hasTunnel(peerId)
-                ? peerId
-                : fleetTunnelManager.hasTunnel(peerInstanceId)
-                    ? peerInstanceId
-                    : peerSiteName;
+        // 1. Direct WebSocket Reverse Tunnel (when running on Leader)
+        if (matchedTunnelId) {
             try {
                 const tunnelRes = await fleetTunnelManager.forwardRequest(
-                    tunnelTargetId,
+                    matchedTunnelId,
                     {
                         method,
                         path: targetPath,
@@ -15126,6 +15159,40 @@ tcpAppManager.multicastManager.setClusterHooks({
                     return parsed;
                 }
             } catch {}
+        }
+
+        // 2. Spoke-to-Leader Hub Relay (when running on a Peer such as BR8 and controlling DC1 or BR5)
+        const isLeader = typeof registryManager?.isLeader === 'function'
+            ? registryManager.isLeader()
+            : (registryManager?.getStatus?.()?.mode === 'leader');
+        if (!isLeader && fleetTunnelManager.hasActiveLeaderTunnel()) {
+            try {
+                return await fleetTunnelManager.relayNodeRequestViaLeader(peerId, method, subPath, body, 10000);
+            } catch (relayErr: any) {
+                log('CUSTOM_TCP', `Spoke-to-Leader multicast relay for '${peerId}' failed (${relayErr.message}) — trying direct HTTP fallback`, 'warn');
+            }
+        }
+
+        // 3. Resolve IP & port for Direct HTTP fallback
+        let peerIp = peer?.ip_private || peer?.ip_public;
+        let peerPort = peer?.port || (peer as any)?.meta?.port || 8080;
+
+        if (!peerIp && target) {
+            peerIp = target.host;
+            peerPort = target.ports?.dashboard || 8080;
+        }
+        if (!peerIp && /^\d{1,3}(\.\d{1,3}){3}$/.test(peerId)) {
+            peerIp = peerId;
+        }
+        if (!peerIp) {
+            const regStatus = registryManager.getStatus();
+            if (regStatus.leader_info?.ip && (
+                peerNorm === normalizeMulticastNodeName(regStatus.leader_info.site_name) ||
+                peerNorm === normalizeMulticastNodeName(regStatus.leader_info.instance_id) ||
+                peerNorm === 'dc1'
+            )) {
+                peerIp = regStatus.leader_info.ip;
+            }
         }
 
         if (!peerIp) {

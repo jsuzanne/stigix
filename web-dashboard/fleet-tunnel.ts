@@ -1363,6 +1363,64 @@ export class FleetTunnelManager {
                 ack(this.localRegistryServer?.getCustomAppMesh() || []);
             }
         });
+
+        socket.on(
+            'multicast:relay_node_request',
+            async (
+                payload: { nodeId: string; method: 'GET' | 'POST'; subPath: string; body?: any },
+                ack?: (res: { ok: boolean; data?: any; error?: string }) => void
+            ) => {
+                if (typeof ack !== 'function') return;
+                if (!this.tcpAppManager?.multicastManager || !payload?.nodeId || !payload?.subPath) {
+                    return ack({ ok: false, error: 'Leader multicast manager not available' });
+                }
+                try {
+                    const data = await this.tcpAppManager.multicastManager.dispatchToNode(
+                        payload.nodeId,
+                        payload.method || 'GET',
+                        payload.subPath,
+                        payload.body
+                    );
+                    ack({ ok: true, data });
+                } catch (err: any) {
+                    ack({ ok: false, error: err?.message || String(err) });
+                }
+            }
+        );
+    }
+
+    /**
+     * Spoke services: Relay a multicast node dispatch request through the Leader Hub WebSocket tunnel
+     * so any Peer node (e.g. BR8) can orchestrate streams involving the Leader (DC1) or other Peers (BR1, BR5).
+     */
+    public async relayNodeRequestViaLeader(
+        nodeId: string,
+        method: 'GET' | 'POST',
+        subPath: string,
+        body?: any,
+        timeoutMs: number = 10000
+    ): Promise<any> {
+        const socket = this.activeLeaderTunnelSocket || this.spokeClientSocket;
+        if (!socket || !this.hasActiveLeaderTunnel()) {
+            throw new Error(`No active Fleet WebSocket Tunnel to Leader to relay request for '${nodeId}'`);
+        }
+        return await new Promise<any>((resolve, reject) => {
+            const timer = setTimeout(() => {
+                reject(new Error(`Timeout relaying multicast request for '${nodeId}' via Leader`));
+            }, timeoutMs);
+            socket.emit(
+                'multicast:relay_node_request',
+                { nodeId, method, subPath, body },
+                (res: { ok: boolean; data?: any; error?: string }) => {
+                    clearTimeout(timer);
+                    if (res && res.ok) {
+                        resolve(res.data);
+                    } else {
+                        reject(new Error(res?.error || `Leader relay failed for '${nodeId}'`));
+                    }
+                }
+            );
+        });
     }
 
     /**
