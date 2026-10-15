@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.0.23] - 2026-10-15
+
+### Added & Enhanced
+- **VyOS `One-Shot Batch` (`BATCH`) Execution Mode & Multi-Subnet Input (`Vyos.tsx`, `vyos-scheduler.ts`, `server.ts`)**:
+  - Added a `BATCH` (*One-Shot Batch*) execution mode alongside `Timed Cycle` (`CYCLE`) and `Step-by-Step` (`STEP_BY_STEP`), allowing multiple VyOS actions (`Deny Traffic`, `Allow Traffic`, `Set QoS`, etc.) to execute sequentially in one shot without `T+min` delays.
+  - Preserves atomic 1-session-per-command execution via `vyos_sdwan_ctl.py` and displays an inline per-action acknowledgment bar (`✓ OK` / `✗ FAILED`, execution duration in ms, and CLI equivalent) directly below the sequence row.
+  - Added multi-subnet input splitting (space/comma-separated prefixes or FQDNs such as `20.190.0.0/16 40.126.32.0/24`) with an inline `Split ×N` button in the Sequence Builder modal, automatic expansion on save, and a 1-click action duplicate button.
+- **Active `Deny Traffic` (Blackhole Static Routes) Visibility & Cleanup on Router Cards (`Vyos.tsx`, `vyos-manager.ts`, `vyos_sdwan_ctl.py`)**:
+  - Updated `get_router_info` in `vyos_sdwan_ctl.py` to extract active blackhole static routes (`tag 999`) directly from the fetched VyOS configuration (`blackhole_blocks`) during router discovery and health checks.
+  - Added an **Active Deny Routes (Blackhole tag 999)** section on each Router Card in `Vyos Control -> Routers` with 1-click per-subnet unblock (`×`) and `Clear All` buttons, and integrated blackhole cleanup into the global **Reset Lab** action.
+
 ## [3.0.22] - 2026-10-15
 
 ### Fixed & Enhanced

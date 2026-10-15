@@ -2608,6 +2608,7 @@ app.post('/api/vyos/routers/discover', authenticateToken, async (req, res) => {
             version: info.version,
             location: location || undefined,
             interfaces: info.interfaces,
+            blackholeBlocks: info.blackholeBlocks || [],
             enabled: true,
             status: 'online',
             lastSeen: Date.now()
@@ -2812,8 +2813,8 @@ app.delete('/api/vyos/sequences/:id', authenticateToken, (req, res) => {
 
 app.post('/api/vyos/sequences/run/:id', authenticateToken, async (req, res) => {
     try {
-        await vyosScheduler.runSequenceManually(req.params.id);
-        res.json({ success: true });
+        const result = await vyosScheduler.runSequenceManually(req.params.id);
+        res.json({ success: true, ...result });
     } catch (e: any) {
         res.status(500).json({ error: e.message });
     }

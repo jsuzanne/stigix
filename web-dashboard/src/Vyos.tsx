@@ -81,6 +81,7 @@ export interface VyosRouter {
     version: string;
     location?: string;
     interfaces: VyosRouterInterface[];
+    blackholeBlocks?: { prefix: string; description?: string }[];
     enabled: boolean;
     status: 'online' | 'offline' | 'unknown';
     lastSeen?: number;
@@ -102,8 +103,8 @@ export interface VyosSequence {
     name: string;
     enabled: boolean;
     paused?: boolean;  // Paused state for running sequences
-    executionMode: 'CYCLE' | 'STEP_BY_STEP'; // NEW: Execution mode
-    currentStep?: number; // NEW: Pointer for Step-by-Step mode
+    executionMode: 'CYCLE' | 'STEP_BY_STEP' | 'BATCH'; // Execution mode
+    currentStep?: number; // Pointer for Step-by-Step mode
     cycle_duration: number;
     actions: VyosAction[];
     lastRun?: number;
@@ -602,6 +603,74 @@ export default function Vyos(props: VyosProps) {
         }
     };
 
+    const [batchResults, setBatchResults] = useState<Record<string, any>>({});
+    const [runningSeqId, setRunningSeqId] = useState<string | null>(null);
+    const [unblockingKey, setUnblockingKey] = useState<string | null>(null);
+
+    const unblockRouterPrefix = async (routerId: string, prefix: string, e?: React.MouseEvent) => {
+        if (e) e.stopPropagation();
+        const key = `${routerId}:${prefix}`;
+        setUnblockingKey(key);
+        const toastId = toast.loading(`Unblocking ${prefix}...`);
+        try {
+            const res = await gFetch('/api/vyos/direct-action', {
+                method: 'POST',
+                headers: authHeaders(),
+                body: JSON.stringify({
+                    routerId,
+                    interface: 'eth0',
+                    command: 'allow-traffic',
+                    params: { ip: prefix },
+                    source: `Manual Unblock (${prefix})`
+                })
+            });
+            const data = await res.json();
+            if (res.ok && data.success) {
+                toast.success(`✓ Unblocked ${prefix}`, { id: toastId });
+                await fetchData();
+                if (expandedStateId === routerId) await fetchRouterState(routerId);
+            } else {
+                toast.error(`❌ Failed to unblock ${prefix}: ${data.error || 'Unknown error'}`, { id: toastId });
+            }
+        } catch (err: any) {
+            toast.error(`❌ Error: ${err.message}`, { id: toastId });
+        } finally {
+            setUnblockingKey(null);
+        }
+    };
+
+    const clearAllRouterBlocks = async (routerId: string, e?: React.MouseEvent) => {
+        if (e) e.stopPropagation();
+        const key = `${routerId}:all`;
+        setUnblockingKey(key);
+        const toastId = toast.loading('Clearing all blackhole routes...');
+        try {
+            const res = await gFetch('/api/vyos/direct-action', {
+                method: 'POST',
+                headers: authHeaders(),
+                body: JSON.stringify({
+                    routerId,
+                    interface: 'eth0',
+                    command: 'clear-all-blocks',
+                    params: {},
+                    source: 'Manual Clear All Deny Routes'
+                })
+            });
+            const data = await res.json();
+            if (res.ok && data.success) {
+                toast.success('✓ All blackhole routes cleared', { id: toastId });
+                await fetchData();
+                if (expandedStateId === routerId) await fetchRouterState(routerId);
+            } else {
+                toast.error(`❌ Failed to clear routes: ${data.error || 'Unknown error'}`, { id: toastId });
+            }
+        } catch (err: any) {
+            toast.error(`❌ Error: ${err.message}`, { id: toastId });
+        } finally {
+            setUnblockingKey(null);
+        }
+    };
+
     const executeRaz = async (scope: string = 'full-reset') => {
         if (!razModal) return;
         setRazLoading(true);
@@ -613,13 +682,14 @@ export default function Vyos(props: VyosProps) {
             });
             const data = await res.json();
             setRazResult(data);
-            // Refresh state in panel
+            // Refresh state in panel and main router list
             const stateRes = await gFetch(`/api/vyos/routers/${razModal.id}/state`, {
                 headers: { 'Authorization': `Bearer ${token}` }
             });
             const newState = await stateRes.json();
             setRouterStates(prev => ({ ...prev, [razModal.id]: newState }));
             setRazModal(prev => prev ? { ...prev, state: newState } : null);
+            await fetchData();
         } catch (e: any) {
             setRazResult({ error: e.message });
         } finally {
@@ -628,28 +698,47 @@ export default function Vyos(props: VyosProps) {
     };
 
     const runSequence = async (id: string) => {
-        // Validate sequence is enabled
         const sequence = sequences.find(s => s.id === id);
         if (!sequence) {
             toast.error('❌ Sequence not found');
             return;
         }
-        if (!sequence.enabled) {
+        if (!sequence.enabled && sequence.executionMode !== 'BATCH') {
             toast.error('❌ Cannot run disabled sequence. Enable it first.');
             return;
         }
 
-        const toastId = toast.loading('Starting sequence...');
+        const isBatch = sequence.executionMode === 'BATCH' || sequence.actions.length > 1;
+        setRunningSeqId(id);
+        const toastId = toast.loading(
+            isBatch
+                ? `Executing ${sequence.actions.length} action(s) sequentially...`
+                : 'Starting sequence...'
+        );
         try {
             const res = await gFetch(`/api/vyos/sequences/run/${id}`, { method: 'POST', headers: { 'Authorization': `Bearer ${token}` } });
-            if (res.ok) {
-                toast.success('✓ Mission sequence initiated', { id: toastId });
+            const data = await res.json().catch(() => ({}));
+            if (res.ok && data.success !== false) {
+                if (Array.isArray(data.results) && data.results.length > 0) {
+                    setBatchResults(prev => ({ ...prev, [id]: { ...data, timestamp: Date.now() } }));
+                    const okCount = data.results.filter((r: any) => r.status === 'success').length;
+                    const total = data.results.length;
+                    if (okCount === total) {
+                        toast.success(`✓ ${okCount}/${total} action(s) executed — all OK`, { id: toastId });
+                    } else {
+                        toast.error(`⚠️ ${okCount}/${total} action(s) OK, ${total - okCount} failed`, { id: toastId });
+                    }
+                } else {
+                    toast.success('✓ Mission sequence initiated', { id: toastId });
+                }
             } else {
-                toast.error('❌ Failed to start sequence', { id: toastId });
+                toast.error(`❌ Failed to start sequence: ${data.error || 'Unknown error'}`, { id: toastId });
             }
-            fetchData();
+            await fetchData();
         } catch (e) {
             toast.error('❌ Network error starting sequence', { id: toastId });
+        } finally {
+            setRunningSeqId(null);
         }
     };
 
@@ -682,19 +771,52 @@ export default function Vyos(props: VyosProps) {
             id: `seq-${Date.now()}`,
             name: '',
             enabled: true,
-            executionMode: 'CYCLE',
+            executionMode: 'BATCH',
             currentStep: 0,
-            cycle_duration: 0,  // Default to Manual Trigger Only
+            cycle_duration: 0,  // Default to One-Shot Batch / Manual Trigger
             actions: []
         });
         setShowSeqModal(true);
     };
 
+    const expandMultiSubnetActions = (actions: VyosAction[]): VyosAction[] => {
+        const expanded: VyosAction[] = [];
+        let splitIndex = 0;
+        for (const action of actions) {
+            if ((action.command === 'deny-traffic' || action.command === 'allow-traffic') && typeof action.parameters?.ip === 'string') {
+                const tokens = action.parameters.ip
+                    .split(/[\s,;]+/)
+                    .map((t: string) => t.trim())
+                    .filter(Boolean);
+                if (tokens.length > 1) {
+                    tokens.forEach((ipToken: string, i: number) => {
+                        expanded.push({
+                            ...action,
+                            id: i === 0 ? action.id : `act-${Date.now()}-${++splitIndex}`,
+                            parameters: { ...action.parameters, ip: ipToken }
+                        });
+                    });
+                    continue;
+                }
+            }
+            expanded.push(action);
+        }
+        return expanded;
+    };
+
     const saveSequence = async () => {
         if (!editingSeq) return;
 
-        // NEW: Validate firewall commands
-        for (const action of editingSeq.actions) {
+        // Expand any space/comma-separated subnets into individual atomic actions (1 session per subnet)
+        const expandedActions = expandMultiSubnetActions(editingSeq.actions);
+        const seqToSave: VyosSequence = {
+            ...editingSeq,
+            cycle_duration: editingSeq.executionMode === 'CYCLE' ? editingSeq.cycle_duration : 0,
+            actions: expandedActions
+        };
+
+        // Validate firewall commands
+        for (const action of seqToSave.actions) {
             if (action.command === 'deny-traffic' || action.command === 'allow-traffic') {
                 if (!action.parameters?.ip) {
                     toast.error(`IP address or subnet is required for ${action.command}`);
@@ -709,7 +831,7 @@ export default function Vyos(props: VyosProps) {
                 const isFqdn = fqdnRegex.test(action.parameters.ip);
 
                 if (!isCidr && !isFqdn) {
-                    toast.error(`Invalid format for ${action.command}. Use IP (e.g., 8.8.8.8/32) or FQDN (e.g., google.com)`);
+                    toast.error(`Invalid format for ${action.command} ("${action.parameters.ip}"). Use IP/CIDR (e.g., 20.190.0.0/16) or FQDN`);
                     return;
                 }
                 
@@ -746,7 +868,7 @@ export default function Vyos(props: VyosProps) {
             const res = await gFetch('/api/vyos/sequences', {
                 method: 'POST',
                 headers: authHeaders(),
-                body: JSON.stringify(editingSeq)
+                body: JSON.stringify(seqToSave)
             });
             if (res.ok) {
                 fetchData();
@@ -1238,6 +1360,57 @@ export default function Vyos(props: VyosProps) {
                                     <span className="text-[10px] text-text-secondary font-mono bg-card-secondary px-2 py-0.5 rounded border border-border/50">v{router.version}</span>
                                 </div>
 
+                                {/* Active Deny Routes (Blackhole tag 999) */}
+                                {(() => {
+                                    const activeBlocks: { prefix: string; description?: string }[] =
+                                        routerStates[router.id]?.blackhole_blocks ?? router.blackholeBlocks ?? [];
+                                    if (!activeBlocks || activeBlocks.length === 0) return null;
+                                    const isClearingAll = unblockingKey === `${router.id}:all`;
+                                    return (
+                                        <div className="p-3 bg-red-500/10 border border-red-500/30 rounded-xl space-y-2 animate-in fade-in duration-200">
+                                            <div className="flex items-center justify-between">
+                                                <div className="flex items-center gap-1.5">
+                                                    <Ban size={12} className="text-red-400 shrink-0" />
+                                                    <span className="text-[10px] font-black uppercase tracking-widest text-red-400">
+                                                        Active Deny Routes ({activeBlocks.length})
+                                                    </span>
+                                                </div>
+                                                <button
+                                                    onClick={(e) => clearAllRouterBlocks(router.id, e)}
+                                                    disabled={isClearingAll}
+                                                    className="px-2 py-0.5 rounded bg-red-500/20 hover:bg-red-500/30 text-red-300 border border-red-500/30 text-[9px] font-black uppercase tracking-wider transition-all disabled:opacity-50 flex items-center gap-1"
+                                                    title="Remove all blackhole routes (tag 999) on this router"
+                                                >
+                                                    {isClearingAll ? <RefreshCw size={10} className="animate-spin" /> : <Eraser size={10} />}
+                                                    Clear All
+                                                </button>
+                                            </div>
+                                            <div className="flex flex-wrap gap-1.5">
+                                                {activeBlocks.map((b, i) => {
+                                                    const isUnblocking = unblockingKey === `${router.id}:${b.prefix}`;
+                                                    return (
+                                                        <span
+                                                            key={`${b.prefix}-${i}`}
+                                                            className="inline-flex items-center gap-1.5 font-mono text-[10px] font-bold text-red-300 bg-card/80 px-2 py-1 rounded-lg border border-red-500/30 shadow-sm"
+                                                            title={b.description || 'Blackhole static route (tag 999)'}
+                                                        >
+                                                            <span>{b.prefix}</span>
+                                                            <button
+                                                                onClick={(e) => unblockRouterPrefix(router.id, b.prefix, e)}
+                                                                disabled={isUnblocking || isClearingAll}
+                                                                className="text-red-400 hover:text-white hover:bg-red-500/40 rounded px-1 leading-none transition-colors disabled:opacity-40"
+                                                                title={`Unblock ${b.prefix}`}
+                                                            >
+                                                                {isUnblocking ? '…' : '×'}
+                                                            </button>
+                                                        </span>
+                                                    );
+                                                })}
+                                            </div>
+                                        </div>
+                                    );
+                                })()}
+
                                 <div className="space-y-3">
                                     <div className="flex items-center justify-between text-[10px] mb-1">
                                         <span className="text-text-muted uppercase font-black tracking-widest pl-1">Network Interfaces</span>
@@ -1447,7 +1620,7 @@ export default function Vyos(props: VyosProps) {
                         {/* Rows */}
                         <div className="divide-y divide-border/40">
                             {processedSequences.map((seq) => {
-                                const isRunning = activeExecution?.sequenceId === seq.id;
+                                const isRunning = activeExecution?.sequenceId === seq.id || runningSeqId === seq.id;
                                 const fa = seq.actions[0]; // first action
                                 const faRouter = fa ? routers.find(r => r.id === fa.router_id) : null;
                                 const faIfaceObj = faRouter?.interfaces?.find(i => i.name === fa?.interface);
@@ -1455,6 +1628,10 @@ export default function Vyos(props: VyosProps) {
                                 const needsIface = fa && !['deny-traffic','allow-traffic','clear-all-blocks','show-denied'].includes(fa.command);
                                 const needsIp = fa && ['deny-traffic','allow-traffic'].includes(fa.command);
                                 const isQos = fa?.command === 'set-qos';
+                                const allIps = seq.actions
+                                    .filter(a => ['deny-traffic', 'allow-traffic'].includes(a.command) && a.parameters?.ip)
+                                    .map(a => a.parameters.ip);
+                                const batchRes = batchResults[seq.id];
                                 const rowAccent = fa
                                     ? ['interface-down','deny-traffic'].includes(fa.command) ? 'border-l-red-500/50'
                                         : ['interface-up','allow-traffic'].includes(fa.command) ? 'border-l-green-500/50'
@@ -1462,105 +1639,154 @@ export default function Vyos(props: VyosProps) {
                                                 : 'border-l-border/20'
                                     : 'border-l-border/20';
                                 return (
-                                    <div
-                                        key={seq.id}
-                                        className={cn(
-                                            'grid items-center gap-2 px-3 py-2 cursor-pointer transition-colors border-l-2 select-none',
-                                            rowAccent,
-                                            isRunning ? 'bg-blue-500/5' : 'hover:bg-card-secondary/25'
-                                        )}
-                                        style={{ gridTemplateColumns: '68px 1fr 110px 100px 120px 140px 44px 60px 80px' }}
-                                        onClick={() => openSeqModal(seq)}
-                                        title="Click to edit"
-                                    >
-                                        {/* Run */}
-                                        <div onClick={e => e.stopPropagation()}>
-                                            <button
-                                                onClick={() => seq.executionMode === 'STEP_BY_STEP' ? setView('timeline') : runSequence(seq.id)}
-                                                disabled={activeExecution !== null}
-                                                className={cn(
-                                                    'flex items-center gap-1 px-2 py-1.5 rounded-lg font-bold text-[10px] transition-all disabled:opacity-30 shadow-sm active:scale-95 whitespace-nowrap',
-                                                    isRunning ? 'bg-card-secondary text-text-muted'
-                                                        : seq.executionMode === 'STEP_BY_STEP' ? 'bg-blue-600 hover:bg-blue-500 text-white'
-                                                            : 'bg-purple-600 hover:bg-purple-500 text-white'
-                                                )}
-                                            >
-                                                {isRunning ? <Activity size={11} className="animate-spin" /> : seq.executionMode === 'STEP_BY_STEP' ? <ChevronRight size={11} /> : <Play size={11} fill="currentColor" />}
-                                                {seq.executionMode === 'STEP_BY_STEP' ? 'Steps' : 'Run'}
-                                            </button>
-                                        </div>
+                                    <div key={seq.id} className={cn('border-l-2 transition-colors', rowAccent, isRunning ? 'bg-blue-500/5' : 'hover:bg-card-secondary/25')}>
+                                        <div
+                                            className="grid items-center gap-2 px-3 py-2 cursor-pointer select-none"
+                                            style={{ gridTemplateColumns: '68px 1fr 110px 100px 120px 140px 44px 60px 80px' }}
+                                            onClick={() => openSeqModal(seq)}
+                                            title="Click to edit"
+                                        >
+                                            {/* Run */}
+                                            <div onClick={e => e.stopPropagation()}>
+                                                <button
+                                                    onClick={() => seq.executionMode === 'STEP_BY_STEP' ? setView('timeline') : runSequence(seq.id)}
+                                                    disabled={activeExecution !== null || runningSeqId !== null}
+                                                    className={cn(
+                                                        'flex items-center gap-1 px-2 py-1.5 rounded-lg font-bold text-[10px] transition-all disabled:opacity-30 shadow-sm active:scale-95 whitespace-nowrap',
+                                                        isRunning ? 'bg-card-secondary text-text-muted'
+                                                            : seq.executionMode === 'STEP_BY_STEP' ? 'bg-blue-600 hover:bg-blue-500 text-white'
+                                                                : seq.executionMode === 'BATCH' ? 'bg-amber-600 hover:bg-amber-500 text-white'
+                                                                    : 'bg-purple-600 hover:bg-purple-500 text-white'
+                                                    )}
+                                                >
+                                                    {isRunning ? <Activity size={11} className="animate-spin" /> : seq.executionMode === 'STEP_BY_STEP' ? <ChevronRight size={11} /> : seq.executionMode === 'BATCH' ? <Zap size={11} fill="currentColor" /> : <Play size={11} fill="currentColor" />}
+                                                    {seq.executionMode === 'STEP_BY_STEP' ? 'Steps' : seq.executionMode === 'BATCH' ? 'Batch' : 'Run'}
+                                                </button>
+                                            </div>
 
-                                        {/* Name + mode badge */}
-                                        <div className="min-w-0">
-                                            <span className="text-[11px] font-semibold text-text-primary truncate block leading-tight">{seq.name}</span>
-                                            <div className="flex items-center gap-1 mt-0.5">
-                                                <span className={cn(
-                                                    'text-[8px] font-black px-1 py-0.5 rounded border leading-none',
-                                                    seq.executionMode === 'STEP_BY_STEP' ? 'bg-purple-500/10 text-purple-400 border-purple-500/20'
-                                                        : seq.cycle_duration > 0 ? 'bg-blue-500/10 text-blue-400 border-blue-500/20'
-                                                            : 'bg-card-secondary text-text-muted border-border'
-                                                )}>
-                                                    {seq.executionMode === 'STEP_BY_STEP' ? 'STEP' : seq.cycle_duration > 0 ? `${seq.cycle_duration}M` : 'MANUAL'}
-                                                </span>
-                                                {seq.actions.length > 1 && <span className="text-[8px] text-text-muted/60">{seq.actions.length}×</span>}
-                                                {isRunning && <span className="text-[8px] font-black text-blue-400 animate-pulse">●</span>}
+                                            {/* Name + mode badge */}
+                                            <div className="min-w-0">
+                                                <span className="text-[11px] font-semibold text-text-primary truncate block leading-tight">{seq.name}</span>
+                                                <div className="flex items-center gap-1 mt-0.5">
+                                                    <span className={cn(
+                                                        'text-[8px] font-black px-1 py-0.5 rounded border leading-none',
+                                                        seq.executionMode === 'STEP_BY_STEP' ? 'bg-purple-500/10 text-purple-400 border-purple-500/20'
+                                                            : seq.executionMode === 'BATCH' ? 'bg-amber-500/10 text-amber-400 border-amber-500/20'
+                                                                : seq.cycle_duration > 0 ? 'bg-blue-500/10 text-blue-400 border-blue-500/20'
+                                                                    : 'bg-card-secondary text-text-muted border-border'
+                                                    )}>
+                                                        {seq.executionMode === 'STEP_BY_STEP' ? 'STEP' : seq.executionMode === 'BATCH' ? '1-SHOT BATCH' : seq.cycle_duration > 0 ? `${seq.cycle_duration}M` : 'MANUAL'}
+                                                    </span>
+                                                    {seq.actions.length > 1 && <span className="text-[8px] font-bold text-text-muted/80 bg-card-secondary px-1 py-0.5 rounded">{seq.actions.length} actions</span>}
+                                                    {isRunning && <span className="text-[8px] font-black text-blue-400 animate-pulse">● RUNNING</span>}
+                                                </div>
+                                            </div>
+
+                                            {/* Router */}
+                                            <div className="text-[10px] font-mono text-text-secondary truncate">
+                                                {faRouter?.name || <span className="opacity-25">—</span>}
+                                            </div>
+
+                                            {/* Command */}
+                                            <div className="flex items-center gap-1 min-w-0">
+                                                {fa ? <>{getCommandIcon(fa.command, 11)}<span className="text-[10px] font-semibold text-text-primary truncate">{getCommandDisplayName(fa.command)}</span></> : <span className="opacity-25 text-[10px]">—</span>}
+                                            </div>
+
+                                            {/* Interface */}
+                                            <div className="text-[10px] font-mono text-text-muted truncate" title={faIfaceDesc || undefined}>
+                                                {needsIface && fa?.interface ? (
+                                                    <>
+                                                        {fa.interface}
+                                                        {faIfaceDesc && <span className="text-[8px] text-text-muted/60 ml-1 font-sans">({faIfaceDesc})</span>}
+                                                    </>
+                                                ) : (
+                                                    <span className="opacity-25">—</span>
+                                                )}
+                                            </div>
+
+                                            {/* Params */}
+                                            <div className="flex items-center gap-1 flex-wrap min-w-0" title={allIps.length > 1 ? allIps.join(', ') : undefined}>
+                                                {allIps.length > 0 && (
+                                                    <>
+                                                        <span className="text-[9px] font-mono bg-red-500/10 text-red-400 border border-red-500/20 px-1 py-0.5 rounded truncate max-w-[105px]">{allIps[0]}</span>
+                                                        {allIps.length > 1 && (
+                                                            <span className="text-[8px] font-black bg-red-500/20 text-red-300 border border-red-500/30 px-1 py-0.5 rounded">+{allIps.length - 1}</span>
+                                                        )}
+                                                    </>
+                                                )}
+                                                {isQos && <>
+                                                    {fa?.parameters?.latency ? <span className="text-[9px] font-mono bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 px-1 py-0.5 rounded">{fa.parameters.latency}ms</span> : null}
+                                                    {fa?.parameters?.loss ? <span className="text-[9px] font-mono bg-orange-500/10 text-orange-400 border border-orange-500/20 px-1 py-0.5 rounded">{fa.parameters.loss}%</span> : null}
+                                                    {fa?.parameters?.rate ? <span className="text-[9px] font-mono bg-purple-500/10 text-purple-400 border border-purple-500/20 px-1 py-0.5 rounded">{fa.parameters.rate}</span> : null}
+                                                </>}
+                                                {!needsIp && !isQos && <span className="opacity-25 text-[9px]">—</span>}
+                                            </div>
+
+                                            {/* Enable toggle */}
+                                            <div onClick={e => e.stopPropagation()}>
+                                                <button
+                                                    onClick={() => toggleSequenceEnabled(seq)}
+                                                    className={cn('relative w-8 h-4 rounded-full transition-all duration-300 border', seq.enabled ? 'bg-green-500 border-green-600' : 'bg-gray-700 border-gray-600')}
+                                                    title={seq.enabled ? 'Disable' : 'Enable'}
+                                                >
+                                                    <div className={cn('absolute top-0.5 w-2.5 h-2.5 bg-white rounded-full transition-transform duration-300', seq.enabled ? 'translate-x-3.5' : 'translate-x-0.5')} />
+                                                </button>
+                                            </div>
+
+                                            {/* Last run */}
+                                            <div className="text-[9px] text-text-muted font-mono">
+                                                {seq.lastRun ? new Date(seq.lastRun).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Ready'}
+                                            </div>
+
+                                            {/* Controls */}
+                                            <div className="flex items-center justify-end gap-0.5" onClick={e => e.stopPropagation()}>
+                                                <button onClick={() => cloneReverseSequence(seq)} className="p-1 text-text-muted hover:text-green-400 hover:bg-green-500/10 rounded transition-all" title="Clone reverse"><RefreshCw size={11} /></button>
+                                                <button onClick={() => deleteSequence(seq.id)} className="p-1 text-text-muted hover:text-red-400 hover:bg-red-500/10 rounded transition-all" title="Delete"><Trash2 size={11} /></button>
                                             </div>
                                         </div>
 
-                                        {/* Router */}
-                                        <div className="text-[10px] font-mono text-text-secondary truncate">
-                                            {faRouter?.name || <span className="opacity-25">—</span>}
-                                        </div>
-
-                                        {/* Command */}
-                                        <div className="flex items-center gap-1 min-w-0">
-                                            {fa ? <>{getCommandIcon(fa.command, 11)}<span className="text-[10px] font-semibold text-text-primary truncate">{getCommandDisplayName(fa.command)}</span></> : <span className="opacity-25 text-[10px]">—</span>}
-                                        </div>
-
-                                        {/* Interface */}
-                                        <div className="text-[10px] font-mono text-text-muted truncate" title={faIfaceDesc || undefined}>
-                                            {needsIface && fa?.interface ? (
-                                                <>
-                                                    {fa.interface}
-                                                    {faIfaceDesc && <span className="text-[8px] text-text-muted/60 ml-1 font-sans">({faIfaceDesc})</span>}
-                                                </>
-                                            ) : (
-                                                <span className="opacity-25">—</span>
-                                            )}
-                                        </div>
-
-                                        {/* Params */}
-                                        <div className="flex items-center gap-1 flex-wrap min-w-0">
-                                            {needsIp && fa?.parameters?.ip && <span className="text-[9px] font-mono bg-red-500/10 text-red-400 border border-red-500/20 px-1 py-0.5 rounded truncate max-w-[130px]">{fa.parameters.ip}</span>}
-                                            {isQos && <>
-                                                {fa?.parameters?.latency ? <span className="text-[9px] font-mono bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 px-1 py-0.5 rounded">{fa.parameters.latency}ms</span> : null}
-                                                {fa?.parameters?.loss ? <span className="text-[9px] font-mono bg-orange-500/10 text-orange-400 border border-orange-500/20 px-1 py-0.5 rounded">{fa.parameters.loss}%</span> : null}
-                                                {fa?.parameters?.rate ? <span className="text-[9px] font-mono bg-purple-500/10 text-purple-400 border border-purple-500/20 px-1 py-0.5 rounded">{fa.parameters.rate}</span> : null}
-                                            </>}
-                                            {!needsIp && !isQos && <span className="opacity-25 text-[9px]">—</span>}
-                                        </div>
-
-                                        {/* Enable toggle */}
-                                        <div onClick={e => e.stopPropagation()}>
-                                            <button
-                                                onClick={() => toggleSequenceEnabled(seq)}
-                                                className={cn('relative w-8 h-4 rounded-full transition-all duration-300 border', seq.enabled ? 'bg-green-500 border-green-600' : 'bg-gray-700 border-gray-600')}
-                                                title={seq.enabled ? 'Disable' : 'Enable'}
+                                        {/* Per-action execution results drawer (for One-Shot Batch / multi-action runs) */}
+                                        {batchRes && Array.isArray(batchRes.results) && batchRes.results.length > 0 && (
+                                            <div
+                                                className="px-3 pb-2.5 pt-1 bg-card-secondary/40 border-t border-border/30 flex flex-wrap items-center gap-1.5"
+                                                onClick={e => e.stopPropagation()}
                                             >
-                                                <div className={cn('absolute top-0.5 w-2.5 h-2.5 bg-white rounded-full transition-transform duration-300', seq.enabled ? 'translate-x-3.5' : 'translate-x-0.5')} />
-                                            </button>
-                                        </div>
-
-                                        {/* Last run */}
-                                        <div className="text-[9px] text-text-muted font-mono">
-                                            {seq.lastRun ? new Date(seq.lastRun).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Ready'}
-                                        </div>
-
-                                        {/* Controls */}
-                                        <div className="flex items-center justify-end gap-0.5" onClick={e => e.stopPropagation()}>
-                                            <button onClick={() => cloneReverseSequence(seq)} className="p-1 text-text-muted hover:text-green-400 hover:bg-green-500/10 rounded transition-all" title="Clone reverse"><RefreshCw size={11} /></button>
-                                            <button onClick={() => deleteSequence(seq.id)} className="p-1 text-text-muted hover:text-red-400 hover:bg-red-500/10 rounded transition-all" title="Delete"><Trash2 size={11} /></button>
-                                        </div>
+                                                <span className="text-[9px] font-black uppercase tracking-wider text-text-muted mr-1">
+                                                    Batch Result:
+                                                </span>
+                                                {batchRes.results.map((r: any, idx: number) => {
+                                                    const rRouter = routers.find(rt => rt.id === r.routerId)?.name || r.routerId;
+                                                    const paramLabel = r.parameters?.ip || (r.interface && !['deny-traffic', 'allow-traffic', 'clear-all-blocks', 'show-denied'].includes(r.command) ? r.interface : '');
+                                                    const isOk = r.status === 'success';
+                                                    return (
+                                                        <span
+                                                            key={idx}
+                                                            title={r.cliEquivalent || r.error || ''}
+                                                            className={cn(
+                                                                'inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[9px] font-mono border',
+                                                                isOk
+                                                                    ? 'bg-green-500/10 text-green-400 border-green-500/30'
+                                                                    : 'bg-red-500/10 text-red-400 border-red-500/30'
+                                                            )}
+                                                        >
+                                                            <span className="font-bold">{isOk ? '✓ OK' : '✗ ERR'}</span>
+                                                            <span className="text-text-secondary">#{idx + 1}</span>
+                                                            <span>{rRouter}</span>
+                                                            <span className="font-semibold text-text-primary">{getCommandDisplayName(r.command)}</span>
+                                                            {paramLabel && <span className="underline decoration-dotted">{paramLabel}</span>}
+                                                            {r.durationMs ? <span className="text-text-muted opacity-75">({r.durationMs}ms)</span> : null}
+                                                        </span>
+                                                    );
+                                                })}
+                                                <button
+                                                    onClick={() => setBatchResults(prev => { const copy = { ...prev }; delete copy[seq.id]; return copy; })}
+                                                    className="ml-auto text-[9px] text-text-muted hover:text-text-primary px-1.5 py-0.5 rounded hover:bg-card"
+                                                    title="Dismiss results"
+                                                >
+                                                    ×
+                                                </button>
+                                            </div>
+                                        )}
                                     </div>
                                 );
                             })}
@@ -2184,6 +2410,7 @@ export default function Vyos(props: VyosProps) {
                                 onChange={(e) => setEditingSeq({ ...editingSeq, executionMode: e.target.value as any })}
                                 className="bg-card-secondary border border-border rounded-lg px-3 py-1.5 text-[12px] text-text-primary focus:outline-none focus:ring-1 focus:ring-purple-500/50 appearance-none cursor-pointer shrink-0"
                             >
+                                <option value="BATCH">One-Shot Batch (All at once)</option>
                                 <option value="CYCLE">Timed Cycle</option>
                                 <option value="STEP_BY_STEP">Step-by-Step</option>
                             </select>
@@ -2205,6 +2432,8 @@ export default function Vyos(props: VyosProps) {
                                     <option value={120}>Every 2 h</option>
                                     <option value={1440}>Every 24 h</option>
                                 </select>
+                            ) : editingSeq.executionMode === 'BATCH' ? (
+                                <span className="text-[10px] text-amber-400/90 font-semibold shrink-0">⚡ 1-Shot Sequential</span>
                             ) : (
                                 <span className="text-[10px] text-purple-400/70 italic shrink-0">Interactive mode</span>
                             )}
@@ -2222,27 +2451,31 @@ export default function Vyos(props: VyosProps) {
                                         <span className="text-[10px] text-text-muted">
                                             {editingSeq.executionMode === 'CYCLE'
                                                 ? 'Each action fires at its T+ offset within the cycle'
-                                                : 'Actions execute one at a time in order'}
+                                                : editingSeq.executionMode === 'BATCH'
+                                                    ? 'All actions execute sequentially in 1 shot with individual OK/Failed status per command (tip: paste multiple subnets separated by space or comma)'
+                                                    : 'Actions execute one at a time when you click Next Step'}
                                         </span>
                                     </div>
                                     <button
                                         onClick={() => {
                                             const lastAction = editingSeq.actions[editingSeq.actions.length - 1];
-                                            const nextOffset = lastAction ? lastAction.offset_minutes + 10 : 0;
-                                            const defaultInterface = routers[0]?.interfaces?.[0]?.name || 'eth0';
+                                            const nextOffset = editingSeq.executionMode === 'CYCLE' ? (lastAction ? lastAction.offset_minutes + 10 : 0) : 0;
+                                            const defaultInterface = lastAction?.interface || routers[0]?.interfaces?.[0]?.name || 'eth0';
+                                            const defaultRouter = lastAction?.router_id || routers[0]?.id || '';
+                                            const defaultCommand = lastAction?.command || 'deny-traffic';
                                             setEditingSeq({
                                                 ...editingSeq,
                                                 actions: [...editingSeq.actions, {
                                                     id: `act-${Date.now()}`,
                                                     offset_minutes: nextOffset,
-                                                    router_id: routers[0]?.id || '',
+                                                    router_id: defaultRouter,
                                                     interface: defaultInterface,
-                                                    command: 'interface-down',
+                                                    command: defaultCommand,
                                                     parameters: {}
                                                 }]
                                             });
                                         }}
-                                        className="px-4 py-2 bg-purple-600 hover:bg-purple-500 text-white rounded-xl text-[11px] font-semibold transition-all shadow-lg shadow-purple-900/20 active:scale-95 flex items-center gap-1.5"
+                                        className="px-4 py-2 bg-purple-600 hover:bg-purple-500 text-white rounded-xl text-[11px] font-semibold transition-all shadow-lg shadow-purple-900/20 active:scale-95 flex items-center gap-1.5 shrink-0"
                                     >
                                         <Plus size={13} /> Add action
                                     </button>
@@ -2251,8 +2484,8 @@ export default function Vyos(props: VyosProps) {
                                 <div className="space-y-0 border border-border rounded-xl overflow-hidden">
                                     {/* Column headers */}
                                     <div className="grid gap-2 px-3 py-2 bg-card-secondary/60 border-b border-border text-[8px] font-black text-text-muted uppercase tracking-widest"
-                                        style={{ gridTemplateColumns: '52px 150px 1fr 1fr 1fr 36px' }}>
-                                        <div>T+min</div>
+                                        style={{ gridTemplateColumns: '52px 150px 1fr 1fr 1.2fr 64px' }}>
+                                        <div>{editingSeq.executionMode === 'CYCLE' ? 'T+min' : 'Step'}</div>
                                         <div>Command</div>
                                         <div>Router</div>
                                         <div>Interface</div>
@@ -2264,6 +2497,8 @@ export default function Vyos(props: VyosProps) {
                                         const needsIface = !['deny-traffic', 'allow-traffic', 'clear-all-blocks', 'show-denied'].includes(action.command);
                                         const needsIp = ['deny-traffic', 'allow-traffic'].includes(action.command);
                                         const isQos = action.command === 'set-qos';
+                                        const rawIpVal = String(action.parameters?.ip || '');
+                                        const multiTargets = needsIp ? rawIpVal.split(/[\s,;]+/).map(s => s.trim()).filter(Boolean) : [];
                                         const accentClass = ['interface-down', 'deny-traffic'].includes(action.command) ? 'border-l-red-500/60'
                                             : ['interface-up', 'allow-traffic'].includes(action.command) ? 'border-l-green-500/60'
                                                 : ['set-qos', 'clear-qos'].includes(action.command) ? 'border-l-indigo-500/60'
@@ -2273,19 +2508,25 @@ export default function Vyos(props: VyosProps) {
                                                 'grid gap-2 px-3 py-2 items-center border-l-2 transition-colors hover:bg-card-secondary/20 animate-in slide-in-from-left-4 duration-200',
                                                 accentClass,
                                                 idx > 0 && 'border-t border-border/40'
-                                            )} style={{ gridTemplateColumns: '52px 150px 1fr 1fr 1fr 36px' }}>
+                                            )} style={{ gridTemplateColumns: '52px 150px 1fr 1fr 1.2fr 64px' }}>
 
-                                                {/* T+min */}
-                                                <input
-                                                    type="number"
-                                                    value={action.offset_minutes}
-                                                    onChange={(e) => {
-                                                        const newActions = [...editingSeq.actions];
-                                                        newActions[idx].offset_minutes = Math.min(editingSeq.cycle_duration, Math.max(0, parseInt(e.target.value) || 0));
-                                                        setEditingSeq({ ...editingSeq, actions: newActions });
-                                                    }}
-                                                    className="w-full bg-card border border-border rounded-lg px-2 py-1.5 text-purple-400 font-black text-center text-sm focus:outline-none focus:ring-1 focus:ring-purple-500/50"
-                                                />
+                                                {/* T+min or Step # */}
+                                                {editingSeq.executionMode === 'CYCLE' ? (
+                                                    <input
+                                                        type="number"
+                                                        value={action.offset_minutes}
+                                                        onChange={(e) => {
+                                                            const newActions = [...editingSeq.actions];
+                                                            newActions[idx].offset_minutes = Math.min(editingSeq.cycle_duration, Math.max(0, parseInt(e.target.value) || 0));
+                                                            setEditingSeq({ ...editingSeq, actions: newActions });
+                                                        }}
+                                                        className="w-full bg-card border border-border rounded-lg px-2 py-1.5 text-purple-400 font-black text-center text-sm focus:outline-none focus:ring-1 focus:ring-purple-500/50"
+                                                    />
+                                                ) : (
+                                                    <div className="w-full bg-card-secondary/60 border border-border/60 rounded-lg px-2 py-1.5 text-amber-400 font-mono font-bold text-center text-xs select-none">
+                                                        #{idx + 1}
+                                                    </div>
+                                                )}
 
                                                 {/* Command */}
                                                 <ActionSelector
@@ -2357,23 +2598,64 @@ export default function Vyos(props: VyosProps) {
                                                     </div>
                                                 ) : needsIp ? (
                                                     <div className="flex items-center gap-1">
-                                                        <input type="text" placeholder="8.8.8.8/32 or FQDN"
+                                                        <input type="text" placeholder="20.190.0.0/16 40.126.32.0/24"
                                                             value={action.parameters?.ip || ''}
                                                             onChange={(e) => { const a = [...editingSeq.actions]; a[idx].parameters = { ...a[idx].parameters, ip: e.target.value }; setEditingSeq({ ...editingSeq, actions: a }); }}
                                                             className="w-full bg-card border border-red-500/30 rounded px-2 py-1.5 text-[11px] text-text-primary font-mono focus:outline-none focus:ring-1 focus:ring-red-500/40" />
-                                                        <span className="text-red-500 text-xs shrink-0">*</span>
+                                                        {multiTargets.length > 1 ? (
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => {
+                                                                    const splitRows = multiTargets.map((target, sIdx) => ({
+                                                                        ...action,
+                                                                        id: `${action.id || `act-${Date.now()}`}-${sIdx}`,
+                                                                        parameters: { ...action.parameters, ip: target }
+                                                                    }));
+                                                                    const nextActions = [...editingSeq.actions];
+                                                                    nextActions.splice(idx, 1, ...splitRows);
+                                                                    setEditingSeq({ ...editingSeq, actions: nextActions });
+                                                                }}
+                                                                title={`Split into ${multiTargets.length} separate actions (or save directly to auto-split)`}
+                                                                className="px-1.5 py-1 rounded bg-amber-500/15 hover:bg-amber-500/25 text-amber-400 border border-amber-500/30 text-[9px] font-bold shrink-0 transition-colors"
+                                                            >
+                                                                Split ×{multiTargets.length}
+                                                            </button>
+                                                        ) : (
+                                                            <span className="text-red-500 text-xs shrink-0">*</span>
+                                                        )}
                                                     </div>
                                                 ) : (
                                                     <div className="flex items-center justify-center text-text-muted/30 text-xs select-none">—</div>
                                                 )}
 
-                                                {/* Delete */}
-                                                <button
-                                                    onClick={() => setEditingSeq({ ...editingSeq, actions: editingSeq.actions.filter((_, i) => i !== idx) })}
-                                                    className="p-1.5 text-text-muted hover:text-red-500 hover:bg-red-500/10 rounded-lg transition-all"
-                                                >
-                                                    <Trash2 size={14} />
-                                                </button>
+                                                {/* Duplicate + Delete */}
+                                                <div className="flex items-center justify-end gap-0.5">
+                                                    <button
+                                                        type="button"
+                                                        title="Duplicate action"
+                                                        onClick={() => {
+                                                            const cloned = {
+                                                                ...action,
+                                                                id: `act-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+                                                                parameters: { ...(action.parameters || {}) }
+                                                            };
+                                                            const nextActions = [...editingSeq.actions];
+                                                            nextActions.splice(idx + 1, 0, cloned);
+                                                            setEditingSeq({ ...editingSeq, actions: nextActions });
+                                                        }}
+                                                        className="p-1.5 text-text-muted hover:text-purple-400 hover:bg-purple-500/10 rounded-lg transition-all"
+                                                    >
+                                                        <Copy size={13} />
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        title="Delete action"
+                                                        onClick={() => setEditingSeq({ ...editingSeq, actions: editingSeq.actions.filter((_, i) => i !== idx) })}
+                                                        className="p-1.5 text-text-muted hover:text-red-500 hover:bg-red-500/10 rounded-lg transition-all"
+                                                    >
+                                                        <Trash2 size={14} />
+                                                    </button>
+                                                </div>
                                             </div>
                                         );
                                     })}
