@@ -13,6 +13,7 @@ import Speedtest from './Speedtest';
 import Topology from './Topology';
 import LiveEvents from './LiveEvents';
 import { CustomApps } from './CustomApps';
+import { MulticastOverlayTab } from './components/custom-tcp/MulticastOverlayTab';
 import { PcapReplay } from './PcapReplay';
 import PacketCapture from './PacketCapture';
 import Copilot from './Copilot';
@@ -246,7 +247,7 @@ interface SiteInfo {
 export default function App() {
   const [token, setToken] = useState<string | null>(localStorage.getItem('token'));
   const [username, setUsername] = useState<string | null>(localStorage.getItem('username'));
-  const [view, setView] = useState<'dashboard' | 'settings' | 'statistics' | 'security' | 'voice' | 'performance' | 'failover' | 'srt' | 'iot' | 'vyos' | 'speedtest' | 'topology' | 'convergence' | 'events' | 'custom_apps' | 'pcap_replay' | 'packet_capture' | 'api_studio' | 'copilot' | 'fleet' | 'home'>(
+  const [view, setView] = useState<'dashboard' | 'settings' | 'statistics' | 'security' | 'voice' | 'performance' | 'failover' | 'srt' | 'iot' | 'vyos' | 'speedtest' | 'topology' | 'convergence' | 'events' | 'custom_apps' | 'multicast' | 'pcap_replay' | 'packet_capture' | 'api_studio' | 'copilot' | 'fleet' | 'home'>(
     () => {
       const saved = localStorage.getItem('activeView');
       if (saved && saved !== 'settings') {
@@ -474,6 +475,10 @@ export default function App() {
       healthData?.subsystems?.custom_apps?.running ||
       (healthData?.subsystems?.custom_apps?.active_streams > 0) ||
       (healthData?.subsystems?.custom_apps?.active_workloads > 0)
+    ),
+    multicast: Boolean(
+      healthData?.subsystems?.multicast?.running ||
+      (healthData?.subsystems?.multicast?.activeStreamsCount > 0)
     ),
     iot: Boolean(
       healthData?.subsystems?.iot?.running ||
@@ -1817,6 +1822,13 @@ export default function App() {
       {(view === 'failover' || view === 'convergence') && <Failover token={token!} externalStatus={globalConvStatus} />}
       {view === 'settings' && <SettingsComponent token={token!} uiConfig={uiConfig} onUpdateUIConfig={fetchConfigUi} onUpdateCopilotConfig={fetchCopilotConfig} initialTab={initialSettingsTab} />}
       {view === 'custom_apps' && <CustomApps token={token!} />}
+      {view === 'multicast' && (
+        <MulticastOverlayTab
+          token={token!}
+          localSiteName={siteInfo?.detected_site_name || registryStatus?.site_name || (isLeader ? 'DC1' : 'BR8')}
+          isStandalone={true}
+        />
+      )}
       {view === 'pcap_replay' && isPcapEnabled && <PcapReplay token={token!} />}
       {view === 'packet_capture' && <PacketCapture token={token!} onNavigateToReplay={() => setView('pcap_replay')} />}
       {view === 'speedtest' && features.xfr_enabled && <Speedtest token={token!} />}

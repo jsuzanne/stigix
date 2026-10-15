@@ -5,6 +5,7 @@
 import { Router, Request, Response } from 'express';
 import { TcpAppManager } from './tcp-app-manager.js';
 import { validateApplicationConfig, validateMulticastApplicationConfig, checkHostPortAvailable } from './validation.js';
+import { MULTICAST_INDUSTRY_PRESETS } from './multicast-runtime.js';
 import crypto from 'crypto';
 import path from 'path';
 import fs from 'fs';
@@ -81,7 +82,7 @@ export function createCustomTcpApiRouter(tcpAppManager: TcpAppManager, onConfigC
     router.get('/summary/all', (_req: Request, res: Response) => {
         try {
             const statuses = tcpAppManager.getAllAppsStatus();
-            res.json({ statuses });
+            res.json({ statuses, multicast: mcManager.getActiveStreamSummary() });
         } catch (err: any) {
             res.status(500).json({ error: err.message });
         }
@@ -306,7 +307,93 @@ export function createCustomTcpApiRouter(tcpAppManager: TcpAppManager, onConfigC
         }
     });
 
+    // POST /api/custom-tcp-apps/prisma/sync-multicast/:id — Sync single multicast profile to Prisma SD-WAN
+    router.post('/prisma/sync-multicast/:id', async (req: Request, res: Response) => {
+        try {
+            const app = mcManager.getApplication(req.params.id);
+            if (!app) return res.status(404).json({ success: false, error: 'Multicast profile not found' });
+
+            const port = app.port || 5004;
+            const group = app.group;
+            if (!group) return res.status(400).json({ success: false, error: 'Multicast profile has no group IP configured' });
+
+            const result = await runPrismaCustomApps([
+                '--create',
+                '--name', app.name,
+                '--port', String(port),
+                '--protocol', 'udp',
+                '--server-prefix', `${group}/32`,
+                '--display-name', `Stigix MC ${app.name} (${group}:${port})`,
+                '--description', app.description || `Stigix Multicast Overlay (${app.mode.toUpperCase()} ${group}:${port}, DSCP ${app.dscp || 'CS0'})`
+            ]);
+
+            res.json(result);
+        } catch (err: any) {
+            res.status(500).json({ success: false, error: err.message });
+        }
+    });
+
+    // POST /api/custom-tcp-apps/prisma/sync-all-multicast — 1-click sync all multicast profiles to Prisma SD-WAN
+    router.post('/prisma/sync-all-multicast', async (_req: Request, res: Response) => {
+        try {
+            const file = tcpAppManager.getConfig();
+            const jsonString = JSON.stringify(file);
+            const result = await runPrismaCustomApps([
+                '--sync-multicast',
+                '--json-data', jsonString
+            ]);
+
+            res.json(result);
+        } catch (err: any) {
+            res.status(500).json({ success: false, error: err.message });
+        }
+    });
+
     // ─── SD-WAN Overlay Multicast Validation Endpoints (Static prefix before /:id) ─
+
+    // GET /api/custom-tcp-apps/multicast/presets — List built-in industry multicast presets
+    router.get('/multicast/presets', (_req: Request, res: Response) => {
+        res.json({
+            success: true,
+            presets: MULTICAST_INDUSTRY_PRESETS
+        });
+    });
+
+    // GET /api/custom-tcp-apps/multicast/export — Export multicast profiles as JSON bundle
+    router.get('/multicast/export', (req: Request, res: Response) => {
+        try {
+            const appId = typeof req.query.id === 'string' ? req.query.id : undefined;
+            const exportData = mcManager.exportApplications(appId);
+            const siteSlug = (exportData.exportedFromSite || 'node').toLowerCase().replace(/[^a-z0-9_-]/g, '-');
+            const dateSlug = new Date().toISOString().slice(0, 10);
+            const filename = appId
+                ? `stigix-multicast-${appId}-${dateSlug}.json`
+                : `stigix-multicast-profiles-${siteSlug}-${dateSlug}.json`;
+            res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+            res.setHeader('Content-Type', 'application/json');
+            res.send(JSON.stringify(exportData, null, 2));
+        } catch (err: any) {
+            res.status(500).json({ success: false, error: err.message });
+        }
+    });
+
+    // POST /api/custom-tcp-apps/multicast/import — Import multicast profiles from JSON bundle
+    router.post('/multicast/import', async (req: Request, res: Response) => {
+        try {
+            const mode = req.body?.mode === 'replace' ? 'replace' : 'merge';
+            const payload = req.body?.bundle || req.body;
+            const result = await mcManager.importApplications(payload, mode);
+            if (onConfigChanged) onConfigChanged();
+            res.json({
+                success: true,
+                mode,
+                ...result,
+                multicastApplications: mcManager.listApplications()
+            });
+        } catch (err: any) {
+            res.status(400).json({ success: false, error: err.message });
+        }
+    });
 
     // GET /api/custom-tcp-apps/multicast — List all multicast application profiles
     router.get('/multicast', (_req: Request, res: Response) => {
@@ -315,6 +402,7 @@ export function createCustomTcpApiRouter(tcpAppManager: TcpAppManager, onConfigC
             res.json({
                 success: true,
                 localNodeId: mcManager.getLocalNodeId(),
+                activeSummary: mcManager.getActiveStreamSummary(),
                 multicastApplications: apps
             });
         } catch (err: any) {
@@ -381,6 +469,17 @@ export function createCustomTcpApiRouter(tcpAppManager: TcpAppManager, onConfigC
     router.post('/multicast/:id/stop', async (req: Request, res: Response) => {
         try {
             const status = await mcManager.stopClusterStream(req.params.id);
+            res.json({ success: true, status });
+        } catch (err: any) {
+            res.status(400).json({ success: false, error: err.message });
+        }
+    });
+
+    // POST /api/custom-tcp-apps/multicast/:id/reset-counters — Reset live telemetry counters on all or a specific receiver
+    router.post('/multicast/:id/reset-counters', async (req: Request, res: Response) => {
+        try {
+            const nodeId = typeof req.body?.nodeId === 'string' ? req.body.nodeId : undefined;
+            const status = await mcManager.resetClusterCounters(req.params.id, nodeId);
             res.json({ success: true, status });
         } catch (err: any) {
             res.status(400).json({ success: false, error: err.message });
@@ -471,6 +570,16 @@ export function createCustomTcpApiRouter(tcpAppManager: TcpAppManager, onConfigC
     router.post('/multicast/:id/local-leave', async (req: Request, res: Response) => {
         try {
             const stats = await mcManager.leaveLocalReceiver(req.params.id);
+            res.json({ success: true, receiver: stats });
+        } catch (err: any) {
+            res.status(400).json({ success: false, error: err.message });
+        }
+    });
+
+    // POST /api/custom-tcp-apps/multicast/:id/local-reset
+    router.post('/multicast/:id/local-reset', (req: Request, res: Response) => {
+        try {
+            const stats = mcManager.resetLocalReceiverCounters(req.params.id);
             res.json({ success: true, receiver: stats });
         } catch (err: any) {
             res.status(400).json({ success: false, error: err.message });

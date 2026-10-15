@@ -2,7 +2,8 @@ import React, { useState, useEffect, useCallback } from 'react';
 import {
     Radio, Play, Square, Plus, Edit2, Trash2, RefreshCw,
     CheckCircle2, AlertTriangle, XCircle, ShieldCheck, Activity,
-    Server, ArrowRight, Network, Info, Zap, Clock, Layers, ShieldAlert
+    Server, ArrowRight, Network, Sparkles, RotateCcw, CloudUpload,
+    Download, Upload, Sliders, FileJson
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { cn } from '../../lib/utils';
@@ -14,6 +15,8 @@ import type {
     MulticastClusterStatus,
     MulticastNodePreflightResult,
     MulticastHealthVerdict,
+    MulticastPayloadFormat,
+    MulticastApplicationPreset,
 } from '../../../custom-tcp-apps/types';
 import { MicroSparkline } from './MicroSparkline';
 import { usePeerContext } from '../../PeerContext';
@@ -21,7 +24,141 @@ import { usePeerContext } from '../../PeerContext';
 interface MulticastOverlayTabProps {
     token: string | null;
     localSiteName?: string;
+    isStandalone?: boolean;
 }
+
+const FALLBACK_PRESETS: MulticastApplicationPreset[] = [
+    {
+        id: 'iptv-ceo-townhall',
+        name: 'Enterprise IPTV — CEO Townhall HD',
+        shortLabel: '📺 IPTV Townhall HD',
+        badge: 'RTP + MPEG-TS (PT=33)',
+        description: 'MPEG-2 TS over RTP (RFC 3550 PT=33, 7x188B = 1316B) recognized by Palo Alto NGFW / Prisma SD-WAN as standard RTP/MPEG-TS video broadcast.',
+        appIdHint: 'rtp / mpeg-ts',
+        mode: 'asm',
+        group: '239.1.1.100',
+        port: 5004,
+        rate: { mode: 'cbr', kbps: 2500 },
+        payloadBytes: 1316,
+        payloadFormat: 'rtp-mpegts',
+        ttl: 32,
+        dscp: 'AF41',
+        thresholds: {
+            maxLossPct: 0.1,
+            degradedLossPct: 1.0,
+            maxJitterMs: 15,
+            maxGapMs: 1500,
+            maxDuplicates: 5,
+        },
+    },
+    {
+        id: 'market-data-itch',
+        name: 'Financial Market Data — Trading Tick Feed',
+        shortLabel: '📈 Market Data ITCH',
+        badge: 'SSM 232/8 Micro-Burst',
+        description: 'Source-Specific Multicast (SSM 232/8) micro-burst UDP tick feed for sub-second convergence and zero-reorder SLA validation.',
+        appIdHint: 'STX_MC_MARKET_DATA',
+        mode: 'ssm',
+        group: '232.10.20.30',
+        port: 15500,
+        rate: { mode: 'burst', kbps: 512, burstPackets: 20, burstIntervalMs: 50 },
+        payloadBytes: 256,
+        payloadFormat: 'raw-stgx',
+        ttl: 32,
+        dscp: 'CS5',
+        thresholds: {
+            maxLossPct: 0.01,
+            degradedLossPct: 0.25,
+            maxJitterMs: 3,
+            maxGapMs: 500,
+            maxDuplicates: 0,
+        },
+    },
+    {
+        id: 'voip-emergency-paging',
+        name: 'Push-to-Talk / VoIP Emergency Paging',
+        shortLabel: '🎙️ VoIP Paging (G.711)',
+        badge: 'RTP G.711 PCMU (PT=0)',
+        description: 'G.711 PCMU RTP v2 (PT=0, 50 pps) real-time audio paging across all branch sites with Expedited Forwarding (EF) QoS.',
+        appIdHint: 'rtp-base (G.711)',
+        mode: 'asm',
+        group: '239.255.0.1',
+        port: 5004,
+        rate: { mode: 'cbr', kbps: 80 },
+        payloadBytes: 200,
+        payloadFormat: 'rtp-g711',
+        ttl: 32,
+        dscp: 'EF',
+        thresholds: {
+            maxLossPct: 0.5,
+            degradedLossPct: 2.0,
+            maxJitterMs: 20,
+            maxGapMs: 800,
+            maxDuplicates: 2,
+        },
+    },
+    {
+        id: 'cctv-surveillance',
+        name: 'IP Video Surveillance — Branch Camera Matrix',
+        shortLabel: '📹 CCTV Camera Matrix',
+        badge: 'RTP + MPEG-TS (4 Mbps)',
+        description: 'Continuous H.264/MPEG-TS over RTP multicast stream for multi-viewer security monitoring across SD-WAN regions.',
+        appIdHint: 'rtp / mpeg-ts',
+        mode: 'asm',
+        group: '239.10.50.10',
+        port: 5004,
+        rate: { mode: 'cbr', kbps: 4000 },
+        payloadBytes: 1316,
+        payloadFormat: 'rtp-mpegts',
+        ttl: 32,
+        dscp: 'AF41',
+        thresholds: {
+            maxLossPct: 0.2,
+            degradedLossPct: 1.5,
+            maxJitterMs: 25,
+            maxGapMs: 2000,
+            maxDuplicates: 10,
+        },
+    },
+    {
+        id: 'sap-session-directory',
+        name: 'Control Plane Keepalive / SAP Session Directory',
+        shortLabel: '🧭 SAP / Control Heartbeat',
+        badge: 'Low-Rate Keepalive',
+        description: 'Low-bitrate periodic multicast heartbeat to monitor long-term PIM/IGMP state retention without saturating WAN links.',
+        appIdHint: 'sap / udp-9875',
+        mode: 'asm',
+        group: '239.255.255.250',
+        port: 9875,
+        rate: { mode: 'cbr', kbps: 16 },
+        payloadBytes: 200,
+        payloadFormat: 'raw-stgx',
+        ttl: 32,
+        dscp: 'CS2',
+        thresholds: {
+            maxLossPct: 0.5,
+            degradedLossPct: 3.0,
+            maxJitterMs: 50,
+            maxGapMs: 5000,
+            maxDuplicates: 5,
+        },
+    },
+];
+
+const PAYLOAD_FORMAT_LABELS: Record<MulticastPayloadFormat, { short: string; full: string }> = {
+    'rtp-mpegts': {
+        short: 'RTP + MPEG-TS (0x47)',
+        full: 'RFC 3550 RTP v2 (PT=33) + MPEG-TS 0x47 Sync (App-ID: rtp / mpeg-ts)',
+    },
+    'rtp-g711': {
+        short: 'RTP v2 G.711 PCMU',
+        full: 'RFC 3550 RTP v2 (PT=0) PCMU Audio (App-ID: rtp-base)',
+    },
+    'raw-stgx': {
+        short: 'Raw STGX UDP (24B)',
+        full: 'Raw STGX 24-Byte Sequence Header (Ultra-low overhead UDP)',
+    },
+};
 
 const VERDICT_STYLES: Record<MulticastHealthVerdict, { badge: string; text: string; label: string }> = {
     HEALTHY: {
@@ -60,13 +197,19 @@ function formatBytes(bytes: number): string {
     return `${parseFloat((bytes / Math.pow(k, i)).toFixed(1))} ${sizes[i]}`;
 }
 
-export const MulticastOverlayTab: React.FC<MulticastOverlayTabProps> = ({ token, localSiteName }) => {
+export const MulticastOverlayTab: React.FC<MulticastOverlayTabProps> = ({
+    token,
+    localSiteName,
+    isStandalone = false,
+}) => {
     const { peers } = usePeerContext();
     const [profiles, setProfiles] = useState<CustomMulticastApplicationConfig[]>([]);
+    const [presets, setPresets] = useState<MulticastApplicationPreset[]>(FALLBACK_PRESETS);
     const [selectedAppId, setSelectedAppId] = useState<string>('');
     const [clusterStatus, setClusterStatus] = useState<MulticastClusterStatus | null>(null);
     const [loading, setLoading] = useState<boolean>(true);
     const [actionBusy, setActionBusy] = useState<boolean>(false);
+    const [resetBusy, setResetBusy] = useState<boolean>(false);
     const [knownNodes, setKnownNodes] = useState<string[]>([]);
     const [knownTargets, setKnownTargets] = useState<{ name: string; host: string; isSelf?: boolean }[]>([]);
 
@@ -80,6 +223,20 @@ export const MulticastOverlayTab: React.FC<MulticastOverlayTabProps> = ({ token,
         nodes: Record<string, MulticastNodePreflightResult>;
     } | null>(null);
 
+    // Presets Gallery Modal State
+    const [presetsModalOpen, setPresetsModalOpen] = useState<boolean>(false);
+
+    // Prisma SD-WAN Push Modal State
+    const [prismaModalOpen, setPrismaModalOpen] = useState<boolean>(false);
+    const [prismaSyncBusy, setPrismaSyncBusy] = useState<boolean>(false);
+    const [prismaSyncResult, setPrismaSyncResult] = useState<any | null>(null);
+
+    // Import / Export Modal State
+    const [importModalOpen, setImportModalOpen] = useState<boolean>(false);
+    const [importMode, setImportMode] = useState<'merge' | 'replace'>('merge');
+    const [importJsonText, setImportJsonText] = useState<string>('');
+    const [importBusy, setImportBusy] = useState<boolean>(false);
+
     // Editor Modal State
     const [editorOpen, setEditorOpen] = useState<boolean>(false);
     const [editingProfile, setEditingProfile] = useState<CustomMulticastApplicationConfig | null>(null);
@@ -88,9 +245,11 @@ export const MulticastOverlayTab: React.FC<MulticastOverlayTabProps> = ({ token,
     const [formId, setFormId] = useState('');
     const [formName, setFormName] = useState('');
     const [formDesc, setFormDesc] = useState('');
+    const [formPresetId, setFormPresetId] = useState<string | undefined>(undefined);
+    const [formPayloadFormat, setFormPayloadFormat] = useState<MulticastPayloadFormat>('rtp-mpegts');
     const [formMode, setFormMode] = useState<MulticastAddressingMode>('asm');
     const [formGroup, setFormGroup] = useState('239.10.10.1');
-    const [formPort, setFormPort] = useState(5000);
+    const [formPort, setFormPort] = useState(5004);
     const [formSsmSource, setFormSsmSource] = useState('');
     const [formSenderNode, setFormSenderNode] = useState('');
     const [formSenderIfaceIp, setFormSenderIfaceIp] = useState('auto');
@@ -104,6 +263,8 @@ export const MulticastOverlayTab: React.FC<MulticastOverlayTabProps> = ({ token,
     const [formDurationSec, setFormDurationSec] = useState(0);
     const [formMaxLossPct, setFormMaxLossPct] = useState(0.1);
     const [formDegradedLossPct, setFormDegradedLossPct] = useState(2.0);
+    const [formMaxJitterMs, setFormMaxJitterMs] = useState(20);
+    const [formMaxDuplicates, setFormMaxDuplicates] = useState(5);
     const [formMaxGapMs, setFormMaxGapMs] = useState(3000);
     const [formReceivers, setFormReceivers] = useState<
         { node: string; expect: MulticastExpectationMode; interfaceIp?: string; enabled: boolean }[]
@@ -151,6 +312,19 @@ export const MulticastOverlayTab: React.FC<MulticastOverlayTabProps> = ({ token,
             setLoading(false);
         }
     }, [headers, selectedAppId]);
+
+    const fetchPresets = useCallback(async () => {
+        try {
+            const res = await fetch('/api/custom-tcp-apps/multicast/presets', { headers: headers() });
+            if (!res.ok) return;
+            const data = await res.json();
+            if (Array.isArray(data.presets) && data.presets.length > 0) {
+                setPresets(data.presets);
+            }
+        } catch {
+            // Keep FALLBACK_PRESETS
+        }
+    }, [headers]);
 
     const fetchKnownNodes = useCallback(async () => {
         const targetMap = new Map<string, { name: string; host: string; isSelf?: boolean }>();
@@ -225,8 +399,9 @@ export const MulticastOverlayTab: React.FC<MulticastOverlayTabProps> = ({ token,
 
     useEffect(() => {
         fetchProfiles();
+        fetchPresets();
         fetchKnownNodes();
-    }, [fetchProfiles, fetchKnownNodes]);
+    }, [fetchProfiles, fetchPresets, fetchKnownNodes]);
 
     useEffect(() => {
         if (!selectedAppId) {
@@ -288,6 +463,35 @@ export const MulticastOverlayTab: React.FC<MulticastOverlayTabProps> = ({ token,
         }
     };
 
+    const handleResetCounters = async (nodeId?: string) => {
+        if (!selectedProfile) return;
+        setResetBusy(true);
+        try {
+            const res = await fetch(
+                `/api/custom-tcp-apps/multicast/${encodeURIComponent(selectedProfile.id)}/reset-counters`,
+                {
+                    method: 'POST',
+                    headers: headers(),
+                    body: JSON.stringify(nodeId ? { nodeId } : {}),
+                }
+            );
+            const data = await res.json();
+            if (!res.ok || !data.success) {
+                throw new Error(data.error || 'Failed to reset counters');
+            }
+            if (data.status) setClusterStatus(data.status);
+            toast.success(
+                nodeId
+                    ? `Receiver counters reset on ${nodeId}`
+                    : `All receiver SLA counters reset for "${selectedProfile.name}"`
+            );
+        } catch (e: any) {
+            toast.error(e.message || 'Failed to reset counters');
+        } finally {
+            setResetBusy(false);
+        }
+    };
+
     const handleToggleReceiver = async (nodeId: string, action: 'join' | 'leave', expect?: MulticastExpectationMode) => {
         if (!selectedProfile) return;
         try {
@@ -332,6 +536,236 @@ export const MulticastOverlayTab: React.FC<MulticastOverlayTabProps> = ({ token,
         }
     };
 
+    // ─── Presets Application & Quick Creation ─────────────────────────────────
+
+    const applyPresetToForm = (preset: MulticastApplicationPreset) => {
+        setFormPresetId(preset.id);
+        if (!editingProfile) {
+            setFormId(preset.id);
+        }
+        setFormName(preset.name);
+        setFormDesc(preset.description);
+        setFormMode(preset.mode);
+        setFormGroup(preset.group);
+        setFormPort(preset.port);
+        setFormPayloadFormat(preset.payloadFormat);
+        setFormRateMode(preset.rate.mode);
+        setFormKbps(preset.rate.kbps);
+        if (preset.rate.burstPackets) setFormBurstPackets(preset.rate.burstPackets);
+        if (preset.rate.burstIntervalMs) setFormBurstIntervalMs(preset.rate.burstIntervalMs);
+        setFormPayloadBytes(preset.payloadBytes);
+        setFormTtl(preset.ttl);
+        setFormDscp(preset.dscp);
+        setFormMaxLossPct(preset.thresholds.maxLossPct);
+        setFormDegradedLossPct(preset.thresholds.degradedLossPct);
+        setFormMaxJitterMs(preset.thresholds.maxJitterMs ?? 20);
+        setFormMaxDuplicates(preset.thresholds.maxDuplicates ?? 5);
+        setFormMaxGapMs(preset.thresholds.maxGapMs);
+        if (preset.mode === 'ssm') {
+            const senderIp =
+                formSenderIfaceIp && formSenderIfaceIp !== 'auto'
+                    ? formSenderIfaceIp
+                    : resolveTargetHost(formSenderNode);
+            if (senderIp && senderIp !== 'auto') {
+                setFormSsmSource(senderIp);
+            } else if (!formSsmSource) {
+                setFormSsmSource('172.16.110.2');
+            }
+        }
+        toast.success(`Loaded preset "${preset.name}"`);
+    };
+
+    const handleQuickCreateFromPreset = async (preset: MulticastApplicationPreset) => {
+        const defaultSender = selectedProfile?.senderNode || localSiteName || knownNodes[0] || 'DC1';
+        const senderIp = resolveTargetHost(defaultSender);
+        const existingReceivers =
+            selectedProfile && selectedProfile.receivers.length > 0
+                ? selectedProfile.receivers
+                : knownNodes
+                      .filter((n) => n !== defaultSender)
+                      .map((n) => ({
+                          node: n,
+                          expect: 'traffic' as MulticastExpectationMode,
+                          interfaceIp: resolveTargetHost(n),
+                          enabled: true,
+                      }));
+        const effectiveReceivers =
+            existingReceivers.length > 0
+                ? existingReceivers
+                : [
+                      {
+                          node: defaultSender,
+                          expect: 'traffic' as MulticastExpectationMode,
+                          interfaceIp: senderIp,
+                          enabled: true,
+                      },
+                  ];
+
+        const existingWithSameId = profiles.some((p) => p.id === preset.id);
+        const targetId = existingWithSameId
+            ? `${preset.id}-${Math.random().toString(36).substring(2, 5)}`
+            : preset.id;
+
+        const payload: CustomMulticastApplicationConfig = {
+            id: targetId,
+            name: preset.name,
+            description: preset.description,
+            enabled: true,
+            presetId: preset.id,
+            payloadFormat: preset.payloadFormat,
+            group: preset.group,
+            port: preset.port,
+            mode: preset.mode,
+            ssmSource:
+                preset.mode === 'ssm'
+                    ? senderIp && senderIp !== 'auto'
+                        ? senderIp
+                        : '172.16.110.2'
+                    : undefined,
+            senderNode: defaultSender,
+            senderInterfaceIp: senderIp || 'auto',
+            receivers: effectiveReceivers,
+            rate: { ...preset.rate },
+            payloadBytes: preset.payloadBytes,
+            ttl: preset.ttl,
+            dscp: preset.dscp,
+            durationSec: 0,
+            thresholds: { ...preset.thresholds },
+        };
+
+        try {
+            const res = await fetch('/api/custom-tcp-apps/multicast', {
+                method: 'POST',
+                headers: headers(),
+                body: JSON.stringify(payload),
+            });
+            const data = await res.json();
+            if (!res.ok || !data.success) {
+                throw new Error(data.error || 'Failed to create preset profile');
+            }
+            toast.success(`Created multicast profile "${preset.name}"`);
+            setPresetsModalOpen(false);
+            await fetchProfiles();
+            setSelectedAppId(payload.id);
+        } catch (err: any) {
+            toast.error(err.message || 'Failed to create preset profile');
+        }
+    };
+
+    // ─── Prisma SD-WAN Custom App Sync ────────────────────────────────────────
+
+    const handleSyncToPrisma = async (syncAll: boolean) => {
+        if (!syncAll && !selectedProfile) return;
+        setPrismaSyncBusy(true);
+        setPrismaSyncResult(null);
+        try {
+            const url = syncAll
+                ? '/api/custom-tcp-apps/prisma/sync-all-multicast'
+                : `/api/custom-tcp-apps/prisma/sync-multicast/${encodeURIComponent(selectedProfile!.id)}`;
+            const res = await fetch(url, {
+                method: 'POST',
+                headers: headers(),
+                body: JSON.stringify({}),
+            });
+            const data = await res.json();
+            setPrismaSyncResult(data);
+            if (!res.ok || !data.success) {
+                throw new Error(data.error || 'Failed to push multicast Custom App to Prisma SD-WAN');
+            }
+            toast.success(
+                syncAll
+                    ? `Synced ${data.synced || profiles.length} Multicast Custom Apps to Prisma SD-WAN`
+                    : `Pushed ${data.prisma_app_name || `STX_MC_${selectedProfile!.name}`} (${selectedProfile!.group}/32:${selectedProfile!.port}) to Prisma SD-WAN`
+            );
+        } catch (err: any) {
+            toast.error(err.message || 'Prisma SD-WAN sync failed');
+        } finally {
+            setPrismaSyncBusy(false);
+        }
+    };
+
+    // ─── JSON Export & Import ─────────────────────────────────────────────────
+
+    const handleExportProfiles = async (singleId?: string) => {
+        try {
+            const query = singleId ? `?id=${encodeURIComponent(singleId)}` : '';
+            const res = await fetch(`/api/custom-tcp-apps/multicast/export${query}`, {
+                headers: headers(),
+            });
+            if (!res.ok) throw new Error('Export failed');
+            const bundle = await res.json();
+            const blob = new Blob([JSON.stringify(bundle, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = singleId
+                ? `stigix-multicast-${singleId}.json`
+                : `stigix-multicast-profiles-${new Date().toISOString().slice(0, 10)}.json`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+            toast.success(
+                singleId
+                    ? `Exported profile "${singleId}"`
+                    : `Exported ${profiles.length} multicast profile(s)`
+            );
+        } catch (err: any) {
+            toast.error(err.message || 'Failed to export multicast configuration');
+        }
+    };
+
+    const handleImportFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = (ev) => {
+            if (typeof ev.target?.result === 'string') {
+                setImportJsonText(ev.target.result);
+            }
+        };
+        reader.readAsText(file);
+    };
+
+    const handleImportSubmit = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!importJsonText.trim()) {
+            toast.error('Please paste or select a JSON file to import');
+            return;
+        }
+        setImportBusy(true);
+        try {
+            const parsed = JSON.parse(importJsonText);
+            const res = await fetch('/api/custom-tcp-apps/multicast/import', {
+                method: 'POST',
+                headers: headers(),
+                body: JSON.stringify({
+                    mode: importMode,
+                    multicastApplications: Array.isArray(parsed)
+                        ? parsed
+                        : parsed.multicastApplications || [],
+                }),
+            });
+            const data = await res.json();
+            if (!res.ok || !data.success) {
+                const detail = Array.isArray(data.errors)
+                    ? data.errors.map((err: any) => `${err.id}: ${err.errors?.join(', ')}`).join(' | ')
+                    : data.error || 'Import failed';
+                throw new Error(detail);
+            }
+            toast.success(
+                `Imported ${data.importedCount} multicast profile(s) (${importMode.toUpperCase()} mode)`
+            );
+            setImportModalOpen(false);
+            setImportJsonText('');
+            await fetchProfiles();
+        } catch (err: any) {
+            toast.error(err.message || 'Invalid JSON payload');
+        } finally {
+            setImportBusy(false);
+        }
+    };
+
     // ─── Create / Edit / Delete Profile ───────────────────────────────────────
 
     const openNewProfileModal = () => {
@@ -340,25 +774,29 @@ export const MulticastOverlayTab: React.FC<MulticastOverlayTabProps> = ({ token,
         const defaultSender = localSiteName || knownNodes[0] || 'DC1';
         const defaultRx = knownNodes.filter((n) => n !== defaultSender);
         setFormId(`mc-${Math.random().toString(36).substring(2, 7)}`);
-        setFormName('SD-WAN Overlay Multicast Feed');
+        setFormName('Enterprise IPTV — CEO Townhall HD');
         setFormDesc('Real UDP/IGMP multicast stream validation across Prisma SD-WAN overlay');
+        setFormPresetId('iptv-ceo-townhall');
+        setFormPayloadFormat('rtp-mpegts');
         setFormMode('asm');
-        setFormGroup('239.10.10.1');
-        setFormPort(5000);
+        setFormGroup('239.1.1.100');
+        setFormPort(5004);
         setFormSsmSource('');
         setFormSenderNode(defaultSender);
         setFormSenderIfaceIp(resolveTargetHost(defaultSender));
         setFormRateMode('cbr');
-        setFormKbps(1000);
+        setFormKbps(2500);
         setFormBurstPackets(30);
         setFormBurstIntervalMs(100);
         setFormPayloadBytes(1316);
-        setFormTtl(64);
-        setFormDscp('CS5');
+        setFormTtl(32);
+        setFormDscp('AF41');
         setFormDurationSec(0);
         setFormMaxLossPct(0.1);
-        setFormDegradedLossPct(2.0);
-        setFormMaxGapMs(3000);
+        setFormDegradedLossPct(1.0);
+        setFormMaxJitterMs(15);
+        setFormMaxDuplicates(5);
+        setFormMaxGapMs(1500);
         setFormReceivers(
             defaultRx.length > 0
                 ? defaultRx.map((n) => ({
@@ -386,6 +824,8 @@ export const MulticastOverlayTab: React.FC<MulticastOverlayTabProps> = ({ token,
         setFormId(profile.id);
         setFormName(profile.name);
         setFormDesc(profile.description || '');
+        setFormPresetId(profile.presetId);
+        setFormPayloadFormat(profile.payloadFormat || 'raw-stgx');
         setFormMode(profile.mode);
         setFormGroup(profile.group);
         setFormPort(profile.port);
@@ -406,6 +846,8 @@ export const MulticastOverlayTab: React.FC<MulticastOverlayTabProps> = ({ token,
         setFormDurationSec(profile.durationSec || 0);
         setFormMaxLossPct(profile.thresholds?.maxLossPct ?? 0.1);
         setFormDegradedLossPct(profile.thresholds?.degradedLossPct ?? 2.0);
+        setFormMaxJitterMs(profile.thresholds?.maxJitterMs ?? 20);
+        setFormMaxDuplicates(profile.thresholds?.maxDuplicates ?? 5);
         setFormMaxGapMs(profile.thresholds?.maxGapMs ?? 3000);
         setFormReceivers(
             profile.receivers
@@ -450,6 +892,8 @@ export const MulticastOverlayTab: React.FC<MulticastOverlayTabProps> = ({ token,
             name: formName.trim(),
             description: formDesc.trim(),
             enabled: true,
+            presetId: formPresetId,
+            payloadFormat: formPayloadFormat,
             group: formGroup.trim(),
             port: Number(formPort),
             mode: formMode,
@@ -470,6 +914,8 @@ export const MulticastOverlayTab: React.FC<MulticastOverlayTabProps> = ({ token,
             thresholds: {
                 maxLossPct: Number(formMaxLossPct),
                 degradedLossPct: Number(formDegradedLossPct),
+                maxJitterMs: Number(formMaxJitterMs),
+                maxDuplicates: Number(formMaxDuplicates),
                 maxGapMs: Number(formMaxGapMs),
             },
         };
@@ -480,7 +926,7 @@ export const MulticastOverlayTab: React.FC<MulticastOverlayTabProps> = ({ token,
                 : '/api/custom-tcp-apps/multicast';
             const method = editingProfile ? 'PUT' : 'POST';
             const res = await fetch(url, {
-                method,
+                method: method,
                 headers: headers(),
                 body: JSON.stringify(payload),
             });
@@ -552,9 +998,34 @@ export const MulticastOverlayTab: React.FC<MulticastOverlayTabProps> = ({ token,
 
     return (
         <div className="space-y-5">
+            {/* Standalone View Header when opened directly from Generate -> Multicast Traffic */}
+            {isStandalone && (
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-1">
+                    <div>
+                        <div className="flex items-center gap-2">
+                            <span className="px-2 py-0.5 rounded-md bg-purple-500/15 border border-purple-500/30 text-purple-300 text-[10px] font-black uppercase tracking-wider">
+                                SD-WAN Overlay Validation
+                            </span>
+                            {isRunning && (
+                                <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 text-[10px] font-black uppercase">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                                    LIVE STREAMING
+                                </span>
+                            )}
+                        </div>
+                        <h1 className="text-xl font-black text-text-primary mt-1">
+                            Multicast Traffic Generator &amp; SLA Telemetry
+                        </h1>
+                        <p className="text-xs text-text-muted mt-0.5">
+                            Generate realistic 1-to-N UDP Multicast streams (RTP/MPEG-TS, ITCH Market Data, G.711 VoIP Paging) and audit IGMPv2/v3 &amp; PIM-SM/SSM replication across SD-WAN branches.
+                        </p>
+                    </div>
+                </div>
+            )}
+
             {/* Top Control Bar */}
-            <div className="bg-card border border-border rounded-xl p-4 shadow-sm flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-4">
-                <div className="flex flex-wrap items-center gap-3">
+            <div className="bg-card border border-border rounded-xl p-4 shadow-sm flex flex-col xl:flex-row items-stretch xl:items-center justify-between gap-4">
+                <div className="flex flex-wrap items-center gap-2.5">
                     <div className="flex items-center gap-2">
                         <div className="w-9 h-9 rounded-lg bg-purple-500/10 border border-purple-500/25 flex items-center justify-center text-purple-400">
                             <Radio className="w-5 h-5" />
@@ -563,12 +1034,12 @@ export const MulticastOverlayTab: React.FC<MulticastOverlayTabProps> = ({ token,
                             <div className="text-[10px] font-bold uppercase tracking-wider text-purple-400">
                                 IGMPv2/v3 &bull; PIM-SM / SSM Engine
                             </div>
-                            <h3 className="text-sm font-bold text-text-primary">SD-WAN Overlay Multicast Validation</h3>
+                            <h3 className="text-sm font-bold text-text-primary">Multicast Stream Profiles</h3>
                         </div>
                     </div>
 
                     {/* Profile Selector */}
-                    <div className="flex items-center gap-2 ml-0 lg:ml-4">
+                    <div className="flex flex-wrap items-center gap-2 ml-0 lg:ml-3">
                         <select
                             aria-label="Select Multicast Profile"
                             value={selectedAppId}
@@ -587,7 +1058,7 @@ export const MulticastOverlayTab: React.FC<MulticastOverlayTabProps> = ({ token,
                                 <button
                                     onClick={() => openEditProfileModal(selectedProfile)}
                                     className="p-2 rounded-lg bg-background hover:bg-card-hover border border-border text-text-muted hover:text-text-primary transition-colors"
-                                    title="Edit Multicast Profile"
+                                    title="Edit Multicast Profile & SLA Thresholds"
                                 >
                                     <Edit2 className="w-3.5 h-3.5" />
                                 </button>
@@ -607,15 +1078,58 @@ export const MulticastOverlayTab: React.FC<MulticastOverlayTabProps> = ({ token,
                         >
                             <Plus className="w-3.5 h-3.5" /> New Profile
                         </button>
+
+                        <button
+                            onClick={() => setPresetsModalOpen(true)}
+                            className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border border-amber-500/30 text-xs font-bold transition-all"
+                            title="Load 1-Click Industry Multicast Profile Preset"
+                        >
+                            <Sparkles className="w-3.5 h-3.5" /> Presets
+                        </button>
+
+                        <button
+                            onClick={() => setPrismaModalOpen(true)}
+                            className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 text-xs font-bold transition-all"
+                            title="Push Multicast Profile(s) to Prisma SD-WAN Custom Apps (STX_MC_*)"
+                        >
+                            <CloudUpload className="w-3.5 h-3.5" /> Push to Prisma
+                        </button>
+
+                        <div className="flex items-center gap-1">
+                            <button
+                                onClick={() => handleExportProfiles()}
+                                className="flex items-center gap-1 px-2.5 py-2 rounded-lg bg-background hover:bg-card-hover border border-border text-text-secondary hover:text-text-primary text-xs font-bold transition-colors"
+                                title="Export All Multicast Profiles to JSON"
+                            >
+                                <Download className="w-3.5 h-3.5" /> Export
+                            </button>
+                            <button
+                                onClick={() => setImportModalOpen(true)}
+                                className="flex items-center gap-1 px-2.5 py-2 rounded-lg bg-background hover:bg-card-hover border border-border text-text-secondary hover:text-text-primary text-xs font-bold transition-colors"
+                                title="Import Multicast Profiles from JSON"
+                            >
+                                <Upload className="w-3.5 h-3.5" /> Import
+                            </button>
+                        </div>
                     </div>
                 </div>
 
                 {/* Action Buttons */}
                 {selectedProfile && (
-                    <div className="flex flex-wrap items-center gap-2.5">
+                    <div className="flex flex-wrap items-center gap-2">
                         <div className={cn('px-2.5 py-1 rounded-md border text-[11px] font-black tracking-wider', verdictStyle.badge)}>
                             OVERALL: {verdictStyle.label}
                         </div>
+
+                        <button
+                            onClick={() => handleResetCounters()}
+                            disabled={resetBusy}
+                            className="flex items-center gap-1.5 px-2.5 py-2 rounded-lg bg-background hover:bg-card-hover border border-border text-text-secondary hover:text-text-primary text-xs font-bold transition-all"
+                            title="Reset sequence & loss counters across all receivers without stopping the stream"
+                        >
+                            <RotateCcw className={cn('w-3.5 h-3.5 text-purple-400', resetBusy && 'animate-spin')} />
+                            Reset Counters
+                        </button>
 
                         <button
                             onClick={handleRunPreflight}
@@ -681,16 +1195,21 @@ export const MulticastOverlayTab: React.FC<MulticastOverlayTabProps> = ({ token,
                                         Multicast Source (Sender)
                                     </span>
                                 </div>
-                                <span
-                                    className={cn(
-                                        'px-2 py-0.5 rounded text-[10px] font-bold uppercase border',
-                                        clusterStatus?.sender?.active
-                                            ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30'
-                                            : 'bg-slate-500/15 text-slate-400 border-slate-500/30'
-                                    )}
-                                >
-                                    {clusterStatus?.sender?.active ? 'TX ACTIVE' : 'IDLE'}
-                                </span>
+                                <div className="flex items-center gap-1.5">
+                                    <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-purple-500/15 text-purple-300 border border-purple-500/30">
+                                        {PAYLOAD_FORMAT_LABELS[selectedProfile.payloadFormat || 'raw-stgx']?.short || 'STGX'}
+                                    </span>
+                                    <span
+                                        className={cn(
+                                            'px-2 py-0.5 rounded text-[10px] font-bold uppercase border',
+                                            clusterStatus?.sender?.active
+                                                ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30'
+                                                : 'bg-slate-500/15 text-slate-400 border-slate-500/30'
+                                        )}
+                                    >
+                                        {clusterStatus?.sender?.active ? 'TX ACTIVE' : 'IDLE'}
+                                    </span>
+                                </div>
                             </div>
 
                             <div className="grid grid-cols-2 gap-2.5 text-xs">
@@ -764,9 +1283,9 @@ export const MulticastOverlayTab: React.FC<MulticastOverlayTabProps> = ({ token,
                                     1 &rarr; {selectedProfile.receivers.length} Overlay Replication Tree ({selectedProfile.mode.toUpperCase()})
                                 </span>
                             </div>
-                            <div className="flex items-center gap-3 text-[11px] text-text-muted font-mono">
+                            <div className="flex flex-wrap items-center gap-2.5 text-[11px] text-text-muted font-mono">
                                 <span>
-                                    SLA Healthy Loss: &le;{selectedProfile.thresholds?.maxLossPct ?? 0.1}%
+                                    Loss Healthy: &le;{selectedProfile.thresholds?.maxLossPct ?? 0.1}%
                                 </span>
                                 <span>&bull;</span>
                                 <span>
@@ -774,7 +1293,15 @@ export const MulticastOverlayTab: React.FC<MulticastOverlayTabProps> = ({ token,
                                 </span>
                                 <span>&bull;</span>
                                 <span>
-                                    Max Gap: &le;{selectedProfile.thresholds?.maxGapMs ?? 3000}ms
+                                    Jitter: &le;{selectedProfile.thresholds?.maxJitterMs ?? 30}ms
+                                </span>
+                                <span>&bull;</span>
+                                <span>
+                                    Dup Tol: &le;{selectedProfile.thresholds?.maxDuplicates ?? 5}
+                                </span>
+                                <span>&bull;</span>
+                                <span>
+                                    Gap: &le;{selectedProfile.thresholds?.maxGapMs ?? 3000}ms
                                 </span>
                             </div>
                         </div>
@@ -794,7 +1321,9 @@ export const MulticastOverlayTab: React.FC<MulticastOverlayTabProps> = ({ token,
                                     PIM-SM / IGMP ({selectedProfile.group})
                                 </div>
                                 <ArrowRight className="w-5 h-5 my-0.5" />
-                                <div className="text-[10px] font-mono text-text-muted">24B STGX Seq Header</div>
+                                <div className="text-[10px] font-mono text-text-muted">
+                                    {PAYLOAD_FORMAT_LABELS[selectedProfile.payloadFormat || 'raw-stgx']?.short || 'Raw STGX'} + Seq Trailer
+                                </div>
                             </div>
 
                             <div className="flex-1 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2.5 w-full">
@@ -939,9 +1468,9 @@ export const MulticastOverlayTab: React.FC<MulticastOverlayTabProps> = ({ token,
                                                 <div
                                                     className={cn(
                                                         'font-bold',
-                                                        r.lossPct > 2
+                                                        r.lossPct > (selectedProfile.thresholds?.degradedLossPct ?? 2.0)
                                                             ? 'text-rose-400'
-                                                            : r.lossPct > 0.1
+                                                            : r.lossPct > (selectedProfile.thresholds?.maxLossPct ?? 0.1)
                                                             ? 'text-amber-400'
                                                             : 'text-emerald-400'
                                                     )}
@@ -955,7 +1484,16 @@ export const MulticastOverlayTab: React.FC<MulticastOverlayTabProps> = ({ token,
                                                 <div className="text-text-muted">Reord: {r.reorderedPackets}</div>
                                             </td>
                                             <td className="py-3 px-3 font-mono">
-                                                <div className="text-text-primary">{r.jitterMs.toFixed(2)} ms</div>
+                                                <div
+                                                    className={cn(
+                                                        'font-bold',
+                                                        r.jitterMs > (selectedProfile.thresholds?.maxJitterMs ?? 30)
+                                                            ? 'text-amber-400'
+                                                            : 'text-text-primary'
+                                                    )}
+                                                >
+                                                    {r.jitterMs.toFixed(2)} ms
+                                                </div>
                                                 <div className="text-[10px] text-text-muted">Gap: {r.maxGapMs} ms</div>
                                             </td>
                                             <td className="py-3 px-3 font-mono">
@@ -974,23 +1512,32 @@ export const MulticastOverlayTab: React.FC<MulticastOverlayTabProps> = ({ token,
                                                 </div>
                                             </td>
                                             <td className="py-3 px-3 text-right">
-                                                {r.joined ? (
+                                                <div className="flex items-center justify-end gap-1.5">
                                                     <button
-                                                        onClick={() => handleToggleReceiver(r.node, 'leave', r.expect)}
-                                                        className="px-2.5 py-1 rounded bg-rose-500/15 hover:bg-rose-500/25 text-rose-300 border border-rose-500/30 text-[11px] font-bold transition-colors"
-                                                        title="Send IGMP Leave (Prune branch from multicast tree)"
+                                                        onClick={() => handleResetCounters(r.node)}
+                                                        className="p-1.5 rounded bg-background hover:bg-card-hover border border-border text-text-muted hover:text-purple-300 transition-colors"
+                                                        title={`Reset counters on ${r.node}`}
                                                     >
-                                                        IGMP Leave
+                                                        <RotateCcw className="w-3 h-3" />
                                                     </button>
-                                                ) : (
-                                                    <button
-                                                        onClick={() => handleToggleReceiver(r.node, 'join', r.expect)}
-                                                        className="px-2.5 py-1 rounded bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 border border-emerald-500/30 text-[11px] font-bold transition-colors"
-                                                        title="Send IGMP Membership Report (Late-Join multicast tree)"
-                                                    >
-                                                        IGMP Join
-                                                    </button>
-                                                )}
+                                                    {r.joined ? (
+                                                        <button
+                                                            onClick={() => handleToggleReceiver(r.node, 'leave', r.expect)}
+                                                            className="px-2.5 py-1 rounded bg-rose-500/15 hover:bg-rose-500/25 text-rose-300 border border-rose-500/30 text-[11px] font-bold transition-colors"
+                                                            title="Send IGMP Leave (Prune branch from multicast tree)"
+                                                        >
+                                                            IGMP Leave
+                                                        </button>
+                                                    ) : (
+                                                        <button
+                                                            onClick={() => handleToggleReceiver(r.node, 'join', r.expect)}
+                                                            className="px-2.5 py-1 rounded bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 border border-emerald-500/30 text-[11px] font-bold transition-colors"
+                                                            title="Send IGMP Membership Report (Late-Join multicast tree)"
+                                                        >
+                                                            IGMP Join
+                                                        </button>
+                                                    )}
+                                                </div>
                                             </td>
                                         </tr>
                                     );
@@ -1108,7 +1655,7 @@ export const MulticastOverlayTab: React.FC<MulticastOverlayTabProps> = ({ token,
             {/* Create / Edit Multicast Profile Modal */}
             {editorOpen && (
                 <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
-                    <div className="bg-card border border-border rounded-2xl max-w-2xl w-full max-h-[90vh] overflow-hidden flex flex-col shadow-2xl">
+                    <div className="bg-card border border-border rounded-2xl max-w-3xl w-full max-h-[92vh] overflow-hidden flex flex-col shadow-2xl">
                         <div className="p-4 border-b border-border flex items-center justify-between">
                             <div className="flex items-center gap-2">
                                 <Radio className="w-5 h-5 text-purple-400" />
@@ -1125,6 +1672,32 @@ export const MulticastOverlayTab: React.FC<MulticastOverlayTabProps> = ({ token,
                         </div>
 
                         <form onSubmit={handleSaveProfile} className="p-5 overflow-y-auto space-y-4 text-xs">
+                            {/* 1-Click Industry Presets Bar */}
+                            <div className="bg-purple-500/5 border border-purple-500/20 rounded-xl p-3 space-y-2">
+                                <div className="flex items-center justify-between">
+                                    <span className="text-[10px] font-bold uppercase tracking-wider text-purple-300 flex items-center gap-1.5">
+                                        <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+                                        1-Click Industry Profile Presets (Auto-fills Group, Port, L7 Header &amp; SLA Thresholds)
+                                    </span>
+                                </div>
+                                <div className="flex flex-wrap gap-1.5">
+                                    {presets.map((preset) => (
+                                        <button
+                                            key={preset.id}
+                                            type="button"
+                                            onClick={() => applyPresetToForm(preset)}
+                                            className="px-2.5 py-1.5 rounded-lg bg-background hover:bg-purple-600/20 border border-border hover:border-purple-500/40 text-text-primary hover:text-purple-200 text-[11px] font-bold transition-all flex items-center gap-1.5"
+                                            title={`${preset.description} (${preset.appIdHint})`}
+                                        >
+                                            <span>{preset.shortLabel}</span>
+                                            <span className="font-mono text-[10px] text-purple-400">
+                                                ({preset.group}:{preset.port})
+                                            </span>
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                                 <div>
                                     <label className="block text-[10px] font-bold uppercase text-text-muted mb-1">Profile ID</label>
@@ -1149,8 +1722,8 @@ export const MulticastOverlayTab: React.FC<MulticastOverlayTabProps> = ({ token,
                                 </div>
                             </div>
 
-                            {/* Multicast Group, Port, Mode */}
-                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                            {/* Multicast Group, Port, Mode, L7 Framing */}
+                            <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
                                 <div>
                                     <label className="block text-[10px] font-bold uppercase text-text-muted mb-1">
                                         Addressing Mode
@@ -1166,10 +1739,10 @@ export const MulticastOverlayTab: React.FC<MulticastOverlayTabProps> = ({ token,
                                                 setFormGroup('239.10.10.1');
                                             }
                                         }}
-                                        className="w-full bg-background border border-border rounded-lg px-3 py-2 text-text-primary font-bold"
+                                        className="w-full bg-background border border-border rounded-lg px-2.5 py-2 text-text-primary font-bold"
                                     >
-                                        <option value="asm">ASM (*,G — 239.0.0.0/8)</option>
-                                        <option value="ssm">SSM (S,G — 232.0.0.0/8)</option>
+                                        <option value="asm">ASM (*,G — 239/8)</option>
+                                        <option value="ssm">SSM (S,G — 232/8)</option>
                                     </select>
                                 </div>
                                 <div>
@@ -1196,6 +1769,21 @@ export const MulticastOverlayTab: React.FC<MulticastOverlayTabProps> = ({ token,
                                         onChange={(e) => setFormPort(Number(e.target.value))}
                                         className="w-full bg-background border border-border rounded-lg px-3 py-2 text-text-primary font-mono"
                                     />
+                                </div>
+                                <div>
+                                    <label className="block text-[10px] font-bold uppercase text-purple-400 mb-1">
+                                        L7 App-ID Framing
+                                    </label>
+                                    <select
+                                        value={formPayloadFormat}
+                                        onChange={(e) => setFormPayloadFormat(e.target.value as MulticastPayloadFormat)}
+                                        className="w-full bg-background border border-purple-500/40 rounded-lg px-2.5 py-2 text-text-primary font-bold"
+                                        title="Embeds authentic RTP/MPEG-TS or RTP/G.711 headers ahead of the Stigix sequence trailer for NGFW App-ID & Wireshark"
+                                    >
+                                        <option value="raw-stgx">Raw STGX (24B Header)</option>
+                                        <option value="rtp-mpegts">RTP + MPEG-TS (PT=33 Video)</option>
+                                        <option value="rtp-g711">RTP + G.711 PCMU (PT=0 Audio)</option>
+                                    </select>
                                 </div>
                             </div>
 
@@ -1302,6 +1890,30 @@ export const MulticastOverlayTab: React.FC<MulticastOverlayTabProps> = ({ token,
                                             className="w-full bg-background border border-border rounded-lg px-2.5 py-2 text-text-primary font-mono"
                                         />
                                     </div>
+                                    {formRateMode === 'burst' && (
+                                        <div className="grid grid-cols-2 gap-1 mt-1.5">
+                                            <input
+                                                type="number"
+                                                min={2}
+                                                max={500}
+                                                value={formBurstPackets}
+                                                onChange={(e) => setFormBurstPackets(Number(e.target.value))}
+                                                title="Packets per Burst"
+                                                placeholder="Burst pkts"
+                                                className="bg-background border border-border rounded px-1.5 py-1 text-[10px] font-mono text-text-primary"
+                                            />
+                                            <input
+                                                type="number"
+                                                min={10}
+                                                max={60000}
+                                                value={formBurstIntervalMs}
+                                                onChange={(e) => setFormBurstIntervalMs(Number(e.target.value))}
+                                                title="Burst Interval (ms)"
+                                                placeholder="Interval ms"
+                                                className="bg-background border border-border rounded px-1.5 py-1 text-[10px] font-mono text-text-primary"
+                                            />
+                                        </div>
+                                    )}
                                 </div>
                                 <div>
                                     <label className="block text-[10px] font-bold uppercase text-text-muted mb-1">
@@ -1314,7 +1926,7 @@ export const MulticastOverlayTab: React.FC<MulticastOverlayTabProps> = ({ token,
                                             max={1400}
                                             value={formPayloadBytes}
                                             onChange={(e) => setFormPayloadBytes(Number(e.target.value))}
-                                            title="UDP Payload Bytes (1316 = 7 MPEG-TS packets)"
+                                            title="UDP Payload Bytes (1328 = RTP + 7 MPEG-TS packets)"
                                             className="bg-background border border-border rounded-lg px-2 py-2 text-text-primary font-mono"
                                         />
                                         <input
@@ -1332,11 +1944,99 @@ export const MulticastOverlayTab: React.FC<MulticastOverlayTabProps> = ({ token,
                                             title="DSCP Marking"
                                             className="bg-background border border-border rounded-lg px-1.5 py-2 text-text-primary font-mono"
                                         >
-                                            <option value="CS5">CS5</option>
                                             <option value="EF">EF</option>
                                             <option value="AF41">AF41</option>
+                                            <option value="CS5">CS5</option>
+                                            <option value="CS4">CS4</option>
+                                            <option value="CS2">CS2</option>
                                             <option value="BE">BE</option>
                                         </select>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Granular SLA Health Thresholds Section */}
+                            <div className="border border-border rounded-xl p-3.5 space-y-2.5 bg-background/40">
+                                <div className="flex items-center justify-between">
+                                    <span className="text-[10px] font-bold uppercase tracking-wider text-cyan-400 flex items-center gap-1.5">
+                                        <Sliders className="w-3.5 h-3.5" />
+                                        SLA Health Verdict Thresholds (Per-Profile Tuning)
+                                    </span>
+                                    <span className="text-[10px] text-text-muted">
+                                        Defines HEALTHY vs DEGRADED vs BROKEN_TREE verdicts
+                                    </span>
+                                </div>
+                                <div className="grid grid-cols-2 sm:grid-cols-5 gap-2.5">
+                                    <div>
+                                        <label className="block text-[10px] font-bold text-text-muted mb-1">
+                                            Healthy Loss &le; (%)
+                                        </label>
+                                        <input
+                                            type="number"
+                                            step="0.01"
+                                            min={0}
+                                            max={50}
+                                            value={formMaxLossPct}
+                                            onChange={(e) => setFormMaxLossPct(Number(e.target.value))}
+                                            className="w-full bg-background border border-border rounded-lg px-2.5 py-1.5 text-emerald-400 font-mono font-bold"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-[10px] font-bold text-text-muted mb-1">
+                                            Degraded Loss &le; (%)
+                                        </label>
+                                        <input
+                                            type="number"
+                                            step="0.1"
+                                            min={0.05}
+                                            max={100}
+                                            value={formDegradedLossPct}
+                                            onChange={(e) => setFormDegradedLossPct(Number(e.target.value))}
+                                            className="w-full bg-background border border-border rounded-lg px-2.5 py-1.5 text-amber-400 font-mono font-bold"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-[10px] font-bold text-text-muted mb-1">
+                                            Max Jitter &le; (ms)
+                                        </label>
+                                        <input
+                                            type="number"
+                                            step="1"
+                                            min={1}
+                                            max={500}
+                                            value={formMaxJitterMs}
+                                            onChange={(e) => setFormMaxJitterMs(Number(e.target.value))}
+                                            className="w-full bg-background border border-border rounded-lg px-2.5 py-1.5 text-text-primary font-mono"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-[10px] font-bold text-text-muted mb-1">
+                                            Tolerated Dups (#)
+                                        </label>
+                                        <input
+                                            type="number"
+                                            step="1"
+                                            min={0}
+                                            max={1000}
+                                            value={formMaxDuplicates}
+                                            onChange={(e) => setFormMaxDuplicates(Number(e.target.value))}
+                                            title="Number of duplicate packets tolerated during PIM RP-to-SPT switchover before flagging DUPLICATION"
+                                            className="w-full bg-background border border-border rounded-lg px-2.5 py-1.5 text-text-primary font-mono"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-[10px] font-bold text-text-muted mb-1">
+                                            Blackhole Gap (ms)
+                                        </label>
+                                        <input
+                                            type="number"
+                                            step="100"
+                                            min={500}
+                                            max={60000}
+                                            value={formMaxGapMs}
+                                            onChange={(e) => setFormMaxGapMs(Number(e.target.value))}
+                                            className="w-full bg-background border border-border rounded-lg px-2.5 py-1.5 text-rose-400 font-mono"
+                                        />
                                     </div>
                                 </div>
                             </div>
@@ -1516,6 +2216,234 @@ export const MulticastOverlayTab: React.FC<MulticastOverlayTabProps> = ({ token,
                     </div>
                 </div>
             )}
+
+            {/* 1-Click Industry Presets Catalog Modal */}
+            {presetsModalOpen && (
+                <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
+                    <div className="bg-card border border-border rounded-2xl max-w-3xl w-full max-h-[88vh] overflow-hidden flex flex-col shadow-2xl">
+                        <div className="p-4 border-b border-border flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                                <Sparkles className="w-5 h-5 text-amber-400" />
+                                <div>
+                                    <h3 className="text-sm font-bold text-text-primary">
+                                        Industry Multicast Application Presets
+                                    </h3>
+                                    <p className="text-[11px] text-text-muted">
+                                        Pre-engineered multicast profiles with authentic L7 RTP/MPEG-TS or RTP/G.711 framing for customer PoCs
+                                    </p>
+                                </div>
+                            </div>
+                            <button
+                                onClick={() => setPresetsModalOpen(false)}
+                                className="text-text-muted hover:text-text-primary text-xs font-bold px-2 py-1"
+                            >
+                                ESC / Close
+                            </button>
+                        </div>
+
+                        <div className="p-5 overflow-y-auto space-y-3">
+                            {presets.map((p) => (
+                                <div
+                                    key={p.id}
+                                    className="bg-background border border-border hover:border-purple-500/40 rounded-xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4 transition-all"
+                                >
+                                    <div className="space-y-1.5">
+                                        <div className="flex flex-wrap items-center gap-2">
+                                            <span className="px-2 py-0.5 rounded bg-amber-500/15 border border-amber-500/30 text-amber-300 text-[10px] font-bold">
+                                                {p.badge}
+                                            </span>
+                                            <span className="text-xs font-black text-text-primary">{p.name}</span>
+                                            <span className="px-2 py-0.5 rounded bg-purple-500/15 border border-purple-500/30 text-purple-300 font-mono text-[10px] font-bold">
+                                                {p.mode.toUpperCase()} {p.group}:{p.port}
+                                            </span>
+                                            <span className="px-2 py-0.5 rounded bg-cyan-500/15 border border-cyan-500/30 text-cyan-300 font-mono text-[10px] font-bold">
+                                                DSCP {p.dscp} &bull; TTL {p.ttl}
+                                            </span>
+                                            <span className="px-2 py-0.5 rounded bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 font-mono text-[10px] font-bold">
+                                                {PAYLOAD_FORMAT_LABELS[p.payloadFormat]?.short || p.payloadFormat}
+                                            </span>
+                                        </div>
+                                        <p className="text-xs text-text-secondary">{p.description}</p>
+                                        <div className="flex flex-wrap items-center gap-3 text-[10px] font-mono text-text-muted">
+                                            <span>Rate: {formatBitsPerSec(p.rate.kbps)} ({p.rate.mode.toUpperCase()})</span>
+                                            <span>&bull;</span>
+                                            <span>Payload: {p.payloadBytes}B</span>
+                                            <span>&bull;</span>
+                                            <span>SLA Loss &le;{p.thresholds.maxLossPct}% / Jitter &le;{p.thresholds.maxJitterMs}ms</span>
+                                            <span>&bull;</span>
+                                            <span className="text-amber-300">App-ID: {p.appIdHint}</span>
+                                        </div>
+                                    </div>
+                                    <div className="flex sm:flex-col gap-2 shrink-0">
+                                        <button
+                                            onClick={() => handleQuickCreateFromPreset(p)}
+                                            className="px-3.5 py-2 rounded-lg bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold shadow-sm transition-all whitespace-nowrap"
+                                        >
+                                            + Load Preset Now
+                                        </button>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Push to Prisma SD-WAN Custom Apps Modal */}
+            {prismaModalOpen && (
+                <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
+                    <div className="bg-card border border-border rounded-2xl max-w-xl w-full overflow-hidden flex flex-col shadow-2xl">
+                        <div className="p-4 border-b border-border flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                                <CloudUpload className="w-5 h-5 text-cyan-400" />
+                                <h3 className="text-sm font-bold text-text-primary">
+                                    Push Multicast Profile to Prisma SD-WAN Custom Apps
+                                </h3>
+                            </div>
+                            <button
+                                onClick={() => setPrismaModalOpen(false)}
+                                className="text-text-muted hover:text-text-primary text-xs font-bold px-2 py-1"
+                            >
+                                Close
+                            </button>
+                        </div>
+
+                        <div className="p-5 space-y-4 text-xs">
+                            <div className="bg-cyan-500/10 border border-cyan-500/30 rounded-xl p-3.5 text-text-secondary space-y-1.5">
+                                <div className="font-bold text-cyan-300 uppercase tracking-wider text-[10px]">
+                                    How Prisma SD-WAN Multicast App-ID Matching Works
+                                </div>
+                                <p>
+                                    Multiple multicast streams often share standard UDP ports (such as <code className="text-cyan-300">UDP/5004</code> for RTP). Stigix provisions each Custom Application with <code className="text-cyan-300">protocol: udp</code>, <code className="text-cyan-300">port</code>, AND <code className="text-cyan-300">server_prefixes: [&quot;&lt;multicast_group&gt;/32&quot;]</code> so the ION Flow Browser uniquely identifies every multicast channel (<code className="text-cyan-300">STX_MC_*</code>).
+                                </p>
+                            </div>
+
+                            {selectedProfile && (
+                                <div className="bg-background border border-border rounded-xl p-3.5 flex items-center justify-between">
+                                    <div>
+                                        <div className="text-[10px] text-text-muted uppercase font-bold">Selected Profile</div>
+                                        <div className="text-xs font-bold text-text-primary mt-0.5">
+                                            {selectedProfile.name}
+                                        </div>
+                                        <div className="text-[11px] font-mono text-purple-400">
+                                            UDP {selectedProfile.group}/32 : {selectedProfile.port} &bull; DSCP {selectedProfile.dscp}
+                                        </div>
+                                    </div>
+                                    <button
+                                        onClick={() => handleSyncToPrisma(false)}
+                                        disabled={prismaSyncBusy}
+                                        className="px-3.5 py-2 rounded-lg bg-cyan-600 hover:bg-cyan-500 disabled:opacity-50 text-white font-bold transition-all"
+                                    >
+                                        {prismaSyncBusy ? 'Syncing...' : 'Push Selected Profile'}
+                                    </button>
+                                </div>
+                            )}
+
+                            <div className="bg-background border border-border rounded-xl p-3.5 flex items-center justify-between">
+                                <div>
+                                    <div className="text-[10px] text-text-muted uppercase font-bold">Entire Multicast Catalog</div>
+                                    <div className="text-xs font-bold text-text-primary mt-0.5">
+                                        Sync All {profiles.length} Multicast Profiles
+                                    </div>
+                                    <div className="text-[11px] text-text-muted">
+                                        Creates/updates <code className="font-mono">STX_MC_*</code> definitions on Prisma SD-WAN Controller
+                                    </div>
+                                </div>
+                                <button
+                                    onClick={() => handleSyncToPrisma(true)}
+                                    disabled={prismaSyncBusy}
+                                    className="px-3.5 py-2 rounded-lg bg-purple-600 hover:bg-purple-500 disabled:opacity-50 text-white font-bold transition-all"
+                                >
+                                    {prismaSyncBusy ? 'Syncing...' : `Push All (${profiles.length})`}
+                                </button>
+                            </div>
+
+                            {prismaSyncResult && (
+                                <div className="bg-background border border-border rounded-xl p-3 font-mono text-[11px] text-emerald-300 max-h-48 overflow-y-auto whitespace-pre-wrap">
+                                    {typeof prismaSyncResult === 'string'
+                                        ? prismaSyncResult
+                                        : JSON.stringify(prismaSyncResult, null, 2)}
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Import Multicast Profiles JSON Modal */}
+            {importModalOpen && (
+                <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
+                    <div className="bg-card border border-border rounded-2xl max-w-xl w-full overflow-hidden flex flex-col shadow-2xl">
+                        <div className="p-4 border-b border-border flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                                <FileJson className="w-5 h-5 text-purple-400" />
+                                <h3 className="text-sm font-bold text-text-primary">
+                                    Import Multicast Overlay Configuration (JSON)
+                                </h3>
+                            </div>
+                            <button
+                                onClick={() => setImportModalOpen(false)}
+                                className="text-text-muted hover:text-text-primary text-xs font-bold px-2 py-1"
+                            >
+                                Cancel
+                            </button>
+                        </div>
+
+                        <div className="p-5 space-y-4 text-xs">
+                            <div className="flex items-center justify-between gap-3">
+                                <label className="px-3.5 py-2 rounded-lg bg-purple-600/15 hover:bg-purple-600/25 border border-purple-500/30 text-purple-300 font-bold cursor-pointer transition-all">
+                                    Choose .json File
+                                    <input
+                                        type="file"
+                                        accept=".json,application/json"
+                                        onChange={handleImportFileChange}
+                                        className="hidden"
+                                    />
+                                </label>
+
+                                <div className="flex items-center gap-2">
+                                    <span className="text-text-muted font-bold">Import Mode:</span>
+                                    <select
+                                        value={importMode}
+                                        onChange={(e) => setImportMode(e.target.value as 'merge' | 'replace')}
+                                        className="bg-background border border-border rounded-lg px-2.5 py-1.5 text-text-primary font-bold"
+                                    >
+                                        <option value="merge">Merge (Add / Update by ID)</option>
+                                        <option value="replace">Replace All Profiles</option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            <textarea
+                                rows={8}
+                                value={importJsonText}
+                                onChange={(e) => setImportJsonText(e.target.value)}
+                                placeholder='Paste exported Stigix Multicast JSON bundle here ({"kind": "stigix-multicast-profiles", "applications": [...]})'
+                                className="w-full bg-background border border-border rounded-xl p-3 font-mono text-[11px] text-text-primary focus:outline-none focus:border-purple-500"
+                            />
+
+                            <div className="flex items-center justify-end gap-2">
+                                <button
+                                    type="button"
+                                    onClick={() => setImportModalOpen(false)}
+                                    className="px-4 py-2 rounded-lg bg-background border border-border text-text-muted hover:text-text-primary font-bold"
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    type="button"
+                                    disabled={importBusy || !importJsonText.trim()}
+                                    onClick={handleImportSubmit}
+                                    className="px-4 py-2 rounded-lg bg-purple-600 hover:bg-purple-500 disabled:opacity-50 text-white font-bold shadow-sm"
+                                >
+                                    {importBusy ? 'Importing & Syncing Peers...' : 'Import & Sync to Fleet'}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };
+

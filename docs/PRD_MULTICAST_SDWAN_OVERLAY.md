@@ -119,13 +119,23 @@ Core test scenarios:
    - **Time-to-first-packet (`joinLatencyMs`):** time from `addMembership` call (or sender start if joined prior to sender start) to first valid packet.
    - **Max interruption (`maxGapMs`):** longest inter-arrival gap in ms on the receiver's monotonic clock — the primary failover/convergence metric.
 3. **Expectation mode:** `traffic` (`EXPECT_TRAFFIC`, default) or `none` (`EXPECT_NONE`, leak test). The verdict is computed locally and rolled up on the Leader.
-4. **Health verdict:**
+4. **Health verdict & Granular SLA Threshold Tuning:**
+   - In real-world SD-WAN overlays, initial **PIM Rendezvous Point (RP) $\to$ Shortest Path Tree (SPT) switchover** can briefly produce a few duplicate packets (e.g., 5–15 packets while both the shared tree and source tree are active) or a transient convergence gap.
+   - Engineers can tune **5 granular SLA thresholds** per profile (with sensible defaults) AND click **"Reset Counters"** at any time while a stream is running to clear startup/failover transients and measure clean steady-state replication:
+
+   | SLA Metric | Parameter | Default | Pedagogical Meaning |
+   |---|---|---|---|
+   | **Healthy Loss Limit** | `maxLossPct` | `0.1%` | Maximum packet loss tolerated for a `HEALTHY` (green) verdict |
+   | **Critical Loss Limit** | `degradedLossPct` | `2.0%` | Loss between `maxLossPct` and `degradedLossPct` = `DEGRADED` (amber); above = `FAILED` (red) |
+   | **Max Jitter (RFC 3550)** | `maxJitterMs` | `30 ms` | If inter-arrival jitter exceeds `maxJitterMs`, receiver transitions to `DEGRADED` |
+   | **Max Allowed Duplicates** | `maxDuplicates` | `0` (tunable e.g. `15`) | Number of duplicate packets tolerated (e.g. during PIM SPT switchover) before flagging `DEGRADED` |
+   | **Max Silence / Gap** | `maxGapMs` | `3000 ms` | Longest tolerated stream interruption before declaring the stream `FAILED` |
 
    | State | Rule (configurable thresholds) |
    |---|---|
-   | `HEALTHY` | For `traffic`: receiving packets, loss ≤ 0.1%, 0 duplicates. For `none`: 0 valid packets received |
-   | `DEGRADED` | For `traffic`: loss 0.1–2% or duplicates > 0 |
-   | `FAILED` | For `traffic`: loss > 2% or no packet for > 3 s while sender active. For `none`: ≥ 1 valid packet received (LEAK DETECTED) |
+   | `HEALTHY` | For `traffic`: receiving packets, `lossPct <= maxLossPct`, `duplicatePackets <= maxDuplicates`, `jitterMs <= maxJitterMs`. For `none`: 0 valid packets received |
+   | `DEGRADED` | For `traffic`: `maxLossPct < lossPct <= degradedLossPct`, or `duplicatePackets > maxDuplicates`, or `jitterMs > maxJitterMs` |
+   | `FAILED` | For `traffic`: `lossPct > degradedLossPct` or no packet for `> maxGapMs` while sender active. For `none`: $\ge 1$ valid packet received (`LEAK DETECTED`) |
    | `NO_TRAFFIC` | Waiting for sender or initial stream convergence |
 
 ---
@@ -134,9 +144,9 @@ Core test scenarios:
 
 ### 4.1 Where it fits in the codebase (100% Native TypeScript/Node.js)
 To maintain full consistency with `TcpServerRuntime` and `TcpClientRuntime` (and avoid external Python child process lifecycle issues), the Multicast engine is implemented natively in TypeScript inside `web-dashboard/custom-tcp-apps/`:
-- `web-dashboard/custom-tcp-apps/multicast-runtime.ts` — implements `MulticastSenderRuntime` and `MulticastReceiverRuntime` using Node.js `dgram`, high-resolution pacing, 24-byte `STGX` header packing/parsing, RFC 3550 jitter, sliding duplicate/reordering window, and host pre-flight checks (`/proc/net/igmp`, `rp_filter`, LAN interface detection).
+- `web-dashboard/custom-tcp-apps/multicast-runtime.ts` — implements `MulticastSenderRuntime` and `MulticastReceiverRuntime` using Node.js `dgram`, high-resolution pacing, 24-byte `STGX` header packing/parsing (plus optional RFC 3550 RTP v2 + MPEG-TS `0x47` framing), RFC 3550 jitter, sliding duplicate/reordering window, live counter reset, and host pre-flight checks (`/proc/net/igmp`, `rp_filter`, LAN interface detection).
 - `web-dashboard/custom-tcp-apps/multicast-manager.ts` — manages local sender/receiver instances, persists `multicastApplications` inside `custom-tcp-applications.json` (isolated from `applications` so existing TCP apps have zero regression risk), and orchestrates cluster-wide runs across the Stigix Fleet via the Leader gateway.
-- `web-dashboard/src/CustomApps.tsx` — adds a top-level mode switcher `[ TCP Applications | Multicast Overlay ]` (Option A) with a dedicated Multicast Overlay dashboard, `1 Sender -> N Receivers` live telemetry matrix, pre-flight diagnostics modal, and creation/edit wizard.
+- `web-dashboard/src/components/custom-tcp/MulticastOverlayTab.tsx` — standalone **Multicast Traffic** operational control center mounted directly under **`Generate -> Multicast Traffic`** in the main navigation bar (as well as accessible from Custom Apps).
 
 ### 4.2 Orchestration & Unidirectional Telemetry Fan-Out
 
@@ -183,34 +193,37 @@ Start order is **receivers first** (unless a receiver is manually joined late fo
 ### 4.4 Data model (`CustomMulticastApplicationConfig`)
 ```json
 {
-  "id": "mc-market-data",
-  "name": "Market Data Feed",
-  "description": "Real-time UDP multicast feed validation across SD-WAN overlay",
+  "id": "mc-ceo-townhall",
+  "name": "CEO Townhall HD IPTV",
+  "description": "Live corporate IPTV broadcast over SD-WAN overlay (RTP / MPEG-TS)",
+  "presetId": "iptv-ceo-townhall",
+  "payloadFormat": "rtp-mpegts",
   "enabled": true,
-  "group": "239.255.1.100",
-  "port": 5000,
+  "group": "239.1.1.100",
+  "port": 5004,
   "mode": "asm",
   "ssmSource": "",
   "senderNode": "DC1",
   "senderInterfaceIp": "auto",
   "receivers": [
     { "node": "BR1", "expect": "traffic", "interfaceIp": "auto", "enabled": true },
-    { "node": "BR2", "expect": "traffic", "interfaceIp": "auto", "enabled": true },
-    { "node": "BR5", "expect": "none", "interfaceIp": "auto", "enabled": true }
+    { "node": "BR5", "expect": "traffic", "interfaceIp": "auto", "enabled": true }
   ],
   "rate": {
     "mode": "cbr",
-    "kbps": 2000,
-    "burstPackets": 50,
+    "kbps": 1500,
+    "burstPackets": 20,
     "burstIntervalMs": 100
   },
   "payloadBytes": 1316,
-  "ttl": 64,
-  "dscp": "CS5",
+  "ttl": 16,
+  "dscp": "AF41",
   "durationSec": 0,
   "thresholds": {
     "maxLossPct": 0.1,
     "degradedLossPct": 2.0,
+    "maxJitterMs": 30,
+    "maxDuplicates": 0,
     "maxGapMs": 3000
   }
 }
@@ -226,10 +239,16 @@ Start order is **receivers first** (unless a receiver is manually joined late fo
 | `DELETE` | `/api/custom-tcp-apps/multicast/:id` | Leader/Local | Delete a multicast application |
 | `POST` | `/api/custom-tcp-apps/multicast/:id/start` | Orchestrated | Start receivers across peers, then start sender |
 | `POST` | `/api/custom-tcp-apps/multicast/:id/stop` | Orchestrated | Stop sender, then leave group on receivers & record history |
+| `POST` | `/api/custom-tcp-apps/multicast/:id/reset-counters` | Orchestrated | Reset loss/duplicate/jitter/gap counters live across active receivers |
 | `GET` | `/api/custom-tcp-apps/multicast/:id/stats` | Orchestrated | Poll & aggregate live sender + per-receiver telemetry |
 | `POST` | `/api/custom-tcp-apps/multicast/:id/preflight` | Orchestrated | Run host/interface/IGMP/rp_filter checks on sender & receivers |
+| `GET` | `/api/custom-tcp-apps/multicast/export` | Leader/Local | Export all multicast application profiles as a portable JSON bundle |
+| `POST` | `/api/custom-tcp-apps/multicast/import` | Leader/Local | Import multicast profiles (`merge` or `replace`) & sync to Fleet Peers |
+| `POST` | `/api/custom-tcp-apps/prisma/sync-multicast/:id` | Leader/Local | Push multicast profile (`UDP Port + Group IP /32`) to Prisma SD-WAN Custom Apps |
+| `POST` | `/api/custom-tcp-apps/prisma/sync-all-multicast` | Leader/Local | Push all multicast profiles to Prisma SD-WAN Custom Apps |
 | `POST` | `/api/custom-tcp-apps/multicast/:id/local-sender/start` · `/stop` | Node-Local | Start/stop local UDP multicast sender on this node |
 | `POST` | `/api/custom-tcp-apps/multicast/:id/local-join` · `/local-leave` | Node-Local | Join/leave multicast group on this node |
+| `POST` | `/api/custom-tcp-apps/multicast/:id/local-reset` | Node-Local | Reset local receiver SLA counters without dropping IGMP membership |
 | `GET` | `/api/custom-tcp-apps/multicast/:id/local-stats` | Node-Local | Return local sender + receiver metrics for this node |
 | `GET` | `/api/custom-tcp-apps/multicast/:id/local-preflight` | Node-Local | Return local interface, IGMP version, and `rp_filter` checks |
 
@@ -237,38 +256,42 @@ Start order is **receivers first** (unless a receiver is manually joined late fo
 
 ## 5. UI/UX Specification
 
-### 5.1 Sub-Tab Switcher in Custom Apps (Option A)
-`web-dashboard/src/CustomApps.tsx` features a top-level mode selector in the header:
-- **`[ TCP Applications ]`** — existing 1-to-1 / N-to-1 TCP session & request-reply engine.
-- **`[ Multicast Overlay ]`** — 1-to-N UDP multicast validation engine.
+### 5.1 Dedicated Top-Level Use Case under `Generate` Menu
+Because IP Multicast relies on **UDP, IGMPv2/v3, and PIM** (and not TCP), hiding it inside *Custom TCP Apps* can confuse network engineers.
+- In the top navigation bar under **`Generate`**, **Multicast Traffic** (`view === 'multicast'`) is promoted to a **first-class standalone menu entry** alongside *Custom TCP Apps*, *Voice & Video*, and *IoT Devices*, complete with its own live green activity pulse indicator whenever a multicast stream is running.
+- All configuration actions (Presets, SLA Threshold Tuning, Prisma SD-WAN Custom App Push, JSON Import/Export) live directly inside the **Multicast Traffic** header so the engineer never has to leave the page.
 
-### 5.2 Multicast Overlay View & Wizard
-- **Wizard Modal:** Group IP (validated `239.x.x.x` for ASM or `232.x.x.x` for SSM, rejecting `224.0.0.0/24`), UDP port, Sender Node selector (populated from Fleet + local node), Receiver Node multi-select with per-node expectation toggle (`Expect Traffic` vs `Expect None / Leak Test`), Rate mode (`CBR kbps` or `Burst`), Payload size (`64–1400` bytes, default `1316`), DSCP (`BE`, `EF`, `CS5`, `AF41`), TTL (default `64`), Duration.
+### 5.2 Multicast Traffic Control Center & Wizard
+- **Wizard Modal:** Group IP (validated `239.x.x.x` for ASM or `232.x.x.x` for SSM, rejecting `224.0.0.0/24`), UDP port, Sender Node selector (populated from Fleet + local node), Receiver Node multi-select with per-node expectation toggle (`Expect Traffic` vs `Expect None / Leak Test`), Rate mode (`CBR kbps` or `Burst`), Payload size (`64–1400` bytes, default `1316`), L7 Framing (`RTP/MPEG-TS`, `RTP Audio`, or `Raw STGX`), DSCP (`BE`, `EF`, `CS5`, `AF41`, `CS4`, `CS2`), TTL (default `16`), Duration, and SLA Thresholds.
 - **Pre-flight Check Drawer/Modal:** Per-node status badge (`PASS` / `WARN` / `FAIL`) displaying resolved LAN IP & interface name, `MULTICAST` flag, kernel IGMP version, and `rp_filter` setting.
 - **Live Receiver Matrix (`1 Sender -> N Receivers`):**
   - Sender KPI bar: Active state, `run_id`, TX Bitrate (Mbps/kbps), Packets Sent, Sequence ID, Uptime, Egress Interface IP, DSCP/TTL.
+  - Live **"Reset Counters"** button to clear convergence spikes (e.g. after a WAN failover test or initial SPT switchover) without interrupting the IGMP membership or UDP stream.
   - Per-receiver table with live Late-Join / Leave toggle button (enabling interactive Scenario S4 & S8 testing):
 
   | Receiver | Mode | IGMP / Iface | Rx Rate | Pkts Rx / Lost | Loss % | Dups / Reorder | Jitter ms | Max Gap ms | Join ms | Verdict | Action |
   |---|---|---|---|---|---|---|---|---|---|---|---|
-  | **BR1** | `EXPECT_TRAFFIC` | v3 (`eth1`) | 1.99 Mbps | 1,890 / 0 | 0.00% | 0 / 0 | 0.8 ms | 12 ms | 38 ms | 🟢 `HEALTHY` | `[Leave]` |
+  | **BR1** | `EXPECT_TRAFFIC` | v3 (`eth1`) | 1.50 Mbps | 1,890 / 0 | 0.00% | 0 / 0 | 0.8 ms | 12 ms | 38 ms | 🟢 `HEALTHY` | `[Leave]` |
   | **BR5** | `EXPECT_NONE` | v3 (`eth1`) | 0.00 Mbps | 0 / 0 | 0.00% | 0 / 0 | — | — | — | 🟢 `PASS (No Leak)` | `[Leave]` |
 
-### 5.3 Phase 5 — Built-in Enterprise Multicast Application Presets (One-Click Demo Profiles)
-To make customer demonstrations and lab validations effortless, the Multicast Wizard (and empty-state quick-launch bar) includes a **"Load Industry Preset"** selector that pre-populates standard IANA ports, payload sizes, DSCP markings, rate modes, and L7 framing so **Prisma SD-WAN Flow Browser**, **Palo Alto NGFW App-ID**, and **Wireshark** recognize the application out of the box:
+### 5.3 Built-in Enterprise Multicast Application Presets (One-Click Demo Profiles)
+To make customer demonstrations and lab validations effortless, the Multicast Wizard (and main toolbar) includes a **"Load Industry Preset"** selector that pre-populates standard IANA ports, payload sizes, DSCP markings, rate modes, and L7 framing so **Prisma SD-WAN Flow Browser**, **Palo Alto NGFW App-ID**, and **Wireshark** recognize the application out of the box:
 
 | Preset ID | Display Name & Badge | Group IP | UDP Port | Rate Mode | Payload Size | DSCP | TTL | L7 Framing (`payloadFormat`) | App-ID / Flow Browser Recognition |
 |---|---|---|---|---|---|---|---|---|---|
 | `iptv-ceo-townhall` | 📺 **CEO Townhall HD IPTV (`RTP / MPEG-TS`)** | `239.1.1.100` | **`5004`** | `CBR` `1500 kbps` | **`1316 B`** (`7×188B` TS) | `AF41` | `16` | `rtp-mpegts` | Recognized as **`rtp` / `mpeg-ts`** Real-Time Broadcast Video |
-| `market-data-itch` | 📈 **Financial Market Data (`NASDAQ ITCH / FIX`)** | `239.192.1.10` | **`5004`** (or `14001`) | `Burst` `20 pkts / 100ms` | **`256 B`** | `EF` | `16` | `raw-stgx` | Micro-burst low-latency ticker feed in **Real-Time (`EF`)** queue |
+| `market-data-itch` | 📈 **Financial Market Data (`NASDAQ ITCH / FIX`)** | `239.192.1.10` | **`14001`** | `Burst` `20 pkts / 100ms` | **`256 B`** | `EF` | `16` | `raw-stgx` | Micro-burst low-latency ticker feed in **Real-Time (`EF`)** queue |
 | `voip-emergency-paging` | 📢 **Emergency VoIP Audio Paging (`RTP G.711`)** | `239.255.0.1` | **`5004`** | `CBR` `80 kbps` (`50 pps`) | **`200 B`** (`20ms` voice) | `EF` | `16` | `rtp-g711` | Recognized as **`rtp`** Voice Paging stream |
 | `cctv-surveillance` | 🎥 **Branch CCTV Security Camera Matrix** | `239.192.20.1` | **`5004`** | `CBR` `2500 kbps` | **`1316 B`** | `CS4` | `16` | `rtp-mpegts` | High-throughput branch-side source (BSS) or hub video stream |
 | `sap-session-directory` | 📡 **SAP / SDP Enterprise Session Directory** | `239.255.255.255` | **`9875`** | `CBR` `64 kbps` | **`512 B`** | `CS2` | `16` | `raw-stgx` | Standard IANA **SAP (`sap` — UDP 9875)** session announcement |
 
-**UX Workflow in the Wizard:**
-1. At the top of the **"Create / Edit Multicast Profile"** modal, a row of clickable preset cards (`[📺 CEO Townhall IPTV]`, `[📈 Market Data Feed]`, `[📢 VoIP Paging]`, `[🎥 CCTV Matrix]`) lets the user populate all network/QoS parameters in **one click**.
-2. The user only has to pick their **Sender Node** (e.g., `DC1`) and **Receiver Node(s)** (e.g., `BR5`, `BR1`) and click **Save & Start**.
-3. An inline **"Prisma SD-WAN Demo Tip"** tooltip in the preset card displays the exact `Group + UDP Port + DSCP` match if the engineer wants to create a named Custom App badge in Prisma SD-WAN.
+### 5.4 One-Click "Push to Prisma SD-WAN Custom App" (`STX_MC_<Name>`)
+Inspired by the TCP Custom App integration, engineers can push their Multicast Profiles directly to the **Prisma SD-WAN Controller** via the official `prisma_sase` SDK (`engines/prisma_custom_apps.py`):
+- **Why it matters for Multicast demos:** Multiple multicast profiles often share standard media ports like `UDP 5004`. By populating both **`udp_rules.server_port`** (`5004`) AND **`udp_rules.server_prefixes`** (`["239.1.1.100/32"]` — the exact Multicast Group IP) with `transfer_type: "rt-audio"` / `"streaming-media"`, Prisma SD-WAN uniquely classifies each multicast group `(S, G)` under its own custom application badge (e.g., `STX_MC_CEO-Townhall-IPTV`, `STX_MC_Market-Data`) in the **Prisma SD-WAN Flow Browser** and **Top Applications** analytics!
+
+### 5.5 Configuration Import / Export (`JSON`)
+- **Export JSON:** One-click download of all multicast profiles (`stigix-multicast-profiles.json`) or a single profile for backup and sharing across lab environments.
+- **Import JSON:** Drag-and-drop or paste JSON modal supporting **`Merge`** (add/update profiles by ID) or **`Replace All`** modes, with automatic propagation from the Stigix Leader to all Fleet Peers.
 
 ---
 
@@ -289,9 +312,10 @@ Per the `stigix-mcp-sync` convention, tools are exposed for automation:
 
 - Sender holds configured CBR within ±5% up to 50 Mbps in Node.js `dgram`.
 - Loss detection accuracy: sequence gaps accurately tracked per `run_id` with `first_seq` late-join baseline.
-- Duplicates and out-of-order packets flagged via sliding window sequence tracker.
+- Duplicates and out-of-order packets flagged via sliding window sequence tracker, with configurable tolerance (`maxDuplicates`) and live counter reset.
 - Failover test reports `maxGapMs` interruption accurately on each receiver's monotonic clock.
 - Leak test (`expect: 'none'`) reports `FAILED (LEAK)` immediately when any valid `STGX` packet is received.
+- Prisma SD-WAN Custom App push registers `UDP + Group IP/32` (`server_prefixes`) cleanly on the controller.
 - Existing TCP custom apps and their JSON configs are 100% unaffected (`test-custom-tcp.ts` passes).
 
 ## 8. Risks & Mitigations
@@ -302,6 +326,7 @@ Per the `stigix-mcp-sync` convention, tools are exposed for automation:
 | Wrong host interface chosen on multi-NIC nodes | Auto-detect private LAN interface + show resolved IP in UI + allow per-node override |
 | Unidirectional UDP has no back-channel | Leader polls `/local-stats` across all participating peers via Fleet Gateway / Reverse WS Tunnel |
 | Late joiner shows 99% false packet loss | Receiver initializes `first_seq` on first valid packet for current `run_id` |
+| Transient duplicates during PIM SPT switchover | Configurable `maxDuplicates` & `maxJitterMs` thresholds + live **Reset Counters** button |
 | Docker `Dockerfile` sync | Keep all backend modules in `web-dashboard/custom-tcp-apps/` (copied in both Dockerfiles) |
 
 ## 9. Phased Roadmap
@@ -312,7 +337,7 @@ Per the `stigix-mcp-sync` convention, tools are exposed for automation:
 | **2 – Platform** | `multicast-manager.ts`, cluster orchestration (Leader $\leftrightarrow$ Peers), API routes, config store sync | ✅ Completed (`v3.0.14`–`v3.0.19`) |
 | **3 – UI** | `[ TCP Applications \| Multicast Overlay ]` switcher in `CustomApps.tsx`, live receiver matrix, wizard, pre-flight modal, `NO_TRAFFIC` RPF diagnostics | ✅ Completed (`v3.0.15`–`v3.0.21`) |
 | **4 – Automation** | Self-test validation, Copilot & FastMCP integration, Technical White Paper & Testing Guide | ✅ Completed (`v3.0.20`–`v3.0.21`) |
-| **5 – Demo Presets & L7 App-ID Framing** | One-click Enterprise Multicast Application Presets (`CEO Townhall IPTV`, `Market Data ITCH`, `VoIP Paging`, `CCTV Matrix`, `SAP`) in UI Wizard + optional RFC 3550 RTP v2 / MPEG-TS (`0x47`) header encapsulation for native App-ID / Wireshark recognition | 📋 Planned (Next Phase) |
+| **5 – Standalone Use Case, Demo Presets, SLA Tuning, Prisma Sync & Import/Export** | Dedicated `Generate -> Multicast Traffic` menu item; 5 one-click Enterprise Presets + L7 RTP/MPEG-TS framing; granular SLA threshold tuning (`maxLossPct`, `degradedLossPct`, `maxJitterMs`, `maxDuplicates`, `maxGapMs`) + live Counter Reset; 1-click Push to Prisma SD-WAN Custom App (`UDP + Group /32`); JSON Import/Export | 🚀 In Progress |
 
 ---
 
@@ -370,6 +395,7 @@ Any solution transporting multicast (e.g., other SD-WAN or router-based overlays
 
 | Date | Stigix Version | Author / Trigger | Summary of Changes |
 |---|---|---|---|
+| 2026-10-15 | `v3.0.21` | Stigix Core Team | Updated Phase 5 PRD with dedicated Generate -> Multicast Traffic navigation, granular SLA thresholds (maxJitterMs, maxDuplicates, maxLossPct, degradedLossPct, maxGapMs) with live counter reset, 1-click Push to Prisma SD-WAN Custom App (UDP + Group /32 server_prefixes), and JSON configuration Import/Export |
 | 2026-10-15 | `v3.0.21` | Stigix Core Team | Added Phase 5 specification: One-Click Enterprise Multicast Application Presets (CEO Townhall IPTV, Financial Market Data ITCH, Emergency VoIP Paging, CCTV Matrix, SAP Directory) and optional L7 RFC 3550 RTP v2 + MPEG-TS (0x47) packet framing for native Palo Alto App-ID, Prisma SD-WAN Flow Browser, and Wireshark recognition |
 | 2026-10-14 | `v3.0.14` | Stigix Core Team | Finalized v4 architecture: native TypeScript/Node.js `dgram` engine in `custom-tcp-apps/`, node-local vs cluster-orchestrated APIs, `first_seq` late-join baseline, LAN interface auto-detection, isolated `multicastApplications` config array, and Custom Apps sub-tab switcher |
 | 2026-10-13 | `v3.0.3` | Stigix Core Team | Initial PRD creation for SD-WAN Overlay Multicast Validation Engine |

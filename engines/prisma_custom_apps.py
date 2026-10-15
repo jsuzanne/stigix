@@ -82,6 +82,12 @@ Examples:
     )
 
     parser.add_argument(
+        '--sync-multicast',
+        action='store_true',
+        help='Sync all Stigix Multicast application profiles to Prisma SD-WAN (UDP + Group IP/32)'
+    )
+
+    parser.add_argument(
         '--clean-all',
         action='store_true',
         help='Delete all Stigix-created custom applications (tagged "stigix" or prefixed "STX_")'
@@ -113,6 +119,11 @@ Examples:
         choices=['tcp', 'udp', 'both'],
         default='tcp',
         help='L4 protocol for the custom application (default: tcp)'
+    )
+
+    parser.add_argument(
+        '--server-prefix',
+        help='Optional destination IPv4 prefix (e.g. "239.1.1.100/32" for multicast group classification)'
     )
 
     parser.add_argument(
@@ -302,11 +313,24 @@ def build_appdef_payload(
     name: str,
     port: int,
     protocol: str = 'tcp',
-    description: Optional[str] = None
+    description: Optional[str] = None,
+    server_prefix: Optional[str] = None,
+    prefix_tag: str = "STX_"
 ) -> Dict[str, Any]:
     """Construct a clean, valid Prisma SD-WAN appdef dictionary payload strictly compliant with controller schema"""
-    std_name = sanitize_app_name(name)
+    cleaned = re.sub(r'[^a-zA-Z0-9_\-]', '_', str(name or "APP").strip())
+    if cleaned.upper().startswith("STX_"):
+        std_name = cleaned
+    else:
+        std_name = f"{prefix_tag}{cleaned}"
+    std_name = std_name[:32]
     desc = description or f"Auto-provisioned by Stigix for {name} on {protocol.upper()}:{port}"
+
+    normalized_prefix = None
+    if server_prefix:
+        p = str(server_prefix).strip()
+        if p:
+            normalized_prefix = p if "/" in p else f"{p}/32"
 
     rule = {
         "server_filters": None,
@@ -317,7 +341,7 @@ def build_appdef_payload(
         },
         "client_port": None,
         "dscp": None,
-        "server_prefixes": None,
+        "server_prefixes": [normalized_prefix] if normalized_prefix else None,
         "server_ipv6_prefixes": None
     }
 
@@ -360,10 +384,11 @@ def build_appdef_payload(
     return payload
 
 
-def extract_app_ports(app_def: Dict[str, Any]) -> Dict[str, List[int]]:
-    """Extract TCP and UDP server ports defined in an appdef"""
+def extract_app_ports(app_def: Dict[str, Any]) -> Dict[str, Any]:
+    """Extract TCP and UDP server ports and prefixes defined in an appdef"""
     tcp_ports = []
     udp_ports = []
+    server_prefixes = []
 
     for rule in app_def.get("tcp_rules") or []:
         sp = rule.get("server_port")
@@ -392,10 +417,15 @@ def extract_app_ports(app_def: Dict[str, Any]) -> Dict[str, List[int]]:
                     udp_ports.append(int(p))
                 except (ValueError, TypeError):
                     pass
+        if isinstance(rule.get("server_prefixes"), list):
+            for pfx in rule["server_prefixes"]:
+                if pfx:
+                    server_prefixes.append(str(pfx))
 
     return {
         "tcp": sorted(list(set(tcp_ports))),
-        "udp": sorted(list(set(udp_ports)))
+        "udp": sorted(list(set(udp_ports))),
+        "server_prefixes": sorted(list(set(server_prefixes)))
     }
 
 
@@ -424,6 +454,7 @@ def list_custom_apps(sdk: API, api_version: str = 'v2.6') -> List[Dict[str, Any]
             "sub_category": str(item.get("p_sub_category") or item.get("sub_category") or "general"),
             "tcp_ports": ports.get("tcp") or [],
             "udp_ports": ports.get("udp") or [],
+            "server_prefixes": ports.get("server_prefixes") or [],
             "tags": item.get("tags") if isinstance(item.get("tags"), list) else [],
             "is_stigix": is_stigix_app(item),
             "_created_on_utc": item.get("_created_on_utc"),
@@ -441,6 +472,8 @@ def create_or_update_app(
     protocol: str = 'tcp',
     display_name: Optional[str] = None,
     description: Optional[str] = None,
+    server_prefix: Optional[str] = None,
+    prefix_tag: str = "STX_",
     existing_apps: Optional[List[Dict[str, Any]]] = None,
     api_version: str = 'v2.6'
 ) -> Dict[str, Any]:
@@ -449,7 +482,9 @@ def create_or_update_app(
         name=name,
         port=port,
         protocol=protocol,
-        description=description
+        description=description,
+        server_prefix=server_prefix,
+        prefix_tag=prefix_tag
     )
 
     # Use provided cache of existing apps or query tenant
@@ -462,7 +497,10 @@ def create_or_update_app(
         app_id = match["id"]
         # Check if identical (delta check)
         existing_ports = match.get("tcp_ports" if protocol == "tcp" else "udp_ports") or []
-        if len(existing_ports) == 1 and existing_ports[0] == int(port):
+        existing_pfxs = match.get("server_prefixes") or []
+        expected_pfx = f"{server_prefix}/32" if (server_prefix and "/" not in server_prefix) else server_prefix
+        pfx_matches = (not expected_pfx and not existing_pfxs) or (expected_pfx in existing_pfxs)
+        if len(existing_ports) == 1 and existing_ports[0] == int(port) and pfx_matches:
             return {
                 "action": "unchanged",
                 "id": app_id,
@@ -470,6 +508,7 @@ def create_or_update_app(
                 "display_name": payload["display_name"],
                 "port": port,
                 "protocol": protocol,
+                "server_prefix": expected_pfx,
                 "app": match
             }
 
@@ -480,6 +519,14 @@ def create_or_update_app(
         raw_obj["description"] = payload["description"]
         
         resp = sdk.put.appdefs(appdef_id=app_id, data=raw_obj, api_version=api_version)
+        if not resp.cgx_status and server_prefix:
+            # Fallback if tenant rejects multicast server_prefixes in udp_rules
+            fallback_payload = build_appdef_payload(
+                name=name, port=port, protocol=protocol, description=description, server_prefix=None, prefix_tag=prefix_tag
+            )
+            raw_obj["udp_rules"] = fallback_payload["udp_rules"]
+            resp = sdk.put.appdefs(appdef_id=app_id, data=raw_obj, api_version=api_version)
+
         if not resp.cgx_status:
             err_msg = format_cgx_error(resp, f"update appdef '{payload['display_name']}' (ID: {app_id})", raw_obj)
             raise RuntimeError(err_msg)
@@ -490,11 +537,19 @@ def create_or_update_app(
             "display_name": payload["display_name"],
             "port": port,
             "protocol": protocol,
+            "server_prefix": server_prefix,
             "app": resp.cgx_content
         }
     else:
         # New app -> Create via POST
         resp = sdk.post.appdefs(data=payload, api_version=api_version)
+        if not resp.cgx_status and server_prefix:
+            # Fallback if tenant rejects multicast address range in server_prefixes
+            fallback_payload = build_appdef_payload(
+                name=name, port=port, protocol=protocol, description=description, server_prefix=None, prefix_tag=prefix_tag
+            )
+            resp = sdk.post.appdefs(data=fallback_payload, api_version=api_version)
+
         if not resp.cgx_status:
             err_msg = format_cgx_error(resp, f"create appdef '{payload['display_name']}'", payload)
             raise RuntimeError(err_msg)
@@ -506,6 +561,7 @@ def create_or_update_app(
             "display_name": payload["display_name"],
             "port": port,
             "protocol": protocol,
+            "server_prefix": server_prefix,
             "app": resp.cgx_content
         }
 
@@ -524,8 +580,12 @@ def delete_custom_app(
         if not target_name:
             raise ValueError("Either --app-id or --name must be provided to delete an application")
         std_name = sanitize_app_name(target_name)
+        mc_name = sanitize_app_name(f"STX_MC_{target_name}")[:32]
         existing_apps = list_custom_apps(sdk, api_version=api_version)
-        match = next((a for a in existing_apps if a["name"].lower() in (target_name.lower(), std_name.lower())), None)
+        match = next(
+            (a for a in existing_apps if a["name"].lower() in (target_name.lower(), std_name.lower(), mc_name.lower())),
+            None
+        )
         if not match:
             return {
                 "success": True,
@@ -642,6 +702,99 @@ def sync_all_from_config(
     }
 
 
+def sync_multicast_from_config(
+    sdk: API,
+    config_file: Optional[str] = None,
+    json_data: Optional[str] = None,
+    api_version: str = 'v2.6'
+) -> Dict[str, Any]:
+    """Read Stigix Multicast profiles and synchronize delta to Prisma SD-WAN (UDP + Group IP/32)"""
+    mc_list = []
+
+    if json_data:
+        try:
+            parsed = json.loads(json_data)
+            mc_list = parsed.get("multicastApplications", parsed if isinstance(parsed, list) else [])
+        except Exception as e:
+            raise ValueError(f"Invalid JSON string in --json-data: {e}")
+    elif config_file:
+        if not os.path.exists(config_file):
+            raise FileNotFoundError(f"Configuration file not found: {config_file}")
+        with open(config_file, 'r') as f:
+            parsed = json.load(f)
+            mc_list = parsed.get("multicastApplications", parsed if isinstance(parsed, list) else [])
+    else:
+        default_paths = [
+            '/data/stigix/custom-tcp-applications.json',
+            os.path.join(os.getcwd(), 'config', 'custom-tcp-applications.json'),
+            os.path.join(os.getcwd(), 'custom-tcp-applications.json')
+        ]
+        for path in default_paths:
+            if os.path.exists(path):
+                with open(path, 'r') as f:
+                    parsed = json.load(f)
+                    mc_list = parsed.get("multicastApplications", parsed if isinstance(parsed, list) else [])
+                break
+
+    if not mc_list:
+        return {
+            "success": True,
+            "message": "No Multicast profiles found to sync",
+            "synced_count": 0,
+            "created_count": 0,
+            "updated_count": 0,
+            "unchanged_count": 0,
+            "results": []
+        }
+
+    existing_tenant_apps = list_custom_apps(sdk, api_version=api_version)
+
+    results = []
+    created_count = 0
+    updated_count = 0
+    unchanged_count = 0
+
+    for app in mc_list:
+        app_name = app.get("name")
+        port = app.get("port")
+        group = (app.get("group") or "").strip()
+        mode = (app.get("mode") or "asm").upper()
+        if not app_name or not port:
+            continue
+
+        desc = app.get("description") or f"Stigix Multicast {app_name} ({group}:{port} {mode})"
+        server_prefix = f"{group}/32" if group else None
+        res = create_or_update_app(
+            sdk=sdk,
+            name=app_name,
+            port=int(port),
+            protocol="udp",
+            display_name=f"Stigix MC {app_name} ({group}:{port})",
+            description=desc[:250],
+            server_prefix=server_prefix,
+            prefix_tag="STX_MC_",
+            existing_apps=existing_tenant_apps,
+            api_version=api_version
+        )
+        results.append(res)
+        if res["action"] == "created":
+            created_count += 1
+        elif res["action"] == "updated":
+            updated_count += 1
+        elif res["action"] == "unchanged":
+            unchanged_count += 1
+
+    return {
+        "success": True,
+        "message": f"Multicast Delta Sync complete: {created_count} created, {updated_count} updated, {unchanged_count} already up-to-date",
+        "synced_count": len(results),
+        "created_count": created_count,
+        "updated_count": updated_count,
+        "unchanged_count": unchanged_count,
+        "results": results
+    }
+
+
 def clean_all_stigix_apps(sdk: API, api_version: str = 'v2.6') -> Dict[str, Any]:
     """Remove all Stigix-created apps from the tenant"""
     existing_apps = list_custom_apps(sdk, api_version=api_version)
@@ -719,6 +872,7 @@ def main():
             if not args.name or not args.port:
                 raise ValueError("Both --name and --port are required to create a custom application")
 
+            prefix_tag = "STX_MC_" if (args.protocol == 'udp' and args.server_prefix) else "STX_"
             res = create_or_update_app(
                 sdk=sdk,
                 name=args.name,
@@ -726,6 +880,8 @@ def main():
                 protocol=args.protocol,
                 display_name=args.display_name,
                 description=args.description,
+                server_prefix=args.server_prefix,
+                prefix_tag=prefix_tag,
                 api_version=args.api_version
             )
             output = {
@@ -754,6 +910,18 @@ def main():
 
         elif args.sync_all:
             res = sync_all_from_config(
+                sdk=sdk,
+                config_file=args.config_file,
+                json_data=args.json_data,
+                api_version=args.api_version
+            )
+            if json_mode:
+                print(json.dumps(res, indent=2))
+            else:
+                print(f"🔄 {res.get('message')}")
+
+        elif args.sync_multicast:
+            res = sync_multicast_from_config(
                 sdk=sdk,
                 config_file=args.config_file,
                 json_data=args.json_data,

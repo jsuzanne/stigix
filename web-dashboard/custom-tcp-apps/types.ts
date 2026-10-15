@@ -277,6 +277,7 @@ export type MulticastAddressingMode = 'asm' | 'ssm';
 export type MulticastRateMode = 'cbr' | 'burst';
 export type MulticastExpectationMode = 'traffic' | 'none';
 export type MulticastHealthVerdict = 'HEALTHY' | 'DEGRADED' | 'FAILED' | 'NO_TRAFFIC';
+export type MulticastPayloadFormat = 'raw-stgx' | 'rtp-mpegts' | 'rtp-g711';
 
 export interface MulticastReceiverPeerConfig {
     node: string; // Site name / Instance ID (e.g. 'BR1', 'BR2', 'BR5')
@@ -295,6 +296,8 @@ export interface MulticastRateConfig {
 export interface MulticastThresholdsConfig {
     maxLossPct: number; // default 0.1
     degradedLossPct: number; // default 2.0
+    maxJitterMs?: number; // default 30 (RFC 3550 jitter threshold for DEGRADED)
+    maxDuplicates?: number; // default 0 (allowed duplicates during PIM SPT switchover before DEGRADED)
     maxGapMs: number; // default 3000
 }
 
@@ -302,9 +305,11 @@ export interface CustomMulticastApplicationConfig {
     id: string;
     name: string;
     description?: string;
+    presetId?: string;
+    payloadFormat?: MulticastPayloadFormat; // 'raw-stgx' (default) | 'rtp-mpegts' | 'rtp-g711'
     enabled: boolean;
     group: string; // ASM: 239.x.x.x, SSM: 232.x.x.x
-    port: number; // default 5000
+    port: number; // default 5000 (or 5004 for RTP)
     mode: MulticastAddressingMode;
     ssmSource?: string; // Required when mode === 'ssm'
     senderNode: string; // Site name / node ID acting as multicast source (e.g. 'DC1' or 'BR1' for BSS)
@@ -313,9 +318,27 @@ export interface CustomMulticastApplicationConfig {
     rate: MulticastRateConfig;
     payloadBytes: number; // 64..1400, default 1316 (7 MPEG-TS packets)
     ttl: number; // 1..255, default 64
-    dscp: string; // 'BE' | 'CS5' | 'EF' | 'AF41'
+    dscp: string; // 'BE' | 'CS5' | 'EF' | 'AF41' | 'CS4' | 'CS2'
     durationSec: number; // 0 = continuous until stopped
     thresholds?: MulticastThresholdsConfig;
+}
+
+export interface MulticastApplicationPreset {
+    id: string;
+    name: string;
+    shortLabel: string;
+    badge: string;
+    description: string;
+    appIdHint: string;
+    group: string;
+    port: number;
+    mode: MulticastAddressingMode;
+    rate: MulticastRateConfig;
+    payloadBytes: number;
+    payloadFormat: MulticastPayloadFormat;
+    ttl: number;
+    dscp: string;
+    thresholds: MulticastThresholdsConfig;
 }
 
 export interface MulticastSenderStats {

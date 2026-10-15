@@ -134,11 +134,21 @@ export class MulticastAppManager {
             : [];
 
         const appId = input?.id?.trim() || `mc-${crypto.randomUUID().substring(0, 6)}`;
+        const rawPayloadFormat = String(input?.payloadFormat || mc.payloadFormat || 'raw-stgx').toLowerCase();
+        const payloadFormat =
+            rawPayloadFormat === 'rtp-mpegts'
+                ? 'rtp-mpegts'
+                : rawPayloadFormat === 'rtp-g711'
+                  ? 'rtp-g711'
+                  : 'raw-stgx';
+
         return {
             id: appId,
             name: String(input?.name || 'Multicast Stream').trim(),
             description: input?.description || '',
             enabled: input?.enabled !== false,
+            presetId: input?.presetId ? String(input.presetId).trim() : undefined,
+            payloadFormat,
             group: String(mc.group || input?.group || '239.1.1.100').trim(),
             port: Number(mc.port ?? input?.port) || 5001,
             mode,
@@ -159,6 +169,8 @@ export class MulticastAppManager {
             thresholds: {
                 maxLossPct: input?.thresholds?.maxLossPct !== undefined ? Number(input.thresholds.maxLossPct) : 0.1,
                 degradedLossPct: input?.thresholds?.degradedLossPct !== undefined ? Number(input.thresholds.degradedLossPct) : 2.0,
+                maxJitterMs: input?.thresholds?.maxJitterMs !== undefined ? Number(input.thresholds.maxJitterMs) : 30,
+                maxDuplicates: input?.thresholds?.maxDuplicates !== undefined ? Number(input.thresholds.maxDuplicates) : 0,
                 maxGapMs: input?.thresholds?.maxGapMs !== undefined ? Number(input.thresholds.maxGapMs) : 3000
             }
         };
@@ -233,6 +245,102 @@ export class MulticastAppManager {
             file.multicastApplications = file.multicastApplications.filter(a => a.id !== appId);
             await this.configStore.save(file);
         }
+    }
+
+    public exportApplications(appId?: string): {
+        schemaVersion: string;
+        exportedAt: string;
+        exportedFromSite: string;
+        multicastApplications: CustomMulticastApplicationConfig[];
+    } {
+        const all = this.listApplications();
+        const filtered = appId ? all.filter(a => a.id === appId) : all;
+        return {
+            schemaVersion: '1.0',
+            exportedAt: new Date().toISOString(),
+            exportedFromSite: this.getLocalNodeId(),
+            multicastApplications: filtered
+        };
+    }
+
+    public async importApplications(
+        payload: any,
+        mode: 'merge' | 'replace' = 'merge'
+    ): Promise<{
+        mode: 'merge' | 'replace';
+        importedCount: number;
+        totalCount: number;
+        multicastApplications: CustomMulticastApplicationConfig[];
+    }> {
+        const rawList = Array.isArray(payload)
+            ? payload
+            : Array.isArray(payload?.multicastApplications)
+              ? payload.multicastApplications
+              : payload?.id && payload?.group
+                ? [payload]
+                : null;
+
+        if (!rawList) {
+            throw new Error('Invalid multicast import payload: expected multicastApplications array');
+        }
+
+        const file = this.configStore.getCached() || await this.configStore.load();
+        const nextApps: CustomMulticastApplicationConfig[] = mode === 'replace'
+            ? []
+            : (Array.isArray(file.multicastApplications) ? file.multicastApplications.map(a => this.normalizeAppConfig(a)) : []);
+
+        let importedCount = 0;
+        for (const item of rawList) {
+            const normalized = this.normalizeAppConfig(item);
+            const validation = validateMulticastApplicationConfig(normalized, nextApps);
+            if (!validation.valid) {
+                throw new Error(`Invalid profile '${normalized.name}': ${validation.errors.join('; ')}`);
+            }
+            const existingIdx = nextApps.findIndex(a => a.id === normalized.id);
+            if (existingIdx >= 0) {
+                nextApps[existingIdx] = normalized;
+            } else {
+                nextApps.push(normalized);
+            }
+            this.runtimeConfigCache.set(normalized.id, normalized);
+            importedCount++;
+        }
+
+        file.multicastApplications = nextApps;
+        await this.configStore.save(file);
+
+        return {
+            mode,
+            importedCount,
+            totalCount: nextApps.length,
+            multicastApplications: nextApps
+        };
+    }
+
+    public getActiveStreamSummary(): {
+        running: boolean;
+        activeSenders: number;
+        activeReceivers: number;
+        activeClusterStreams: number;
+        activeAppIds: string[];
+    } {
+        const activeIds = new Set<string>();
+        for (const [id, s] of this.activeSenders.entries()) {
+            if (s.getStats().running) activeIds.add(id);
+        }
+        for (const [id, r] of this.activeReceivers.entries()) {
+            if (r.getStats().joined) activeIds.add(id);
+        }
+        for (const id of this.activeClusterStreams.keys()) {
+            activeIds.add(id);
+        }
+        return {
+            running: activeIds.size > 0,
+            activeSenders: this.activeSenders.size,
+            activeReceivers: this.activeReceivers.size,
+            activeClusterStreams: this.activeClusterStreams.size,
+            activeAppIds: Array.from(activeIds)
+        };
     }
 
     // ─── Node-Local Runtime Execution (Sender & Receiver) ─────────────────────
@@ -337,6 +445,12 @@ export class MulticastAppManager {
         return await receiver.leave();
     }
 
+    public resetLocalReceiverCounters(appId: string): MulticastReceiverStats | null {
+        const receiver = this.activeReceivers.get(appId);
+        if (!receiver) return null;
+        return receiver.resetCounters();
+    }
+
     public getLocalStats(appId: string): {
         nodeId: string;
         sender: MulticastSenderStats | null;
@@ -408,6 +522,10 @@ export class MulticastAppManager {
             }
             if (action === 'local-leave') {
                 const stats = await this.leaveLocalReceiver(appId);
+                return { success: true, receiver: stats };
+            }
+            if (action === 'local-reset') {
+                const stats = this.resetLocalReceiverCounters(appId);
                 return { success: true, receiver: stats };
             }
             if (action === 'local-stats') {
@@ -493,6 +611,29 @@ export class MulticastAppManager {
         );
 
         this.activeClusterStreams.delete(app.id);
+        return await this.getClusterStats(app.id);
+    }
+
+    /**
+     * Resets telemetry counters across all receivers (or a single receiver node) without interrupting the stream.
+     */
+    public async resetClusterCounters(appId: string, nodeId?: string): Promise<MulticastClusterStatus> {
+        const app = this.resolveEffectiveConfig(appId);
+        const targetNodes = nodeId
+            ? [nodeId]
+            : app.receivers.map(r => r.node).filter(Boolean);
+
+        await Promise.allSettled(
+            targetNodes.map(n =>
+                this.dispatchToNode(
+                    n,
+                    'POST',
+                    `/multicast/${encodeURIComponent(app.id)}/local-reset`,
+                    {}
+                )
+            )
+        );
+
         return await this.getClusterStats(app.id);
     }
 
@@ -676,7 +817,7 @@ export class MulticastAppManager {
                     );
                 } else if (r.verdict === 'DEGRADED' || (r.verdict === 'FAILED' && r.packetsReceived > 0)) {
                     diagnostics.push(
-                        `[${r.node}] SLA violation on ${app.group}: Loss=${r.lossPct}% (max ${app.thresholds?.maxLossPct ?? 0.1}%), Duplicates=${r.duplicatePackets}, Jitter=${r.jitterMs}ms, MaxGap=${r.maxGapMs}ms.`
+                        `[${r.node}] SLA violation on ${app.group}: Loss=${r.lossPct}% (max ${app.thresholds?.maxLossPct ?? 0.1}%), Duplicates=${r.duplicatePackets} (max ${app.thresholds?.maxDuplicates ?? 0}), Jitter=${r.jitterMs}ms (max ${app.thresholds?.maxJitterMs ?? 30}ms), MaxGap=${r.maxGapMs}ms.`
                     );
                 }
             }

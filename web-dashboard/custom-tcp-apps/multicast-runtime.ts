@@ -15,9 +15,11 @@ import fs from 'fs';
 import path from 'path';
 import {
     CustomMulticastApplicationConfig,
+    MulticastApplicationPreset,
     MulticastExpectationMode,
     MulticastHealthVerdict,
     MulticastNodePreflightResult,
+    MulticastPayloadFormat,
     MulticastReceiverStats,
     MulticastSenderStats,
     MulticastThroughputSample
@@ -27,6 +29,94 @@ export const STGX_MULTICAST_MAGIC = 0x53544758; // "STGX"
 export const STGX_HEADER_BYTES = 24;
 const SLIDING_WINDOW_SIZE = 4096; // 4096 sequences tracked in 128 x uint32 bitset
 const localJoinedReceivers = new Set<MulticastReceiverRuntime>();
+
+export const MULTICAST_INDUSTRY_PRESETS: MulticastApplicationPreset[] = [
+    {
+        id: 'iptv-ceo-townhall',
+        name: 'CEO Townhall HD IPTV',
+        shortLabel: 'CEO Townhall IPTV',
+        badge: 'RTP / MPEG-TS Video',
+        description: 'Live corporate IPTV video broadcast using standard IANA RTP port 5004 and 1316B (7x188B MPEG-TS) framing.',
+        appIdHint: 'Recognized as RTP / MPEG-2 Transport Stream (UDP 5004, AF41)',
+        group: '239.1.1.100',
+        port: 5004,
+        mode: 'asm',
+        rate: { mode: 'cbr', kbps: 1500, burstPackets: 20, burstIntervalMs: 100 },
+        payloadBytes: 1316,
+        payloadFormat: 'rtp-mpegts',
+        ttl: 16,
+        dscp: 'AF41',
+        thresholds: { maxLossPct: 0.1, degradedLossPct: 2.0, maxJitterMs: 30, maxDuplicates: 15, maxGapMs: 3000 }
+    },
+    {
+        id: 'market-data-itch',
+        name: 'Financial Market Data Feed',
+        shortLabel: 'Market Data ITCH',
+        badge: 'Low-Latency Burst',
+        description: 'High-frequency financial order book / market ticker micro-burst feed (NASDAQ ITCH / FIX Multicast style).',
+        appIdHint: 'Low-latency micro-bursts in Real-Time EF queue (UDP 14001, EF)',
+        group: '239.192.1.10',
+        port: 14001,
+        mode: 'asm',
+        rate: { mode: 'burst', kbps: 500, burstPackets: 20, burstIntervalMs: 100 },
+        payloadBytes: 256,
+        payloadFormat: 'raw-stgx',
+        ttl: 16,
+        dscp: 'EF',
+        thresholds: { maxLossPct: 0.05, degradedLossPct: 1.0, maxJitterMs: 15, maxDuplicates: 10, maxGapMs: 1500 }
+    },
+    {
+        id: 'voip-emergency-paging',
+        name: 'Emergency VoIP Audio Paging',
+        shortLabel: 'VoIP Audio Paging',
+        badge: 'RTP G.711 Voice',
+        description: 'Enterprise / hospital / retail overhead PA voice paging stream (G.711 20ms voice packets at 50 pps).',
+        appIdHint: 'Recognized as RTP Audio Stream (UDP 5004, 200B, EF)',
+        group: '239.255.0.1',
+        port: 5004,
+        mode: 'asm',
+        rate: { mode: 'cbr', kbps: 80, burstPackets: 10, burstIntervalMs: 100 },
+        payloadBytes: 200,
+        payloadFormat: 'rtp-g711',
+        ttl: 16,
+        dscp: 'EF',
+        thresholds: { maxLossPct: 0.5, degradedLossPct: 2.0, maxJitterMs: 20, maxDuplicates: 10, maxGapMs: 2000 }
+    },
+    {
+        id: 'cctv-surveillance',
+        name: 'Branch CCTV Security Matrix',
+        shortLabel: 'CCTV Camera Stream',
+        badge: 'HD Video Stream',
+        description: 'Continuous high-bitrate security camera multicast stream for hub or branch-side source (BSS) validation.',
+        appIdHint: 'Recognized as RTP / MPEG-TS Video (UDP 5004, 1316B, CS4)',
+        group: '239.192.20.1',
+        port: 5004,
+        mode: 'asm',
+        rate: { mode: 'cbr', kbps: 2500, burstPackets: 30, burstIntervalMs: 100 },
+        payloadBytes: 1316,
+        payloadFormat: 'rtp-mpegts',
+        ttl: 16,
+        dscp: 'CS4',
+        thresholds: { maxLossPct: 0.2, degradedLossPct: 2.5, maxJitterMs: 35, maxDuplicates: 15, maxGapMs: 3000 }
+    },
+    {
+        id: 'sap-session-directory',
+        name: 'SAP / SDP Session Directory',
+        shortLabel: 'SAP Directory',
+        badge: 'IANA SAP 9875',
+        description: 'Standard RFC 2974 Session Announcement Protocol (SAP/SDP) directory multicast heartbeat.',
+        appIdHint: 'Recognized as Standard SAP App-ID (UDP 9875, CS2)',
+        group: '239.255.255.255',
+        port: 9875,
+        mode: 'asm',
+        rate: { mode: 'cbr', kbps: 64, burstPackets: 5, burstIntervalMs: 200 },
+        payloadBytes: 512,
+        payloadFormat: 'raw-stgx',
+        ttl: 16,
+        dscp: 'CS2',
+        thresholds: { maxLossPct: 0.5, degradedLossPct: 3.0, maxJitterMs: 50, maxDuplicates: 15, maxGapMs: 5000 }
+    }
+];
 
 /**
  * Computes a deterministic 16-bit non-zero stream ID from an application ID string.
@@ -499,19 +589,45 @@ export class MulticastSenderRuntime {
         this.txPps = 0;
         this.lastError = undefined;
 
-        const payloadBytes = Math.max(STGX_HEADER_BYTES, Math.min(1400, Number(this.config.payloadBytes) || 1316));
+        const payloadFormat = this.config.payloadFormat || 'raw-stgx';
+        const minPayloadBytes = payloadFormat === 'rtp-mpegts' ? 40 : payloadFormat === 'rtp-g711' ? 36 : STGX_HEADER_BYTES;
+        const payloadBytes = Math.max(minPayloadBytes, Math.min(1400, Number(this.config.payloadBytes) || 1316));
         const ttl = Math.max(1, Math.min(255, Number(this.config.ttl) || 64));
         const group = this.config.group.trim();
         const port = Number(this.config.port) || 5000;
 
-        // Pre-allocate packet buffer with 24-byte STGX header + deterministic payload
+        // Determine STGX header offset based on L7 framing
+        const stgxOffset = payloadFormat === 'rtp-mpegts' ? 16 : payloadFormat === 'rtp-g711' ? 12 : 0;
+        const ssrc = ((this.streamId & 0xffff) << 16) | (this.runId & 0xffff);
+
+        // Pre-allocate packet buffer with optional L7 RTP/MPEG-TS framing + 24-byte STGX header
         const packetBuf = Buffer.alloc(payloadBytes);
-        packetBuf.writeUInt32BE(STGX_MULTICAST_MAGIC, 0);
-        packetBuf.writeUInt16BE(this.streamId, 20);
-        packetBuf.writeUInt16BE(this.runId, 22);
-        for (let i = STGX_HEADER_BYTES; i < payloadBytes; i++) {
+        for (let i = 0; i < payloadBytes; i++) {
             packetBuf[i] = 0x41 + (i % 26); // 'A'..'Z' deterministic fill
         }
+
+        if (payloadFormat === 'rtp-mpegts') {
+            // 12-byte RFC 3550 RTP v2 header (PT = 33 MP2T)
+            packetBuf[0] = 0x80; // V=2, P=0, X=0, CC=0
+            packetBuf[1] = 0x21; // M=0, PT=33 (MPEG-2 TS)
+            packetBuf.writeUInt32BE(ssrc >>> 0, 8);
+            // Write 0x47 MPEG-TS sync headers at every 188-byte boundary starting at offset 12
+            for (let tsOff = 12; tsOff + 4 <= payloadBytes; tsOff += 188) {
+                packetBuf[tsOff] = 0x47;     // Sync byte
+                packetBuf[tsOff + 1] = 0x01; // PID 0x0100
+                packetBuf[tsOff + 2] = 0x00;
+                packetBuf[tsOff + 3] = 0x10; // Payload only
+            }
+        } else if (payloadFormat === 'rtp-g711') {
+            // 12-byte RFC 3550 RTP v2 header (PT = 0 PCMU)
+            packetBuf[0] = 0x80; // V=2
+            packetBuf[1] = 0x00; // PT=0 (G.711 PCMU)
+            packetBuf.writeUInt32BE(ssrc >>> 0, 8);
+        }
+
+        packetBuf.writeUInt32BE(STGX_MULTICAST_MAGIC, stgxOffset);
+        packetBuf.writeUInt16BE(this.streamId, stgxOffset + 20);
+        packetBuf.writeUInt16BE(this.runId, stgxOffset + 22);
 
         const sock = dgram.createSocket({ type: 'udp4', reuseAddr: true });
         this.socket = sock;
@@ -548,8 +664,15 @@ export class MulticastSenderRuntime {
             if (!this.active || !this.socket) return;
             const seq = this.currentSeq++;
             const wallNs = BigInt(Date.now()) * 1_000_000n + (process.hrtime.bigint() % 1_000_000n);
-            packetBuf.writeBigUInt64BE(seq, 4);
-            packetBuf.writeBigUInt64BE(wallNs, 12);
+            if (payloadFormat === 'rtp-mpegts' || payloadFormat === 'rtp-g711') {
+                const rtpSeq = Number(seq & 0xffffn);
+                const clockRate = payloadFormat === 'rtp-mpegts' ? 90000n : 8000n;
+                const rtpTs = Number(((wallNs / 1_000_000n) * clockRate / 1000n) & 0xffffffffn) >>> 0;
+                packetBuf.writeUInt16BE(rtpSeq, 2);
+                packetBuf.writeUInt32BE(rtpTs, 4);
+            }
+            packetBuf.writeBigUInt64BE(seq, stgxOffset + 4);
+            packetBuf.writeBigUInt64BE(wallNs, stgxOffset + 12);
             const frameCopy = resolved.address === '127.0.0.1' ? Buffer.from(packetBuf) : null;
 
             this.socket.send(packetBuf, 0, payloadBytes, port, group, (err: any) => {
@@ -757,14 +880,18 @@ export class MulticastReceiverRuntime {
         runId: number;
     } | null {
         if (!buf || buf.length < STGX_HEADER_BYTES) return null;
-        const magic = buf.readUInt32BE(0);
-        if (magic !== STGX_MULTICAST_MAGIC) return null;
-        return {
-            sequenceId: buf.readBigUInt64BE(4),
-            timestampNs: buf.readBigUInt64BE(12),
-            streamId: buf.readUInt16BE(20),
-            runId: buf.readUInt16BE(22)
-        };
+        const candidateOffsets = [0, 16, 12];
+        for (const offset of candidateOffsets) {
+            if (buf.length >= offset + STGX_HEADER_BYTES && buf.readUInt32BE(offset) === STGX_MULTICAST_MAGIC) {
+                return {
+                    sequenceId: buf.readBigUInt64BE(offset + 4),
+                    timestampNs: buf.readBigUInt64BE(offset + 12),
+                    streamId: buf.readUInt16BE(offset + 20),
+                    runId: buf.readUInt16BE(offset + 22)
+                };
+            }
+        }
+        return null;
     }
 
     public isJoined(): boolean {
@@ -800,6 +927,17 @@ export class MulticastReceiverRuntime {
         this.lastSenderTimestampNs = undefined;
         this.jitterMs = 0;
         this.maxGapMs = 0;
+    }
+
+    /**
+     * Live counter reset without leaving the IGMP group or closing the socket.
+     * Clears transient PIM SPT switchover spikes or initial convergence loss.
+     */
+    public resetCounters(): MulticastReceiverStats {
+        this.resetRunCounters(this.runId);
+        this.foreignPackets = 0;
+        this.history = [];
+        return this.getStats();
     }
 
     /**
@@ -924,28 +1062,22 @@ export class MulticastReceiverRuntime {
     }
 
     private handleIncomingPacket(msg: Buffer): void {
-        if (msg.length < STGX_HEADER_BYTES) {
+        const parsed = MulticastReceiverRuntime.unpackHeader(msg);
+        if (!parsed) {
             this.foreignPackets++;
             return;
         }
 
-        const magic = msg.readUInt32BE(0);
-        if (magic !== STGX_MULTICAST_MAGIC) {
-            this.foreignPackets++;
-            return;
-        }
-
-        const packetStreamId = msg.readUInt16BE(20);
-        if (packetStreamId !== this.streamId) {
+        if (parsed.streamId !== this.streamId) {
             // Valid STGX multicast packet belonging to another application profile on the same port
             return;
         }
 
         const nowMs = Date.now();
         const nowMonoNs = process.hrtime.bigint();
-        const seq = msg.readBigUInt64BE(4);
-        const senderTsNs = msg.readBigUInt64BE(12);
-        const packetRunId = msg.readUInt16BE(22);
+        const seq = parsed.sequenceId;
+        const senderTsNs = parsed.timestampNs;
+        const packetRunId = parsed.runId;
 
         // Detect sender restart (run_id change) -> cleanly reset counters so we don't report false loss
         if (this.runId !== 0 && packetRunId !== this.runId) {
@@ -1107,7 +1239,10 @@ export class MulticastReceiverRuntime {
 
         const maxLossThreshold = this.config.thresholds?.maxLossPct ?? 0.1;
         const degradedLossThreshold = this.config.thresholds?.degradedLossPct ?? 2.0;
+        const maxJitterThreshold = this.config.thresholds?.maxJitterMs ?? 30;
+        const maxDuplicatesThreshold = this.config.thresholds?.maxDuplicates ?? 0;
         const silenceFailMs = this.config.thresholds?.maxGapMs ?? 3000;
+        const roundedJitterMs = Math.round(this.jitterMs * 100) / 100;
 
         let verdict: MulticastHealthVerdict = 'NO_TRAFFIC';
         let verdictReason = 'Waiting for multicast stream';
@@ -1140,14 +1275,26 @@ export class MulticastReceiverRuntime {
             } else if (lossPct > degradedLossThreshold) {
                 verdict = 'FAILED';
                 verdictReason = `Packet loss ${lossPct.toFixed(2)}% exceeds ${degradedLossThreshold}% threshold`;
-            } else if (lossPct > maxLossThreshold || this.duplicatePackets > 0) {
+            } else if (
+                lossPct > maxLossThreshold ||
+                this.duplicatePackets > maxDuplicatesThreshold ||
+                roundedJitterMs > maxJitterThreshold
+            ) {
                 verdict = 'DEGRADED';
-                verdictReason = this.duplicatePackets > 0
-                    ? `${this.duplicatePackets} duplicate packets detected (possible HER double-delivery)`
-                    : `Packet loss ${lossPct.toFixed(2)}% > ${maxLossThreshold}%`;
+                const reasons: string[] = [];
+                if (lossPct > maxLossThreshold) {
+                    reasons.push(`Loss ${lossPct.toFixed(2)}% > ${maxLossThreshold}%`);
+                }
+                if (this.duplicatePackets > maxDuplicatesThreshold) {
+                    reasons.push(`Duplicates ${this.duplicatePackets} > ${maxDuplicatesThreshold} (PIM SPT / HER)`);
+                }
+                if (roundedJitterMs > maxJitterThreshold) {
+                    reasons.push(`Jitter ${roundedJitterMs.toFixed(1)}ms > ${maxJitterThreshold}ms`);
+                }
+                verdictReason = reasons.join(' · ');
             } else {
                 verdict = 'HEALTHY';
-                verdictReason = `Healthy replication (${lossPct.toFixed(2)}% loss, 0 duplicates)`;
+                verdictReason = `Healthy replication (${lossPct.toFixed(2)}% loss, ${roundedJitterMs.toFixed(1)}ms jitter, ${this.duplicatePackets} dup)`;
             }
         }
 
@@ -1176,7 +1323,7 @@ export class MulticastReceiverRuntime {
             bytesReceived: this.bytesReceived,
             rxBitrateKbps: this.joined ? this.rxBitrateKbps : 0,
             rxPps: this.joined ? this.rxPps : 0,
-            jitterMs: Math.round(this.jitterMs * 100) / 100,
+            jitterMs: roundedJitterMs,
             maxGapMs: this.maxGapMs,
             currentSilenceMs,
             joinLatencyMs: this.joinLatencyMs,

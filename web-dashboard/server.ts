@@ -11852,6 +11852,10 @@ app.get('/api/system/health-matrix', authenticateToken, async (req, res) => {
         const overallScore = Math.max(0, Math.min(100, Math.round((healthyEngines / totalEngines) * 100)));
         const globalHealth = overallScore >= 90 ? 'healthy' : (overallScore >= 70 ? 'degraded' : 'critical');
 
+        const multicastStatus = tcpAppManager?.multicastManager
+            ? tcpAppManager.multicastManager.getActiveStreamSummary()
+            : { running: false, activeStreamsCount: 0, totalProfilesCount: 0, activeProfiles: [] };
+
         res.json({
             success: true,
             timestamp: now,
@@ -11863,6 +11867,7 @@ app.get('/api/system/health-matrix', authenticateToken, async (req, res) => {
                 cloud: cloudStatus,
                 vyos: vyosStatus,
                 custom_apps: customAppsStatus,
+                multicast: multicastStatus,
                 iot: iotStatus,
                 dem: demStatus,
                 bandwidth: bandwidthStatus,
