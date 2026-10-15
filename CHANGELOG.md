@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.0.24] - 2026-10-15
+
+### Refactored & Simplified
+- **Unified Node Role & Cluster Join UX (`NodeRoleModal.tsx`, `HomeOverview.tsx`, `Settings.tsx`, `App.tsx`)**:
+  - Removed the legacy **`NODE ROLE` (`Auto-Detect | Leader | Peer`)** selector card and the duplicated **`Join Stigix Cluster` / `Cluster Enrolled`** card from `Settings -> Target Controller (Registry)`, consolidating all node role transitions (`Standalone` ↔ `Enrolled Peer` ↔ `Fleet Leader`) into `NodeRoleModal`.
+  - Added a collapsible **`▸ Or configure manual Leader IP / URL`** fallback input inside `NodeRoleModal` (Standalone view) so manual Leader IP/URL configuration remains accessible without cluttering the primary `STX-...` join token workflow.
+  - Made the Hero cluster status badge (`Fleet Leader Active` / `Mesh Peer Connected` / `Standalone Node`) on the Home Overview page clickable to open `NodeRoleModal` directly, and added a **`Manage Node Mode`** shortcut button in the `Settings -> Target Controller` Hero header.
+
 ## [3.0.23] - 2026-10-15
 
 ### Added & Enhanced

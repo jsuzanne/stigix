@@ -32,6 +32,7 @@ interface HomeOverviewProps {
     updateAvailable?: boolean;
     onNavigate: (viewId: string, subTab?: string) => void;
     onOpenDiagnostics?: () => void;
+    onOpenNodeRoleModal?: () => void;
 }
 
 export const HomeOverview: React.FC<HomeOverviewProps> = ({
@@ -54,7 +55,8 @@ export const HomeOverview: React.FC<HomeOverviewProps> = ({
     onRunSpeedtest,
     runningSpeedtest,
     updateAvailable,
-    onNavigate
+    onNavigate,
+    onOpenNodeRoleModal
 }) => {
     const { peers, activePeerId, activePeer } = usePeerContext();
     const isRemote = Boolean(activePeerId);
@@ -233,47 +235,68 @@ export const HomeOverview: React.FC<HomeOverviewProps> = ({
 
                     {/* Right: Cluster Topology & Action Buttons (Leader, Peer, or Standalone Aware) */}
                     <div className="flex items-center gap-3 self-end sm:self-auto">
-                        <div className={cn(
-                            "px-4 py-2 rounded-2xl border shadow-sm flex items-center gap-3 backdrop-blur-md",
-                            isRemote
-                                ? "bg-amber-500/10 border-amber-500/30 text-amber-600 dark:text-amber-400"
-                                : registryStatus?.mode === 'leader'
-                                    ? "bg-purple-500/10 border-purple-500/30 text-purple-600 dark:text-purple-400"
-                                    : registryStatus?.mode === 'peer' && (mesh.status === 'connected' || registryStatus?.is_registered)
-                                        ? "bg-blue-500/10 border-blue-500/30 text-blue-600 dark:text-blue-400"
-                                        : "bg-slate-500/10 border-slate-500/30 text-slate-600 dark:text-slate-400"
-                        )}>
-                            <div className={cn(
-                                "w-2.5 h-2.5 rounded-full",
-                                isRemote
-                                    ? "bg-amber-500 animate-pulse shadow-[0_0_8px_rgba(245,158,11,0.8)]"
-                                    : registryStatus?.mode === 'leader'
-                                        ? "bg-purple-500 animate-pulse shadow-[0_0_8px_rgba(168,85,247,0.8)]"
-                                        : registryStatus?.mode === 'peer' && (mesh.status === 'connected' || registryStatus?.is_registered)
-                                            ? "bg-blue-500 animate-pulse shadow-[0_0_8px_rgba(59,130,246,0.8)]"
-                                            : "bg-slate-400"
-                            )} />
-                            <div className="text-left leading-tight">
-                                <div className="text-[11px] font-black uppercase tracking-wider text-slate-900 dark:text-white">
-                                    {isRemote
-                                        ? 'Remote Node View'
-                                        : registryStatus?.mode === 'leader'
-                                            ? 'Fleet Leader Active'
-                                            : registryStatus?.mode === 'peer' && (mesh.status === 'connected' || registryStatus?.is_registered)
-                                                ? 'Mesh Peer Connected'
-                                                : 'Standalone Node'}
-                                </div>
-                                <div className="text-[10px] text-slate-500 dark:text-text-muted font-mono">
-                                    {isRemote
-                                        ? `Tunnel: ${activePeer?.ip_private || 'Gateway Proxy'}`
-                                        : registryStatus?.mode === 'leader'
-                                            ? `${mesh.peer_count ?? registryStatus?.peer_count ?? 0} Distributed Peers`
-                                            : registryStatus?.mode === 'peer' && (mesh.status === 'connected' || registryStatus?.is_registered)
-                                                ? `Leader: ${leaderSite || leaderPeer?.ip_private || mesh.leader_ip || 'Cluster Active'}`
-                                                : 'Local Operations (Single Node)'}
-                                </div>
-                            </div>
-                        </div>
+                        {(() => {
+                            const isLeaderMode = registryStatus?.mode === 'leader' || registryStatus?.current_mode === 'leader';
+                            const isPeerConnectedMode = !isLeaderMode && Boolean(
+                                registryStatus?.is_cluster_enrolled ||
+                                registryStatus?.static_leader_url ||
+                                mesh.status === 'connected' ||
+                                registryStatus?.is_registered
+                            );
+                            return (
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        if (!isRemote && onOpenNodeRoleModal) {
+                                            onOpenNodeRoleModal();
+                                        }
+                                    }}
+                                    title={isRemote ? "Viewing Remote Node" : "Click to manage Node Mode (Standalone / Peer / Leader)"}
+                                    className={cn(
+                                        "px-4 py-2 rounded-2xl border shadow-sm flex items-center gap-3 backdrop-blur-md transition-all text-left",
+                                        !isRemote && onOpenNodeRoleModal && "cursor-pointer hover:scale-[1.02] active:scale-[0.99]",
+                                        isRemote
+                                            ? "bg-amber-500/10 border-amber-500/30 text-amber-600 dark:text-amber-400"
+                                            : isLeaderMode
+                                                ? "bg-purple-500/10 border-purple-500/30 hover:border-purple-500/60 text-purple-600 dark:text-purple-400"
+                                                : isPeerConnectedMode
+                                                    ? "bg-blue-500/10 border-blue-500/30 hover:border-blue-500/60 text-blue-600 dark:text-blue-400"
+                                                    : "bg-emerald-500/10 border-emerald-500/30 hover:border-emerald-500/60 text-emerald-600 dark:text-emerald-400"
+                                    )}
+                                >
+                                    <div className={cn(
+                                        "w-2.5 h-2.5 rounded-full",
+                                        isRemote
+                                            ? "bg-amber-500 animate-pulse shadow-[0_0_8px_rgba(245,158,11,0.8)]"
+                                            : isLeaderMode
+                                                ? "bg-purple-500 animate-pulse shadow-[0_0_8px_rgba(168,85,247,0.8)]"
+                                                : isPeerConnectedMode
+                                                    ? "bg-blue-500 animate-pulse shadow-[0_0_8px_rgba(59,130,246,0.8)]"
+                                                    : "bg-emerald-400"
+                                    )} />
+                                    <div className="text-left leading-tight">
+                                        <div className="text-[11px] font-black uppercase tracking-wider text-slate-900 dark:text-white">
+                                            {isRemote
+                                                ? 'Remote Node View'
+                                                : isLeaderMode
+                                                    ? 'Fleet Leader Active'
+                                                    : isPeerConnectedMode
+                                                        ? 'Mesh Peer Connected'
+                                                        : 'Standalone Node'}
+                                        </div>
+                                        <div className="text-[10px] text-slate-500 dark:text-text-muted font-mono">
+                                            {isRemote
+                                                ? `Tunnel: ${activePeer?.ip_private || 'Gateway Proxy'}`
+                                                : isLeaderMode
+                                                    ? `${mesh.peer_count ?? registryStatus?.peer_count ?? 0} Distributed Peers`
+                                                    : isPeerConnectedMode
+                                                        ? `Leader: ${leaderSite || leaderPeer?.ip_private || mesh.leader_ip || registryStatus?.enrolled_leader_url || 'Cluster Active'}`
+                                                        : 'Local Operations (Click to join fleet)'}
+                                        </div>
+                                    </div>
+                                </button>
+                            );
+                        })()}
 
                         {onRefreshHealth && (
                             <button

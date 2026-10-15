@@ -1479,6 +1479,7 @@ export default function App() {
           runningSpeedtest={runningSpeedtest}
           onNavigate={handleNavigate}
           onOpenDiagnostics={() => setShowHealthModal(true)}
+          onOpenNodeRoleModal={() => setShowNodeRoleModal(true)}
         />
       )}
 
@@ -1820,7 +1821,7 @@ export default function App() {
       {view === 'iot' && <Iot token={token!} />}
       {view === 'voice' && <Voice token={token!} externalStatus={globalVoiceStatus} />}
       {(view === 'failover' || view === 'convergence') && <Failover token={token!} externalStatus={globalConvStatus} />}
-      {view === 'settings' && <SettingsComponent token={token!} uiConfig={uiConfig} onUpdateUIConfig={fetchConfigUi} onUpdateCopilotConfig={fetchCopilotConfig} initialTab={initialSettingsTab} />}
+      {view === 'settings' && <SettingsComponent token={token!} uiConfig={uiConfig} onUpdateUIConfig={fetchConfigUi} onUpdateCopilotConfig={fetchCopilotConfig} initialTab={initialSettingsTab} onOpenNodeRoleModal={() => setShowNodeRoleModal(true)} />}
       {view === 'custom_apps' && <CustomApps token={token!} />}
       {view === 'multicast' && (
         <MulticastOverlayTab
