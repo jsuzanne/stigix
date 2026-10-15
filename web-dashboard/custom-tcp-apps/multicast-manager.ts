@@ -209,6 +209,13 @@ export class MulticastAppManager {
         }
 
         const existingIdx = file.multicastApplications.findIndex(a => a.id === app.id);
+        const wasClusterActive = this.activeClusterStreams.has(app.id);
+
+        if (wasClusterActive && existingIdx >= 0) {
+            // Stop previous group/port memberships across remote peers before applying new config
+            await this.stopClusterStream(app.id).catch(() => {});
+        }
+
         if (existingIdx >= 0) {
             file.multicastApplications[existingIdx] = app;
         } else {
@@ -218,22 +225,27 @@ export class MulticastAppManager {
         this.runtimeConfigCache.set(app.id, app);
         await this.configStore.save(file);
 
-        // Update active local runtimes if any
-        const activeSender = this.activeSenders.get(app.id);
-        if (activeSender) {
-            activeSender.updateConfig(app, this.getLocalNodeId());
-        }
-        const activeReceiver = this.activeReceivers.get(app.id);
-        if (activeReceiver) {
-            const localNodeId = this.getLocalNodeId();
-            const rcvCfg = app.receivers.find(r => r.node.toLowerCase() === localNodeId.toLowerCase());
-            activeReceiver.updateConfig(app, localNodeId, rcvCfg?.expect, rcvCfg?.interfaceIp);
+        if (wasClusterActive) {
+            await this.startClusterStream(app.id).catch(() => {});
+        } else {
+            // Update active local runtimes if any
+            const activeSender = this.activeSenders.get(app.id);
+            if (activeSender) {
+                activeSender.updateConfig(app, this.getLocalNodeId());
+            }
+            const activeReceiver = this.activeReceivers.get(app.id);
+            if (activeReceiver) {
+                const localNodeId = this.getLocalNodeId();
+                const rcvCfg = app.receivers.find(r => r.node.toLowerCase() === localNodeId.toLowerCase());
+                activeReceiver.updateConfig(app, localNodeId, rcvCfg?.expect, rcvCfg?.interfaceIp);
+            }
         }
 
         return app;
     }
 
     public async deleteApplication(appId: string): Promise<void> {
+        await this.stopClusterStream(appId).catch(() => {});
         await this.stopLocalSender(appId).catch(() => {});
         await this.leaveLocalReceiver(appId).catch(() => {});
         this.activeReceivers.delete(appId);
@@ -374,6 +386,13 @@ export class MulticastAppManager {
             rawIp
         );
 
+        // Stop any other running sender on this node to prevent overlapping multicast streams
+        for (const [otherId, otherSender] of this.activeSenders.entries()) {
+            if (otherId !== effectiveConfig.id && otherSender.isRunning()) {
+                await otherSender.stop().catch(() => {});
+            }
+        }
+
         let sender = this.activeSenders.get(effectiveConfig.id);
         if (sender && sender.isRunning()) {
             await sender.stop();
@@ -424,9 +443,13 @@ export class MulticastAppManager {
             : (matchedReceiver?.interfaceIp || 'auto');
         const interfaceIp = this.resolveEffectiveInterfaceIp(localNodeId, rawInterfaceIp);
 
-        const existing = this.activeReceivers.get(effectiveConfig.id);
-        if (existing) {
+        // Leave and clean up ALL existing receiver instances on this node so no zombie IGMP
+        // memberships or duplicate UDP sockets on the same port (e.g. :5004) remain open
+        for (const [otherId, existing] of this.activeReceivers.entries()) {
             await existing.leave().catch(() => {});
+            if (otherId !== effectiveConfig.id) {
+                this.activeReceivers.delete(otherId);
+            }
         }
 
         const receiver = new MulticastReceiverRuntime(
@@ -546,11 +569,20 @@ export class MulticastAppManager {
 
     /**
      * Orchestrates cluster-wide stream start:
-     * 1. Instructs all enabled receivers to join the IGMP group first
-     * 2. Instructs the sender node to start transmitting UDP multicast packets
+     * 1. Stops any previously active multicast profile across the cluster
+     * 2. Instructs all enabled receivers to join the IGMP group first
+     * 3. Instructs the sender node to start transmitting UDP multicast packets
      */
     public async startClusterStream(appId: string): Promise<MulticastClusterStatus> {
         const app = this.resolveEffectiveConfig(appId);
+
+        // Stop any other active cluster stream before starting the new profile
+        for (const activeId of Array.from(this.activeClusterStreams.keys())) {
+            if (activeId !== app.id) {
+                await this.stopClusterStream(activeId).catch(() => {});
+            }
+        }
+
         const enabledReceivers = app.receivers.filter(r => r.enabled !== false);
 
         // Step 1: Fan-out IGMP Join to all enabled receivers concurrently
@@ -809,7 +841,7 @@ export class MulticastAppManager {
             for (const r of receiverStatsList) {
                 if (r.expect === 'traffic' && r.joined && r.packetsReceived === 0 && (senderStats.packetsSent || 0) >= 10) {
                     diagnostics.push(
-                        `[${r.node}] Joined ${app.group}:${app.port} (${app.mode.toUpperCase()}) on ${r.interfaceName} (${r.interfaceIp}) but received 0 packets while Sender [${app.senderNode}] sent ${senderStats.packetsSent} packets. Check SD-WAN overlay multicast replication, PIM Rendezvous Point (RP) / IGMP proxy on branch ION, or Linux rp_filter on ${r.node}.`
+                        `[${r.node}] Joined ${app.group}:${app.port} (${app.mode.toUpperCase()}) on ${r.interfaceName} (${r.interfaceIp}) but received 0 packets while Sender [${app.senderNode}] sent ${senderStats.packetsSent} packets. Check PIM RP mapping for ${app.group}/32 on branch ION ('dump routing multicast pim rp all'), SD-WAN overlay multicast replication, or Linux rp_filter on ${r.node}.`
                     );
                 } else if (r.expect === 'none' && r.packetsReceived > 0) {
                     diagnostics.push(

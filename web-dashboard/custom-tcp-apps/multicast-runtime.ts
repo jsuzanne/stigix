@@ -673,18 +673,17 @@ export class MulticastSenderRuntime {
             }
             packetBuf.writeBigUInt64BE(seq, stgxOffset + 4);
             packetBuf.writeBigUInt64BE(wallNs, stgxOffset + 12);
-            const frameCopy = resolved.address === '127.0.0.1' ? Buffer.from(packetBuf) : null;
+            const datagram = Buffer.from(packetBuf);
 
-            this.socket.send(packetBuf, 0, payloadBytes, port, group, (err: any) => {
+            this.socket.send(datagram, 0, payloadBytes, port, group, (err: any) => {
                 if (err) {
                     if (
                         resolved.address === '127.0.0.1' &&
-                        frameCopy &&
                         (err.code === 'EPERM' || err.code === 'EACCES' || err.code === 'EHOSTUNREACH' || err.code === 'ENETUNREACH')
                     ) {
                         this.lastError = undefined;
                         for (const rcv of localJoinedReceivers) {
-                            rcv.deliverLoopbackFrame(group, port, frameCopy);
+                            rcv.deliverLoopbackFrame(group, port, datagram);
                         }
                     } else {
                         this.lastError = err.message;
