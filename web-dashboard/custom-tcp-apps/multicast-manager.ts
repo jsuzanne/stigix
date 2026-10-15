@@ -44,9 +44,16 @@ export class MulticastAppManager {
     private localNodeMatcher?: LocalNodeMatcher;
     private getLocalSiteNameFn?: () => string;
     private resolveNodeInterfaceIpFn?: (nodeId: string) => string | undefined;
+    private unreachableNodes: Map<string, { error: string; failedAt: number; cooldownMs: number }> = new Map();
+    private static readonly UNREACHABLE_COOLDOWN_MS = 12000;
+    private static readonly DISPATCH_TIMEOUT_MS = 2200;
 
     constructor(configStore: CustomTcpConfigStore) {
         this.configStore = configStore;
+    }
+
+    private normalizeNodeKey(nodeId: string): string {
+        return (nodeId || '').trim().toLowerCase().replace(/[-_](ubuntu|stigix|node|site|vm)$/i, '');
     }
 
     public setClusterHooks(options: {
@@ -519,9 +526,13 @@ export class MulticastAppManager {
         nodeId: string,
         method: 'GET' | 'POST',
         subPath: string,
-        body?: any
+        body?: any,
+        options?: { bypassCircuitBreaker?: boolean; timeoutMs?: number }
     ): Promise<any> {
+        const nodeKey = this.normalizeNodeKey(nodeId);
+
         if (this.isLocalNode(nodeId)) {
+            this.unreachableNodes.delete(nodeKey);
             const parts = subPath.split('/').filter(Boolean); // e.g. ['multicast', appId, 'local-join']
             const appId = decodeURIComponent(parts[1] || '');
             const action = parts.slice(2).join('/');
@@ -564,14 +575,47 @@ export class MulticastAppManager {
             throw new Error(`Cluster node forwarder not configured to reach remote node '${nodeId}'`);
         }
 
-        return await this.nodeForwarder(nodeId, method, subPath, body);
+        // Fast-fail circuit-breaker for known unreachable/unstable remote nodes
+        const cached = this.unreachableNodes.get(nodeKey);
+        if (!options?.bypassCircuitBreaker && cached && (Date.now() - cached.failedAt) < cached.cooldownMs) {
+            throw new Error(cached.error);
+        }
+
+        const timeoutMs = options?.timeoutMs ?? MulticastAppManager.DISPATCH_TIMEOUT_MS;
+        let timeoutHandle: NodeJS.Timeout | undefined;
+        try {
+            const res = await Promise.race([
+                this.nodeForwarder(nodeId, method, subPath, body),
+                new Promise<never>((_, reject) => {
+                    timeoutHandle = setTimeout(() => {
+                        reject(new Error(`Timeout reaching node ${nodeId} (${timeoutMs}ms)`));
+                    }, timeoutMs);
+                })
+            ]);
+            if (timeoutHandle) clearTimeout(timeoutHandle);
+            this.unreachableNodes.delete(nodeKey);
+            return res;
+        } catch (err: any) {
+            if (timeoutHandle) clearTimeout(timeoutHandle);
+            const msg = err?.message || `Node '${nodeId}' unreachable`;
+            const isTransportFailure = /EHOSTUNREACH|ECONNREFUSED|ETIMEDOUT|ENETUNREACH|ECONNRESET|Timeout reaching node|not found in Fleet|unreachable|socket hang up/i.test(msg);
+            if (isTransportFailure) {
+                this.unreachableNodes.set(nodeKey, {
+                    error: msg,
+                    failedAt: Date.now(),
+                    cooldownMs: MulticastAppManager.UNREACHABLE_COOLDOWN_MS
+                });
+            }
+            throw err;
+        }
     }
 
     /**
      * Orchestrates cluster-wide stream start:
      * 1. Stops any previously active multicast profile across the cluster
-     * 2. Instructs all enabled receivers to join the IGMP group first
-     * 3. Instructs the sender node to start transmitting UDP multicast packets
+     * 2. Screens receiver reachability so an offline VM never delays healthy receivers' IGMP Join or inflates their Join Latency
+     * 3. Instructs all reachable enabled receivers to join the IGMP group first
+     * 4. Instructs the sender node to start transmitting UDP multicast packets
      */
     public async startClusterStream(appId: string): Promise<MulticastClusterStatus> {
         const app = this.resolveEffectiveConfig(appId);
@@ -585,9 +629,25 @@ export class MulticastAppManager {
 
         const enabledReceivers = app.receivers.filter(r => r.enabled !== false);
 
-        // Step 1: Fan-out IGMP Join to all enabled receivers concurrently
-        await Promise.allSettled(
+        // Step 0: Pre-screen receiver reachability before starting any receiver's joinedMonoNs clock.
+        // If a VM (e.g. BR1) is down/unstable, this trips its circuit-breaker BEFORE healthy receivers (e.g. BR5)
+        // execute local-join, preventing BR1's timeout from inflating BR5's measured Join Latency.
+        const reachabilityChecks = await Promise.allSettled(
             enabledReceivers.map(r =>
+                this.dispatchToNode(
+                    r.node,
+                    'GET',
+                    `/multicast/${encodeURIComponent(app.id)}/local-stats`,
+                    undefined,
+                    { timeoutMs: 1500 }
+                )
+            )
+        );
+        const reachableReceivers = enabledReceivers.filter((_, idx) => reachabilityChecks[idx].status === 'fulfilled');
+
+        // Step 1: Fan-out IGMP Join only to reachable enabled receivers concurrently
+        await Promise.allSettled(
+            reachableReceivers.map(r =>
                 this.dispatchToNode(r.node, 'POST', `/multicast/${encodeURIComponent(app.id)}/local-join`, {
                     expect: r.expect,
                     interfaceIp: this.resolveEffectiveInterfaceIp(r.node, r.interfaceIp),
@@ -607,7 +667,8 @@ export class MulticastAppManager {
             {
                 interfaceIp: this.resolveEffectiveInterfaceIp(app.senderNode, app.senderInterfaceIp),
                 config: app
-            }
+            },
+            { bypassCircuitBreaker: true, timeoutMs: 3000 }
         );
 
         this.activeClusterStreams.set(app.id, { startedAt: Date.now() });
@@ -691,14 +752,16 @@ export class MulticastAppManager {
                     expect: expectOverride || rcvCfg?.expect || 'traffic',
                     interfaceIp: this.resolveEffectiveInterfaceIp(nodeId, rcvCfg?.interfaceIp),
                     config: app
-                }
+                },
+                { bypassCircuitBreaker: true, timeoutMs: 2500 }
             );
         } else {
             await this.dispatchToNode(
                 nodeId,
                 'POST',
                 `/multicast/${encodeURIComponent(app.id)}/local-leave`,
-                {}
+                {},
+                { bypassCircuitBreaker: true, timeoutMs: 2000 }
             );
         }
 

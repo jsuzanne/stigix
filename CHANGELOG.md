@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.0.22] - 2026-10-15
+
+### Fixed & Enhanced
+- **Unreachable Receiver Circuit-Breaker & Fast-Fail in Multicast Overlay (`multicast-manager.ts`, `server.ts`)**:
+  - Added an automatic 12-second circuit-breaker (`unreachableNodes`) in `MulticastAppManager.dispatchToNode` so offline or unstable receiver VMs (e.g., `EHOSTUNREACH` / timeout on `BR1`) fail-fast in `0ms` during live UI telemetry polling instead of blocking cluster status calls.
+  - Added pre-join reachability screening in `startClusterStream` before starting any receiver's `joinedMonoNs` timer so an unreachable receiver VM never delays `local-sender/start` or inflates the measured `Join Latency` of healthy receivers (`BR5`).
+  - Reduced multicast `nodeForwarder` HTTP fallback timeout from `8000ms` to `2000ms` and eliminated redundant Spoke-to-Leader double-fallback timeouts.
+- **Prisma SD-WAN v2.6 Custom App Push for Multicast UDP (`engines/prisma_custom_apps.py`)**:
+  - Updated `udp_rules` payload generation to use the Prisma SD-WAN `v2.6` schema (`udp_port`, `udp_filters`, `dest_prefixes: null`) and automatically create/link a Global Prefix Filter (`STX_PF_<Group>`) for the `239.x.x.x/32` or `232.x.x.x/32` multicast group.
+
 ## [3.0.21] - 2026-10-14
 
 ### Fixed & Enhanced

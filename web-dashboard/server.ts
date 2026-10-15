@@ -15152,7 +15152,7 @@ tcpAppManager.multicastManager.setClusterHooks({
                         headers,
                         body: method === 'POST' ? (body || {}) : undefined
                     },
-                    10000
+                    3000
                 );
                 if (tunnelRes && tunnelRes.status >= 200 && tunnelRes.status < 300) {
                     const parsed = typeof tunnelRes.body === 'string' ? JSON.parse(tunnelRes.body) : tunnelRes.body;
@@ -15167,9 +15167,13 @@ tcpAppManager.multicastManager.setClusterHooks({
             : (registryManager?.getStatus?.()?.mode === 'leader');
         if (!isLeader && fleetTunnelManager.hasActiveLeaderTunnel()) {
             try {
-                return await fleetTunnelManager.relayNodeRequestViaLeader(peerId, method, subPath, body, 10000);
+                return await fleetTunnelManager.relayNodeRequestViaLeader(peerId, method, subPath, body, 3500);
             } catch (relayErr: any) {
-                log('CUSTOM_TCP', `Spoke-to-Leader multicast relay for '${peerId}' failed (${relayErr.message}) — trying direct HTTP fallback`, 'warn');
+                const errMsg = relayErr?.message || '';
+                if (/EHOSTUNREACH|ECONNREFUSED|ETIMEDOUT|ENETUNREACH|Timeout reaching node|not found in Fleet/i.test(errMsg)) {
+                    throw relayErr;
+                }
+                log('CUSTOM_TCP', `Spoke-to-Leader multicast relay for '${peerId}' failed (${errMsg}) — trying direct HTTP fallback`, 'warn');
             }
         }
 
@@ -15199,7 +15203,7 @@ tcpAppManager.multicastManager.setClusterHooks({
             throw new Error(`Node '${peerId}' not found in Fleet Registry or Targets`);
         }
 
-        // Direct HTTP fallback
+        // Direct HTTP fallback (fast 2s timeout to avoid stalling cluster orchestration when a VM is down)
         return await new Promise<any>((resolve, reject) => {
             const bodyStr = method === 'POST' ? JSON.stringify(body || {}) : '';
             if (method === 'POST') {
@@ -15212,7 +15216,7 @@ tcpAppManager.multicastManager.setClusterHooks({
                     path: targetPath,
                     method,
                     headers,
-                    timeout: 8000
+                    timeout: 2000
                 },
                 (res) => {
                     let raw = '';
