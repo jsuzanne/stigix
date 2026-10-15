@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Activity, Plus, Trash2, RefreshCw, Shield, Server, Wifi, Layout, CheckCircle, XCircle, AlertCircle, ChevronDown, ChevronRight, ChevronUp, Search, Monitor, Cpu, Zap, Clock, Terminal, MapPin, Globe, ExternalLink, Info, Settings, Edit2, Play, Download, Upload, Pause, Square, SkipBack, RotateCcw, PlayCircle, ArrowDownCircle, ArrowUpCircle, ShieldX, ShieldCheck, Eraser, Eye } from 'lucide-react';
+import { Activity, Plus, Trash2, RefreshCw, Shield, Server, Wifi, Layout, CheckCircle, XCircle, AlertCircle, ChevronDown, ChevronRight, ChevronUp, Search, Monitor, Cpu, Zap, Clock, Terminal, MapPin, Globe, ExternalLink, Info, Settings, Edit2, Play, Download, Upload, Pause, Square, SkipBack, RotateCcw, PlayCircle, ArrowDownCircle, ArrowUpCircle, ShieldX, ShieldCheck, Eraser, Eye, Ban, Copy } from 'lucide-react';
 import { io } from 'socket.io-client';
 import toast from 'react-hot-toast';
 import { isValidIpOrFqdn } from './utils/validation';
