@@ -692,7 +692,10 @@ export const MulticastOverlayTab: React.FC<MulticastOverlayTabProps> = ({
             const res = await fetch(`/api/custom-tcp-apps/multicast/export${query}`, {
                 headers: headers(),
             });
-            if (!res.ok) throw new Error('Export failed');
+            if (!res.ok) {
+                const errData = await res.json().catch(() => ({}));
+                throw new Error(errData.error || `Export failed (${res.status})`);
+            }
             const bundle = await res.json();
             const blob = new Blob([JSON.stringify(bundle, null, 2)], { type: 'application/json' });
             const url = URL.createObjectURL(blob);
@@ -1061,6 +1064,13 @@ export const MulticastOverlayTab: React.FC<MulticastOverlayTabProps> = ({
                                     title="Edit Multicast Profile & SLA Thresholds"
                                 >
                                     <Edit2 className="w-3.5 h-3.5" />
+                                </button>
+                                <button
+                                    onClick={() => handleExportProfiles(selectedProfile.id)}
+                                    className="p-2 rounded-lg bg-background hover:bg-card-hover border border-border text-text-muted hover:text-text-primary transition-colors"
+                                    title={`Export Profile "${selectedProfile.name}" to JSON`}
+                                >
+                                    <Download className="w-3.5 h-3.5" />
                                 </button>
                                 <button
                                     onClick={handleDeleteProfile}

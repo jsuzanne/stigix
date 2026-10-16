@@ -2,7 +2,7 @@
  * Stigix Custom TCP Inter-Site Applications — Express API Routes
  */
 
-import { Router, Request, Response } from 'express';
+import { Router, Request, Response, NextFunction } from 'express';
 import { TcpAppManager } from './tcp-app-manager.js';
 import { validateApplicationConfig, validateMulticastApplicationConfig, checkHostPortAvailable } from './validation.js';
 import { MULTICAST_INDUSTRY_PRESETS } from './multicast-runtime.js';
@@ -111,29 +111,6 @@ export function createCustomTcpApiRouter(tcpAppManager: TcpAppManager, onConfigC
         }
     });
 
-    // GET /api/custom-tcp-apps/:id/export — Export a single application config
-    router.get('/:id/export', (req: Request, res: Response) => {
-        try {
-            const config = tcpAppManager.getConfig();
-            const app = config.applications.find(a => a.id === req.params.id);
-            if (!app) {
-                return res.status(404).json({ error: `Application ${req.params.id} not found` });
-            }
-            const exportData = {
-                version: config.version || 1,
-                exportedAt: new Date().toISOString(),
-                exportedFromSite: config.instance?.siteName || 'unknown',
-                application: app
-            };
-            const safeName = app.name.toLowerCase().replace(/[^a-z0-9_-]/g, '-');
-            const filename = `stigix-app-${safeName}.json`;
-            res.setHeader('Content-Type', 'application/json');
-            res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
-            res.send(JSON.stringify(exportData, null, 2));
-        } catch (err: any) {
-            res.status(500).json({ error: err.message });
-        }
-    });
 
     // POST /api/custom-tcp-apps/import — Import applications bundle (mode: 'merge' | 'replace')
     router.post('/import', async (req: Request, res: Response) => {
@@ -360,9 +337,11 @@ export function createCustomTcpApiRouter(tcpAppManager: TcpAppManager, onConfigC
     });
 
     // GET /api/custom-tcp-apps/multicast/export — Export multicast profiles as JSON bundle
-    router.get('/multicast/export', (req: Request, res: Response) => {
+    const multicastExportHandler = (req: Request, res: Response) => {
         try {
-            const appId = typeof req.query.id === 'string' ? req.query.id : undefined;
+            const appId = typeof req.params.id === 'string'
+                ? req.params.id
+                : (typeof req.query.id === 'string' ? req.query.id : undefined);
             const exportData = mcManager.exportApplications(appId);
             const siteSlug = (exportData.exportedFromSite || 'node').toLowerCase().replace(/[^a-z0-9_-]/g, '-');
             const dateSlug = new Date().toISOString().slice(0, 10);
@@ -375,7 +354,9 @@ export function createCustomTcpApiRouter(tcpAppManager: TcpAppManager, onConfigC
         } catch (err: any) {
             res.status(500).json({ success: false, error: err.message });
         }
-    });
+    };
+    router.get('/multicast/export', multicastExportHandler);
+    router.get('/multicast/:id/export', multicastExportHandler);
 
     // POST /api/custom-tcp-apps/multicast/import — Import multicast profiles from JSON bundle
     router.post('/multicast/import', async (req: Request, res: Response) => {
@@ -615,7 +596,8 @@ export function createCustomTcpApiRouter(tcpAppManager: TcpAppManager, onConfigC
     // ─── Individual Application Routes ────────────────────────────────────────
 
     // GET /api/custom-tcp-apps/:id — Get application details
-    router.get('/:id', (req: Request, res: Response) => {
+    router.get('/:id', (req: Request, res: Response, next: NextFunction) => {
+        if (req.params.id === 'multicast') return next();
         try {
             const file = tcpAppManager.getConfig();
             const app = file.applications.find(a => a.id === req.params.id);
@@ -626,8 +608,34 @@ export function createCustomTcpApiRouter(tcpAppManager: TcpAppManager, onConfigC
         }
     });
 
+    // GET /api/custom-tcp-apps/:id/export — Export a single application config
+    router.get('/:id/export', (req: Request, res: Response, next: NextFunction) => {
+        if (req.params.id === 'multicast') return next();
+        try {
+            const config = tcpAppManager.getConfig();
+            const app = config.applications.find(a => a.id === req.params.id);
+            if (!app) {
+                return res.status(404).json({ error: `Application ${req.params.id} not found` });
+            }
+            const exportData = {
+                version: config.version || 1,
+                exportedAt: new Date().toISOString(),
+                exportedFromSite: config.instance?.siteName || 'unknown',
+                application: app
+            };
+            const safeName = app.name.toLowerCase().replace(/[^a-z0-9_-]/g, '-');
+            const filename = `stigix-app-${safeName}.json`;
+            res.setHeader('Content-Type', 'application/json');
+            res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+            res.send(JSON.stringify(exportData, null, 2));
+        } catch (err: any) {
+            res.status(500).json({ error: err.message });
+        }
+    });
+
     // PUT /api/custom-tcp-apps/:id — Update application
-    router.put('/:id', async (req: Request, res: Response) => {
+    router.put('/:id', async (req: Request, res: Response, next: NextFunction) => {
+        if (req.params.id === 'multicast') return next();
         try {
             const app = req.body;
             app.id = req.params.id;
@@ -639,7 +647,8 @@ export function createCustomTcpApiRouter(tcpAppManager: TcpAppManager, onConfigC
     });
 
     // POST /api/custom-tcp-apps/:id/duplicate — Duplicate application
-    router.post('/:id/duplicate', async (req: Request, res: Response) => {
+    router.post('/:id/duplicate', async (req: Request, res: Response, next: NextFunction) => {
+        if (req.params.id === 'multicast') return next();
         try {
             const file = tcpAppManager.getConfig();
             const original = file.applications.find(a => a.id === req.params.id);
@@ -659,7 +668,8 @@ export function createCustomTcpApiRouter(tcpAppManager: TcpAppManager, onConfigC
     });
 
     // DELETE /api/custom-tcp-apps/:id — Delete application
-    router.delete('/:id', async (req: Request, res: Response) => {
+    router.delete('/:id', async (req: Request, res: Response, next: NextFunction) => {
+        if (req.params.id === 'multicast') return next();
         try {
             await tcpAppManager.deleteApplication(req.params.id);
             res.json({ success: true });
