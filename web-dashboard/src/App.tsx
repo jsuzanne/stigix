@@ -1305,9 +1305,14 @@ export default function App() {
                   : "bg-card-secondary hover:bg-card-hover text-text-secondary hover:text-text-primary border-border"
               )}
             >
-              <Bot size={15} className={copilotDrawerOpen ? "text-white" : "text-indigo-400"} />
+              <Bot size={15} className={copilotDrawerOpen ? "text-white" : "text-indigo-500 dark:text-indigo-400"} />
               <span className="hidden md:inline">AI Copilot</span>
-              <span className="px-1 py-0.2 rounded text-[8px] font-mono bg-black/20 text-text-muted border border-white/10">⌘J</span>
+              <span className={cn(
+                "px-1 py-0.2 rounded text-[8px] font-mono border",
+                copilotDrawerOpen
+                  ? "bg-white/20 text-white border-white/20"
+                  : "bg-slate-200/70 dark:bg-black/20 text-slate-600 dark:text-text-muted border-slate-300/60 dark:border-white/10"
+              )}>⌘J</span>
             </button>
           )}
 
@@ -1856,14 +1861,14 @@ export default function App() {
         <button
           onClick={() => setCopilotDrawerOpen(true)}
           title="Open Stigix AI Copilot Assistant (⌘J)"
-          className="fixed bottom-4 right-4 z-20 bg-slate-900/90 hover:bg-slate-800 text-slate-300 hover:text-white border border-slate-700/70 hover:border-indigo-500/50 rounded-full px-2.5 py-1.5 flex items-center gap-1.5 text-[11px] font-semibold tracking-tight transition-all duration-150 hover:scale-105 active:scale-95 group backdrop-blur-md shadow-lg shadow-black/40"
+          className="fixed bottom-4 right-4 z-20 bg-white/95 dark:bg-slate-900/90 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 hover:text-indigo-600 dark:hover:text-white border border-slate-200/90 dark:border-slate-700/70 hover:border-indigo-400 dark:hover:border-indigo-500/50 rounded-full px-3 py-1.5 flex items-center gap-1.5 text-[11px] font-semibold tracking-tight transition-all duration-150 hover:scale-105 active:scale-95 group backdrop-blur-md shadow-lg shadow-slate-300/60 dark:shadow-black/40"
         >
           <div className="relative flex items-center justify-center">
-            <Bot size={14} className="text-indigo-400 group-hover:text-indigo-300 transition-colors" />
-            <span className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 bg-emerald-400 rounded-full" />
+            <Bot size={14} className="text-indigo-600 dark:text-indigo-400 group-hover:text-indigo-500 dark:group-hover:text-indigo-300 transition-colors" />
+            <span className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 bg-emerald-500 dark:bg-emerald-400 rounded-full" />
           </div>
           <span>Copilot</span>
-          <span className="px-1 py-0.2 rounded text-[8px] font-mono bg-white/10 text-slate-400 group-hover:text-white border border-white/10">⌘J</span>
+          <span className="px-1 py-0.2 rounded text-[8px] font-mono bg-slate-100 dark:bg-white/10 text-slate-500 dark:text-slate-400 group-hover:text-indigo-600 dark:group-hover:text-white border border-slate-200 dark:border-white/10">⌘J</span>
         </button>
       )}
 

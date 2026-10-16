@@ -1579,13 +1579,13 @@ export default function Vyos(props: VyosProps) {
                                 placeholder="Search sequences by name, action, interface, router..."
                                 value={sequenceSearch}
                                 onChange={(e) => setSequenceSearch(e.target.value)}
-                                className="w-full pl-10 pr-4 py-2.5 bg-card/50 border border-border/50 rounded-xl text-sm focus:outline-none focus:border-purple-500/50 transition-all text-text-primary placeholder:text-text-muted/50"
+                                className="w-full pl-10 pr-4 py-2.5 bg-card/50 border border-border/50 rounded-xl text-sm focus:outline-none focus:border-indigo-500/50 transition-all text-text-primary placeholder:text-text-muted/50"
                             />
                         </div>
                         <div className="flex items-center gap-4 shrink-0">
                             <button
                                 onClick={() => openSeqModal()}
-                                className="flex items-center gap-2 px-6 py-2.5 bg-purple-600 hover:bg-purple-500 text-white rounded-lg font-bold transition-all shadow-lg shadow-purple-900/20 active:scale-95"
+                                className="flex items-center gap-2 px-5 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl font-bold transition-all shadow-md shadow-indigo-500/20 active:scale-95"
                             >
                                 <Plus size={18} /> New Sequence
                             </button>
@@ -1652,11 +1652,11 @@ export default function Vyos(props: VyosProps) {
                                                     onClick={() => seq.executionMode === 'STEP_BY_STEP' ? setView('timeline') : runSequence(seq.id)}
                                                     disabled={activeExecution !== null || runningSeqId !== null}
                                                     className={cn(
-                                                        'flex items-center gap-1 px-2 py-1.5 rounded-lg font-bold text-[10px] transition-all disabled:opacity-30 shadow-sm active:scale-95 whitespace-nowrap',
-                                                        isRunning ? 'bg-card-secondary text-text-muted'
-                                                            : seq.executionMode === 'STEP_BY_STEP' ? 'bg-blue-600 hover:bg-blue-500 text-white'
-                                                                : seq.executionMode === 'BATCH' ? 'bg-amber-600 hover:bg-amber-500 text-white'
-                                                                    : 'bg-purple-600 hover:bg-purple-500 text-white'
+                                                        'flex items-center gap-1 px-2.5 py-1.5 rounded-lg font-bold text-[10px] border transition-all disabled:opacity-30 shadow-sm active:scale-95 whitespace-nowrap',
+                                                        isRunning ? 'bg-card-secondary text-text-muted border-border/50'
+                                                            : seq.executionMode === 'STEP_BY_STEP' ? 'bg-blue-500/10 hover:bg-blue-600 text-blue-600 dark:text-blue-400 hover:text-white border-blue-500/25 hover:border-blue-500'
+                                                                : seq.executionMode === 'BATCH' ? 'bg-amber-500/10 hover:bg-amber-500 text-amber-600 dark:text-amber-400 hover:text-white border-amber-500/25 hover:border-amber-500'
+                                                                    : 'bg-indigo-500/10 hover:bg-emerald-600 text-indigo-600 dark:text-indigo-300 hover:text-white border-indigo-500/25 hover:border-emerald-500'
                                                     )}
                                                 >
                                                     {isRunning ? <Activity size={11} className="animate-spin" /> : seq.executionMode === 'STEP_BY_STEP' ? <ChevronRight size={11} /> : seq.executionMode === 'BATCH' ? <Zap size={11} fill="currentColor" /> : <Play size={11} fill="currentColor" />}
@@ -2445,7 +2445,7 @@ export default function Vyos(props: VyosProps) {
                         <div className="px-4 py-3 overflow-y-auto shrink min-h-0 space-y-3 custom-scrollbar">
 
                             <div className="space-y-4">
-                                <div className="flex items-center justify-between bg-purple-600/5 p-4 rounded-2xl border border-purple-500/20 shadow-sm">
+                                <div className="flex items-center justify-between bg-indigo-600/5 p-4 rounded-2xl border border-indigo-500/20 shadow-sm">
                                     <div className="flex flex-col">
                                         <h4 className="text-[12px] font-semibold text-text-primary">Actions</h4>
                                         <span className="text-[10px] text-text-muted">
@@ -2475,7 +2475,7 @@ export default function Vyos(props: VyosProps) {
                                                 }]
                                             });
                                         }}
-                                        className="px-4 py-2 bg-purple-600 hover:bg-purple-500 text-white rounded-xl text-[11px] font-semibold transition-all shadow-lg shadow-purple-900/20 active:scale-95 flex items-center gap-1.5 shrink-0"
+                                        className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-[11px] font-semibold transition-all shadow-md shadow-indigo-500/20 active:scale-95 flex items-center gap-1.5 shrink-0"
                                     >
                                         <Plus size={13} /> Add action
                                     </button>
@@ -2687,7 +2687,7 @@ export default function Vyos(props: VyosProps) {
                                         editingSeq.actions.length === 0 ? "Add at least one action" :
                                             "Save this sequence"
                                 }
-                                className="flex-2 px-8 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-semibold transition-all shadow-xl shadow-purple-900/40 text-sm disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:bg-purple-600 flex items-center justify-center gap-2 active:scale-95"
+                                className="flex-2 px-8 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-semibold transition-all shadow-lg shadow-indigo-500/25 text-sm disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:bg-indigo-600 flex items-center justify-center gap-2 active:scale-95"
                             >
                                 <CheckCircle size={18} /> Save sequence
                             </button>

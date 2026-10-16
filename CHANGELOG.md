@@ -5,10 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [3.0.29] - 2026-10-16
+## [3.0.30] - 2026-10-16
 
 ### Fixed & Enhanced
-- **Digital Experience (`ConnectivityPerformance.tsx`) Standby / Paused Engine UX**:
+- **Copilot Floating Launcher & Header Shortcut Light Mode (`App.tsx`)**:
+  - Updated the bottom-right floating `Copilot ⌘J` button and top header `AI Copilot ⌘J` shortcut pill to adapt cleanly to Light Mode (`bg-white/95`, subtle border and shadow, light `⌘J` kbd badge) while preserving its dark glassmorphic style in Dark Mode.
+- **VyOS Sequences Tactical Ghost Buttons (`Vyos.tsx`)**:
+  - Replaced flashy solid purple buttons on the VyOS Sequences toolbar (`+ New Sequence`), sequence edit modal (`+ Add action`, `Save sequence`), and table row execution triggers (`▶ Run`, `⚡ Batch`, `› Steps`) with cohesive Indigo primary actions (`bg-indigo-600`) and subtle "Tactical Ghost" outline pills at rest that illuminate on hover (Emerald for `Run`, Amber for `Batch`, Blue for `Steps`).
+- **Digital Experience (`ConnectivityPerformance.tsx`) Standby / Paused Engine UX [3.0.29]**:
   - Auto-collapses the empty telemetry chart rows (*Global Experience / Score Trend* and *Performance Trends by Type*) when the local probe engine is on standby with no local execution data (`!isProbeEngineEnabled && results.length === 0`), bringing the **Probes Catalog** immediately above the fold with a `Show Telemetry Panels` toggle in the compact Standby banner.
   - Replaced the false-alarm `0/100 CRITICAL` gauge and contradictory `All monitored probes stable` indicator when paused with a clean `—` (`STANDBY`) gauge and `Local probe execution on standby` state.
   - Fixed catalog and filter tab counters (`ALL`, `HTTP`, `PING`, `PRISMA SDWAN`, `STIGIX`, etc.) so they aggregate across the full catalog (`allEvaluatedEndpoints + pendingProbes`) instead of dropping to `0` when the engine is paused or when a filter pill is active, and enabled type/search filtering + column sorting on standby probes.
