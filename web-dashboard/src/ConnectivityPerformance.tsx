@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { usePeerContext } from './PeerContext';
-import { Gauge, Activity, Clock, Filter, Download, Zap, Shield, Search, ChevronRight, BarChart3, AlertCircle, Info, ChevronUp, ChevronDown, Flame, Plus, XCircle, CheckCircle, RefreshCw, Globe, Play, Pause, TrendingUp, Pencil, Route, Grid, Trash2 } from 'lucide-react';
+import { Gauge, Activity, Clock, Filter, Download, Zap, Shield, Search, ChevronRight, BarChart3, AlertCircle, Info, ChevronUp, ChevronDown, Flame, Plus, XCircle, CheckCircle, RefreshCw, Globe, Play, Pause, Square, TrendingUp, Pencil, Route, Grid, Trash2 } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as ReTooltip, ResponsiveContainer, AreaChart, Area, ReferenceLine, ReferenceArea } from 'recharts';
 import { twMerge } from 'tailwind-merge';
 import { TracerouteModal } from './components/TracerouteModal';
@@ -802,6 +802,13 @@ export default function ConnectivityPerformance({ token, uiConfig, onManage, isL
                 enabled,
                 source: config?.source,
                 stale: config?.stale,
+                site_id: config?.site_id,
+                site_name: config?.site_name,
+                element_name: config?.element_name,
+                circuit_name: config?.circuit_name,
+                selected_interface_name: config?.selected_interface_name,
+                selected_interface_label: config?.selected_interface_label,
+                selected_network: config?.selected_network,
                 content_match: config?.content_match, // ← pass full content_match config to modal
                 // Sparkline data arrays (chronological)
                 scoreHistory: histSlice.map(r => r.score),
@@ -870,6 +877,14 @@ export default function ConnectivityPerformance({ token, uiConfig, onManage, isL
                     checks: 0,
                     enabled: true,
                     source: config.source,
+                    stale: config.stale,
+                    site_id: config.site_id,
+                    site_name: config.site_name,
+                    element_name: config.element_name,
+                    circuit_name: config.circuit_name,
+                    selected_interface_name: config.selected_interface_name,
+                    selected_interface_label: config.selected_interface_label,
+                    selected_network: config.selected_network,
                     content_match: config.content_match,
                     scoreHistory: [],
                     latencyHistory: [],
@@ -1272,13 +1287,24 @@ export default function ConnectivityPerformance({ token, uiConfig, onManage, isL
                         className={cn(
                             "flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-bold transition-all shadow-sm border",
                             isProbeEngineEnabled
-                                ? "bg-card-secondary hover:bg-card-secondary/80 border-border text-text-primary"
-                                : "bg-amber-500/10 border-amber-500/30 text-amber-300 hover:bg-amber-500/20"
+                                ? "bg-rose-500/10 hover:bg-rose-500/20 border-rose-500/30 text-rose-300"
+                                : "bg-emerald-600 hover:bg-emerald-500 text-white border-transparent"
                         )}
-                        title={isProbeEngineEnabled ? "Local probe execution is running on this node. Click to pause." : "Local probe execution is suspended. Click to resume."}
+                        title={isProbeEngineEnabled ? "Local probe execution is running on this node. Click to stop." : "Local probe execution is suspended. Click to start."}
                     >
-                        <span className={cn("w-2 h-2 rounded-full shrink-0", isProbeEngineEnabled ? "bg-emerald-500 animate-pulse" : "bg-amber-400")} />
-                        <span>{isProbeEngineEnabled ? "Local Engine: Running" : "Local Engine: Paused"}</span>
+                        {isProbeEngineEnabled ? (
+                            <>
+                                <Square size={12} className="fill-current text-rose-400" />
+                                <span>Stop Engine</span>
+                                <span className="ml-1 px-1.5 py-0.5 rounded text-[9px] font-mono uppercase bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 animate-pulse">Running</span>
+                            </>
+                        ) : (
+                            <>
+                                <Play size={12} className="fill-current" />
+                                <span>Start Engine</span>
+                                <span className="ml-1 px-1.5 py-0.5 rounded text-[9px] font-mono uppercase bg-zinc-800 text-zinc-400 border border-zinc-700">Stopped</span>
+                            </>
+                        )}
                     </button>
 
                     <button
@@ -1355,7 +1381,14 @@ export default function ConnectivityPerformance({ token, uiConfig, onManage, isL
                                                 pending
                                             </span>
                                         </div>
-                                        <span className="text-[10px] text-text-muted font-mono opacity-60 leading-tight mt-0.5">{e.target}</span>
+                                        <div className="flex items-center gap-1.5 flex-wrap mt-0.5">
+                                            <span className="text-[10px] text-text-muted font-mono opacity-60 leading-tight">{e.target}</span>
+                                            {(e.site_name || e.element_name || e.circuit_name) && (
+                                                <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-emerald-600 dark:text-emerald-400/90 bg-emerald-500/10 px-1.5 py-0.2 rounded border border-emerald-500/20">
+                                                    {[e.site_name, e.element_name, e.circuit_name].filter(Boolean).join(' · ')}
+                                                </span>
+                                            )}
+                                        </div>
                                     </div>
                                 </td>
                                 <td className="px-6 py-4 text-center align-middle">
@@ -1458,9 +1491,16 @@ export default function ConnectivityPerformance({ token, uiConfig, onManage, isL
                                                 {e.stale && "STALE"}
                                             </span>
                                         </div>
-                                        <span className="text-[10px] text-text-muted font-mono break-all opacity-80 leading-tight mt-0.5">
-                                            {formatDisplayUrl(e)}
-                                        </span>
+                                        <div className="flex items-center gap-1.5 flex-wrap mt-0.5">
+                                            <span className="text-[10px] text-text-muted font-mono break-all opacity-80 leading-tight">
+                                                {formatDisplayUrl(e)}
+                                            </span>
+                                            {(e.site_name || e.element_name || e.circuit_name) && (
+                                                <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-emerald-600 dark:text-emerald-400/90 bg-emerald-500/10 px-1.5 py-0.2 rounded border border-emerald-500/20">
+                                                    {[e.site_name, e.element_name, e.circuit_name].filter(Boolean).join(' · ')}
+                                                </span>
+                                            )}
+                                        </div>
                                     </div>
                                 </td>
                                 <td className="px-6 py-4 text-center align-middle">
@@ -1738,22 +1778,26 @@ export default function ConnectivityPerformance({ token, uiConfig, onManage, isL
                                 </div>
                             )}
 
-                            {/* Discovery Parameters - Hidden for Prisma SD-WAN probes */}
-                            {false && (selectedEndpoint as any).source === 'discovery' && (
-                                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                                    <div className="bg-card-secondary/30 p-4 rounded-xl border border-border">
-                                        <div className="text-[10px] font-black text-text-muted uppercase tracking-widest mb-1">Site ID</div>
-                                        <div className="text-xs font-bold text-text-primary">{(selectedEndpoint as any).site_id}</div>
+                            {/* Discovery & SD-WAN Topology Parameters */}
+                            {((selectedEndpoint as any).source === 'discovery' || (selectedEndpoint as any).element_name || (selectedEndpoint as any).circuit_name) && (
+                                <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                                    <div className="bg-card-secondary/30 p-3.5 rounded-xl border border-border">
+                                        <div className="text-[10px] font-black text-text-muted uppercase tracking-widest mb-1">Site</div>
+                                        <div className="text-xs font-bold text-text-primary">{(selectedEndpoint as any).site_name || (selectedEndpoint as any).site_id || '—'}</div>
                                     </div>
-                                    <div className="bg-card-secondary/30 p-4 rounded-xl border border-border">
-                                        <div className="text-[10px] font-black text-text-muted uppercase tracking-widest mb-1">Interface</div>
+                                    <div className="bg-card-secondary/30 p-3.5 rounded-xl border border-border">
+                                        <div className="text-[10px] font-black text-text-muted uppercase tracking-widest mb-1">Router (Element)</div>
+                                        <div className="text-xs font-bold text-text-primary">{(selectedEndpoint as any).element_name || '—'}</div>
+                                    </div>
+                                    <div className="bg-card-secondary/30 p-3.5 rounded-xl border border-border">
+                                        <div className="text-[10px] font-black text-text-muted uppercase tracking-widest mb-1">Circuit / Interface</div>
                                         <div className="text-xs font-bold text-text-primary">
-                                            {(selectedEndpoint as any).selected_interface_label || (selectedEndpoint as any).selected_interface_name}
+                                            {(selectedEndpoint as any).circuit_name || (selectedEndpoint as any).selected_interface_label || (selectedEndpoint as any).selected_interface_name || '—'}
                                         </div>
                                     </div>
-                                    <div className="bg-card-secondary/30 p-4 rounded-xl border border-border">
-                                        <div className="text-[10px] font-black text-text-muted uppercase tracking-widest mb-1">Network</div>
-                                        <div className="text-xs font-bold text-text-primary">{(selectedEndpoint as any).selected_network}</div>
+                                    <div className="bg-card-secondary/30 p-3.5 rounded-xl border border-border">
+                                        <div className="text-[10px] font-black text-text-muted uppercase tracking-widest mb-1">Network Subnet</div>
+                                        <div className="text-xs font-bold text-text-primary">{(selectedEndpoint as any).selected_network || '—'}</div>
                                     </div>
                                 </div>
                             )}

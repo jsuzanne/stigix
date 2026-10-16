@@ -119,9 +119,9 @@ export const HomeOverview: React.FC<HomeOverviewProps> = ({
         return raw;
     })();
 
-    const demActive = Boolean(dem.status === 'active' || (dem.probes_count ?? 0) > 0);
-    const demScore = dem.score || dem.global_score || 71;
-    const demProbes = dem.probes_count || 94;
+    const demActive = Boolean(dem.running ?? (dem.status === 'active' && dem.engine_enabled !== false));
+    const demScore = dem.score || dem.global_score || 100;
+    const demProbes = dem.probes_count || 0;
 
     const customAppsRunning = Boolean(
         customAppsSub.running || (customAppsSub.active_streams > 0) || (customAppsSub.active_workloads > 0)
@@ -476,7 +476,7 @@ export const HomeOverview: React.FC<HomeOverviewProps> = ({
                         </div>
                         <div className="text-[11px] text-slate-600 dark:text-text-muted flex justify-between font-mono mt-1">
                             <span>Score: <strong className="text-purple-600 dark:text-purple-400">{demScore}/100</strong></span>
-                            <span>Probes: <strong className="text-slate-900 dark:text-text-primary">{demProbes} Active</strong></span>
+                            <span>Probes: <strong className="text-slate-900 dark:text-text-primary">{demProbes} {demActive ? 'Active' : 'Configured'}</strong></span>
                         </div>
                     </div>
 

@@ -417,9 +417,33 @@ def get_all_lan_interfaces(sdk, sites, debug=False):
         } for site in sites
     }
 
+    # Pre-fetch WAN interfaces per site for circuit resolution
+    wan_if_by_site = {}
+    wan_if_lookup = {}
+    def _fetch_site_wan(s_id):
+        try:
+            r = sdk.get.waninterfaces(site_id=s_id)
+            if r.cgx_status:
+                return (s_id, r.cgx_content.get('items', []) or [])
+        except Exception:
+            pass
+        return (s_id, [])
+
+    try:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
+            for sid, w_items in executor.map(_fetch_site_wan, list(site_id_to_meta.keys())):
+                wan_if_by_site[sid] = w_items
+                for w in w_items:
+                    wid = w.get('id')
+                    if wid:
+                        wan_if_lookup[wid] = w.get('label') or w.get('name') or 'WAN'
+    except Exception as e:
+        if debug:
+            print(f" Warning pre-fetching WAN interfaces: {e}", file=sys.stderr)
+
     for element in all_elements:
         element_site_id = element.get('site_id')
-        element_name = element.get('name', 'Unknown')
+        element_name = element.get('name') or element.get('hostname') or 'Unknown'
 
         if not element_site_id or element_site_id not in site_id_to_meta:
             continue
@@ -440,6 +464,20 @@ def get_all_lan_interfaces(sdk, sites, debug=False):
             interfaces = intf_resp.cgx_content.get('items', [])
             if debug:
                 print(f" Found {len(interfaces)} interfaces", file=sys.stderr)
+
+            # Resolve WAN circuits on this element or site
+            element_circuits = []
+            for ifc in interfaces:
+                for swid in (ifc.get('site_wan_interface_ids') or []):
+                    cname = wan_if_lookup.get(swid)
+                    if cname and cname not in element_circuits:
+                        element_circuits.append(cname)
+            if not element_circuits and element_site_id in wan_if_by_site:
+                for w in wan_if_by_site[element_site_id]:
+                    cname = w.get('label') or w.get('name')
+                    if cname and cname not in element_circuits:
+                        element_circuits.append(cname)
+            circuit_name = ", ".join(element_circuits) if element_circuits else None
 
             for interface in interfaces:
                 intf_name = interface.get('name', 'Unknown')
@@ -485,6 +523,8 @@ def get_all_lan_interfaces(sdk, sites, debug=False):
                         'interface_name': intf_name,
                         'interface_description': intf_desc,
                         'interface_label': intf_label,
+                        'element_name': element_name,
+                        'circuit_name': circuit_name,
                         'ip': ip_address
                     })
 
@@ -541,9 +581,33 @@ def get_all_dc_lan_interfaces(sdk, sites, debug=False):
 
     site_id_to_name = {site.get('id'): site.get('name') for site in sites}
 
+    # Pre-fetch WAN interfaces per site for circuit resolution
+    wan_if_by_site = {}
+    wan_if_lookup = {}
+    def _fetch_site_wan(s_id):
+        try:
+            r = sdk.get.waninterfaces(site_id=s_id)
+            if r.cgx_status:
+                return (s_id, r.cgx_content.get('items', []) or [])
+        except Exception:
+            pass
+        return (s_id, [])
+
+    try:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
+            for sid, w_items in executor.map(_fetch_site_wan, list(site_id_to_name.keys())):
+                wan_if_by_site[sid] = w_items
+                for w in w_items:
+                    wid = w.get('id')
+                    if wid:
+                        wan_if_lookup[wid] = w.get('label') or w.get('name') or 'WAN'
+    except Exception as e:
+        if debug:
+            print(f" Warning pre-fetching WAN interfaces: {e}", file=sys.stderr)
+
     for element in all_elements:
         element_site_id = element.get('site_id')
-        element_name = element.get('name', 'Unknown')
+        element_name = element.get('name') or element.get('hostname') or 'Unknown'
 
         if not element_site_id or element_site_id not in site_id_to_name:
             continue
@@ -563,6 +627,20 @@ def get_all_dc_lan_interfaces(sdk, sites, debug=False):
             interfaces = intf_resp.cgx_content.get('items', [])
             if debug:
                 print(f" Found {len(interfaces)} interfaces", file=sys.stderr)
+
+            # Resolve WAN circuits on this element or site
+            element_circuits = []
+            for ifc in interfaces:
+                for swid in (ifc.get('site_wan_interface_ids') or []):
+                    cname = wan_if_lookup.get(swid)
+                    if cname and cname not in element_circuits:
+                        element_circuits.append(cname)
+            if not element_circuits and element_site_id in wan_if_by_site:
+                for w in wan_if_by_site[element_site_id]:
+                    cname = w.get('label') or w.get('name')
+                    if cname and cname not in element_circuits:
+                        element_circuits.append(cname)
+            circuit_name = ", ".join(element_circuits) if element_circuits else None
 
             for interface in interfaces:
                 intf_name = interface.get('name', 'Unknown')
@@ -634,6 +712,8 @@ def get_all_dc_lan_interfaces(sdk, sites, debug=False):
                         'interface_name': intf_name,
                         'interface_description': intf_desc,
                         'interface_label': intf_label,
+                        'element_name': element_name,
+                        'circuit_name': circuit_name,
                         'ip': ip_address
                     })
 
@@ -667,6 +747,8 @@ def flatten_lan_map(site_lan_map):
             flat.append({
                 "site_name": site_name,
                 "site_id": site_id,
+                "element_name": net_info.get('element_name'),
+                "circuit_name": net_info.get('circuit_name'),
 
                 # Keep the original field name "interface_name" for compatibility
                 "interface_name": net_info.get('interface_name'),

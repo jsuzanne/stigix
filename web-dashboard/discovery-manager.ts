@@ -14,6 +14,8 @@ export interface DiscoveredProbe {
     site_id: string;
     site_name: string;
     scope: 'branch' | 'dc';
+    element_name?: string;
+    circuit_name?: string;
     selected_interface_name: string;
     selected_interface_label?: string;
     selected_network: string;
@@ -238,6 +240,8 @@ export class DiscoveryManager {
                 name: probeName,
                 target: selected.ip,
                 site_name: selected.site_name,
+                element_name: selected.element_name || existing.element_name,
+                circuit_name: selected.circuit_name || existing.circuit_name,
                 selected_interface_name: selected.interface_name,
                 selected_interface_label: selected.interface_label,
                 selected_network: selected.network,
@@ -248,6 +252,8 @@ export class DiscoveryManager {
             const changed = existing.target !== updatedProbe.target ||
                 existing.site_name !== updatedProbe.site_name ||
                 existing.name !== updatedProbe.name ||
+                existing.element_name !== updatedProbe.element_name ||
+                existing.circuit_name !== updatedProbe.circuit_name ||
                 existing.selected_interface_label !== updatedProbe.selected_interface_label ||
                 existing.stale === true;
 
@@ -267,6 +273,8 @@ export class DiscoveryManager {
                 site_id: selected.site_id,
                 site_name: selected.site_name,
                 scope: selected.scope,
+                element_name: selected.element_name,
+                circuit_name: selected.circuit_name,
                 selected_interface_name: selected.interface_name,
                 selected_interface_label: selected.interface_label,
                 selected_network: selected.network,

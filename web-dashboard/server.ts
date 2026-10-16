@@ -4825,7 +4825,14 @@ app.get('/api/connectivity/active-probes', authenticateToken, (req, res) => {
                 name: p.name,
                 type: (p.type || 'PING').toUpperCase(),
                 target: p.target,
-                enabled: p.enabled !== false
+                enabled: p.enabled !== false,
+                source: p.source,
+                site_name: p.site_name,
+                element_name: p.element_name,
+                circuit_name: p.circuit_name,
+                selected_interface_name: p.selected_interface_name,
+                selected_interface_label: p.selected_interface_label,
+                selected_network: p.selected_network
             }))
         });
     } catch (error) {
@@ -8905,6 +8912,14 @@ app.post('/api/security/config', authenticateToken, (req, res) => {
         savePrismaConfig(sls_config);
         // Hot-reload registry if credentials are now complete
         if (sls_config.tsg_id) tryReinitRegistry('Prisma config saved with TSG ID');
+        // Auto-sync DEM probes from Prisma SD-WAN if client ID and secret are present
+        if (sls_config.client_id && sls_config.client_secret && discoveryManager) {
+            discoveryManager.syncProbes().then((res: any) => {
+                log('DEM', `Auto-synced Prisma SD-WAN probes: ${res.created} created, ${res.updated} updated.`);
+            }).catch((err: any) => {
+                log('DEM', `Auto-sync Prisma SD-WAN probes error: ${err.message}`, 'warn');
+            });
+        }
     }
     if (scheduled_execution !== undefined) {
         config.scheduled_execution = scheduled_execution;
@@ -11633,6 +11648,9 @@ app.get('/api/system/health-matrix', authenticateToken, async (req, res) => {
         let demStatus: any = {
             status: 'ready',
             probes_count: 0,
+            active_probes_count: 0,
+            running: false,
+            engine_enabled: getSystemSettings().auto_restart_probes ?? true,
             global_score: 100
         };
         try {
@@ -11644,11 +11662,17 @@ app.get('/api/system/health-matrix', authenticateToken, async (req, res) => {
                 if (p && p.name) allProbesMap.set(p.name.toLowerCase().trim(), p);
             });
             demStatus.probes_count = allProbesMap.size;
+            let activeCount = 0;
+            allProbesMap.forEach((p: any) => {
+                if (p.enabled !== false) activeCount++;
+            });
+            demStatus.active_probes_count = activeCount;
         } catch {}
         if (demStatus.probes_count === 0) {
             try {
                 const targets = targetsManager ? targetsManager.getMergedTargets() : [];
                 demStatus.probes_count += targets.length;
+                demStatus.active_probes_count += targets.length;
             } catch {}
         }
         try {
@@ -11657,7 +11681,8 @@ app.get('/api/system/health-matrix', authenticateToken, async (req, res) => {
                 demStatus.global_score = Math.round(stats.globalHealth);
             }
         } catch {}
-        demStatus.status = demStatus.probes_count > 0 ? 'active' : 'ready';
+        demStatus.running = isConnectivityMonitorActive;
+        demStatus.status = isConnectivityMonitorActive ? 'active' : (demStatus.probes_count > 0 ? 'stopped' : 'ready');
 
         let bandwidthStatus: any = {
             status: 'ready',
@@ -16663,5 +16688,5 @@ httpServer.listen(PORT, '0.0.0.0', async () => {
         } catch (e: any) {
             console.log(`[SYSTEM] Prisma SD-WAN auto-discovery sync skipped/failed: ${e.message}`);
         }
-    }, 45000);
+    }, 15000);
 });
