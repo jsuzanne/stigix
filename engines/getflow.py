@@ -375,6 +375,48 @@ def get_interface_description(interface: Dict[str, Any]) -> Optional[str]:
     return None
 
 
+def get_interface_port_label(interface: Dict[str, Any]) -> str:
+    """
+    Format a clean LAN port label for Stigix probes (e.g. 'Port 1', 'Users (VLAN 219)', 'VLAN (219)').
+    """
+    name = (interface.get('name') or '').strip()
+    intf_type = (interface.get('type') or '').strip()
+
+    # Extract VLAN ID if any
+    vlan_id = (
+        interface.get('vlan_id')
+        or interface.get('vlan')
+        or (interface.get('sub_interface') or {}).get('vlan_id') if isinstance(interface.get('sub_interface'), dict) else None
+        or (interface.get('subinterface') or {}).get('vlan_id') if isinstance(interface.get('subinterface'), dict) else None
+        or interface.get('sub_interface_id')
+    )
+
+    if 'vlan' in intf_type.lower():
+        if '(' in intf_type and ')' in intf_type:
+            vlan_badge = intf_type
+        elif vlan_id:
+            vlan_badge = f"VLAN ({vlan_id})"
+        else:
+            vlan_badge = "VLAN"
+
+        if name and name.lower() not in ['vlan', 'unknown', 'none']:
+            if vlan_id and str(vlan_id) in name:
+                return name
+            if vlan_id:
+                return f"{name} (VLAN {vlan_id})"
+            return f"{name} ({vlan_badge})"
+        return vlan_badge
+
+    if vlan_id:
+        if name and name.lower() not in ['vlan', 'unknown', 'none']:
+            if str(vlan_id) in name:
+                return name
+            return f"{name} (VLAN {vlan_id})"
+        return f"VLAN ({vlan_id})"
+
+    return name or 'Port'
+
+
 def format_interface_label(name: str, desc: Optional[str]) -> str:
     return f"{name} ({desc})" if desc else name
 
@@ -386,7 +428,7 @@ def get_all_lan_interfaces(sdk, sites, debug=False):
     - ipv4_config.type == 'static'
 
     Enhancement:
-    - store interface_name + interface_description + interface_label
+    - store interface_name + interface_description + interface_label + element_name + port_name
     """
     site_lan_map = {}
 
@@ -417,30 +459,6 @@ def get_all_lan_interfaces(sdk, sites, debug=False):
         } for site in sites
     }
 
-    # Pre-fetch WAN interfaces per site for circuit resolution
-    wan_if_by_site = {}
-    wan_if_lookup = {}
-    def _fetch_site_wan(s_id):
-        try:
-            r = sdk.get.waninterfaces(site_id=s_id)
-            if r.cgx_status:
-                return (s_id, r.cgx_content.get('items', []) or [])
-        except Exception:
-            pass
-        return (s_id, [])
-
-    try:
-        with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
-            for sid, w_items in executor.map(_fetch_site_wan, list(site_id_to_meta.keys())):
-                wan_if_by_site[sid] = w_items
-                for w in w_items:
-                    wid = w.get('id')
-                    if wid:
-                        wan_if_lookup[wid] = w.get('label') or w.get('name') or 'WAN'
-    except Exception as e:
-        if debug:
-            print(f" Warning pre-fetching WAN interfaces: {e}", file=sys.stderr)
-
     for element in all_elements:
         element_site_id = element.get('site_id')
         element_name = element.get('name') or element.get('hostname') or 'Unknown'
@@ -465,24 +483,11 @@ def get_all_lan_interfaces(sdk, sites, debug=False):
             if debug:
                 print(f" Found {len(interfaces)} interfaces", file=sys.stderr)
 
-            # Resolve WAN circuits on this element or site
-            element_circuits = []
-            for ifc in interfaces:
-                for swid in (ifc.get('site_wan_interface_ids') or []):
-                    cname = wan_if_lookup.get(swid)
-                    if cname and cname not in element_circuits:
-                        element_circuits.append(cname)
-            if not element_circuits and element_site_id in wan_if_by_site:
-                for w in wan_if_by_site[element_site_id]:
-                    cname = w.get('label') or w.get('name')
-                    if cname and cname not in element_circuits:
-                        element_circuits.append(cname)
-            circuit_name = ", ".join(element_circuits) if element_circuits else None
-
             for interface in interfaces:
                 intf_name = interface.get('name', 'Unknown')
                 intf_desc = get_interface_description(interface)
                 intf_label = format_interface_label(intf_name, intf_desc)
+                port_label = get_interface_port_label(interface)
 
                 used_for = (interface.get('used_for') or "").lower()
                 if used_for != "lan":
@@ -524,14 +529,14 @@ def get_all_lan_interfaces(sdk, sites, debug=False):
                         'interface_description': intf_desc,
                         'interface_label': intf_label,
                         'element_name': element_name,
-                        'circuit_name': circuit_name,
+                        'port_name': port_label,
                         'ip': ip_address
                     })
 
                     if debug:
                         print(
                             f" ✓ LAN interface: {site_name} / {element_name} / "
-                            f"{intf_label} (name={intf_name}) used_for=lan -> {ip_address} ({network})",
+                            f"{port_label} (name={intf_name}) used_for=lan -> {ip_address} ({network})",
                             file=sys.stderr
                         )
 
@@ -556,7 +561,7 @@ def get_all_dc_lan_interfaces(sdk, sites, debug=False):
     - exclude circuit attached (label_id, circuit_label_id, wan_network_id)
 
     Enhancement:
-    - store interface_name + interface_description + interface_label
+    - store interface_name + interface_description + interface_label + element_name + port_name
     """
     site_lan_map = {}
 
@@ -581,30 +586,6 @@ def get_all_dc_lan_interfaces(sdk, sites, debug=False):
 
     site_id_to_name = {site.get('id'): site.get('name') for site in sites}
 
-    # Pre-fetch WAN interfaces per site for circuit resolution
-    wan_if_by_site = {}
-    wan_if_lookup = {}
-    def _fetch_site_wan(s_id):
-        try:
-            r = sdk.get.waninterfaces(site_id=s_id)
-            if r.cgx_status:
-                return (s_id, r.cgx_content.get('items', []) or [])
-        except Exception:
-            pass
-        return (s_id, [])
-
-    try:
-        with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
-            for sid, w_items in executor.map(_fetch_site_wan, list(site_id_to_name.keys())):
-                wan_if_by_site[sid] = w_items
-                for w in w_items:
-                    wid = w.get('id')
-                    if wid:
-                        wan_if_lookup[wid] = w.get('label') or w.get('name') or 'WAN'
-    except Exception as e:
-        if debug:
-            print(f" Warning pre-fetching WAN interfaces: {e}", file=sys.stderr)
-
     for element in all_elements:
         element_site_id = element.get('site_id')
         element_name = element.get('name') or element.get('hostname') or 'Unknown'
@@ -628,24 +609,11 @@ def get_all_dc_lan_interfaces(sdk, sites, debug=False):
             if debug:
                 print(f" Found {len(interfaces)} interfaces", file=sys.stderr)
 
-            # Resolve WAN circuits on this element or site
-            element_circuits = []
-            for ifc in interfaces:
-                for swid in (ifc.get('site_wan_interface_ids') or []):
-                    cname = wan_if_lookup.get(swid)
-                    if cname and cname not in element_circuits:
-                        element_circuits.append(cname)
-            if not element_circuits and element_site_id in wan_if_by_site:
-                for w in wan_if_by_site[element_site_id]:
-                    cname = w.get('label') or w.get('name')
-                    if cname and cname not in element_circuits:
-                        element_circuits.append(cname)
-            circuit_name = ", ".join(element_circuits) if element_circuits else None
-
             for interface in interfaces:
                 intf_name = interface.get('name', 'Unknown')
                 intf_desc = get_interface_description(interface)
                 intf_label = format_interface_label(intf_name, intf_desc)
+                port_label = get_interface_port_label(interface)
 
                 used_for = (interface.get('used_for') or "").lower()
 
@@ -713,14 +681,14 @@ def get_all_dc_lan_interfaces(sdk, sites, debug=False):
                         'interface_description': intf_desc,
                         'interface_label': intf_label,
                         'element_name': element_name,
-                        'circuit_name': circuit_name,
+                        'port_name': port_label,
                         'ip': ip_address
                     })
 
                     if debug:
                         print(
                             f" ✓ DC LAN interface: {site_name} / {element_name} / "
-                            f"{intf_label} (name={intf_name}) used_for=private -> {ip_address} ({network})",
+                            f"{port_label} (name={intf_name}) used_for=private -> {ip_address} ({network})",
                             file=sys.stderr
                         )
 
@@ -748,7 +716,7 @@ def flatten_lan_map(site_lan_map):
                 "site_name": site_name,
                 "site_id": site_id,
                 "element_name": net_info.get('element_name'),
-                "circuit_name": net_info.get('circuit_name'),
+                "port_name": net_info.get('port_name') or net_info.get('interface_name'),
 
                 # Keep the original field name "interface_name" for compatibility
                 "interface_name": net_info.get('interface_name'),

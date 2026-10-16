@@ -16,6 +16,7 @@ export interface DiscoveredProbe {
     scope: 'branch' | 'dc';
     element_name?: string;
     circuit_name?: string;
+    port_name?: string;
     selected_interface_name: string;
     selected_interface_label?: string;
     selected_network: string;
@@ -132,12 +133,18 @@ export class DiscoveryManager {
             for (const [siteId, candidates] of sitesMap.entries()) {
                 const scope = candidates[0].scope;
 
+                const buildProbeName = (cand: any): string => {
+                    const port = cand.port_name || cand.interface_label || cand.interface_name;
+                    const parts = [cand.site_name, cand.element_name, port].filter(Boolean);
+                    return parts.length > 0 ? parts.join(' - ') : (cand.site_name || 'Probe');
+                };
+
                 if (scope === 'dc') {
                     // DC Cluster logic: all IPs
                     for (const selected of candidates) {
                         if (!selected.ip) continue;
                         const discoveryKey = `discovery:ping:${siteId}:${selected.ip}`;
-                        const probeName = `${selected.site_name} (${selected.ip})`;
+                        const probeName = buildProbeName(selected);
                         this.upsertOneProbe(newProbesList, currentProbes, selected, discoveryKey, probeName, seenKeys, result);
                     }
                 } else {
@@ -186,7 +193,8 @@ export class DiscoveryManager {
                     const selected = sortedCandidates[0];
                     if (selected && selected.ip) {
                         const discoveryKey = `discovery:ping:${siteId}`;
-                        this.upsertOneProbe(newProbesList, currentProbes, selected, discoveryKey, selected.site_name, seenKeys, result);
+                        const probeName = buildProbeName(selected);
+                        this.upsertOneProbe(newProbesList, currentProbes, selected, discoveryKey, probeName, seenKeys, result);
                     }
                 }
             }
@@ -242,6 +250,7 @@ export class DiscoveryManager {
                 site_name: selected.site_name,
                 element_name: selected.element_name || existing.element_name,
                 circuit_name: selected.circuit_name || existing.circuit_name,
+                port_name: selected.port_name || existing.port_name,
                 selected_interface_name: selected.interface_name,
                 selected_interface_label: selected.interface_label,
                 selected_network: selected.network,
@@ -254,6 +263,7 @@ export class DiscoveryManager {
                 existing.name !== updatedProbe.name ||
                 existing.element_name !== updatedProbe.element_name ||
                 existing.circuit_name !== updatedProbe.circuit_name ||
+                existing.port_name !== updatedProbe.port_name ||
                 existing.selected_interface_label !== updatedProbe.selected_interface_label ||
                 existing.stale === true;
 
@@ -275,6 +285,7 @@ export class DiscoveryManager {
                 scope: selected.scope,
                 element_name: selected.element_name,
                 circuit_name: selected.circuit_name,
+                port_name: selected.port_name,
                 selected_interface_name: selected.interface_name,
                 selected_interface_label: selected.interface_label,
                 selected_network: selected.network,

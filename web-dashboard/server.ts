@@ -4830,6 +4830,7 @@ app.get('/api/connectivity/active-probes', authenticateToken, (req, res) => {
                 site_name: p.site_name,
                 element_name: p.element_name,
                 circuit_name: p.circuit_name,
+                port_name: p.port_name,
                 selected_interface_name: p.selected_interface_name,
                 selected_interface_label: p.selected_interface_label,
                 selected_network: p.selected_network

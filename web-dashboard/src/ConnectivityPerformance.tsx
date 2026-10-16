@@ -497,6 +497,18 @@ export default function ConnectivityPerformance({ token, uiConfig, onManage, isL
         return val < 10 ? val.toFixed(2) : val.toFixed(1);
     };
 
+    const getProbeDisplayName = (e: any): string => {
+        if (!e) return '';
+        if (e.source === 'discovery') {
+            const port = e.port_name || e.selected_interface_label || e.selected_interface_name;
+            const parts = [e.site_name, e.element_name, port].filter(Boolean);
+            if (parts.length > 0) {
+                return parts.join(' - ');
+            }
+        }
+        return e.name || e.id || '';
+    };
+
     // Phase 1: Load probes config immediately (fast endpoints < 200ms)
     const fetchProbesConfig = async () => {
         try {
@@ -520,10 +532,16 @@ export default function ConnectivityPerformance({ token, uiConfig, onManage, isL
                 setCloudScenarios(scenariosData);
             }
             const configMap = new Map();
+            if (activeData.success && Array.isArray(activeData.probes)) {
+                activeData.probes.forEach((probe: any) => {
+                    const id = (probe.name || probe.id || '').toLowerCase().replace(/\s+/g, '-');
+                    configMap.set(id, probe);
+                });
+            }
             if (Array.isArray(configsData)) {
                 configsData.forEach((config: any) => {
                     const id = config.name.toLowerCase().replace(/\s+/g, '-');
-                    configMap.set(id, config);
+                    configMap.set(id, { ...configMap.get(id), ...config });
                 });
             }
             setEndpointConfigs(configMap);
@@ -806,6 +824,7 @@ export default function ConnectivityPerformance({ token, uiConfig, onManage, isL
                 site_name: config?.site_name,
                 element_name: config?.element_name,
                 circuit_name: config?.circuit_name,
+                port_name: config?.port_name,
                 selected_interface_name: config?.selected_interface_name,
                 selected_interface_label: config?.selected_interface_label,
                 selected_network: config?.selected_network,
@@ -827,7 +846,17 @@ export default function ConnectivityPerformance({ token, uiConfig, onManage, isL
                 return false;
             }
             
-            if (searchQuery && !e.name.toLowerCase().includes(searchQuery.toLowerCase())) return false;
+            if (searchQuery) {
+                const q = searchQuery.toLowerCase();
+                const title = getProbeDisplayName(e).toLowerCase();
+                const target = (e.target || '').toLowerCase();
+                const site = (e.site_name || '').toLowerCase();
+                const element = (e.element_name || '').toLowerCase();
+                const port = (e.port_name || e.selected_interface_label || e.selected_interface_name || '').toLowerCase();
+                if (!title.includes(q) && !target.includes(q) && !site.includes(q) && !element.includes(q) && !port.includes(q)) {
+                    return false;
+                }
+            }
             return true;
         }).sort((a: any, b: any) => {
             // First sort by enabled status (enabled first)
@@ -882,6 +911,7 @@ export default function ConnectivityPerformance({ token, uiConfig, onManage, isL
                     site_name: config.site_name,
                     element_name: config.element_name,
                     circuit_name: config.circuit_name,
+                    port_name: config.port_name,
                     selected_interface_name: config.selected_interface_name,
                     selected_interface_label: config.selected_interface_label,
                     selected_network: config.selected_network,
@@ -1370,12 +1400,21 @@ export default function ConnectivityPerformance({ token, uiConfig, onManage, isL
                     </thead>
                     <tbody className="divide-y divide-border">
                         {/* Pending (ghost) probes — never run yet */}
-                        {pendingProbes.filter(p => !searchQuery || p.name.toLowerCase().includes(searchQuery.toLowerCase())).map(e => (
+                        {pendingProbes.filter(p => {
+                            if (!searchQuery) return true;
+                            const q = searchQuery.toLowerCase();
+                            const title = getProbeDisplayName(p).toLowerCase();
+                            const target = (p.target || '').toLowerCase();
+                            const site = (p.site_name || '').toLowerCase();
+                            const element = (p.element_name || '').toLowerCase();
+                            const port = (p.port_name || p.selected_interface_label || p.selected_interface_name || '').toLowerCase();
+                            return title.includes(q) || target.includes(q) || site.includes(q) || element.includes(q) || port.includes(q);
+                        }).map(e => (
                             <tr key={`pending-${e.id}`} className="hover:bg-card-secondary/50 transition-colors group cursor-default animate-pulse-subtle">
                                 <td className="px-6 py-4">
                                     <div className="flex flex-col">
                                         <div className="flex items-center gap-2">
-                                            <span className="text-sm font-bold text-text-primary tracking-tight opacity-70">{e.name}</span>
+                                            <span className="text-sm font-bold text-text-primary tracking-tight opacity-70">{getProbeDisplayName(e)}</span>
                                             <span className="px-1.5 py-0.5 rounded-[4px] text-[8px] font-black uppercase tracking-widest bg-slate-500/10 text-slate-400 flex items-center gap-1">
                                                 <Activity size={9} className="animate-spin" style={{animationDuration:'3s'}}/>
                                                 pending
@@ -1383,11 +1422,6 @@ export default function ConnectivityPerformance({ token, uiConfig, onManage, isL
                                         </div>
                                         <div className="flex items-center gap-1.5 flex-wrap mt-0.5">
                                             <span className="text-[10px] text-text-muted font-mono opacity-60 leading-tight">{e.target}</span>
-                                            {(e.site_name || e.element_name || e.circuit_name) && (
-                                                <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-emerald-600 dark:text-emerald-400/90 bg-emerald-500/10 px-1.5 py-0.2 rounded border border-emerald-500/20">
-                                                    {[e.site_name, e.element_name, e.circuit_name].filter(Boolean).join(' · ')}
-                                                </span>
-                                            )}
                                         </div>
                                     </div>
                                 </td>
@@ -1463,7 +1497,7 @@ export default function ConnectivityPerformance({ token, uiConfig, onManage, isL
                                 <td className="px-6 py-4">
                                     <div className="flex flex-col">
                                         <div className="flex items-center gap-2 flex-wrap">
-                                            <span className="text-sm font-bold text-text-primary group-hover:text-blue-500 transition-colors tracking-tight">{e.name}</span>
+                                            <span className="text-sm font-bold text-text-primary group-hover:text-blue-500 transition-colors tracking-tight">{getProbeDisplayName(e)}</span>
                                             {(e as any)._source === 'global' && (
                                                 <span className="px-1.5 py-0.5 rounded text-[8px] font-black uppercase tracking-widest bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 shadow-sm" title="Global provisioned probe from Leader">
                                                     🌐 Global
@@ -1495,11 +1529,6 @@ export default function ConnectivityPerformance({ token, uiConfig, onManage, isL
                                             <span className="text-[10px] text-text-muted font-mono break-all opacity-80 leading-tight">
                                                 {formatDisplayUrl(e)}
                                             </span>
-                                            {(e.site_name || e.element_name || e.circuit_name) && (
-                                                <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-emerald-600 dark:text-emerald-400/90 bg-emerald-500/10 px-1.5 py-0.2 rounded border border-emerald-500/20">
-                                                    {[e.site_name, e.element_name, e.circuit_name].filter(Boolean).join(' · ')}
-                                                </span>
-                                            )}
                                         </div>
                                     </div>
                                 </td>
@@ -1633,7 +1662,7 @@ export default function ConnectivityPerformance({ token, uiConfig, onManage, isL
                                 </div>
                                 <div>
                                     <h3 className="text-xl font-black text-text-primary tracking-tight flex items-center gap-3">
-                                        {selectedEndpoint.name}
+                                        {getProbeDisplayName(selectedEndpoint)}
                                         <span className={cn(
                                             "px-2 py-0.5 rounded text-[10px] font-bold border uppercase tracking-tighter align-middle",
                                             selectedEndpoint.type === 'HTTPS' ? "text-purple-600 dark:text-purple-400 bg-purple-500/10 border-purple-500/20" :
@@ -1779,7 +1808,7 @@ export default function ConnectivityPerformance({ token, uiConfig, onManage, isL
                             )}
 
                             {/* Discovery & SD-WAN Topology Parameters */}
-                            {((selectedEndpoint as any).source === 'discovery' || (selectedEndpoint as any).element_name || (selectedEndpoint as any).circuit_name) && (
+                            {((selectedEndpoint as any).source === 'discovery' || (selectedEndpoint as any).element_name || (selectedEndpoint as any).circuit_name || (selectedEndpoint as any).port_name) && (
                                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
                                     <div className="bg-card-secondary/30 p-3.5 rounded-xl border border-border">
                                         <div className="text-[10px] font-black text-text-muted uppercase tracking-widest mb-1">Site</div>
@@ -1790,9 +1819,9 @@ export default function ConnectivityPerformance({ token, uiConfig, onManage, isL
                                         <div className="text-xs font-bold text-text-primary">{(selectedEndpoint as any).element_name || '—'}</div>
                                     </div>
                                     <div className="bg-card-secondary/30 p-3.5 rounded-xl border border-border">
-                                        <div className="text-[10px] font-black text-text-muted uppercase tracking-widest mb-1">Circuit / Interface</div>
+                                        <div className="text-[10px] font-black text-text-muted uppercase tracking-widest mb-1">LAN Port</div>
                                         <div className="text-xs font-bold text-text-primary">
-                                            {(selectedEndpoint as any).circuit_name || (selectedEndpoint as any).selected_interface_label || (selectedEndpoint as any).selected_interface_name || '—'}
+                                            {(selectedEndpoint as any).port_name || (selectedEndpoint as any).selected_interface_label || (selectedEndpoint as any).selected_interface_name || '—'}
                                         </div>
                                     </div>
                                     <div className="bg-card-secondary/30 p-3.5 rounded-xl border border-border">
