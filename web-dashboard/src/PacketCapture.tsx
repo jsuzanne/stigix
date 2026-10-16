@@ -20,7 +20,17 @@ interface InterfaceItem {
     ip: string;
     mac: string;
     is_default: boolean;
+    is_egress?: boolean;
+    category?: 'physical' | 'any' | 'tunnel' | 'loopback' | 'virtual';
     is_up: boolean;
+}
+
+function classifyInterfaceCategory(name: string): 'physical' | 'any' | 'tunnel' | 'loopback' | 'virtual' {
+    if (name === 'any') return 'any';
+    if (name === 'lo' || name.startsWith('lo')) return 'loopback';
+    if (/^(veth|br-|docker|virbr|cni|flannel|cali)/.test(name)) return 'virtual';
+    if (/^(tailscale|wg|tun|tap|zt|utun|ipsec|vti)/.test(name)) return 'tunnel';
+    return 'physical';
 }
 
 interface PresetItem {
@@ -339,24 +349,104 @@ export default function PacketCapture({ token, onNavigateToReplay }: PacketCaptu
     // Copy indicator
     const [copiedHex, setCopiedHex] = useState<boolean>(false);
 
+    // Custom toolbar dropdown state
+    const [openDropdown, setOpenDropdown] = useState<'interface' | 'preset' | 'duration' | 'limit' | null>(null);
+    const [showVirtualInterfaces, setShowVirtualInterfaces] = useState<boolean>(false);
+    const dropdownBarRef = useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+        if (!openDropdown) return;
+        const handleClickOutside = (e: MouseEvent) => {
+            if (dropdownBarRef.current && !dropdownBarRef.current.contains(e.target as Node)) {
+                setOpenDropdown(null);
+            }
+        };
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => document.removeEventListener('mousedown', handleClickOutside);
+    }, [openDropdown]);
+
     const tableEndRef = useRef<HTMLDivElement>(null);
 
-    // Initial load: interfaces and presets
+    // Initial load: interfaces and presets (re-run when activePeerId changes)
     useEffect(() => {
         fetchInterfaces();
         fetchPresets();
         checkActiveStatus();
-    }, []);
+    }, [activePeerId]);
 
     const fetchInterfaces = async () => {
         try {
-            const res = await gFetch('/api/capture/interfaces', { credentials: 'include', headers: authHeaders });
+            const [res, cfgRes] = await Promise.all([
+                gFetch('/api/capture/interfaces', { credentials: 'include', headers: authHeaders }),
+                gFetch('/api/config/interfaces', { credentials: 'include', headers: authHeaders }).catch(() => null)
+            ]);
+
+            let configuredPrimary = '';
+            if (cfgRes && cfgRes.ok) {
+                try {
+                    const cfgList = await cfgRes.json();
+                    if (Array.isArray(cfgList) && cfgList.length > 0 && typeof cfgList[0] === 'string') {
+                        configuredPrimary = cfgList[0].trim().split(/\s+/)[0].split(':')[0];
+                    }
+                } catch {}
+            }
+
             if (res.ok) {
                 const data = await res.json();
                 if (Array.isArray(data)) {
-                    setInterfaces(data);
-                    const def = data.find(i => i.is_default);
-                    if (def) setSelectedInterface(def.name);
+                    // Normalize categories & egress detection (handles both new and legacy remote engines)
+                    const enriched: InterfaceItem[] = data.map((item: InterfaceItem) => {
+                        const category = item.category || classifyInterfaceCategory(item.name);
+                        const isEgress = Boolean(
+                            item.is_egress ||
+                            (configuredPrimary && item.name === configuredPrimary) ||
+                            (item.is_default && item.name !== 'any')
+                        );
+                        return {
+                            ...item,
+                            category,
+                            is_egress: isEgress
+                        };
+                    });
+
+                    // If no egress interface was explicitly flagged yet, pick the first UP physical interface with an IPv4
+                    if (!enriched.some(i => i.is_egress)) {
+                        const fallbackPhysical = enriched.find(
+                            i => i.category === 'physical' && i.is_up && i.ip && i.ip !== '-' && i.ip !== '0.0.0.0'
+                        );
+                        if (fallbackPhysical) {
+                            fallbackPhysical.is_egress = true;
+                        }
+                    }
+
+                    // Sort: egress first -> physical (with IP first) -> any -> tunnel -> loopback -> virtual
+                    const catOrder: Record<string, number> = {
+                        physical: 1,
+                        any: 2,
+                        tunnel: 3,
+                        loopback: 4,
+                        virtual: 5
+                    };
+                    enriched.sort((a, b) => {
+                        if (Boolean(a.is_egress) !== Boolean(b.is_egress)) {
+                            return a.is_egress ? -1 : 1;
+                        }
+                        const catA = catOrder[a.category || 'physical'] || 3;
+                        const catB = catOrder[b.category || 'physical'] || 3;
+                        if (catA !== catB) return catA - catB;
+                        const hasIpA = a.ip && a.ip !== '-' && a.ip !== '0.0.0.0' ? 0 : 1;
+                        const hasIpB = b.ip && b.ip !== '-' && b.ip !== '0.0.0.0' ? 0 : 1;
+                        if (hasIpA !== hasIpB) return hasIpA - hasIpB;
+                        return a.name.localeCompare(b.name);
+                    });
+
+                    setInterfaces(enriched);
+
+                    // Select egress interface by default (fallback to 'any')
+                    const preferred = enriched.find(i => i.is_egress) || enriched.find(i => i.is_default) || enriched[0];
+                    if (preferred) {
+                        setSelectedInterface(preferred.name);
+                    }
                 }
             }
         } catch (e) {
@@ -837,60 +927,276 @@ export default function PacketCapture({ token, onNavigateToReplay }: PacketCaptu
                 </div>
 
                 {/* Configuration Controls Bar - Ultra Compact 1-Row Grid */}
-                <div className="mt-4 pt-3.5 border-t border-border/60 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-3 items-end">
-                    {/* Interface */}
-                    <div className="lg:col-span-2 space-y-1">
-                        <label className="text-[10px] font-black uppercase tracking-wider text-text-muted">Interface</label>
-                        <select
-                            value={selectedInterface}
-                            onChange={(e) => setSelectedInterface(e.target.value)}
-                            disabled={capturing}
-                            className="w-full bg-card-secondary border border-border rounded-xl px-3 py-1.5 text-xs text-text-primary font-mono focus:outline-none focus:border-cyan-500 h-9"
-                        >
-                            {interfaces.map(i => (
-                                <option key={i.name} value={i.name}>{i.label}</option>
-                            ))}
-                        </select>
-                    </div>
+                <div ref={dropdownBarRef} className="mt-4 pt-3.5 border-t border-border/60 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-3 items-end">
+                    {/* Interface Custom Selector */}
+                    {(() => {
+                        const activeIface = interfaces.find(i => i.name === selectedInterface) || {
+                            name: selectedInterface,
+                            label: selectedInterface === 'any' ? 'All Interfaces (any)' : selectedInterface,
+                            ip: '-',
+                            mac: '-',
+                            is_default: false,
+                            is_egress: false,
+                            category: classifyInterfaceCategory(selectedInterface),
+                            is_up: true
+                        };
+                        const primaryGroup = interfaces.filter(i => i.category === 'physical' || i.category === 'any');
+                        const tunnelGroup = interfaces.filter(i => i.category === 'tunnel' || i.category === 'loopback');
+                        const virtualGroup = interfaces.filter(i => i.category === 'virtual');
 
-                    {/* Presets Dropdown */}
-                    <div className="lg:col-span-3 space-y-1">
-                        <div className="flex items-center justify-between">
-                            <label className="text-[10px] font-black uppercase tracking-wider text-text-muted">BPF Preset</label>
-                            {isCustomPresetSelected && (
+                        const renderInterfaceRow = (iface: InterfaceItem) => {
+                            const isSelected = iface.name === selectedInterface;
+                            const isAny = iface.name === 'any';
+                            const hasIp = iface.ip && iface.ip !== '-' && iface.ip !== '0.0.0.0';
+                            return (
+                                <button
+                                    key={iface.name}
+                                    type="button"
+                                    onClick={() => {
+                                        setSelectedInterface(iface.name);
+                                        setOpenDropdown(null);
+                                    }}
+                                    className={`w-full px-3 py-2 text-left flex items-center justify-between gap-2 rounded-xl transition-all cursor-pointer ${
+                                        isSelected
+                                            ? 'bg-cyan-500/15 text-text-primary border border-cyan-500/30'
+                                            : 'hover:bg-card-secondary text-text-secondary border border-transparent'
+                                    }`}
+                                >
+                                    <div className="flex items-center gap-2 min-w-0">
+                                        <span
+                                            className={`w-2 h-2 rounded-full shrink-0 ${
+                                                isAny
+                                                    ? 'bg-cyan-400 shadow-[0_0_6px_rgba(34,211,238,0.6)]'
+                                                    : iface.is_up
+                                                    ? 'bg-emerald-500 shadow-[0_0_6px_rgba(16,185,129,0.6)]'
+                                                    : 'bg-slate-500'
+                                            }`}
+                                        />
+                                        <div className="flex items-center gap-1.5 min-w-0">
+                                            <span className="text-xs font-black font-mono text-text-primary truncate">
+                                                {isAny ? 'any' : iface.name}
+                                            </span>
+                                            {isAny && (
+                                                <span className="text-[10px] text-text-muted font-sans truncate">
+                                                    (All Interfaces)
+                                                </span>
+                                            )}
+                                            {iface.is_egress && (
+                                                <span className="px-1.5 py-0.5 rounded text-[8px] font-black uppercase tracking-wider bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 shrink-0">
+                                                    Egress
+                                                </span>
+                                            )}
+                                        </div>
+                                    </div>
+                                    <div className="flex items-center gap-1.5 shrink-0">
+                                        {hasIp && (
+                                            <span className="px-1.5 py-0.5 rounded-md bg-card-secondary border border-border text-[10px] font-mono text-text-muted">
+                                                {iface.ip}
+                                            </span>
+                                        )}
+                                        {isSelected && <Check size={12} className="text-cyan-400 shrink-0" />}
+                                    </div>
+                                </button>
+                            );
+                        };
+
+                        return (
+                            <div className="lg:col-span-3 space-y-1 relative">
+                                <div className="flex items-center justify-between">
+                                    <label className="text-[10px] font-black uppercase tracking-wider text-text-muted">Interface</label>
+                                    {activeIface.is_egress && (
+                                        <span className="text-[9px] font-black uppercase tracking-wider text-emerald-400 flex items-center gap-1">
+                                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                                            Traffic Egress
+                                        </span>
+                                    )}
+                                </div>
                                 <button
                                     type="button"
-                                    onClick={() => handleDeleteCustomPreset(selectedPreset)}
                                     disabled={capturing}
-                                    className="text-[10px] text-rose-400 hover:text-rose-300 font-bold flex items-center gap-0.5 cursor-pointer disabled:opacity-50 transition-colors"
-                                    title="Delete selected custom preset"
+                                    onClick={() => setOpenDropdown(prev => prev === 'interface' ? null : 'interface')}
+                                    className={`w-full bg-card-secondary border rounded-xl px-3 py-1.5 text-xs text-text-primary font-mono flex items-center justify-between gap-2 h-9 transition-all cursor-pointer disabled:opacity-50 ${
+                                        openDropdown === 'interface' ? 'border-cyan-500 ring-2 ring-cyan-500/15' : 'border-border hover:border-cyan-500/40'
+                                    }`}
                                 >
-                                    <Trash2 size={10} />
-                                    <span>Delete</span>
+                                    <div className="flex items-center gap-2 min-w-0">
+                                        <span
+                                            className={`w-2 h-2 rounded-full shrink-0 ${
+                                                activeIface.name === 'any'
+                                                    ? 'bg-cyan-400'
+                                                    : activeIface.is_up
+                                                    ? 'bg-emerald-500'
+                                                    : 'bg-slate-500'
+                                            }`}
+                                        />
+                                        <span className="font-black text-text-primary truncate">
+                                            {activeIface.name === 'any' ? 'All Interfaces (any)' : activeIface.name}
+                                        </span>
+                                        {activeIface.ip && activeIface.ip !== '-' && activeIface.ip !== '0.0.0.0' && (
+                                            <span className="px-1.5 py-0.5 rounded bg-card border border-border text-[10px] text-text-muted font-mono truncate">
+                                                {activeIface.ip}
+                                            </span>
+                                        )}
+                                    </div>
+                                    <ChevronDown size={13} className={`text-text-muted shrink-0 transition-transform ${openDropdown === 'interface' ? 'rotate-180 text-cyan-400' : ''}`} />
                                 </button>
-                            )}
-                        </div>
-                        <select
-                            value={selectedPreset}
-                            onChange={(e) => handlePresetSelect(e.target.value)}
-                            disabled={capturing}
-                            className="w-full bg-card-secondary border border-border rounded-xl px-3 py-1.5 text-xs text-text-primary font-mono focus:outline-none focus:border-cyan-500 truncate h-9"
-                        >
-                            <optgroup label="⚡ Built-in Presets">
-                                {presets.map(p => (
-                                    <option key={p.id} value={p.id}>{p.name}</option>
-                                ))}
-                            </optgroup>
-                            {customBpfPresets.length > 0 && (
-                                <optgroup label="⭐ Custom BPF Filters">
-                                    {customBpfPresets.map(cp => (
-                                        <option key={cp.id} value={cp.id}>{cp.name}</option>
-                                    ))}
-                                </optgroup>
-                            )}
-                            <option value="custom">✍️ Custom BPF Expression</option>
-                        </select>
-                    </div>
+
+                                {openDropdown === 'interface' && (
+                                    <div className="absolute left-0 top-full mt-1.5 w-80 bg-card border border-border rounded-2xl shadow-2xl z-50 p-2 space-y-2 animate-in fade-in zoom-in-95 duration-150">
+                                        {/* Primary & Physical NICs */}
+                                        <div className="space-y-0.5">
+                                            <div className="px-2.5 py-1 text-[9px] font-black uppercase tracking-widest text-text-muted opacity-60 flex items-center justify-between">
+                                                <span>Traffic &amp; Physical NICs</span>
+                                                <span>IPv4</span>
+                                            </div>
+                                            {primaryGroup.map(renderInterfaceRow)}
+                                        </div>
+
+                                        {/* Tunnels & Loopback */}
+                                        {tunnelGroup.length > 0 && (
+                                            <div className="space-y-0.5 pt-1.5 border-t border-border/60">
+                                                <div className="px-2.5 py-1 text-[9px] font-black uppercase tracking-widest text-text-muted opacity-60">
+                                                    Overlay &amp; Loopback
+                                                </div>
+                                                {tunnelGroup.map(renderInterfaceRow)}
+                                            </div>
+                                        )}
+
+                                        {/* Virtual / Docker Bridges (Collapsible) */}
+                                        {virtualGroup.length > 0 && (
+                                            <div className="pt-1.5 border-t border-border/60">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setShowVirtualInterfaces(prev => !prev)}
+                                                    className="w-full px-2.5 py-1.5 rounded-lg text-[10px] font-bold text-text-muted hover:text-text-primary hover:bg-card-secondary flex items-center justify-between transition-colors cursor-pointer"
+                                                >
+                                                    <span>
+                                                        {showVirtualInterfaces ? 'Hide' : 'Show'} virtual / Docker interfaces ({virtualGroup.length})
+                                                    </span>
+                                                    <ChevronDown size={12} className={`transition-transform ${showVirtualInterfaces ? 'rotate-180' : ''}`} />
+                                                </button>
+                                                {showVirtualInterfaces && (
+                                                    <div className="mt-1 space-y-0.5 max-h-40 overflow-y-auto pr-0.5">
+                                                        {virtualGroup.map(renderInterfaceRow)}
+                                                    </div>
+                                                )}
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
+                            </div>
+                        );
+                    })()}
+
+                    {/* Presets Custom Dropdown */}
+                    {(() => {
+                        const activeBuiltIn = presets.find(p => p.id === selectedPreset);
+                        const activeCustom = customBpfPresets.find(cp => cp.id === selectedPreset);
+                        const activePresetLabel = activeBuiltIn
+                            ? activeBuiltIn.name
+                            : activeCustom
+                            ? activeCustom.name
+                            : selectedPreset === 'custom'
+                            ? 'Custom BPF Expression'
+                            : 'All Traffic';
+
+                        return (
+                            <div className="lg:col-span-3 space-y-1 relative">
+                                <div className="flex items-center justify-between">
+                                    <label className="text-[10px] font-black uppercase tracking-wider text-text-muted">BPF Preset</label>
+                                    {isCustomPresetSelected && (
+                                        <button
+                                            type="button"
+                                            onClick={() => handleDeleteCustomPreset(selectedPreset)}
+                                            disabled={capturing}
+                                            className="text-[10px] text-rose-400 hover:text-rose-300 font-bold flex items-center gap-0.5 cursor-pointer disabled:opacity-50 transition-colors"
+                                            title="Delete selected custom preset"
+                                        >
+                                            <Trash2 size={10} />
+                                            <span>Delete</span>
+                                        </button>
+                                    )}
+                                </div>
+                                <button
+                                    type="button"
+                                    disabled={capturing}
+                                    onClick={() => setOpenDropdown(prev => prev === 'preset' ? null : 'preset')}
+                                    className={`w-full bg-card-secondary border rounded-xl px-3 py-1.5 text-xs text-text-primary font-mono flex items-center justify-between gap-2 h-9 transition-all cursor-pointer disabled:opacity-50 ${
+                                        openDropdown === 'preset' ? 'border-cyan-500 ring-2 ring-cyan-500/15' : 'border-border hover:border-cyan-500/40'
+                                    }`}
+                                >
+                                    <span className="truncate font-bold">{activePresetLabel}</span>
+                                    <ChevronDown size={13} className={`text-text-muted shrink-0 transition-transform ${openDropdown === 'preset' ? 'rotate-180 text-cyan-400' : ''}`} />
+                                </button>
+
+                                {openDropdown === 'preset' && (
+                                    <div className="absolute left-0 top-full mt-1.5 w-80 bg-card border border-border rounded-2xl shadow-2xl z-50 p-2 space-y-2 max-h-80 overflow-y-auto animate-in fade-in zoom-in-95 duration-150">
+                                        <div className="space-y-0.5">
+                                            <div className="px-2.5 py-1 text-[9px] font-black uppercase tracking-widest text-cyan-400">
+                                                ⚡ Built-in Presets
+                                            </div>
+                                            {presets.map(p => {
+                                                const isSel = selectedPreset === p.id;
+                                                return (
+                                                    <button
+                                                        key={p.id}
+                                                        type="button"
+                                                        onClick={() => {
+                                                            handlePresetSelect(p.id);
+                                                            setOpenDropdown(null);
+                                                        }}
+                                                        className={`w-full px-3 py-2 text-left rounded-xl flex items-center justify-between gap-2 transition-all cursor-pointer ${
+                                                            isSel
+                                                                ? 'bg-cyan-500/15 text-text-primary border border-cyan-500/30'
+                                                                : 'hover:bg-card-secondary text-text-secondary border border-transparent'
+                                                        }`}
+                                                    >
+                                                        <div className="min-w-0">
+                                                            <div className="text-xs font-bold text-text-primary truncate">{p.name}</div>
+                                                            {p.bpf && <div className="text-[10px] font-mono text-text-muted truncate">{p.bpf}</div>}
+                                                        </div>
+                                                        {isSel && <Check size={12} className="text-cyan-400 shrink-0" />}
+                                                    </button>
+                                                );
+                                            })}
+                                        </div>
+
+                                        {customBpfPresets.length > 0 && (
+                                            <div className="space-y-0.5 pt-1.5 border-t border-border/60">
+                                                <div className="px-2.5 py-1 text-[9px] font-black uppercase tracking-widest text-amber-400">
+                                                    ⭐ Custom BPF Filters
+                                                </div>
+                                                {customBpfPresets.map(cp => {
+                                                    const isSel = selectedPreset === cp.id;
+                                                    return (
+                                                        <button
+                                                            key={cp.id}
+                                                            type="button"
+                                                            onClick={() => {
+                                                                handlePresetSelect(cp.id);
+                                                                setOpenDropdown(null);
+                                                            }}
+                                                            className={`w-full px-3 py-2 text-left rounded-xl flex items-center justify-between gap-2 transition-all cursor-pointer ${
+                                                                isSel
+                                                                    ? 'bg-cyan-500/15 text-text-primary border border-cyan-500/30'
+                                                                    : 'hover:bg-card-secondary text-text-secondary border border-transparent'
+                                                            }`}
+                                                        >
+                                                            <div className="min-w-0">
+                                                                <div className="text-xs font-bold text-text-primary truncate">{cp.name}</div>
+                                                                <div className="text-[10px] font-mono text-text-muted truncate">{cp.bpf}</div>
+                                                            </div>
+                                                            {isSel && <Check size={12} className="text-cyan-400 shrink-0" />}
+                                                        </button>
+                                                    );
+                                                })}
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
+                            </div>
+                        );
+                    })()}
 
                     {/* Kernel BPF Filter */}
                     <div className="lg:col-span-4 space-y-1">
@@ -901,7 +1207,7 @@ export default function PacketCapture({ token, onNavigateToReplay }: PacketCaptu
                                     type="button"
                                     onClick={() => setShowBpfLibraryModal(true)}
                                     className="text-cyan-400 hover:text-cyan-300 font-bold flex items-center gap-1 cursor-pointer transition-colors"
-                                    title="Browse complex BPF recipes and recipes"
+                                    title="Browse complex BPF recipes"
                                 >
                                     <Sparkles size={11} />
                                     <span>Recipes</span>
@@ -945,38 +1251,103 @@ export default function PacketCapture({ token, onNavigateToReplay }: PacketCaptu
                     </div>
 
                     {/* Duration Limit */}
-                    <div className="lg:col-span-1.5 space-y-1">
-                        <label className="text-[10px] font-black uppercase tracking-wider text-text-muted">Duration</label>
-                        <select
-                            value={durationSec}
-                            onChange={(e) => setDurationSec(parseInt(e.target.value, 10))}
-                            disabled={capturing}
-                            className="w-full bg-card-secondary border border-border rounded-xl px-3 py-1.5 text-xs text-text-primary font-mono focus:outline-none focus:border-cyan-500 h-9"
-                        >
-                            <option value={10}>10s</option>
-                            <option value={30}>30s (Default)</option>
-                            <option value={60}>60s</option>
-                            <option value={120}>120s</option>
-                            <option value={300}>300s (Max)</option>
-                        </select>
-                    </div>
+                    {(() => {
+                        const durationOptions = [
+                            { value: 10, label: '10s' },
+                            { value: 30, label: '30s (Default)' },
+                            { value: 60, label: '60s' },
+                            { value: 120, label: '120s' },
+                            { value: 300, label: '300s (Max)' }
+                        ];
+                        return (
+                            <div className="lg:col-span-1 space-y-1 relative">
+                                <label className="text-[10px] font-black uppercase tracking-wider text-text-muted">Duration</label>
+                                <button
+                                    type="button"
+                                    disabled={capturing}
+                                    onClick={() => setOpenDropdown(prev => prev === 'duration' ? null : 'duration')}
+                                    className={`w-full bg-card-secondary border rounded-xl px-2.5 py-1.5 text-xs text-text-primary font-mono flex items-center justify-between gap-1 h-9 transition-all cursor-pointer disabled:opacity-50 ${
+                                        openDropdown === 'duration' ? 'border-cyan-500 ring-2 ring-cyan-500/15' : 'border-border hover:border-cyan-500/40'
+                                    }`}
+                                >
+                                    <span className="font-bold truncate">{durationSec}s</span>
+                                    <ChevronDown size={12} className={`text-text-muted shrink-0 transition-transform ${openDropdown === 'duration' ? 'rotate-180 text-cyan-400' : ''}`} />
+                                </button>
+                                {openDropdown === 'duration' && (
+                                    <div className="absolute right-0 top-full mt-1.5 w-40 bg-card border border-border rounded-2xl shadow-2xl z-50 p-1.5 space-y-0.5 animate-in fade-in zoom-in-95 duration-150">
+                                        {durationOptions.map(opt => (
+                                            <button
+                                                key={opt.value}
+                                                type="button"
+                                                onClick={() => {
+                                                    setDurationSec(opt.value);
+                                                    setOpenDropdown(null);
+                                                }}
+                                                className={`w-full px-3 py-1.5 text-left rounded-xl text-xs font-mono flex items-center justify-between transition-all cursor-pointer ${
+                                                    durationSec === opt.value
+                                                        ? 'bg-cyan-500/15 text-text-primary font-black border border-cyan-500/30'
+                                                        : 'hover:bg-card-secondary text-text-secondary border border-transparent'
+                                                }`}
+                                            >
+                                                <span>{opt.label}</span>
+                                                {durationSec === opt.value && <Check size={11} className="text-cyan-400" />}
+                                            </button>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+                        );
+                    })()}
 
                     {/* Packet Limit */}
-                    <div className="lg:col-span-1.5 space-y-1">
-                        <label className="text-[10px] font-black uppercase tracking-wider text-text-muted">Packet Limit</label>
-                        <select
-                            value={maxPackets}
-                            onChange={(e) => setMaxPackets(parseInt(e.target.value, 10))}
-                            disabled={capturing}
-                            className="w-full bg-card-secondary border border-border rounded-xl px-3 py-1.5 text-xs text-text-primary font-mono focus:outline-none focus:border-cyan-500 h-9"
-                        >
-                            <option value={500}>500 pkts</option>
-                            <option value={2000}>2,000 pkts</option>
-                            <option value={5000}>5,000 pkts</option>
-                            <option value={10000}>10,000 pkts</option>
-                            <option value={100000}>No limit (Time only)</option>
-                        </select>
-                    </div>
+                    {(() => {
+                        const limitOptions = [
+                            { value: 500, label: '500 pkts', short: '500' },
+                            { value: 2000, label: '2,000 pkts', short: '2,000' },
+                            { value: 5000, label: '5,000 pkts', short: '5,000' },
+                            { value: 10000, label: '10,000 pkts', short: '10,000' },
+                            { value: 100000, label: 'No limit (Time only)', short: 'Max' }
+                        ];
+                        const currentLimit = limitOptions.find(o => o.value === maxPackets) || limitOptions[1];
+                        return (
+                            <div className="lg:col-span-1 space-y-1 relative">
+                                <label className="text-[10px] font-black uppercase tracking-wider text-text-muted">Packet Limit</label>
+                                <button
+                                    type="button"
+                                    disabled={capturing}
+                                    onClick={() => setOpenDropdown(prev => prev === 'limit' ? null : 'limit')}
+                                    className={`w-full bg-card-secondary border rounded-xl px-2.5 py-1.5 text-xs text-text-primary font-mono flex items-center justify-between gap-1 h-9 transition-all cursor-pointer disabled:opacity-50 ${
+                                        openDropdown === 'limit' ? 'border-cyan-500 ring-2 ring-cyan-500/15' : 'border-border hover:border-cyan-500/40'
+                                    }`}
+                                >
+                                    <span className="font-bold truncate">{currentLimit.short} pkts</span>
+                                    <ChevronDown size={12} className={`text-text-muted shrink-0 transition-transform ${openDropdown === 'limit' ? 'rotate-180 text-cyan-400' : ''}`} />
+                                </button>
+                                {openDropdown === 'limit' && (
+                                    <div className="absolute right-0 top-full mt-1.5 w-48 bg-card border border-border rounded-2xl shadow-2xl z-50 p-1.5 space-y-0.5 animate-in fade-in zoom-in-95 duration-150">
+                                        {limitOptions.map(opt => (
+                                            <button
+                                                key={opt.value}
+                                                type="button"
+                                                onClick={() => {
+                                                    setMaxPackets(opt.value);
+                                                    setOpenDropdown(null);
+                                                }}
+                                                className={`w-full px-3 py-1.5 text-left rounded-xl text-xs font-mono flex items-center justify-between transition-all cursor-pointer ${
+                                                    maxPackets === opt.value
+                                                        ? 'bg-cyan-500/15 text-text-primary font-black border border-cyan-500/30'
+                                                        : 'hover:bg-card-secondary text-text-secondary border border-transparent'
+                                                }`}
+                                            >
+                                                <span>{opt.label}</span>
+                                                {maxPackets === opt.value && <Check size={11} className="text-cyan-400" />}
+                                            </button>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+                        );
+                    })()}
                 </div>
             </div>
 

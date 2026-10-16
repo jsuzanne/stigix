@@ -7,6 +7,7 @@ import { TracerouteModal } from './components/TracerouteModal';
 import { ReachabilityMatrix } from './components/ReachabilityMatrix';
 import { DEMSkeleton } from './components/skeletons/DEMSkeleton';
 import { ProbeScoreCard, InteractiveScoreBadge } from './components/health/ProbeScoreExplainer';
+import { StigixSelect } from './components/common/StigixSelect';
 
 // ── Inline SVG sparkline (no recharts dependency) ───────────────────────────
 const Sparkline = ({ data, color, width = 80, height = 20 }: { data: number[]; color: string; width?: number; height?: number }) => {
@@ -200,7 +201,7 @@ function EndpointTypeGraph({ type, results, color, count }: { type: string; resu
             </div>
 
             {results.length === 0 ? (
-                <div className="text-xs text-text-muted italic py-4">No data available</div>
+                <div className="text-xs text-text-muted italic h-[68px] flex items-center">No data available</div>
             ) : (
                 <>
                     <div className="flex flex-wrap items-center gap-x-2 gap-y-1 mb-2 text-[10px] font-bold leading-none">
@@ -236,6 +237,7 @@ function EndpointTypeGraph({ type, results, color, count }: { type: string; resu
                                     stroke={color}
                                     fillOpacity={1}
                                     fill={`url(#color${type.replace(/[^a-zA-Z]/g, '')})`}
+                                    isAnimationActive={false}
                                 />
                                 <ReTooltip
                                     contentStyle={{ backgroundColor: 'var(--card)', border: '1px solid var(--border)', borderRadius: '12px', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }}
@@ -294,7 +296,7 @@ function GlobalScoreTrendChart({ results, timeRange }: { results: any[]; timeRan
     }, [chartData]);
 
     if (!chartData.length) return (
-        <div className="h-full min-h-[160px] flex items-center justify-center text-text-muted text-xs italic opacity-60">No data for this period</div>
+        <div className="h-full min-h-[170px] flex-1 flex items-center justify-center text-text-muted text-xs italic opacity-60">No data for this period</div>
     );
     return (
         <div className="h-full w-full min-h-[170px] flex-1">
@@ -355,7 +357,8 @@ function GlobalScoreTrendChart({ results, timeRange }: { results: any[]; timeRan
                         fillOpacity={1} 
                         fill="url(#globalScoreGrad)" 
                         dot={{ r: 3.5, stroke: '#818cf8', strokeWidth: 1.5, fill: 'var(--card)' }} 
-                        activeDot={{ r: 6, fill: '#6366f1', stroke: '#fff', strokeWidth: 2 }} 
+                        activeDot={{ r: 6, fill: '#6366f1', stroke: '#fff', strokeWidth: 2 }}
+                        isAnimationActive={false}
                     />
                 </AreaChart>
             </ResponsiveContainer>
@@ -822,8 +825,11 @@ export default function ConnectivityPerformance({ token, uiConfig, onManage, isL
 
 
     useEffect(() => {
-        fetchProbesConfig();           // Phase 1: immediate
-        fetchStatsAndResults();         // Phase 2: async
+        fetchProbesConfig();           // Phase 1: immediate on peer change
+    }, [activePeerId]);
+
+    useEffect(() => {
+        fetchStatsAndResults();         // Phase 2: async on timeRange or peer change
         const interval = setInterval(fetchData, 60000); // Refresh both every 60s
         return () => clearInterval(interval);
     }, [timeRange, activePeerId]);
@@ -1156,8 +1162,10 @@ export default function ConnectivityPerformance({ token, uiConfig, onManage, isL
                             </div>
                         </div>
                         <div className="flex-1 p-5 flex flex-col items-center justify-center text-center">
-                            {loadingStats ? (
-                                <div className="h-28 w-28 rounded-full bg-card-secondary animate-pulse my-auto" />
+                            {loadingStats && !stats ? (
+                                <div className="h-[168px] flex items-center justify-center my-auto">
+                                    <div className="h-32 w-32 rounded-full bg-card-secondary animate-pulse" />
+                                </div>
                             ) : (
                                 <GlobalExperienceGauge
                                     score={stats?.globalHealth || 0}
@@ -1176,6 +1184,9 @@ export default function ConnectivityPerformance({ token, uiConfig, onManage, isL
                         <div className="flex items-center justify-between px-6 py-3 border-b border-border bg-card-secondary/40 h-[49px]">
                             <div className="text-[10px] font-black text-text-muted uppercase tracking-widest flex items-center gap-2">
                                 <TrendingUp size={14} className="text-indigo-500" /> Score Trend
+                                {loadingStats && stats && (
+                                    <RefreshCw size={11} className="text-indigo-400 animate-spin opacity-70 ml-1" />
+                                )}
                             </div>
                             <div className="flex p-0.5 bg-card-secondary rounded-lg border border-border">
                                 {(['15m','1h','6h','24h','7d'] as const).map(r => (
@@ -1188,7 +1199,7 @@ export default function ConnectivityPerformance({ token, uiConfig, onManage, isL
                             </div>
                         </div>
                         <div className="p-4 flex-1 flex flex-col min-h-[195px]">
-                            {loadingStats ? (
+                            {loadingStats && !stats ? (
                                 <div className="flex-1 flex items-center justify-center"><div className="w-full h-full bg-card-secondary animate-pulse rounded-xl" /></div>
                             ) : (
                                 <GlobalScoreTrendChart results={results} timeRange={timeRange} />
@@ -1209,7 +1220,7 @@ export default function ConnectivityPerformance({ token, uiConfig, onManage, isL
                             )}
                         </div>
                         <div className="p-3 space-y-2 overflow-y-auto flex-1 max-h-[250px] xl:max-h-none bg-card-secondary/5 scrollbar-thin">
-                            {loadingStats ? (
+                            {loadingStats && !stats ? (
                                 <>
                                     <div className="h-10 bg-card-secondary animate-pulse rounded-lg border border-border" />
                                     <div className="h-10 bg-card-secondary animate-pulse rounded-lg border border-border opacity-60" />
@@ -1458,19 +1469,23 @@ export default function ConnectivityPerformance({ token, uiConfig, onManage, isL
                 </div>
 
                 <div className="flex items-center gap-3">
-                    <div className="flex items-center gap-2 mr-4">
-                        <Clock size={14} className="text-text-muted" />
-                        <select
+                    <div className="flex items-center gap-1.5 mr-2 bg-card-secondary/60 border border-border rounded-xl px-2.5 py-1">
+                        <Clock size={13} className="text-text-muted shrink-0" />
+                        <StigixSelect
                             value={timeRange}
-                            onChange={(e) => setTimeRange(e.target.value)}
-                            className="bg-transparent border-none text-text-muted text-xs font-bold focus:ring-0 cursor-pointer hover:text-text-primary uppercase tracking-tight"
-                        >
-                            <option value="15m">15 Minutes</option>
-                            <option value="1h">1 Hour</option>
-                            <option value="6h">6 Hours</option>
-                            <option value="24h">24 Hours</option>
-                            <option value="7d">7 Days</option>
-                        </select>
+                            onChange={(val) => setTimeRange(val)}
+                            accent="blue"
+                            uppercaseTrigger
+                            triggerClassName="border-none bg-transparent px-1 py-0.5 text-xs font-bold"
+                            menuMinWidth={150}
+                            options={[
+                                { value: '15m', label: '15 Minutes' },
+                                { value: '1h', label: '1 Hour' },
+                                { value: '6h', label: '6 Hours' },
+                                { value: '24h', label: '24 Hours' },
+                                { value: '7d', label: '7 Days' },
+                            ]}
+                        />
                     </div>
 
 
@@ -2186,24 +2201,25 @@ export default function ConnectivityPerformance({ token, uiConfig, onManage, isL
                                 </div>
                                 <div className="space-y-2">
                                     <label className="text-[9px] font-black text-text-muted tracking-[0.2em] ml-1 uppercase">Protocol</label>
-                                    <select
-                                        className="w-full bg-card-secondary border border-border text-text-primary rounded-xl px-4 py-3 outline-none focus:ring-1 focus:ring-blue-500 text-[11px] font-black tracking-widest shadow-inner transition-all"
+                                    <StigixSelect
                                         value={editingProbe.type}
-                                        onChange={e => {
-                                            const t = e.target.value;
+                                        onChange={t => {
                                             const isHttp = t === 'HTTP' || t === 'HTTPS';
                                             const defaultFreq = t === 'CLOUD' ? 600 : isHttp ? 300 : 60;
                                             setEditingProbe({ ...editingProbe, type: t, timeout: t === 'PING' ? 2000 : 5000, frequency: defaultFreq });
                                         }}
-                                    >
-                                        <option value="HTTP">HTTP</option>
-                                        <option value="HTTPS">HTTPS</option>
-                                        <option value="PING">ICMP (Ping)</option>
-                                        <option value="TCP">TCP Port</option>
-                                        <option value="DNS">DNS Query</option>
-                                        <option value="UDP">UDP Stream</option>
-                                        <option value="CLOUD">Stigix Cloud</option>
-                                    </select>
+                                        accent="blue"
+                                        triggerClassName="bg-card-secondary rounded-xl px-4 py-3 text-[11px] font-black tracking-widest shadow-inner"
+                                        options={[
+                                            { value: 'HTTP', label: 'HTTP' },
+                                            { value: 'HTTPS', label: 'HTTPS' },
+                                            { value: 'PING', label: 'ICMP (Ping)' },
+                                            { value: 'TCP', label: 'TCP Port' },
+                                            { value: 'DNS', label: 'DNS Query' },
+                                            { value: 'UDP', label: 'UDP Stream' },
+                                            { value: 'CLOUD', label: 'Stigix Cloud' },
+                                        ]}
+                                    />
                                 </div>
                                 <div className="space-y-2">
                                     <div className="flex items-center justify-between ml-1 leading-none">
@@ -2289,17 +2305,19 @@ export default function ConnectivityPerformance({ token, uiConfig, onManage, isL
                                             <div className="grid grid-cols-2 gap-3">
                                                 <div>
                                                     <label className="block text-[9px] font-black text-text-muted uppercase tracking-widest mb-1.5">Match mode</label>
-                                                    <select
+                                                    <StigixSelect
                                                         value={editingProbe.content_match?.mode ?? 'contains'}
-                                                        onChange={e => setEditingProbe({
+                                                        onChange={val => setEditingProbe({
                                                             ...editingProbe,
-                                                            content_match: { ...editingProbe.content_match!, mode: e.target.value as 'contains' | 'not_contains' }
+                                                            content_match: { ...editingProbe.content_match!, mode: val as 'contains' | 'not_contains' }
                                                         })}
-                                                        className="w-full bg-card-secondary border border-border text-text-primary rounded-xl px-3 py-2.5 outline-none focus:ring-1 focus:ring-blue-500 text-[10px] font-bold"
-                                                    >
-                                                        <option value="contains">contains</option>
-                                                        <option value="not_contains">not_contains</option>
-                                                    </select>
+                                                        accent="blue"
+                                                        triggerClassName="bg-card-secondary rounded-xl px-3 py-2.5 text-[10px] font-bold"
+                                                        options={[
+                                                            { value: 'contains', label: 'contains' },
+                                                            { value: 'not_contains', label: 'not_contains' },
+                                                        ]}
+                                                    />
                                                 </div>
                                                 <div className="flex items-end">
                                                     <label className="flex items-center gap-2 cursor-pointer">

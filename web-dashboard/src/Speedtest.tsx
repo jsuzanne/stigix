@@ -12,6 +12,7 @@ import { toast } from 'react-hot-toast';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 import { isValidIpOrFqdn } from './utils/validation';
+import { StigixSelect } from './components/common/StigixSelect';
 
 /**
  * Utility for Tailwind class merging
@@ -575,28 +576,32 @@ export default function Speedtest({ token }: Props) {
                                 <div className="space-y-4 pt-2 border-t border-border/50 animate-in fade-in duration-300">
                                     <div>
                                         <label className="text-[10px] font-black text-text-muted tracking-widest mb-1.5 block">Protocol</label>
-                                        <select
+                                        <StigixSelect
                                             value={protocol}
-                                            onChange={e => setProtocol(e.target.value as any)}
-                                            className="w-full bg-card-secondary border border-border rounded-xl px-4 py-3 text-sm outline-none focus:border-blue-500"
-                                        >
-                                            <option value="tcp">TCP</option>
-                                            <option value="udp">UDP</option>
-                                            <option value="quic">QUIC</option>
-                                        </select>
+                                            onChange={val => setProtocol(val as any)}
+                                            accent="blue"
+                                            triggerClassName="bg-card-secondary rounded-xl px-4 py-3 text-sm"
+                                            options={[
+                                                { value: 'tcp', label: 'TCP' },
+                                                { value: 'udp', label: 'UDP' },
+                                                { value: 'quic', label: 'QUIC' },
+                                            ]}
+                                        />
                                     </div>
 
                                     <div>
                                         <label className="text-[10px] font-black text-text-muted tracking-widest mb-1.5 block">Direction</label>
-                                        <select
+                                        <StigixSelect
                                             value={direction}
-                                            onChange={e => setDirection(e.target.value as any)}
-                                            className="w-full bg-card-secondary border border-border rounded-xl px-4 py-3 text-sm outline-none focus:border-blue-500"
-                                        >
-                                            <option value="client-to-server">Upload (Client to Server)</option>
-                                            <option value="server-to-client">Download (Reverse)</option>
-                                            <option value="bidirectional">Bidirectional</option>
-                                        </select>
+                                            onChange={val => setDirection(val as any)}
+                                            accent="blue"
+                                            triggerClassName="bg-card-secondary rounded-xl px-4 py-3 text-sm"
+                                            options={[
+                                                { value: 'client-to-server', label: 'Upload (Client to Server)' },
+                                                { value: 'server-to-client', label: 'Download (Reverse)' },
+                                                { value: 'bidirectional', label: 'Bidirectional' },
+                                            ]}
+                                        />
                                     </div>
 
                                     <div>
@@ -677,14 +682,16 @@ export default function Speedtest({ token }: Props) {
                                     {protocol === 'tcp' && (
                                         <div>
                                             <label className="text-[10px] font-black text-text-muted tracking-widest mb-1.5 block">TCP Congestion Avoidance</label>
-                                            <select
+                                            <StigixSelect
                                                 value={congestion}
-                                                onChange={e => setCongestion(e.target.value)}
-                                                className="w-full bg-card-secondary border border-border rounded-xl px-4 py-3 text-sm outline-none focus:border-blue-500"
-                                            >
-                                                <option value="cubic">Cubic (Default)</option>
-                                                <option value="reno">Reno</option>
-                                            </select>
+                                                onChange={val => setCongestion(val)}
+                                                accent="blue"
+                                                triggerClassName="bg-card-secondary rounded-xl px-4 py-3 text-sm"
+                                                options={[
+                                                    { value: 'cubic', label: 'Cubic (Default)' },
+                                                    { value: 'reno', label: 'Reno' },
+                                                ]}
+                                            />
                                         </div>
                                     )}
 

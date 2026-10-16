@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { usePeerContext } from '../../PeerContext';
+import { StigixSelect } from '../common/StigixSelect';
 
 interface PcapReplayModalProps {
     isOpen: boolean;
@@ -493,9 +494,9 @@ export const PcapReplayModal: React.FC<PcapReplayModalProps> = ({
                 <div className="p-6 overflow-y-auto space-y-5 flex-1">
                     {!isPcapEnabled && (
                         <div className="p-3.5 bg-amber-500/10 border border-amber-500/30 rounded-xl flex items-start gap-3">
-                            <AlertTriangle size={18} className="text-amber-400 shrink-0 mt-0.5" />
-                            <div className="text-xs text-amber-300/90 leading-relaxed">
-                                <span className="font-bold text-amber-300">Feature Flag Required:</span> PCAP Replay is currently disabled on this Stigix instance. Add <code className="px-1.5 py-0.5 bg-black/40 rounded text-amber-200 font-mono text-[11px]">ENABLE_PCAP_REPLAY=true</code> to your host <code className="px-1.5 py-0.5 bg-black/40 rounded text-amber-200 font-mono text-[11px]">.env</code> file and restart the container to enable upload and live replay.
+                            <AlertTriangle size={18} className="text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+                            <div className="text-xs text-amber-700 dark:text-amber-300 leading-relaxed">
+                                <span className="font-bold text-amber-800 dark:text-amber-300">Feature Flag Required:</span> PCAP Replay is currently disabled on this Stigix instance. Add <code className="px-1.5 py-0.5 bg-card-secondary dark:bg-black/40 rounded text-amber-700 dark:text-amber-200 font-mono text-[11px]">ENABLE_PCAP_REPLAY=true</code> to your host <code className="px-1.5 py-0.5 bg-card-secondary dark:bg-black/40 rounded text-amber-700 dark:text-amber-200 font-mono text-[11px]">.env</code> file and restart the container to enable upload and live replay.
                             </div>
                         </div>
                     )}
@@ -847,16 +848,18 @@ export const PcapReplayModal: React.FC<PcapReplayModalProps> = ({
                                 </div>
                                 <div>
                                     <label className="text-[11px] font-medium text-text-muted block mb-1">Category</label>
-                                    <select
+                                    <StigixSelect
                                         value={profileCategory}
-                                        onChange={(e) => setProfileCategory(e.target.value)}
-                                        className="w-full px-3 py-1.5 bg-muted/20 border border-border rounded-lg text-xs text-text-primary focus:outline-none focus:border-indigo-500 cursor-pointer"
-                                    >
-                                        <option value="custom">Custom Application</option>
-                                        <option value="enterprise">Enterprise (SAP, Oracle, Citrix)</option>
-                                        <option value="threat">Threat / Exploit Replay</option>
-                                        <option value="iot">IoT Device Profile</option>
-                                    </select>
+                                        onChange={(val) => setProfileCategory(val)}
+                                        size="xs"
+                                        accent="indigo"
+                                        options={[
+                                            { value: 'custom', label: 'Custom Application' },
+                                            { value: 'enterprise', label: 'Enterprise (SAP, Oracle, Citrix)' },
+                                            { value: 'threat', label: 'Threat / Exploit Replay' },
+                                            { value: 'iot', label: 'IoT Device Profile' },
+                                        ]}
+                                    />
                                 </div>
                                 <div>
                                     <label className="text-[11px] font-medium text-text-muted block mb-1">Expected App-ID (Optional)</label>
@@ -977,18 +980,22 @@ export const PcapReplayModal: React.FC<PcapReplayModalProps> = ({
                                                 <RefreshCw size={10} className="animate-spin-slow" /> Auto-sync Fleet
                                             </span>
                                         </div>
-                                        <select
+                                        <StigixSelect
                                             value={selectedProfile}
-                                            onChange={(e) => setSelectedProfile(e.target.value)}
-                                            className="w-full px-3 py-2 bg-card border border-border rounded-xl text-xs text-text-primary focus:outline-none focus:border-indigo-500 cursor-pointer"
-                                        >
-                                            {compiledProfiles.length === 0 && <option value="">No profiles compiled yet</option>}
-                                            {compiledProfiles.map(p => (
-                                                <option key={p.file_name} value={p.file_name}>
-                                                    {p.name ? `${p.name} (${p.file_name})` : p.file_name} ({(p.size_bytes / 1024).toFixed(1)} KB)
-                                                </option>
-                                            ))}
-                                        </select>
+                                            onChange={(val) => setSelectedProfile(val)}
+                                            size="sm"
+                                            accent="indigo"
+                                            placeholder="No profiles compiled yet"
+                                            options={
+                                                compiledProfiles.length === 0
+                                                    ? [{ value: '', label: 'No profiles compiled yet' }]
+                                                    : compiledProfiles.map(p => ({
+                                                        value: p.file_name,
+                                                        label: p.name ? `${p.name} (${p.file_name})` : p.file_name,
+                                                        badge: `${(p.size_bytes / 1024).toFixed(1)} KB`
+                                                    }))
+                                            }
+                                        />
                                     </div>
                                     <div>
                                         <label className="text-[11px] text-text-muted block mb-1">Replay Role</label>
@@ -1244,15 +1251,15 @@ export const PcapReplayModal: React.FC<PcapReplayModalProps> = ({
                                         </div>
                                         <div className="flex items-center gap-2 font-mono text-xs text-text-primary">
                                             <span className="text-text-muted">Remote client:</span>
-                                            <span className="font-bold text-emerald-300">{serverStartedEv.client_ip}:{serverStartedEv.client_port}</span>
+                                            <span className="font-bold text-emerald-600 dark:text-emerald-300">{serverStartedEv.client_ip}:{serverStartedEv.client_port}</span>
                                             <span className="text-text-muted">➔ Local port:</span>
-                                            <span className="font-bold text-indigo-300">{serverStartedEv.server_port}</span>
+                                            <span className="font-bold text-indigo-600 dark:text-indigo-300">{serverStartedEv.server_port}</span>
                                         </div>
                                     </div>
                                 )}
 
                                 {/* Event Logs */}
-                                <div className="bg-black/60 border border-border/80 rounded-xl p-3 font-mono text-[11px] h-44 overflow-y-auto space-y-1">
+                                <div className="bg-card-secondary/70 dark:bg-black/60 border border-border/80 rounded-xl p-3 font-mono text-[11px] h-44 overflow-y-auto space-y-1">
                                     {(!activeJob?.recentEvents || activeJob.recentEvents.length === 0) ? (
                                         <div className="text-text-muted/60 italic py-8 text-center flex flex-col items-center justify-center gap-2">
                                             {activeJob?.status === 'running' ? (

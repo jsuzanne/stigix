@@ -1209,7 +1209,7 @@ export default function App() {
             {/* Single-line Metadata (Significantly Enlarged & Prominent) */}
             <div className="flex items-center gap-2.5 sm:gap-3 text-sm sm:text-[15px] font-medium">
               <span className="hidden md:inline text-slate-700 dark:text-slate-200 font-semibold tracking-tight">
-                The Engine for SASE Validation
+                SASE Validation Engine
               </span>
               {isRemoteView && activePeerLabel ? (
                 <>

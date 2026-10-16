@@ -18,6 +18,7 @@ import { CustomTcpSettingsTab } from './components/custom-tcp/CustomTcpSettingsT
 import { ApiStudio } from './ApiStudio';
 import { usePeerContext } from './PeerContext';
 import { SettingsSkeleton } from './components/skeletons/SettingsSkeleton';
+import { StigixSelect } from './components/common/StigixSelect';
 
 function cn(...inputs: (string | undefined | null | false)[]) {
     return twMerge(clsx(inputs));
@@ -3318,24 +3319,26 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                                             </div>
                                             <div className="space-y-2">
                                                 <label className="text-[9px] font-black text-text-muted tracking-[0.2em] ml-1 uppercase">Protocol</label>
-                                                <select
-                                                    className="w-full bg-card-secondary border border-border text-text-primary rounded-xl px-4 py-3 outline-none focus:ring-1 focus:ring-blue-500 text-[11px] font-black tracking-widest shadow-inner transition-all"
+                                                <StigixSelect
                                                     value={newProbe.type}
-                                                    onChange={e => {
-                                                        const t = e.target.value as any;
+                                                    onChange={val => {
+                                                        const t = val as any;
                                                         const isHttp = t === 'HTTP' || t === 'HTTPS';
                                                         const defaultFreq = t === 'CLOUD' ? 600 : isHttp ? 300 : 60;
                                                         setNewProbe({ ...newProbe, type: t, timeout: t === 'PING' ? 2000 : 5000, frequency: defaultFreq });
                                                     }}
-                                                >
-                                                    <option value="HTTP">HTTP</option>
-                                                    <option value="HTTPS">HTTPS</option>
-                                                    <option value="PING">ICMP (Ping)</option>
-                                                    <option value="TCP">TCP Port</option>
-                                                    <option value="DNS">DNS Query</option>
-                                                    <option value="UDP">UDP Stream</option>
-                                                    <option value="CLOUD">Stigix Cloud</option>
-                                                </select>
+                                                    size="md"
+                                                    accent="blue"
+                                                    options={[
+                                                        { value: 'HTTP', label: 'HTTP' },
+                                                        { value: 'HTTPS', label: 'HTTPS' },
+                                                        { value: 'PING', label: 'ICMP (Ping)' },
+                                                        { value: 'TCP', label: 'TCP Port' },
+                                                        { value: 'DNS', label: 'DNS Query' },
+                                                        { value: 'UDP', label: 'UDP Stream' },
+                                                        { value: 'CLOUD', label: 'Stigix Cloud' },
+                                                    ]}
+                                                />
                                             </div>
                                             <div className="space-y-2">
                                                 <div className="flex items-center justify-between ml-1 leading-none">
@@ -3390,33 +3393,30 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                                             )}
                                             {newProbe.type === 'CLOUD' ? (
                                                 <div className="space-y-3">
-                                                    <div className="relative">
-                                                        <select
-                                                            className="w-full bg-card-secondary border border-border text-text-primary rounded-xl pl-10 pr-4 py-3 outline-none focus:ring-1 focus:ring-blue-500 text-[11px] font-black tracking-widest shadow-inner appearance-none transition-all"
-                                                            value={newProbe.target.startsWith('advanced-custom#') ? 'advanced-custom#' : newProbe.target}
-                                                            onChange={e => {
-                                                                const val = e.target.value;
-                                                                if (val === 'advanced-custom#') {
-                                                                    setNewProbe({ ...newProbe, target: 'advanced-custom#{"mode":"info","delay":0}', name: newProbe.name || 'Custom Probe' });
-                                                                } else {
-                                                                    const scenario = cloudScenarios.find(s => s.id === val);
-                                                                    setNewProbe({
-                                                                        ...newProbe,
-                                                                        target: val,
-                                                                        name: newProbe.name || scenario?.label || ''
-                                                                    });
-                                                                }
-                                                            }}
-                                                        >
-                                                            <option value="">Select Stigix Probe...</option>
-                                                            {cloudScenarios.map(s => (
-                                                                <option key={s.id} value={s.id}>{s.label}</option>
-                                                            ))}
-                                                            <option value="advanced-custom#">Advanced Stigix Probe...</option>
-                                                        </select>
-                                                        <Globe size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-blue-500/50" />
-                                                        <ChevronDown size={16} className="absolute right-3.5 top-1/2 -translate-y-1/2 text-text-muted pointer-events-none" />
-                                                    </div>
+                                                    <StigixSelect
+                                                        value={newProbe.target.startsWith('advanced-custom#') ? 'advanced-custom#' : newProbe.target}
+                                                        onChange={val => {
+                                                            if (val === 'advanced-custom#') {
+                                                                setNewProbe({ ...newProbe, target: 'advanced-custom#{"mode":"info","delay":0}', name: newProbe.name || 'Custom Probe' });
+                                                            } else {
+                                                                const scenario = cloudScenarios.find(s => s.id === val);
+                                                                setNewProbe({
+                                                                    ...newProbe,
+                                                                    target: val,
+                                                                    name: newProbe.name || scenario?.label || ''
+                                                                });
+                                                            }
+                                                        }}
+                                                        size="md"
+                                                        accent="blue"
+                                                        placeholder="Select Stigix Probe..."
+                                                        triggerIcon={<Globe size={15} className="text-blue-500/70" />}
+                                                        options={[
+                                                            { value: '', label: 'Select Stigix Probe...' },
+                                                            ...cloudScenarios.map(s => ({ value: s.id, label: s.label })),
+                                                            { value: 'advanced-custom#', label: 'Advanced Stigix Probe...' },
+                                                        ]}
+                                                    />
 
                                                     {newProbe.target.startsWith('advanced-custom#') ? (
                                                         <div className="p-4 bg-card border border-border rounded-xl space-y-4 shadow-inner animate-in slide-in-from-top-2 duration-300">
@@ -3429,12 +3429,18 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                                                                         <div className="grid grid-cols-2 gap-4">
                                                                             <div className="space-y-1">
                                                                                 <label className="text-[9px] font-black text-text-muted tracking-[0.2em] uppercase">Target Mode</label>
-                                                                                <select className="w-full bg-card-secondary border border-border text-text-primary rounded-lg px-3 py-2 text-[11px] font-bold outline-none focus:ring-1 focus:ring-blue-500" value={advConfig.mode} onChange={e => updateAdv({ mode: e.target.value })}>
-                                                                                    <option value="info">Data & Egress (info)</option>
-                                                                                    <option value="large">Large Payload (download)</option>
-                                                                                    <option value="error">HTTP Error (error)</option>
-                                                                                    <option value="eicar">Threat File (security)</option>
-                                                                                </select>
+                                                                                <StigixSelect
+                                                                                    value={advConfig.mode}
+                                                                                    onChange={val => updateAdv({ mode: val })}
+                                                                                    size="sm"
+                                                                                    accent="blue"
+                                                                                    options={[
+                                                                                        { value: 'info', label: 'Data & Egress (info)' },
+                                                                                        { value: 'large', label: 'Large Payload (download)' },
+                                                                                        { value: 'error', label: 'HTTP Error (error)' },
+                                                                                        { value: 'eicar', label: 'Threat File (security)' },
+                                                                                    ]}
+                                                                                />
                                                                             </div>
                                                                             <div className="space-y-1">
                                                                                 <label className="text-[9px] font-black text-text-muted tracking-[0.2em] uppercase">Extra Delay (ms)</label>
@@ -3602,14 +3608,16 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                                                         <div className="grid grid-cols-2 gap-3">
                                                             <div>
                                                                 <label className="block text-[9px] font-black text-text-muted uppercase tracking-widest mb-1.5">Match mode</label>
-                                                                <select
+                                                                <StigixSelect
                                                                     value={newProbe.content_match?.mode ?? 'contains'}
-                                                                    onChange={e => setNewProbe({ ...newProbe, content_match: { ...newProbe.content_match!, mode: e.target.value as 'contains' | 'not_contains' } })}
-                                                                    className="w-full bg-card-secondary border border-border text-text-primary rounded-xl px-3 py-2.5 outline-none focus:ring-1 focus:ring-blue-500 text-[10px] font-bold"
-                                                                >
-                                                                    <option value="contains">contains</option>
-                                                                    <option value="not_contains">not_contains</option>
-                                                                </select>
+                                                                    onChange={val => setNewProbe({ ...newProbe, content_match: { ...newProbe.content_match!, mode: val as 'contains' | 'not_contains' } })}
+                                                                    size="sm"
+                                                                    accent="blue"
+                                                                    options={[
+                                                                        { value: 'contains', label: 'contains' },
+                                                                        { value: 'not_contains', label: 'not_contains' },
+                                                                    ]}
+                                                                />
                                                             </div>
                                                             <div className="flex items-end">
                                                                 <label className="flex items-center gap-2 cursor-pointer">
@@ -7113,10 +7121,9 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                                         <label className="text-xs font-black uppercase tracking-wider text-text-primary">
                                             Default AI Model
                                         </label>
-                                        <select
+                                        <StigixSelect
                                             value={copilotConfig?.defaultModel || (copilotProvider === 'deepseek' ? 'deepseek-chat' : 'claude-sonnet-4-5-20250929')}
-                                            onChange={async (e) => {
-                                                const model = e.target.value;
+                                            onChange={async (model) => {
                                                 const isDs = model.startsWith('deepseek-');
                                                 try {
                                                     const res = await apiFetch('/api/copilot/config', {
@@ -7136,20 +7143,29 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                                                     }
                                                 } catch {}
                                             }}
-                                            className="w-full bg-card border border-border focus:border-blue-500 rounded-xl px-3 py-2 text-xs font-bold text-text-primary focus:outline-none"
-                                        >
-                                            <optgroup label="Anthropic Claude">
-                                                <option value="claude-sonnet-4-5-20250929">Claude Sonnet 4.5 (Recommended)</option>
-                                                <option value="claude-haiku-4-5-20251001">Claude Haiku 4.5 (Fast)</option>
-                                                <option value="claude-sonnet-4-6">Claude Sonnet 4.6</option>
-                                                <option value="claude-sonnet-5">Claude Sonnet 5 (Latest)</option>
-                                                <option value="claude-opus-4-5-20251101">Claude Opus 4.5</option>
-                                            </optgroup>
-                                            <optgroup label="DeepSeek">
-                                                <option value="deepseek-chat">DeepSeek-V3 (Chat + Tools)</option>
-                                                <option value="deepseek-reasoner">DeepSeek-R1 (Reasoner / Thought Chain)</option>
-                                            </optgroup>
-                                        </select>
+                                            size="sm"
+                                            accent="indigo"
+                                            triggerIcon={<Cpu size={14} className="text-indigo-400" />}
+                                            groups={[
+                                                {
+                                                    label: 'Anthropic Claude',
+                                                    options: [
+                                                        { value: 'claude-sonnet-4-5-20250929', label: 'Claude Sonnet 4.5', badge: 'Recommended' },
+                                                        { value: 'claude-haiku-4-5-20251001', label: 'Claude Haiku 4.5', badge: 'Fast' },
+                                                        { value: 'claude-sonnet-4-6', label: 'Claude Sonnet 4.6' },
+                                                        { value: 'claude-sonnet-5', label: 'Claude Sonnet 5', badge: 'Latest' },
+                                                        { value: 'claude-opus-4-5-20251101', label: 'Claude Opus 4.5' },
+                                                    ]
+                                                },
+                                                {
+                                                    label: 'DeepSeek',
+                                                    options: [
+                                                        { value: 'deepseek-chat', label: 'DeepSeek-V3', sublabel: 'Chat + Tools' },
+                                                        { value: 'deepseek-reasoner', label: 'DeepSeek-R1', sublabel: 'Reasoner / Thought Chain' },
+                                                    ]
+                                                }
+                                            ]}
+                                        />
                                     </div>
 
                                     <div className="bg-card-secondary/30 border border-border rounded-xl p-4 flex items-center justify-between">

@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.0.33] - 2026-10-16
+
+### Added & Enhanced
+- **Modern StigixSelect Dropdown Component & Full UI Harmonization (`StigixSelect.tsx`)**:
+  - Created a unified, accessible, and lightweight dropdown component (`StigixSelect`) featuring fluid entry animations (`fade-in zoom-in-95`), zero layout shift, search/filter support, category badges, leading icons, and seamless dark/light theme integration.
+  - Replaced outdated native `<select>` elements across all dashboard modules: Packet Capture, PCAP Replay, VyOS Sequences & Config, Bandwidth Test, Voice / VoIP, Connectivity Performance, Security Engine, Settings, and Custom App Wizards.
+- **Smart Packet Capture Egress Detection & Interface Selection (`pcap_capture_engine.py`, `PacketCapture.tsx`)**:
+  - Added kernel default route and `interfaces.txt` inspection (`_detect_primary_egress_interface`) to automatically identify and prioritize the primary SD-WAN traffic egress interface as the default capture target.
+  - Categorized interfaces (physical, tunnel, loopback, virtual) with informative badges and high-contrast styling in both dark and light modes.
+- **PCAP Replay Light Mode Styling & Palette Polish (`PcapReplay.tsx`, `PcapReplayModal.tsx`)**:
+  - Replaced hardcoded dark background opacities (`bg-black/30`, `bg-black/40`, `bg-black/50`, `bg-black/60`) with theme-aware tokens (`bg-card-secondary`, `bg-card`) across control ribbons, step payload snippets, and Wireshark hex/ASCII payload inspectors.
+  - Fixed low-contrast text colors (`text-amber-300`, `text-emerald-300`) to guarantee crisp legibility against light backgrounds.
+  - Replaced inactive/unstyled `bg-primary text-black` tabs in the activity console with crisp `bg-indigo-600 text-white` active states.
+
 ## [3.0.32] - 2026-10-16
 
 ### Refactored & Fixed

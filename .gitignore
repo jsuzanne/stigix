@@ -13,6 +13,8 @@ playwright.config.ts
 *.log
 *.log.*
 pcap samples/
+pcapsamples/
+logo_header_mockup.html
 *.pcap
 *.pcapng
 *.cap

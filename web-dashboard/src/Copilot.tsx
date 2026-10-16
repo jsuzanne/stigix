@@ -32,6 +32,7 @@ import {
     Square
 } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { StigixSelect } from './components/common/StigixSelect';
 
 interface CopilotToolCall {
     id: string;
@@ -669,30 +670,25 @@ export default function Copilot({ token, onOpenSettings, isDrawer = false, onClo
 
                     <div className="flex items-center gap-2">
                         {/* Model Selector */}
-                        <div className="flex items-center gap-1.5 bg-card-secondary/60 border border-border px-2.5 py-1.5 rounded-xl">
-                            <Cpu size={13} className="text-indigo-400 shrink-0" />
-                            <select
-                                value={selectedModel}
-                                onChange={(e) => setSelectedModel(e.target.value)}
-                                className="bg-transparent text-xs font-bold text-text-primary focus:outline-none cursor-pointer max-w-[120px] sm:max-w-none truncate"
-                            >
-                                {config?.models && config.models.length > 0 ? (
-                                    config.models.map(m => (
-                                        <option key={m.id} value={m.id} className="bg-card text-text-primary">
-                                            {m.name}
-                                        </option>
-                                    ))
-                                ) : (
-                                    <>
-                                        <option value="claude-sonnet-4-5-20250929" className="bg-card text-text-primary">Claude Sonnet 4.5</option>
-                                        <option value="claude-haiku-4-5-20251001" className="bg-card text-text-primary">Claude Haiku 4.5</option>
-                                        <option value="claude-sonnet-4-6" className="bg-card text-text-primary">Claude Sonnet 4.6</option>
-                                        <option value="claude-sonnet-5" className="bg-card text-text-primary">Claude Sonnet 5</option>
-                                        <option value="claude-opus-4-5-20251101" className="bg-card text-text-primary">Claude Opus 4.5</option>
-                                    </>
-                                )}
-                            </select>
-                        </div>
+                        <StigixSelect
+                            value={selectedModel}
+                            onChange={(val) => setSelectedModel(val)}
+                            size="xs"
+                            accent="indigo"
+                            triggerIcon={<Cpu size={13} className="text-indigo-400 shrink-0" />}
+                            minMenuWidth={220}
+                            options={
+                                config?.models && config.models.length > 0
+                                    ? config.models.map(m => ({ value: m.id, label: m.name }))
+                                    : [
+                                        { value: 'claude-sonnet-4-5-20250929', label: 'Claude Sonnet 4.5' },
+                                        { value: 'claude-haiku-4-5-20251001', label: 'Claude Haiku 4.5' },
+                                        { value: 'claude-sonnet-4-6', label: 'Claude Sonnet 4.6' },
+                                        { value: 'claude-sonnet-5', label: 'Claude Sonnet 5' },
+                                        { value: 'claude-opus-4-5-20251101', label: 'Claude Opus 4.5' },
+                                    ]
+                            }
+                        />
 
                         {/* Drawer Actions: Expand to Fullscreen & Close */}
                         {isDrawer && (

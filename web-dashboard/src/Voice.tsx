@@ -7,6 +7,7 @@ import { twMerge } from 'tailwind-merge';
 import toast from 'react-hot-toast';
 import { isValidIpOrFqdn } from './utils/validation';
 import { VoiceSkeleton } from './components/skeletons/VoiceSkeleton';
+import { StigixSelect } from './components/common/StigixSelect';
 
 function cn(...inputs: (string | undefined | null | false)[]) {
     return twMerge(clsx(inputs));
@@ -764,13 +765,13 @@ export default function Voice(props: VoiceProps) {
                                     <label className="text-[9px] text-text-muted uppercase font-black tracking-widest flex items-center gap-1.5">
                                         <Phone size={10} className="text-blue-500" /> RTP Codec
                                     </label>
-                                    <select
+                                    <StigixSelect
                                         value={globalCodec}
-                                        onChange={e => { setIsDirty(true); setGlobalCodec(e.target.value); }}
-                                        className="w-full bg-card border border-border text-text-primary rounded-xl px-3 py-2 text-xs font-black focus:ring-1 focus:ring-blue-500 outline-none shadow-sm cursor-pointer"
-                                    >
-                                        {CODEC_OPTIONS.map(c => <option key={c} value={c}>{c}</option>)}
-                                    </select>
+                                        onChange={val => { setIsDirty(true); setGlobalCodec(val); }}
+                                        accent="blue"
+                                        triggerClassName="rounded-xl px-3 py-2 text-xs font-black shadow-sm"
+                                        options={CODEC_OPTIONS.map(c => ({ value: c, label: c }))}
+                                    />
                                 </div>
 
                                 {/* Global Call Duration */}
@@ -805,14 +806,16 @@ export default function Voice(props: VoiceProps) {
                                     <label className="text-[9px] text-text-muted uppercase font-black tracking-widest flex items-center gap-1.5">
                                         <Hash size={10} className="text-blue-500" /> Source Ports
                                     </label>
-                                    <select
+                                    <StigixSelect
                                         value={config.source_port_mode || 'call_id'}
-                                        onChange={e => { setIsDirty(true); setConfig(p => p ? { ...p, source_port_mode: e.target.value as any } : null); }}
-                                        className="w-full bg-card border border-border text-text-primary rounded-xl px-3 py-2 text-xs font-black focus:ring-1 focus:ring-blue-500 outline-none shadow-sm cursor-pointer"
-                                    >
-                                        <option value="call_id">🎯 Call ID (30000+N)</option>
-                                        <option value="ephemeral">🎲 Ephemeral</option>
-                                    </select>
+                                        onChange={val => { setIsDirty(true); setConfig(p => p ? { ...p, source_port_mode: val as any } : null); }}
+                                        accent="blue"
+                                        triggerClassName="rounded-xl px-3 py-2 text-xs font-black shadow-sm"
+                                        options={[
+                                            { value: 'call_id', label: '🎯 Call ID (30000+N)' },
+                                            { value: 'ephemeral', label: '🎲 Ephemeral' },
+                                        ]}
+                                    />
                                 </div>
                             </div>
                         </div>
@@ -1280,15 +1283,20 @@ export default function Voice(props: VoiceProps) {
                             />
                         </div>
                         {callTab === 'egress' && (
-                            <select
-                                value={qualityFilter} onChange={e => setQualityFilter(e.target.value as any)}
-                                className="bg-card-secondary/50 border border-border text-[10px] font-black uppercase tracking-widest text-text-primary rounded-xl px-4 py-2.5 outline-none focus:ring-1 focus:ring-blue-500"
-                            >
-                                <option value="all">Any Quality</option>
-                                <option value="excellent">Excellent</option>
-                                <option value="fair">Fair</option>
-                                <option value="poor">Poor</option>
-                            </select>
+                            <StigixSelect
+                                value={qualityFilter}
+                                onChange={val => setQualityFilter(val as any)}
+                                accent="blue"
+                                uppercaseTrigger
+                                triggerClassName="bg-card-secondary/50 rounded-xl px-4 py-2.5 text-[10px]"
+                                menuMinWidth={160}
+                                options={[
+                                    { value: 'all', label: 'Any Quality' },
+                                    { value: 'excellent', label: 'Excellent' },
+                                    { value: 'fair', label: 'Fair' },
+                                    { value: 'poor', label: 'Poor' },
+                                ]}
+                            />
                         )}
                     </div>
 

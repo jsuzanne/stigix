@@ -10,6 +10,7 @@ import { ScoreDashboard } from './components/ScoreDashboard';
 import { useSecurityScores } from './hooks/useSecurityScores';
 import { ScoreGapAnalysis, ScoreLatestChanges } from './components/ScoreDetails';
 import { SecuritySkeleton } from './components/skeletons/SecuritySkeleton';
+import { StigixSelect } from './components/common/StigixSelect';
 
 function cn(...inputs: ClassValue[]) {
     return twMerge(clsx(inputs));
@@ -102,16 +103,18 @@ const SchedulerSettings = ({
                 </div>
 
                 <div className="flex items-center gap-1.5">
-                    <select
-                        value={schedule.interval_minutes}
-                        onChange={(e) => onUpdate(type, schedule.enabled, parseInt(e.target.value))}
+                    <StigixSelect
+                        value={String(schedule.interval_minutes)}
+                        onChange={(val) => onUpdate(type, schedule.enabled, parseInt(val))}
                         disabled={!schedule.enabled}
-                        className="bg-card border border-border text-text-primary text-[10px] rounded px-1.5 py-0.5 focus:ring-1 focus:ring-blue-500 outline-none disabled:opacity-50 font-bold cursor-pointer"
-                    >
-                        {[5, 10, 15, 30, 45, 60].map(m => (
-                            <option key={m} value={m}>{m}m</option>
-                        ))}
-                    </select>
+                        size="xs"
+                        accent="blue"
+                        minMenuWidth={100}
+                        options={[5, 10, 15, 30, 45, 60].map(m => ({
+                            value: String(m),
+                            label: `${m}m`
+                        }))}
+                    />
 
                     <button
                         type="button"
@@ -3349,23 +3352,22 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
                                 />
                             </div>
                             <div className="flex items-center gap-3">
-                                <div className="relative">
-                                    <Filter size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-text-muted" />
-                                    <select
-                                        value={testTypeFilter}
-                                        onChange={(e) => setTestTypeFilter(e.target.value as any)}
-                                        className="pl-9 pr-8 py-3 bg-card-secondary border border-border text-text-primary rounded-xl text-xs font-bold tracking-widest outline-none focus:ring-1 focus:ring-blue-500 transition-all appearance-none"
-                                    >
-                                        <option value="all">All Types</option>
-                                        <option value="url">URL Filtering</option>
-                                        <option value="dns">DNS Security</option>
-                                        <option value="threat">Threat Prevention</option>
-                                        <option value="c2_scenario">C2 Scenario</option>
-                                        <option value="ai_security">AI Security</option>
-
-                                    </select>
-                                    <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-text-muted pointer-events-none" />
-                                </div>
+                                <StigixSelect
+                                    value={testTypeFilter}
+                                    onChange={(val) => setTestTypeFilter(val as any)}
+                                    size="md"
+                                    accent="blue"
+                                    triggerIcon={<Filter size={14} className="text-text-muted" />}
+                                    minMenuWidth={190}
+                                    options={[
+                                        { value: 'all', label: 'All Types' },
+                                        { value: 'url', label: 'URL Filtering', icon: <Globe size={13} className="text-blue-400" /> },
+                                        { value: 'dns', label: 'DNS Security', icon: <Server size={13} className="text-indigo-400" /> },
+                                        { value: 'threat', label: 'Threat Prevention', icon: <ShieldAlert size={13} className="text-rose-400" /> },
+                                        { value: 'c2_scenario', label: 'C2 Scenario', icon: <Activity size={13} className="text-amber-400" /> },
+                                        { value: 'ai_security', label: 'AI Security', icon: <Zap size={13} className="text-purple-400" /> },
+                                    ]}
+                                />
                                 <button
                                     onClick={() => setShowChangesOnly(v => !v)}
                                     className={`px-4 py-3 border rounded-xl text-[10px] font-black tracking-widest transition-all flex items-center gap-2 shadow-sm ${

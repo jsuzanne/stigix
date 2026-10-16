@@ -11,6 +11,7 @@ import {
 import toast from 'react-hot-toast';
 import { usePeerContext } from './PeerContext';
 import { PcapReplayModal } from './components/custom-tcp/PcapReplayModal';
+import { StigixSelect } from './components/common/StigixSelect';
 
 interface PcapReplayProps {
     token: string | null;
@@ -686,7 +687,7 @@ export const PcapReplay: React.FC<PcapReplayProps> = ({ token }) => {
             const firstLine = ascii.split(/[\r\n]+/)[0].trim().slice(0, 52);
             return {
                 proto: 'SIP Signaling',
-                badge: 'bg-cyan-500/15 text-cyan-400 border-cyan-500/30',
+                badge: 'bg-cyan-500/15 text-cyan-700 dark:text-cyan-400 border-cyan-500/30',
                 snippet: firstLine,
                 isBinary: false
             };
@@ -697,7 +698,7 @@ export const PcapReplay: React.FC<PcapReplayProps> = ({ token }) => {
             const firstLine = ascii.split(/[\r\n]+/)[0].trim().slice(0, 52);
             return {
                 proto: 'HTTP REST',
-                badge: 'bg-blue-500/15 text-blue-400 border-blue-500/30',
+                badge: 'bg-blue-500/15 text-blue-700 dark:text-blue-400 border-blue-500/30',
                 snippet: firstLine,
                 isBinary: false
             };
@@ -710,7 +711,7 @@ export const PcapReplay: React.FC<PcapReplayProps> = ({ token }) => {
             else if (bytes.length >= 6 && bytes[5] === 0x02) tlsType = 'ServerHello';
             return {
                 proto: 'TLS Handshake',
-                badge: 'bg-purple-500/15 text-purple-400 border-purple-500/30',
+                badge: 'bg-purple-500/15 text-purple-700 dark:text-purple-400 border-purple-500/30',
                 snippet: `${tlsType} (TLS 1.${bytes[2]}) - ${len}B`,
                 isBinary: true
             };
@@ -718,7 +719,7 @@ export const PcapReplay: React.FC<PcapReplayProps> = ({ token }) => {
         if (bytes.length >= 3 && bytes[0] === 0x17 && bytes[1] === 0x03) {
             return {
                 proto: 'TLS Encrypted',
-                badge: 'bg-purple-500/15 text-purple-400 border-purple-500/30',
+                badge: 'bg-purple-500/15 text-purple-700 dark:text-purple-400 border-purple-500/30',
                 snippet: `Application Data (Encrypted L7) - ${len}B`,
                 isBinary: true
             };
@@ -731,7 +732,7 @@ export const PcapReplay: React.FC<PcapReplayProps> = ({ token }) => {
             const seq = (bytes[2] << 8) | bytes[3];
             return {
                 proto: 'RTP Voice',
-                badge: 'bg-amber-500/15 text-amber-400 border-amber-500/30',
+                badge: 'bg-amber-500/15 text-amber-700 dark:text-amber-400 border-amber-500/30',
                 snippet: `Media Payload: ${ptName}, Seq #${seq} (${len}B)`,
                 isBinary: true
             };
@@ -742,7 +743,7 @@ export const PcapReplay: React.FC<PcapReplayProps> = ({ token }) => {
             const clean = ascii.replace(/[^a-zA-Z0-9\.\-_]/g, ' ').trim().split(/\s+/).find(w => w.includes('.')) || 'Query/Answer';
             return {
                 proto: 'DNS Datagram',
-                badge: 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30',
+                badge: 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border-emerald-500/30',
                 snippet: `DNS Record: ${clean} (${len}B)`,
                 isBinary: true
             };
@@ -757,7 +758,7 @@ export const PcapReplay: React.FC<PcapReplayProps> = ({ token }) => {
             const clean = ascii.replace(/[\r\n\t]+/g, ' ').trim().slice(0, 52);
             return {
                 proto: 'Plaintext',
-                badge: 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30',
+                badge: 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border-emerald-500/30',
                 snippet: clean || `${len} bytes payload`,
                 isBinary: false
             };
@@ -767,7 +768,7 @@ export const PcapReplay: React.FC<PcapReplayProps> = ({ token }) => {
         const hexHead = Array.from(bytes.slice(0, 6)).map(b => b.toString(16).padStart(2, '0')).join(' ');
         return {
             proto: 'Binary L7',
-            badge: 'bg-indigo-500/15 text-indigo-400 border-indigo-500/30',
+            badge: 'bg-indigo-500/15 text-indigo-700 dark:text-indigo-400 border-indigo-500/30',
             snippet: `Hex: ${hexHead}... (${len}B)`,
             isBinary: true
         };
@@ -848,7 +849,7 @@ export const PcapReplay: React.FC<PcapReplayProps> = ({ token }) => {
             } catch (_) {
                 return (
                     <div key={idx} className="flex items-start gap-1.5 text-text-secondary leading-tight font-mono text-[10px]">
-                        <span className="text-text-muted/40 select-none text-[8px]">[{idx + 1}]</span>
+                        <span className="text-text-muted/60 select-none text-[8px]">[{idx + 1}]</span>
                         <span>{rawLog}</span>
                     </div>
                 );
@@ -860,8 +861,8 @@ export const PcapReplay: React.FC<PcapReplayProps> = ({ token }) => {
         if (ev === 'server_listening') {
             return (
                 <div key={idx} className="flex items-center gap-2 py-0.5 text-[10px]">
-                    <span className="text-text-muted/40 select-none text-[8px] font-mono">[{idx + 1}]</span>
-                    <span className="px-1.5 py-0.2 rounded bg-purple-500/20 text-purple-400 font-bold uppercase text-[8px] border border-purple-500/30">
+                    <span className="text-text-muted/60 select-none text-[8px] font-mono">[{idx + 1}]</span>
+                    <span className="px-1.5 py-0.2 rounded bg-purple-500/15 text-purple-700 dark:text-purple-400 font-bold uppercase text-[8px] border border-purple-500/30">
                         SERVER READY
                     </span>
                     <span className="font-semibold text-text-primary">
@@ -875,8 +876,8 @@ export const PcapReplay: React.FC<PcapReplayProps> = ({ token }) => {
         if (ev === 'session_started') {
             return (
                 <div key={idx} className="flex items-center gap-2 py-0.5 text-[10px]">
-                    <span className="text-text-muted/40 select-none text-[8px] font-mono">[{idx + 1}]</span>
-                    <span className="px-1.5 py-0.2 rounded bg-blue-500/20 text-blue-400 font-bold uppercase text-[8px] border border-blue-500/30">
+                    <span className="text-text-muted/60 select-none text-[8px] font-mono">[{idx + 1}]</span>
+                    <span className="px-1.5 py-0.2 rounded bg-blue-500/15 text-blue-700 dark:text-blue-400 font-bold uppercase text-[8px] border border-blue-500/30">
                         SESSION OPEN
                     </span>
                     <span className="font-semibold text-text-primary">
@@ -893,11 +894,11 @@ export const PcapReplay: React.FC<PcapReplayProps> = ({ token }) => {
             const isClient = log.sender === 'client';
             return (
                 <div key={idx} className="flex items-center gap-2 py-0.5 text-[10px]">
-                    <span className="text-text-muted/40 select-none text-[8px] font-mono">[{idx + 1}]</span>
+                    <span className="text-text-muted/60 select-none text-[8px] font-mono">[{idx + 1}]</span>
                     <span className={`px-1.5 py-0.2 rounded font-black uppercase text-[8px] flex items-center gap-1 ${
                         isClient
-                            ? 'bg-blue-500/20 text-blue-400 border border-blue-500/30'
-                            : 'bg-purple-500/20 text-purple-400 border border-purple-500/30'
+                            ? 'bg-blue-500/15 text-blue-700 dark:text-blue-400 border border-blue-500/30'
+                            : 'bg-purple-500/15 text-purple-700 dark:text-purple-400 border border-purple-500/30'
                     }`}>
                         {isClient ? '⬆️ CLIENT ➔ SERVER' : '⬇️ SERVER ➔ CLIENT'}
                     </span>
@@ -911,8 +912,8 @@ export const PcapReplay: React.FC<PcapReplayProps> = ({ token }) => {
         if (ev === 'udp_datagram_sent') {
             return (
                 <div key={idx} className="flex items-center gap-2 py-0.5 text-[10px]">
-                    <span className="text-text-muted/40 select-none text-[8px] font-mono">[{idx + 1}]</span>
-                    <span className="px-1.5 py-0.2 rounded font-black uppercase text-[8px] flex items-center gap-1 bg-cyan-500/20 text-cyan-400 border border-cyan-500/30">
+                    <span className="text-text-muted/60 select-none text-[8px] font-mono">[{idx + 1}]</span>
+                    <span className="px-1.5 py-0.2 rounded font-black uppercase text-[8px] flex items-center gap-1 bg-cyan-500/15 text-cyan-700 dark:text-cyan-400 border border-cyan-500/30">
                         ⬆️ UDP ➔ {log.target_ip}:{log.target_port}
                     </span>
                     {log.seq !== undefined && <span className="font-black text-text-primary">Step #{log.seq}</span>}
@@ -924,8 +925,8 @@ export const PcapReplay: React.FC<PcapReplayProps> = ({ token }) => {
         if (ev === 'udp_datagram_received') {
             return (
                 <div key={idx} className="flex items-center gap-2 py-0.5 text-[10px]">
-                    <span className="text-text-muted/40 select-none text-[8px] font-mono">[{idx + 1}]</span>
-                    <span className="px-1.5 py-0.2 rounded font-black uppercase text-[8px] flex items-center gap-1 bg-teal-500/20 text-teal-400 border border-teal-500/30">
+                    <span className="text-text-muted/60 select-none text-[8px] font-mono">[{idx + 1}]</span>
+                    <span className="px-1.5 py-0.2 rounded font-black uppercase text-[8px] flex items-center gap-1 bg-teal-500/15 text-teal-700 dark:text-teal-400 border border-teal-500/30">
                         ⬇️ UDP  {log.client_ip}:{log.client_port}
                     </span>
                     <span className="text-text-secondary font-mono">{log.bytes} bytes</span>
@@ -936,14 +937,13 @@ export const PcapReplay: React.FC<PcapReplayProps> = ({ token }) => {
         if (ev === 'session_finished' || ev === 'client_session_finished') {
             const isBypass = log.verdict === 'Bypass';
             const isReset = log.verdict?.includes('Reset');
-            const isDrop = log.verdict?.includes('Drop');
             const isError = log.status === 'error' || Boolean(log.error);
 
             if (isError) {
                 return (
-                    <div key={idx} className="flex items-center gap-2 py-1 text-[10px] text-red-400 bg-red-500/10 px-2 rounded-lg border border-red-500/20">
-                        <span className="text-red-400 select-none text-[8px] font-mono">[{idx + 1}]</span>
-                        <span className="px-1.5 py-0.2 rounded bg-red-500/30 text-red-300 font-black uppercase text-[8px]">
+                    <div key={idx} className="flex items-center gap-2 py-1 text-[10px] text-red-600 dark:text-red-400 bg-red-500/10 px-2 rounded-lg border border-red-500/20">
+                        <span className="text-red-600 dark:text-red-400 select-none text-[8px] font-mono">[{idx + 1}]</span>
+                        <span className="px-1.5 py-0.2 rounded bg-red-500/20 text-red-700 dark:text-red-300 font-black uppercase text-[8px]">
                             FAILED
                         </span>
                         <span className="font-bold">{log.error || 'Connection Failed'}</span>
@@ -955,13 +955,13 @@ export const PcapReplay: React.FC<PcapReplayProps> = ({ token }) => {
             return (
                 <div key={idx} className={`flex items-center gap-2 py-1 text-[10px] px-2 rounded-lg border ${
                     isBypass
-                        ? 'bg-emerald-500/15 border-emerald-500/30 text-emerald-400'
+                        ? 'bg-emerald-500/15 border-emerald-500/30 text-emerald-700 dark:text-emerald-400'
                         : isReset
-                        ? 'bg-red-500/15 border-red-500/30 text-red-400'
-                        : 'bg-amber-500/15 border-amber-500/30 text-amber-400'
+                        ? 'bg-red-500/15 border-red-500/30 text-red-700 dark:text-red-400'
+                        : 'bg-amber-500/15 border-amber-500/30 text-amber-700 dark:text-amber-400'
                 }`}>
                     <span className="select-none text-[8px] font-mono">[{idx + 1}]</span>
-                    <span className="px-1.5 py-0.2 rounded font-black uppercase text-[8px] bg-black/30">
+                    <span className="px-1.5 py-0.2 rounded font-black uppercase text-[8px] bg-card/80 dark:bg-black/30 border border-current/20">
                         VERDICT: {log.verdict?.toUpperCase()}
                     </span>
                     <span className="font-bold">
@@ -978,9 +978,9 @@ export const PcapReplay: React.FC<PcapReplayProps> = ({ token }) => {
 
         if (ev === 'session_error' || ev === 'stderr') {
             return (
-                <div key={idx} className="flex items-center gap-2 py-0.5 text-[10px] text-red-400">
-                    <span className="text-text-muted/40 select-none text-[8px] font-mono">[{idx + 1}]</span>
-                    <span className="px-1.5 py-0.2 rounded bg-red-500/20 text-red-400 font-bold uppercase text-[8px]">STDERR</span>
+                <div key={idx} className="flex items-center gap-2 py-0.5 text-[10px] text-red-600 dark:text-red-400">
+                    <span className="text-text-muted/60 select-none text-[8px] font-mono">[{idx + 1}]</span>
+                    <span className="px-1.5 py-0.2 rounded bg-red-500/15 text-red-700 dark:text-red-400 font-bold uppercase text-[8px]">STDERR</span>
                     <span>{log.error || log.text}</span>
                 </div>
             );
@@ -988,7 +988,7 @@ export const PcapReplay: React.FC<PcapReplayProps> = ({ token }) => {
 
         return (
             <div key={idx} className="flex items-start gap-1.5 text-text-secondary leading-tight text-[10px] font-mono">
-                <span className="text-text-muted/40 select-none text-[8px]">[{idx + 1}]</span>
+                <span className="text-text-muted/60 select-none text-[8px]">[{idx + 1}]</span>
                 <span>{JSON.stringify(log)}</span>
             </div>
         );
@@ -1061,9 +1061,9 @@ export const PcapReplay: React.FC<PcapReplayProps> = ({ token }) => {
                 </div>
 
                 {!isPcapEnabled && (
-                    <div className="mt-2.5 p-2 px-3 bg-amber-500/10 border border-amber-500/20 rounded-xl flex items-center gap-2.5 text-xs text-amber-400 font-medium">
+                    <div className="mt-2.5 p-2 px-3 bg-amber-500/10 border border-amber-500/20 rounded-xl flex items-center gap-2.5 text-xs text-amber-700 dark:text-amber-400 font-medium">
                         <AlertTriangle size={15} className="shrink-0" />
-                        <span>PCAP Replay is currently inactive. Ensure <code className="font-mono bg-black/30 px-1 py-0.5 rounded text-amber-300">ENABLE_PCAP_REPLAY=true</code> is defined in your environment file.</span>
+                        <span>PCAP Replay is currently inactive. Ensure <code className="font-mono bg-card-secondary dark:bg-black/30 px-1 py-0.5 rounded text-amber-700 dark:text-amber-300">ENABLE_PCAP_REPLAY=true</code> is defined in your environment file.</span>
                     </div>
                 )}
 
@@ -1072,7 +1072,7 @@ export const PcapReplay: React.FC<PcapReplayProps> = ({ token }) => {
                     {/* Left: Role Switcher & Inline Parameters */}
                     <div className="flex flex-wrap items-center gap-2.5">
                         {/* Role Switcher */}
-                        <div className="flex p-0.5 bg-black/40 border border-border rounded-xl">
+                        <div className="flex p-0.5 bg-card-secondary dark:bg-black/40 border border-border rounded-xl">
                             <button
                                 type="button"
                                 onClick={() => setReplayRole('server')}
@@ -1102,10 +1102,10 @@ export const PcapReplay: React.FC<PcapReplayProps> = ({ token }) => {
                         {/* Inline Role Parameters */}
                         {replayRole === 'server' ? (
                             <div className="flex items-center gap-2 text-xs">
-                                <span className="text-[11px] text-text-muted font-bold font-mono bg-black/30 px-2 py-1 rounded-lg border border-border">
+                                <span className="text-[11px] text-text-muted font-bold font-mono bg-card-secondary dark:bg-black/30 px-2 py-1 rounded-lg border border-border">
                                     Bind: 0.0.0.0
                                 </span>
-                                <div className="flex items-center gap-1.5 bg-black/30 px-2.5 py-1 rounded-lg border border-border">
+                                <div className="flex items-center gap-1.5 bg-card-secondary dark:bg-black/30 px-2.5 py-1 rounded-lg border border-border">
                                     <span className="text-[10px] text-text-muted font-bold uppercase">Port:</span>
                                     <input
                                         type="number"
@@ -1119,27 +1119,30 @@ export const PcapReplay: React.FC<PcapReplayProps> = ({ token }) => {
                         ) : (
                             <div className="flex flex-wrap items-center gap-2 text-xs">
                                 {/* Target Peer Selector */}
-                                <div className="flex items-center gap-1.5 bg-black/30 px-2.5 py-1 rounded-lg border border-border">
-                                    <Server size={11} className="text-purple-400" />
-                                    <select
-                                        value={serverNodeId}
-                                        onChange={(e) => handleTargetPeerChange(e.target.value)}
-                                        className="bg-transparent text-xs font-bold text-text-primary focus:outline-none cursor-pointer"
-                                    >
-                                        {peers.map((peer) => (
-                                            <option key={peer.instance_id} value={peer.instance_id} className="bg-card text-text-primary">
-                                                {peer.site || peer.instance_id} {peer.is_leader ? '(Leader)' : ''} ({peer.ip_private || 'No IP'})
-                                            </option>
-                                        ))}
-                                        {serverNodeId === 'custom' && (
-                                            <option value="custom" className="bg-card text-text-primary">Custom Host ({customTargetIp})</option>
-                                        )}
-                                        <option value="local" className="bg-card text-text-primary">Local Node (127.0.0.1)</option>
-                                    </select>
-                                </div>
+                                <StigixSelect
+                                    value={serverNodeId}
+                                    onChange={(val) => handleTargetPeerChange(val)}
+                                    size="xs"
+                                    accent="purple"
+                                    triggerIcon={<Server size={11} className="text-purple-400" />}
+                                    minMenuWidth={240}
+                                    options={[
+                                        ...peers.map((peer) => ({
+                                            value: peer.instance_id,
+                                            label: `${peer.site || peer.instance_id}${peer.is_leader ? ' (Leader)' : ''}`,
+                                            badge: peer.ip_private || 'No IP'
+                                        })),
+                                        ...(serverNodeId === 'custom' ? [{
+                                            value: 'custom',
+                                            label: 'Custom Host',
+                                            badge: customTargetIp
+                                        }] : []),
+                                        { value: 'local', label: 'Local Node', badge: '127.0.0.1' }
+                                    ]}
+                                />
 
                                 {/* Destination IP */}
-                                <div className="flex items-center gap-1.5 bg-black/30 px-2.5 py-1 rounded-lg border border-border">
+                                <div className="flex items-center gap-1.5 bg-card-secondary dark:bg-black/30 px-2.5 py-1 rounded-lg border border-border">
                                     <Globe size={11} className="text-blue-400" />
                                     <input
                                         type="text"
@@ -1151,7 +1154,7 @@ export const PcapReplay: React.FC<PcapReplayProps> = ({ token }) => {
                                 </div>
 
                                 {/* Port */}
-                                <div className="flex items-center gap-1.5 bg-black/30 px-2.5 py-1 rounded-lg border border-border">
+                                <div className="flex items-center gap-1.5 bg-card-secondary dark:bg-black/30 px-2.5 py-1 rounded-lg border border-border">
                                     <span className="text-[10px] text-text-muted font-bold uppercase">Port:</span>
                                     <input
                                         type="number"
@@ -1163,7 +1166,7 @@ export const PcapReplay: React.FC<PcapReplayProps> = ({ token }) => {
                                 </div>
 
                                 {/* Loop Toggle */}
-                                <div className="flex items-center gap-1 bg-black/30 px-2 py-1 rounded-lg border border-border">
+                                <div className="flex items-center gap-1 bg-card-secondary dark:bg-black/30 px-2 py-1 rounded-lg border border-border">
                                     <label className="flex items-center gap-1.5 cursor-pointer text-[10px] font-bold text-text-muted hover:text-text-primary">
                                         <input
                                             type="checkbox"
@@ -1181,7 +1184,7 @@ export const PcapReplay: React.FC<PcapReplayProps> = ({ token }) => {
                                                 max={60}
                                                 value={loopInterval}
                                                 onChange={(e) => setLoopInterval(Math.max(1, parseInt(e.target.value) || 1))}
-                                                className="w-7 bg-black/40 border border-border/80 rounded px-1 text-center text-text-primary focus:outline-none text-[9px]"
+                                                className="w-7 bg-card dark:bg-black/40 border border-border/80 rounded px-1 text-center text-text-primary focus:outline-none text-[9px]"
                                                 title="Loop interval in seconds"
                                             />
                                             <span>s</span>
@@ -1194,8 +1197,8 @@ export const PcapReplay: React.FC<PcapReplayProps> = ({ token }) => {
                         {/* Telemetry Path Pill */}
                         <div className={`hidden xl:flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-[10px] font-mono ${
                             customTargetIp === '127.0.0.1' || serverNodeId === 'local'
-                                ? 'bg-amber-500/10 border-amber-500/30 text-amber-300'
-                                : 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300'
+                                ? 'bg-amber-500/10 border-amber-500/30 text-amber-700 dark:text-amber-300'
+                                : 'bg-emerald-500/10 border-emerald-500/30 text-emerald-700 dark:text-emerald-300'
                         }`}>
                             {customTargetIp === '127.0.0.1' || serverNodeId === 'local' ? (
                                 <span>⚠️ Loopback 127.0.0.1</span>
@@ -1485,7 +1488,7 @@ export const PcapReplay: React.FC<PcapReplayProps> = ({ token }) => {
                             {/* Turns Filter and Search Toolbar */}
                             {profileDetails && turns.length > 0 && (
                                 <div className="flex items-center gap-1.5 pt-1">
-                                    <div className="flex p-0.5 bg-black/40 border border-border/70 rounded-lg shrink-0">
+                                    <div className="flex p-0.5 bg-card-secondary dark:bg-black/40 border border-border/70 rounded-lg shrink-0">
                                         <button
                                             type="button"
                                             onClick={() => setTurnFilter('all')}
@@ -1530,7 +1533,7 @@ export const PcapReplay: React.FC<PcapReplayProps> = ({ token }) => {
                                             value={turnSearchQuery}
                                             onChange={(e) => setTurnSearchQuery(e.target.value)}
                                             placeholder="Search payload, hex, #..."
-                                            className="w-full bg-black/40 border border-border/70 rounded-lg pl-6 pr-2 py-0.5 text-[9px] text-text-primary focus:outline-none focus:border-purple-500/50 transition-colors"
+                                            className="w-full bg-card-secondary dark:bg-black/40 border border-border/70 rounded-lg pl-6 pr-2 py-0.5 text-[9px] text-text-primary focus:outline-none focus:border-purple-500/50 transition-colors"
                                         />
                                         {turnSearchQuery && (
                                             <button
@@ -1637,7 +1640,7 @@ export const PcapReplay: React.FC<PcapReplayProps> = ({ token }) => {
                                                         </div>
 
                                                         {/* Readable Payload Snippet */}
-                                                        <div className="text-[9px] font-mono text-text-secondary truncate bg-black/35 px-1.5 py-0.5 rounded border border-border/40 leading-tight">
+                                                        <div className="text-[9px] font-mono text-text-secondary truncate bg-card-secondary dark:bg-black/35 px-1.5 py-0.5 rounded border border-border/40 leading-tight">
                                                             {analysis.snippet}
                                                         </div>
                                                     </div>
@@ -1653,14 +1656,14 @@ export const PcapReplay: React.FC<PcapReplayProps> = ({ token }) => {
                                                         <button
                                                             type="button"
                                                             onClick={() => setTurnDisplayLimit(prev => prev + 250)}
-                                                            className="px-2 py-0.5 rounded text-[8px] font-bold bg-purple-600/30 hover:bg-purple-600 text-purple-200 transition-colors cursor-pointer"
+                                                            className="px-2 py-0.5 rounded text-[8px] font-bold bg-purple-600/30 hover:bg-purple-600 text-purple-700 dark:text-purple-200 hover:text-white transition-colors cursor-pointer"
                                                         >
                                                             Load +250 steps
                                                         </button>
                                                         <button
                                                             type="button"
                                                             onClick={() => setTurnDisplayLimit(filteredTurns.length)}
-                                                            className="px-2 py-0.5 rounded text-[8px] font-bold bg-white/10 hover:bg-white/20 text-text-primary transition-colors cursor-pointer"
+                                                            className="px-2 py-0.5 rounded text-[8px] font-bold bg-card-secondary hover:bg-card text-text-primary transition-colors cursor-pointer"
                                                         >
                                                             Load All ({filteredTurns.length})
                                                         </button>
@@ -1719,7 +1722,7 @@ export const PcapReplay: React.FC<PcapReplayProps> = ({ token }) => {
                                             </div>
                                         </div>
 
-                                        <div className="bg-black/60 border border-border/60 rounded-lg p-2 max-h-24 overflow-y-auto text-[9px] text-text-secondary font-mono leading-relaxed whitespace-pre font-normal scrollbar-thin scrollbar-thumb-border">
+                                        <div className="bg-card-secondary/70 dark:bg-black/60 border border-border/60 rounded-lg p-2 max-h-24 overflow-y-auto text-[9px] text-text-secondary font-mono leading-relaxed whitespace-pre font-normal scrollbar-thin scrollbar-thumb-border">
                                             {payloadViewMode === 'hex' ? selectedTurnHexDump : selectedTurnCleanAscii}
                                         </div>
                                     </div>
@@ -1814,7 +1817,7 @@ export const PcapReplay: React.FC<PcapReplayProps> = ({ token }) => {
                             <div className="mt-1 font-mono font-bold text-xs text-text-primary">
                                 {liveTelemetry.completedTurns} <span className="text-[9px] font-normal text-text-muted">/ {liveTelemetry.totalTurns}</span>
                             </div>
-                            <div className="w-full bg-black/40 h-1 rounded-full mt-1.5 overflow-hidden">
+                            <div className="w-full bg-card-secondary dark:bg-black/40 h-1 rounded-full mt-1.5 overflow-hidden">
                                 <div
                                     className={`h-full transition-all duration-300 ${
                                         liveTelemetry.lastVerdict === 'Bypass'
@@ -1879,13 +1882,13 @@ export const PcapReplay: React.FC<PcapReplayProps> = ({ token }) => {
                             </div>
 
                             <div className="flex items-center gap-1.5">
-                                <div className="flex items-center bg-black/40 rounded-lg p-0.5 border border-border/60">
+                                <div className="flex items-center bg-card-secondary dark:bg-black/40 rounded-lg p-0.5 border border-border/60">
                                     <button
                                         type="button"
                                         onClick={() => setConsoleViewMode('timeline')}
                                         className={`px-2 py-0.5 rounded text-[8px] font-bold transition-all cursor-pointer ${
                                             consoleViewMode === 'timeline'
-                                                ? 'bg-primary text-black shadow-sm'
+                                                ? 'bg-indigo-600 text-white shadow-sm'
                                                 : 'text-text-muted hover:text-text-primary'
                                         }`}
                                     >
@@ -1896,7 +1899,7 @@ export const PcapReplay: React.FC<PcapReplayProps> = ({ token }) => {
                                         onClick={() => setConsoleViewMode('stream')}
                                         className={`px-2 py-0.5 rounded text-[8px] font-bold transition-all cursor-pointer ${
                                             consoleViewMode === 'stream'
-                                                ? 'bg-primary text-black shadow-sm'
+                                                ? 'bg-indigo-600 text-white shadow-sm'
                                                 : 'text-text-muted hover:text-text-primary'
                                         }`}
                                     >
@@ -1907,7 +1910,7 @@ export const PcapReplay: React.FC<PcapReplayProps> = ({ token }) => {
                                         onClick={() => setConsoleViewMode('raw')}
                                         className={`px-2 py-0.5 rounded text-[8px] font-bold transition-all cursor-pointer ${
                                             consoleViewMode === 'raw'
-                                                ? 'bg-primary text-black shadow-sm'
+                                                ? 'bg-indigo-600 text-white shadow-sm'
                                                 : 'text-text-muted hover:text-text-primary'
                                         }`}
                                     >
@@ -1929,7 +1932,7 @@ export const PcapReplay: React.FC<PcapReplayProps> = ({ token }) => {
                         </div>
 
                         {/* Console Viewport */}
-                        <div className="mt-2 bg-black/50 border border-border/60 rounded-xl p-2.5 flex-1 min-h-0 overflow-y-auto space-y-1.5 text-[10px] scrollbar-thin scrollbar-thumb-border">
+                        <div className="mt-2 bg-card-secondary/60 dark:bg-black/50 border border-border/60 rounded-xl p-2.5 flex-1 min-h-0 overflow-y-auto space-y-1.5 text-[10px] scrollbar-thin scrollbar-thumb-border">
                             {consoleViewMode === 'timeline' ? (
                                 /* 📊 Milestone Session Timeline View */
                                 <div className="space-y-2.5 py-1">
@@ -2079,7 +2082,7 @@ export const PcapReplay: React.FC<PcapReplayProps> = ({ token }) => {
                                     value={editName}
                                     onChange={(e) => setEditName(e.target.value)}
                                     placeholder="e.g. TLS App Identification Bypass"
-                                    className="w-full bg-black/40 border border-border rounded-xl px-3 py-2 text-text-primary text-xs focus:outline-none focus:border-primary/60 transition-colors"
+                                    className="w-full bg-card-secondary dark:bg-black/40 border border-border rounded-xl px-3 py-2 text-text-primary text-xs focus:outline-none focus:border-purple-500 transition-colors"
                                 />
                             </div>
 
@@ -2088,14 +2091,16 @@ export const PcapReplay: React.FC<PcapReplayProps> = ({ token }) => {
                                     <label className="block text-[11px] font-bold text-text-muted uppercase tracking-wider mb-1">
                                         Replay Timing Engine
                                     </label>
-                                    <select
+                                    <StigixSelect
                                         value={editTiming}
-                                        onChange={(e: any) => setEditTiming(e.target.value)}
-                                        className="w-full bg-black/40 border border-border rounded-xl px-3 py-2 text-text-primary text-xs font-semibold focus:outline-none focus:border-primary/60 transition-colors cursor-pointer"
-                                    >
-                                        <option value="as_fast_as_possible" className="bg-card text-text-primary">⚡ Fastest (Zero-Delay DPI)</option>
-                                        <option value="original" className="bg-card text-text-primary">⏱️ Original PCAP Delays (Real-Time)</option>
-                                    </select>
+                                        onChange={(val: any) => setEditTiming(val)}
+                                        size="sm"
+                                        accent="purple"
+                                        options={[
+                                            { value: 'as_fast_as_possible', label: 'Fastest (Zero-Delay DPI)', icon: <Zap size={13} className="text-amber-400" /> },
+                                            { value: 'original', label: 'Original PCAP Delays (Real-Time)', icon: <Clock size={13} className="text-purple-400" /> },
+                                        ]}
+                                    />
                                 </div>
                                 <div>
                                     <label className="block text-[11px] font-bold text-text-muted uppercase tracking-wider mb-1">
@@ -2106,7 +2111,7 @@ export const PcapReplay: React.FC<PcapReplayProps> = ({ token }) => {
                                         value={editCategory}
                                         onChange={(e) => setEditCategory(e.target.value)}
                                         placeholder="e.g. CUSTOM, TLS, SASE"
-                                        className="w-full bg-black/40 border border-border rounded-xl px-3 py-2 text-text-primary text-xs focus:outline-none focus:border-primary/60 transition-colors"
+                                        className="w-full bg-card-secondary dark:bg-black/40 border border-border rounded-xl px-3 py-2 text-text-primary text-xs focus:outline-none focus:border-purple-500 transition-colors"
                                     />
                                 </div>
                             </div>
@@ -2121,14 +2126,14 @@ export const PcapReplay: React.FC<PcapReplayProps> = ({ token }) => {
                                         value={editPort}
                                         onChange={(e) => setEditPort(e.target.value)}
                                         placeholder="18443"
-                                        className="w-full bg-black/40 border border-border rounded-xl px-3 py-2 text-text-primary text-xs font-mono focus:outline-none focus:border-primary/60 transition-colors"
+                                        className="w-full bg-card-secondary dark:bg-black/40 border border-border rounded-xl px-3 py-2 text-text-primary text-xs font-mono focus:outline-none focus:border-purple-500 transition-colors"
                                     />
                                 </div>
                                 <div>
                                     <label className="block text-[11px] font-bold text-text-muted uppercase tracking-wider mb-1">
                                         Timing Behavior Note
                                     </label>
-                                    <div className="text-[10px] text-text-muted bg-black/20 border border-border/40 rounded-xl p-2 leading-tight">
+                                    <div className="text-[10px] text-text-muted bg-card-secondary/70 dark:bg-black/20 border border-border/40 rounded-xl p-2 leading-tight">
                                         {editTiming === 'original' 
                                             ? 'Waits exact inter-packet delta_ms from PCAP between turns.'
                                             : 'Sends next step immediately upon receiving response.'}
@@ -2145,7 +2150,7 @@ export const PcapReplay: React.FC<PcapReplayProps> = ({ token }) => {
                                     onChange={(e) => setEditDescription(e.target.value)}
                                     rows={2}
                                     placeholder="Describe the application protocol, expected firewall policy, or SASE inspection behavior..."
-                                    className="w-full bg-black/40 border border-border rounded-xl px-3 py-2 text-text-primary text-xs focus:outline-none focus:border-primary/60 transition-colors resize-none"
+                                    className="w-full bg-card-secondary dark:bg-black/40 border border-border rounded-xl px-3 py-2 text-text-primary text-xs focus:outline-none focus:border-purple-500 transition-colors resize-none"
                                 />
                             </div>
                         </div>

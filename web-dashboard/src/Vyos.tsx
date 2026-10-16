@@ -5,6 +5,7 @@ import toast from 'react-hot-toast';
 import { isValidIpOrFqdn } from './utils/validation';
 import { usePeerContext } from './PeerContext';
 import { VyosSkeleton } from './components/skeletons/VyosSkeleton';
+import { StigixSelect } from './components/common/StigixSelect';
 import { twMerge } from 'tailwind-merge';
 import { clsx, type ClassValue } from 'clsx';
 
@@ -116,30 +117,33 @@ interface VyosProps {
 
 function ActionSelector({ value, onChange }: { value: string, onChange: (val: string) => void }) {
     return (
-        <div className="relative">
-            <div className="absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none">
-                {getCommandIcon(value, 14)}
-            </div>
-            <select
-                value={value}
-                onChange={(e) => onChange(e.target.value)}
-                className="w-full bg-card border border-border rounded-lg pl-8 pr-8 py-1.5 text-[11px] font-black uppercase tracking-tight text-text-primary focus:outline-none focus:ring-1 focus:ring-purple-500/50 appearance-none cursor-pointer"
-            >
-                <optgroup label="Interface">
-                    <option value="interface-down">Shut</option>
-                    <option value="interface-up">No Shut</option>
-                    <option value="set-qos">Latency/Loss</option>
-                    <option value="clear-qos">Clear Qos</option>
-                </optgroup>
-                <optgroup label="Traffic Control">
-                    <option value="deny-traffic">Deny Traffic</option>
-                    <option value="allow-traffic">Allow Traffic</option>
-                    <option value="clear-all-blocks">Clear All Blocks</option>
-                    <option value="show-denied">Show Denied</option>
-                </optgroup>
-            </select>
-            <ChevronDown size={14} className="absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none text-text-muted" />
-        </div>
+        <StigixSelect
+            value={value}
+            onChange={onChange}
+            accent="purple"
+            uppercaseTrigger
+            menuMinWidth={210}
+            groups={[
+                {
+                    label: 'Interface',
+                    options: [
+                        { value: 'interface-down', label: 'Shut', icon: getCommandIcon('interface-down', 14) },
+                        { value: 'interface-up', label: 'No Shut', icon: getCommandIcon('interface-up', 14) },
+                        { value: 'set-qos', label: 'Latency/Loss', icon: getCommandIcon('set-qos', 14) },
+                        { value: 'clear-qos', label: 'Clear Qos', icon: getCommandIcon('clear-qos', 14) },
+                    ],
+                },
+                {
+                    label: 'Traffic Control',
+                    options: [
+                        { value: 'deny-traffic', label: 'Deny Traffic', icon: getCommandIcon('deny-traffic', 14) },
+                        { value: 'allow-traffic', label: 'Allow Traffic', icon: getCommandIcon('allow-traffic', 14) },
+                        { value: 'clear-all-blocks', label: 'Clear All Blocks', icon: getCommandIcon('clear-all-blocks', 14) },
+                        { value: 'show-denied', label: 'Show Denied', icon: getCommandIcon('show-denied', 14) },
+                    ],
+                },
+            ]}
+        />
     );
 }
 
@@ -1820,26 +1824,32 @@ export default function Vyos(props: VyosProps) {
                                 className="w-full bg-card-secondary border border-border rounded-xl pl-9 pr-4 py-2.5 text-xs text-text-primary focus:outline-none focus:ring-1 focus:ring-green-500/50 font-medium placeholder:text-text-muted/50 tracking-normal transition-all"
                             />
                         </div>
-                        <select
+                        <StigixSelect
                             value={historyMissionFilter}
-                            onChange={(e) => setHistoryMissionFilter(e.target.value)}
-                            className="bg-card-secondary border border-border rounded-xl px-4 py-2.5 text-xs text-text-secondary focus:outline-none font-medium cursor-pointer transition-all hover:border-text-muted/30"
-                        >
-                            <option value="all">Any sequence</option>
-                            {[...new Set(history.map(h => h.sequence_name))].map(name => (
-                                <option key={name} value={name}>{name}</option>
-                            ))}
-                        </select>
-                        <select
+                            onChange={(val) => setHistoryMissionFilter(val)}
+                            accent="emerald"
+                            triggerClassName="bg-card-secondary rounded-xl px-4 py-2.5 h-full"
+                            options={[
+                                { value: 'all', label: 'Any sequence' },
+                                ...[...new Set(history.map(h => h.sequence_name))].filter(Boolean).map(name => ({
+                                    value: String(name),
+                                    label: String(name),
+                                })),
+                            ]}
+                        />
+                        <StigixSelect
                             value={historyNodeFilter}
-                            onChange={(e) => setHistoryNodeFilter(e.target.value)}
-                            className="bg-card-secondary border border-border rounded-xl px-4 py-2.5 text-xs text-text-secondary focus:outline-none font-medium cursor-pointer transition-all hover:border-text-muted/30"
-                        >
-                            <option value="all">Any router</option>
-                            {[...new Set(history.map(h => h.router_id))].map(id => (
-                                <option key={id} value={id}>{id}</option>
-                            ))}
-                        </select>
+                            onChange={(val) => setHistoryNodeFilter(val)}
+                            accent="emerald"
+                            triggerClassName="bg-card-secondary rounded-xl px-4 py-2.5 h-full"
+                            options={[
+                                { value: 'all', label: 'Any router' },
+                                ...[...new Set(history.map(h => h.router_id))].filter(Boolean).map(id => ({
+                                    value: String(id),
+                                    label: String(id),
+                                })),
+                            ]}
+                        />
                         <div className="flex items-center gap-2">
                             <button
                                 onClick={() => setIsGrouped(!isGrouped)}
@@ -2405,33 +2415,41 @@ export default function Vyos(props: VyosProps) {
                                 className="flex-1 bg-card-secondary border border-border rounded-lg px-3 py-1.5 text-[12px] text-text-primary focus:outline-none focus:ring-1 focus:ring-purple-500/50 font-medium min-w-0"
                             />
                             {/* Execution mode */}
-                            <select
+                            <StigixSelect
                                 value={editingSeq.executionMode}
-                                onChange={(e) => setEditingSeq({ ...editingSeq, executionMode: e.target.value as any })}
-                                className="bg-card-secondary border border-border rounded-lg px-3 py-1.5 text-[12px] text-text-primary focus:outline-none focus:ring-1 focus:ring-purple-500/50 appearance-none cursor-pointer shrink-0"
-                            >
-                                <option value="BATCH">One-Shot Batch (All at once)</option>
-                                <option value="CYCLE">Timed Cycle</option>
-                                <option value="STEP_BY_STEP">Step-by-Step</option>
-                            </select>
+                                onChange={(val) => setEditingSeq({ ...editingSeq, executionMode: val as any })}
+                                accent="purple"
+                                className="shrink-0 w-56"
+                                triggerClassName="bg-card-secondary"
+                                menuMinWidth={240}
+                                options={[
+                                    { value: 'BATCH', label: 'One-Shot Batch (All at once)', sublabel: 'Sequential 1-shot run', icon: <Zap size={13} className="text-amber-400" /> },
+                                    { value: 'CYCLE', label: 'Timed Cycle', sublabel: 'Recurring T+ offset schedule', icon: <RefreshCw size={13} className="text-cyan-400" /> },
+                                    { value: 'STEP_BY_STEP', label: 'Step-by-Step', sublabel: 'Manual interactive progression', icon: <Play size={13} className="text-purple-400" /> },
+                                ]}
+                            />
                             {/* Cycle duration — only for CYCLE mode */}
                             {editingSeq.executionMode === 'CYCLE' ? (
-                                <select
+                                <StigixSelect
                                     value={editingSeq.cycle_duration}
-                                    onChange={(e) => {
-                                        const val = Math.max(0, parseInt(e.target.value || '0'));
+                                    onChange={(valStr) => {
+                                        const val = Math.max(0, parseInt(valStr || '0'));
                                         const updatedActions = editingSeq.actions.map(a => ({ ...a, offset_minutes: Math.min(val, a.offset_minutes) }));
                                         setEditingSeq({ ...editingSeq, cycle_duration: val, actions: updatedActions });
                                     }}
-                                    className="bg-card-secondary border border-border rounded-lg px-3 py-1.5 text-[12px] text-text-primary focus:outline-none focus:ring-1 focus:ring-purple-500/50 appearance-none cursor-pointer shrink-0"
-                                >
-                                    <option value={0}>Manual trigger</option>
-                                    <option value={10}>Every 10 min</option>
-                                    <option value={30}>Every 30 min</option>
-                                    <option value={60}>Every hour</option>
-                                    <option value={120}>Every 2 h</option>
-                                    <option value={1440}>Every 24 h</option>
-                                </select>
+                                    accent="purple"
+                                    className="shrink-0 w-36"
+                                    triggerClassName="bg-card-secondary"
+                                    menuMinWidth={160}
+                                    options={[
+                                        { value: 0, label: 'Manual trigger' },
+                                        { value: 10, label: 'Every 10 min' },
+                                        { value: 30, label: 'Every 30 min' },
+                                        { value: 60, label: 'Every hour' },
+                                        { value: 120, label: 'Every 2 h' },
+                                        { value: 1440, label: 'Every 24 h' },
+                                    ]}
+                                />
                             ) : editingSeq.executionMode === 'BATCH' ? (
                                 <span className="text-[10px] text-amber-400/90 font-semibold shrink-0">⚡ 1-Shot Sequential</span>
                             ) : (
@@ -2547,35 +2565,43 @@ export default function Vyos(props: VyosProps) {
                                                 />
 
                                                 {/* Router */}
-                                                <select
+                                                <StigixSelect
                                                     value={action.router_id}
-                                                    onChange={(e) => {
+                                                    onChange={(val) => {
                                                         const newActions = [...editingSeq.actions];
-                                                        newActions[idx].router_id = e.target.value;
-                                                        const r = routers.find(router => router.id === e.target.value);
+                                                        newActions[idx].router_id = val;
+                                                        const r = routers.find(router => router.id === val);
                                                         if (r && r.interfaces.length > 0) newActions[idx].interface = r.interfaces[0].name;
                                                         setEditingSeq({ ...editingSeq, actions: newActions });
                                                     }}
-                                                    className="w-full bg-card border border-border rounded-lg px-2 py-1.5 text-xs text-text-primary focus:outline-none focus:ring-1 focus:ring-purple-500/50 appearance-none cursor-pointer"
-                                                >
-                                                    {routers.map(r => <option key={r.id} value={r.id}>{r.name} ({r.host})</option>)}
-                                                </select>
+                                                    accent="purple"
+                                                    placeholder="Select router..."
+                                                    menuMinWidth={220}
+                                                    options={routers.map(r => ({
+                                                        value: r.id,
+                                                        label: r.name,
+                                                        badge: r.host,
+                                                    }))}
+                                                />
 
                                                 {/* Interface or — */}
                                                 {needsIface ? (
-                                                    <select
+                                                    <StigixSelect
                                                         value={action.interface}
-                                                        onChange={(e) => {
+                                                        onChange={(val) => {
                                                             const newActions = [...editingSeq.actions];
-                                                            newActions[idx].interface = e.target.value;
+                                                            newActions[idx].interface = val;
                                                             setEditingSeq({ ...editingSeq, actions: newActions });
                                                         }}
-                                                        className="w-full bg-card border border-border rounded-lg px-2 py-1.5 text-xs text-text-primary focus:outline-none focus:ring-1 focus:ring-purple-500/50 appearance-none cursor-pointer"
-                                                    >
-                                                        {(routers.find(r => r.id === action.router_id)?.interfaces || []).map(iface => (
-                                                            <option key={iface.name} value={iface.name}>{iface.name}{iface.description ? ` — ${iface.description}` : ''}</option>
-                                                        ))}
-                                                    </select>
+                                                        accent="purple"
+                                                        placeholder="Interface..."
+                                                        menuMinWidth={200}
+                                                        options={(routers.find(r => r.id === action.router_id)?.interfaces || []).map(iface => ({
+                                                            value: iface.name,
+                                                            label: iface.name,
+                                                            sublabel: iface.description || undefined,
+                                                        }))}
+                                                    />
                                                 ) : (
                                                     <div className="flex items-center justify-center text-text-muted/30 text-xs select-none">—</div>
                                                 )}

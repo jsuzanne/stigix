@@ -5,6 +5,7 @@ import { Activity, Clock, Calendar, Shield, Search, ChevronRight, BarChart3, Ale
 import { toPng } from 'html-to-image';
 import { isValidIpOrFqdn } from './utils/validation';
 import { FailoverSkeleton } from './components/skeletons/FailoverSkeleton';
+import { StigixSelect } from './components/common/StigixSelect';
 
 interface FailoverProps {
     token: string;
@@ -781,24 +782,27 @@ export default function Failover(props: FailoverProps) {
                         </div>
                     </div>
                     <div className="flex items-center gap-2.5 shrink-0">
-                        <div className="flex items-center gap-1.5 bg-card border border-border rounded-lg px-2.5 py-1 shadow-sm">
+                        <div className="flex items-center gap-2 bg-card border border-border rounded-lg px-2.5 py-0.5 shadow-sm">
                             <label className="text-[10px] text-text-muted font-bold uppercase tracking-widest hidden sm:inline">Precision Rate</label>
-                            <select
+                            <StigixSelect
                                 value={rate}
-                                onChange={(e) => setRate(parseInt(e.target.value))}
+                                onChange={(val) => setRate(parseInt(val))}
                                 disabled={activeTests.length > 0}
-                                className="bg-transparent text-xs font-bold text-text-primary focus:outline-none disabled:opacity-50 appearance-none cursor-pointer"
-                            >
-                                <option value="1">1 pps (1s)</option>
-                                <option value="5">5 pps (200ms)</option>
-                                <option value="10">10 pps (100ms)</option>
-                                <option value="20">20 pps (50ms)</option>
-                                <option value="50">50 pps (20ms)</option>
-                                <option value="100">100 pps (10ms)</option>
-                                <option value="200">200 pps (5ms)</option>
-                                <option value="500">500 pps (2ms)</option>
-                                <option value="1000">1000 pps (1ms)</option>
-                            </select>
+                                accent="blue"
+                                triggerClassName="border-none bg-transparent px-1.5 py-1 text-xs font-bold"
+                                menuMinWidth={165}
+                                options={[
+                                    { value: 1, label: '1 pps (1s)' },
+                                    { value: 5, label: '5 pps (200ms)' },
+                                    { value: 10, label: '10 pps (100ms)' },
+                                    { value: 20, label: '20 pps (50ms)' },
+                                    { value: 50, label: '50 pps (20ms)' },
+                                    { value: 100, label: '100 pps (10ms)' },
+                                    { value: 200, label: '200 pps (5ms)' },
+                                    { value: 500, label: '500 pps (2ms)' },
+                                    { value: 1000, label: '1000 pps (1ms)' },
+                                ]}
+                            />
                         </div>
                         <button
                             onClick={() => setShowAddModal(true)}
