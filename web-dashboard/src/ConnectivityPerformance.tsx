@@ -52,12 +52,18 @@ const DonutRing = ({ pct, size = 34 }: { pct: number; size?: number }) => {
 };
 
 // ── Circular Score Gauge for Global Experience ────────────────────────────
-const GlobalExperienceGauge = ({ score }: { score: number }) => {
+const GlobalExperienceGauge = ({ score, isPaused = false, hasData = true }: { score: number; isPaused?: boolean; hasData?: boolean }) => {
+    const showStandby = isPaused && !hasData;
+    const showNoData = !isPaused && !hasData;
     const isOptimal = score >= 80;
     const isGood = score >= 65 && score < 80;
     const isDegraded = score >= 50 && score < 65;
 
-    const strokeColor = isOptimal 
+    const strokeColor = showStandby
+        ? '#f59e0b' // amber-500
+        : showNoData
+        ? '#64748b' // slate-500
+        : isOptimal 
         ? '#10b981' // emerald-500
         : isGood 
         ? '#06b6d4' // cyan-500
@@ -65,7 +71,11 @@ const GlobalExperienceGauge = ({ score }: { score: number }) => {
         ? '#f59e0b' // amber-500
         : '#ef4444'; // red-500
 
-    const statusLabel = isOptimal 
+    const statusLabel = showStandby
+        ? 'STANDBY'
+        : showNoData
+        ? 'AWAITING DATA'
+        : isOptimal 
         ? 'OPTIMAL' 
         : isGood 
         ? 'GOOD' 
@@ -73,7 +83,11 @@ const GlobalExperienceGauge = ({ score }: { score: number }) => {
         ? 'DEGRADED' 
         : 'CRITICAL';
 
-    const statusBadgeClass = isOptimal 
+    const statusBadgeClass = showStandby
+        ? 'bg-amber-500/10 text-amber-400 border-amber-500/20'
+        : showNoData
+        ? 'bg-slate-500/10 text-slate-400 border-slate-500/20'
+        : isOptimal 
         ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' 
         : isGood 
         ? 'bg-cyan-500/10 text-cyan-400 border-cyan-500/20' 
@@ -85,7 +99,7 @@ const GlobalExperienceGauge = ({ score }: { score: number }) => {
     const stroke = 9;
     const r = (size - stroke) / 2;
     const circ = 2 * Math.PI * r;
-    const dash = (Math.max(0, Math.min(100, score)) / 100) * circ;
+    const dash = (showStandby || showNoData) ? 0 : (Math.max(0, Math.min(100, score)) / 100) * circ;
     const cx = size / 2;
     const cy = size / 2;
 
@@ -101,29 +115,37 @@ const GlobalExperienceGauge = ({ score }: { score: number }) => {
                         stroke="rgba(255, 255, 255, 0.08)"
                         strokeWidth={stroke}
                     />
-                    <circle
-                        cx={cx}
-                        cy={cy}
-                        r={r}
-                        fill="none"
-                        stroke={strokeColor}
-                        strokeWidth={stroke}
-                        strokeDasharray={`${dash.toFixed(2)} ${circ.toFixed(2)}`}
-                        strokeLinecap="round"
-                        style={{
-                            transition: 'stroke-dasharray 0.8s ease-in-out, stroke 0.4s ease',
-                            filter: `drop-shadow(0 0 8px ${strokeColor}66)`
-                        }}
-                    />
+                    {!(showStandby || showNoData) && (
+                        <circle
+                            cx={cx}
+                            cy={cy}
+                            r={r}
+                            fill="none"
+                            stroke={strokeColor}
+                            strokeWidth={stroke}
+                            strokeDasharray={`${dash.toFixed(2)} ${circ.toFixed(2)}`}
+                            strokeLinecap="round"
+                            style={{
+                                transition: 'stroke-dasharray 0.8s ease-in-out, stroke 0.4s ease',
+                                filter: `drop-shadow(0 0 8px ${strokeColor}66)`
+                            }}
+                        />
+                    )}
                 </svg>
 
                 <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none select-none">
-                    <div className="flex items-baseline justify-center">
-                        <span className="text-4xl font-black font-mono tracking-normal text-text-primary">
-                            {score}
+                    {showStandby || showNoData ? (
+                        <span className="text-3xl font-black font-mono tracking-normal text-text-muted opacity-50">
+                            —
                         </span>
-                        <span className="text-xs font-bold text-text-muted ml-1 opacity-60">/100</span>
-                    </div>
+                    ) : (
+                        <div className="flex items-baseline justify-center">
+                            <span className="text-4xl font-black font-mono tracking-normal text-text-primary">
+                                {score}
+                            </span>
+                            <span className="text-xs font-bold text-text-muted ml-1 opacity-60">/100</span>
+                        </div>
+                    )}
                 </div>
             </div>
 
@@ -817,24 +839,50 @@ export default function ConnectivityPerformance({ token, uiConfig, onManage, isL
         return new Date(ts).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
     };
 
-    // Aggregate data for table - OPTIMIZED O(N) instead of O(N^2)
-    const endpoints = React.useMemo(() => {
-        // First pass: Group results by endpointId
+    const [showPausedTelemetry, setShowPausedTelemetry] = useState(false);
+    const [showScoringInfo, setShowScoringInfo] = useState(false);
+
+    // Helper to match a probe against filterType + searchQuery
+    const matchesProbeFilter = React.useCallback((e: any) => {
+        if (filterType === 'PRISMA SDWAN') {
+            if (e.source !== 'discovery' && e.type !== 'PRISMA' && e.type !== 'PRISMA SDWAN') return false;
+        } else if (filterType === 'STIGIX' || filterType === 'AUTOMESH') {
+            if (e.source !== 'auto-mesh' && !(e.name && (e.name.startsWith('[Stigix]') || e.name.startsWith('[AutoMesh]')))) return false;
+        } else if (filterType === 'CLOUD') {
+            if (e.type !== 'CLOUD' && e.type !== 'STIGIX CLOUD') return false;
+        } else if (filterType !== 'ALL' && e.type !== filterType) {
+            return false;
+        }
+
+        if (searchQuery) {
+            const q = searchQuery.toLowerCase();
+            const title = getProbeDisplayName(e).toLowerCase();
+            const target = (e.target || '').toLowerCase();
+            const site = (e.site_name || '').toLowerCase();
+            const element = (e.element_name || '').toLowerCase();
+            const port = (e.port_name || e.selected_interface_label || e.selected_interface_name || '').toLowerCase();
+            if (!title.includes(q) && !target.includes(q) && !site.includes(q) && !element.includes(q) && !port.includes(q)) {
+                return false;
+            }
+        }
+        return true;
+    }, [filterType, searchQuery]);
+
+    // All enabled endpoints that have execution results (unfiltered by filterType/searchQuery so tab counts stay accurate)
+    const allEvaluatedEndpoints = React.useMemo(() => {
         const groups: Record<string, any[]> = {};
         results.forEach(r => {
             if (!groups[r.endpointId]) groups[r.endpointId] = [];
             groups[r.endpointId].push(r);
         });
 
-        const filtered = Object.entries(groups).map(([id, endpointResults]) => {
+        const base = Object.entries(groups).map(([id, endpointResults]) => {
             const last = endpointResults[0];
             const reachable = endpointResults.filter(r => r.reachable);
 
-            // Get enabled status from config
             const config = endpointConfigs.get(id);
-            const enabled = config?.enabled !== false; // default true
+            const enabled = config?.enabled !== false;
 
-            // Sparkline histories — up to 15 most recent, chronological order
             const histSlice = endpointResults.slice(0, 15).reverse();
             const reachableSlice = reachable.slice(0, 15).reverse();
 
@@ -864,41 +912,20 @@ export default function ConnectivityPerformance({ token, uiConfig, onManage, isL
                 selected_interface_name: config?.selected_interface_name,
                 selected_interface_label: config?.selected_interface_label,
                 selected_network: config?.selected_network,
-                content_match: config?.content_match, // ← pass full content_match config to modal
-                // Sparkline data arrays (chronological)
+                content_match: config?.content_match,
                 scoreHistory: histSlice.map(r => r.score),
                 latencyHistory: reachableSlice.map(r => Math.round(r.metrics.total_ms)),
             };
         }).filter(e => {
             if (activeProbes.length > 0 && !activeProbes.includes(e.id)) return false;
-            if (!e.enabled) return false; // Filter out inactive if not showing
-            
-            // Filtering logic
-            if (filterType === 'PRISMA SDWAN') {
-                if (e.source !== 'discovery' && e.type !== 'PRISMA' && e.type !== 'PRISMA SDWAN') return false;
-            } else if (filterType === 'STIGIX' || filterType === 'AUTOMESH') {
-                if (e.source !== 'auto-mesh' && !(e.name && (e.name.startsWith('[Stigix]') || e.name.startsWith('[AutoMesh]')))) return false;
-            } else if (filterType !== 'ALL' && e.type !== filterType) {
-                return false;
-            }
-            
-            if (searchQuery) {
-                const q = searchQuery.toLowerCase();
-                const title = getProbeDisplayName(e).toLowerCase();
-                const target = (e.target || '').toLowerCase();
-                const site = (e.site_name || '').toLowerCase();
-                const element = (e.element_name || '').toLowerCase();
-                const port = (e.port_name || e.selected_interface_label || e.selected_interface_name || '').toLowerCase();
-                if (!title.includes(q) && !target.includes(q) && !site.includes(q) && !element.includes(q) && !port.includes(q)) {
-                    return false;
-                }
-            }
+            if (!e.enabled) return false;
             return true;
         });
+
         // Deduplicate endpoints sharing the same target IP (e.g. historical name changes)
         const seenTargets = new Map<string, any>();
         const deduped: any[] = [];
-        for (const ep of filtered) {
+        for (const ep of base) {
             const target = (ep.target || '').trim();
             const key = target ? `${ep.type}:${target}` : ep.id;
             if (!seenTargets.has(key)) {
@@ -906,7 +933,6 @@ export default function ConnectivityPerformance({ token, uiConfig, onManage, isL
                 deduped.push(ep);
             } else {
                 const existing = seenTargets.get(key);
-                // Prefer discovered probe or the one with higher check count
                 if (ep.source === 'discovery' && existing.source !== 'discovery') {
                     const idx = deduped.indexOf(existing);
                     if (idx !== -1) deduped[idx] = ep;
@@ -918,9 +944,12 @@ export default function ConnectivityPerformance({ token, uiConfig, onManage, isL
                 }
             }
         }
+        return deduped;
+    }, [results, activeProbes, endpointConfigs]);
 
-        return deduped.sort((a: any, b: any) => {
-            // First sort by enabled status (enabled first)
+    // Filtered & sorted endpoints with results
+    const endpoints = React.useMemo(() => {
+        return allEvaluatedEndpoints.filter(matchesProbeFilter).sort((a: any, b: any) => {
             if (a.enabled !== b.enabled) {
                 return a.enabled ? -1 : 1;
             }
@@ -928,7 +957,6 @@ export default function ConnectivityPerformance({ token, uiConfig, onManage, isL
             let valA: any = a[sortField];
             let valB: any = b[sortField];
 
-            // Custom mappings for special fields
             if (sortField === 'reliability') {
                 valA = a.successRate;
                 valB = b.successRate;
@@ -944,12 +972,12 @@ export default function ConnectivityPerformance({ token, uiConfig, onManage, isL
             if (valA > valB) return sortDirection === 'asc' ? 1 : -1;
             return 0;
         });
-    }, [results, activeProbes, filterType, searchQuery, sortField, sortDirection, endpointConfigs]);
+    }, [allEvaluatedEndpoints, matchesProbeFilter, sortField, sortDirection]);
 
-    // Pending probes: configs that have no result yet — shown as "ghost" rows
+    // Pending probes: configs that have no result yet — shown as "standby" or "scheduled" rows
     const pendingProbes = React.useMemo(() => {
         const idsWithResults = new Set(results.map(r => r.endpointId));
-        const activeTargets = new Set(endpoints.map(e => (e.target || '').trim()).filter(Boolean));
+        const activeTargets = new Set(allEvaluatedEndpoints.map(e => (e.target || '').trim()).filter(Boolean));
         const pending: any[] = [];
         endpointConfigs.forEach((config, id) => {
             const target = (config.target || '').trim();
@@ -986,7 +1014,27 @@ export default function ConnectivityPerformance({ token, uiConfig, onManage, isL
             }
         });
         return pending;
-    }, [results, endpointConfigs]);
+    }, [results, allEvaluatedEndpoints, endpointConfigs]);
+
+    // Complete probe catalog (both evaluated and pending/standby probes) for accurate counters
+    const allCatalogProbes = React.useMemo(() => {
+        return [...allEvaluatedEndpoints, ...pendingProbes];
+    }, [allEvaluatedEndpoints, pendingProbes]);
+
+    // Filtered & sorted pending probes for the table
+    const filteredPendingProbes = React.useMemo(() => {
+        return pendingProbes.filter(matchesProbeFilter).sort((a: any, b: any) => {
+            if (sortField === 'name') {
+                const nameA = getProbeDisplayName(a).toLowerCase();
+                const nameB = getProbeDisplayName(b).toLowerCase();
+                return sortDirection === 'asc' ? nameA.localeCompare(nameB) : nameB.localeCompare(nameA);
+            }
+            if (sortField === 'type') {
+                return sortDirection === 'asc' ? (a.type || '').localeCompare(b.type || '') : (b.type || '').localeCompare(a.type || '');
+            }
+            return 0;
+        });
+    }, [pendingProbes, matchesProbeFilter, sortField, sortDirection]);
 
     const handleSort = (field: string) => {
         if (sortField === field) {
@@ -1050,32 +1098,51 @@ export default function ConnectivityPerformance({ token, uiConfig, onManage, isL
             }));
     }, [selectedEndpointResults, probeChartRange]);
 
-    if ((loading || loadingStats) && !stats && endpoints.length === 0) {
+    const isPausedWithNoData = !isProbeEngineEnabled && results.length === 0;
+    const shouldShowTelemetryCharts = !isPausedWithNoData || showPausedTelemetry;
+
+    if ((loading || loadingStats) && !stats && allCatalogProbes.length === 0) {
         return <DEMSkeleton />;
     }
 
     return (
-        <div className="space-y-6 animate-in fade-in duration-500">
-            {/* Suspended Alert Banner */}
+        <div className="space-y-5 animate-in fade-in duration-500">
+            {/* Compact Standby Banner when local engine is suspended */}
             {!isProbeEngineEnabled && (
-                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 p-3.5 bg-amber-500/10 border border-amber-500/30 rounded-2xl text-xs shadow-sm animate-in fade-in">
-                    <div className="flex items-center gap-2.5 text-amber-200">
-                        <Pause size={18} className="text-amber-400 shrink-0" />
-                        <span>
-                            <strong className="text-amber-300 font-semibold">Local probe execution is suspended on this node.</strong> Probes are maintained and synchronized to fleet peers via SD-WAN, but no probes are actively executed locally.
+                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 px-4 py-3 bg-amber-500/10 border border-amber-500/25 rounded-2xl text-xs shadow-sm animate-in fade-in">
+                    <div className="flex items-center gap-2.5 text-amber-200 flex-wrap">
+                        <span className="px-2 py-0.5 rounded-md bg-amber-500/20 border border-amber-500/30 text-amber-300 font-mono text-[10px] font-black uppercase tracking-wider flex items-center gap-1.5">
+                            <Pause size={11} className="text-amber-400" /> Standby
+                        </span>
+                        <span className="text-text-secondary">
+                            Local probe execution is paused on this node. Catalog changes (<span className="font-mono font-bold text-text-primary">{allCatalogProbes.length}</span> probes) remain active and synced across the SD-WAN fleet.
                         </span>
                     </div>
-                    <button
-                        onClick={toggleProbeEngine}
-                        disabled={isTogglingEngine}
-                        className="px-3 py-1.5 bg-amber-500 hover:bg-amber-400 text-black font-bold rounded-lg text-xs transition-colors shrink-0 shadow cursor-pointer"
-                    >
-                        {isTogglingEngine ? 'Resuming...' : 'Resume Local Engine'}
-                    </button>
+                    <div className="flex items-center gap-2 shrink-0">
+                        {isPausedWithNoData && (
+                            <button
+                                onClick={() => setShowPausedTelemetry(v => !v)}
+                                className="px-2.5 py-1.5 bg-card-secondary/80 hover:bg-card-secondary border border-border text-text-muted hover:text-text-primary font-bold rounded-lg text-[11px] transition-colors flex items-center gap-1.5 cursor-pointer"
+                            >
+                                <BarChart3 size={13} className="text-indigo-400" />
+                                <span>{showPausedTelemetry ? 'Hide Telemetry Panels' : 'Show Telemetry Panels'}</span>
+                                {showPausedTelemetry ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
+                            </button>
+                        )}
+                        <button
+                            onClick={toggleProbeEngine}
+                            disabled={isTogglingEngine}
+                            className="px-3 py-1.5 bg-amber-500 hover:bg-amber-400 text-black font-bold rounded-lg text-xs transition-colors shrink-0 shadow cursor-pointer flex items-center gap-1.5"
+                        >
+                            <Play size={12} className="fill-current" />
+                            <span>{isTogglingEngine ? 'Resuming...' : 'Resume Local Engine'}</span>
+                        </button>
+                    </div>
                 </div>
             )}
 
-            {/* Header Analytics */}
+            {/* Header Analytics (Auto-collapsed when paused with no local data) */}
+            {shouldShowTelemetryCharts && (
             <div className="flex flex-col gap-4">
                 
                 {/* 1. Combined Top Panel (Score, Trend, Flaky) */}
@@ -1092,9 +1159,15 @@ export default function ConnectivityPerformance({ token, uiConfig, onManage, isL
                             {loadingStats ? (
                                 <div className="h-28 w-28 rounded-full bg-card-secondary animate-pulse my-auto" />
                             ) : (
-                                <GlobalExperienceGauge score={stats?.globalHealth || 0} />
+                                <GlobalExperienceGauge
+                                    score={stats?.globalHealth || 0}
+                                    isPaused={!isProbeEngineEnabled}
+                                    hasData={results.length > 0}
+                                />
                             )}
-                            <div className="text-[10px] text-text-muted font-bold tracking-tight opacity-70 mt-2">Avg. Scoring across all probes</div>
+                            <div className="text-[10px] text-text-muted font-bold tracking-tight opacity-70 mt-2">
+                                {!isProbeEngineEnabled && results.length === 0 ? 'Local probe engine on standby' : 'Avg. Scoring across all probes'}
+                            </div>
                         </div>
                     </div>
 
@@ -1161,7 +1234,7 @@ export default function ConnectivityPerformance({ token, uiConfig, onManage, isL
                                         <div 
                                             key={e.id} 
                                             onClick={() => {
-                                                const found = (endpoints || []).find((ep: any) => ep.id === e.id || ep.name === e.name);
+                                                const found = (allEvaluatedEndpoints || []).find((ep: any) => ep.id === e.id || ep.name === e.name);
                                                 if (found) {
                                                     setSelectedEndpoint(found);
                                                     setInspectedCapture(null);
@@ -1203,7 +1276,12 @@ export default function ConnectivityPerformance({ token, uiConfig, onManage, isL
                                             )}
                                         </div>
                                     );
-                                }) : (
+                                }) : !isProbeEngineEnabled && results.length === 0 ? (
+                                <div className="text-xs text-text-muted italic py-6 text-center flex flex-col items-center gap-2">
+                                    <Pause size={20} className="text-amber-400 opacity-70" />
+                                    <span className="text-[11px] font-medium text-amber-300/80">Local probe execution on standby</span>
+                                </div>
+                            ) : (
                                 <div className="text-xs text-text-muted italic py-6 text-center flex flex-col items-center gap-2">
                                     <CheckCircle size={20} className="text-emerald-500 opacity-70" />
                                     <span className="text-[11px] font-medium text-emerald-400/80">All monitored probes stable</span>
@@ -1220,7 +1298,7 @@ export default function ConnectivityPerformance({ token, uiConfig, onManage, isL
                             <BarChart3 size={16} /> Performance Trends by Type
                         </div>
                         <span className="px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-400 border border-blue-500/20 font-mono text-[10px]">
-                            {endpoints.length} active probes
+                            {allCatalogProbes.length} configured probes
                         </span>
                     </div>
                     <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
@@ -1228,35 +1306,36 @@ export default function ConnectivityPerformance({ token, uiConfig, onManage, isL
                             type="HTTP/HTTPS"
                             results={httpResults}
                             color="#3b82f6"
-                            count={endpoints.filter(e => e.type === 'HTTP' || e.type === 'HTTPS').length}
+                            count={allCatalogProbes.filter(e => e.type === 'HTTP' || e.type === 'HTTPS').length}
                         />
                         <EndpointTypeGraph
                             type="PING"
                             results={pingResults}
                             color="#22c55e"
-                            count={endpoints.filter(e => e.type === 'PING').length}
+                            count={allCatalogProbes.filter(e => e.type === 'PING').length}
                         />
                         <EndpointTypeGraph
                             type="DNS"
                             results={dnsResults}
                             color="#a855f7"
-                            count={endpoints.filter(e => e.type === 'DNS').length}
+                            count={allCatalogProbes.filter(e => e.type === 'DNS').length}
                         />
                         <EndpointTypeGraph
                             type="UDP"
                             results={udpResults}
                             color="#f97316"
-                            count={endpoints.filter(e => e.type === 'UDP').length}
+                            count={allCatalogProbes.filter(e => e.type === 'UDP').length}
                         />
                         <EndpointTypeGraph
                             type="STIGIX CLOUD"
                             results={cloudResults}
                             color="#6366f1"
-                            count={endpoints.filter(e => e.type === 'CLOUD' || e.type === 'STIGIX CLOUD').length}
+                            count={allCatalogProbes.filter(e => e.type === 'CLOUD' || e.type === 'STIGIX CLOUD').length}
                         />
                     </div>
                 </div>
             </div>
+            )}
 
             {/* View Mode Switcher: Probes Catalog vs Full-Mesh Matrix */}
             <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 bg-card-secondary/30 p-2.5 rounded-xl border border-border mb-2">
@@ -1270,7 +1349,7 @@ export default function ConnectivityPerformance({ token, uiConfig, onManage, isL
                                 : "text-text-muted hover:text-text-primary hover:bg-card-secondary"
                         )}
                     >
-                        <Activity size={15} /> Probes Catalog ({endpoints.length})
+                        <Activity size={15} /> Probes Catalog ({allCatalogProbes.length})
                     </button>
                     <button
                         onClick={() => setViewMode('matrix')}
@@ -1288,9 +1367,26 @@ export default function ConnectivityPerformance({ token, uiConfig, onManage, isL
                         </span>
                     </button>
                 </div>
-                <div className="text-[11px] font-bold text-text-muted hidden md:flex items-center gap-2 pr-2">
-                    <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                    <span>Bidirectional Cross-Instance Telemetry</span>
+                <div className="flex items-center gap-3 pr-2">
+                    {viewMode === 'catalog' && (
+                        <button
+                            onClick={() => setShowScoringInfo(v => !v)}
+                            className={cn(
+                                "px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all flex items-center gap-1.5 border cursor-pointer",
+                                showScoringInfo
+                                    ? "bg-blue-500/15 text-blue-400 border-blue-500/30"
+                                    : "bg-card-secondary/60 text-text-muted hover:text-text-primary border-border"
+                            )}
+                            title="How is the performance score calculated?"
+                        >
+                            <Info size={13} className="text-blue-400" />
+                            <span>Scoring Formula</span>
+                        </button>
+                    )}
+                    <div className="text-[11px] font-bold text-text-muted hidden md:flex items-center gap-2">
+                        <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                        <span>Bidirectional Cross-Instance Telemetry</span>
+                    </div>
                 </div>
             </div>
 
@@ -1298,23 +1394,26 @@ export default function ConnectivityPerformance({ token, uiConfig, onManage, isL
                 <ReachabilityMatrix token={token} />
             ) : (
                 <>
-            {/* Filters & Export */}
-            <div className="bg-blue-600/5 border border-blue-500/20 p-4 rounded-xl flex items-start gap-3 mb-2 shadow-sm">
-                <Info size={18} className="text-blue-500 dark:text-blue-400 flex-shrink-0 mt-0.5" />
-                <div className="space-y-1">
-                    <h4 className="text-xs font-bold text-blue-600 dark:text-blue-400 tracking-wider">How is the score calculated?</h4>
-                    <p className="text-[11px] text-text-muted leading-relaxed italic">
-                        The performance score (0-100) is a weighted calculation for SD-WAN path quality:
-                        <span className="text-blue-600 dark:text-blue-400 font-bold ml-1">Total Latency</span>,
-                        <span className="text-blue-600 dark:text-blue-400 font-bold ml-1">Jitter/Loss (UDP)</span>, and
-                        <span className="text-blue-600 dark:text-blue-400 font-bold ml-1">TTFB (HTTP)</span>.
-                        Errors/Timeouts result in a score of <span className="text-red-500 font-black">0</span>.
-                    </p>
+            {/* Collapsible Scoring Info */}
+            {showScoringInfo && (
+                <div className="bg-blue-600/5 border border-blue-500/20 px-4 py-3 rounded-xl flex items-center justify-between gap-3 mb-2 shadow-sm animate-in fade-in">
+                    <div className="flex items-center gap-2.5">
+                        <Info size={16} className="text-blue-500 dark:text-blue-400 flex-shrink-0" />
+                        <p className="text-[11px] text-text-muted leading-relaxed">
+                            <strong className="text-blue-500 dark:text-blue-400 font-bold mr-1.5">Scoring Formula (0–100):</strong>
+                            Weighted SD-WAN path quality combining
+                            <span className="text-blue-600 dark:text-blue-400 font-bold mx-1">Total Latency</span>,
+                            <span className="text-blue-600 dark:text-blue-400 font-bold mx-1">Jitter & Loss (UDP)</span>, and
+                            <span className="text-blue-600 dark:text-blue-400 font-bold mx-1">TTFB (HTTP)</span>.
+                            Timeouts or unreachable targets score <span className="text-red-500 font-black">0</span>.
+                        </p>
+                    </div>
+                    <button onClick={() => setShowScoringInfo(false)} className="text-text-muted hover:text-text-primary text-xs font-bold px-2 py-0.5">✕</button>
                 </div>
-            </div>
+            )}
 
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-card-secondary/50 p-4 rounded-xl border border-border shadow-sm backdrop-blur-sm">
-                <div className="flex items-center gap-3">
+                <div className="flex items-center gap-3 flex-wrap">
                     <div className="relative">
                         <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-text-muted" size={16} />
                         <input
@@ -1328,14 +1427,14 @@ export default function ConnectivityPerformance({ token, uiConfig, onManage, isL
                     <div className="flex p-1 bg-card-secondary rounded-lg border border-border flex-wrap gap-0.5">
                         {['ALL', 'HTTP', 'HTTPS', 'PING', 'TCP', 'UDP', 'DNS', 'CLOUD', 'PRISMA SDWAN', 'STIGIX'].map(t => {
                             const count = t === 'ALL'
-                                ? endpoints.length
+                                ? allCatalogProbes.length
                                 : t === 'CLOUD'
-                                    ? endpoints.filter(e => e.type === 'CLOUD' || e.type === 'STIGIX CLOUD').length
+                                    ? allCatalogProbes.filter(e => e.type === 'CLOUD' || e.type === 'STIGIX CLOUD').length
                                     : t === 'PRISMA SDWAN'
-                                        ? endpoints.filter(e => e.source === 'discovery' || e.type === 'PRISMA' || e.type === 'PRISMA SDWAN').length
+                                        ? allCatalogProbes.filter(e => e.source === 'discovery' || e.type === 'PRISMA' || e.type === 'PRISMA SDWAN').length
                                         : (t === 'STIGIX' || t === 'AUTOMESH')
-                                            ? endpoints.filter(e => e.source === 'auto-mesh' || (e.name && (e.name.startsWith('[Stigix]') || e.name.startsWith('[AutoMesh]')))).length
-                                            : endpoints.filter(e => e.type === t).length;
+                                            ? allCatalogProbes.filter(e => e.source === 'auto-mesh' || (e.name && (e.name.startsWith('[Stigix]') || e.name.startsWith('[AutoMesh]')))).length
+                                            : allCatalogProbes.filter(e => e.type === t).length;
                             return (
                                 <button
                                     key={t}
@@ -1463,26 +1562,13 @@ export default function ConnectivityPerformance({ token, uiConfig, onManage, isL
                         </tr>
                     </thead>
                     <tbody className="divide-y divide-border">
-                        {/* Pending (ghost) probes — never run yet */}
-                        {pendingProbes.filter(p => {
-                            if (!searchQuery) return true;
-                            const q = searchQuery.toLowerCase();
-                            const title = getProbeDisplayName(p).toLowerCase();
-                            const target = (p.target || '').toLowerCase();
-                            const site = (p.site_name || '').toLowerCase();
-                            const element = (p.element_name || '').toLowerCase();
-                            const port = (p.port_name || p.selected_interface_label || p.selected_interface_name || '').toLowerCase();
-                            return title.includes(q) || target.includes(q) || site.includes(q) || element.includes(q) || port.includes(q);
-                        }).map(e => (
-                            <tr key={`pending-${e.id}`} className="hover:bg-card-secondary/50 transition-colors group cursor-default animate-pulse-subtle">
+                        {/* Pending / Standby probes — no execution results yet */}
+                        {filteredPendingProbes.map(e => (
+                            <tr key={`pending-${e.id}`} className={cn("hover:bg-card-secondary/50 transition-colors group cursor-default", isProbeEngineEnabled && "animate-pulse-subtle")}>
                                 <td className="px-6 py-4">
                                     <div className="flex flex-col">
                                         <div className="flex items-center gap-2">
-                                            {renderProbeTitle(e, true)}
-                                            <span className="px-1.5 py-0.5 rounded-[4px] text-[8px] font-black uppercase tracking-widest bg-slate-500/10 text-slate-400 flex items-center gap-1">
-                                                <Activity size={9} className="animate-spin" style={{animationDuration:'3s'}}/>
-                                                pending
-                                            </span>
+                                            {renderProbeTitle(e, false)}
                                         </div>
                                         <div className="flex items-center gap-1.5 flex-wrap mt-0.5">
                                             <span className="text-[10px] text-text-muted font-mono opacity-60 leading-tight">{e.target}</span>
@@ -1498,7 +1584,16 @@ export default function ConnectivityPerformance({ token, uiConfig, onManage, isL
                                     )}>{e.type}</span>
                                 </td>
                                 <td className="px-6 py-4 text-center align-middle">
-                                    <span className="px-2 py-1 rounded-md text-[8px] font-black uppercase tracking-widest bg-blue-500/10 text-blue-400">Scheduled</span>
+                                    {isProbeEngineEnabled ? (
+                                        <span className="px-2 py-1 rounded-md text-[8px] font-black uppercase tracking-widest bg-blue-500/10 text-blue-400 border border-blue-500/20 inline-flex items-center gap-1">
+                                            <Activity size={9} className="animate-spin" style={{animationDuration:'3s'}}/>
+                                            Scheduled
+                                        </span>
+                                    ) : (
+                                        <span className="px-2 py-1 rounded-md text-[8px] font-black uppercase tracking-widest bg-amber-500/10 text-amber-400 border border-amber-500/20">
+                                            Standby
+                                        </span>
+                                    )}
                                 </td>
                                 {/* Score — no data yet */}
                                 <td className="px-4 py-2 text-center align-middle">
@@ -1704,10 +1799,10 @@ export default function ConnectivityPerformance({ token, uiConfig, onManage, isL
                         ))}
                     </tbody>
                 </table>
-                {endpoints.length === 0 && (
+                {endpoints.length === 0 && filteredPendingProbes.length === 0 && (
                 <div className="p-12 text-center text-text-muted flex flex-col items-center gap-3 bg-card/40">
                         <Activity size={48} className="text-text-muted opacity-30" />
-                        <div className="text-sm font-bold tracking-widest">No performance data captured yet</div>
+                        <div className="text-sm font-bold tracking-widest">No matching probes in catalog</div>
                         <div className="text-[10px] max-w-xs leading-relaxed italic opacity-70">HTTP/HTTPS probes run every 5 min by default. PING/DNS/TCP probes run every 60s.</div>
                     </div>
                 )}

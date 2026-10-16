@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.0.29] - 2026-10-16
+
+### Fixed & Enhanced
+- **Digital Experience (`ConnectivityPerformance.tsx`) Standby / Paused Engine UX**:
+  - Auto-collapses the empty telemetry chart rows (*Global Experience / Score Trend* and *Performance Trends by Type*) when the local probe engine is on standby with no local execution data (`!isProbeEngineEnabled && results.length === 0`), bringing the **Probes Catalog** immediately above the fold with a `Show Telemetry Panels` toggle in the compact Standby banner.
+  - Replaced the false-alarm `0/100 CRITICAL` gauge and contradictory `All monitored probes stable` indicator when paused with a clean `—` (`STANDBY`) gauge and `Local probe execution on standby` state.
+  - Fixed catalog and filter tab counters (`ALL`, `HTTP`, `PING`, `PRISMA SDWAN`, `STIGIX`, etc.) so they aggregate across the full catalog (`allEvaluatedEndpoints + pendingProbes`) instead of dropping to `0` when the engine is paused or when a filter pill is active, and enabled type/search filtering + column sorting on standby probes.
+  - Removed the redundant spinning `pending` badge from the probe title column, updated the `Status` column to show `STANDBY` when paused (and `SCHEDULED` when active), and converted the permanent scoring explanation banner into a collapsible `Scoring Formula` toggle.
+- **Custom TCP Apps KPI Alignment (`CustomApps.tsx`) [3.0.28]**:
+  - Unified vertical alignment (`min-h-[54px]`, `font-mono leading-none`) across the 4 KPI summary cards (*Configured Apps*, *Active Target Servers*, *Network Performance*, *Session Health*).
+- **Leader IP Resolution & Peer Mesh Navigation (`HomeOverview.tsx`, `server.ts`, `Settings.tsx`) [3.0.27]**:
+  - Prevented stale `static-leader.json` files from overriding a Leader node's own identity (`<local_ip> (Self)`) on the Home Overview widget, and updated the Peer node mesh widget to navigate directly to `Settings -> Stigix Targets` (`Learned Peers ›`) alongside a `Sync ›` shortcut.
+- **SD-WAN Dataplane & Cloudflare Edge PoP Telemetry (`HomeOverview.tsx`, `server.ts`) [3.0.26]**:
+  - Added live WAN gateway ICMP reachability and latency probes (`gw_reachable`, `gw_latency_ms`), explicit Mgmt/UI access mode detection (`Local / Direct`, `Reverse Proxy`, `Cloudflare`), and Cloudflare Anycast Edge PoP (`colo`) resolution via `/cdn-cgi/trace`.
+
 ## [3.0.25] - 2026-10-16
 
 ### Added & Enhanced
