@@ -26,6 +26,7 @@ export interface VyosRouter {
     version: string;        // auto-detected
     location?: string;
     interfaces: VyosRouterInterface[];
+    blackholeBlocks?: { prefix: string; description?: string }[];
     enabled: boolean;
     status: 'online' | 'offline' | 'unknown';
     lastSeen?: number;
@@ -138,7 +139,8 @@ export class VyosManager extends EventEmitter {
                         resolve({
                             hostname: info.hostname || 'unknown',
                             version: info.version || 'unknown',
-                            interfaces: info.interfaces || []
+                            interfaces: info.interfaces || [],
+                            blackholeBlocks: info.blackhole_blocks || []
                         });
                     } catch (e) {
                         reject(new Error('Invalid JSON response from controller'));
@@ -175,7 +177,7 @@ export class VyosManager extends EventEmitter {
     }
 
     /**
-     * Incrementally refresh router info (hostname, version, interfaces)
+     * Incrementally refresh router info (hostname, version, interfaces, blackholeBlocks)
      */
     async refreshRouter(id: string): Promise<VyosRouter> {
         const router = this.routers.get(id);
@@ -187,6 +189,7 @@ export class VyosManager extends EventEmitter {
         router.name = info.hostname;
         router.version = info.version;
         router.interfaces = info.interfaces;
+        router.blackholeBlocks = info.blackholeBlocks || [];
         router.status = 'online';
         router.lastSeen = Date.now();
 
@@ -215,7 +218,7 @@ export class VyosManager extends EventEmitter {
     }
 
     /**
-     * Enhanced Health Check: Detects changes in version, hostname, and interfaces.
+     * Enhanced Health Check: Detects changes in version, hostname, interfaces, and blackhole blocks.
      */
     async checkHealth() {
         log('VYOS', 'Starting background health check...', 'debug');
@@ -245,6 +248,13 @@ export class VyosManager extends EventEmitter {
                 if (JSON.stringify(info.interfaces) !== JSON.stringify(router.interfaces)) {
                     log('VYOS', `Router ${router.name}: Interface configuration changed`);
                     router.interfaces = info.interfaces;
+                    changed = true;
+                }
+
+                // Blackhole blocks change detection
+                if (JSON.stringify(info.blackholeBlocks || []) !== JSON.stringify(router.blackholeBlocks || [])) {
+                    log('VYOS', `Router ${router.name}: Active blackhole routes changed`);
+                    router.blackholeBlocks = info.blackholeBlocks || [];
                     changed = true;
                 }
 
@@ -404,8 +414,23 @@ export class VyosManager extends EventEmitter {
                     try {
                         const jsonStart = output.indexOf('{');
                         const jsonStr = jsonStart !== -1 ? output.substring(jsonStart) : output;
-                        resolve({ ...JSON.parse(jsonStr), cliEquivalent });
+                        const parsed = JSON.parse(jsonStr);
+                        // Sync in-memory blackholeBlocks state when deny/allow/clear/get-blocks runs
+                        if (router) {
+                            if (['simple-block', 'simple-unblock', 'get-blocks'].includes(command) && Array.isArray(parsed?.data?.blocked_routes)) {
+                                router.blackholeBlocks = parsed.data.blocked_routes;
+                                this.saveRouters();
+                            } else if (command === 'clear-blocks') {
+                                router.blackholeBlocks = [];
+                                this.saveRouters();
+                            }
+                        }
+                        resolve({ ...parsed, cliEquivalent });
                     } catch {
+                        if (router && command === 'clear-blocks') {
+                            router.blackholeBlocks = [];
+                            this.saveRouters();
+                        }
                         resolve({ success: true, output, cliEquivalent });
                     }
                 } else {
@@ -533,24 +558,32 @@ export class VyosManager extends EventEmitter {
                         const parsed = JSON.parse(jsonStr);
 
                         // Sync live state into in-memory router model
-                        if (router && Array.isArray(parsed.interfaces)) {
+                        if (router) {
                             let changed = false;
-                            for (const item of parsed.interfaces) {
-                                const target = router.interfaces.find(i => i.name.toLowerCase() === item.name.toLowerCase());
-                                if (target) {
-                                    if (item.admin_state && target.status !== item.admin_state) {
-                                        target.status = item.admin_state;
-                                        changed = true;
+                            if (Array.isArray(parsed.interfaces)) {
+                                for (const item of parsed.interfaces) {
+                                    const target = router.interfaces.find(i => i.name.toLowerCase() === item.name.toLowerCase());
+                                    if (target) {
+                                        if (item.admin_state && target.status !== item.admin_state) {
+                                            target.status = item.admin_state;
+                                            changed = true;
+                                        }
+                                        if (item.qos_active) {
+                                            const lat = item.qos_active.delay_ms ? parseInt(String(item.qos_active.delay_ms).replace(/[^\d]/g, ''), 10) : undefined;
+                                            const los = item.qos_active.loss_pct ? parseInt(String(item.qos_active.loss_pct).replace(/[^\d]/g, ''), 10) : undefined;
+                                            target.qos = { latency: lat, loss: los };
+                                            changed = true;
+                                        } else if (target.qos) {
+                                            delete target.qos;
+                                            changed = true;
+                                        }
                                     }
-                                    if (item.qos_active) {
-                                        const lat = item.qos_active.delay_ms ? parseInt(String(item.qos_active.delay_ms).replace(/[^\d]/g, ''), 10) : undefined;
-                                        const los = item.qos_active.loss_pct ? parseInt(String(item.qos_active.loss_pct).replace(/[^\d]/g, ''), 10) : undefined;
-                                        target.qos = { latency: lat, loss: los };
-                                        changed = true;
-                                    } else if (target.qos) {
-                                        delete target.qos;
-                                        changed = true;
-                                    }
+                                }
+                            }
+                            if (Array.isArray(parsed.blackhole_blocks)) {
+                                if (JSON.stringify(router.blackholeBlocks || []) !== JSON.stringify(parsed.blackhole_blocks)) {
+                                    router.blackholeBlocks = parsed.blackhole_blocks;
+                                    changed = true;
                                 }
                             }
                             if (changed) this.saveRouters();

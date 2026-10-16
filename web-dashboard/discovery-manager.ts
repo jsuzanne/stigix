@@ -14,6 +14,9 @@ export interface DiscoveredProbe {
     site_id: string;
     site_name: string;
     scope: 'branch' | 'dc';
+    element_name?: string;
+    circuit_name?: string;
+    port_name?: string;
     selected_interface_name: string;
     selected_interface_label?: string;
     selected_network: string;
@@ -130,12 +133,30 @@ export class DiscoveryManager {
             for (const [siteId, candidates] of sitesMap.entries()) {
                 const scope = candidates[0].scope;
 
+                const buildProbeName = (cand: any): string => {
+                    const site = cand.site_name || 'Probe';
+                    const router = cand.element_name;
+                    let port = cand.port_name || cand.interface_label || cand.interface_name;
+                    if (port && /^\d+(\.\d+)?$/.test(String(port).trim())) {
+                        port = `Port ${port}`;
+                    }
+
+                    const details: string[] = [];
+                    if (router && router.trim().toLowerCase() !== site.trim().toLowerCase()) {
+                        details.push(router);
+                    }
+                    if (port) {
+                        details.push(port);
+                    }
+                    return details.length > 0 ? `${site} (${details.join(' · ')})` : site;
+                };
+
                 if (scope === 'dc') {
                     // DC Cluster logic: all IPs
                     for (const selected of candidates) {
                         if (!selected.ip) continue;
                         const discoveryKey = `discovery:ping:${siteId}:${selected.ip}`;
-                        const probeName = `${selected.site_name} (${selected.ip})`;
+                        const probeName = buildProbeName(selected);
                         this.upsertOneProbe(newProbesList, currentProbes, selected, discoveryKey, probeName, seenKeys, result);
                     }
                 } else {
@@ -184,7 +205,8 @@ export class DiscoveryManager {
                     const selected = sortedCandidates[0];
                     if (selected && selected.ip) {
                         const discoveryKey = `discovery:ping:${siteId}`;
-                        this.upsertOneProbe(newProbesList, currentProbes, selected, discoveryKey, selected.site_name, seenKeys, result);
+                        const probeName = buildProbeName(selected);
+                        this.upsertOneProbe(newProbesList, currentProbes, selected, discoveryKey, probeName, seenKeys, result);
                     }
                 }
             }
@@ -206,11 +228,24 @@ export class DiscoveryManager {
                 }
             });
 
-            result.totalDiscovered = newProbesList.length;
+            // Dedup by target IP: ensure no multiple probes for the exact same target IP
+            const uniqueProbes: DiscoveredProbe[] = [];
+            const seenTargets = new Set<string>();
+            for (const probe of newProbesList) {
+                const targetKey = (probe.target || '').trim();
+                if (targetKey && seenTargets.has(targetKey)) {
+                    log('DISCOVERY', `Purged duplicate target IP probe: ${probe.name} (${probe.target})`);
+                    continue;
+                }
+                if (targetKey) seenTargets.add(targetKey);
+                uniqueProbes.push(probe);
+            }
+
+            result.totalDiscovered = uniqueProbes.length;
 
             // Atomic write
             const tempFile = `${this.discoveredFile}.tmp`;
-            fs.writeFileSync(tempFile, JSON.stringify(newProbesList, null, 2));
+            fs.writeFileSync(tempFile, JSON.stringify(uniqueProbes, null, 2));
             fs.renameSync(tempFile, this.discoveredFile);
 
             return result;
@@ -238,6 +273,9 @@ export class DiscoveryManager {
                 name: probeName,
                 target: selected.ip,
                 site_name: selected.site_name,
+                element_name: selected.element_name || existing.element_name,
+                circuit_name: selected.circuit_name || existing.circuit_name,
+                port_name: selected.port_name || existing.port_name,
                 selected_interface_name: selected.interface_name,
                 selected_interface_label: selected.interface_label,
                 selected_network: selected.network,
@@ -248,6 +286,9 @@ export class DiscoveryManager {
             const changed = existing.target !== updatedProbe.target ||
                 existing.site_name !== updatedProbe.site_name ||
                 existing.name !== updatedProbe.name ||
+                existing.element_name !== updatedProbe.element_name ||
+                existing.circuit_name !== updatedProbe.circuit_name ||
+                existing.port_name !== updatedProbe.port_name ||
                 existing.selected_interface_label !== updatedProbe.selected_interface_label ||
                 existing.stale === true;
 
@@ -267,6 +308,9 @@ export class DiscoveryManager {
                 site_id: selected.site_id,
                 site_name: selected.site_name,
                 scope: selected.scope,
+                element_name: selected.element_name,
+                circuit_name: selected.circuit_name,
+                port_name: selected.port_name,
                 selected_interface_name: selected.interface_name,
                 selected_interface_label: selected.interface_label,
                 selected_network: selected.network,

@@ -1,16 +1,18 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { 
     Radio, Play, Square, Download, Loader2, RefreshCw, Search, Trash2, 
     Clock, HardDrive, Filter, Layers, Binary, CheckCircle2, 
     AlertCircle, ChevronRight, ChevronDown, Copy, Check, 
     FileText, ArrowRight, Zap, X, ShieldAlert, Cpu,
-    BookmarkPlus, Sparkles, BookOpen, Plus, SlidersHorizontal, Terminal, Info
+    BookmarkPlus, Sparkles, BookOpen, Plus, SlidersHorizontal, Terminal, Info, Globe, Server
 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import { usePeerContext } from './PeerContext';
+import type { TargetDefinition } from './types/targets';
 
 interface PacketCaptureProps {
     token: string;
+    localSiteName?: string;
     onNavigateToReplay?: () => void;
 }
 
@@ -20,7 +22,17 @@ interface InterfaceItem {
     ip: string;
     mac: string;
     is_default: boolean;
+    is_egress?: boolean;
+    category?: 'physical' | 'any' | 'tunnel' | 'loopback' | 'virtual';
     is_up: boolean;
+}
+
+function classifyInterfaceCategory(name: string): 'physical' | 'any' | 'tunnel' | 'loopback' | 'virtual' {
+    if (name === 'any') return 'any';
+    if (name === 'lo' || name.startsWith('lo')) return 'loopback';
+    if (/^(veth|br-|docker|virbr|cni|flannel|cali)/.test(name)) return 'virtual';
+    if (/^(tailscale|wg|tun|tap|zt|utun|ipsec|vti)/.test(name)) return 'tunnel';
+    return 'physical';
 }
 
 interface PresetItem {
@@ -200,8 +212,64 @@ const BPF_RECIPES: BpfRecipe[] = [
     }
 ];
 
-export default function PacketCapture({ token, onNavigateToReplay }: PacketCaptureProps) {
-    const { gFetch, activePeerId } = usePeerContext();
+interface ResolvedTarget {
+    label: string;
+    isKnownTarget: boolean;
+    isLocal: boolean;
+    type: 'stigix' | 'local' | 'lan' | 'wan' | 'special';
+}
+
+function cleanHost(host: string): string {
+    if (!host) return '';
+    const h = host.trim();
+    if (h.startsWith('[') && h.includes(']')) {
+        return h.substring(1, h.indexOf(']'));
+    }
+    if (h.includes('.') && h.includes(':')) {
+        return h.split(':')[0];
+    }
+    return h;
+}
+
+function TargetBadge({ target, onClick }: { target: ResolvedTarget; onClick?: (label: string) => void }) {
+    let colorClass = 'bg-slate-500/10 text-slate-600 dark:text-slate-400 border-slate-500/20';
+    let icon: React.ReactNode = null;
+
+    if (target.type === 'stigix') {
+        colorClass = 'bg-indigo-500/10 text-indigo-700 dark:text-indigo-400 border-indigo-500/25 hover:border-indigo-500/50 hover:bg-indigo-500/20';
+        icon = <Server size={10} className="shrink-0 text-indigo-500 dark:text-indigo-400" />;
+    } else if (target.type === 'local') {
+        colorClass = 'bg-cyan-500/10 text-cyan-700 dark:text-cyan-400 border-cyan-500/25 hover:border-cyan-500/50 hover:bg-cyan-500/20';
+        icon = <Server size={10} className="shrink-0 text-cyan-500 dark:text-cyan-400" />;
+    } else if (target.type === 'wan') {
+        colorClass = 'bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/25 hover:border-amber-500/50 hover:bg-amber-500/20';
+        icon = <Globe size={10} className="shrink-0 text-amber-500 dark:text-amber-400" />;
+    } else if (target.type === 'lan') {
+        colorClass = 'bg-slate-500/10 text-slate-600 dark:text-slate-400 border-slate-500/25 hover:border-slate-500/50 hover:bg-slate-500/20';
+    } else if (target.type === 'special') {
+        colorClass = 'bg-purple-500/10 text-purple-700 dark:text-purple-400 border-purple-500/25 hover:border-purple-500/50 hover:bg-purple-500/20';
+    }
+
+    return (
+        <button
+            type="button"
+            onClick={(e) => {
+                if (onClick) {
+                    e.stopPropagation();
+                    onClick(target.label);
+                }
+            }}
+            title={`Filter by target: ${target.label}`}
+            className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider border max-w-full truncate transition-colors cursor-pointer select-none ${colorClass}`}
+        >
+            {icon}
+            <span className="truncate">{target.label}</span>
+        </button>
+    );
+}
+
+export default function PacketCapture({ token, localSiteName, onNavigateToReplay }: PacketCaptureProps) {
+    const { gFetch, activePeerId, activePeer, peers } = usePeerContext();
 
     const authHeaders = useMemo(() => ({
         'Authorization': `Bearer ${token}`,
@@ -211,6 +279,7 @@ export default function PacketCapture({ token, onNavigateToReplay }: PacketCaptu
     // System options
     const [interfaces, setInterfaces] = useState<InterfaceItem[]>([]);
     const [presets, setPresets] = useState<PresetItem[]>([]);
+    const [targets, setTargets] = useState<TargetDefinition[]>([]);
     const [selectedInterface, setSelectedInterface] = useState<string>('any');
     const [selectedPreset, setSelectedPreset] = useState<string>('all');
     const [bpfFilter, setBpfFilter] = useState<string>('');
@@ -339,24 +408,168 @@ export default function PacketCapture({ token, onNavigateToReplay }: PacketCaptu
     // Copy indicator
     const [copiedHex, setCopiedHex] = useState<boolean>(false);
 
+    // Custom toolbar dropdown state
+    const [openDropdown, setOpenDropdown] = useState<'interface' | 'preset' | 'duration' | 'limit' | null>(null);
+    const [showVirtualInterfaces, setShowVirtualInterfaces] = useState<boolean>(false);
+    const dropdownBarRef = useRef<HTMLDivElement>(null);
+
+    // Draggable Column Widths for Virtual Packet Table
+    const DEFAULT_COL_WIDTHS = useMemo(() => ({
+        no: 56,
+        time: 95,
+        source: 195,
+        srcTarget: 145,
+        destination: 195,
+        dstTarget: 145,
+        protocol: 80,
+        length: 70,
+        info: 380
+    }), []);
+
+    const [colWidths, setColWidths] = useState<Record<string, number>>(() => {
+        try {
+            const saved = localStorage.getItem('stigix_pcap_col_widths');
+            if (saved) return { ...DEFAULT_COL_WIDTHS, ...JSON.parse(saved) };
+        } catch {}
+        return DEFAULT_COL_WIDTHS;
+    });
+
+    // Save column widths to localStorage
+    useEffect(() => {
+        try {
+            localStorage.setItem('stigix_pcap_col_widths', JSON.stringify(colWidths));
+        } catch {}
+    }, [colWidths]);
+
+    const resizingRef = useRef<{ colKey: string; startX: number; startWidth: number } | null>(null);
+
+    const handleMouseDownResize = useCallback((colKey: string, e: React.MouseEvent) => {
+        e.preventDefault();
+        e.stopPropagation();
+        resizingRef.current = {
+            colKey,
+            startX: e.clientX,
+            startWidth: colWidths[colKey] || 100
+        };
+
+        const handleMouseMove = (moveEvent: MouseEvent) => {
+            if (!resizingRef.current) return;
+            const diff = moveEvent.clientX - resizingRef.current.startX;
+            const newWidth = Math.max(35, resizingRef.current.startWidth + diff);
+            setColWidths(prev => ({ ...prev, [resizingRef.current!.colKey]: newWidth }));
+        };
+
+        const handleMouseUp = () => {
+            resizingRef.current = null;
+            document.removeEventListener('mousemove', handleMouseMove);
+            document.removeEventListener('mouseup', handleMouseUp);
+        };
+
+        document.addEventListener('mousemove', handleMouseMove);
+        document.addEventListener('mouseup', handleMouseUp);
+    }, [colWidths]);
+
+    const handleResetColWidths = useCallback(() => {
+        setColWidths(DEFAULT_COL_WIDTHS);
+        try {
+            localStorage.removeItem('stigix_pcap_col_widths');
+        } catch {}
+    }, [DEFAULT_COL_WIDTHS]);
+
+    useEffect(() => {
+        if (!openDropdown) return;
+        const handleClickOutside = (e: MouseEvent) => {
+            if (dropdownBarRef.current && !dropdownBarRef.current.contains(e.target as Node)) {
+                setOpenDropdown(null);
+            }
+        };
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => document.removeEventListener('mousedown', handleClickOutside);
+    }, [openDropdown]);
+
     const tableEndRef = useRef<HTMLDivElement>(null);
 
-    // Initial load: interfaces and presets
+    // Initial load: interfaces, presets, and targets (re-run when activePeerId changes)
     useEffect(() => {
         fetchInterfaces();
         fetchPresets();
+        fetchTargets();
         checkActiveStatus();
-    }, []);
+    }, [activePeerId]);
 
     const fetchInterfaces = async () => {
         try {
-            const res = await gFetch('/api/capture/interfaces', { credentials: 'include', headers: authHeaders });
+            const [res, cfgRes] = await Promise.all([
+                gFetch('/api/capture/interfaces', { credentials: 'include', headers: authHeaders }),
+                gFetch('/api/config/interfaces', { credentials: 'include', headers: authHeaders }).catch(() => null)
+            ]);
+
+            let configuredPrimary = '';
+            if (cfgRes && cfgRes.ok) {
+                try {
+                    const cfgList = await cfgRes.json();
+                    if (Array.isArray(cfgList) && cfgList.length > 0 && typeof cfgList[0] === 'string') {
+                        configuredPrimary = cfgList[0].trim().split(/\s+/)[0].split(':')[0];
+                    }
+                } catch {}
+            }
+
             if (res.ok) {
                 const data = await res.json();
                 if (Array.isArray(data)) {
-                    setInterfaces(data);
-                    const def = data.find(i => i.is_default);
-                    if (def) setSelectedInterface(def.name);
+                    // Normalize categories & egress detection (handles both new and legacy remote engines)
+                    const enriched: InterfaceItem[] = data.map((item: InterfaceItem) => {
+                        const category = item.category || classifyInterfaceCategory(item.name);
+                        const isEgress = Boolean(
+                            item.is_egress ||
+                            (configuredPrimary && item.name === configuredPrimary) ||
+                            (item.is_default && item.name !== 'any')
+                        );
+                        return {
+                            ...item,
+                            category,
+                            is_egress: isEgress
+                        };
+                    });
+
+                    // If no egress interface was explicitly flagged yet, pick the first UP physical interface with an IPv4
+                    if (!enriched.some(i => i.is_egress)) {
+                        const fallbackPhysical = enriched.find(
+                            i => i.category === 'physical' && i.is_up && i.ip && i.ip !== '-' && i.ip !== '0.0.0.0'
+                        );
+                        if (fallbackPhysical) {
+                            fallbackPhysical.is_egress = true;
+                        }
+                    }
+
+                    // Sort: egress first -> physical (with IP first) -> any -> tunnel -> loopback -> virtual
+                    const catOrder: Record<string, number> = {
+                        physical: 1,
+                        any: 2,
+                        tunnel: 3,
+                        loopback: 4,
+                        virtual: 5
+                    };
+                    enriched.sort((a, b) => {
+                        if (Boolean(a.is_egress) !== Boolean(b.is_egress)) {
+                            return a.is_egress ? -1 : 1;
+                        }
+                        const catA = catOrder[a.category || 'physical'] || 3;
+                        const catB = catOrder[b.category || 'physical'] || 3;
+                        if (catA !== catB) return catA - catB;
+                        const hasIpA = a.ip && a.ip !== '-' && a.ip !== '0.0.0.0' ? 0 : 1;
+                        const hasIpB = b.ip && b.ip !== '-' && b.ip !== '0.0.0.0' ? 0 : 1;
+                        if (hasIpA !== hasIpB) return hasIpA - hasIpB;
+                        return a.name.localeCompare(b.name);
+                    });
+
+                    setInterfaces(enriched);
+
+                    // Select egress interface by default (fallback to 'any')
+                    const preferred = enriched.find(i => i.is_egress) || enriched.find(i => i.is_default) || enriched[0];
+                    if (preferred) {
+                        setSelectedInterface(preferred.name);
+                    }
                 }
             }
         } catch (e) {
@@ -373,6 +586,18 @@ export default function PacketCapture({ token, onNavigateToReplay }: PacketCaptu
             }
         } catch (e) {
             console.error('Failed to load presets', e);
+        }
+    };
+
+    const fetchTargets = async () => {
+        try {
+            const res = await gFetch('/api/targets', { credentials: 'include', headers: authHeaders });
+            if (res.ok) {
+                const data = await res.json();
+                if (Array.isArray(data)) setTargets(data);
+            }
+        } catch (e) {
+            console.error('Failed to load targets', e);
         }
     };
 
@@ -682,6 +907,130 @@ export default function PacketCapture({ token, onNavigateToReplay }: PacketCaptu
         setBpfFilter(preset.bpf);
     };
 
+    // Map of IP -> ResolvedTarget
+    const ipToTargetMap = useMemo(() => {
+        const map = new Map<string, ResolvedTarget>();
+
+        // 1. Determine local node site name
+        const leaderPeer = peers.find(p => p.is_leader);
+        const localSite = localSiteName || activePeer?.site || leaderPeer?.site || 'BR8';
+
+        // 2. Register local node interfaces
+        interfaces.forEach(iface => {
+            const clean = cleanHost(iface.ip);
+            if (clean && clean !== '-' && clean !== '0.0.0.0') {
+                map.set(clean, {
+                    label: localSite,
+                    isKnownTarget: true,
+                    isLocal: true,
+                    type: 'local'
+                });
+            }
+        });
+        if (activePeer?.ip_private) {
+            const clean = cleanHost(activePeer.ip_private);
+            if (clean) {
+                map.set(clean, {
+                    label: localSite,
+                    isKnownTarget: true,
+                    isLocal: true,
+                    type: 'local'
+                });
+            }
+        }
+
+        // 3. Register peers from PeerContext
+        peers.forEach(peer => {
+            const isLocal = Boolean(activePeer?.instance_id ? peer.instance_id === activePeer.instance_id : peer.is_leader);
+            const siteName = peer.site || peer.instance_id;
+            const label = isLocal ? localSite : siteName;
+            if (peer.ip_private) {
+                const clean = cleanHost(peer.ip_private);
+                if (clean && !map.has(clean)) {
+                    map.set(clean, {
+                        label,
+                        isKnownTarget: true,
+                        isLocal,
+                        type: isLocal ? 'local' : 'stigix'
+                    });
+                }
+            }
+        });
+
+        // 4. Register targets from /api/targets
+        targets.forEach(tgt => {
+            const cleanHostIp = cleanHost(tgt.host);
+            if (cleanHostIp && !map.has(cleanHostIp)) {
+                map.set(cleanHostIp, {
+                    label: tgt.name,
+                    isKnownTarget: true,
+                    isLocal: false,
+                    type: 'stigix'
+                });
+            }
+            if (tgt.meta?.ip_public) {
+                const cleanPub = cleanHost(tgt.meta.ip_public);
+                if (cleanPub && !map.has(cleanPub)) {
+                    map.set(cleanPub, {
+                        label: tgt.name,
+                        isKnownTarget: true,
+                        isLocal: false,
+                        type: 'stigix'
+                    });
+                }
+            }
+        });
+
+        return map;
+    }, [targets, interfaces, peers, activePeer]);
+
+    // Resolve an IP address to a Stigix Target, LAN, WAN, or special category
+    const resolveTarget = useCallback((rawIp: string): ResolvedTarget => {
+        if (!rawIp) {
+            return { label: '-', isKnownTarget: false, isLocal: false, type: 'special' };
+        }
+        const ip = cleanHost(rawIp);
+        if (!ip || ip === '-') {
+            return { label: '-', isKnownTarget: false, isLocal: false, type: 'special' };
+        }
+        if (ipToTargetMap.has(ip)) {
+            return ipToTargetMap.get(ip)!;
+        }
+
+        // Loopback
+        if (ip === '127.0.0.1' || ip === '::1' || ip.startsWith('127.')) {
+            return { label: 'Loopback', isKnownTarget: false, isLocal: false, type: 'special' };
+        }
+
+        // Broadcast / Multicast
+        if (ip === '255.255.255.255' || ip.endsWith('.255')) {
+            return { label: 'Bcast', isKnownTarget: false, isLocal: false, type: 'special' };
+        }
+        if (ip.startsWith('224.') || ip.startsWith('239.') || ip.startsWith('ff')) {
+            return { label: 'Mcast', isKnownTarget: false, isLocal: false, type: 'special' };
+        }
+
+        // MAC address check (e.g. ARP frame with MAC in source)
+        if (/^([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})$/.test(ip)) {
+            return { label: 'L2 MAC', isKnownTarget: false, isLocal: false, type: 'special' };
+        }
+
+        // RFC 1918 Private Ranges
+        const isRfc1918 = 
+            ip.startsWith('10.') || 
+            ip.startsWith('192.168.') || 
+            /^172\.(1[6-9]|2[0-9]|3[0-1])\./.test(ip) ||
+            /^100\.(6[4-9]|[7-9][0-9]|1[0-1][0-9]|12[0-7])\./.test(ip) || // CGNAT
+            ip.startsWith('169.254.'); // Link-local
+
+        if (isRfc1918) {
+            return { label: 'LAN', isKnownTarget: false, isLocal: false, type: 'lan' };
+        }
+
+        // External / Public WAN
+        return { label: 'WAN', isKnownTarget: false, isLocal: false, type: 'wan' };
+    }, [ipToTargetMap]);
+
     // Filtered packet list based on display filter
     const filteredPackets = useMemo(() => {
         if (!displayFilter.trim()) return packets;
@@ -695,9 +1044,13 @@ export default function PacketCapture({ token, onNavigateToReplay }: PacketCaptu
             if (q === 'rst' && p.info.includes('RST')) return true;
             if (q === 'syn' && p.info.includes('SYN')) return true;
             if (q === 'ack' && p.info.includes('ACK')) return true;
+            const srcTarget = resolveTarget(p.source);
+            if (srcTarget.label.toLowerCase().includes(q)) return true;
+            const dstTarget = resolveTarget(p.destination);
+            if (dstTarget.label.toLowerCase().includes(q)) return true;
             return false;
         });
-    }, [packets, displayFilter]);
+    }, [packets, displayFilter, resolveTarget]);
 
     // Currently selected packet
     const activePacket = useMemo(() => {
@@ -722,16 +1075,16 @@ export default function PacketCapture({ token, onNavigateToReplay }: PacketCaptu
     };
 
     const getProtoColorClass = (proto: string, info: string) => {
-        if (info.includes('RST')) return 'bg-rose-500/10 text-rose-400 border-rose-500/30';
+        if (info.includes('RST')) return 'bg-rose-500/10 text-rose-700 dark:text-rose-400 border-rose-500/30';
         switch (proto.toUpperCase()) {
-            case 'TCP': return 'bg-cyan-500/10 text-cyan-400 border-cyan-500/30';
-            case 'UDP': return 'bg-amber-500/10 text-amber-400 border-amber-500/30';
-            case 'ICMP': return 'bg-purple-500/10 text-purple-400 border-purple-500/30';
-            case 'DNS': return 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30';
-            case 'TLS': return 'bg-blue-500/10 text-blue-400 border-blue-500/30';
-            case 'HTTP': return 'bg-teal-500/10 text-teal-400 border-teal-500/30';
-            case 'RTP': return 'bg-orange-500/10 text-orange-400 border-orange-500/30';
-            case 'ARP': return 'bg-slate-500/10 text-slate-400 border-slate-500/30';
+            case 'TCP': return 'bg-cyan-500/15 text-cyan-800 dark:text-cyan-400 border-cyan-500/30';
+            case 'UDP': return 'bg-amber-500/15 text-amber-800 dark:text-amber-400 border-amber-500/30';
+            case 'ICMP': return 'bg-purple-500/15 text-purple-800 dark:text-purple-400 border-purple-500/30';
+            case 'DNS': return 'bg-emerald-500/15 text-emerald-800 dark:text-emerald-400 border-emerald-500/30';
+            case 'TLS': return 'bg-blue-500/15 text-blue-800 dark:text-blue-400 border-blue-500/30';
+            case 'HTTP': return 'bg-teal-500/15 text-teal-800 dark:text-teal-400 border-teal-500/30';
+            case 'RTP': return 'bg-orange-500/15 text-orange-800 dark:text-orange-400 border-orange-500/30';
+            case 'ARP': return 'bg-slate-500/15 text-slate-800 dark:text-slate-400 border-slate-500/30';
             default: return 'bg-card-secondary text-text-muted border-border';
         }
     };
@@ -837,60 +1190,276 @@ export default function PacketCapture({ token, onNavigateToReplay }: PacketCaptu
                 </div>
 
                 {/* Configuration Controls Bar - Ultra Compact 1-Row Grid */}
-                <div className="mt-4 pt-3.5 border-t border-border/60 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-3 items-end">
-                    {/* Interface */}
-                    <div className="lg:col-span-2 space-y-1">
-                        <label className="text-[10px] font-black uppercase tracking-wider text-text-muted">Interface</label>
-                        <select
-                            value={selectedInterface}
-                            onChange={(e) => setSelectedInterface(e.target.value)}
-                            disabled={capturing}
-                            className="w-full bg-card-secondary border border-border rounded-xl px-3 py-1.5 text-xs text-text-primary font-mono focus:outline-none focus:border-cyan-500 h-9"
-                        >
-                            {interfaces.map(i => (
-                                <option key={i.name} value={i.name}>{i.label}</option>
-                            ))}
-                        </select>
-                    </div>
+                <div ref={dropdownBarRef} className="mt-4 pt-3.5 border-t border-border/60 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-3 items-end">
+                    {/* Interface Custom Selector */}
+                    {(() => {
+                        const activeIface = interfaces.find(i => i.name === selectedInterface) || {
+                            name: selectedInterface,
+                            label: selectedInterface === 'any' ? 'All Interfaces (any)' : selectedInterface,
+                            ip: '-',
+                            mac: '-',
+                            is_default: false,
+                            is_egress: false,
+                            category: classifyInterfaceCategory(selectedInterface),
+                            is_up: true
+                        };
+                        const primaryGroup = interfaces.filter(i => i.category === 'physical' || i.category === 'any');
+                        const tunnelGroup = interfaces.filter(i => i.category === 'tunnel' || i.category === 'loopback');
+                        const virtualGroup = interfaces.filter(i => i.category === 'virtual');
 
-                    {/* Presets Dropdown */}
-                    <div className="lg:col-span-3 space-y-1">
-                        <div className="flex items-center justify-between">
-                            <label className="text-[10px] font-black uppercase tracking-wider text-text-muted">BPF Preset</label>
-                            {isCustomPresetSelected && (
+                        const renderInterfaceRow = (iface: InterfaceItem) => {
+                            const isSelected = iface.name === selectedInterface;
+                            const isAny = iface.name === 'any';
+                            const hasIp = iface.ip && iface.ip !== '-' && iface.ip !== '0.0.0.0';
+                            return (
+                                <button
+                                    key={iface.name}
+                                    type="button"
+                                    onClick={() => {
+                                        setSelectedInterface(iface.name);
+                                        setOpenDropdown(null);
+                                    }}
+                                    className={`w-full px-3 py-2 text-left flex items-center justify-between gap-2 rounded-xl transition-all cursor-pointer ${
+                                        isSelected
+                                            ? 'bg-cyan-500/15 text-text-primary border border-cyan-500/30'
+                                            : 'hover:bg-card-secondary text-text-secondary border border-transparent'
+                                    }`}
+                                >
+                                    <div className="flex items-center gap-2 min-w-0">
+                                        <span
+                                            className={`w-2 h-2 rounded-full shrink-0 ${
+                                                isAny
+                                                    ? 'bg-cyan-400 shadow-[0_0_6px_rgba(34,211,238,0.6)]'
+                                                    : iface.is_up
+                                                    ? 'bg-emerald-500 shadow-[0_0_6px_rgba(16,185,129,0.6)]'
+                                                    : 'bg-slate-500'
+                                            }`}
+                                        />
+                                        <div className="flex items-center gap-1.5 min-w-0">
+                                            <span className="text-xs font-black font-mono text-text-primary truncate">
+                                                {isAny ? 'any' : iface.name}
+                                            </span>
+                                            {isAny && (
+                                                <span className="text-[10px] text-text-muted font-sans truncate">
+                                                    (All Interfaces)
+                                                </span>
+                                            )}
+                                            {iface.is_egress && (
+                                                <span className="px-1.5 py-0.5 rounded text-[8px] font-black uppercase tracking-wider bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 shrink-0">
+                                                    Egress
+                                                </span>
+                                            )}
+                                        </div>
+                                    </div>
+                                    <div className="flex items-center gap-1.5 shrink-0">
+                                        {hasIp && (
+                                            <span className="px-1.5 py-0.5 rounded-md bg-card-secondary border border-border text-[10px] font-mono text-text-muted">
+                                                {iface.ip}
+                                            </span>
+                                        )}
+                                        {isSelected && <Check size={12} className="text-cyan-400 shrink-0" />}
+                                    </div>
+                                </button>
+                            );
+                        };
+
+                        return (
+                            <div className="lg:col-span-3 space-y-1 relative">
+                                <div className="flex items-center justify-between">
+                                    <label className="text-[10px] font-black uppercase tracking-wider text-text-muted">Interface</label>
+                                    {activeIface.is_egress && (
+                                        <span className="text-[9px] font-black uppercase tracking-wider text-emerald-400 flex items-center gap-1">
+                                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                                            Traffic Egress
+                                        </span>
+                                    )}
+                                </div>
                                 <button
                                     type="button"
-                                    onClick={() => handleDeleteCustomPreset(selectedPreset)}
                                     disabled={capturing}
-                                    className="text-[10px] text-rose-400 hover:text-rose-300 font-bold flex items-center gap-0.5 cursor-pointer disabled:opacity-50 transition-colors"
-                                    title="Delete selected custom preset"
+                                    onClick={() => setOpenDropdown(prev => prev === 'interface' ? null : 'interface')}
+                                    className={`w-full bg-card-secondary border rounded-xl px-3 py-1.5 text-xs text-text-primary font-mono flex items-center justify-between gap-2 h-9 transition-all cursor-pointer disabled:opacity-50 ${
+                                        openDropdown === 'interface' ? 'border-cyan-500 ring-2 ring-cyan-500/15' : 'border-border hover:border-cyan-500/40'
+                                    }`}
                                 >
-                                    <Trash2 size={10} />
-                                    <span>Delete</span>
+                                    <div className="flex items-center gap-2 min-w-0">
+                                        <span
+                                            className={`w-2 h-2 rounded-full shrink-0 ${
+                                                activeIface.name === 'any'
+                                                    ? 'bg-cyan-400'
+                                                    : activeIface.is_up
+                                                    ? 'bg-emerald-500'
+                                                    : 'bg-slate-500'
+                                            }`}
+                                        />
+                                        <span className="font-black text-text-primary truncate">
+                                            {activeIface.name === 'any' ? 'All Interfaces (any)' : activeIface.name}
+                                        </span>
+                                        {activeIface.ip && activeIface.ip !== '-' && activeIface.ip !== '0.0.0.0' && (
+                                            <span className="px-1.5 py-0.5 rounded bg-card border border-border text-[10px] text-text-muted font-mono truncate">
+                                                {activeIface.ip}
+                                            </span>
+                                        )}
+                                    </div>
+                                    <ChevronDown size={13} className={`text-text-muted shrink-0 transition-transform ${openDropdown === 'interface' ? 'rotate-180 text-cyan-400' : ''}`} />
                                 </button>
-                            )}
-                        </div>
-                        <select
-                            value={selectedPreset}
-                            onChange={(e) => handlePresetSelect(e.target.value)}
-                            disabled={capturing}
-                            className="w-full bg-card-secondary border border-border rounded-xl px-3 py-1.5 text-xs text-text-primary font-mono focus:outline-none focus:border-cyan-500 truncate h-9"
-                        >
-                            <optgroup label="⚡ Built-in Presets">
-                                {presets.map(p => (
-                                    <option key={p.id} value={p.id}>{p.name}</option>
-                                ))}
-                            </optgroup>
-                            {customBpfPresets.length > 0 && (
-                                <optgroup label="⭐ Custom BPF Filters">
-                                    {customBpfPresets.map(cp => (
-                                        <option key={cp.id} value={cp.id}>{cp.name}</option>
-                                    ))}
-                                </optgroup>
-                            )}
-                            <option value="custom">✍️ Custom BPF Expression</option>
-                        </select>
-                    </div>
+
+                                {openDropdown === 'interface' && (
+                                    <div className="absolute left-0 top-full mt-1.5 w-80 bg-card border border-border rounded-2xl shadow-2xl z-50 p-2 space-y-2 animate-in fade-in zoom-in-95 duration-150">
+                                        {/* Primary & Physical NICs */}
+                                        <div className="space-y-0.5">
+                                            <div className="px-2.5 py-1 text-[9px] font-black uppercase tracking-widest text-text-muted opacity-60 flex items-center justify-between">
+                                                <span>Traffic &amp; Physical NICs</span>
+                                                <span>IPv4</span>
+                                            </div>
+                                            {primaryGroup.map(renderInterfaceRow)}
+                                        </div>
+
+                                        {/* Tunnels & Loopback */}
+                                        {tunnelGroup.length > 0 && (
+                                            <div className="space-y-0.5 pt-1.5 border-t border-border/60">
+                                                <div className="px-2.5 py-1 text-[9px] font-black uppercase tracking-widest text-text-muted opacity-60">
+                                                    Overlay &amp; Loopback
+                                                </div>
+                                                {tunnelGroup.map(renderInterfaceRow)}
+                                            </div>
+                                        )}
+
+                                        {/* Virtual / Docker Bridges (Collapsible) */}
+                                        {virtualGroup.length > 0 && (
+                                            <div className="pt-1.5 border-t border-border/60">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setShowVirtualInterfaces(prev => !prev)}
+                                                    className="w-full px-2.5 py-1.5 rounded-lg text-[10px] font-bold text-text-muted hover:text-text-primary hover:bg-card-secondary flex items-center justify-between transition-colors cursor-pointer"
+                                                >
+                                                    <span>
+                                                        {showVirtualInterfaces ? 'Hide' : 'Show'} virtual / Docker interfaces ({virtualGroup.length})
+                                                    </span>
+                                                    <ChevronDown size={12} className={`transition-transform ${showVirtualInterfaces ? 'rotate-180' : ''}`} />
+                                                </button>
+                                                {showVirtualInterfaces && (
+                                                    <div className="mt-1 space-y-0.5 max-h-40 overflow-y-auto pr-0.5">
+                                                        {virtualGroup.map(renderInterfaceRow)}
+                                                    </div>
+                                                )}
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
+                            </div>
+                        );
+                    })()}
+
+                    {/* Presets Custom Dropdown */}
+                    {(() => {
+                        const activeBuiltIn = presets.find(p => p.id === selectedPreset);
+                        const activeCustom = customBpfPresets.find(cp => cp.id === selectedPreset);
+                        const activePresetLabel = activeBuiltIn
+                            ? activeBuiltIn.name
+                            : activeCustom
+                            ? activeCustom.name
+                            : selectedPreset === 'custom'
+                            ? 'Custom BPF Expression'
+                            : 'All Traffic';
+
+                        return (
+                            <div className="lg:col-span-3 space-y-1 relative">
+                                <div className="flex items-center justify-between">
+                                    <label className="text-[10px] font-black uppercase tracking-wider text-text-muted">BPF Preset</label>
+                                    {isCustomPresetSelected && (
+                                        <button
+                                            type="button"
+                                            onClick={() => handleDeleteCustomPreset(selectedPreset)}
+                                            disabled={capturing}
+                                            className="text-[10px] text-rose-400 hover:text-rose-300 font-bold flex items-center gap-0.5 cursor-pointer disabled:opacity-50 transition-colors"
+                                            title="Delete selected custom preset"
+                                        >
+                                            <Trash2 size={10} />
+                                            <span>Delete</span>
+                                        </button>
+                                    )}
+                                </div>
+                                <button
+                                    type="button"
+                                    disabled={capturing}
+                                    onClick={() => setOpenDropdown(prev => prev === 'preset' ? null : 'preset')}
+                                    className={`w-full bg-card-secondary border rounded-xl px-3 py-1.5 text-xs text-text-primary font-mono flex items-center justify-between gap-2 h-9 transition-all cursor-pointer disabled:opacity-50 ${
+                                        openDropdown === 'preset' ? 'border-cyan-500 ring-2 ring-cyan-500/15' : 'border-border hover:border-cyan-500/40'
+                                    }`}
+                                >
+                                    <span className="truncate font-bold">{activePresetLabel}</span>
+                                    <ChevronDown size={13} className={`text-text-muted shrink-0 transition-transform ${openDropdown === 'preset' ? 'rotate-180 text-cyan-400' : ''}`} />
+                                </button>
+
+                                {openDropdown === 'preset' && (
+                                    <div className="absolute left-0 top-full mt-1.5 w-80 bg-card border border-border rounded-2xl shadow-2xl z-50 p-2 space-y-2 max-h-80 overflow-y-auto animate-in fade-in zoom-in-95 duration-150">
+                                        <div className="space-y-0.5">
+                                            <div className="px-2.5 py-1 text-[9px] font-black uppercase tracking-widest text-cyan-400">
+                                                ⚡ Built-in Presets
+                                            </div>
+                                            {presets.map(p => {
+                                                const isSel = selectedPreset === p.id;
+                                                return (
+                                                    <button
+                                                        key={p.id}
+                                                        type="button"
+                                                        onClick={() => {
+                                                            handlePresetSelect(p.id);
+                                                            setOpenDropdown(null);
+                                                        }}
+                                                        className={`w-full px-3 py-2 text-left rounded-xl flex items-center justify-between gap-2 transition-all cursor-pointer ${
+                                                            isSel
+                                                                ? 'bg-cyan-500/15 text-text-primary border border-cyan-500/30'
+                                                                : 'hover:bg-card-secondary text-text-secondary border border-transparent'
+                                                        }`}
+                                                    >
+                                                        <div className="min-w-0">
+                                                            <div className="text-xs font-bold text-text-primary truncate">{p.name}</div>
+                                                            {p.bpf && <div className="text-[10px] font-mono text-text-muted truncate">{p.bpf}</div>}
+                                                        </div>
+                                                        {isSel && <Check size={12} className="text-cyan-400 shrink-0" />}
+                                                    </button>
+                                                );
+                                            })}
+                                        </div>
+
+                                        {customBpfPresets.length > 0 && (
+                                            <div className="space-y-0.5 pt-1.5 border-t border-border/60">
+                                                <div className="px-2.5 py-1 text-[9px] font-black uppercase tracking-widest text-amber-400">
+                                                    ⭐ Custom BPF Filters
+                                                </div>
+                                                {customBpfPresets.map(cp => {
+                                                    const isSel = selectedPreset === cp.id;
+                                                    return (
+                                                        <button
+                                                            key={cp.id}
+                                                            type="button"
+                                                            onClick={() => {
+                                                                handlePresetSelect(cp.id);
+                                                                setOpenDropdown(null);
+                                                            }}
+                                                            className={`w-full px-3 py-2 text-left rounded-xl flex items-center justify-between gap-2 transition-all cursor-pointer ${
+                                                                isSel
+                                                                    ? 'bg-cyan-500/15 text-text-primary border border-cyan-500/30'
+                                                                    : 'hover:bg-card-secondary text-text-secondary border border-transparent'
+                                                            }`}
+                                                        >
+                                                            <div className="min-w-0">
+                                                                <div className="text-xs font-bold text-text-primary truncate">{cp.name}</div>
+                                                                <div className="text-[10px] font-mono text-text-muted truncate">{cp.bpf}</div>
+                                                            </div>
+                                                            {isSel && <Check size={12} className="text-cyan-400 shrink-0" />}
+                                                        </button>
+                                                    );
+                                                })}
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
+                            </div>
+                        );
+                    })()}
 
                     {/* Kernel BPF Filter */}
                     <div className="lg:col-span-4 space-y-1">
@@ -901,7 +1470,7 @@ export default function PacketCapture({ token, onNavigateToReplay }: PacketCaptu
                                     type="button"
                                     onClick={() => setShowBpfLibraryModal(true)}
                                     className="text-cyan-400 hover:text-cyan-300 font-bold flex items-center gap-1 cursor-pointer transition-colors"
-                                    title="Browse complex BPF recipes and recipes"
+                                    title="Browse complex BPF recipes"
                                 >
                                     <Sparkles size={11} />
                                     <span>Recipes</span>
@@ -945,38 +1514,103 @@ export default function PacketCapture({ token, onNavigateToReplay }: PacketCaptu
                     </div>
 
                     {/* Duration Limit */}
-                    <div className="lg:col-span-1.5 space-y-1">
-                        <label className="text-[10px] font-black uppercase tracking-wider text-text-muted">Duration</label>
-                        <select
-                            value={durationSec}
-                            onChange={(e) => setDurationSec(parseInt(e.target.value, 10))}
-                            disabled={capturing}
-                            className="w-full bg-card-secondary border border-border rounded-xl px-3 py-1.5 text-xs text-text-primary font-mono focus:outline-none focus:border-cyan-500 h-9"
-                        >
-                            <option value={10}>10s</option>
-                            <option value={30}>30s (Default)</option>
-                            <option value={60}>60s</option>
-                            <option value={120}>120s</option>
-                            <option value={300}>300s (Max)</option>
-                        </select>
-                    </div>
+                    {(() => {
+                        const durationOptions = [
+                            { value: 10, label: '10s' },
+                            { value: 30, label: '30s (Default)' },
+                            { value: 60, label: '60s' },
+                            { value: 120, label: '120s' },
+                            { value: 300, label: '300s (Max)' }
+                        ];
+                        return (
+                            <div className="lg:col-span-1 space-y-1 relative">
+                                <label className="text-[10px] font-black uppercase tracking-wider text-text-muted">Duration</label>
+                                <button
+                                    type="button"
+                                    disabled={capturing}
+                                    onClick={() => setOpenDropdown(prev => prev === 'duration' ? null : 'duration')}
+                                    className={`w-full bg-card-secondary border rounded-xl px-2.5 py-1.5 text-xs text-text-primary font-mono flex items-center justify-between gap-1 h-9 transition-all cursor-pointer disabled:opacity-50 ${
+                                        openDropdown === 'duration' ? 'border-cyan-500 ring-2 ring-cyan-500/15' : 'border-border hover:border-cyan-500/40'
+                                    }`}
+                                >
+                                    <span className="font-bold truncate">{durationSec}s</span>
+                                    <ChevronDown size={12} className={`text-text-muted shrink-0 transition-transform ${openDropdown === 'duration' ? 'rotate-180 text-cyan-400' : ''}`} />
+                                </button>
+                                {openDropdown === 'duration' && (
+                                    <div className="absolute right-0 top-full mt-1.5 w-40 bg-card border border-border rounded-2xl shadow-2xl z-50 p-1.5 space-y-0.5 animate-in fade-in zoom-in-95 duration-150">
+                                        {durationOptions.map(opt => (
+                                            <button
+                                                key={opt.value}
+                                                type="button"
+                                                onClick={() => {
+                                                    setDurationSec(opt.value);
+                                                    setOpenDropdown(null);
+                                                }}
+                                                className={`w-full px-3 py-1.5 text-left rounded-xl text-xs font-mono flex items-center justify-between transition-all cursor-pointer ${
+                                                    durationSec === opt.value
+                                                        ? 'bg-cyan-500/15 text-text-primary font-black border border-cyan-500/30'
+                                                        : 'hover:bg-card-secondary text-text-secondary border border-transparent'
+                                                }`}
+                                            >
+                                                <span>{opt.label}</span>
+                                                {durationSec === opt.value && <Check size={11} className="text-cyan-400" />}
+                                            </button>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+                        );
+                    })()}
 
                     {/* Packet Limit */}
-                    <div className="lg:col-span-1.5 space-y-1">
-                        <label className="text-[10px] font-black uppercase tracking-wider text-text-muted">Packet Limit</label>
-                        <select
-                            value={maxPackets}
-                            onChange={(e) => setMaxPackets(parseInt(e.target.value, 10))}
-                            disabled={capturing}
-                            className="w-full bg-card-secondary border border-border rounded-xl px-3 py-1.5 text-xs text-text-primary font-mono focus:outline-none focus:border-cyan-500 h-9"
-                        >
-                            <option value={500}>500 pkts</option>
-                            <option value={2000}>2,000 pkts</option>
-                            <option value={5000}>5,000 pkts</option>
-                            <option value={10000}>10,000 pkts</option>
-                            <option value={100000}>No limit (Time only)</option>
-                        </select>
-                    </div>
+                    {(() => {
+                        const limitOptions = [
+                            { value: 500, label: '500 pkts', short: '500' },
+                            { value: 2000, label: '2,000 pkts', short: '2,000' },
+                            { value: 5000, label: '5,000 pkts', short: '5,000' },
+                            { value: 10000, label: '10,000 pkts', short: '10,000' },
+                            { value: 100000, label: 'No limit (Time only)', short: 'Max' }
+                        ];
+                        const currentLimit = limitOptions.find(o => o.value === maxPackets) || limitOptions[1];
+                        return (
+                            <div className="lg:col-span-1 space-y-1 relative">
+                                <label className="text-[10px] font-black uppercase tracking-wider text-text-muted">Packet Limit</label>
+                                <button
+                                    type="button"
+                                    disabled={capturing}
+                                    onClick={() => setOpenDropdown(prev => prev === 'limit' ? null : 'limit')}
+                                    className={`w-full bg-card-secondary border rounded-xl px-2.5 py-1.5 text-xs text-text-primary font-mono flex items-center justify-between gap-1 h-9 transition-all cursor-pointer disabled:opacity-50 ${
+                                        openDropdown === 'limit' ? 'border-cyan-500 ring-2 ring-cyan-500/15' : 'border-border hover:border-cyan-500/40'
+                                    }`}
+                                >
+                                    <span className="font-bold truncate">{currentLimit.short} pkts</span>
+                                    <ChevronDown size={12} className={`text-text-muted shrink-0 transition-transform ${openDropdown === 'limit' ? 'rotate-180 text-cyan-400' : ''}`} />
+                                </button>
+                                {openDropdown === 'limit' && (
+                                    <div className="absolute right-0 top-full mt-1.5 w-48 bg-card border border-border rounded-2xl shadow-2xl z-50 p-1.5 space-y-0.5 animate-in fade-in zoom-in-95 duration-150">
+                                        {limitOptions.map(opt => (
+                                            <button
+                                                key={opt.value}
+                                                type="button"
+                                                onClick={() => {
+                                                    setMaxPackets(opt.value);
+                                                    setOpenDropdown(null);
+                                                }}
+                                                className={`w-full px-3 py-1.5 text-left rounded-xl text-xs font-mono flex items-center justify-between transition-all cursor-pointer ${
+                                                    maxPackets === opt.value
+                                                        ? 'bg-cyan-500/15 text-text-primary font-black border border-cyan-500/30'
+                                                        : 'hover:bg-card-secondary text-text-secondary border border-transparent'
+                                                }`}
+                                            >
+                                                <span>{opt.label}</span>
+                                                {maxPackets === opt.value && <Check size={11} className="text-cyan-400" />}
+                                            </button>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+                        );
+                    })()}
                 </div>
             </div>
 
@@ -988,7 +1622,7 @@ export default function PacketCapture({ token, onNavigateToReplay }: PacketCaptu
                         type="text"
                         value={displayFilter}
                         onChange={(e) => setDisplayFilter(e.target.value)}
-                        placeholder="Apply display filter... (e.g. 'tcp', 'udp', 'rst', 'dns', '192.168.122.51', ':8080')"
+                        placeholder="Filter by protocol, IP, target (e.g. 'DC1', 'WAN', 'tcp', 'rst', '8080')..."
                         className="bg-transparent border-0 text-xs text-text-primary font-mono placeholder:text-text-muted/50 focus:outline-none w-full"
                     />
                     {displayFilter && (
@@ -1042,23 +1676,97 @@ export default function PacketCapture({ token, onNavigateToReplay }: PacketCaptu
             <div className="space-y-4">
                 {/* PANE 1: Virtual Packet Table */}
                 <div className="bg-card border border-border rounded-2xl overflow-hidden shadow-sm">
-                    <div className="h-64 sm:h-72 lg:h-80 overflow-y-auto font-mono text-xs scrollbar-thin scrollbar-thumb-border">
-                        <table className="w-full text-left border-collapse">
-                            <thead className="sticky top-0 bg-card-secondary/95 backdrop-blur border-b border-border text-[9px] uppercase tracking-wider text-text-muted z-10">
+                    <div className="h-64 sm:h-72 lg:h-80 overflow-y-auto overflow-x-auto font-mono text-xs scrollbar-thin scrollbar-thumb-border">
+                        <table className="w-full text-left border-collapse min-w-[1100px]">
+                            <thead className="sticky top-0 bg-card-secondary/95 backdrop-blur border-b border-border text-[9px] uppercase tracking-wider text-text-muted z-10 select-none">
                                 <tr>
-                                    <th className="py-2 px-3 w-14">No.</th>
-                                    <th className="py-2 px-3 w-24">Time (s)</th>
-                                    <th className="py-2 px-3 w-40">Source</th>
-                                    <th className="py-2 px-3 w-40">Destination</th>
-                                    <th className="py-2 px-3 w-20">Protocol</th>
-                                    <th className="py-2 px-3 w-16">Length</th>
-                                    <th className="py-2 px-3">Info</th>
+                                    <th style={{ width: colWidths.no, minWidth: colWidths.no }} className="relative py-2 px-3 font-bold group">
+                                        <span>No.</span>
+                                        <div
+                                            onMouseDown={(e) => handleMouseDownResize('no', e)}
+                                            onDoubleClick={handleResetColWidths}
+                                            title="Drag to resize, double-click to reset widths"
+                                            className="absolute right-0 top-0 bottom-0 w-1.5 cursor-col-resize hover:bg-cyan-500/60 active:bg-cyan-500 transition-colors z-20"
+                                        />
+                                    </th>
+                                    <th style={{ width: colWidths.time, minWidth: colWidths.time }} className="relative py-2 px-3 font-bold group">
+                                        <span>Time (s)</span>
+                                        <div
+                                            onMouseDown={(e) => handleMouseDownResize('time', e)}
+                                            onDoubleClick={handleResetColWidths}
+                                            title="Drag to resize, double-click to reset widths"
+                                            className="absolute right-0 top-0 bottom-0 w-1.5 cursor-col-resize hover:bg-cyan-500/60 active:bg-cyan-500 transition-colors z-20"
+                                        />
+                                    </th>
+                                    <th style={{ width: colWidths.source, minWidth: colWidths.source }} className="relative py-2 px-3 font-bold group">
+                                        <span>Source</span>
+                                        <div
+                                            onMouseDown={(e) => handleMouseDownResize('source', e)}
+                                            onDoubleClick={handleResetColWidths}
+                                            title="Drag to resize, double-click to reset widths"
+                                            className="absolute right-0 top-0 bottom-0 w-1.5 cursor-col-resize hover:bg-cyan-500/60 active:bg-cyan-500 transition-colors z-20"
+                                        />
+                                    </th>
+                                    <th style={{ width: colWidths.srcTarget, minWidth: colWidths.srcTarget }} className="relative py-2 px-3 font-bold group">
+                                        <span>Src Target</span>
+                                        <div
+                                            onMouseDown={(e) => handleMouseDownResize('srcTarget', e)}
+                                            onDoubleClick={handleResetColWidths}
+                                            title="Drag to resize, double-click to reset widths"
+                                            className="absolute right-0 top-0 bottom-0 w-1.5 cursor-col-resize hover:bg-cyan-500/60 active:bg-cyan-500 transition-colors z-20"
+                                        />
+                                    </th>
+                                    <th style={{ width: colWidths.destination, minWidth: colWidths.destination }} className="relative py-2 px-3 font-bold group">
+                                        <span>Destination</span>
+                                        <div
+                                            onMouseDown={(e) => handleMouseDownResize('destination', e)}
+                                            onDoubleClick={handleResetColWidths}
+                                            title="Drag to resize, double-click to reset widths"
+                                            className="absolute right-0 top-0 bottom-0 w-1.5 cursor-col-resize hover:bg-cyan-500/60 active:bg-cyan-500 transition-colors z-20"
+                                        />
+                                    </th>
+                                    <th style={{ width: colWidths.dstTarget, minWidth: colWidths.dstTarget }} className="relative py-2 px-3 font-bold group">
+                                        <span>Dst Target</span>
+                                        <div
+                                            onMouseDown={(e) => handleMouseDownResize('dstTarget', e)}
+                                            onDoubleClick={handleResetColWidths}
+                                            title="Drag to resize, double-click to reset widths"
+                                            className="absolute right-0 top-0 bottom-0 w-1.5 cursor-col-resize hover:bg-cyan-500/60 active:bg-cyan-500 transition-colors z-20"
+                                        />
+                                    </th>
+                                    <th style={{ width: colWidths.protocol, minWidth: colWidths.protocol }} className="relative py-2 px-3 font-bold group">
+                                        <span>Protocol</span>
+                                        <div
+                                            onMouseDown={(e) => handleMouseDownResize('protocol', e)}
+                                            onDoubleClick={handleResetColWidths}
+                                            title="Drag to resize, double-click to reset widths"
+                                            className="absolute right-0 top-0 bottom-0 w-1.5 cursor-col-resize hover:bg-cyan-500/60 active:bg-cyan-500 transition-colors z-20"
+                                        />
+                                    </th>
+                                    <th style={{ width: colWidths.length, minWidth: colWidths.length }} className="relative py-2 px-3 font-bold group">
+                                        <span>Length</span>
+                                        <div
+                                            onMouseDown={(e) => handleMouseDownResize('length', e)}
+                                            onDoubleClick={handleResetColWidths}
+                                            title="Drag to resize, double-click to reset widths"
+                                            className="absolute right-0 top-0 bottom-0 w-1.5 cursor-col-resize hover:bg-cyan-500/60 active:bg-cyan-500 transition-colors z-20"
+                                        />
+                                    </th>
+                                    <th style={{ width: colWidths.info, minWidth: colWidths.info }} className="relative py-2 px-3 font-bold group">
+                                        <span>Info</span>
+                                        <div
+                                            onMouseDown={(e) => handleMouseDownResize('info', e)}
+                                            onDoubleClick={handleResetColWidths}
+                                            title="Drag to resize, double-click to reset widths"
+                                            className="absolute right-0 top-0 bottom-0 w-1.5 cursor-col-resize hover:bg-cyan-500/60 active:bg-cyan-500 transition-colors z-20"
+                                        />
+                                    </th>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-border/20">
                                 {loadingPackets ? (
                                     <tr>
-                                        <td colSpan={7} className="py-20 text-center text-text-muted">
+                                        <td colSpan={9} className="py-20 text-center text-text-muted">
                                             <div className="space-y-3">
                                                 <Loader2 size={32} className="animate-spin mx-auto text-cyan-400" />
                                                 <p className="text-xs font-bold text-text-primary">
@@ -1072,7 +1780,7 @@ export default function PacketCapture({ token, onNavigateToReplay }: PacketCaptu
                                     </tr>
                                 ) : filteredPackets.length === 0 ? (
                                     <tr>
-                                        <td colSpan={7} className="py-16 text-center text-text-muted">
+                                        <td colSpan={9} className="py-16 text-center text-text-muted">
                                             {capturing ? (
                                                 <div className="space-y-2">
                                                     <RefreshCw size={24} className="animate-spin mx-auto text-cyan-400" />
@@ -1090,31 +1798,51 @@ export default function PacketCapture({ token, onNavigateToReplay }: PacketCaptu
                                 ) : (
                                     filteredPackets.map((pkt) => {
                                         const isSelected = selectedPacketNo === pkt.no;
+                                        const srcTarget = resolveTarget(pkt.source);
+                                        const dstTarget = resolveTarget(pkt.destination);
                                         return (
                                             <tr
                                                 key={pkt.no}
                                                 onClick={() => setSelectedPacketNo(pkt.no)}
                                                 className={`cursor-pointer transition-colors text-[11px] select-none ${
                                                     isSelected 
-                                                        ? 'bg-blue-600/20 text-text-primary font-bold border-l-2 border-l-blue-500' 
+                                                        ? 'bg-blue-500/15 dark:bg-blue-600/25 text-blue-900 dark:text-text-primary font-bold border-l-4 border-l-blue-500' 
                                                         : 'hover:bg-card-hover/60 text-text-secondary'
                                                 }`}
                                             >
-                                                <td className="py-1.5 px-3 text-text-muted">{pkt.no}</td>
-                                                <td className="py-1.5 px-3 text-text-muted">{pkt.time.toFixed(6)}</td>
-                                                <td className="py-1.5 px-3 text-text-primary truncate" title={pkt.source}>
+                                                <td style={{ width: colWidths.no, minWidth: colWidths.no }} className="py-1.5 px-3 text-text-muted truncate">
+                                                    {pkt.no}
+                                                </td>
+                                                <td style={{ width: colWidths.time, minWidth: colWidths.time }} className="py-1.5 px-3 text-text-muted truncate">
+                                                    {pkt.time.toFixed(6)}
+                                                </td>
+                                                <td style={{ width: colWidths.source, minWidth: colWidths.source }} className="py-1.5 px-3 text-text-primary truncate" title={pkt.source + (pkt.sport ? `:${pkt.sport}` : '')}>
                                                     {pkt.source}{pkt.sport ? `:${pkt.sport}` : ''}
                                                 </td>
-                                                <td className="py-1.5 px-3 text-text-primary truncate" title={pkt.destination}>
+                                                <td style={{ width: colWidths.srcTarget, minWidth: colWidths.srcTarget }} className="py-1.5 px-3 truncate">
+                                                    <TargetBadge
+                                                        target={srcTarget}
+                                                        onClick={(lbl) => setDisplayFilter(prev => prev === lbl ? '' : lbl)}
+                                                    />
+                                                </td>
+                                                <td style={{ width: colWidths.destination, minWidth: colWidths.destination }} className="py-1.5 px-3 text-text-primary truncate" title={pkt.destination + (pkt.dport ? `:${pkt.dport}` : '')}>
                                                     {pkt.destination}{pkt.dport ? `:${pkt.dport}` : ''}
                                                 </td>
-                                                <td className="py-1.5 px-3">
+                                                <td style={{ width: colWidths.dstTarget, minWidth: colWidths.dstTarget }} className="py-1.5 px-3 truncate">
+                                                    <TargetBadge
+                                                        target={dstTarget}
+                                                        onClick={(lbl) => setDisplayFilter(prev => prev === lbl ? '' : lbl)}
+                                                    />
+                                                </td>
+                                                <td style={{ width: colWidths.protocol, minWidth: colWidths.protocol }} className="py-1.5 px-3">
                                                     <span className={`px-1.5 py-0.5 rounded text-[9px] font-black uppercase border ${getProtoColorClass(pkt.protocol, pkt.info)}`}>
                                                         {pkt.protocol}
                                                     </span>
                                                 </td>
-                                                <td className="py-1.5 px-3 text-text-muted">{pkt.length}</td>
-                                                <td className="py-1.5 px-3 truncate max-w-md font-mono text-[11px]" title={pkt.info}>
+                                                <td style={{ width: colWidths.length, minWidth: colWidths.length }} className="py-1.5 px-3 text-text-muted truncate">
+                                                    {pkt.length}
+                                                </td>
+                                                <td style={{ width: colWidths.info, minWidth: colWidths.info }} className="py-1.5 px-3 truncate font-mono text-[11px]" title={pkt.info}>
                                                     {pkt.info}
                                                 </td>
                                             </tr>
@@ -1169,13 +1897,13 @@ export default function PacketCapture({ token, onNavigateToReplay }: PacketCaptu
                                                 </div>
                                             </button>
 
-                                            {isExpanded && (
-                                                <div className="p-2.5 bg-black/20 space-y-1 border-t border-border/30">
+                                             {isExpanded && (
+                                                <div className="p-2.5 bg-slate-100/70 dark:bg-black/20 space-y-1 border-t border-border/30">
                                                     {typeof layerData === 'object' && layerData !== null ? (
                                                         Object.entries(layerData).map(([k, v]) => (
                                                             <div key={k} className="flex gap-2 text-[10px]">
-                                                                <span className="text-text-muted shrink-0 min-w-36">{k}:</span>
-                                                                <span className="text-cyan-300 font-bold break-all">{String(v)}</span>
+                                                                <span className="text-slate-600 dark:text-text-muted shrink-0 min-w-36 font-semibold">{k}:</span>
+                                                                <span className="text-cyan-700 dark:text-cyan-300 font-bold break-all">{String(v)}</span>
                                                             </div>
                                                         ))
                                                     ) : (
@@ -1194,7 +1922,7 @@ export default function PacketCapture({ token, onNavigateToReplay }: PacketCaptu
                     <div className="bg-card border border-border rounded-2xl p-4 shadow-sm flex flex-col h-72 lg:h-80">
                         <div className="flex items-center justify-between pb-3 border-b border-border/60">
                             <div className="flex items-center gap-2">
-                                <Binary size={15} className="text-purple-400" />
+                                <Binary size={15} className="text-purple-600 dark:text-purple-400" />
                                 <h3 className="text-xs font-black uppercase tracking-wider text-text-primary">
                                     Hex / ASCII Raw Stream
                                 </h3>
@@ -1205,13 +1933,13 @@ export default function PacketCapture({ token, onNavigateToReplay }: PacketCaptu
                                     className="p-1 px-2 text-[10px] font-bold text-text-muted hover:text-text-primary bg-card-secondary hover:bg-card-hover rounded-lg border border-border flex items-center gap-1 transition-all cursor-pointer"
                                     title="Copy raw hex stream"
                                 >
-                                    {copiedHex ? <Check size={11} className="text-emerald-400" /> : <Copy size={11} />}
+                                    {copiedHex ? <Check size={11} className="text-emerald-500 dark:text-emerald-400" /> : <Copy size={11} />}
                                     {copiedHex ? "Copied" : "Copy Hex"}
                                 </button>
                             )}
                         </div>
 
-                        <div className="flex-1 overflow-y-auto mt-2 bg-black/60 border border-border/40 rounded-xl p-3 font-mono text-[10px] leading-relaxed text-text-muted scrollbar-thin scrollbar-thumb-border">
+                        <div className="flex-1 overflow-y-auto mt-2 bg-slate-900 dark:bg-black/60 border border-slate-700/60 dark:border-border/40 rounded-xl p-3 font-mono text-[10px] leading-relaxed text-slate-300 dark:text-text-muted scrollbar-thin scrollbar-thumb-border shadow-inner">
                             {loadingPackets ? (
                                 <div className="h-full flex flex-col items-center justify-center gap-2 text-text-muted text-xs">
                                     <Loader2 size={20} className="animate-spin text-purple-400" />
@@ -1223,10 +1951,10 @@ export default function PacketCapture({ token, onNavigateToReplay }: PacketCaptu
                                 </div>
                             ) : (
                                 activePacket.hex_dump.map((line, idx) => (
-                                    <div key={idx} className="flex gap-3 hover:bg-white/5 py-0.5 px-1 rounded transition-colors">
-                                        <span className="text-purple-400/80 shrink-0 select-none">{line.offset}</span>
-                                        <span className="text-cyan-300 tracking-wider shrink-0 select-text">{line.hex}</span>
-                                        <span className="text-text-primary/90 tracking-widest pl-2 border-l border-border/40 select-text">{line.ascii}</span>
+                                    <div key={idx} className="flex gap-3 hover:bg-white/10 py-0.5 px-1 rounded transition-colors">
+                                        <span className="text-purple-300 dark:text-purple-400/80 shrink-0 select-none font-semibold">{line.offset}</span>
+                                        <span className="text-cyan-300 dark:text-cyan-300 tracking-wider shrink-0 select-text">{line.hex}</span>
+                                        <span className="text-slate-100 dark:text-text-primary/90 tracking-widest pl-2 border-l border-slate-700 dark:border-border/40 select-text">{line.ascii}</span>
                                     </div>
                                 ))
                             )}

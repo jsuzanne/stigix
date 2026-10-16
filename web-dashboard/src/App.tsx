@@ -13,6 +13,7 @@ import Speedtest from './Speedtest';
 import Topology from './Topology';
 import LiveEvents from './LiveEvents';
 import { CustomApps } from './CustomApps';
+import { MulticastOverlayTab } from './components/custom-tcp/MulticastOverlayTab';
 import { PcapReplay } from './PcapReplay';
 import PacketCapture from './PacketCapture';
 import Copilot from './Copilot';
@@ -66,9 +67,9 @@ function PeerStatusSync({
   onStatus?: (v: 'running' | 'stopped' | 'unknown') => void;
   onTrafficStatus?: (running: boolean, rate?: number, count?: number) => void;
   onHistory?: (history: any[]) => void;
-  onGatewayIp?: (gw: string | null) => void;
+  onGatewayIp?: (gw: string | null, info?: any) => void;
   onLocalIp?: (ip: string | null) => void;
-  onPublicIp?: (ip: string | null, country?: string | null) => void;
+  onPublicIp?: (ip: string | null, country?: string | null, info?: any) => void;
   onSiteInfo?: (info: any) => void;
   onConnectivity?: (conn: any) => void;
   onIperfServer?: (info: any) => void;
@@ -76,7 +77,7 @@ function PeerStatusSync({
 }) {
   const { gFetch, activePeerId } = usePeerContext();
 
-  // ── Network loop: gateway, public ip, siteinfo, connectivity, health-matrix (30s & immediate on peer change) ──
+  // ── Network loop: gateway, public ip, siteinfo, connectivity, health-matrix (15s & immediate on peer change) ──
   useEffect(() => {
     if (!token || !activePeerId) return;
 
@@ -92,12 +93,12 @@ function PeerStatusSync({
         ]);
         if (gwRes.status === 'fulfilled' && gwRes.value.ok) {
           const data = await gwRes.value.json();
-          onGatewayIp?.(data.ip || null);
+          onGatewayIp?.(data.ip || null, data);
           if (data.local_ip) onLocalIp?.(data.local_ip);
         }
         if (ipRes.status === 'fulfilled' && ipRes.value.ok) {
           const data = await ipRes.value.json();
-          onPublicIp?.(data.ip || null, data.countryCode || null);
+          onPublicIp?.(data.ip || null, data.countryCode || null, data);
         }
         if (siteRes.status === 'fulfilled' && siteRes.value.ok) {
           const data = await siteRes.value.json();
@@ -246,7 +247,7 @@ interface SiteInfo {
 export default function App() {
   const [token, setToken] = useState<string | null>(localStorage.getItem('token'));
   const [username, setUsername] = useState<string | null>(localStorage.getItem('username'));
-  const [view, setView] = useState<'dashboard' | 'settings' | 'statistics' | 'security' | 'voice' | 'performance' | 'failover' | 'srt' | 'iot' | 'vyos' | 'speedtest' | 'topology' | 'convergence' | 'events' | 'custom_apps' | 'pcap_replay' | 'packet_capture' | 'api_studio' | 'copilot' | 'fleet' | 'home'>(
+  const [view, setView] = useState<'dashboard' | 'settings' | 'statistics' | 'security' | 'voice' | 'performance' | 'failover' | 'srt' | 'iot' | 'vyos' | 'speedtest' | 'topology' | 'convergence' | 'events' | 'custom_apps' | 'multicast' | 'pcap_replay' | 'packet_capture' | 'api_studio' | 'copilot' | 'fleet' | 'home'>(
     () => {
       const saved = localStorage.getItem('activeView');
       if (saved && saved !== 'settings') {
@@ -256,9 +257,15 @@ export default function App() {
     }
   );
 
-  const handleNavigate = (viewId: string, subTab?: string) => {
+  const [initialSettingsTab, setInitialSettingsTab] = useState<any>(null);
+  const [initialSettingsSubSection, setInitialSettingsSubSection] = useState<string | null>(null);
+
+  const handleNavigate = (viewId: string, subTab?: string, subSection?: string) => {
     if (subTab) {
       setInitialSettingsTab(subTab);
+    }
+    if (subSection !== undefined) {
+      setInitialSettingsSubSection(subSection || null);
     }
     setView(viewId as any);
     try {
@@ -267,7 +274,6 @@ export default function App() {
   };
 
   const [features, setFeatures] = useState<{ xfr_enabled: boolean }>({ xfr_enabled: false });
-  const [initialSettingsTab, setInitialSettingsTab] = useState<any>(null);
   const [copilotDrawerOpen, setCopilotDrawerOpen] = useState(false);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [copilotConfig, setCopilotConfig] = useState<{ enabled: boolean; featureEnabled?: boolean; hasKey: boolean } | null>(null);
@@ -346,13 +352,23 @@ export default function App() {
 
   // --- Theme Management ---
   const [theme, setTheme] = useState<'light' | 'dark'>(() => {
-    return (localStorage.getItem('theme') as 'light' | 'dark') || 'dark';
+    const saved = (localStorage.getItem('theme') as 'light' | 'dark') || 'dark';
+    if (typeof document !== 'undefined') {
+      document.documentElement.setAttribute('data-theme', saved);
+      document.documentElement.classList.toggle('dark', saved === 'dark');
+      document.documentElement.classList.toggle('light', saved === 'light');
+      document.documentElement.style.colorScheme = saved;
+      document.documentElement.style.backgroundColor = saved === 'light' ? '#eef2f7' : '#020617';
+    }
+    return saved;
   });
 
-  useEffect(() => {
+  React.useLayoutEffect(() => {
     document.documentElement.setAttribute('data-theme', theme);
     document.documentElement.classList.toggle('dark', theme === 'dark');
     document.documentElement.classList.toggle('light', theme === 'light');
+    document.documentElement.style.colorScheme = theme;
+    document.documentElement.style.backgroundColor = theme === 'light' ? '#eef2f7' : '#020617';
     localStorage.setItem('theme', theme);
   }, [theme]);
 
@@ -408,8 +424,10 @@ export default function App() {
   const [iperfServerInfo, setIperfServerInfo] = useState<any>(null);
   const [publicIp, setPublicIp] = useState<string | null>(null);
   const [publicIpCountry, setPublicIpCountry] = useState<string | null>(null);
+  const [publicIpInfo, setPublicIpInfo] = useState<any>(null);
   const [gatewayIp, setGatewayIp] = useState<string | null>(null);
   const [localIp, setLocalIp] = useState<string | null>(null);
+  const [gatewayInfo, setGatewayInfo] = useState<any>(null);
 
   // Maintenance State
   const [maintenance, setMaintenance] = useState<{ updateAvailable: boolean } | null>(null);
@@ -474,6 +492,10 @@ export default function App() {
       healthData?.subsystems?.custom_apps?.running ||
       (healthData?.subsystems?.custom_apps?.active_streams > 0) ||
       (healthData?.subsystems?.custom_apps?.active_workloads > 0)
+    ),
+    multicast: Boolean(
+      healthData?.subsystems?.multicast?.running ||
+      (healthData?.subsystems?.multicast?.activeStreamsCount > 0)
     ),
     iot: Boolean(
       healthData?.subsystems?.iot?.running ||
@@ -912,6 +934,7 @@ export default function App() {
         const data = await res.json();
         setPublicIp(data.ip);
         if (data.countryCode) setPublicIpCountry(data.countryCode);
+        setPublicIpInfo(data);
       }
     } catch (e) {
       console.error('Failed to fetch public IP');
@@ -925,6 +948,7 @@ export default function App() {
         const data = await res.json();
         setGatewayIp(data.ip);
         if (data.local_ip) setLocalIp(data.local_ip);
+        setGatewayInfo(data);
       }
     } catch (e) {
       console.error('Failed to fetch gateway IP');
@@ -1005,7 +1029,7 @@ export default function App() {
       fetchPublicIp();
       fetchGatewayIp();
       fetchSiteInfo();
-    }, 30000);
+    }, 15000);
 
     const maintenanceInterval = setInterval(() => {
       fetchMaintenance();
@@ -1096,18 +1120,22 @@ export default function App() {
           if (count !== undefined) setTrafficClientCount(count);
         }}
         onHistory={setHistory}
-        onGatewayIp={setGatewayIp}
+        onGatewayIp={(gw, info) => {
+          setGatewayIp(gw);
+          if (info) setGatewayInfo(info);
+        }}
         onLocalIp={setLocalIp}
-        onPublicIp={(ip, country) => {
+        onPublicIp={(ip, country, info) => {
           setPublicIp(ip);
           if (country !== undefined) setPublicIpCountry(country);
+          if (info) setPublicIpInfo(info);
         }}
         onSiteInfo={setSiteInfo}
         onConnectivity={setConnectivity}
         onIperfServer={setIperfServerInfo}
         onHealthMatrix={setHealthData}
       />
-    <div className="min-h-screen bg-background text-foreground pt-4 pb-8 pr-8 pl-20 transition-all">
+    <div className="min-h-screen bg-background text-foreground pt-4 pb-8 pr-8 pl-20">
       <SidebarRail
         activeView={view}
         activeSubTab={initialSettingsTab}
@@ -1186,7 +1214,7 @@ export default function App() {
             {/* Single-line Metadata (Significantly Enlarged & Prominent) */}
             <div className="flex items-center gap-2.5 sm:gap-3 text-sm sm:text-[15px] font-medium">
               <span className="hidden md:inline text-slate-700 dark:text-slate-200 font-semibold tracking-tight">
-                The Engine for SASE Validation
+                SASE Validation Engine
               </span>
               {isRemoteView && activePeerLabel ? (
                 <>
@@ -1292,9 +1320,14 @@ export default function App() {
                   : "bg-card-secondary hover:bg-card-hover text-text-secondary hover:text-text-primary border-border"
               )}
             >
-              <Bot size={15} className={copilotDrawerOpen ? "text-white" : "text-indigo-400"} />
+              <Bot size={15} className={copilotDrawerOpen ? "text-white" : "text-indigo-500 dark:text-indigo-400"} />
               <span className="hidden md:inline">AI Copilot</span>
-              <span className="px-1 py-0.2 rounded text-[8px] font-mono bg-black/20 text-text-muted border border-white/10">⌘J</span>
+              <span className={cn(
+                "px-1 py-0.2 rounded text-[8px] font-mono border",
+                copilotDrawerOpen
+                  ? "bg-white/20 text-white border-white/20"
+                  : "bg-slate-200/70 dark:bg-black/20 text-slate-600 dark:text-text-muted border-slate-300/60 dark:border-white/10"
+              )}>⌘J</span>
             </button>
           )}
 
@@ -1454,10 +1487,14 @@ export default function App() {
           token={token}
           healthData={healthData}
           isLoadingHealth={isHealthLoading}
-          onRefreshHealth={fetchHealthMatrix}
+          onRefreshHealth={() => {
+            fetchHealthMatrix();
+            fetchGatewayIp();
+            fetchPublicIp();
+          }}
           registryStatus={registryStatus}
           siteInfo={siteInfo}
-          version="v3.0.0"
+          version={version || 'v3.0.0'}
           trafficRunning={trafficRunning}
           currentRpm={currentRpm}
           saasAppsCount={trafficRunning && activeSaasAppsCount > 0 ? activeSaasAppsCount : totalConfiguredSaasApps}
@@ -1466,14 +1503,17 @@ export default function App() {
           isLeader={isLeader}
           publicIp={publicIp}
           publicIpCountry={publicIpCountry}
+          publicIpInfo={publicIpInfo}
           gatewayIp={gatewayIp}
           localIp={localIp}
+          gatewayInfo={gatewayInfo}
           updateAvailable={Boolean(maintenance?.updateAvailable)}
           speedtestResult={speedtestResult}
           onRunSpeedtest={runSpeedtest}
           runningSpeedtest={runningSpeedtest}
           onNavigate={handleNavigate}
           onOpenDiagnostics={() => setShowHealthModal(true)}
+          onOpenNodeRoleModal={() => setShowNodeRoleModal(true)}
         />
       )}
 
@@ -1804,7 +1844,7 @@ export default function App() {
           setView('settings');
         }} />
       )}
-      {view === 'topology' && <Topology token={token!} />}
+      {view === 'topology' && <Topology token={token!} theme={theme} />}
       {view === 'security' && <Security token={token!} onGoToCloudSettings={() => {
         setView('settings');
         setTimeout(() => {
@@ -1815,10 +1855,17 @@ export default function App() {
       {view === 'iot' && <Iot token={token!} />}
       {view === 'voice' && <Voice token={token!} externalStatus={globalVoiceStatus} />}
       {(view === 'failover' || view === 'convergence') && <Failover token={token!} externalStatus={globalConvStatus} />}
-      {view === 'settings' && <SettingsComponent token={token!} uiConfig={uiConfig} onUpdateUIConfig={fetchConfigUi} onUpdateCopilotConfig={fetchCopilotConfig} initialTab={initialSettingsTab} />}
+      {view === 'settings' && <SettingsComponent token={token!} uiConfig={uiConfig} onUpdateUIConfig={fetchConfigUi} onUpdateCopilotConfig={fetchCopilotConfig} initialTab={initialSettingsTab} initialSubSection={initialSettingsSubSection} onOpenNodeRoleModal={() => setShowNodeRoleModal(true)} />}
       {view === 'custom_apps' && <CustomApps token={token!} />}
+      {view === 'multicast' && (
+        <MulticastOverlayTab
+          token={token!}
+          localSiteName={siteInfo?.detected_site_name || registryStatus?.site_name || (isLeader ? 'DC1' : 'BR8')}
+          isStandalone={true}
+        />
+      )}
       {view === 'pcap_replay' && isPcapEnabled && <PcapReplay token={token!} />}
-      {view === 'packet_capture' && <PacketCapture token={token!} onNavigateToReplay={() => setView('pcap_replay')} />}
+      {view === 'packet_capture' && <PacketCapture token={token!} localSiteName={siteInfo?.detected_site_name || registryStatus?.site_name || (isLeader ? 'DC1' : 'BR8')} onNavigateToReplay={() => setView('pcap_replay')} />}
       {view === 'speedtest' && features.xfr_enabled && <Speedtest token={token!} />}
       {view === 'events' && <LiveEvents token={token!} />}
       {copilotConfig?.featureEnabled && copilotConfig?.hasKey && view === 'copilot' && <Copilot token={token!} onOpenSettings={() => { setInitialSettingsTab('mcp'); setView('settings'); }} />}
@@ -1829,14 +1876,14 @@ export default function App() {
         <button
           onClick={() => setCopilotDrawerOpen(true)}
           title="Open Stigix AI Copilot Assistant (⌘J)"
-          className="fixed bottom-4 right-4 z-20 bg-slate-900/90 hover:bg-slate-800 text-slate-300 hover:text-white border border-slate-700/70 hover:border-indigo-500/50 rounded-full px-2.5 py-1.5 flex items-center gap-1.5 text-[11px] font-semibold tracking-tight transition-all duration-150 hover:scale-105 active:scale-95 group backdrop-blur-md shadow-lg shadow-black/40"
+          className="fixed bottom-4 right-4 z-20 bg-white/95 dark:bg-slate-900/90 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 hover:text-indigo-600 dark:hover:text-white border border-slate-200/90 dark:border-slate-700/70 hover:border-indigo-400 dark:hover:border-indigo-500/50 rounded-full px-3 py-1.5 flex items-center gap-1.5 text-[11px] font-semibold tracking-tight transition-all duration-150 hover:scale-105 active:scale-95 group backdrop-blur-md shadow-lg shadow-slate-300/60 dark:shadow-black/40"
         >
           <div className="relative flex items-center justify-center">
-            <Bot size={14} className="text-indigo-400 group-hover:text-indigo-300 transition-colors" />
-            <span className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 bg-emerald-400 rounded-full" />
+            <Bot size={14} className="text-indigo-600 dark:text-indigo-400 group-hover:text-indigo-500 dark:group-hover:text-indigo-300 transition-colors" />
+            <span className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 bg-emerald-500 dark:bg-emerald-400 rounded-full" />
           </div>
           <span>Copilot</span>
-          <span className="px-1 py-0.2 rounded text-[8px] font-mono bg-white/10 text-slate-400 group-hover:text-white border border-white/10">⌘J</span>
+          <span className="px-1 py-0.2 rounded text-[8px] font-mono bg-slate-100 dark:bg-white/10 text-slate-500 dark:text-slate-400 group-hover:text-indigo-600 dark:group-hover:text-white border border-slate-200 dark:border-white/10">⌘J</span>
         </button>
       )}
 

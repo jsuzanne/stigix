@@ -765,12 +765,14 @@ export class ProvisioningManager {
             } else if (type === 'custom-tcp-apps') {
                 let localInstance: any = null;
                 let localApps: any[] = [];
+                let localMulticastApps: any[] = [];
                 if (fs.existsSync(activeFile)) {
                     try {
                         const existing = JSON.parse(fs.readFileSync(activeFile, 'utf8'));
                         if (existing) {
                             if (existing.instance) localInstance = existing.instance;
                             if (Array.isArray(existing.applications)) localApps = existing.applications;
+                            if (Array.isArray(existing.multicastApplications)) localMulticastApps = existing.multicastApplications;
                         }
                     } catch {}
                 }
@@ -778,6 +780,9 @@ export class ProvisioningManager {
                 const incomingApps: any[] = Array.isArray(normalizedGlobal)
                     ? normalizedGlobal
                     : (normalizedGlobal?.applications || []);
+                const incomingMulticastApps: any[] = Array.isArray(normalizedGlobal?.multicastApplications)
+                    ? normalizedGlobal.multicastApplications
+                    : localMulticastApps;
 
                 const localAppMap = new Map<string, any>(localApps.map((a: any) => [a.id, a]));
                 const incomingIdSet = new Set(incomingApps.map((a: any) => a.id));
@@ -819,7 +824,8 @@ export class ProvisioningManager {
                     version: 1,
                     instance: localInstance || (normalizedGlobal?.instance || undefined),
                     updatedAt: new Date().toISOString(),
-                    applications: mergedApps
+                    applications: mergedApps,
+                    multicastApplications: incomingMulticastApps
                 };
                 fs.writeFileSync(activeFile, JSON.stringify(mergedPayload, null, 2), 'utf8');
             } else if (type === 'ca-certificates') {
@@ -870,8 +876,19 @@ export class ProvisioningManager {
 
                 fs.writeFileSync(activeFile, JSON.stringify(normalizedGlobal, null, 2), 'utf8');
                 mergedPayload = normalizedGlobal;
+            } else if (type === 'security-config') {
+                // Preserve local node's statistics, test_history, and local sls_config if not explicitly overridden
+                const existingLocal = oldEffective && typeof oldEffective === 'object' ? oldEffective : {};
+                mergedPayload = {
+                    ...existingLocal,
+                    ...normalizedGlobal,
+                    statistics: existingLocal.statistics || normalizedGlobal?.statistics,
+                    sls_config: normalizedGlobal?.sls_config || existingLocal.sls_config,
+                };
+                delete mergedPayload.test_history; // History is stored in security-history.jsonl
+                fs.writeFileSync(activeFile, JSON.stringify(mergedPayload, null, 2), 'utf8');
             } else {
-                // SLA, Prisma SASE, Security, IoT objects/arrays
+                // SLA, Prisma SASE, IoT objects/arrays
                 fs.writeFileSync(activeFile, JSON.stringify(normalizedGlobal, null, 2), 'utf8');
             }
 

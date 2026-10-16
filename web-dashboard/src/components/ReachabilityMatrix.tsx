@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import { twMerge } from 'tailwind-merge';
 import { MatrixSkeleton } from './skeletons/MatrixSkeleton';
+import { StigixSelect } from './common/StigixSelect';
 
 interface MatrixNode {
     id: string;
@@ -622,22 +623,24 @@ export function ReachabilityMatrix({ token }: { token?: string }) {
                 {/* Right: Latency Filter & Refresh */}
                 <div className="flex items-center gap-3">
                     <div className="flex items-center gap-2">
-                        <label htmlFor="latency-filter" className="text-xs font-bold text-text-muted whitespace-nowrap">
+                        <label className="text-xs font-bold text-text-muted whitespace-nowrap">
                             Latency &gt;
                         </label>
-                        <select
-                            id="latency-filter"
-                            value={latencyThreshold}
-                            onChange={(e) => setLatencyThreshold(Number(e.target.value))}
-                            className="bg-card-secondary border border-border text-text-primary text-xs rounded-lg px-2.5 py-1 font-mono font-bold focus:outline-none focus:ring-1 focus:ring-blue-500"
-                        >
-                            <option value={0}>All</option>
-                            <option value={15}>&gt; 15 ms</option>
-                            <option value={30}>&gt; 30 ms</option>
-                            <option value={50}>&gt; 50 ms</option>
-                            <option value={100}>&gt; 100 ms</option>
-                            <option value={200}>&gt; 200 ms</option>
-                        </select>
+                        <StigixSelect
+                            value={String(latencyThreshold)}
+                            onChange={(val) => setLatencyThreshold(Number(val))}
+                            size="xs"
+                            accent="blue"
+                            minMenuWidth={110}
+                            options={[
+                                { value: '0', label: 'All' },
+                                { value: '15', label: '> 15 ms' },
+                                { value: '30', label: '> 30 ms' },
+                                { value: '50', label: '> 50 ms' },
+                                { value: '100', label: '> 100 ms' },
+                                { value: '200', label: '> 200 ms' },
+                            ]}
+                        />
                     </div>
 
                     <button

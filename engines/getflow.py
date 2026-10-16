@@ -16,6 +16,7 @@ import sys
 import socket
 import ipaddress
 import os
+import re
 from typing import Optional, Dict, Any
 import concurrent.futures
 
@@ -375,6 +376,55 @@ def get_interface_description(interface: Dict[str, Any]) -> Optional[str]:
     return None
 
 
+def get_interface_port_label(interface: Dict[str, Any]) -> str:
+    """
+    Format a clean LAN port label for Stigix probes (e.g. 'Port 1', 'Users (VLAN 219)', 'VLAN 219').
+    """
+    name = (interface.get('name') or '').strip()
+    intf_type = (interface.get('type') or '').strip()
+
+    # Extract VLAN ID if any
+    vlan_id = (
+        interface.get('vlan_id')
+        or interface.get('vlan')
+        or (interface.get('sub_interface') or {}).get('vlan_id') if isinstance(interface.get('sub_interface'), dict) else None
+        or (interface.get('subinterface') or {}).get('vlan_id') if isinstance(interface.get('subinterface'), dict) else None
+        or interface.get('sub_interface_id')
+    )
+
+    if 'vlan' in intf_type.lower():
+        if '(' in intf_type and ')' in intf_type:
+            vlan_badge = intf_type
+        elif vlan_id:
+            vlan_badge = f"VLAN {vlan_id}"
+        else:
+            vlan_badge = "VLAN"
+
+        if name and name.lower() not in ['vlan', 'unknown', 'none']:
+            if vlan_id and str(vlan_id) in name:
+                return f"VLAN {name}" if not name.lower().startswith('vlan') else name
+            if vlan_id:
+                return f"{name} (VLAN {vlan_id})"
+            return f"{name} ({vlan_badge})"
+        return vlan_badge
+
+    if vlan_id:
+        if name and name.lower() not in ['vlan', 'unknown', 'none']:
+            if str(vlan_id) in name:
+                return f"VLAN {name}" if not name.lower().startswith('vlan') else name
+            return f"{name} (VLAN {vlan_id})"
+        return f"VLAN {vlan_id}"
+
+    # If it's a numeric port or sub-port like '1' or '3.217'
+    if re.match(r'^\d+(\.\d+)?$', name):
+        return f"Port {name}"
+
+    if name.lower().startswith('port '):
+        return f"Port {name[5:].strip()}"
+
+    return name or 'Port'
+
+
 def format_interface_label(name: str, desc: Optional[str]) -> str:
     return f"{name} ({desc})" if desc else name
 
@@ -386,7 +436,7 @@ def get_all_lan_interfaces(sdk, sites, debug=False):
     - ipv4_config.type == 'static'
 
     Enhancement:
-    - store interface_name + interface_description + interface_label
+    - store interface_name + interface_description + interface_label + element_name + port_name
     """
     site_lan_map = {}
 
@@ -419,7 +469,7 @@ def get_all_lan_interfaces(sdk, sites, debug=False):
 
     for element in all_elements:
         element_site_id = element.get('site_id')
-        element_name = element.get('name', 'Unknown')
+        element_name = element.get('name') or element.get('hostname') or 'Unknown'
 
         if not element_site_id or element_site_id not in site_id_to_meta:
             continue
@@ -445,6 +495,7 @@ def get_all_lan_interfaces(sdk, sites, debug=False):
                 intf_name = interface.get('name', 'Unknown')
                 intf_desc = get_interface_description(interface)
                 intf_label = format_interface_label(intf_name, intf_desc)
+                port_label = get_interface_port_label(interface)
 
                 used_for = (interface.get('used_for') or "").lower()
                 if used_for != "lan":
@@ -485,13 +536,15 @@ def get_all_lan_interfaces(sdk, sites, debug=False):
                         'interface_name': intf_name,
                         'interface_description': intf_desc,
                         'interface_label': intf_label,
+                        'element_name': element_name,
+                        'port_name': port_label,
                         'ip': ip_address
                     })
 
                     if debug:
                         print(
                             f" ✓ LAN interface: {site_name} / {element_name} / "
-                            f"{intf_label} (name={intf_name}) used_for=lan -> {ip_address} ({network})",
+                            f"{port_label} (name={intf_name}) used_for=lan -> {ip_address} ({network})",
                             file=sys.stderr
                         )
 
@@ -516,7 +569,7 @@ def get_all_dc_lan_interfaces(sdk, sites, debug=False):
     - exclude circuit attached (label_id, circuit_label_id, wan_network_id)
 
     Enhancement:
-    - store interface_name + interface_description + interface_label
+    - store interface_name + interface_description + interface_label + element_name + port_name
     """
     site_lan_map = {}
 
@@ -543,7 +596,7 @@ def get_all_dc_lan_interfaces(sdk, sites, debug=False):
 
     for element in all_elements:
         element_site_id = element.get('site_id')
-        element_name = element.get('name', 'Unknown')
+        element_name = element.get('name') or element.get('hostname') or 'Unknown'
 
         if not element_site_id or element_site_id not in site_id_to_name:
             continue
@@ -568,6 +621,7 @@ def get_all_dc_lan_interfaces(sdk, sites, debug=False):
                 intf_name = interface.get('name', 'Unknown')
                 intf_desc = get_interface_description(interface)
                 intf_label = format_interface_label(intf_name, intf_desc)
+                port_label = get_interface_port_label(interface)
 
                 used_for = (interface.get('used_for') or "").lower()
 
@@ -634,13 +688,15 @@ def get_all_dc_lan_interfaces(sdk, sites, debug=False):
                         'interface_name': intf_name,
                         'interface_description': intf_desc,
                         'interface_label': intf_label,
+                        'element_name': element_name,
+                        'port_name': port_label,
                         'ip': ip_address
                     })
 
                     if debug:
                         print(
                             f" ✓ DC LAN interface: {site_name} / {element_name} / "
-                            f"{intf_label} (name={intf_name}) used_for=private -> {ip_address} ({network})",
+                            f"{port_label} (name={intf_name}) used_for=private -> {ip_address} ({network})",
                             file=sys.stderr
                         )
 
@@ -667,6 +723,8 @@ def flatten_lan_map(site_lan_map):
             flat.append({
                 "site_name": site_name,
                 "site_id": site_id,
+                "element_name": net_info.get('element_name'),
+                "port_name": net_info.get('port_name') or net_info.get('interface_name'),
 
                 # Keep the original field name "interface_name" for compatibility
                 "interface_name": net_info.get('interface_name'),

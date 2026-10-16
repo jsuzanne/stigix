@@ -18,6 +18,7 @@ import { CustomTcpSettingsTab } from './components/custom-tcp/CustomTcpSettingsT
 import { ApiStudio } from './ApiStudio';
 import { usePeerContext } from './PeerContext';
 import { SettingsSkeleton } from './components/skeletons/SettingsSkeleton';
+import { StigixSelect } from './components/common/StigixSelect';
 
 function cn(...inputs: (string | undefined | null | false)[]) {
     return twMerge(clsx(inputs));
@@ -446,12 +447,14 @@ const getSessionLogs = (logs?: string[], targetVer?: string | null): string[] =>
     return sessionLines;
 };
 
-export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCopilotConfig, initialTab }: { 
+export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCopilotConfig, initialTab, initialSubSection, onOpenNodeRoleModal }: { 
     token: string, 
     uiConfig?: { maxCaptures: number; globalScoreTypes?: string[] },
     onUpdateUIConfig?: () => void,
     onUpdateCopilotConfig?: () => void,
-    initialTab?: 'probes' | 'distribution' | 'maintenance' | 'system' | 'targets' | 'convergence' | 'registry' | 'targetService' | 'mcp' | 'prisma-api' | 'strata' | 'custom-tcp' | 'api-studio' | 'cloud'
+    initialTab?: 'probes' | 'distribution' | 'maintenance' | 'system' | 'targets' | 'convergence' | 'registry' | 'targetService' | 'mcp' | 'prisma-api' | 'strata' | 'custom-tcp' | 'api-studio' | 'cloud',
+    initialSubSection?: string | null,
+    onOpenNodeRoleModal?: () => void
 }) {
     // Route all API calls through the peer gateway when in remote view
     const { gFetch, activePeerId, peers } = usePeerContext();
@@ -459,12 +462,19 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
     const apiFetch = gFetch;
 
     const [activeTab, setActiveTab] = useState<'probes' | 'distribution' | 'maintenance' | 'system' | 'targets' | 'convergence' | 'registry' | 'targetService' | 'mcp' | 'prisma-api' | 'strata' | 'custom-tcp' | 'api-studio' | 'cloud'>(initialTab || 'distribution');
+    const [systemSubTab, setSystemSubTab] = useState<'hardware' | 'persistence' | 'interfaces' | 'all'>('hardware');
 
     useEffect(() => {
         if (initialTab) {
             setActiveTab(initialTab);
         }
     }, [initialTab]);
+
+    useEffect(() => {
+        if (initialSubSection && ['hardware', 'persistence', 'interfaces', 'all'].includes(initialSubSection)) {
+            setSystemSubTab(initialSubSection as any);
+        }
+    }, [initialSubSection]);
 
     // Shared State
     const [loading, setLoading] = useState(true);
@@ -1045,8 +1055,8 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
     // Maintenance & version status — only fetched when viewing Maintenance or System tabs
     useEffect(() => {
         if (activeTab !== 'maintenance' && activeTab !== 'system') return;
-
-        apiFetch('/api/admin/maintenance/version', { headers: { 'Authorization': `Bearer ${token}` } })
+        const query = activeTab === 'maintenance' ? '?force=true' : '';
+        apiFetch(`/api/admin/maintenance/version${query}`, { headers: { 'Authorization': `Bearer ${token}` } })
             .then(r => r.json())
             .then(maintenanceData => {
                 setStatus(maintenanceData);
@@ -1226,14 +1236,17 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
         }
     }, [upgradeModal.open, upgradeModal.phase, upgradeModal.countdown]);
 
+    const [checkingVersion, setCheckingVersion] = useState(false);
+
     // Leader-Orchestrated Peer Maintenance Handlers
-    const fetchPeerMaintStatus = useCallback(async (peerId: string, _force = false) => {
+    const fetchPeerMaintStatus = useCallback(async (peerId: string, force = false) => {
         setPeerMaintStatus(prev => ({
             ...prev,
             [peerId]: { ...prev[peerId], loading: true, error: null }
         }));
         try {
-            const res = await apiFetch(`/api/gateway/${peerId}/api/admin/maintenance/version`, {
+            const query = force ? '?force=true' : '';
+            const res = await apiFetch(`/api/gateway/${peerId}/api/admin/maintenance/version${query}`, {
                 headers: authHeaders
             });
             if (res.ok) {
@@ -1284,14 +1297,39 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
         );
     }, [fleetUpgradingPeers]);
 
+    const handleCheckNewVersion = useCallback(async (showToast = true) => {
+        setCheckingVersion(true);
+        try {
+            const res = await apiFetch('/api/admin/maintenance/version?force=true', {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            if (res.ok) {
+                const data = await res.json();
+                setStatus(data);
+                if (showToast) {
+                    if (data.updateAvailable) {
+                        toast.success(`New version available: ${data.latest}`);
+                    } else {
+                        toast.success(`Up to date (${data.current})`);
+                    }
+                }
+            }
+        } catch {
+            if (showToast) toast.error('Failed to check latest version');
+        } finally {
+            setCheckingVersion(false);
+        }
+    }, [token]);
+
     const checkAllPeersVersions = useCallback(() => {
+        handleCheckNewVersion(true);
         if (!remoteFleetNodes.length) return;
         remoteFleetNodes.forEach((inst: any) => {
             if (inst.instance_id) {
                 fetchPeerMaintStatus(inst.instance_id, true);
             }
         });
-    }, [remoteFleetNodes, fetchPeerMaintStatus]);
+    }, [remoteFleetNodes, fetchPeerMaintStatus, handleCheckNewVersion]);
 
     // Auto-fetch peer versions when viewing registry or maintenance tab as leader
     useEffect(() => {
@@ -3289,24 +3327,26 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                                             </div>
                                             <div className="space-y-2">
                                                 <label className="text-[9px] font-black text-text-muted tracking-[0.2em] ml-1 uppercase">Protocol</label>
-                                                <select
-                                                    className="w-full bg-card-secondary border border-border text-text-primary rounded-xl px-4 py-3 outline-none focus:ring-1 focus:ring-blue-500 text-[11px] font-black tracking-widest shadow-inner transition-all"
+                                                <StigixSelect
                                                     value={newProbe.type}
-                                                    onChange={e => {
-                                                        const t = e.target.value as any;
+                                                    onChange={val => {
+                                                        const t = val as any;
                                                         const isHttp = t === 'HTTP' || t === 'HTTPS';
                                                         const defaultFreq = t === 'CLOUD' ? 600 : isHttp ? 300 : 60;
                                                         setNewProbe({ ...newProbe, type: t, timeout: t === 'PING' ? 2000 : 5000, frequency: defaultFreq });
                                                     }}
-                                                >
-                                                    <option value="HTTP">HTTP</option>
-                                                    <option value="HTTPS">HTTPS</option>
-                                                    <option value="PING">ICMP (Ping)</option>
-                                                    <option value="TCP">TCP Port</option>
-                                                    <option value="DNS">DNS Query</option>
-                                                    <option value="UDP">UDP Stream</option>
-                                                    <option value="CLOUD">Stigix Cloud</option>
-                                                </select>
+                                                    size="md"
+                                                    accent="blue"
+                                                    options={[
+                                                        { value: 'HTTP', label: 'HTTP' },
+                                                        { value: 'HTTPS', label: 'HTTPS' },
+                                                        { value: 'PING', label: 'ICMP (Ping)' },
+                                                        { value: 'TCP', label: 'TCP Port' },
+                                                        { value: 'DNS', label: 'DNS Query' },
+                                                        { value: 'UDP', label: 'UDP Stream' },
+                                                        { value: 'CLOUD', label: 'Stigix Cloud' },
+                                                    ]}
+                                                />
                                             </div>
                                             <div className="space-y-2">
                                                 <div className="flex items-center justify-between ml-1 leading-none">
@@ -3361,33 +3401,30 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                                             )}
                                             {newProbe.type === 'CLOUD' ? (
                                                 <div className="space-y-3">
-                                                    <div className="relative">
-                                                        <select
-                                                            className="w-full bg-card-secondary border border-border text-text-primary rounded-xl pl-10 pr-4 py-3 outline-none focus:ring-1 focus:ring-blue-500 text-[11px] font-black tracking-widest shadow-inner appearance-none transition-all"
-                                                            value={newProbe.target.startsWith('advanced-custom#') ? 'advanced-custom#' : newProbe.target}
-                                                            onChange={e => {
-                                                                const val = e.target.value;
-                                                                if (val === 'advanced-custom#') {
-                                                                    setNewProbe({ ...newProbe, target: 'advanced-custom#{"mode":"info","delay":0}', name: newProbe.name || 'Custom Probe' });
-                                                                } else {
-                                                                    const scenario = cloudScenarios.find(s => s.id === val);
-                                                                    setNewProbe({
-                                                                        ...newProbe,
-                                                                        target: val,
-                                                                        name: newProbe.name || scenario?.label || ''
-                                                                    });
-                                                                }
-                                                            }}
-                                                        >
-                                                            <option value="">Select Stigix Probe...</option>
-                                                            {cloudScenarios.map(s => (
-                                                                <option key={s.id} value={s.id}>{s.label}</option>
-                                                            ))}
-                                                            <option value="advanced-custom#">Advanced Stigix Probe...</option>
-                                                        </select>
-                                                        <Globe size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-blue-500/50" />
-                                                        <ChevronDown size={16} className="absolute right-3.5 top-1/2 -translate-y-1/2 text-text-muted pointer-events-none" />
-                                                    </div>
+                                                    <StigixSelect
+                                                        value={newProbe.target.startsWith('advanced-custom#') ? 'advanced-custom#' : newProbe.target}
+                                                        onChange={val => {
+                                                            if (val === 'advanced-custom#') {
+                                                                setNewProbe({ ...newProbe, target: 'advanced-custom#{"mode":"info","delay":0}', name: newProbe.name || 'Custom Probe' });
+                                                            } else {
+                                                                const scenario = cloudScenarios.find(s => s.id === val);
+                                                                setNewProbe({
+                                                                    ...newProbe,
+                                                                    target: val,
+                                                                    name: newProbe.name || scenario?.label || ''
+                                                                });
+                                                            }
+                                                        }}
+                                                        size="md"
+                                                        accent="blue"
+                                                        placeholder="Select Stigix Probe..."
+                                                        triggerIcon={<Globe size={15} className="text-blue-500/70" />}
+                                                        options={[
+                                                            { value: '', label: 'Select Stigix Probe...' },
+                                                            ...cloudScenarios.map(s => ({ value: s.id, label: s.label })),
+                                                            { value: 'advanced-custom#', label: 'Advanced Stigix Probe...' },
+                                                        ]}
+                                                    />
 
                                                     {newProbe.target.startsWith('advanced-custom#') ? (
                                                         <div className="p-4 bg-card border border-border rounded-xl space-y-4 shadow-inner animate-in slide-in-from-top-2 duration-300">
@@ -3400,12 +3437,18 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                                                                         <div className="grid grid-cols-2 gap-4">
                                                                             <div className="space-y-1">
                                                                                 <label className="text-[9px] font-black text-text-muted tracking-[0.2em] uppercase">Target Mode</label>
-                                                                                <select className="w-full bg-card-secondary border border-border text-text-primary rounded-lg px-3 py-2 text-[11px] font-bold outline-none focus:ring-1 focus:ring-blue-500" value={advConfig.mode} onChange={e => updateAdv({ mode: e.target.value })}>
-                                                                                    <option value="info">Data & Egress (info)</option>
-                                                                                    <option value="large">Large Payload (download)</option>
-                                                                                    <option value="error">HTTP Error (error)</option>
-                                                                                    <option value="eicar">Threat File (security)</option>
-                                                                                </select>
+                                                                                <StigixSelect
+                                                                                    value={advConfig.mode}
+                                                                                    onChange={val => updateAdv({ mode: val })}
+                                                                                    size="sm"
+                                                                                    accent="blue"
+                                                                                    options={[
+                                                                                        { value: 'info', label: 'Data & Egress (info)' },
+                                                                                        { value: 'large', label: 'Large Payload (download)' },
+                                                                                        { value: 'error', label: 'HTTP Error (error)' },
+                                                                                        { value: 'eicar', label: 'Threat File (security)' },
+                                                                                    ]}
+                                                                                />
                                                                             </div>
                                                                             <div className="space-y-1">
                                                                                 <label className="text-[9px] font-black text-text-muted tracking-[0.2em] uppercase">Extra Delay (ms)</label>
@@ -3573,14 +3616,16 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                                                         <div className="grid grid-cols-2 gap-3">
                                                             <div>
                                                                 <label className="block text-[9px] font-black text-text-muted uppercase tracking-widest mb-1.5">Match mode</label>
-                                                                <select
+                                                                <StigixSelect
                                                                     value={newProbe.content_match?.mode ?? 'contains'}
-                                                                    onChange={e => setNewProbe({ ...newProbe, content_match: { ...newProbe.content_match!, mode: e.target.value as 'contains' | 'not_contains' } })}
-                                                                    className="w-full bg-card-secondary border border-border text-text-primary rounded-xl px-3 py-2.5 outline-none focus:ring-1 focus:ring-blue-500 text-[10px] font-bold"
-                                                                >
-                                                                    <option value="contains">contains</option>
-                                                                    <option value="not_contains">not_contains</option>
-                                                                </select>
+                                                                    onChange={val => setNewProbe({ ...newProbe, content_match: { ...newProbe.content_match!, mode: val as 'contains' | 'not_contains' } })}
+                                                                    size="sm"
+                                                                    accent="blue"
+                                                                    options={[
+                                                                        { value: 'contains', label: 'contains' },
+                                                                        { value: 'not_contains', label: 'not_contains' },
+                                                                    ]}
+                                                                />
                                                             </div>
                                                             <div className="flex items-end">
                                                                 <label className="flex items-center gap-2 cursor-pointer">
@@ -4470,14 +4515,25 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
 
                 {activeTab === 'maintenance' && (
                     <div className="bg-card border border-border rounded-2xl p-8 shadow-sm space-y-8">
-                        <div className="flex items-center gap-3">
-                            <div className="p-2 bg-blue-600/10 rounded-lg text-blue-600 dark:text-blue-400 font-bold">
-                                <RefreshCw size={24} className={upgrading ? "animate-spin" : ""} />
+                        <div className="flex items-center justify-between gap-3">
+                            <div className="flex items-center gap-3">
+                                <div className="p-2 bg-blue-600/10 rounded-lg text-blue-600 dark:text-blue-400 font-bold">
+                                    <RefreshCw size={24} className={(upgrading || checkingVersion) ? "animate-spin" : ""} />
+                                </div>
+                                <div>
+                                    <h2 className="text-lg font-black text-text-primary tracking-tight">System Maintenance</h2>
+                                    <p className="text-[10px] font-bold text-text-muted tracking-widest mt-0.5 opacity-70">Update system logic and engine</p>
+                                </div>
                             </div>
-                            <div>
-                                <h2 className="text-lg font-black text-text-primary tracking-tight">System Maintenance</h2>
-                                <p className="text-[10px] font-bold text-text-muted tracking-widest mt-0.5 opacity-70">Update system logic and engine</p>
-                            </div>
+                            <button
+                                onClick={checkAllPeersVersions}
+                                disabled={checkingVersion || upgrading}
+                                title="Bypass cache and check Docker Hub immediately for new versions"
+                                className="px-3.5 py-2 rounded-xl text-[10px] font-black uppercase tracking-wider bg-card-secondary hover:bg-card-hover border border-border text-text-muted hover:text-text-primary transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                            >
+                                <RefreshCw size={12} className={cn(checkingVersion && "animate-spin text-blue-400")} />
+                                {checkingVersion ? 'Checking...' : 'Check New Version'}
+                            </button>
                         </div>
 
                         {status?.dockerReady === false && (
@@ -4502,7 +4558,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                                     <span className="text-sm font-mono text-blue-600 font-bold">{status?.current}</span>
                                 </div>
                                 <div className="flex justify-between items-center p-4 bg-card-secondary/50 rounded-xl border border-border">
-                                    <span className="text-[10px] text-text-muted font-black tracking-widest">{status?.channel === "v2" ? "Latest v2 Build" : "Latest Stable"}</span>
+                                    <span className="text-[10px] text-text-muted font-black tracking-widest">{status?.channel?.startsWith("v3") ? "Latest v3 Build" : status?.channel === "v2" ? "Latest v2 Build" : "Latest Stable"}</span>
                                     <span className="text-sm font-mono text-green-600 font-bold">{status?.latest}</span>
                                 </div>
                             </div>
@@ -4511,8 +4567,8 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                                 <p className="text-[11px] font-bold text-text-primary leading-relaxed">
                                     {status?.updateAvailable
                                         ? `A newer build (${status.latest}) is available on Docker Hub and ready to pull.`
-                                        : status?.channel === "v2"
-                                            ? `Your system is currently running the latest development build (${status?.current}) on branch v2.`
+                                        : (status?.channel?.startsWith("v3") || status?.channel === "v2")
+                                            ? `Your system is currently running the latest development build (${status?.current}) on branch ${status?.channel}.`
                                             : "Your system is currently running the latest stable release of the Stigix platform."}
                                 </p>
                                 <div className="flex flex-col sm:flex-row gap-3">
@@ -4622,9 +4678,10 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                                     <div className="flex items-center gap-2">
                                         <button
                                             onClick={checkAllPeersVersions}
-                                            className="px-3 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-wider bg-card-secondary hover:bg-card-hover border border-border text-text-muted hover:text-text-primary transition-all flex items-center gap-1.5 cursor-pointer"
+                                            disabled={checkingVersion}
+                                            className="px-3 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-wider bg-card-secondary hover:bg-card-hover border border-border text-text-muted hover:text-text-primary transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
                                         >
-                                            <RefreshCw size={11} />
+                                            <RefreshCw size={11} className={cn(checkingVersion && "animate-spin text-purple-400")} />
                                             Check Fleet Updates
                                         </button>
                                         {remoteFleetNodes.length > 0 && (
@@ -4954,7 +5011,61 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                 )}
 
                 {activeTab === 'system' && (
-                    <div className="bg-card border border-border rounded-2xl p-8 shadow-sm space-y-12 animate-in fade-in duration-500">
+                    <div className="bg-card border border-border rounded-2xl p-8 shadow-sm space-y-10 animate-in fade-in duration-500">
+
+                        {/* ── Sub-navigation Pills for System Info ────────────────── */}
+                        <div className="flex flex-wrap items-center justify-between gap-4 pb-6 border-b border-border">
+                            <div className="flex flex-wrap items-center gap-2 p-1.5 bg-card-secondary/60 border border-border/80 rounded-2xl">
+                                <button
+                                    onClick={() => setSystemSubTab('hardware')}
+                                    className={cn(
+                                        "flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-black tracking-wide transition-all cursor-pointer select-none",
+                                        systemSubTab === 'hardware'
+                                            ? "bg-purple-600 text-white shadow-lg shadow-purple-900/30"
+                                            : "text-text-muted hover:text-text-primary hover:bg-card-hover"
+                                    )}
+                                >
+                                    <Cpu size={14} />
+                                    Hardware & Performance
+                                </button>
+                                <button
+                                    onClick={() => setSystemSubTab('persistence')}
+                                    className={cn(
+                                        "flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-black tracking-wide transition-all cursor-pointer select-none",
+                                        systemSubTab === 'persistence'
+                                            ? "bg-purple-600 text-white shadow-lg shadow-purple-900/30"
+                                            : "text-text-muted hover:text-text-primary hover:bg-card-hover"
+                                    )}
+                                >
+                                    <Power size={14} />
+                                    State Persistence
+                                </button>
+                                <button
+                                    onClick={() => setSystemSubTab('interfaces')}
+                                    className={cn(
+                                        "flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-black tracking-wide transition-all cursor-pointer select-none",
+                                        systemSubTab === 'interfaces'
+                                            ? "bg-purple-600 text-white shadow-lg shadow-purple-900/30"
+                                            : "text-text-muted hover:text-text-primary hover:bg-card-hover"
+                                    )}
+                                >
+                                    <Network size={14} />
+                                    Interfaces & Egress
+                                </button>
+                                <button
+                                    onClick={() => setSystemSubTab('all')}
+                                    className={cn(
+                                        "flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-black tracking-wide transition-all cursor-pointer select-none",
+                                        systemSubTab === 'all'
+                                            ? "bg-purple-600 text-white shadow-lg shadow-purple-900/30"
+                                            : "text-text-muted hover:text-text-primary hover:bg-card-hover"
+                                    )}
+                                >
+                                    <Layers size={14} />
+                                    All Sections
+                                </button>
+                            </div>
+                        </div>
 
                         {/* ── System Version & Quick Upgrade Banner ──────────────── */}
                         <div className="rounded-2xl border border-blue-500/20 bg-gradient-to-r from-blue-900/10 via-card-secondary/40 to-card p-6 flex flex-col md:flex-row md:items-center justify-between gap-6 shadow-sm">
@@ -5010,6 +5121,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                         </div>
 
                         {/* ── Startup Behaviour — global, prominent ──────────────── */}
+                        {(systemSubTab === 'all' || systemSubTab === 'persistence') && (
                         <div className="rounded-2xl border border-border bg-card-secondary/40 overflow-hidden">
                             {/* Header strip */}
                             <div className="flex items-center gap-3 px-6 py-4 border-b border-border bg-card-secondary/60">
@@ -5138,8 +5250,10 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                                 </p>
                             </div>
                         </div>
+                        )}
 
                         {/* Network Interfaces (Moved from its own tab) */}
+                        {(systemSubTab === 'all' || systemSubTab === 'interfaces') && (
                         <div className="space-y-8">
                             <div className="flex items-center gap-3">
                                 <div className="p-2 bg-purple-600/10 rounded-lg text-purple-600 dark:text-purple-400 font-bold">
@@ -5209,9 +5323,10 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                                 </div>
                             </div>
                         </div>
+                        )}
 
                         {/* Cloud Egress Context */}
-                        {latestEgressResult && (
+                        {(systemSubTab === 'all' || systemSubTab === 'interfaces') && latestEgressResult && (
                             <div className="bg-card border border-border rounded-2xl p-6 shadow-sm space-y-4 animate-in slide-in-from-top-4 duration-500 mb-8 overflow-hidden relative group">
                                 <div className="absolute top-0 right-0 p-8 opacity-[0.03] group-hover:opacity-[0.07] transition-opacity">
                                     <Globe size={120} />
@@ -5272,7 +5387,8 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                             </div>
                         )}
 
-                        <div className="pt-8 border-t border-border/50">
+                        {(systemSubTab === 'all' || systemSubTab === 'hardware') && (
+                        <div id="hardware-metrics" className="pt-8 border-t border-border/50">
                             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
                                 <div className="flex items-center gap-3">
                                     <div className="p-2 bg-purple-600/10 rounded-lg text-purple-600 dark:text-purple-400 font-bold">
@@ -5674,6 +5790,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                                 </div>
                             </div>
                         </div>
+                        )}
                     </div>
                 )}
             </div>
@@ -5682,7 +5799,8 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
             {activeTab === 'registry' && (() => {
                 const isLeader = registryStatus?.mode === 'leader';
                 const isTunnelConnected = !isLeader && !!registryStatus?.tunnel_active;
-                const isPeerConnected = (!isLeader && registryStatus?.registry_url && registryStatus?.registry_url !== registryStatus?.remote_url) || isTunnelConnected;
+                const isPeerConnected = Boolean((!isLeader && registryStatus?.registry_url && registryStatus?.registry_url !== registryStatus?.remote_url) || isTunnelConnected);
+                const isEnrolledPeer = !isLeader && Boolean(registryStatus?.is_cluster_enrolled || registryStatus?.static_leader_url || isPeerConnected);
                 const siteName = registryStatus?.site_name || 'This Instance';
                 const detectedIp = registryStatus?.detected_ip || '—';
 
@@ -5694,12 +5812,18 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                         "rounded-2xl p-6 border-2 flex flex-col sm:flex-row sm:items-center justify-between gap-4",
                         isLeader
                             ? "bg-purple-600/5 border-purple-500/20"
-                            : "bg-blue-600/5 border-blue-500/20"
+                            : isEnrolledPeer
+                                ? "bg-blue-600/5 border-blue-500/20"
+                                : "bg-card border-border"
                     )}>
                         <div className="flex items-center gap-4">
                             <div className={cn(
                                 "p-3 rounded-2xl",
-                                isLeader ? "bg-purple-600/15 text-purple-400" : "bg-blue-600/15 text-blue-400"
+                                isLeader
+                                    ? "bg-purple-600/15 text-purple-400"
+                                    : isEnrolledPeer
+                                        ? "bg-blue-600/15 text-blue-400"
+                                        : "bg-muted text-text-muted"
                             )}>
                                 {isLeader ? <Globe size={28} /> : <Radio size={28} />}
                             </div>
@@ -5709,9 +5833,11 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                                         "px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-widest border shadow-sm",
                                         isLeader
                                             ? "bg-purple-600/20 text-purple-400 border-purple-500/30"
-                                            : "bg-blue-600/20 text-blue-400 border-blue-500/30"
+                                            : isEnrolledPeer
+                                                ? "bg-blue-600/20 text-blue-400 border-blue-500/30"
+                                                : "bg-muted text-text-muted border-border"
                                     )}>
-                                        {isLeader ? '⭐ Leader' : '🔵 Peer'}
+                                        {isLeader ? '⭐ Leader' : isEnrolledPeer ? '🔵 Enrolled Peer' : '⚡ Standalone'}
                                     </span>
                                     <span className="text-xs font-black text-text-primary tracking-tight">{siteName}</span>
                                     <span className="text-[10px] font-mono text-text-muted opacity-60">· {detectedIp}</span>
@@ -5723,11 +5849,13 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                                             ? `Connected to Leader (${registryStatus?.leader_tunnel_info?.siteName || registryStatus?.leader_tunnel_info?.instanceId || 'Leader'}) via secure Fleet WebSocket Tunnel. Real-time telemetry and configuration syncing are active.`
                                             : isPeerConnected
                                                 ? `Connected to leader ${registryStatus?.leader_info?.id || registryStatus?.leader_info?.ip || '—'}. Targets are synced automatically.`
-                                                : 'Not connected to a leader. Enter the leader URL below to join the mesh.'}
+                                                : isEnrolledPeer
+                                                    ? `Enrolled with Leader (${registryStatus?.enrolled_leader_url || registryStatus?.static_leader_url || '—'}). Waiting for sync heartbeat...`
+                                                    : 'Operating independently as a standalone node. Use Manage Node Mode to join a Stigix cluster or promote to Leader.'}
                                 </p>
                             </div>
                         </div>
-                        <div className="flex items-center gap-2 shrink-0">
+                        <div className="flex items-center gap-2.5 shrink-0 flex-wrap">
                             {isTunnelConnected && (
                                 <span className="px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest bg-cyan-500/10 text-cyan-400 border border-cyan-500/30 shadow-sm flex items-center gap-1.5" title={registryStatus?.leader_tunnel_info?.direction === 'inbound_leader_dial' ? 'Connected via Inbound Leader Reverse Dial' : 'Connected via Outbound Reverse WebSocket Tunnel (NAT/Firewall Traversal)'}>
                                     <Zap size={11} className="animate-pulse" />
@@ -5740,69 +5868,21 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                                     Synced
                                 </span>
                             )}
-                            {!isLeader && !isPeerConnected && (
+                            {!isLeader && !isPeerConnected && isEnrolledPeer && (
                                 <span className="px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest bg-amber-500/10 text-amber-500 border border-amber-500/30 shadow-sm flex items-center gap-1.5">
                                     <div className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
-                                    Not connected
+                                    Reconnecting
                                 </span>
                             )}
-                        </div>
-                    </div>
-
-                    {/* ── Mesh Role Mode Selector ── */}
-                    <div className="bg-card border border-border p-4 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-sm">
-                        <div className="flex items-center gap-3">
-                            <div className="p-2 bg-amber-500/10 rounded-xl text-amber-500 shrink-0">
-                                <ShieldAlert size={18} />
-                            </div>
-                            <div>
-                                <div className="flex items-center gap-2">
-                                    <h4 className="text-xs font-black text-text-primary uppercase tracking-wider">Node Role</h4>
-                                    <span className="text-[9px] font-mono font-bold text-text-muted opacity-60">
-                                        (Active: {systemSettings.registry_mode === 'leader' ? 'Forced Leader' : systemSettings.registry_mode === 'peer' ? 'Forced Peer' : 'Auto-Detect'})
-                                    </span>
-                                </div>
-                                <p className="text-[10px] text-text-muted opacity-70 mt-0.5">
-                                    {(systemSettings.registry_mode || 'auto') === 'auto'
-                                        ? 'Auto-Detect: Automatically elects this node as Leader on SD-WAN HUB / Branch Gateway, or Peer on spoke nodes.'
-                                        : (systemSettings.registry_mode === 'leader'
-                                            ? 'Forced Leader: This node hosts the central registry on :8080 and acts as mesh configuration publisher.'
-                                            : 'Forced Peer: This node connects to an external Leader as a managed branch member.')}
-                                </p>
-                            </div>
-                        </div>
-                        <div className="flex items-center gap-2">
-                            <div className="flex bg-card-secondary p-1 rounded-xl border border-border shrink-0">
-                                {[
-                                    { id: 'auto', label: 'Auto-Detect', icon: RefreshCw },
-                                    { id: 'leader', label: 'Leader', icon: Globe },
-                                    { id: 'peer', label: 'Peer', icon: Users },
-                                ].map((m) => {
-                                    const Icon = m.icon;
-                                    const active = (systemSettings.registry_mode || 'auto') === m.id;
-                                    return (
-                                        <button
-                                            key={m.id}
-                                            onClick={async () => {
-                                                if (m.id === 'leader' && (systemSettings.registry_mode || 'auto') !== 'leader') {
-                                                    const confirmed = window.confirm(`Set this Stigix node as Leader?\n\nPeers will connect to this node at http://${detectedIp || 'your-ip'}:8080/api/registry.`);
-                                                    if (!confirmed) return;
-                                                }
-                                                await saveSystemSetting('registry_mode', m.id);
-                                            }}
-                                            className={cn(
-                                                "px-3 py-1.5 text-[10px] font-black uppercase tracking-wider rounded-lg transition-all flex items-center gap-1.5",
-                                                active
-                                                    ? "bg-purple-600 text-white shadow-sm"
-                                                    : "text-text-muted hover:text-text-primary hover:bg-card-hover"
-                                            )}
-                                        >
-                                            <Icon size={12} className={savingSystemSettings ? "animate-spin" : ""} />
-                                            {m.label}
-                                        </button>
-                                    );
-                                })}
-                            </div>
+                            {onOpenNodeRoleModal && !isRemoteView && (
+                                <button
+                                    onClick={onOpenNodeRoleModal}
+                                    className="px-3.5 py-2 rounded-xl text-[10px] font-black uppercase tracking-wider bg-card hover:bg-card-hover text-text-primary border border-border shadow-sm transition-all flex items-center gap-1.5"
+                                >
+                                    <Zap size={12} className={isLeader ? "text-purple-400" : isEnrolledPeer ? "text-blue-400" : "text-amber-400"} />
+                                    Manage Node Mode
+                                </button>
+                            )}
                         </div>
                     </div>
 
@@ -6144,181 +6224,36 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                         </>
                     )}
 
-                    {/* ════════ PEER VIEW ════════ */}
+                    {/* ════════ PEER / STANDALONE VIEW ════════ */}
                     {!isLeader && (
                         <div className="space-y-6">
-                            {/* If node is enrolled in a cluster, show Read-Only Lock Status */}
-                            {registryStatus?.is_cluster_enrolled ? (
-                                <div className="bg-emerald-500/5 border border-emerald-500/20 rounded-2xl p-6 shadow-sm space-y-4">
-                                    <div className="flex items-center justify-between">
-                                        <div className="flex items-center gap-3">
-                                            <div className="p-2.5 bg-emerald-500/10 rounded-xl text-emerald-400 border border-emerald-500/20">
-                                                <Lock size={18} />
-                                            </div>
-                                            <div>
-                                                <div className="flex items-center gap-2">
-                                                    <h3 className="text-sm font-black text-text-primary tracking-tight">Cluster Enrolled</h3>
-                                                    <span className="text-[9px] font-black uppercase tracking-wider bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 px-2 py-0.5 rounded-full flex items-center gap-1">
-                                                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                                                        Active Spoke
-                                                    </span>
-                                                </div>
-                                                <p className="text-[10px] text-text-muted mt-0.5 opacity-80">
-                                                    This node is enrolled into the Stigix cluster via signed token. Topology and telemetry stream automatically to the Leader.
-                                                </p>
-                                            </div>
-                                        </div>
-                                        <button
-                                            onClick={handleUnenroll}
-                                            disabled={saving}
-                                            className="px-3.5 py-1.5 bg-card hover:bg-red-500/10 border border-border hover:border-red-500/30 rounded-xl text-text-muted hover:text-red-400 text-[10px] font-black uppercase tracking-wider transition-all flex items-center gap-1.5"
-                                            title="Disconnect from Cluster Leader"
-                                        >
-                                            <Trash2 size={13} />
-                                            <span>Disconnect</span>
-                                        </button>
-                                    </div>
-
-                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-2">
-                                        <div className="bg-card/50 border border-border rounded-xl p-3">
-                                            <label className="text-[9px] font-extrabold text-text-muted uppercase tracking-widest block mb-1">Enrolled Join Token</label>
-                                            <div className="flex items-center justify-between font-mono text-xs text-text-muted">
-                                                <span className="flex items-center gap-1.5 text-emerald-400 font-bold">
-                                                    <Lock size={12} />
-                                                    {registryStatus?.enrolled_token_prefix || 'STX-••••••••••••'}
-                                                </span>
-                                                <span className="text-[9px] uppercase tracking-wider px-2 py-0.5 rounded bg-muted/40 text-text-muted">READONLY</span>
-                                            </div>
-                                        </div>
-
-                                        <div className="bg-card/50 border border-border rounded-xl p-3">
-                                            <label className="text-[9px] font-extrabold text-text-muted uppercase tracking-widest block mb-1">Cluster Leader Controller</label>
-                                            <div className="font-mono text-xs text-blue-400 font-bold truncate">
-                                                {registryStatus?.enrolled_leader_url || registryStatus?.static_leader_url || registryStatus?.leader_info?.ip || 'Managed via Leader'}
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-                            ) : (
-                                /* When not enrolled, provide Single-Token Join UX */
-                                <div className="bg-card border border-border rounded-2xl p-6 shadow-sm space-y-5">
-                                    <div className="flex items-center gap-3">
-                                        <div className="p-2.5 bg-blue-600/10 rounded-xl text-blue-500 border border-blue-500/20">
-                                            <Zap size={18} />
-                                        </div>
-                                        <div>
-                                            <h3 className="text-sm font-black text-text-primary tracking-tight">Join Stigix Cluster</h3>
-                                            <p className="text-[10px] text-text-muted mt-0.5 opacity-70">
-                                                Paste the single Join Token (<span className="font-mono text-blue-400">STX-...</span>) generated on your Leader node (<span className="text-blue-400 font-bold">+ Add Node</span>). Leader URL and authentication sync automatically.
-                                            </p>
-                                        </div>
-                                    </div>
-
-                                    <div className="space-y-3">
-                                        <div className="space-y-1.5">
-                                            <label className="text-[10px] font-extrabold text-text-muted uppercase tracking-widest pl-1">Cluster Join Token</label>
-                                            <div className="relative group">
-                                                <input
-                                                    type="text"
-                                                    placeholder="Paste token: STX-eyJhbGciOiJIUzI1NiIsInR5cCI6IlNUWC1KT0lOIn0..."
-                                                    value={joinTokenInput}
-                                                    onChange={(e) => setJoinTokenInput(e.target.value)}
-                                                    onKeyDown={(e) => e.key === 'Enter' && handleJoinWithToken()}
-                                                    className="w-full bg-card hover:bg-card-hover border border-border focus:border-blue-500/50 rounded-xl px-4 py-2.5 text-xs font-mono transition-all pr-24"
-                                                />
-                                                <div className="absolute right-2 top-1/2 -translate-y-1/2">
-                                                    <button
-                                                        onClick={handleJoinWithToken}
-                                                        disabled={isJoiningToken || !joinTokenInput.trim().startsWith('STX-')}
-                                                        className="bg-blue-600 hover:bg-blue-500 text-white rounded-lg px-3.5 py-1.5 text-[10px] font-black uppercase tracking-wider transition-all disabled:opacity-40 flex items-center gap-1.5 shadow-sm"
-                                                    >
-                                                        {isJoiningToken ? <RefreshCw size={11} className="animate-spin" /> : <Zap size={11} />}
-                                                        Join
-                                                    </button>
-                                                </div>
-                                            </div>
-                                        </div>
-
-                                        {/* Auto-decoded token hint */}
-                                        {(() => {
-                                            if (!joinTokenInput.trim().startsWith('STX-')) return null;
-                                            try {
-                                                const parts = joinTokenInput.trim().slice(4).split('.');
-                                                if (parts.length >= 2) {
-                                                    const payload = JSON.parse(atob(parts[1]));
-                                                    const ep = payload.endpoints?.[0];
-                                                    return (
-                                                        <div className="px-3 py-2 bg-blue-500/10 border border-blue-500/20 rounded-xl text-[10px] text-blue-300 flex items-center justify-between">
-                                                            <span className="font-mono">🎯 Resolved Leader: <strong>{ep || 'Auto-Detected'}</strong></span>
-                                                            <span className="text-[9px] uppercase tracking-wider opacity-70">{payload.site_hint ? `Site: ${payload.site_hint}` : 'Valid STX Token'}</span>
-                                                        </div>
-                                                    );
-                                                }
-                                            } catch {}
-                                            return null;
-                                        })()}
-
-                                        {/* Secondary: Manual Leader IP configuration */}
-                                        <div className="pt-2 border-t border-border/50">
-                                            <button
-                                                type="button"
-                                                onClick={() => setShowManualLeaderInput(!showManualLeaderInput)}
-                                                className="text-[10px] font-bold text-text-muted hover:text-text-primary transition-colors flex items-center gap-1.5"
-                                            >
-                                                <span>{showManualLeaderInput ? '▾ Hide manual IP configuration' : '▸ Or configure manual Leader IP / URL'}</span>
-                                            </button>
-
-                                            {showManualLeaderInput && (
-                                                <div className="mt-3 space-y-3 p-4 bg-muted/20 border border-border/60 rounded-xl">
-                                                    <label className="text-[9px] font-extrabold text-text-muted uppercase tracking-widest">Manual Leader IP / FQDN / URL</label>
-                                                    <div className="flex gap-2">
-                                                        <input
-                                                            type="text"
-                                                            placeholder="e.g. 192.168.1.50 or stigix-leader.local"
-                                                            value={staticLeaderUrl}
-                                                            onChange={(e) => setStaticLeaderUrl(e.target.value)}
-                                                            className="flex-1 bg-card border border-border rounded-xl px-3 py-2 text-xs font-mono"
-                                                        />
-                                                        <button
-                                                            onClick={handleTestConnectivity}
-                                                            disabled={isTestingConnectivity || !staticLeaderUrl}
-                                                            className="px-3.5 py-2 bg-card hover:bg-card-hover border border-border rounded-xl text-[10px] font-black uppercase tracking-wider disabled:opacity-50 flex items-center gap-1"
-                                                        >
-                                                            {isTestingConnectivity ? <RefreshCw size={11} className="animate-spin" /> : <Zap size={11} />}
-                                                            Test
-                                                        </button>
-                                                        <button
-                                                            onClick={() => handleSaveStaticLeader(staticLeaderUrl)}
-                                                            disabled={saving || !staticLeaderUrl}
-                                                            className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-[10px] font-black uppercase tracking-wider disabled:opacity-50"
-                                                        >
-                                                            Save
-                                                        </button>
-                                                    </div>
-                                                </div>
-                                            )}
-                                        </div>
-                                    </div>
-                                </div>
-                            )}
-
                             {/* Connection status card */}
-                            {isPeerConnected && (
-                                <div className="p-4 bg-blue-500/5 border border-blue-500/15 rounded-xl flex items-center justify-between">
+                            {(isPeerConnected || isEnrolledPeer) && (
+                                <div className="p-4 bg-blue-500/5 border border-blue-500/15 rounded-xl flex items-center justify-between gap-4">
                                     <div className="flex items-center gap-3">
                                         <div className="relative">
                                             <Server size={28} className="text-blue-400" />
-                                            <div className="absolute -top-1 -right-1 w-3 h-3 bg-green-500 rounded-full border-2 border-card shadow" />
+                                            <div className={cn(
+                                                "absolute -top-1 -right-1 w-3 h-3 rounded-full border-2 border-card shadow",
+                                                isPeerConnected ? "bg-green-500" : "bg-amber-500"
+                                            )} />
                                         </div>
                                         <div>
-                                            <p className="text-[10px] font-black text-text-muted uppercase tracking-widest">Active Leader</p>
-                                            <p className="text-sm font-black text-text-primary">{registryStatus?.leader_info?.id || 'Leader'}</p>
-                                            <p className="text-[10px] font-mono text-blue-400">{registryStatus?.leader_info?.ip || registryStatus?.registry_url}</p>
+                                            <p className="text-[10px] font-black text-text-muted uppercase tracking-widest">Active Leader Controller</p>
+                                            <p className="text-sm font-black text-text-primary">{registryStatus?.leader_info?.id || registryStatus?.leader_tunnel_info?.siteName || 'Cluster Leader'}</p>
+                                            <p className="text-[10px] font-mono text-blue-400">
+                                                {registryStatus?.enrolled_leader_url || registryStatus?.static_leader_url || registryStatus?.leader_info?.ip || registryStatus?.registry_url || 'Managed via Leader'}
+                                            </p>
                                         </div>
                                     </div>
-                                    <span className="text-[9px] font-black text-green-500 uppercase flex items-center gap-1.5 bg-green-500/10 px-2.5 py-1 rounded-full border border-green-500/20">
-                                        <div className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
-                                        Connected
+                                    <span className={cn(
+                                        "text-[9px] font-black uppercase flex items-center gap-1.5 px-2.5 py-1 rounded-full border",
+                                        isPeerConnected
+                                            ? "text-green-500 bg-green-500/10 border-green-500/20"
+                                            : "text-amber-500 bg-amber-500/10 border-amber-500/20"
+                                    )}>
+                                        <div className={cn("w-1.5 h-1.5 rounded-full animate-pulse", isPeerConnected ? "bg-green-500" : "bg-amber-500")} />
+                                        {isPeerConnected ? 'Connected' : 'Enrolled'}
                                     </span>
                                 </div>
                             )}
@@ -7254,10 +7189,9 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                                         <label className="text-xs font-black uppercase tracking-wider text-text-primary">
                                             Default AI Model
                                         </label>
-                                        <select
+                                        <StigixSelect
                                             value={copilotConfig?.defaultModel || (copilotProvider === 'deepseek' ? 'deepseek-chat' : 'claude-sonnet-4-5-20250929')}
-                                            onChange={async (e) => {
-                                                const model = e.target.value;
+                                            onChange={async (model) => {
                                                 const isDs = model.startsWith('deepseek-');
                                                 try {
                                                     const res = await apiFetch('/api/copilot/config', {
@@ -7277,20 +7211,29 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                                                     }
                                                 } catch {}
                                             }}
-                                            className="w-full bg-card border border-border focus:border-blue-500 rounded-xl px-3 py-2 text-xs font-bold text-text-primary focus:outline-none"
-                                        >
-                                            <optgroup label="Anthropic Claude">
-                                                <option value="claude-sonnet-4-5-20250929">Claude Sonnet 4.5 (Recommended)</option>
-                                                <option value="claude-haiku-4-5-20251001">Claude Haiku 4.5 (Fast)</option>
-                                                <option value="claude-sonnet-4-6">Claude Sonnet 4.6</option>
-                                                <option value="claude-sonnet-5">Claude Sonnet 5 (Latest)</option>
-                                                <option value="claude-opus-4-5-20251101">Claude Opus 4.5</option>
-                                            </optgroup>
-                                            <optgroup label="DeepSeek">
-                                                <option value="deepseek-chat">DeepSeek-V3 (Chat + Tools)</option>
-                                                <option value="deepseek-reasoner">DeepSeek-R1 (Reasoner / Thought Chain)</option>
-                                            </optgroup>
-                                        </select>
+                                            size="sm"
+                                            accent="indigo"
+                                            triggerIcon={<Cpu size={14} className="text-indigo-400" />}
+                                            groups={[
+                                                {
+                                                    label: 'Anthropic Claude',
+                                                    options: [
+                                                        { value: 'claude-sonnet-4-5-20250929', label: 'Claude Sonnet 4.5', badge: 'Recommended' },
+                                                        { value: 'claude-haiku-4-5-20251001', label: 'Claude Haiku 4.5', badge: 'Fast' },
+                                                        { value: 'claude-sonnet-4-6', label: 'Claude Sonnet 4.6' },
+                                                        { value: 'claude-sonnet-5', label: 'Claude Sonnet 5', badge: 'Latest' },
+                                                        { value: 'claude-opus-4-5-20251101', label: 'Claude Opus 4.5' },
+                                                    ]
+                                                },
+                                                {
+                                                    label: 'DeepSeek',
+                                                    options: [
+                                                        { value: 'deepseek-chat', label: 'DeepSeek-V3', sublabel: 'Chat + Tools' },
+                                                        { value: 'deepseek-reasoner', label: 'DeepSeek-R1', sublabel: 'Reasoner / Thought Chain' },
+                                                    ]
+                                                }
+                                            ]}
+                                        />
                                     </div>
 
                                     <div className="bg-card-secondary/30 border border-border rounded-xl p-4 flex items-center justify-between">

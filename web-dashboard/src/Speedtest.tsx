@@ -12,6 +12,7 @@ import { toast } from 'react-hot-toast';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 import { isValidIpOrFqdn } from './utils/validation';
+import { StigixSelect } from './components/common/StigixSelect';
 
 /**
  * Utility for Tailwind class merging
@@ -105,6 +106,10 @@ export default function Speedtest({ token }: Props) {
     const [congestion, setCongestion] = useState('cubic');
     const [cport, setCport] = useState<number>(30000);
     const sseRef = useRef<EventSource | null>(null);
+    const hasAutoLoadedRef = useRef(false);
+
+    const formatIntervalsForChart = (intervals?: XfrInterval[]) =>
+        (intervals || []).map((item, idx) => ({ ...item, time: idx + 1 }));
 
     const { gFetch, activePeerId } = usePeerContext();
     const authHeaders = { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' };
@@ -156,6 +161,7 @@ export default function Speedtest({ token }: Props) {
     }, [quickTargets, sharedTargets, token]);
 
     useEffect(() => {
+        hasAutoLoadedRef.current = false;
         fetchHistory();
         fetchFeatures();
         fetchSharedTargets();
@@ -195,6 +201,18 @@ export default function Speedtest({ token }: Props) {
                 if (data.length > 0) {
                     const match = data[0].sequence_id.match(/\d+/);
                     if (match) setCport(30000 + parseInt(match[0], 10) + 1);
+                    if (!hasAutoLoadedRef.current) {
+                        hasAutoLoadedRef.current = true;
+                        const latest = data[0];
+                        try {
+                            const detailRes = await gFetch(`/api/tests/xfr/${encodeURIComponent(latest.id || latest.sequence_id)}`, { headers: authHeaders });
+                            if (detailRes.ok) {
+                                const fullJob = await detailRes.json();
+                                setActiveJob(prev => prev ?? { ...latest, ...fullJob });
+                                setChartData(prev => prev.length > 0 ? prev : formatIntervalsForChart(fullJob.intervals));
+                            }
+                        } catch { }
+                    }
                 } else {
                     setCport(30001);
                 }
@@ -312,6 +330,9 @@ export default function Speedtest({ token }: Props) {
                 if (data.status === 'running' || data.status === 'queued') {
                     setTimeout(() => pollJob(id), 2000);
                 } else {
+                    if (Array.isArray(data.intervals) && data.intervals.length > 0) {
+                        setChartData(formatIntervalsForChart(data.intervals));
+                    }
                     fetchHistory();
                 }
             }
@@ -351,9 +372,21 @@ export default function Speedtest({ token }: Props) {
         };
     };
 
-    const viewJobDetails = (job: XfrJob) => {
+    const viewJobDetails = async (job: XfrJob) => {
         setSelectedJob(job);
         setShowDetailModal(true);
+        try {
+            const res = await gFetch(`/api/tests/xfr/${encodeURIComponent(job.id || job.sequence_id)}`, { headers: authHeaders });
+            if (res.ok) {
+                const fullJob = await res.json();
+                const mergedJob: XfrJob = { ...job, ...fullJob };
+                setSelectedJob(mergedJob);
+                if (!isRunning) {
+                    setActiveJob(mergedJob);
+                    setChartData(formatIntervalsForChart(mergedJob.intervals));
+                }
+            }
+        } catch { }
     };
 
     const filteredHistory = history.filter(j =>
@@ -543,28 +576,32 @@ export default function Speedtest({ token }: Props) {
                                 <div className="space-y-4 pt-2 border-t border-border/50 animate-in fade-in duration-300">
                                     <div>
                                         <label className="text-[10px] font-black text-text-muted tracking-widest mb-1.5 block">Protocol</label>
-                                        <select
+                                        <StigixSelect
                                             value={protocol}
-                                            onChange={e => setProtocol(e.target.value as any)}
-                                            className="w-full bg-card-secondary border border-border rounded-xl px-4 py-3 text-sm outline-none focus:border-blue-500"
-                                        >
-                                            <option value="tcp">TCP</option>
-                                            <option value="udp">UDP</option>
-                                            <option value="quic">QUIC</option>
-                                        </select>
+                                            onChange={val => setProtocol(val as any)}
+                                            accent="blue"
+                                            triggerClassName="bg-card-secondary rounded-xl px-4 py-3 text-sm"
+                                            options={[
+                                                { value: 'tcp', label: 'TCP' },
+                                                { value: 'udp', label: 'UDP' },
+                                                { value: 'quic', label: 'QUIC' },
+                                            ]}
+                                        />
                                     </div>
 
                                     <div>
                                         <label className="text-[10px] font-black text-text-muted tracking-widest mb-1.5 block">Direction</label>
-                                        <select
+                                        <StigixSelect
                                             value={direction}
-                                            onChange={e => setDirection(e.target.value as any)}
-                                            className="w-full bg-card-secondary border border-border rounded-xl px-4 py-3 text-sm outline-none focus:border-blue-500"
-                                        >
-                                            <option value="client-to-server">Upload (Client to Server)</option>
-                                            <option value="server-to-client">Download (Reverse)</option>
-                                            <option value="bidirectional">Bidirectional</option>
-                                        </select>
+                                            onChange={val => setDirection(val as any)}
+                                            accent="blue"
+                                            triggerClassName="bg-card-secondary rounded-xl px-4 py-3 text-sm"
+                                            options={[
+                                                { value: 'client-to-server', label: 'Upload (Client to Server)' },
+                                                { value: 'server-to-client', label: 'Download (Reverse)' },
+                                                { value: 'bidirectional', label: 'Bidirectional' },
+                                            ]}
+                                        />
                                     </div>
 
                                     <div>
@@ -645,14 +682,16 @@ export default function Speedtest({ token }: Props) {
                                     {protocol === 'tcp' && (
                                         <div>
                                             <label className="text-[10px] font-black text-text-muted tracking-widest mb-1.5 block">TCP Congestion Avoidance</label>
-                                            <select
+                                            <StigixSelect
                                                 value={congestion}
-                                                onChange={e => setCongestion(e.target.value)}
-                                                className="w-full bg-card-secondary border border-border rounded-xl px-4 py-3 text-sm outline-none focus:border-blue-500"
-                                            >
-                                                <option value="cubic">Cubic (Default)</option>
-                                                <option value="reno">Reno</option>
-                                            </select>
+                                                onChange={val => setCongestion(val)}
+                                                accent="blue"
+                                                triggerClassName="bg-card-secondary rounded-xl px-4 py-3 text-sm"
+                                                options={[
+                                                    { value: 'cubic', label: 'Cubic (Default)' },
+                                                    { value: 'reno', label: 'Reno' },
+                                                ]}
+                                            />
                                         </div>
                                     )}
 
@@ -747,7 +786,7 @@ export default function Speedtest({ token }: Props) {
                                             ? `Analyzing sequence #${activeJob.sequence_id}` 
                                             : `Live Stream • Target: ${activeJob?.params?.target_name || activeJob?.params?.target_ip || 'Active Link'}`)
                                         : (activeJob?.summary 
-                                            ? `Summary for ${activeJob?.params?.target_name || activeJob?.params?.target_ip || 'Last Run'}` 
+                                            ? `Summary for ${activeJob.sequence_id || activeJob?.params?.target_name || activeJob?.params?.target_ip || 'Last Run'}${activeJob?.params?.host ? ` • ${activeJob.params.host}:${activeJob.params.port}` : ''}` 
                                             : 'Select target and launch test')}
                                 </p>
                             </div>
@@ -1085,10 +1124,10 @@ export default function Speedtest({ token }: Props) {
             {
                 showDetailModal && selectedJob && (
                     <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in duration-300">
-                        <div className="bg-card border border-border rounded-2xl w-full max-w-lg shadow-2xl overflow-hidden relative">
+                        <div className="bg-card border border-border rounded-2xl w-full max-w-2xl max-h-[90vh] flex flex-col shadow-2xl overflow-hidden relative">
 
                             {/* Header */}
-                            <div className="px-5 py-4 border-b border-border flex items-center justify-between bg-card-secondary/40">
+                            <div className="px-5 py-4 border-b border-border flex items-center justify-between bg-card-secondary/40 shrink-0">
                                 <div className="flex items-center gap-3">
                                     <div className="p-2 bg-blue-600 rounded-xl shadow-lg shadow-blue-900/30">
                                         <BarChart3 className="text-white" size={16} />
@@ -1097,6 +1136,11 @@ export default function Speedtest({ token }: Props) {
                                         <h3 className="text-sm font-black text-text-primary tracking-tight">Test Details</h3>
                                         <div className="flex items-center gap-2 mt-0.5">
                                             <span className="text-[10px] font-black text-blue-400 bg-blue-500/10 px-2 py-0.5 rounded border border-blue-500/20">{selectedJob.sequence_id}</span>
+                                            {selectedJob.params?.host && (
+                                                <span className="text-[10px] font-bold text-text-secondary bg-card px-2 py-0.5 rounded border border-border font-mono">
+                                                    {selectedJob.params.host}:{selectedJob.params.port}
+                                                </span>
+                                            )}
                                             <span className="text-[10px] text-text-muted opacity-60 font-mono">
                                                 {selectedJob.started_at ? new Date(selectedJob.started_at).toLocaleString() : 'N/A'}
                                             </span>
@@ -1112,7 +1156,201 @@ export default function Speedtest({ token }: Props) {
                             </div>
 
                             {/* Body */}
-                            <div className="p-5 space-y-4">
+                            <div className="p-5 space-y-4 overflow-y-auto">
+
+                                {/* Historical Time-Series Chart */}
+                                {selectedJob.intervals && selectedJob.intervals.length > 0 && (() => {
+                                    const modalChartData = formatIntervalsForChart(selectedJob.intervals);
+                                    const isUdpModal = selectedJob.params.protocol === 'udp';
+                                    const isUploadModal = selectedJob.params.direction === 'client-to-server';
+                                    const isDownloadModal = selectedJob.params.direction === 'server-to-client';
+                                    const isBidirModal = selectedJob.params.direction === 'bidirectional';
+
+                                    return (
+                                        <div className="bg-card-secondary/30 rounded-xl p-4 border border-border">
+                                            <div className="flex items-center justify-between mb-3">
+                                                <span className="text-[9px] font-black text-text-muted tracking-widest opacity-60 uppercase">
+                                                    Throughput &amp; {isUdpModal ? 'Loss' : 'Latency'} Profile ({selectedJob.intervals.length}s)
+                                                </span>
+                                                <div className="flex items-center gap-3 text-[10px] font-bold">
+                                                    {(isUploadModal || isBidirModal) && (
+                                                        <span className="flex items-center gap-1 text-blue-400">
+                                                            <span className="w-2 h-2 rounded-full bg-blue-500 inline-block" /> Sent (Mbps)
+                                                        </span>
+                                                    )}
+                                                    {(isDownloadModal || isBidirModal) && (
+                                                        <span className="flex items-center gap-1 text-emerald-400">
+                                                            <span className="w-2 h-2 rounded-full bg-emerald-500 inline-block" /> Received (Mbps)
+                                                        </span>
+                                                    )}
+                                                    {!isUdpModal && (
+                                                        <span className="flex items-center gap-1 text-cyan-400">
+                                                            <span className="w-2 h-0.5 bg-cyan-400 inline-block" /> RTT (ms)
+                                                        </span>
+                                                    )}
+                                                    <span className="flex items-center gap-1 text-amber-400">
+                                                        <span className="w-2 h-2 rounded-sm bg-amber-500/60 inline-block" /> {isUdpModal ? 'Loss (%)' : 'Retrans'}
+                                                    </span>
+                                                </div>
+                                            </div>
+                                            <div className="h-48 w-full">
+                                                <ResponsiveContainer width="100%" height="100%">
+                                                    <ComposedChart data={modalChartData}>
+                                                        <defs>
+                                                            <linearGradient id="colorSentModal" x1="0" y1="0" x2="0" y2="1">
+                                                                <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.35} />
+                                                                <stop offset="95%" stopColor="#3b82f6" stopOpacity={0} />
+                                                            </linearGradient>
+                                                            <linearGradient id="colorReceivedModal" x1="0" y1="0" x2="0" y2="1">
+                                                                <stop offset="5%" stopColor="#10b981" stopOpacity={0.35} />
+                                                                <stop offset="95%" stopColor="#10b981" stopOpacity={0} />
+                                                            </linearGradient>
+                                                        </defs>
+                                                        <CartesianGrid strokeDasharray="3 3" stroke="currentColor" className="text-border" vertical={false} />
+                                                        <XAxis
+                                                            dataKey="timestamp"
+                                                            stroke="currentColor"
+                                                            className="text-text-muted opacity-40"
+                                                            fontSize={10}
+                                                            tickFormatter={(val) => `${val}s`}
+                                                            fontWeight="bold"
+                                                        />
+                                                        <YAxis
+                                                            yAxisId="left"
+                                                            stroke="currentColor"
+                                                            className="text-text-muted opacity-40"
+                                                            fontSize={10}
+                                                            fontWeight="bold"
+                                                            tickFormatter={(val) => `${Math.round(val)}M`}
+                                                            width={42}
+                                                        />
+                                                        <YAxis
+                                                            yAxisId="right"
+                                                            orientation="right"
+                                                            stroke="#06b6d4"
+                                                            className="text-cyan-500 opacity-50"
+                                                            fontSize={10}
+                                                            fontWeight="bold"
+                                                            tickFormatter={(val) => isUdpModal ? `${val}%` : `${Math.round(val)}ms`}
+                                                            width={42}
+                                                        />
+                                                        <Tooltip
+                                                            content={({ active, payload, label }) => {
+                                                                if (active && payload && payload.length) {
+                                                                    const data = payload[0].payload;
+                                                                    return (
+                                                                        <div className="bg-slate-900 border border-slate-800 p-3 rounded-xl shadow-2xl space-y-1.5 backdrop-blur-md bg-opacity-90">
+                                                                            <div className="flex items-center justify-between gap-4 border-b border-white/5 pb-1">
+                                                                                <span className="text-[10px] font-black text-slate-400">Elapsed: {label}s</span>
+                                                                                {data.time_str && <span className="text-[10px] font-mono text-blue-400 font-bold">{data.time_str}</span>}
+                                                                            </div>
+                                                                            <div className="space-y-1 pt-0.5">
+                                                                                {(isUploadModal || isBidirModal) && data.sent_mbps !== undefined && (
+                                                                                    <div className="flex items-center justify-between gap-4">
+                                                                                        <span className="text-[10px] font-bold text-blue-400">Sent:</span>
+                                                                                        <span className="text-xs font-black text-white">{Math.round(data.sent_mbps)} Mbps</span>
+                                                                                    </div>
+                                                                                )}
+                                                                                {(isDownloadModal || isBidirModal) && data.received_mbps !== undefined && (
+                                                                                    <div className="flex items-center justify-between gap-4">
+                                                                                        <span className="text-[10px] font-bold text-emerald-400">Received:</span>
+                                                                                        <span className="text-xs font-black text-white">{Math.round(data.received_mbps)} Mbps</span>
+                                                                                    </div>
+                                                                                )}
+                                                                                {!isUdpModal && data.rtt_us !== undefined && (
+                                                                                    <div className="flex items-center justify-between gap-4">
+                                                                                        <span className="text-[10px] font-bold text-cyan-400">Latency (RTT):</span>
+                                                                                        <span className="text-xs font-black text-cyan-300">{(data.rtt_us / 1000).toFixed(1)} ms</span>
+                                                                                    </div>
+                                                                                )}
+                                                                                {!isUdpModal && data.retransmits !== undefined && (
+                                                                                    <div className="flex items-center justify-between gap-4">
+                                                                                        <span className="text-[10px] font-bold text-amber-400">Retransmits:</span>
+                                                                                        <span className="text-xs font-black text-amber-300">{data.retransmits}</span>
+                                                                                    </div>
+                                                                                )}
+                                                                                {!isUdpModal && data.cwnd !== undefined && (
+                                                                                    <div className="flex items-center justify-between gap-4 border-t border-white/5 pt-1 mt-1">
+                                                                                        <span className="text-[10px] font-bold text-slate-400">TCP Window (cwnd):</span>
+                                                                                        <span className="text-[10px] font-mono text-slate-300">{Math.round(data.cwnd / 1024)} KB</span>
+                                                                                    </div>
+                                                                                )}
+                                                                                {isUdpModal && data.lost_percent !== undefined && (
+                                                                                    <div className="flex items-center justify-between gap-4">
+                                                                                        <span className="text-[10px] font-bold text-amber-400">Packet Loss:</span>
+                                                                                        <span className="text-xs font-black text-amber-300">{data.lost_percent.toFixed(2)}%</span>
+                                                                                    </div>
+                                                                                )}
+                                                                            </div>
+                                                                        </div>
+                                                                    );
+                                                                }
+                                                                return null;
+                                                            }}
+                                                        />
+                                                        {(isUploadModal || isBidirModal) && (
+                                                            <Area
+                                                                yAxisId="left"
+                                                                type="monotone"
+                                                                dataKey="sent_mbps"
+                                                                stroke="#3b82f6"
+                                                                strokeWidth={2.5}
+                                                                fillOpacity={1}
+                                                                fill="url(#colorSentModal)"
+                                                                isAnimationActive={false}
+                                                            />
+                                                        )}
+                                                        {(isDownloadModal || isBidirModal) && (
+                                                            <Area
+                                                                yAxisId="left"
+                                                                type="monotone"
+                                                                dataKey="received_mbps"
+                                                                stroke="#10b981"
+                                                                strokeWidth={2.5}
+                                                                fillOpacity={1}
+                                                                fill="url(#colorReceivedModal)"
+                                                                isAnimationActive={false}
+                                                            />
+                                                        )}
+                                                        {!isUdpModal && (
+                                                            <Line
+                                                                yAxisId="right"
+                                                                type="monotone"
+                                                                dataKey="rtt_ms"
+                                                                stroke="#06b6d4"
+                                                                strokeWidth={2}
+                                                                dot={false}
+                                                                isAnimationActive={false}
+                                                            />
+                                                        )}
+                                                        {!isUdpModal && (
+                                                            <Bar
+                                                                yAxisId="right"
+                                                                dataKey="retransmits"
+                                                                fill="#f59e0b"
+                                                                opacity={0.4}
+                                                                barSize={10}
+                                                                radius={[3, 3, 0, 0]}
+                                                                isAnimationActive={false}
+                                                            />
+                                                        )}
+                                                        {isUdpModal && (
+                                                            <Bar
+                                                                yAxisId="right"
+                                                                dataKey="lost_percent"
+                                                                fill="#f59e0b"
+                                                                opacity={0.4}
+                                                                barSize={10}
+                                                                radius={[3, 3, 0, 0]}
+                                                                isAnimationActive={false}
+                                                            />
+                                                        )}
+                                                    </ComposedChart>
+                                                </ResponsiveContainer>
+                                            </div>
+                                        </div>
+                                    );
+                                })()}
 
                                 {/* Session Params — inline label: value rows */}
                                 <div className="bg-card-secondary/50 rounded-xl border border-border divide-y divide-border/50 overflow-hidden">

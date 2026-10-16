@@ -5,6 +5,7 @@ import {
     QrCode, Terminal, Sparkles, Sliders, Key, ExternalLink
 } from 'lucide-react';
 import { twMerge } from 'tailwind-merge';
+import { StigixSelect } from './common/StigixSelect';
 
 interface MagicJoinModalProps {
     isOpen: boolean;
@@ -299,16 +300,18 @@ export function MagicJoinModal({ isOpen, onClose, token }: MagicJoinModalProps) 
                                     <label className="block text-xs font-bold text-text-secondary mb-1">
                                         Token Validity (TTL)
                                     </label>
-                                    <select
-                                        value={ttlSeconds}
-                                        onChange={(e) => setTtlSeconds(Number(e.target.value))}
-                                        className="w-full bg-card-secondary border border-border rounded-xl px-3 py-2 text-xs text-text-primary font-mono focus:outline-none focus:ring-1 focus:ring-blue-500"
-                                    >
-                                        <option value={1800}>30 Minutes (Recommended)</option>
-                                        <option value={3600}>1 Hour</option>
-                                        <option value={21600}>6 Hours</option>
-                                        <option value={86400}>24 Hours</option>
-                                    </select>
+                                    <StigixSelect
+                                        value={String(ttlSeconds)}
+                                        onChange={(val) => setTtlSeconds(Number(val))}
+                                        size="sm"
+                                        accent="blue"
+                                        options={[
+                                            { value: '1800', label: '30 Minutes (Recommended)', badge: '30m' },
+                                            { value: '3600', label: '1 Hour', badge: '1h' },
+                                            { value: '21600', label: '6 Hours', badge: '6h' },
+                                            { value: '86400', label: '24 Hours', badge: '24h' },
+                                        ]}
+                                    />
                                 </div>
                             </div>
 

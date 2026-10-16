@@ -29,8 +29,8 @@ export interface VyosSequence {
     name: string;
     enabled: boolean;
     paused?: boolean;  // NEW: Paused state for running sequences
-    executionMode: 'CYCLE' | 'STEP_BY_STEP'; // NEW: Execution mode
-    currentStep?: number; // NEW: Pointer for Step-by-Step mode
+    executionMode: 'CYCLE' | 'STEP_BY_STEP' | 'BATCH'; // Execution mode
+    currentStep?: number; // Pointer for Step-by-Step mode
     cycle_duration: number; // Cycle duration in minutes (replaces cycleMinutes)
     actions: VyosAction[];
     lastRun?: number;
@@ -156,7 +156,7 @@ export class VyosScheduler extends EventEmitter {
 
     private startAllScheduled() {
         for (const seq of this.sequences.values()) {
-            if (seq.enabled && seq.cycle_duration > 0) {
+            if (seq.enabled && seq.executionMode === 'CYCLE' && seq.cycle_duration > 0) {
                 this.startScheduled(seq);
             }
         }
@@ -164,6 +164,7 @@ export class VyosScheduler extends EventEmitter {
 
     private startScheduled(seq: VyosSequence) {
         this.stopScheduled(seq.id);
+        if (seq.executionMode === 'STEP_BY_STEP' || seq.executionMode === 'BATCH' || seq.cycle_duration <= 0) return;
 
         seq.lastRun = Date.now();
         this.saveSequences();
@@ -243,7 +244,7 @@ export class VyosScheduler extends EventEmitter {
 
     private restartScheduled(id: string) {
         const seq = this.sequences.get(id);
-        if (seq && seq.enabled && seq.cycle_duration > 0) {
+        if (seq && seq.enabled && seq.executionMode === 'CYCLE' && seq.cycle_duration > 0) {
             this.startScheduled(seq);
         } else {
             this.stopScheduled(id);
@@ -281,7 +282,7 @@ export class VyosScheduler extends EventEmitter {
         this.saveSequences();
 
         // Restart scheduled timers from scratch (timers were cleared on pause)
-        if (seq.enabled && seq.cycle_duration > 0) {
+        if (seq.enabled && seq.executionMode === 'CYCLE' && seq.cycle_duration > 0) {
             this.startScheduled(seq);
         }
 
@@ -304,7 +305,7 @@ export class VyosScheduler extends EventEmitter {
         log('VYOS-SCHED', `Stopped sequence "${seq.name}" - will restart from beginning`);
 
         // Restart if enabled
-        if (seq.enabled && seq.cycle_duration > 0) {
+        if (seq.enabled && seq.executionMode === 'CYCLE' && seq.cycle_duration > 0) {
             this.startScheduled(seq);
         }
     }
@@ -391,18 +392,57 @@ export class VyosScheduler extends EventEmitter {
         }
     }
 
-    async runSequenceManually(id: string): Promise<void> {
+    async runSequenceManually(id: string): Promise<{
+        runId: string;
+        sequenceId: string;
+        sequenceName: string;
+        overallStatus: 'success' | 'failed';
+        results: {
+            actionId: string;
+            stepIndex: number;
+            routerId: string;
+            command: string;
+            interface?: string;
+            parameters?: any;
+            status: 'success' | 'failed';
+            durationMs: number;
+            error?: string;
+            cliEquivalent?: string[];
+        }[];
+    }> {
         const seq = this.sequences.get(id);
         if (!seq) throw new Error('Sequence not found');
 
-        log('VYOS-SCHED', `Manual execution: ${seq.name}`);
+        const isBatch = seq.executionMode === 'BATCH';
+        log('VYOS-SCHED', `${isBatch ? 'Batch (1-shot)' : 'Manual'} execution: ${seq.name} (${seq.actions.length} action(s))`);
 
-        const runId = `MAN-${(++this.runCounter).toString().padStart(4, '0')}`;
+        const prefix = isBatch ? 'BCH' : 'MAN';
+        const runId = `${prefix}-${(++this.runCounter).toString().padStart(4, '0')}`;
         this.saveSequences();
 
-        // Execute all actions immediately (ignore offsets)
-        for (const action of seq.actions) {
+        const results: {
+            actionId: string;
+            stepIndex: number;
+            routerId: string;
+            command: string;
+            interface?: string;
+            parameters?: any;
+            status: 'success' | 'failed';
+            durationMs: number;
+            error?: string;
+            cliEquivalent?: string[];
+        }[] = [];
+
+        let hasFailed = false;
+
+        // Execute all actions sequentially (1 API session & acknowledgment per command)
+        for (let i = 0; i < seq.actions.length; i++) {
+            const action = seq.actions[i];
             const startTime = performance.now();
+            action.status = 'running';
+            action.error = undefined;
+            this.emit('sequence:step', { sequenceId: seq.id, stepIndex: i, step: action.command, status: 'running', action });
+
             try {
                 const result = await this.manager.executeAction(action.router_id, {
                     id: action.id,
@@ -412,15 +452,56 @@ export class VyosScheduler extends EventEmitter {
                     params: { ...action.parameters, interface: action.interface }
                 });
                 const duration = Math.round(performance.now() - startTime);
+                action.status = 'success';
+                action.duration_ms = duration;
+                action.run_id = runId;
                 this.logActionExecution(seq.id, action, 'success', undefined, runId, duration, result?.cliEquivalent);
+                this.emit('sequence:step', { sequenceId: seq.id, stepIndex: i, step: action.command, status: 'success', action, cliEquivalent: result?.cliEquivalent });
+                results.push({
+                    actionId: action.id,
+                    stepIndex: i,
+                    routerId: action.router_id,
+                    command: action.command,
+                    interface: action.interface,
+                    parameters: action.parameters,
+                    status: 'success',
+                    durationMs: duration,
+                    cliEquivalent: result?.cliEquivalent
+                });
             } catch (error: any) {
+                hasFailed = true;
                 const duration = Math.round(performance.now() - startTime);
+                action.status = 'failed';
+                action.duration_ms = duration;
+                action.error = error.message;
+                action.run_id = runId;
                 this.logActionExecution(seq.id, action, 'failed', error.message, runId, duration);
+                this.emit('sequence:step', { sequenceId: seq.id, stepIndex: i, step: action.command, status: 'failed', error: error.message, action });
+                results.push({
+                    actionId: action.id,
+                    stepIndex: i,
+                    routerId: action.router_id,
+                    command: action.command,
+                    interface: action.interface,
+                    parameters: action.parameters,
+                    status: 'failed',
+                    durationMs: duration,
+                    error: error.message
+                });
             }
         }
 
         seq.lastRun = Date.now();
+        seq.lastResult = hasFailed ? 'failed' : 'success';
         this.saveSequences();
+
+        return {
+            runId,
+            sequenceId: seq.id,
+            sequenceName: seq.name,
+            overallStatus: hasFailed ? 'failed' : 'success',
+            results
+        };
     }
 
     async runSequenceStep(id: string, stepIndex: number): Promise<void> {

@@ -183,6 +183,9 @@ def get_router_info(host, apikey, verify=False):
             
             info['interfaces'].sort(key=lambda x: x['name'])
         
+        # Also extract active tag-999 blackhole routes (Deny Traffic) from the already retrieved config
+        info['blackhole_blocks'] = get_blackhole_routes(config)
+        
         return info
         
     except Exception as e:
@@ -191,6 +194,7 @@ def get_router_info(host, apikey, verify=False):
             'error': str(e),
             'version': None,
             'interfaces': [],
+            'blackhole_blocks': [],
             'hostname': None
         }
 

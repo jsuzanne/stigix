@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { usePeerContext } from '../PeerContext';
 import { Route, X, Play, Copy, Check, Terminal, Activity, ArrowRight, AlertCircle, CheckCircle2, RefreshCw, Shield, ChevronDown, ChevronUp } from 'lucide-react';
 import { twMerge } from 'tailwind-merge';
+import { StigixSelect } from './common/StigixSelect';
 
 interface HopData {
     hop: number;
@@ -250,17 +251,20 @@ export const TracerouteModal: React.FC<TracerouteModalProps> = ({
                         )}
 
                         {/* Max Hops */}
-                        <div className="flex items-center gap-1.5 px-3 py-2 bg-card-secondary/70 border border-border rounded-xl">
+                        <div className="flex items-center gap-1.5 px-2.5 py-1 bg-card-secondary/70 border border-border rounded-xl">
                             <span className="text-[10px] font-bold text-text-muted uppercase tracking-wider">Hops</span>
-                            <select
-                                value={maxHops}
-                                onChange={(e) => setMaxHops(Number(e.target.value))}
-                                className="bg-transparent text-text-primary text-xs font-bold outline-none cursor-pointer font-mono"
-                            >
-                                <option value={10}>10</option>
-                                <option value={15}>15</option>
-                                <option value={20}>20</option>
-                            </select>
+                            <StigixSelect
+                                value={String(maxHops)}
+                                onChange={(val) => setMaxHops(Number(val))}
+                                size="xs"
+                                accent="blue"
+                                minMenuWidth={90}
+                                options={[
+                                    { value: '10', label: '10 hops' },
+                                    { value: '15', label: '15 hops' },
+                                    { value: '20', label: '20 hops' },
+                                ]}
+                            />
                         </div>
 
                         {/* Trace Button */}

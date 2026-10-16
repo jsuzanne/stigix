@@ -268,6 +268,181 @@ export interface CustomTcpApplicationsFile {
     version: number;
     instance: InstanceIdentityConfig;
     applications: CustomTcpApplicationConfig[];
+    multicastApplications?: CustomMulticastApplicationConfig[];
+}
+
+// ─── Multicast Overlay Application & Telemetry Models ─────────────────────────
+
+export type MulticastAddressingMode = 'asm' | 'ssm';
+export type MulticastRateMode = 'cbr' | 'burst';
+export type MulticastExpectationMode = 'traffic' | 'none';
+export type MulticastHealthVerdict = 'HEALTHY' | 'DEGRADED' | 'FAILED' | 'NO_TRAFFIC';
+export type MulticastPayloadFormat = 'raw-stgx' | 'rtp-mpegts' | 'rtp-g711';
+
+export interface MulticastReceiverPeerConfig {
+    node: string; // Site name / Instance ID (e.g. 'BR1', 'BR2', 'BR5')
+    expect: MulticastExpectationMode; // 'traffic' (EXPECT_TRAFFIC) or 'none' (EXPECT_NONE / leak test)
+    interfaceIp?: string; // 'auto' or explicit LAN IPv4
+    enabled: boolean;
+}
+
+export interface MulticastRateConfig {
+    mode: MulticastRateMode;
+    kbps: number; // 64 to 50000 (50 Mbps)
+    burstPackets?: number; // For 'burst' mode: N packets per burst
+    burstIntervalMs?: number; // For 'burst' mode: burst period in ms
+}
+
+export interface MulticastThresholdsConfig {
+    maxLossPct: number; // default 0.1
+    degradedLossPct: number; // default 2.0
+    maxJitterMs?: number; // default 30 (RFC 3550 jitter threshold for DEGRADED)
+    maxDuplicates?: number; // default 0 (allowed duplicates during PIM SPT switchover before DEGRADED)
+    maxGapMs: number; // default 3000
+}
+
+export interface CustomMulticastApplicationConfig {
+    id: string;
+    name: string;
+    description?: string;
+    presetId?: string;
+    payloadFormat?: MulticastPayloadFormat; // 'raw-stgx' (default) | 'rtp-mpegts' | 'rtp-g711'
+    enabled: boolean;
+    group: string; // ASM: 239.x.x.x, SSM: 232.x.x.x
+    port: number; // default 5000 (or 5004 for RTP)
+    mode: MulticastAddressingMode;
+    ssmSource?: string; // Required when mode === 'ssm'
+    senderNode: string; // Site name / node ID acting as multicast source (e.g. 'DC1' or 'BR1' for BSS)
+    senderInterfaceIp?: string; // 'auto' or explicit LAN IPv4
+    receivers: MulticastReceiverPeerConfig[];
+    rate: MulticastRateConfig;
+    payloadBytes: number; // 64..1400, default 1316 (7 MPEG-TS packets)
+    ttl: number; // 1..255, default 64
+    dscp: string; // 'BE' | 'CS5' | 'EF' | 'AF41' | 'CS4' | 'CS2'
+    durationSec: number; // 0 = continuous until stopped
+    thresholds?: MulticastThresholdsConfig;
+}
+
+export interface MulticastApplicationPreset {
+    id: string;
+    name: string;
+    shortLabel: string;
+    badge: string;
+    description: string;
+    appIdHint: string;
+    group: string;
+    port: number;
+    mode: MulticastAddressingMode;
+    rate: MulticastRateConfig;
+    payloadBytes: number;
+    payloadFormat: MulticastPayloadFormat;
+    ttl: number;
+    dscp: string;
+    thresholds: MulticastThresholdsConfig;
+}
+
+export interface MulticastSenderStats {
+    appId: string;
+    node: string;
+    active: boolean;
+    group: string;
+    port: number;
+    interfaceName: string;
+    interfaceIp: string;
+    runId: number;
+    streamId: number;
+    currentSeq: number;
+    packetsSent: number;
+    bytesSent: number;
+    txBitrateKbps: number;
+    txPps: number;
+    targetKbps: number;
+    payloadBytes: number;
+    ttl: number;
+    dscp: string;
+    startedAt?: number;
+    uptimeSec: number;
+    lastError?: string;
+}
+
+export interface MulticastThroughputSample {
+    ts: number;
+    kbps: number;
+    pps: number;
+    lossPct: number;
+    maxGapMs: number;
+}
+
+export interface MulticastReceiverStats {
+    appId: string;
+    node: string;
+    joined: boolean;
+    expect: MulticastExpectationMode;
+    group: string;
+    port: number;
+    mode: MulticastAddressingMode;
+    ssmSource?: string;
+    interfaceName: string;
+    interfaceIp: string;
+    igmpVersion: string;
+    runId: number;
+    firstSeq: number | null;
+    highestSeq: number | null;
+    packetsReceived: number;
+    packetsExpected: number;
+    packetsLost: number;
+    lossPct: number;
+    duplicatePackets: number;
+    reorderedPackets: number;
+    foreignPackets: number;
+    bytesReceived: number;
+    rxBitrateKbps: number;
+    rxPps: number;
+    jitterMs: number;
+    maxGapMs: number;
+    currentSilenceMs: number;
+    joinLatencyMs: number | null;
+    joinedAt?: number;
+    firstPacketAt?: number;
+    lastPacketAt?: number;
+    verdict: MulticastHealthVerdict;
+    verdictReason: string;
+    lastError?: string;
+    history: MulticastThroughputSample[];
+}
+
+export interface MulticastNodePreflightResult {
+    node: string;
+    role: 'sender' | 'receiver';
+    reachable: boolean;
+    status: 'pass' | 'warn' | 'fail';
+    interfaceName: string;
+    interfaceIp: string;
+    multicastCapable: boolean;
+    igmpVersion: string;
+    rpFilter: number | null;
+    portAvailable: boolean;
+    checks: {
+        name: string;
+        status: 'pass' | 'warn' | 'fail';
+        detail: string;
+    }[];
+    hints: string[];
+}
+
+export interface MulticastClusterStatus {
+    appId: string;
+    appName: string;
+    group: string;
+    port: number;
+    mode: MulticastAddressingMode;
+    ssmSource?: string;
+    active: boolean;
+    startedAt?: number;
+    sender: MulticastSenderStats;
+    receivers: MulticastReceiverStats[];
+    overallVerdict: MulticastHealthVerdict;
+    diagnostics: string[];
 }
 
 // ─── Runtime & Session Models ─────────────────────────────────────────────────

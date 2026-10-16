@@ -92,22 +92,62 @@ def ensure_dirs():
     os.makedirs(CAPTURES_DIR, exist_ok=True)
 
 
+def _detect_primary_egress_interface() -> Optional[str]:
+    """Detect the primary traffic egress interface from Stigix config or kernel default route."""
+    # 1. Check config/interfaces.txt (sibling of CAPTURES_DIR)
+    config_dir = os.path.dirname(CAPTURES_DIR.rstrip('/'))
+    interfaces_file = os.path.join(config_dir, 'interfaces.txt')
+    if os.path.exists(interfaces_file):
+        try:
+            with open(interfaces_file, 'r') as f:
+                for line in f:
+                    line = line.strip()
+                    if line and not line.startswith('#'):
+                        iface_name = line.split()[0].split(':')[0].strip()
+                        if iface_name and os.path.exists(f"/sys/class/net/{iface_name}"):
+                            return iface_name
+        except Exception:
+            pass
+
+    # 2. Check SOURCE_INTERFACE env var
+    env_iface = os.environ.get('SOURCE_INTERFACE', '').strip()
+    if env_iface and os.path.exists(f"/sys/class/net/{env_iface}"):
+        return env_iface
+
+    # 3. Check kernel default route (ip route show default)
+    try:
+        out = subprocess.check_output(["ip", "-4", "route", "show", "default"], stderr=subprocess.DEVNULL).decode('utf-8')
+        for line in out.splitlines():
+            parts = line.split()
+            if "dev" in parts:
+                idx = parts.index("dev")
+                if idx + 1 < len(parts):
+                    return parts[idx + 1]
+    except Exception:
+        pass
+
+    return None
+
+
+def _classify_interface_category(name: str) -> str:
+    """Classify interface into physical, tunnel, loopback,virtual, or any."""
+    if name == "any":
+        return "any"
+    if name == "lo" or name.startswith("lo"):
+        return "loopback"
+    if name.startswith(("veth", "br-", "docker", "virbr", "cni", "flannel", "cali")):
+        return "virtual"
+    if name.startswith(("tailscale", "wg", "tun", "tap", "zt", "utun", "ipsec", "vti")):
+        return "tunnel"
+    return "physical"
+
+
 def list_interfaces() -> List[Dict[str, Any]]:
-    """Enumerate network interfaces available for capture."""
-    interfaces = []
-    
-    # Always include 'any' pseudo-interface in Linux
-    interfaces.append({
-        "name": "any",
-        "label": "All Interfaces (any)",
-        "ip": "0.0.0.0",
-        "mac": "-",
-        "is_default": True,
-        "is_up": True
-    })
+    """Enumerate network interfaces available for capture, prioritizing the active egress interface."""
+    raw_interfaces: List[Dict[str, Any]] = []
+    primary_egress = _detect_primary_egress_interface()
 
     try:
-        # Query interfaces via /sys/class/net
         net_dir = "/sys/class/net"
         if os.path.exists(net_dir):
             for iface in sorted(os.listdir(net_dir)):
@@ -118,7 +158,7 @@ def list_interfaces() -> List[Dict[str, Any]]:
                 if os.path.exists(operstate_file):
                     with open(operstate_file, 'r') as f:
                         is_up = f.read().strip() in ("up", "unknown")
-                
+
                 # Get IP via ip command
                 ip_addr = "-"
                 try:
@@ -141,18 +181,62 @@ def list_interfaces() -> List[Dict[str, Any]]:
                     except Exception:
                         pass
 
-                interfaces.append({
+                category = _classify_interface_category(iface)
+                is_egress = (iface == primary_egress)
+
+                raw_interfaces.append({
                     "name": iface,
                     "label": f"{iface} ({ip_addr})" if ip_addr != "-" else iface,
                     "ip": ip_addr,
                     "mac": mac_addr,
-                    "is_default": False,
+                    "is_default": is_egress,
+                    "is_egress": is_egress,
+                    "category": category,
                     "is_up": is_up
                 })
-    except Exception as e:
+    except Exception:
         pass
 
-    return interfaces
+    # If no egress interface matched yet, fallback to first physical UP interface with an IP
+    if not any(i.get("is_default") for i in raw_interfaces):
+        for i in raw_interfaces:
+            if i.get("category") == "physical" and i.get("is_up") and i.get("ip") != "-":
+                i["is_default"] = True
+                i["is_egress"] = True
+                break
+
+    has_default = any(i.get("is_default") for i in raw_interfaces)
+
+    any_entry = {
+        "name": "any",
+        "label": "All Interfaces (any)",
+        "ip": "0.0.0.0",
+        "mac": "-",
+        "is_default": not has_default,
+        "is_egress": False,
+        "category": "any",
+        "is_up": True
+    }
+
+    # Sort order: egress first, then physical (with IP first), then 'any', then tunnel, loopback, virtual
+    def sort_key(item: Dict[str, Any]):
+        cat_order = {
+            "physical": 1,
+            "any": 2,
+            "tunnel": 3,
+            "loopback": 4,
+            "virtual": 5
+        }
+        return (
+            0 if item.get("is_egress") else 1,
+            cat_order.get(item.get("category", "physical"), 3),
+            0 if item.get("ip") not in ("-", "0.0.0.0") else 1,
+            item.get("name", "")
+        )
+
+    all_items = raw_interfaces + [any_entry]
+    all_items.sort(key=sort_key)
+    return all_items
 
 
 def get_active_session() -> Optional[Dict[str, Any]]:

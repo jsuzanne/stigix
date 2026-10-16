@@ -10,6 +10,7 @@ import {
 } from 'lucide-react';
 import { clsx } from 'clsx';
 import { twMerge } from 'tailwind-merge';
+import { StigixSelect } from '../common/StigixSelect';
 import type {
     CustomTcpApplicationConfig,
     PeerConfig,
@@ -906,21 +907,23 @@ export const CustomAppWizardModal: React.FC<CustomAppWizardModalProps> = ({
                                 <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-4">
                                     <div>
                                         <label className="block text-xs font-semibold text-text-secondary mb-1.5">Workload Mode</label>
-                                        <select
+                                        <StigixSelect
                                             value={formData.clientDefaults.mode}
-                                            onChange={e => setFormData((prev: CustomTcpApplicationConfig) => ({
+                                            onChange={val => setFormData((prev: CustomTcpApplicationConfig) => ({
                                                 ...prev,
-                                                clientDefaults: { ...prev.clientDefaults, mode: e.target.value as ClientWorkloadMode }
+                                                clientDefaults: { ...prev.clientDefaults, mode: val as ClientWorkloadMode }
                                             }))}
-                                            className="w-full bg-card border border-border rounded-xl px-3.5 py-2 text-sm text-text-primary shadow-sm"
-                                        >
-                                            <option value="persistent_request_reply">Persistent Sessions</option>
-                                            <option value="stochastic">Stochastic / Human Think-Time</option>
-                                            <option value="transactional">Transactional</option>
-                                            <option value="heartbeat">Heartbeat</option>
-                                            <option value="bulk_burst">Bulk Burst</option>
-                                            <option value="continuous_stream">Continuous Stream</option>
-                                        </select>
+                                            size="sm"
+                                            accent="indigo"
+                                            options={[
+                                                { value: 'persistent_request_reply', label: 'Persistent Sessions' },
+                                                { value: 'stochastic', label: 'Stochastic / Human Think-Time' },
+                                                { value: 'transactional', label: 'Transactional' },
+                                                { value: 'heartbeat', label: 'Heartbeat' },
+                                                { value: 'bulk_burst', label: 'Bulk Burst' },
+                                                { value: 'continuous_stream', label: 'Continuous Stream' },
+                                            ]}
+                                        />
                                     </div>
                                     <div>
                                         <label className="block text-xs font-semibold text-text-secondary mb-1.5">Connections / Peer</label>

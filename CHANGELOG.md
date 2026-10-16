@@ -5,6 +5,141 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.0.34] - 2026-10-16
+
+### Added & Enhanced
+- **Light Mode Packet Capture Dissection & Hex Stream Polish (`PacketCapture.tsx`)**:
+  - Revamped protocol dissection tree, Wireshark-style expandable frame headers, and raw hex/ASCII payload viewers to use theme-adaptive background surfaces (`bg-card-secondary`, `bg-card`) and syntax highlights.
+  - Resolved low-contrast and dark-bleed artifacts on light theme for packet badges, raw offsets, and byte streams.
+- **Dual Uptime Indicator in Home Overview (`HomeOverview.tsx`)**:
+  - Added dedicated Stigix container uptime alongside host VM / ION uptime in the Home overview metric row.
+  - Distinguishes host operating system lifespan from container process uptime with dedicated iconography (`Server` vs `Cpu`/`Box`) and tooltips.
+- **Host Disk Gauge & Storage Metrics in Health Diagnostics (`SystemHealthModal.tsx`)**:
+  - Embedded real-time radial gauge and capacity badges for host disk utilization alongside memory and CPU meters.
+- **VyOS Traffic Control & Bandwidth Shaping (`VyosTrafficControlModal.tsx`, `vyos-scheduler.ts`)**:
+  - Added traffic shaping and bandwidth manipulation controls for SD-WAN underlay interfaces.
+- **Enterprise Multicast SD-WAN Overlay Engine (`MulticastOverlayTab.tsx`, `multicast-manager.ts`, `multicast-runtime.ts`)**:
+  - Integrated complete IGMPv3 / PIM-SM overlay validation, proactive synthetic multicast stream generators, and latency/jitter telemetry.
+
+## [3.0.33] - 2026-10-16
+
+### Added & Enhanced
+- **Modern StigixSelect Dropdown Component & Full UI Harmonization (`StigixSelect.tsx`)**:
+  - Created a unified, accessible, and lightweight dropdown component (`StigixSelect`) featuring fluid entry animations (`fade-in zoom-in-95`), zero layout shift, search/filter support, category badges, leading icons, and seamless dark/light theme integration.
+  - Replaced outdated native `<select>` elements across all dashboard modules: Packet Capture, PCAP Replay, VyOS Sequences & Config, Bandwidth Test, Voice / VoIP, Connectivity Performance, Security Engine, Settings, and Custom App Wizards.
+- **Smart Packet Capture Egress Detection & Interface Selection (`pcap_capture_engine.py`, `PacketCapture.tsx`)**:
+  - Added kernel default route and `interfaces.txt` inspection (`_detect_primary_egress_interface`) to automatically identify and prioritize the primary SD-WAN traffic egress interface as the default capture target.
+  - Categorized interfaces (physical, tunnel, loopback, virtual) with informative badges and high-contrast styling in both dark and light modes.
+- **PCAP Replay Light Mode Styling & Palette Polish (`PcapReplay.tsx`, `PcapReplayModal.tsx`)**:
+  - Replaced hardcoded dark background opacities (`bg-black/30`, `bg-black/40`, `bg-black/50`, `bg-black/60`) with theme-aware tokens (`bg-card-secondary`, `bg-card`) across control ribbons, step payload snippets, and Wireshark hex/ASCII payload inspectors.
+  - Fixed low-contrast text colors (`text-amber-300`, `text-emerald-300`) to guarantee crisp legibility against light backgrounds.
+  - Replaced inactive/unstyled `bg-primary text-black` tabs in the activity console with crisp `bg-indigo-600 text-white` active states.
+
+## [3.0.32] - 2026-10-16
+
+### Refactored & Fixed
+- **Bandwidth Test Historical Time-Series Chart & Navigation Label (`Speedtest.tsx`, `server.ts`, `navigationConfig.ts`)**:
+  - Renamed the sidebar navigation entry from `Bandwidth Test (XFR)` to **`Bandwidth Test`**.
+  - Embedded the full interactive time-series `ComposedChart` (`Throughput` Sent/Received Mbps, `RTT` ms, `Retransmits` / `Loss %`, and `TCP Window (cwnd)` tooltip) inside the **`Test Details`** modal (`max-w-2xl`) by fetching second-by-second `intervals` from `GET /api/tests/xfr/:id`.
+  - Auto-loaded the most recent historical run into the top main chart panel on initial page load (eliminating the empty `0 Mbps` state after browser refresh) and synchronized the top chart when clicking any historical run while idle.
+- **Compact Inline VoIP Global KPI Strip (`Voice.tsx`)**:
+  - Redesigned the 6 global VoIP KPI cards (`Avg MOS`, `Total Calls`, `Avg Loss`, `Avg Latency`, `Avg Jitter`, `RTT Variance`) into a single-line horizontal layout (`justify-between`, icon + label on the left, metric value + unit on the right) to reduce vertical footprint.
+- **VoIP Simulation UX Simplification & Unified Target QoS Table (`Voice.tsx`) [3.0.31]**:
+  - Replaced always-visible header configuration inputs (`Max Calls`, `Inter-Call`, `Egress Interface`, `Source Ports`, `Import/Export`) with compact clickable summary pills and a collapsible **`⚙️ Settings`** drawer inside the header.
+  - Globalized `RTP Codec` and `Call Duration (s)` inside the `⚙️ Settings` drawer (with automatic equal round-robin weight distribution across enabled targets) and removed repetitive per-target input columns.
+  - Merged `Per-Target QoS Statistics` directly into the **`Stigix Voice Targets & QoS Telemetry`** table (`Calls`, `Avg MOS`, `Loss`, `RTT / Jitter`, `Quality` with click-to-open QoS Radar modal) and replaced the permanent manual target form row with a compact `+ Custom Target` toggle bar.
+  - Kept the 6 global QoS KPI cards (`Avg MOS`, `Total Calls`, `Avg Loss`, `Avg Latency`, `Avg Jitter`, `RTT Variance`) permanently visible with `—` fallback before the first call finishes to eliminate layout shift.
+- **Zero-Flash Theme Reload / Anti-FOUC (`index.html`, `index.css`, `App.tsx`, `SidebarRail.tsx`)**:
+  - Added synchronous `<head>` theme initialization (`html.dark` / `html.light` + inline background color) before first paint, disabled CSS transitions during initial load (`html.no-transitions *`), and replaced hardcoded dark classes on the root shell and `SidebarRail` with theme-aware CSS variables.
+- **Copilot Floating Launcher & Header Shortcut Light Mode (`App.tsx`) [3.0.30]**:
+  - Updated the bottom-right floating `Copilot ⌘J` button and top header `AI Copilot ⌘J` shortcut pill to adapt cleanly to Light Mode (`bg-white/95`, subtle border and shadow, light `⌘J` kbd badge) while preserving its dark glassmorphic style in Dark Mode.
+- **VyOS Sequences Tactical Ghost Buttons (`Vyos.tsx`) [3.0.30]**:
+  - Replaced flashy solid purple buttons on the VyOS Sequences toolbar (`+ New Sequence`), sequence edit modal (`+ Add action`, `Save sequence`), and table row execution triggers (`▶ Run`, `⚡ Batch`, `› Steps`) with cohesive Indigo primary actions (`bg-indigo-600`) and subtle "Tactical Ghost" outline pills at rest that illuminate on hover (Emerald for `Run`, Amber for `Batch`, Blue for `Steps`).
+- **Digital Experience (`ConnectivityPerformance.tsx`) Standby / Paused Engine UX [3.0.29]**:
+  - Auto-collapses the empty telemetry chart rows (*Global Experience / Score Trend* and *Performance Trends by Type*) when the local probe engine is on standby with no local execution data (`!isProbeEngineEnabled && results.length === 0`), bringing the **Probes Catalog** immediately above the fold with a `Show Telemetry Panels` toggle in the compact Standby banner.
+  - Replaced the false-alarm `0/100 CRITICAL` gauge and contradictory `All monitored probes stable` indicator when paused with a clean `—` (`STANDBY`) gauge and `Local probe execution on standby` state.
+  - Fixed catalog and filter tab counters (`ALL`, `HTTP`, `PING`, `PRISMA SDWAN`, `STIGIX`, etc.) so they aggregate across the full catalog (`allEvaluatedEndpoints + pendingProbes`) instead of dropping to `0` when the engine is paused or when a filter pill is active, and enabled type/search filtering + column sorting on standby probes.
+  - Removed the redundant spinning `pending` badge from the probe title column, updated the `Status` column to show `STANDBY` when paused (and `SCHEDULED` when active), and converted the permanent scoring explanation banner into a collapsible `Scoring Formula` toggle.
+- **Custom TCP Apps KPI Alignment (`CustomApps.tsx`) [3.0.28]**:
+  - Unified vertical alignment (`min-h-[54px]`, `font-mono leading-none`) across the 4 KPI summary cards (*Configured Apps*, *Active Target Servers*, *Network Performance*, *Session Health*).
+- **Leader IP Resolution & Peer Mesh Navigation (`HomeOverview.tsx`, `server.ts`, `Settings.tsx`) [3.0.27]**:
+  - Prevented stale `static-leader.json` files from overriding a Leader node's own identity (`<local_ip> (Self)`) on the Home Overview widget, and updated the Peer node mesh widget to navigate directly to `Settings -> Stigix Targets` (`Learned Peers ›`) alongside a `Sync ›` shortcut.
+- **SD-WAN Dataplane & Cloudflare Edge PoP Telemetry (`HomeOverview.tsx`, `server.ts`) [3.0.26]**:
+  - Added live WAN gateway ICMP reachability and latency probes (`gw_reachable`, `gw_latency_ms`), explicit Mgmt/UI access mode detection (`Local / Direct`, `Reverse Proxy`, `Cloudflare`), and Cloudflare Anycast Edge PoP (`colo`) resolution via `/cdn-cgi/trace`.
+
+## [3.0.25] - 2026-10-16
+
+### Added & Enhanced
+- **Security Global Provisioning & Local Engine Pause Mode (`server.ts`, `provisioning-manager.ts`, `Security.tsx`)**:
+  - Added automatic fleet auto-sync (`triggerAutoSyncFleetBundle('security-config')`) when saving Security test selections or schedules on the Leader, and automatically hot-reloads schedulers (`startSchedulers()`) on peers when `security-config` bundles are applied.
+  - Preserved peer-local `statistics` and `sls_config` while stripping `test_history` during `security-config` bundle synchronization so peer telemetry is never overwritten by the Leader.
+  - Added a local node `security_engine_enabled` setting (`system-settings.json`, never synced to peers) with a header toggle (`Local Engine: Active / Paused`) and Standby notice banner in `Security.tsx`, allowing a Leader/controller node to push schedules to branches without executing automated tests locally.
+- **Homepage Cockpit & System Health Modal Refinements (`HomeOverview.tsx`, `SystemHealthModal.tsx`, `server.ts`)**:
+  - Added the **Security Validation** card in Column 2 (`2. Simulation Engines`) displaying active/paused engine status, configured test count across the 5 categories (`URL`, `DNS`, `Threat`, `C2`, `AI`), active cron schedules, and local block rate (`Blocked / Total`).
+  - Enriched the **Prisma SD-WAN** card in Column 1 (`1. Connectivity & Peers`) with detected topology counts (`X DC · Y Branches (Z IONs)`) and a quick **`Map ›`** navigation shortcut to the Topology view.
+  - Removed the redundant bottom **Mission Control Workloads** section on the Home Overview page and balanced the 3-column cockpit grid (`items-stretch` with flex-spaced cards).
+- **DEM Probes & Multicast Profile Export (`Connectivity.tsx`, `multicast-manager.ts`, `server.ts`, `Multicast.tsx`)**:
+  - Added explicit engine controls, accurate home status, and Prisma SD-WAN probe deduplication with formatted `Site · Router · Port/VLAN` visual hierarchy in DEM.
+  - Fixed Express route shadowing on `/api/multicast/export` and added a direct active profile export button in `Multicast.tsx`.
+
+## [3.0.24] - 2026-10-15
+
+### Refactored & Simplified
+- **Unified Node Role & Cluster Join UX (`NodeRoleModal.tsx`, `HomeOverview.tsx`, `Settings.tsx`, `App.tsx`)**:
+  - Removed the legacy **`NODE ROLE` (`Auto-Detect | Leader | Peer`)** selector card and the duplicated **`Join Stigix Cluster` / `Cluster Enrolled`** card from `Settings -> Target Controller (Registry)`, consolidating all node role transitions (`Standalone` ↔ `Enrolled Peer` ↔ `Fleet Leader`) into `NodeRoleModal`.
+  - Added a collapsible **`▸ Or configure manual Leader IP / URL`** fallback input inside `NodeRoleModal` (Standalone view) so manual Leader IP/URL configuration remains accessible without cluttering the primary `STX-...` join token workflow.
+  - Made the Hero cluster status badge (`Fleet Leader Active` / `Mesh Peer Connected` / `Standalone Node`) on the Home Overview page clickable to open `NodeRoleModal` directly, and added a **`Manage Node Mode`** shortcut button in the `Settings -> Target Controller` Hero header.
+
+## [3.0.23] - 2026-10-15
+
+### Added & Enhanced
+- **VyOS `One-Shot Batch` (`BATCH`) Execution Mode & Multi-Subnet Input (`Vyos.tsx`, `vyos-scheduler.ts`, `server.ts`)**:
+  - Added a `BATCH` (*One-Shot Batch*) execution mode alongside `Timed Cycle` (`CYCLE`) and `Step-by-Step` (`STEP_BY_STEP`), allowing multiple VyOS actions (`Deny Traffic`, `Allow Traffic`, `Set QoS`, etc.) to execute sequentially in one shot without `T+min` delays.
+  - Preserves atomic 1-session-per-command execution via `vyos_sdwan_ctl.py` and displays an inline per-action acknowledgment bar (`✓ OK` / `✗ FAILED`, execution duration in ms, and CLI equivalent) directly below the sequence row.
+  - Added multi-subnet input splitting (space/comma-separated prefixes or FQDNs such as `20.190.0.0/16 40.126.32.0/24`) with an inline `Split ×N` button in the Sequence Builder modal, automatic expansion on save, and a 1-click action duplicate button.
+- **Active `Deny Traffic` (Blackhole Static Routes) Visibility & Cleanup on Router Cards (`Vyos.tsx`, `vyos-manager.ts`, `vyos_sdwan_ctl.py`)**:
+  - Updated `get_router_info` in `vyos_sdwan_ctl.py` to extract active blackhole static routes (`tag 999`) directly from the fetched VyOS configuration (`blackhole_blocks`) during router discovery and health checks.
+  - Added an **Active Deny Routes (Blackhole tag 999)** section on each Router Card in `Vyos Control -> Routers` with 1-click per-subnet unblock (`×`) and `Clear All` buttons, and integrated blackhole cleanup into the global **Reset Lab** action.
+
+## [3.0.22] - 2026-10-15
+
+### Fixed & Enhanced
+- **Unreachable Receiver Circuit-Breaker & Fast-Fail in Multicast Overlay (`multicast-manager.ts`, `server.ts`)**:
+  - Added an automatic 12-second circuit-breaker (`unreachableNodes`) in `MulticastAppManager.dispatchToNode` so offline or unstable receiver VMs (e.g., `EHOSTUNREACH` / timeout on `BR1`) fail-fast in `0ms` during live UI telemetry polling instead of blocking cluster status calls.
+  - Added pre-join reachability screening in `startClusterStream` before starting any receiver's `joinedMonoNs` timer so an unreachable receiver VM never delays `local-sender/start` or inflates the measured `Join Latency` of healthy receivers (`BR5`).
+  - Reduced multicast `nodeForwarder` HTTP fallback timeout from `8000ms` to `2000ms` and eliminated redundant Spoke-to-Leader double-fallback timeouts.
+- **Prisma SD-WAN v2.6 Custom App Push for Multicast UDP (`engines/prisma_custom_apps.py`)**:
+  - Updated `udp_rules` payload generation to use the Prisma SD-WAN `v2.6` schema (`udp_port`, `udp_filters`, `dest_prefixes: null`) and automatically create/link a Global Prefix Filter (`STX_PF_<Group>`) for the `239.x.x.x/32` or `232.x.x.x/32` multicast group.
+
+## [3.0.21] - 2026-10-14
+
+### Fixed & Enhanced
+- **Live Version & Fleet Update Check (`Settings.tsx`, `server.ts`)**:
+  - Fixed `Check Fleet Updates` (`fetchPeerMaintStatus`) so it passes `?force=true` to remote fleet peers (bypassing the backend version cache) and simultaneously refreshes the local Leader node's version status.
+  - Added a **`Check New Version`** button in the **System Maintenance** header and reduced the backend Docker Hub version cache TTL from 15 minutes to 60 seconds.
+
+## [3.0.20] - 2026-10-14
+
+### Fixed & Enhanced
+- **Automatic Stigix Target & SD-WAN LAN Interface Discovery in Multicast Overlay (`MulticastOverlayTab.tsx`, `multicast-manager.ts`, `multicast-runtime.ts`, `server.ts`)**:
+  - Automatic discovery of all registered Stigix Targets (`GET /api/targets` + fleet peers) and their SD-WAN LAN IP addresses (e.g., `DC1-Ubuntu`, `BR5 (192.168.217.5)`, `BR8`, `BR1`) directly in the Multicast Profile editor.
+  - Added 1-click Stigix Target receiver pills and dropdown selectors showing each target's resolved LAN IP, automatically binding `IP_MULTICAST_IF` and `addMembership(group, interfaceIp)` to the target's SD-WAN LAN interface instead of KVM/OOB management NICs (`192.168.122.x` / `192.168.175.x`).
+  - Fixed cluster-level multicast API calls in `MulticastOverlayTab.tsx` to always address the Leader orchestrator directly rather than being intercepted by the active peer gateway context.
+
+## [3.0.19] - 2026-10-14
+
+### Added
+- **SD-WAN Overlay Multicast Validation Engine (`custom-tcp-apps/multicast-runtime.ts`, `multicast-manager.ts`, `MulticastOverlayTab.tsx`)**:
+  - Added a 100% native TypeScript/Node.js (`dgram`) UDP/IGMPv2 & IGMPv3 multicast generator and receiver engine supporting **ASM (`239.0.0.0/8`)** and **SSM (`232.0.0.0/8` + `(S,G)` source filter)** with a 24-byte `STGX` binary header (`!IQQHH`).
+  - Added distributed cluster orchestration (Leader-to-Peer fan-out via fleet tunnels and HTTP fallback) to coordinate `1 Sender -> N Receivers` across SD-WAN branches, including per-branch **IGMP Join / IGMP Leave** live controls for Late-Join (S4) and Prune (S8) testing.
+  - Added a 4096-bit sliding sequence window initialized on `firstSeq` (zero phantom loss on Late-Join), RFC 3550 inter-arrival jitter, join latency (`T_first_packet - T_igmp_join`), and automated SD-WAN root-cause diagnostics (*TTL Decay*, *PIM Blackhole*, *Replication Asymmetry*).
+  - Added a top-level **`[ TCP Applications ] | [ Multicast Overlay ]`** tab switcher in `CustomApps.tsx` with a live `1 -> N` replication tree matrix, sparklines, and multi-node Pre-Flight Check modal (`/proc/net/igmp`, `ip mroute`, and auto-detected LAN interface).
+- **SASE Fabric & SD-WAN Overlay Topology Enhancements (`Topology.tsx`)**:
+  - Renamed *SD-WAN Mesh* tab to **SD-WAN Overlay** and unified interactive site spotlight filtering across both views.
+  - Added Ghost DC Context nodes and Hybrid Gateway (`BR-GW`) visualization in the SASE Fabric view.
+- **Header Lifecycle & Adaptive Brand Logo (`App.tsx`, `index.css`)**:
+  - Added a discreet 3-way node mode selector (`Leader`, `Peer`, `Standalone`) and lifecycle modal in the header, plus adaptive light/dark mode logo styling.
+
 ## [3.0.14] - 2026-10-14
 
 ### Added

@@ -6,6 +6,7 @@ import {
     Zap, Eye, AlertCircle, ArrowUpRight, ArrowDownLeft, Radio, ShieldCheck 
 } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { StigixSelect } from '../common/StigixSelect';
 
 interface ApiLogInspectorProps {
     token: string | null;
@@ -280,34 +281,40 @@ export const ApiLogInspector: React.FC<ApiLogInspectorProps> = ({ token, onRepla
                 {/* Source Filter Dropdown */}
                 <div className="flex items-center space-x-1.5">
                     <span className="text-[11px] text-text-muted font-medium">Source:</span>
-                    <select
+                    <StigixSelect
                         value={filterSource}
-                        onChange={(e) => setFilterSource(e.target.value)}
-                        className="bg-input border border-input-border rounded-lg px-2.5 py-1 text-xs text-text focus:outline-none"
-                    >
-                        <option value="all">All Sources</option>
-                        <option value="node">Node.js (Inbound & Outbound)</option>
-                        <option value="python">Python (getflow / prisma_apps / etc.)</option>
-                        <option value="vyos">VyOS Router API</option>
-                        <option value="probe">Security Probes</option>
-                    </select>
+                        onChange={(val) => setFilterSource(val)}
+                        size="xs"
+                        accent="blue"
+                        minMenuWidth={240}
+                        options={[
+                            { value: 'all', label: 'All Sources' },
+                            { value: 'node', label: 'Node.js (Inbound & Outbound)' },
+                            { value: 'python', label: 'Python (getflow / prisma_apps / etc.)' },
+                            { value: 'vyos', label: 'VyOS Router API' },
+                            { value: 'probe', label: 'Security Probes' },
+                        ]}
+                    />
                 </div>
 
                 {/* Method Filter Dropdown */}
                 <div className="flex items-center space-x-1.5">
                     <span className="text-[11px] text-text-muted font-medium">Method:</span>
-                    <select
+                    <StigixSelect
                         value={filterMethod}
-                        onChange={(e) => setFilterMethod(e.target.value)}
-                        className="bg-input border border-input-border rounded-lg px-2.5 py-1 text-xs text-text focus:outline-none font-mono"
-                    >
-                        <option value="all">ALL</option>
-                        <option value="GET">GET</option>
-                        <option value="POST">POST</option>
-                        <option value="PUT">PUT</option>
-                        <option value="DELETE">DELETE</option>
-                        <option value="PATCH">PATCH</option>
-                    </select>
+                        onChange={(val) => setFilterMethod(val)}
+                        size="xs"
+                        accent="blue"
+                        minMenuWidth={110}
+                        options={[
+                            { value: 'all', label: 'ALL' },
+                            { value: 'GET', label: 'GET' },
+                            { value: 'POST', label: 'POST' },
+                            { value: 'PUT', label: 'PUT' },
+                            { value: 'DELETE', label: 'DELETE' },
+                            { value: 'PATCH', label: 'PATCH' },
+                        ]}
+                    />
                 </div>
             </div>
 

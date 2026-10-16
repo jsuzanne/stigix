@@ -7,6 +7,7 @@ import {
     Shield, Clock, Server, AlertTriangle, FileCode, CheckCircle2, ChevronDown 
 } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { StigixSelect } from '../common/StigixSelect';
 
 interface ApiPlaygroundProps {
     token: string | null;
@@ -253,75 +254,76 @@ export const ApiPlayground: React.FC<ApiPlaygroundProps> = ({
                     <div className="flex items-center space-x-2">
                         <Sparkles className="w-4 h-4 text-blue-400" />
                         <span className="text-xs font-semibold text-text">Preset Catalog:</span>
-                        <select
+                        <StigixSelect
                             value={selectedPresetId}
-                            onChange={(e) => handleSelectPreset(e.target.value)}
-                            className="bg-input border border-input-border rounded-lg px-3 py-1 text-xs text-text focus:outline-none max-w-[280px]"
-                        >
-                            <option value="custom">-- Custom Request (Scratchpad) --</option>
-                            <optgroup label="Prisma SD-WAN (CloudGenix)">
-                                {API_PRESETS.filter(p => p.category === 'Prisma SD-WAN').map(p => (
-                                    <option key={p.id} value={p.id}>{p.name}</option>
-                                ))}
-                            </optgroup>
-                            <optgroup label="Palo Alto SCM & SLS">
-                                {API_PRESETS.filter(p => p.category === 'Palo Alto SCM').map(p => (
-                                    <option key={p.id} value={p.id}>{p.name}</option>
-                                ))}
-                            </optgroup>
-                            <optgroup label="VyOS SD-WAN">
-                                {API_PRESETS.filter(p => p.category === 'VyOS SD-WAN').map(p => (
-                                    <option key={p.id} value={p.id}>{p.name}</option>
-                                ))}
-                            </optgroup>
-                            <optgroup label="Stigix Platform">
-                                {API_PRESETS.filter(p => p.category === 'Stigix Platform').map(p => (
-                                    <option key={p.id} value={p.id}>{p.name}</option>
-                                ))}
-                            </optgroup>
-                            <optgroup label="External Probes & Targets">
-                                {API_PRESETS.filter(p => p.category === 'External Probes').map(p => (
-                                    <option key={p.id} value={p.id}>{p.name}</option>
-                                ))}
-                            </optgroup>
-                        </select>
+                            onChange={(val) => handleSelectPreset(val)}
+                            size="xs"
+                            accent="blue"
+                            minMenuWidth={300}
+                            options={[
+                                { value: 'custom', label: '-- Custom Request (Scratchpad) --' }
+                            ]}
+                            groups={[
+                                {
+                                    label: 'Prisma SD-WAN (CloudGenix)',
+                                    options: API_PRESETS.filter(p => p.category === 'Prisma SD-WAN').map(p => ({ value: p.id, label: p.name, badge: p.method }))
+                                },
+                                {
+                                    label: 'Palo Alto SCM & SLS',
+                                    options: API_PRESETS.filter(p => p.category === 'Palo Alto SCM').map(p => ({ value: p.id, label: p.name, badge: p.method }))
+                                },
+                                {
+                                    label: 'VyOS SD-WAN',
+                                    options: API_PRESETS.filter(p => p.category === 'VyOS SD-WAN').map(p => ({ value: p.id, label: p.name, badge: p.method }))
+                                },
+                                {
+                                    label: 'Stigix Platform',
+                                    options: API_PRESETS.filter(p => p.category === 'Stigix Platform').map(p => ({ value: p.id, label: p.name, badge: p.method }))
+                                },
+                                {
+                                    label: 'External Probes & Targets',
+                                    options: API_PRESETS.filter(p => p.category === 'External Probes').map(p => ({ value: p.id, label: p.name, badge: p.method }))
+                                },
+                            ]}
+                        />
                     </div>
 
                     {/* Auto-Auth Pill */}
                     <div className="flex items-center space-x-1.5 text-xs">
                         <Shield className="w-3.5 h-3.5 text-emerald-400" />
                         <span className="text-text-muted text-[11px]">Auto Auth:</span>
-                        <select
+                        <StigixSelect
                             value={autoAuth}
-                            onChange={(e) => setAutoAuth(e.target.value as AutoAuthType)}
-                            className="bg-input border border-input-border rounded-md px-2 py-0.5 text-[11px] text-text font-medium focus:outline-none"
-                        >
-                            <option value="none">None / Manual</option>
-                            <option value="sase">Prisma SASE OAuth</option>
-                            <option value="vyos">VyOS API Key</option>
-                            <option value="stigix">Stigix JWT Token</option>
-                        </select>
+                            onChange={(val) => setAutoAuth(val as AutoAuthType)}
+                            size="xs"
+                            accent="emerald"
+                            minMenuWidth={160}
+                            options={[
+                                { value: 'none', label: 'None / Manual' },
+                                { value: 'sase', label: 'Prisma SASE OAuth' },
+                                { value: 'vyos', label: 'VyOS API Key' },
+                                { value: 'stigix', label: 'Stigix JWT Token' },
+                            ]}
+                        />
                     </div>
                 </div>
 
                 {/* Method & URL Input Bar */}
                 <div className="p-4 border-b border-border/70 flex items-center space-x-2 bg-card-body/20">
-                    <select
+                    <StigixSelect
                         value={method}
-                        onChange={(e) => setMethod(e.target.value as any)}
-                        className={`bg-input border border-input-border rounded-lg px-3 py-2 text-xs font-bold font-mono focus:outline-none ${
-                            method === 'GET' ? 'text-emerald-400' :
-                            method === 'POST' ? 'text-blue-400' :
-                            method === 'PUT' ? 'text-amber-400' :
-                            method === 'DELETE' ? 'text-rose-400' : 'text-purple-400'
-                        }`}
-                    >
-                        <option value="GET">GET</option>
-                        <option value="POST">POST</option>
-                        <option value="PUT">PUT</option>
-                        <option value="DELETE">DELETE</option>
-                        <option value="PATCH">PATCH</option>
-                    </select>
+                        onChange={(val) => setMethod(val as any)}
+                        size="sm"
+                        accent="blue"
+                        minMenuWidth={110}
+                        options={[
+                            { value: 'GET', label: 'GET', icon: <span className="w-2 h-2 rounded-full bg-emerald-400 inline-block" /> },
+                            { value: 'POST', label: 'POST', icon: <span className="w-2 h-2 rounded-full bg-blue-400 inline-block" /> },
+                            { value: 'PUT', label: 'PUT', icon: <span className="w-2 h-2 rounded-full bg-amber-400 inline-block" /> },
+                            { value: 'DELETE', label: 'DELETE', icon: <span className="w-2 h-2 rounded-full bg-rose-400 inline-block" /> },
+                            { value: 'PATCH', label: 'PATCH', icon: <span className="w-2 h-2 rounded-full bg-purple-400 inline-block" /> },
+                        ]}
+                    />
 
                     <div className="relative flex-1">
                         <input

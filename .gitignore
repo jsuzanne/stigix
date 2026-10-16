@@ -13,6 +13,8 @@ playwright.config.ts
 *.log
 *.log.*
 pcap samples/
+pcapsamples/
+logo_header_mockup.html
 *.pcap
 *.pcapng
 *.cap
@@ -109,3 +111,6 @@ docs/screenshots/Videos/
 *.gif
 !docs/stigix-banner.gif
 
+# Captured and Correlated Traces
+traces/
+.traces/

@@ -552,6 +552,7 @@ interface SystemSettings {
     auto_restart_traffic: boolean;
     auto_restart_probes: boolean;
     auto_restart_custom_tcp: boolean;
+    security_engine_enabled?: boolean; // Local node security scheduler execution (Standby mode on Leader when false)
     auto_sync_probes_to_fleet?: boolean; // Auto-push configuration bundles (probes, apps) to peers with debounce
     pcap_max_auto_sync_mb?: number;
     registry_mode?: 'auto' | 'leader' | 'peer';
@@ -562,6 +563,7 @@ const DEFAULT_SYSTEM_SETTINGS: SystemSettings = {
     auto_restart_traffic: true,   // retrocompat: traffic was always auto-starting
     auto_restart_probes: true,    // retrocompat: probes were always auto-starting
     auto_restart_custom_tcp: true, // Custom TCP apps state persistence across reboots
+    security_engine_enabled: true, // Local security scheduler execution enabled by default
     auto_sync_probes_to_fleet: true, // Default enabled: auto-push changes to fleet with debounce
     pcap_max_auto_sync_mb: 10,     // Auto-sync threshold for PCAP profiles (<= 50MB, safety ratio of WS buffer)
     registry_mode: 'auto',
@@ -2608,6 +2610,7 @@ app.post('/api/vyos/routers/discover', authenticateToken, async (req, res) => {
             version: info.version,
             location: location || undefined,
             interfaces: info.interfaces,
+            blackholeBlocks: info.blackholeBlocks || [],
             enabled: true,
             status: 'online',
             lastSeen: Date.now()
@@ -2812,8 +2815,8 @@ app.delete('/api/vyos/sequences/:id', authenticateToken, (req, res) => {
 
 app.post('/api/vyos/sequences/run/:id', authenticateToken, async (req, res) => {
     try {
-        await vyosScheduler.runSequenceManually(req.params.id);
-        res.json({ success: true });
+        const result = await vyosScheduler.runSequenceManually(req.params.id);
+        res.json({ success: true, ...result });
     } catch (e: any) {
         res.status(500).json({ error: e.message });
     }
@@ -3048,6 +3051,7 @@ app.get('/api/tests/xfr/:id', authenticateToken, (req, res) => {
 
     res.json({
         id: job.id,
+        sequence_id: job.sequence_id,
         status: job.status,
         started_at: job.started_at,
         finished_at: job.finished_at,
@@ -4784,15 +4788,49 @@ const getFullEffectiveConnectivityProbes = () => {
     const discovered = discoveryManager ? discoveryManager.getProbes() : [];
     const autoMesh = getAutoMeshProbes();
 
+    // Collect discovered targets and site IDs to purge duplicate legacy custom entries
+    const discoveredTargets = new Set(discovered.map((d: any) => (d.target || '').trim()).filter(Boolean));
+    const discoveredSiteIds = new Set(discovered.map((d: any) => (d.site_id || '').trim()).filter(Boolean));
+
     // Merge custom state into env probes and serve them all
     const mergedEnvProbes = envProbes.map((p: any) => {
         const override = custom.find((cp: any) => cp.name === p.name);
         return override ? { ...p, ...override } : p;
     });
 
-    const pureCustom = custom.filter((p: any) => !envProbes.find(ep => ep.name === p.name));
+    const pureCustom = custom.filter((p: any) => {
+        if (envProbes.find(ep => ep.name === p.name)) return false;
+        if (p.source === 'discovery') return false;
+        // Purge duplicates of discovered probes (stale entries from previous naming/configs)
+        const target = (p.target || '').trim();
+        if (target && discoveredTargets.has(target)) return false;
+        const siteId = (p.site_id || '').trim();
+        if (siteId && discoveredSiteIds.has(siteId)) return false;
+        return true;
+    });
 
-    return [...mergedEnvProbes, ...pureCustom, ...discovered, ...autoMesh];
+    const combined = [...mergedEnvProbes, ...pureCustom, ...discovered, ...autoMesh];
+
+    // Final dedup by target IP: if two probes share the exact same target IP, prefer discovered probe
+    const seenTargets = new Map<string, any>();
+    const deduplicated: any[] = [];
+    for (const probe of combined) {
+        const target = (probe.target || '').trim();
+        const key = target ? `${probe.type}:${target}` : probe.name;
+        if (!seenTargets.has(key)) {
+            seenTargets.set(key, probe);
+            deduplicated.push(probe);
+        } else {
+            const existing = seenTargets.get(key);
+            if (probe.source === 'discovery' && existing.source !== 'discovery') {
+                const idx = deduplicated.indexOf(existing);
+                if (idx !== -1) deduplicated[idx] = probe;
+                seenTargets.set(key, probe);
+            }
+        }
+    }
+
+    return deduplicated;
 };
 
 // API: Refresh Discovered Connectivity Probes
@@ -4824,7 +4862,15 @@ app.get('/api/connectivity/active-probes', authenticateToken, (req, res) => {
                 name: p.name,
                 type: (p.type || 'PING').toUpperCase(),
                 target: p.target,
-                enabled: p.enabled !== false
+                enabled: p.enabled !== false,
+                source: p.source,
+                site_name: p.site_name,
+                element_name: p.element_name,
+                circuit_name: p.circuit_name,
+                port_name: p.port_name,
+                selected_interface_name: p.selected_interface_name,
+                selected_interface_label: p.selected_interface_label,
+                selected_network: p.selected_network
             }))
         });
     } catch (error) {
@@ -4880,26 +4926,81 @@ app.get('/api/connectivity/test', authenticateToken, async (req, res) => {
     });
 });
 
+const CF_POP_CITIES: Record<string, string> = {
+    CDG: 'Paris', MRS: 'Marseille', LYS: 'Lyon', BOD: 'Bordeaux',
+    FRA: 'Frankfurt', MUC: 'Munich', DUS: 'Düsseldorf', HAM: 'Hamburg', TXL: 'Berlin', BER: 'Berlin',
+    LHR: 'London', MAN: 'Manchester', EDI: 'Edinburgh', DUB: 'Dublin',
+    AMS: 'Amsterdam', BRU: 'Brussels', LUX: 'Luxembourg', ZRH: 'Zurich', GVA: 'Geneva', VIE: 'Vienna',
+    MAD: 'Madrid', BCN: 'Barcelona', LIS: 'Lisbon', MXP: 'Milan', FCO: 'Rome',
+    WAW: 'Warsaw', PRG: 'Prague', BUD: 'Budapest', OTP: 'Bucharest', SOF: 'Sofia', ATH: 'Athens',
+    ARN: 'Stockholm', CPH: 'Copenhagen', OSL: 'Oslo', HEL: 'Helsinki',
+    IAD: 'Ashburn', EWR: 'Newark', JFK: 'New York', BOS: 'Boston', ORD: 'Chicago', ATL: 'Atlanta',
+    MIA: 'Miami', DFW: 'Dallas', DEN: 'Denver', SEA: 'Seattle', SJC: 'San Jose', LAX: 'Los Angeles',
+    YYZ: 'Toronto', YVR: 'Vancouver', YUL: 'Montreal',
+    NRT: 'Tokyo', KIX: 'Osaka', ICN: 'Seoul', HKG: 'Hong Kong', SIN: 'Singapore',
+    SYD: 'Sydney', MEL: 'Melbourne', BOM: 'Mumbai', DEL: 'New Delhi', DXB: 'Dubai', GRU: 'São Paulo'
+};
+
 app.get(['/api/connectivity/public-ip', '/api/system/public-ip'], authenticateToken, async (req, res) => {
+    // Helper to fetch Cloudflare trace (ip, colo/PoP, loc/country) in <1.5s
+    const fetchCfTrace = async (): Promise<{ ip?: string; pop?: string; countryCode?: string; city?: string }> => {
+        try {
+            const traceRes = await fetch('https://1.1.1.1/cdn-cgi/trace', {
+                signal: AbortSignal.timeout(2500)
+            });
+            if (traceRes.ok) {
+                const text = await traceRes.text();
+                const map: Record<string, string> = {};
+                text.split('\n').forEach(line => {
+                    const idx = line.indexOf('=');
+                    if (idx > 0) map[line.slice(0, idx).trim()] = line.slice(idx + 1).trim();
+                });
+                const pop = map.colo ? map.colo.toUpperCase() : undefined;
+                return {
+                    ip: map.ip,
+                    pop,
+                    countryCode: map.loc ? map.loc.toUpperCase() : undefined,
+                    city: pop ? CF_POP_CITIES[pop] : undefined
+                };
+            }
+        } catch {}
+        return {};
+    };
+
     try {
         // 1. Attempt Cloudflare Target Probe first (robust, no rate limits, authenticates TSG)
         if (targetManager) {
             try {
                 const probeResult = await targetManager.runProbe('egress-info', 5000);
                 if (probeResult.success && probeResult.data && probeResult.data.ip) {
+                    const pop = probeResult.data.pop ? String(probeResult.data.pop).toUpperCase() : null;
+                    const city = probeResult.data.city || (pop ? CF_POP_CITIES[pop] || null : null);
                     return res.json({
                         ip: probeResult.data.ip,
                         countryCode: probeResult.data.country || null,
                         country: probeResult.data.country || null,
-                        city: probeResult.data.city || null,
-                        pop: probeResult.data.pop || null,
+                        city,
+                        pop,
                         source: 'cloudflare'
                     });
                 }
-                log('API', '[Public IP] Cloudflare probe failed or missing data, falling back to ifconfig.co', 'debug');
+                log('API', '[Public IP] Cloudflare probe failed or missing data, falling back to cdn-cgi/trace & ifconfig.co', 'debug');
             } catch (err: any) {
-                log('API', `[Public IP] Cloudflare probe exception: ${err.message}, falling back to ifconfig.co`, 'debug');
+                log('API', `[Public IP] Cloudflare probe exception: ${err.message}, falling back to cdn-cgi/trace & ifconfig.co`, 'debug');
             }
+        }
+
+        // 1b. Fast Cloudflare 1.1.1.1 trace (provides IP + exact Edge PoP IATA code)
+        const cfTrace = await fetchCfTrace();
+        if (cfTrace.ip && cfTrace.pop) {
+            return res.json({
+                ip: cfTrace.ip,
+                countryCode: cfTrace.countryCode || null,
+                country: cfTrace.countryCode || null,
+                city: cfTrace.city || null,
+                pop: cfTrace.pop,
+                source: 'cloudflare-trace'
+            });
         }
 
         // 2. Fallback to ifconfig.co (JSON response, high limits)
@@ -4913,9 +5014,10 @@ app.get(['/api/connectivity/public-ip', '/api/system/public-ip'], authenticateTo
                 if (data && data.ip) {
                     return res.json({
                         ip: data.ip,
-                        countryCode: data.country_iso || null,
+                        countryCode: data.country_iso || cfTrace.countryCode || null,
                         country: data.country || null,
-                        city: data.city || null,
+                        city: data.city || cfTrace.city || null,
+                        pop: cfTrace.pop || null,
                         source: 'ifconfig.co'
                     });
                 }
@@ -4935,9 +5037,10 @@ app.get(['/api/connectivity/public-ip', '/api/system/public-ip'], authenticateTo
                 if (data && data.ip) {
                     return res.json({
                         ip: data.ip,
-                        countryCode: null,
+                        countryCode: cfTrace.countryCode || null,
                         country: null,
-                        city: null,
+                        city: cfTrace.city || null,
+                        pop: cfTrace.pop || null,
                         source: 'ipify'
                     });
                 }
@@ -4956,9 +5059,10 @@ app.get(['/api/connectivity/public-ip', '/api/system/public-ip'], authenticateTo
                 const data = await response.json() as any;
                 return res.json({
                     ip: data.ip,
-                    countryCode: data.country_code || null,
+                    countryCode: data.country_code || cfTrace.countryCode || null,
                     country: data.country_name || null,
-                    city: data.city || null,
+                    city: data.city || cfTrace.city || null,
+                    pop: cfTrace.pop || null,
                     source: 'ipapi'
                 });
             }
@@ -4973,41 +5077,194 @@ app.get(['/api/connectivity/public-ip', '/api/system/public-ip'], authenticateTo
 app.get('/api/system/gateway-ip', authenticateToken, async (req, res) => {
     try {
         const platform = os.platform();
-        let cmd = '';
-        let localIp = '';
+        const execPromise = promisify(exec);
 
-        // Extract primary non-internal IPv4 from host network interfaces
-        const interfaces = os.networkInterfaces();
-        for (const name of Object.keys(interfaces)) {
-            for (const iface of interfaces[name] || []) {
-                if (iface.family === 'IPv4' && !iface.internal && !iface.address.startsWith('172.17.') && !iface.address.startsWith('172.18.') && !iface.address.startsWith('127.')) {
-                    if (!localIp || (!localIp.startsWith('192.168.') && iface.address.startsWith('192.168.'))) {
-                        localIp = iface.address;
+        // Helper to check OS link state on Linux (/sys/class/net/<iface>/operstate & carrier)
+        const isInterfaceUp = (ifaceName: string, hasIp: boolean): boolean => {
+            if (!ifaceName) return false;
+            if (platform === 'linux') {
+                try {
+                    const operFile = `/sys/class/net/${ifaceName}/operstate`;
+                    if (fs.existsSync(operFile)) {
+                        const oper = fs.readFileSync(operFile, 'utf8').trim().toLowerCase();
+                        if (oper === 'down') return false;
+                        if (oper === 'up') return true;
                     }
+                    const carrierFile = `/sys/class/net/${ifaceName}/carrier`;
+                    if (fs.existsSync(carrierFile)) {
+                        const carrier = fs.readFileSync(carrierFile, 'utf8').trim();
+                        return carrier === '1';
+                    }
+                } catch {}
+            }
+            return hasIp;
+        };
+
+        // 1. Enumerate all non-virtual host IPv4 interfaces
+        const rawInterfaces = os.networkInterfaces();
+        const hostIfaces: { name: string; ip: string; up: boolean }[] = [];
+        for (const name of Object.keys(rawInterfaces)) {
+            if (
+                name.startsWith('lo') ||
+                name.startsWith('docker') ||
+                name.startsWith('br-') ||
+                name.startsWith('veth') ||
+                name.startsWith('virbr') ||
+                name.startsWith('vnet') ||
+                name.startsWith('utun') ||
+                name.startsWith('awdl') ||
+                name.startsWith('llw') ||
+                name.startsWith('bridge')
+            ) {
+                continue;
+            }
+            for (const details of rawInterfaces[name] || []) {
+                if (
+                    details.family === 'IPv4' &&
+                    !details.internal &&
+                    !details.address.startsWith('127.') &&
+                    !details.address.startsWith('169.254.') &&
+                    !details.address.startsWith('172.17.') &&
+                    !details.address.startsWith('172.18.')
+                ) {
+                    hostIfaces.push({
+                        name,
+                        ip: details.address,
+                        up: isInterfaceUp(name, true)
+                    });
                 }
             }
         }
 
+        // 2. Determine Default Gateway IP, Default Route Interface, and Traffic Interface
+        let gwIp = '';
+        let defaultIface = '';
+        let routeSrcIp = '';
+
         if (platform === 'darwin') {
-            cmd = "route -n get default | awk '/gateway/ {print $2}'";
-        } else if (platform === 'linux') {
-            cmd = "ip route | grep default | awk '{print $3}' | head -n 1";
-        } else {
-            return res.json({ ip: 'Unknown OS', local_ip: localIp });
-        }
-
-        const execPromise = promisify(exec);
-        const { stdout } = await execPromise(cmd);
-
-        // On Linux, try to get exact src IP used for routing to public internet
-        if (platform === 'linux') {
             try {
-                const { stdout: srcOut } = await execPromise("ip route get 1.1.1.1 2>/dev/null | awk '{for(i=1;i<=NF;i++) if($i==\"src\") print $(i+1)}' | head -n 1");
-                if (srcOut.trim()) localIp = srcOut.trim();
+                const { stdout } = await execPromise("route -n get default 2>/dev/null");
+                const gwMatch = stdout.match(/gateway:\s+(\S+)/);
+                const ifMatch = stdout.match(/interface:\s+(\S+)/);
+                if (gwMatch) gwIp = gwMatch[1].trim();
+                if (ifMatch) defaultIface = ifMatch[1].trim();
+            } catch {}
+        } else if (platform === 'linux') {
+            try {
+                const { stdout } = await execPromise("ip route show default 2>/dev/null | head -n 1");
+                const viaMatch = stdout.match(/via\s+(\S+)/);
+                const devMatch = stdout.match(/dev\s+(\S+)/);
+                if (viaMatch) gwIp = viaMatch[1].trim();
+                if (devMatch) defaultIface = devMatch[1].trim();
+            } catch {}
+            try {
+                const { stdout: srcOut } = await execPromise("ip route get 1.1.1.1 2>/dev/null | head -n 1");
+                const srcMatch = srcOut.match(/src\s+(\S+)/);
+                const devMatch = srcOut.match(/dev\s+(\S+)/);
+                const viaMatch = srcOut.match(/via\s+(\S+)/);
+                if (srcMatch) routeSrcIp = srcMatch[1].trim();
+                if (!defaultIface && devMatch) defaultIface = devMatch[1].trim();
+                if (!gwIp && viaMatch) gwIp = viaMatch[1].trim();
             } catch {}
         }
 
-        res.json({ ip: stdout.trim(), local_ip: localIp });
+        // Configured Stigix traffic interface (from interfaces.txt or default route)
+        const configuredIface = (() => {
+            try { return getInterface(); } catch { return ''; }
+        })();
+        const trafficIface = defaultIface || configuredIface || hostIfaces[0]?.name || '';
+        const matchedTrafficEntry = hostIfaces.find(i => i.name === trafficIface) ||
+            (routeSrcIp ? hostIfaces.find(i => i.ip === routeSrcIp) : undefined) ||
+            hostIfaces[0];
+
+        const trafficIp = routeSrcIp || matchedTrafficEntry?.ip || '';
+        const trafficIfaceUp = isInterfaceUp(trafficIface, Boolean(trafficIp));
+
+        // 3. Active ICMP Ping check against the SD-WAN Gateway (timeout 1s)
+        let gwReachable: boolean | null = null;
+        let gwLatencyMs: number | null = null;
+        if (gwIp && /^(\d{1,3}\.){3}\d{1,3}$/.test(gwIp)) {
+            if (!trafficIfaceUp) {
+                gwReachable = false;
+            } else {
+                try {
+                    const pingCmd = platform === 'darwin'
+                        ? `ping -c 1 -t 1 ${gwIp} 2>/dev/null`
+                        : `ping -c 1 -W 1 ${gwIp} 2>/dev/null`;
+                    const { stdout: pingOut } = await execPromise(pingCmd, { timeout: 1500 });
+                    gwReachable = true;
+                    const timeMatch = pingOut.match(/time[=<]([\d.]+)\s*ms/i);
+                    if (timeMatch) {
+                        gwLatencyMs = Math.round(parseFloat(timeMatch[1]) * 10) / 10;
+                    }
+                } catch {
+                    gwReachable = false;
+                }
+            }
+        }
+
+        // 4. Secondary / Out-of-Band Management Interface detection (if VM has 2+ NICs)
+        const secondaryIfaces = hostIfaces.filter(i => i.name !== trafficIface && i.ip !== trafficIp);
+        const mgmtEntry = secondaryIfaces[0] || null;
+
+        // 5. Determine how the operator is currently accessing the Stigix UI
+        const gwSourceHeader = String(req.headers['x-gateway-source'] || '');
+        const cfRayHeader = String(req.headers['cf-ray'] || req.headers['cf-connecting-ip'] || '');
+        const rawHost = String(req.headers['x-forwarded-host'] || req.headers.host || '').split(':')[0].trim();
+        const socketLocalIp = String(req.socket?.localAddress || '').replace(/^::ffff:/, '').trim();
+        const arrivalIp = /^(\d{1,3}\.){3}\d{1,3}$/.test(rawHost) ? rawHost : socketLocalIp;
+
+        let accessMode: 'in_band' | 'out_of_band' | 'cloudflare' | 'leader_proxy' | 'direct' = 'in_band';
+        let accessLabel = trafficIface ? `In-Band (${trafficIface})` : 'In-Band';
+        let accessIface: string | null = trafficIface || null;
+
+        if (gwSourceHeader === 'stigix-leader') {
+            accessMode = 'leader_proxy';
+            accessLabel = 'Fleet Leader Proxy';
+            accessIface = null;
+        } else if (cfRayHeader) {
+            accessMode = 'cloudflare';
+            accessLabel = rawHost ? `CF Tunnel (${rawHost})` : 'Cloudflare Tunnel';
+            accessIface = null;
+        } else if (mgmtEntry && arrivalIp === mgmtEntry.ip) {
+            accessMode = 'out_of_band';
+            accessIface = mgmtEntry.name;
+            accessLabel = `Out-of-Band (${mgmtEntry.name})`;
+        } else if (trafficIp && arrivalIp === trafficIp) {
+            accessMode = 'in_band';
+            accessIface = trafficIface || null;
+            accessLabel = trafficIface ? `In-Band (${trafficIface})` : `In-Band (${trafficIp})`;
+        } else {
+            const matchedArrival = hostIfaces.find(i => i.ip === arrivalIp);
+            if (matchedArrival) {
+                const isTraffic = matchedArrival.name === trafficIface || matchedArrival.ip === trafficIp;
+                accessMode = isTraffic ? 'in_band' : 'out_of_band';
+                accessIface = matchedArrival.name;
+                accessLabel = `${isTraffic ? 'In-Band' : 'Out-of-Band'} (${matchedArrival.name})`;
+            } else if (rawHost && rawHost !== 'localhost' && !rawHost.startsWith('127.')) {
+                accessMode = 'direct';
+                accessLabel = `Direct (${rawHost})`;
+            }
+        }
+
+        res.json({
+            ip: gwIp,
+            local_ip: trafficIp,
+            traffic_iface: trafficIface || null,
+            traffic_ip: trafficIp || null,
+            traffic_iface_up: trafficIfaceUp,
+            gw_ip: gwIp || null,
+            gw_reachable: gwReachable,
+            gw_latency_ms: gwLatencyMs,
+            mgmt_iface: mgmtEntry?.name || null,
+            mgmt_ip: mgmtEntry?.ip || null,
+            mgmt_iface_up: mgmtEntry?.up ?? null,
+            access_mode: accessMode,
+            access_label: accessLabel,
+            access_host: rawHost || null,
+            access_iface: accessIface,
+            interfaces: hostIfaces
+        });
     } catch (e: any) {
         console.error('Failed to get gateway IP:', e.message);
         res.status(500).json({ error: e.message });
@@ -5156,12 +5413,28 @@ const applyCustomConnectivityEndpoints = async (endpoints: any[]): Promise<boole
     const discoveredProbes = endpoints.filter(p => p.source === 'discovery');
     const customAndEnvProbes = endpoints.filter(p => p.source !== 'discovery' && p.source !== 'auto-mesh');
 
+    // Deduplicate against discovered probes: ensure legacy/stale entries with the same target IP or site_id are purged
+    const allDiscovered = [
+        ...discoveredProbes,
+        ...(discoveryManager ? discoveryManager.getProbes() : [])
+    ];
+    const discoveredTargets = new Set(allDiscovered.map(d => (d.target || '').trim()).filter(Boolean));
+    const discoveredSiteIds = new Set(allDiscovered.map(d => (d.site_id || '').trim()).filter(Boolean));
+
+    const cleanedCustomAndEnv = customAndEnvProbes.filter(p => {
+        const target = (p.target || '').trim();
+        if (target && discoveredTargets.has(target)) return false;
+        const siteId = (p.site_id || '').trim();
+        if (siteId && discoveredSiteIds.has(siteId)) return false;
+        return true;
+    });
+
     // Detect newly added probes (not previously in the saved config) for immediate trigger
     const existing = getCustomConnectivityEndpoints();
     const existingKeys = new Set(existing.map((p: any) => `${p.type}:${p.name}`));
-    const newProbes = customAndEnvProbes.filter(p => !existingKeys.has(`${p.type}:${p.name}`) && p.enabled !== false);
+    const newProbes = cleanedCustomAndEnv.filter(p => !existingKeys.has(`${p.type}:${p.name}`) && p.enabled !== false);
 
-    const customSuccess = saveCustomConnectivityEndpoints(customAndEnvProbes);
+    const customSuccess = saveCustomConnectivityEndpoints(cleanedCustomAndEnv);
     if (discoveryManager) {
         discoveryManager.updateProbesFromUI(discoveredProbes);
     }
@@ -5169,7 +5442,7 @@ const applyCustomConnectivityEndpoints = async (endpoints: any[]): Promise<boole
     // Save field-level local overrides and sync all configured probes across the fleet
     if (provisioningManager) {
         const fleetProbesToSync = [
-            ...customAndEnvProbes,
+            ...cleanedCustomAndEnv,
             ...discoveredProbes
         ];
         provisioningManager.handleLocalSave('connectivity-probes', fleetProbesToSync);
@@ -7638,6 +7911,8 @@ const getSecurityUIConfig = () => {
             }
         });
     }
+    // 3. Attach local node's security_engine_enabled state (stored in system-settings.json, never synced to fleet)
+    uiConfig.security_engine_enabled = getSystemSettings().security_engine_enabled ?? true;
     return uiConfig;
 };
 
@@ -7646,6 +7921,7 @@ const saveSecurityConfig = (config: any) => {
     try {
         const configToSave = { ...config };
         delete configToSave.test_history; // History is in .jsonl now
+        delete configToSave.security_engine_enabled; // Local node state lives in system-settings.json
         fs.writeFileSync(SECURITY_CONFIG_FILE, JSON.stringify(configToSave, null, 2));
         return true;
     } catch (e) {
@@ -8591,14 +8867,30 @@ const runScheduledC2Tests = async () => {
     logTest(`[C2-SCHED] Batch completed`);
 };
 
+const stopAllSchedulers = () => {
+    if (urlTestInterval) { clearInterval(urlTestInterval); urlTestInterval = null; }
+    if (dnsTestInterval) { clearInterval(dnsTestInterval); dnsTestInterval = null; }
+    if (threatTestInterval) { clearInterval(threatTestInterval); threatTestInterval = null; }
+    if (c2TestInterval) { clearInterval(c2TestInterval); c2TestInterval = null; }
+    if (aiTestInterval) { clearInterval(aiTestInterval); aiTestInterval = null; }
+    console.log('[SECURITY] All local security schedulers stopped');
+};
+
 const startSchedulers = () => {
+    const sysSettings = getSystemSettings();
+    if (sysSettings.security_engine_enabled === false) {
+        stopAllSchedulers();
+        console.log('[SECURITY] Local Security Engine is PAUSED (Standby mode) — scheduled execution skipped on this node');
+        return;
+    }
+
     const config = getSecurityConfig();
     if (!config || !config.scheduled_execution) return;
 
     let modified = false;
 
     // URL Scheduler
-    if (urlTestInterval) clearInterval(urlTestInterval);
+    if (urlTestInterval) { clearInterval(urlTestInterval); urlTestInterval = null; }
     if (config.scheduled_execution.url?.enabled) {
         const interval = (config.scheduled_execution.url.interval_minutes || 15) * 60 * 1000;
         urlTestInterval = setInterval(runScheduledUrlTests, interval);
@@ -8608,7 +8900,7 @@ const startSchedulers = () => {
     }
 
     // DNS Scheduler
-    if (dnsTestInterval) clearInterval(dnsTestInterval);
+    if (dnsTestInterval) { clearInterval(dnsTestInterval); dnsTestInterval = null; }
     if (config.scheduled_execution.dns?.enabled) {
         const interval = (config.scheduled_execution.dns.interval_minutes || 15) * 60 * 1000;
         dnsTestInterval = setInterval(runScheduledDnsTests, interval);
@@ -8618,7 +8910,7 @@ const startSchedulers = () => {
     }
 
     // Threat Scheduler
-    if (threatTestInterval) clearInterval(threatTestInterval);
+    if (threatTestInterval) { clearInterval(threatTestInterval); threatTestInterval = null; }
     if (config.scheduled_execution.threat?.enabled) {
         const interval = (config.scheduled_execution.threat.interval_minutes || 30) * 60 * 1000;
         threatTestInterval = setInterval(runScheduledThreatTests, interval);
@@ -8628,7 +8920,7 @@ const startSchedulers = () => {
     }
 
     // C2 Scheduler
-    if (c2TestInterval) clearInterval(c2TestInterval);
+    if (c2TestInterval) { clearInterval(c2TestInterval); c2TestInterval = null; }
     const c2Sched = (config.scheduled_execution as any).c2;
     if (c2Sched?.enabled) {
         const interval = (c2Sched.interval_minutes || 30) * 60 * 1000;
@@ -8639,7 +8931,7 @@ const startSchedulers = () => {
     }
 
     // AI Security Scheduler
-    if (aiTestInterval) clearInterval(aiTestInterval);
+    if (aiTestInterval) { clearInterval(aiTestInterval); aiTestInterval = null; }
     const aiSched = (config.scheduled_execution as any).ai;
     if (aiSched?.enabled) {
         const interval = (aiSched.interval_minutes || 30) * 60 * 1000;
@@ -8717,13 +9009,6 @@ const scheduleMidnightReset = () => {
             performSecurityStatsReset();
         }, 24 * 60 * 60 * 1000);
     }, msUntilMidnight);
-};
-
-const stopAllSchedulers = () => {
-    if (urlTestInterval) { clearInterval(urlTestInterval); urlTestInterval = null; }
-    if (dnsTestInterval) { clearInterval(dnsTestInterval); dnsTestInterval = null; }
-    if (threatTestInterval) { clearInterval(threatTestInterval); threatTestInterval = null; }
-    console.log('All security schedulers disabled');
 };
 
 // Start schedulers on server startup
@@ -8893,25 +9178,43 @@ app.post('/api/security/config', authenticateToken, (req, res) => {
     const config = getSecurityConfig();
     if (!config) return res.status(500).json({ error: 'Failed to read config' });
 
-    const { url_filtering, dns_security, threat_prevention, scheduled_execution, sls_config } = req.body;
+    const { url_filtering, dns_security, threat_prevention, scheduled_execution, sls_config, security_engine_enabled } = req.body;
 
-    if (url_filtering) config.url_filtering = url_filtering;
-    if (dns_security) config.dns_security = dns_security;
-    if (threat_prevention) config.threat_prevention = threat_prevention;
+    if (typeof security_engine_enabled === 'boolean') {
+        saveSystemSettings({ security_engine_enabled });
+        startSchedulers();
+    }
+
+    let fleetSyncNeeded = false;
+    if (url_filtering) { config.url_filtering = url_filtering; fleetSyncNeeded = true; }
+    if (dns_security) { config.dns_security = dns_security; fleetSyncNeeded = true; }
+    if (threat_prevention) { config.threat_prevention = threat_prevention; fleetSyncNeeded = true; }
     if (sls_config) {
         config.sls_config = sls_config;
         // Also save to global Prisma config for other managers
         savePrismaConfig(sls_config);
         // Hot-reload registry if credentials are now complete
         if (sls_config.tsg_id) tryReinitRegistry('Prisma config saved with TSG ID');
+        // Auto-sync DEM probes from Prisma SD-WAN if client ID and secret are present
+        if (sls_config.client_id && sls_config.client_secret && discoveryManager) {
+            discoveryManager.syncProbes().then((res: any) => {
+                log('DEM', `Auto-synced Prisma SD-WAN probes: ${res.created} created, ${res.updated} updated.`);
+            }).catch((err: any) => {
+                log('DEM', `Auto-sync Prisma SD-WAN probes error: ${err.message}`, 'warn');
+            });
+        }
     }
     if (scheduled_execution !== undefined) {
         config.scheduled_execution = scheduled_execution;
+        fleetSyncNeeded = true;
         // Re-initialize all schedulers with new settings
         startSchedulers();
     }
 
     if (saveSecurityConfig(config)) {
+        if (fleetSyncNeeded) {
+            triggerAutoSyncFleetBundle('security-config');
+        }
         res.json({ success: true, config: getSecurityUIConfig() });
     } else {
         res.status(500).json({ error: 'Failed to save config' });
@@ -11439,7 +11742,11 @@ app.get('/api/system/health-matrix', authenticateToken, async (req, res) => {
             tsg_id: null,
             region: null,
             configured: false,
-            synced_apps_count: 0
+            synced_apps_count: 0,
+            dc_count: 0,
+            branch_count: 0,
+            elements_count: 0,
+            total_sites: 0
         };
         const prismaPaths = [
             PRISMA_CONFIG_FILE,
@@ -11469,6 +11776,26 @@ app.get('/api/system/health-matrix', authenticateToken, async (req, res) => {
             prismaStatus.region = process.env.PRISMA_SDWAN_REGION || process.env.PRISMA_REGION || 'default';
             prismaStatus.status = 'connected';
         }
+        try {
+            if (discoveryManager && typeof discoveryManager.getProbes === 'function') {
+                const discovered = discoveryManager.getProbes().filter((p: any) => !p.stale);
+                const dcSites = new Set<string>();
+                const branchSites = new Set<string>();
+                const elements = new Set<string>();
+                for (const p of discovered) {
+                    const siteKey = p.site_id || p.site_name;
+                    if (siteKey) {
+                        if (p.scope === 'dc') dcSites.add(siteKey);
+                        else branchSites.add(siteKey);
+                    }
+                    if (p.element_name) elements.add(p.element_name);
+                }
+                prismaStatus.dc_count = dcSites.size;
+                prismaStatus.branch_count = branchSites.size;
+                prismaStatus.elements_count = elements.size;
+                prismaStatus.total_sites = dcSites.size + branchSites.size;
+            }
+        } catch {}
 
         // 2. VyOS Underlay Router
         let vyosStatus: any = {
@@ -11632,6 +11959,9 @@ app.get('/api/system/health-matrix', authenticateToken, async (req, res) => {
         let demStatus: any = {
             status: 'ready',
             probes_count: 0,
+            active_probes_count: 0,
+            running: false,
+            engine_enabled: getSystemSettings().auto_restart_probes ?? true,
             global_score: 100
         };
         try {
@@ -11643,11 +11973,17 @@ app.get('/api/system/health-matrix', authenticateToken, async (req, res) => {
                 if (p && p.name) allProbesMap.set(p.name.toLowerCase().trim(), p);
             });
             demStatus.probes_count = allProbesMap.size;
+            let activeCount = 0;
+            allProbesMap.forEach((p: any) => {
+                if (p.enabled !== false) activeCount++;
+            });
+            demStatus.active_probes_count = activeCount;
         } catch {}
         if (demStatus.probes_count === 0) {
             try {
                 const targets = targetsManager ? targetsManager.getMergedTargets() : [];
                 demStatus.probes_count += targets.length;
+                demStatus.active_probes_count += targets.length;
             } catch {}
         }
         try {
@@ -11656,7 +11992,8 @@ app.get('/api/system/health-matrix', authenticateToken, async (req, res) => {
                 demStatus.global_score = Math.round(stats.globalHealth);
             }
         } catch {}
-        demStatus.status = demStatus.probes_count > 0 ? 'active' : 'ready';
+        demStatus.running = isConnectivityMonitorActive;
+        demStatus.status = isConnectivityMonitorActive ? 'active' : (demStatus.probes_count > 0 ? 'stopped' : 'ready');
 
         let bandwidthStatus: any = {
             status: 'ready',
@@ -11811,7 +12148,9 @@ app.get('/api/system/health-matrix', authenticateToken, async (req, res) => {
                 meshStatus.is_registered = reg.is_registered || false;
                 meshStatus.poc_id = reg.poc_id || null;
                 meshStatus.peer_count = reg.peer_count || 0;
-                meshStatus.leader_ip = reg.leader_info?.ip || reg.static_leader_url || (reg.mode === 'leader' ? 'Local Leader' : null);
+                meshStatus.leader_ip = reg.mode === 'leader'
+                    ? (reg.detected_ip ? `${reg.detected_ip} (Self)` : 'Local Leader')
+                    : (reg.leader_info?.ip || reg.static_leader_url || null);
 
                 // Learned mesh targets
                 const synthesized = targetsManager ? targetsManager.getMergedTargets().filter((t: any) => t.source === 'synthesized' || t.source === 'mesh') : [];
@@ -11839,6 +12178,55 @@ app.get('/api/system/health-matrix', authenticateToken, async (req, res) => {
             cloudStatus.status = hasMasterKey ? 'connected' : 'ready';
         } catch {}
 
+        // 10. Security Validation Engine
+        let securityStatus: any = {
+            engine_enabled: getSystemSettings().security_engine_enabled ?? true,
+            status: 'standby',
+            active_schedules_count: 0,
+            active_schedules: [],
+            total_tests_run: 0,
+            blocked_count: 0,
+            block_rate_pct: null,
+            url_categories_enabled: 0,
+            dns_tests_enabled: 0
+        };
+        try {
+            const secCfg = getSecurityConfig();
+            if (secCfg) {
+                const sched = secCfg.scheduled_execution || {};
+                const activeScheds: string[] = [];
+                if (sched.url?.enabled) activeScheds.push('URL');
+                if (sched.dns?.enabled) activeScheds.push('DNS');
+                if (sched.threat?.enabled) activeScheds.push('EICAR');
+                if ((sched as any).c2?.enabled) activeScheds.push('C2');
+                if ((sched as any).ai?.enabled) activeScheds.push('AI');
+                securityStatus.active_schedules = activeScheds;
+                securityStatus.active_schedules_count = activeScheds.length;
+                securityStatus.url_categories_enabled = secCfg.url_filtering?.enabled_categories?.length || 0;
+                securityStatus.dns_tests_enabled = secCfg.dns_security?.enabled_tests?.length || 0;
+
+                const stats = secCfg.statistics || {};
+                const totalRun = Number(stats.total_tests_run || 0);
+                const blocked = Number(stats.url_tests_blocked || 0)
+                    + Number(stats.dns_tests_blocked || 0)
+                    + Number(stats.dns_tests_sinkholed || 0)
+                    + Number(stats.threat_tests_blocked || 0);
+                securityStatus.total_tests_run = totalRun;
+                securityStatus.blocked_count = blocked;
+                if (totalRun > 0) {
+                    securityStatus.block_rate_pct = Math.min(100, Math.round((blocked / totalRun) * 100));
+                }
+
+                if (!securityStatus.engine_enabled) {
+                    securityStatus.status = 'paused';
+                } else if (activeScheds.length > 0) {
+                    securityStatus.status = 'running';
+                } else {
+                    securityStatus.status = 'standby';
+                }
+            }
+        } catch {}
+
         // Overall Score Calculation (0-100)
         let totalEngines = 7;
         let healthyEngines = 7;
@@ -11852,6 +12240,10 @@ app.get('/api/system/health-matrix', authenticateToken, async (req, res) => {
         const overallScore = Math.max(0, Math.min(100, Math.round((healthyEngines / totalEngines) * 100)));
         const globalHealth = overallScore >= 90 ? 'healthy' : (overallScore >= 70 ? 'degraded' : 'critical');
 
+        const multicastStatus = tcpAppManager?.multicastManager
+            ? tcpAppManager.multicastManager.getActiveStreamSummary()
+            : { running: false, activeStreamsCount: 0, totalProfilesCount: 0, activeProfiles: [] };
+
         res.json({
             success: true,
             timestamp: now,
@@ -11863,8 +12255,10 @@ app.get('/api/system/health-matrix', authenticateToken, async (req, res) => {
                 cloud: cloudStatus,
                 vyos: vyosStatus,
                 custom_apps: customAppsStatus,
+                multicast: multicastStatus,
                 iot: iotStatus,
                 dem: demStatus,
+                security: securityStatus,
                 bandwidth: bandwidthStatus,
                 voice: voiceStatus,
                 events: eventsStatus,
@@ -12335,7 +12729,7 @@ async function detectLocalDockerChannel(): Promise<{ channel: string; fullImage:
 
 // In-memory cache for maintenance version check to avoid blocking UI loads on slow Docker Hub / GitHub API calls
 let maintenanceVersionCache: { timestamp: number; data: any } | null = null;
-const MAINTENANCE_VERSION_CACHE_TTL = 15 * 60 * 1000; // 15 minutes
+const MAINTENANCE_VERSION_CACHE_TTL = 60 * 1000; // 60 seconds
 
 app.get('/api/admin/maintenance/version', authenticateToken, async (req, res) => {
     try {
@@ -14984,9 +15378,267 @@ app.all('/api/gateway/:peerId/*path', authenticateToken, async (req: any, res: a
 });
 log('FLEET', `🔀 Fleet Gateway Reverse Proxy mounted at /api/gateway/:peerId/* (Leader only)`);
 
-// --- Custom TCP Inter-Site Applications API ---
-app.use('/api/custom-tcp-apps', authenticateToken, createCustomTcpApiRouter(tcpAppManager));
-log('CUSTOM_TCP', `🖧 Custom TCP Applications API mounted at /api/custom-tcp-apps`);
+// --- Custom TCP & SD-WAN Multicast Inter-Site Applications API ---
+const normalizeMulticastNodeName = (s?: string) =>
+    (s || '').trim().toLowerCase().replace(/-(ubuntu|debian|linux|node|vm|host|srv|server)$/i, '');
+
+tcpAppManager.multicastManager.setClusterHooks({
+    getLocalSiteName: () => {
+        const regStatus = registryManager.getStatus();
+        return regStatus.site_name || regStatus.instance_id || '';
+    },
+    localNodeMatcher: (nodeId: string) => {
+        const target = (nodeId || '').trim().toLowerCase();
+        if (!target || target === 'local' || target === 'localhost' || target === '127.0.0.1') return true;
+        const targetNorm = normalizeMulticastNodeName(target);
+        const regStatus = registryManager.getStatus();
+        const localIp = (getLocalNodePrimaryIp(registryManager) || regStatus?.detected_ip || '').toLowerCase();
+        const instId = (regStatus.instance_id || '').toLowerCase();
+        const siteName = (regStatus.site_name || '').toLowerCase();
+        const hostName = os.hostname().toLowerCase();
+        if (
+            target === instId ||
+            target === siteName ||
+            target === localIp ||
+            target === hostName ||
+            (targetNorm && (
+                targetNorm === normalizeMulticastNodeName(instId) ||
+                targetNorm === normalizeMulticastNodeName(siteName) ||
+                targetNorm === normalizeMulticastNodeName(hostName)
+            ))
+        ) {
+            return true;
+        }
+        try {
+            const allTargets = targetsManager.getMergedTargets();
+            const selfTarget = allTargets.find(
+                (t) =>
+                    Boolean(t.meta?.isSelf) &&
+                    ((t.name || '').trim().toLowerCase() === target ||
+                        (t.id || '').trim().toLowerCase() === target ||
+                        normalizeMulticastNodeName(t.name) === targetNorm)
+            );
+            if (selfTarget) return true;
+        } catch {}
+        return false;
+    },
+    resolveNodeInterfaceIp: (nodeId: string) => {
+        const target = (nodeId || '').trim().toLowerCase();
+        if (!target) return undefined;
+        const targetNorm = normalizeMulticastNodeName(target);
+        const regStatus = registryManager.getStatus();
+        const localIp = (getLocalNodePrimaryIp(registryManager) || regStatus?.detected_ip || '').trim();
+        const instId = (regStatus.instance_id || '').toLowerCase();
+        const siteName = (regStatus.site_name || '').toLowerCase();
+        const hostName = os.hostname().toLowerCase();
+        const isLocal =
+            target === 'local' ||
+            target === 'localhost' ||
+            target === instId ||
+            target === siteName ||
+            target === localIp.toLowerCase() ||
+            target === hostName ||
+            (targetNorm && (
+                targetNorm === normalizeMulticastNodeName(instId) ||
+                targetNorm === normalizeMulticastNodeName(siteName) ||
+                targetNorm === normalizeMulticastNodeName(hostName)
+            ));
+        if (isLocal && localIp && localIp !== '127.0.0.1') {
+            return localIp;
+        }
+        try {
+            const allTargets = targetsManager.getMergedTargets();
+            const matchedTarget = allTargets.find(
+                (t) =>
+                    (t.name || '').trim().toLowerCase() === target ||
+                    (t.id || '').trim().toLowerCase() === target ||
+                    (t.host || '').trim().toLowerCase() === target ||
+                    (targetNorm && normalizeMulticastNodeName(t.name) === targetNorm)
+            );
+            if (matchedTarget?.host && /^\d{1,3}(\.\d{1,3}){3}$/.test(matchedTarget.host.trim())) {
+                return matchedTarget.host.trim();
+            }
+        } catch {}
+        try {
+            const allInstances = [
+                ...(localRegistryServer?.getInstances?.() || []),
+                ...(registryManager?.getEndpoints?.() || [])
+            ];
+            const peer = allInstances.find(
+                (inst: any) =>
+                    (inst.instance_id || '').toLowerCase() === target ||
+                    (inst.meta?.site || '').toLowerCase() === target ||
+                    (inst.ip_private || '').toLowerCase() === target ||
+                    (targetNorm && (
+                        normalizeMulticastNodeName(inst.meta?.site) === targetNorm ||
+                        normalizeMulticastNodeName(inst.instance_id) === targetNorm
+                    ))
+            );
+            if (peer?.ip_private && /^\d{1,3}(\.\d{1,3}){3}$/.test(peer.ip_private.trim())) {
+                return peer.ip_private.trim();
+            }
+        } catch {}
+        return undefined;
+    },
+    nodeForwarder: async (nodeId: string, method: 'GET' | 'POST', subPath: string, body?: any) => {
+        const peerId = nodeId.trim();
+        const peerNorm = normalizeMulticastNodeName(peerId);
+        const targetPath = `/api/custom-tcp-apps${subPath.startsWith('/') ? subPath : '/' + subPath}`;
+
+        const allTargets = targetsManager.getMergedTargets();
+        const target = allTargets.find(
+            (t) =>
+                (t.id || '').toLowerCase() === peerId.toLowerCase() ||
+                (t.name || '').toLowerCase() === peerId.toLowerCase() ||
+                (t.host || '').toLowerCase() === peerId.toLowerCase() ||
+                (peerNorm && normalizeMulticastNodeName(t.name) === peerNorm)
+        );
+
+        const allInstances = [
+            ...(localRegistryServer?.getInstances?.() || []),
+            ...(registryManager?.getEndpoints?.() || [])
+        ];
+        const peer = allInstances.find(
+            (inst: any) =>
+                (inst.instance_id || '').toLowerCase() === peerId.toLowerCase() ||
+                (inst.meta?.site || '').toLowerCase() === peerId.toLowerCase() ||
+                (inst.ip_private || '').toLowerCase() === peerId.toLowerCase() ||
+                (inst.ip_public || '').toLowerCase() === peerId.toLowerCase() ||
+                (target?.host && (inst.ip_private || '').toLowerCase() === target.host.toLowerCase()) ||
+                (peerNorm && (
+                    normalizeMulticastNodeName(inst.meta?.site) === peerNorm ||
+                    normalizeMulticastNodeName(inst.instance_id) === peerNorm
+                ))
+        );
+
+        const peerInstanceId = peer?.instance_id || peerId;
+        const peerSiteName = peer?.meta?.site || peerNorm.toUpperCase();
+
+        const tunnelCandidates = Array.from(
+            new Set([peerId, peerNorm, peerNorm.toUpperCase(), peerInstanceId, peerSiteName].filter(Boolean))
+        );
+        const matchedTunnelId = tunnelCandidates.find((cand) => fleetTunnelManager.hasTunnel(cand));
+
+        const gatewayToken = jwt.sign(
+            { username: 'stigix-multicast-orchestrator', role: 'admin', peer: peerId },
+            SECRET_KEY,
+            { expiresIn: '30s' }
+        );
+        const headers: Record<string, string> = {
+            'authorization': `Bearer ${gatewayToken}`,
+            'content-type': 'application/json',
+            'x-gateway-source': 'stigix-leader'
+        };
+
+        // 1. Direct WebSocket Reverse Tunnel (when running on Leader)
+        if (matchedTunnelId) {
+            try {
+                const tunnelRes = await fleetTunnelManager.forwardRequest(
+                    matchedTunnelId,
+                    {
+                        method,
+                        path: targetPath,
+                        headers,
+                        body: method === 'POST' ? (body || {}) : undefined
+                    },
+                    3000
+                );
+                if (tunnelRes && tunnelRes.status >= 200 && tunnelRes.status < 300) {
+                    const parsed = typeof tunnelRes.body === 'string' ? JSON.parse(tunnelRes.body) : tunnelRes.body;
+                    return parsed;
+                }
+            } catch {}
+        }
+
+        // 2. Spoke-to-Leader Hub Relay (when running on a Peer such as BR8 and controlling DC1 or BR5)
+        const isLeader = typeof registryManager?.isLeader === 'function'
+            ? registryManager.isLeader()
+            : (registryManager?.getStatus?.()?.mode === 'leader');
+        if (!isLeader && fleetTunnelManager.hasActiveLeaderTunnel()) {
+            try {
+                return await fleetTunnelManager.relayNodeRequestViaLeader(peerId, method, subPath, body, 3500);
+            } catch (relayErr: any) {
+                const errMsg = relayErr?.message || '';
+                if (/EHOSTUNREACH|ECONNREFUSED|ETIMEDOUT|ENETUNREACH|Timeout reaching node|not found in Fleet/i.test(errMsg)) {
+                    throw relayErr;
+                }
+                log('CUSTOM_TCP', `Spoke-to-Leader multicast relay for '${peerId}' failed (${errMsg}) — trying direct HTTP fallback`, 'warn');
+            }
+        }
+
+        // 3. Resolve IP & port for Direct HTTP fallback
+        let peerIp = peer?.ip_private || peer?.ip_public;
+        let peerPort = peer?.port || (peer as any)?.meta?.port || 8080;
+
+        if (!peerIp && target) {
+            peerIp = target.host;
+            peerPort = target.ports?.dashboard || 8080;
+        }
+        if (!peerIp && /^\d{1,3}(\.\d{1,3}){3}$/.test(peerId)) {
+            peerIp = peerId;
+        }
+        if (!peerIp) {
+            const regStatus = registryManager.getStatus();
+            if (regStatus.leader_info?.ip && (
+                peerNorm === normalizeMulticastNodeName(regStatus.leader_info.site_name) ||
+                peerNorm === normalizeMulticastNodeName(regStatus.leader_info.instance_id) ||
+                peerNorm === 'dc1'
+            )) {
+                peerIp = regStatus.leader_info.ip;
+            }
+        }
+
+        if (!peerIp) {
+            throw new Error(`Node '${peerId}' not found in Fleet Registry or Targets`);
+        }
+
+        // Direct HTTP fallback (fast 2s timeout to avoid stalling cluster orchestration when a VM is down)
+        return await new Promise<any>((resolve, reject) => {
+            const bodyStr = method === 'POST' ? JSON.stringify(body || {}) : '';
+            if (method === 'POST') {
+                headers['content-length'] = String(Buffer.byteLength(bodyStr));
+            }
+            const req = http.request(
+                {
+                    hostname: peerIp,
+                    port: peerPort,
+                    path: targetPath,
+                    method,
+                    headers,
+                    timeout: 2000
+                },
+                (res) => {
+                    let raw = '';
+                    res.on('data', (chunk) => { raw += chunk.toString(); });
+                    res.on('end', () => {
+                        try {
+                            const json = JSON.parse(raw);
+                            if ((res.statusCode || 500) >= 400) {
+                                reject(new Error(json.error || `HTTP ${res.statusCode}`));
+                            } else {
+                                resolve(json);
+                            }
+                        } catch {
+                            reject(new Error(`Invalid JSON response from ${peerId} (${peerIp}:${peerPort})`));
+                        }
+                    });
+                }
+            );
+            req.on('timeout', () => {
+                req.destroy();
+                reject(new Error(`Timeout reaching node ${peerId} (${peerIp}:${peerPort})`));
+            });
+            req.on('error', (err) => reject(err));
+            if (method === 'POST' && bodyStr) req.write(bodyStr);
+            req.end();
+        });
+    }
+});
+
+app.use('/api/custom-tcp-apps', authenticateToken, createCustomTcpApiRouter(tcpAppManager, () => {
+    try { triggerAutoSyncFleetBundle('custom-tcp-apps'); } catch {}
+}));
+log('CUSTOM_TCP', `🖧 Custom TCP & SD-WAN Multicast API mounted at /api/custom-tcp-apps`);
 
 const buildPcapProfilesPayload = (includeContent = true): { profiles: any[]; skipped_count: number } => {
     if (process.env.ENABLE_PCAP_REPLAY !== 'true') {
@@ -15138,8 +15790,9 @@ log('COPILOT', `🤖 Stigix In-App AI Copilot mounted at /api/copilot`);
 provisioningManager.onBundleApplied((type, payload) => {
     if (type === 'custom-tcp-apps') {
         const apps = payload?.applications || (Array.isArray(payload) ? payload : []);
-        log('PROVISIONING', `⚡ Hot-reloading ${apps.length} Custom TCP Application(s) on peer...`);
-        tcpAppManager.hotReload(apps);
+        const mcApps = Array.isArray(payload?.multicastApplications) ? payload.multicastApplications : undefined;
+        log('PROVISIONING', `⚡ Hot-reloading ${apps.length} Custom TCP + ${mcApps?.length || 0} Multicast Application(s) on peer...`);
+        tcpAppManager.hotReload(apps, mcApps);
     } else if (type === 'cloud-config') {
         log('PROVISIONING', `⚡ Hot-reloading Cloud Probes credentials and Worker URL on peer...`);
         targetManager.reload();
@@ -15147,6 +15800,9 @@ provisioningManager.onBundleApplied((type, payload) => {
         if (process.env.ENABLE_PCAP_REPLAY !== 'true') return;
         const count = payload?.profiles?.length || 0;
         log('PROVISIONING', `⚡ Synchronized ${count} PCAP Replay profile(s) on peer.`);
+    } else if (type === 'security-config') {
+        log('PROVISIONING', `⚡ Hot-reloading Security configuration and schedulers on peer...`);
+        startSchedulers();
     }
 });
 
@@ -16267,7 +16923,8 @@ app.post('/api/config/system-settings', authenticateToken, async (req, res) => {
             auto_restart_probes,
             auto_restart_custom_tcp,
             auto_sync_probes_to_fleet,
-            registry_mode
+            registry_mode,
+            security_engine_enabled
         } = req.body;
         const patch: Partial<SystemSettings> = {};
         if (typeof auto_restart_iot === 'boolean') patch.auto_restart_iot = auto_restart_iot;
@@ -16286,9 +16943,16 @@ app.post('/api/config/system-settings', authenticateToken, async (req, res) => {
         if (registry_mode === 'auto' || registry_mode === 'leader' || registry_mode === 'peer') {
             patch.registry_mode = registry_mode;
         }
+        if (typeof security_engine_enabled === 'boolean') {
+            patch.security_engine_enabled = security_engine_enabled;
+        }
 
         const saved = saveSystemSettings(patch);
         log('SYSTEM', `System settings updated: ${JSON.stringify(saved)}`);
+
+        if (typeof security_engine_enabled === 'boolean') {
+            startSchedulers();
+        }
 
         // If registry mode was updated, hot-reload the registry orchestration
         if (patch.registry_mode) {
@@ -16398,5 +17062,5 @@ httpServer.listen(PORT, '0.0.0.0', async () => {
         } catch (e: any) {
             console.log(`[SYSTEM] Prisma SD-WAN auto-discovery sync skipped/failed: ${e.message}`);
         }
-    }, 45000);
+    }, 15000);
 });

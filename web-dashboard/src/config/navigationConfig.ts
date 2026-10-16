@@ -107,6 +107,15 @@ export const STIGIX_NAVIGATION_DOMAINS: NavDomainConfig[] = [
                 keywords: ['custom', 'tcp', 'http', 'apps', 'enterprise', 'overlay', 'breakout', 'port', 'private']
             },
             {
+                id: 'multicast',
+                label: 'Multicast Traffic',
+                icon: Radio,
+                route: '#/generate/multicast',
+                description: 'Real 1-to-N UDP/IGMPv2/v3 & PIM-SM/SSM multicast overlay validation, presets & SLA telemetry',
+                runningKey: 'multicast',
+                keywords: ['multicast', 'igmp', 'pim', 'ssm', 'asm', 'iptv', 'rtp', 'mpegts', 'market data', 'paging', 'overlay', 'udp']
+            },
+            {
                 id: 'pcap_replay',
                 label: 'PCAP Replay Engine',
                 icon: Repeat,
@@ -133,7 +142,7 @@ export const STIGIX_NAVIGATION_DOMAINS: NavDomainConfig[] = [
             },
             {
                 id: 'speedtest',
-                label: 'Bandwidth Test (XFR)',
+                label: 'Bandwidth Test',
                 icon: Gauge,
                 route: '#/validate/bandwidth',
                 description: 'Multi-stream WAN throughput testing, TCP retransmits & latency benchmark',

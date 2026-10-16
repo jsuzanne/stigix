@@ -96,7 +96,7 @@ export default function Login({ onLogin }: LoginProps) {
                             STIGIX
                         </h1>
                         <p className="text-[11px] font-bold text-slate-400 tracking-wider uppercase mt-1.5 opacity-85">
-                            The Engine for SASE Validation
+                            SASE Validation Engine
                         </p>
                     </div>
 

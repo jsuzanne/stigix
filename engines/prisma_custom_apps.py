@@ -82,6 +82,12 @@ Examples:
     )
 
     parser.add_argument(
+        '--sync-multicast',
+        action='store_true',
+        help='Sync all Stigix Multicast application profiles to Prisma SD-WAN (UDP + Group IP/32)'
+    )
+
+    parser.add_argument(
         '--clean-all',
         action='store_true',
         help='Delete all Stigix-created custom applications (tagged "stigix" or prefixed "STX_")'
@@ -113,6 +119,11 @@ Examples:
         choices=['tcp', 'udp', 'both'],
         default='tcp',
         help='L4 protocol for the custom application (default: tcp)'
+    )
+
+    parser.add_argument(
+        '--server-prefix',
+        help='Optional destination IPv4 prefix (e.g. "239.1.1.100/32" for multicast group classification)'
     )
 
     parser.add_argument(
@@ -173,20 +184,7 @@ def log_output(message: str, json_mode: bool = False, is_error: bool = False):
 
 
 def load_credentials(args, json_mode: bool = False) -> Dict[str, str]:
-    """Load Prisma SASE credentials from environment variables or file"""
-    env_client_id = (os.getenv("PRISMA_SDWAN_CLIENT_ID") or os.getenv("PRISMA_CLIENT_ID") or "").strip()
-    env_client_secret = (os.getenv("PRISMA_SDWAN_CLIENT_SECRET") or os.getenv("PRISMA_CLIENT_SECRET") or "").strip()
-    env_tsg_id = (os.getenv("PRISMA_SDWAN_TSG_ID") or os.getenv("PRISMA_SDWAN_TSGID") or os.getenv("PRISMA_TSG_ID") or "").strip()
-
-    if env_client_id and env_client_secret and env_tsg_id:
-        return {
-            "client_id": env_client_id,
-            "client_secret": env_client_secret,
-            "tsg_id": env_tsg_id,
-            "source": "env"
-        }
-
-    # Search common credential file paths
+    """Load Prisma SASE credentials from config files first (UI source of truth), then environment variables"""
     script_dir = os.path.dirname(os.path.abspath(__file__))
     candidate_paths = [
         getattr(args, 'credentials', None),
@@ -213,9 +211,9 @@ def load_credentials(args, json_mode: bool = False) -> Dict[str, str]:
             try:
                 with open(path, 'r', encoding='utf-8') as f:
                     creds = json.load(f)
-                client_id = (creds.get("client_id") or creds.get("clientId") or creds.get("CLIENT_ID") or "").strip()
-                client_secret = (creds.get("client_secret") or creds.get("clientSecret") or creds.get("CLIENT_SECRET") or "").strip()
-                tsg_id = (creds.get("tsg_id") or creds.get("tsgid") or creds.get("tsgId") or creds.get("TSG_ID") or creds.get("TSGID") or "").strip()
+                client_id = str(creds.get("client_id") or creds.get("clientId") or creds.get("CLIENT_ID") or "").strip()
+                client_secret = str(creds.get("client_secret") or creds.get("clientSecret") or creds.get("CLIENT_SECRET") or "").strip()
+                tsg_id = str(creds.get("tsg_id") or creds.get("tsgid") or creds.get("tsgId") or creds.get("TSG_ID") or creds.get("TSGID") or "").strip()
                 if client_id and client_secret and tsg_id:
                     creds_out = {
                         "client_id": client_id,
@@ -228,6 +226,18 @@ def load_credentials(args, json_mode: bool = False) -> Dict[str, str]:
                     return creds_out
             except Exception:
                 pass
+
+    env_client_id = (os.getenv("PRISMA_SDWAN_CLIENT_ID") or os.getenv("PRISMA_CLIENT_ID") or "").strip()
+    env_client_secret = (os.getenv("PRISMA_SDWAN_CLIENT_SECRET") or os.getenv("PRISMA_CLIENT_SECRET") or "").strip()
+    env_tsg_id = (os.getenv("PRISMA_SDWAN_TSG_ID") or os.getenv("PRISMA_SDWAN_TSGID") or os.getenv("PRISMA_TSG_ID") or "").strip()
+
+    if env_client_id and env_client_secret and env_tsg_id:
+        return {
+            "client_id": env_client_id,
+            "client_secret": env_client_secret,
+            "tsg_id": env_tsg_id,
+            "source": "env"
+        }
 
     error_msg = {
         "success": False,
@@ -298,18 +308,59 @@ def format_cgx_error(resp: Any, action_name: str, payload: Optional[Dict[str, An
     return f"Failed to {action_name} (HTTP {status_code}): {detail_str}{payload_str}"
 
 
+def ensure_global_prefix_filter(sdk: API, prefix: str) -> Optional[str]:
+    """Find or create a Prisma SD-WAN Global Prefix Filter for an IPv4 CIDR prefix and return its ID"""
+    if not prefix:
+        return None
+    norm = prefix.strip()
+    if "/" not in norm:
+        norm = f"{norm}/32"
+    filter_name = f"STX_MC_{re.sub(r'[^a-zA-Z0-9]', '_', norm.split('/')[0])}"[:32]
+    try:
+        resp = sdk.get.globalprefixfilters()
+        if resp.cgx_status:
+            items = resp.cgx_content.get("items", []) or []
+            for item in items:
+                if not isinstance(item, dict):
+                    continue
+                if item.get("name") == filter_name:
+                    return str(item.get("id"))
+                for f in item.get("filters") or []:
+                    if isinstance(f, dict) and norm in (f.get("ip_prefixes") or []):
+                        return str(item.get("id"))
+        create_resp = sdk.post.globalprefixfilters(data={
+            "name": filter_name,
+            "description": f"Auto-provisioned by Stigix for Multicast Group {norm}",
+            "filters": [{"type": "ipv4", "ip_prefixes": [norm]}]
+        })
+        if create_resp.cgx_status and isinstance(create_resp.cgx_content, dict):
+            return str(create_resp.cgx_content.get("id"))
+    except Exception:
+        pass
+    return None
+
+
 def build_appdef_payload(
     name: str,
     port: int,
     protocol: str = 'tcp',
-    description: Optional[str] = None
+    description: Optional[str] = None,
+    server_prefix: Optional[str] = None,
+    prefix_tag: str = "STX_",
+    prefix_filter_id: Optional[str] = None
 ) -> Dict[str, Any]:
     """Construct a clean, valid Prisma SD-WAN appdef dictionary payload strictly compliant with controller schema"""
-    std_name = sanitize_app_name(name)
+    cleaned = re.sub(r'[^a-zA-Z0-9_\-]', '_', str(name or "APP").strip())
+    cleaned = re.sub(r'_+', '_', cleaned).strip('_-')
+    if cleaned.upper().startswith("STX_"):
+        std_name = cleaned
+    else:
+        std_name = f"{prefix_tag}{cleaned}"
+    std_name = std_name[:32].rstrip('_-')
     desc = description or f"Auto-provisioned by Stigix for {name} on {protocol.upper()}:{port}"
 
-    rule = {
-        "server_filters": None,
+    tcp_rule = {
+        "server_filters": [prefix_filter_id] if prefix_filter_id else None,
         "client_filters": None,
         "server_port": {
             "start": str(int(port)),
@@ -321,8 +372,19 @@ def build_appdef_payload(
         "server_ipv6_prefixes": None
     }
 
-    tcp_rules = [dict(rule)] if protocol in ('tcp', 'both') else None
-    udp_rules = [dict(rule)] if protocol in ('udp', 'both') else None
+    udp_rule = {
+        "udp_filters": [prefix_filter_id] if prefix_filter_id else None,
+        "udp_port": {
+            "start": str(int(port)),
+            "end": str(int(port))
+        },
+        "dscp": None,
+        "dest_prefixes": None,
+        "dest_ipv6_prefixes": None
+    }
+
+    tcp_rules = [dict(tcp_rule)] if protocol in ('tcp', 'both') else None
+    udp_rules = [dict(udp_rule)] if protocol in ('udp', 'both') else None
 
     # Exact verified schema for Prisma SD-WAN v2.6 appdefs
     payload = {
@@ -360,10 +422,11 @@ def build_appdef_payload(
     return payload
 
 
-def extract_app_ports(app_def: Dict[str, Any]) -> Dict[str, List[int]]:
-    """Extract TCP and UDP server ports defined in an appdef"""
+def extract_app_ports(app_def: Dict[str, Any]) -> Dict[str, Any]:
+    """Extract TCP and UDP server ports and prefixes defined in an appdef"""
     tcp_ports = []
     udp_ports = []
+    server_prefixes = []
 
     for rule in app_def.get("tcp_rules") or []:
         sp = rule.get("server_port")
@@ -380,10 +443,10 @@ def extract_app_ports(app_def: Dict[str, Any]) -> Dict[str, List[int]]:
                     pass
 
     for rule in app_def.get("udp_rules") or []:
-        sp = rule.get("server_port")
-        if isinstance(sp, dict) and sp.get("start"):
+        up = rule.get("udp_port") or rule.get("server_port")
+        if isinstance(up, dict) and up.get("start"):
             try:
-                udp_ports.append(int(sp["start"]))
+                udp_ports.append(int(up["start"]))
             except (ValueError, TypeError):
                 pass
         elif isinstance(rule.get("server_ports"), list):
@@ -392,10 +455,16 @@ def extract_app_ports(app_def: Dict[str, Any]) -> Dict[str, List[int]]:
                     udp_ports.append(int(p))
                 except (ValueError, TypeError):
                     pass
+        for key in ("dest_prefixes", "server_prefixes", "udp_filters"):
+            if isinstance(rule.get(key), list):
+                for pfx in rule[key]:
+                    if pfx:
+                        server_prefixes.append(str(pfx))
 
     return {
         "tcp": sorted(list(set(tcp_ports))),
-        "udp": sorted(list(set(udp_ports)))
+        "udp": sorted(list(set(udp_ports))),
+        "server_prefixes": sorted(list(set(server_prefixes)))
     }
 
 
@@ -424,6 +493,7 @@ def list_custom_apps(sdk: API, api_version: str = 'v2.6') -> List[Dict[str, Any]
             "sub_category": str(item.get("p_sub_category") or item.get("sub_category") or "general"),
             "tcp_ports": ports.get("tcp") or [],
             "udp_ports": ports.get("udp") or [],
+            "server_prefixes": ports.get("server_prefixes") or [],
             "tags": item.get("tags") if isinstance(item.get("tags"), list) else [],
             "is_stigix": is_stigix_app(item),
             "_created_on_utc": item.get("_created_on_utc"),
@@ -441,15 +511,21 @@ def create_or_update_app(
     protocol: str = 'tcp',
     display_name: Optional[str] = None,
     description: Optional[str] = None,
+    server_prefix: Optional[str] = None,
+    prefix_tag: str = "STX_",
     existing_apps: Optional[List[Dict[str, Any]]] = None,
     api_version: str = 'v2.6'
 ) -> Dict[str, Any]:
     """Create a new custom application or update existing only if there is a delta"""
+    prefix_filter_id = ensure_global_prefix_filter(sdk, server_prefix) if server_prefix else None
     payload = build_appdef_payload(
         name=name,
         port=port,
         protocol=protocol,
-        description=description
+        description=description,
+        server_prefix=server_prefix,
+        prefix_tag=prefix_tag,
+        prefix_filter_id=prefix_filter_id
     )
 
     # Use provided cache of existing apps or query tenant
@@ -462,7 +538,9 @@ def create_or_update_app(
         app_id = match["id"]
         # Check if identical (delta check)
         existing_ports = match.get("tcp_ports" if protocol == "tcp" else "udp_ports") or []
-        if len(existing_ports) == 1 and existing_ports[0] == int(port):
+        existing_pfxs = match.get("server_prefixes") or []
+        pfx_matches = (not prefix_filter_id and not existing_pfxs) or (prefix_filter_id in existing_pfxs)
+        if len(existing_ports) == 1 and existing_ports[0] == int(port) and pfx_matches:
             return {
                 "action": "unchanged",
                 "id": app_id,
@@ -470,6 +548,7 @@ def create_or_update_app(
                 "display_name": payload["display_name"],
                 "port": port,
                 "protocol": protocol,
+                "server_prefix": server_prefix,
                 "app": match
             }
 
@@ -480,6 +559,14 @@ def create_or_update_app(
         raw_obj["description"] = payload["description"]
         
         resp = sdk.put.appdefs(appdef_id=app_id, data=raw_obj, api_version=api_version)
+        err_str = format_cgx_error(resp, f"update appdef '{payload['display_name']}' (ID: {app_id})", raw_obj) if not resp.cgx_status else ""
+        if not resp.cgx_status and prefix_filter_id and "PREFIX" in err_str.upper():
+            fallback_payload = build_appdef_payload(
+                name=name, port=port, protocol=protocol, description=description, server_prefix=None, prefix_tag=prefix_tag, prefix_filter_id=None
+            )
+            raw_obj["udp_rules"] = fallback_payload["udp_rules"]
+            resp = sdk.put.appdefs(appdef_id=app_id, data=raw_obj, api_version=api_version)
+
         if not resp.cgx_status:
             err_msg = format_cgx_error(resp, f"update appdef '{payload['display_name']}' (ID: {app_id})", raw_obj)
             raise RuntimeError(err_msg)
@@ -490,13 +577,32 @@ def create_or_update_app(
             "display_name": payload["display_name"],
             "port": port,
             "protocol": protocol,
+            "server_prefix": server_prefix,
             "app": resp.cgx_content
         }
     else:
         # New app -> Create via POST
         resp = sdk.post.appdefs(data=payload, api_version=api_version)
+        err_str = format_cgx_error(resp, f"create appdef '{payload['display_name']}'", payload) if not resp.cgx_status else ""
+        if not resp.cgx_status and prefix_filter_id and "PREFIX" in err_str.upper():
+            fallback_payload = build_appdef_payload(
+                name=name, port=port, protocol=protocol, description=description, server_prefix=None, prefix_tag=prefix_tag, prefix_filter_id=None
+            )
+            resp = sdk.post.appdefs(data=fallback_payload, api_version=api_version)
+
         if not resp.cgx_status:
             err_msg = format_cgx_error(resp, f"create appdef '{payload['display_name']}'", payload)
+            if "OVERLAP" in err_msg.upper():
+                return {
+                    "action": "unchanged",
+                    "id": "",
+                    "name": payload["display_name"],
+                    "display_name": payload["display_name"],
+                    "port": port,
+                    "protocol": protocol,
+                    "server_prefix": server_prefix,
+                    "warning": f"Tuple ({server_prefix or '*'}:{port}/{protocol.upper()}) is already covered by an existing Prisma SD-WAN application."
+                }
             raise RuntimeError(err_msg)
         new_id = resp.cgx_content.get("id") if isinstance(resp.cgx_content, dict) else None
         return {
@@ -506,6 +612,7 @@ def create_or_update_app(
             "display_name": payload["display_name"],
             "port": port,
             "protocol": protocol,
+            "server_prefix": server_prefix,
             "app": resp.cgx_content
         }
 
@@ -524,8 +631,12 @@ def delete_custom_app(
         if not target_name:
             raise ValueError("Either --app-id or --name must be provided to delete an application")
         std_name = sanitize_app_name(target_name)
+        mc_name = sanitize_app_name(f"STX_MC_{target_name}")[:32]
         existing_apps = list_custom_apps(sdk, api_version=api_version)
-        match = next((a for a in existing_apps if a["name"].lower() in (target_name.lower(), std_name.lower())), None)
+        match = next(
+            (a for a in existing_apps if a["name"].lower() in (target_name.lower(), std_name.lower(), mc_name.lower())),
+            None
+        )
         if not match:
             return {
                 "success": True,
@@ -642,6 +753,99 @@ def sync_all_from_config(
     }
 
 
+def sync_multicast_from_config(
+    sdk: API,
+    config_file: Optional[str] = None,
+    json_data: Optional[str] = None,
+    api_version: str = 'v2.6'
+) -> Dict[str, Any]:
+    """Read Stigix Multicast profiles and synchronize delta to Prisma SD-WAN (UDP + Group IP/32)"""
+    mc_list = []
+
+    if json_data:
+        try:
+            parsed = json.loads(json_data)
+            mc_list = parsed.get("multicastApplications", parsed if isinstance(parsed, list) else [])
+        except Exception as e:
+            raise ValueError(f"Invalid JSON string in --json-data: {e}")
+    elif config_file:
+        if not os.path.exists(config_file):
+            raise FileNotFoundError(f"Configuration file not found: {config_file}")
+        with open(config_file, 'r') as f:
+            parsed = json.load(f)
+            mc_list = parsed.get("multicastApplications", parsed if isinstance(parsed, list) else [])
+    else:
+        default_paths = [
+            '/data/stigix/custom-tcp-applications.json',
+            os.path.join(os.getcwd(), 'config', 'custom-tcp-applications.json'),
+            os.path.join(os.getcwd(), 'custom-tcp-applications.json')
+        ]
+        for path in default_paths:
+            if os.path.exists(path):
+                with open(path, 'r') as f:
+                    parsed = json.load(f)
+                    mc_list = parsed.get("multicastApplications", parsed if isinstance(parsed, list) else [])
+                break
+
+    if not mc_list:
+        return {
+            "success": True,
+            "message": "No Multicast profiles found to sync",
+            "synced_count": 0,
+            "created_count": 0,
+            "updated_count": 0,
+            "unchanged_count": 0,
+            "results": []
+        }
+
+    existing_tenant_apps = list_custom_apps(sdk, api_version=api_version)
+
+    results = []
+    created_count = 0
+    updated_count = 0
+    unchanged_count = 0
+
+    for app in mc_list:
+        app_name = app.get("name")
+        port = app.get("port")
+        group = (app.get("group") or "").strip()
+        mode = (app.get("mode") or "asm").upper()
+        if not app_name or not port:
+            continue
+
+        desc = app.get("description") or f"Stigix Multicast {app_name} ({group}:{port} {mode})"
+        server_prefix = f"{group}/32" if group else None
+        res = create_or_update_app(
+            sdk=sdk,
+            name=app_name,
+            port=int(port),
+            protocol="udp",
+            display_name=f"Stigix MC {app_name} ({group}:{port})",
+            description=desc[:250],
+            server_prefix=server_prefix,
+            prefix_tag="STX_MC_",
+            existing_apps=existing_tenant_apps,
+            api_version=api_version
+        )
+        results.append(res)
+        if res["action"] == "created":
+            created_count += 1
+        elif res["action"] == "updated":
+            updated_count += 1
+        elif res["action"] == "unchanged":
+            unchanged_count += 1
+
+    return {
+        "success": True,
+        "message": f"Multicast Delta Sync complete: {created_count} created, {updated_count} updated, {unchanged_count} already up-to-date",
+        "synced_count": len(results),
+        "created_count": created_count,
+        "updated_count": updated_count,
+        "unchanged_count": unchanged_count,
+        "results": results
+    }
+
+
 def clean_all_stigix_apps(sdk: API, api_version: str = 'v2.6') -> Dict[str, Any]:
     """Remove all Stigix-created apps from the tenant"""
     existing_apps = list_custom_apps(sdk, api_version=api_version)
@@ -719,6 +923,7 @@ def main():
             if not args.name or not args.port:
                 raise ValueError("Both --name and --port are required to create a custom application")
 
+            prefix_tag = "STX_MC_" if (args.protocol == 'udp' and args.server_prefix) else "STX_"
             res = create_or_update_app(
                 sdk=sdk,
                 name=args.name,
@@ -726,6 +931,8 @@ def main():
                 protocol=args.protocol,
                 display_name=args.display_name,
                 description=args.description,
+                server_prefix=args.server_prefix,
+                prefix_tag=prefix_tag,
                 api_version=args.api_version
             )
             output = {
@@ -754,6 +961,18 @@ def main():
 
         elif args.sync_all:
             res = sync_all_from_config(
+                sdk=sdk,
+                config_file=args.config_file,
+                json_data=args.json_data,
+                api_version=args.api_version
+            )
+            if json_mode:
+                print(json.dumps(res, indent=2))
+            else:
+                print(f"🔄 {res.get('message')}")
+
+        elif args.sync_multicast:
+            res = sync_multicast_from_config(
                 sdk=sdk,
                 config_file=args.config_file,
                 json_data=args.json_data,

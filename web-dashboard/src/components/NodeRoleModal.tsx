@@ -24,6 +24,8 @@ export function NodeRoleModal({
     onOpenMagicJoin 
 }: NodeRoleModalProps) {
     const [joinTokenInput, setJoinTokenInput] = useState('');
+    const [showManualUrl, setShowManualUrl] = useState(false);
+    const [manualLeaderUrl, setManualLeaderUrl] = useState('');
     const [isJoining, setIsJoining] = useState(false);
     const [isSwitching, setIsSwitching] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -80,6 +82,36 @@ export function NodeRoleModal({
                 }, 1600);
             } else {
                 setError(data.message || data.error || 'Failed to join cluster with token');
+            }
+        } catch (e: any) {
+            setError(e.message || String(e));
+        } finally {
+            setIsJoining(false);
+        }
+    };
+
+    const handleSaveManualLeader = async () => {
+        const trimmed = manualLeaderUrl.trim();
+        if (!trimmed) return;
+        setIsJoining(true);
+        setError(null);
+        setSuccessMsg(null);
+        try {
+            const res = await fetch('/api/registry/static-leader', {
+                method: 'POST',
+                headers: authHeaders,
+                body: JSON.stringify({ url: trimmed })
+            });
+            if (res.ok) {
+                setSuccessMsg(`Static Leader configured (${trimmed})!`);
+                setManualLeaderUrl('');
+                await onRefreshStatus();
+                setTimeout(() => {
+                    onClose();
+                }, 1400);
+            } else {
+                const d = await res.json().catch(() => ({}));
+                setError(d.message || d.error || 'Failed to configure static Leader URL');
             }
         } catch (e: any) {
             setError(e.message || String(e));
@@ -292,6 +324,35 @@ export function NodeRoleModal({
                                             </>
                                         )}
                                     </button>
+
+                                    <div className="pt-2 border-t border-border/50">
+                                        <button
+                                            type="button"
+                                            onClick={() => setShowManualUrl(!showManualUrl)}
+                                            className="text-[11px] font-bold text-text-muted hover:text-text-primary transition-colors flex items-center gap-1"
+                                        >
+                                            <span>{showManualUrl ? '▾ Hide manual Leader IP / URL' : '▸ Or configure manual Leader IP / URL'}</span>
+                                        </button>
+                                        {showManualUrl && (
+                                            <div className="mt-2 flex gap-2">
+                                                <input
+                                                    type="text"
+                                                    value={manualLeaderUrl}
+                                                    onChange={(e) => setManualLeaderUrl(e.target.value)}
+                                                    onKeyDown={(e) => e.key === 'Enter' && handleSaveManualLeader()}
+                                                    placeholder="e.g. 192.168.1.50 or http://leader:8080"
+                                                    className="flex-1 px-3 py-1.5 text-xs font-mono bg-card border border-border rounded-lg text-text focus:outline-none focus:border-blue-500 placeholder:text-text-muted/40"
+                                                />
+                                                <button
+                                                    onClick={handleSaveManualLeader}
+                                                    disabled={isJoining || !manualLeaderUrl.trim()}
+                                                    className="px-3.5 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 disabled:opacity-40 text-white text-xs font-bold transition-all"
+                                                >
+                                                    Save
+                                                </button>
+                                            </div>
+                                        )}
+                                    </div>
                                 </div>
                             </div>
 
