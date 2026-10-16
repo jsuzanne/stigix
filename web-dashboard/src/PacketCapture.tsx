@@ -1,13 +1,14 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { 
     Radio, Play, Square, Download, Loader2, RefreshCw, Search, Trash2, 
     Clock, HardDrive, Filter, Layers, Binary, CheckCircle2, 
     AlertCircle, ChevronRight, ChevronDown, Copy, Check, 
     FileText, ArrowRight, Zap, X, ShieldAlert, Cpu,
-    BookmarkPlus, Sparkles, BookOpen, Plus, SlidersHorizontal, Terminal, Info
+    BookmarkPlus, Sparkles, BookOpen, Plus, SlidersHorizontal, Terminal, Info, Globe, Server
 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import { usePeerContext } from './PeerContext';
+import type { TargetDefinition } from './types/targets';
 
 interface PacketCaptureProps {
     token: string;
@@ -210,8 +211,64 @@ const BPF_RECIPES: BpfRecipe[] = [
     }
 ];
 
+interface ResolvedTarget {
+    label: string;
+    isKnownTarget: boolean;
+    isLocal: boolean;
+    type: 'stigix' | 'local' | 'lan' | 'wan' | 'special';
+}
+
+function cleanHost(host: string): string {
+    if (!host) return '';
+    const h = host.trim();
+    if (h.startsWith('[') && h.includes(']')) {
+        return h.substring(1, h.indexOf(']'));
+    }
+    if (h.includes('.') && h.includes(':')) {
+        return h.split(':')[0];
+    }
+    return h;
+}
+
+function TargetBadge({ target, onClick }: { target: ResolvedTarget; onClick?: (label: string) => void }) {
+    let colorClass = 'bg-slate-500/10 text-slate-600 dark:text-slate-400 border-slate-500/20';
+    let icon: React.ReactNode = null;
+
+    if (target.type === 'stigix') {
+        colorClass = 'bg-indigo-500/10 text-indigo-700 dark:text-indigo-400 border-indigo-500/25 hover:border-indigo-500/50 hover:bg-indigo-500/20';
+        icon = <Server size={10} className="shrink-0 text-indigo-500 dark:text-indigo-400" />;
+    } else if (target.type === 'local') {
+        colorClass = 'bg-cyan-500/10 text-cyan-700 dark:text-cyan-400 border-cyan-500/25 hover:border-cyan-500/50 hover:bg-cyan-500/20';
+        icon = <Server size={10} className="shrink-0 text-cyan-500 dark:text-cyan-400" />;
+    } else if (target.type === 'wan') {
+        colorClass = 'bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/25 hover:border-amber-500/50 hover:bg-amber-500/20';
+        icon = <Globe size={10} className="shrink-0 text-amber-500 dark:text-amber-400" />;
+    } else if (target.type === 'lan') {
+        colorClass = 'bg-slate-500/10 text-slate-600 dark:text-slate-400 border-slate-500/25 hover:border-slate-500/50 hover:bg-slate-500/20';
+    } else if (target.type === 'special') {
+        colorClass = 'bg-purple-500/10 text-purple-700 dark:text-purple-400 border-purple-500/25 hover:border-purple-500/50 hover:bg-purple-500/20';
+    }
+
+    return (
+        <button
+            type="button"
+            onClick={(e) => {
+                if (onClick) {
+                    e.stopPropagation();
+                    onClick(target.label);
+                }
+            }}
+            title={`Filter by target: ${target.label}`}
+            className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider border max-w-full truncate transition-colors cursor-pointer select-none ${colorClass}`}
+        >
+            {icon}
+            <span className="truncate">{target.label}</span>
+        </button>
+    );
+}
+
 export default function PacketCapture({ token, onNavigateToReplay }: PacketCaptureProps) {
-    const { gFetch, activePeerId } = usePeerContext();
+    const { gFetch, activePeerId, activePeer, peers } = usePeerContext();
 
     const authHeaders = useMemo(() => ({
         'Authorization': `Bearer ${token}`,
@@ -221,6 +278,7 @@ export default function PacketCapture({ token, onNavigateToReplay }: PacketCaptu
     // System options
     const [interfaces, setInterfaces] = useState<InterfaceItem[]>([]);
     const [presets, setPresets] = useState<PresetItem[]>([]);
+    const [targets, setTargets] = useState<TargetDefinition[]>([]);
     const [selectedInterface, setSelectedInterface] = useState<string>('any');
     const [selectedPreset, setSelectedPreset] = useState<string>('all');
     const [bpfFilter, setBpfFilter] = useState<string>('');
@@ -367,10 +425,11 @@ export default function PacketCapture({ token, onNavigateToReplay }: PacketCaptu
 
     const tableEndRef = useRef<HTMLDivElement>(null);
 
-    // Initial load: interfaces and presets (re-run when activePeerId changes)
+    // Initial load: interfaces, presets, and targets (re-run when activePeerId changes)
     useEffect(() => {
         fetchInterfaces();
         fetchPresets();
+        fetchTargets();
         checkActiveStatus();
     }, [activePeerId]);
 
@@ -463,6 +522,18 @@ export default function PacketCapture({ token, onNavigateToReplay }: PacketCaptu
             }
         } catch (e) {
             console.error('Failed to load presets', e);
+        }
+    };
+
+    const fetchTargets = async () => {
+        try {
+            const res = await gFetch('/api/targets', { credentials: 'include', headers: authHeaders });
+            if (res.ok) {
+                const data = await res.json();
+                if (Array.isArray(data)) setTargets(data);
+            }
+        } catch (e) {
+            console.error('Failed to load targets', e);
         }
     };
 
@@ -772,6 +843,130 @@ export default function PacketCapture({ token, onNavigateToReplay }: PacketCaptu
         setBpfFilter(preset.bpf);
     };
 
+    // Map of IP -> ResolvedTarget
+    const ipToTargetMap = useMemo(() => {
+        const map = new Map<string, ResolvedTarget>();
+
+        // 1. Determine local node site name
+        const leaderPeer = peers.find(p => p.is_leader);
+        const localSite = activePeer?.site || leaderPeer?.site || 'Local';
+
+        // 2. Register local node interfaces
+        interfaces.forEach(iface => {
+            const clean = cleanHost(iface.ip);
+            if (clean && clean !== '-' && clean !== '0.0.0.0') {
+                map.set(clean, {
+                    label: `${localSite} (Local)`,
+                    isKnownTarget: true,
+                    isLocal: true,
+                    type: 'local'
+                });
+            }
+        });
+        if (activePeer?.ip_private) {
+            const clean = cleanHost(activePeer.ip_private);
+            if (clean) {
+                map.set(clean, {
+                    label: `${localSite} (Local)`,
+                    isKnownTarget: true,
+                    isLocal: true,
+                    type: 'local'
+                });
+            }
+        }
+
+        // 3. Register peers from PeerContext
+        peers.forEach(peer => {
+            const isLocal = Boolean(activePeer?.instance_id ? peer.instance_id === activePeer.instance_id : peer.is_leader);
+            const siteName = peer.site || peer.instance_id;
+            const label = isLocal ? `${siteName} (Local)` : siteName;
+            if (peer.ip_private) {
+                const clean = cleanHost(peer.ip_private);
+                if (clean && !map.has(clean)) {
+                    map.set(clean, {
+                        label,
+                        isKnownTarget: true,
+                        isLocal,
+                        type: isLocal ? 'local' : 'stigix'
+                    });
+                }
+            }
+        });
+
+        // 4. Register targets from /api/targets
+        targets.forEach(tgt => {
+            const cleanHostIp = cleanHost(tgt.host);
+            if (cleanHostIp && !map.has(cleanHostIp)) {
+                map.set(cleanHostIp, {
+                    label: tgt.name,
+                    isKnownTarget: true,
+                    isLocal: false,
+                    type: 'stigix'
+                });
+            }
+            if (tgt.meta?.ip_public) {
+                const cleanPub = cleanHost(tgt.meta.ip_public);
+                if (cleanPub && !map.has(cleanPub)) {
+                    map.set(cleanPub, {
+                        label: tgt.name,
+                        isKnownTarget: true,
+                        isLocal: false,
+                        type: 'stigix'
+                    });
+                }
+            }
+        });
+
+        return map;
+    }, [targets, interfaces, peers, activePeer]);
+
+    // Resolve an IP address to a Stigix Target, LAN, WAN, or special category
+    const resolveTarget = useCallback((rawIp: string): ResolvedTarget => {
+        if (!rawIp) {
+            return { label: '-', isKnownTarget: false, isLocal: false, type: 'special' };
+        }
+        const ip = cleanHost(rawIp);
+        if (!ip || ip === '-') {
+            return { label: '-', isKnownTarget: false, isLocal: false, type: 'special' };
+        }
+        if (ipToTargetMap.has(ip)) {
+            return ipToTargetMap.get(ip)!;
+        }
+
+        // Loopback
+        if (ip === '127.0.0.1' || ip === '::1' || ip.startsWith('127.')) {
+            return { label: 'Loopback', isKnownTarget: false, isLocal: false, type: 'special' };
+        }
+
+        // Broadcast / Multicast
+        if (ip === '255.255.255.255' || ip.endsWith('.255')) {
+            return { label: 'Bcast', isKnownTarget: false, isLocal: false, type: 'special' };
+        }
+        if (ip.startsWith('224.') || ip.startsWith('239.') || ip.startsWith('ff')) {
+            return { label: 'Mcast', isKnownTarget: false, isLocal: false, type: 'special' };
+        }
+
+        // MAC address check (e.g. ARP frame with MAC in source)
+        if (/^([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})$/.test(ip)) {
+            return { label: 'L2 MAC', isKnownTarget: false, isLocal: false, type: 'special' };
+        }
+
+        // RFC 1918 Private Ranges
+        const isRfc1918 = 
+            ip.startsWith('10.') || 
+            ip.startsWith('192.168.') || 
+            /^172\.(1[6-9]|2[0-9]|3[0-1])\./.test(ip) ||
+            /^100\.(6[4-9]|[7-9][0-9]|1[0-1][0-9]|12[0-7])\./.test(ip) || // CGNAT
+            ip.startsWith('169.254.'); // Link-local
+
+        if (isRfc1918) {
+            return { label: 'LAN', isKnownTarget: false, isLocal: false, type: 'lan' };
+        }
+
+        // External / Public WAN
+        return { label: 'WAN', isKnownTarget: false, isLocal: false, type: 'wan' };
+    }, [ipToTargetMap]);
+
     // Filtered packet list based on display filter
     const filteredPackets = useMemo(() => {
         if (!displayFilter.trim()) return packets;
@@ -785,9 +980,13 @@ export default function PacketCapture({ token, onNavigateToReplay }: PacketCaptu
             if (q === 'rst' && p.info.includes('RST')) return true;
             if (q === 'syn' && p.info.includes('SYN')) return true;
             if (q === 'ack' && p.info.includes('ACK')) return true;
+            const srcTarget = resolveTarget(p.source);
+            if (srcTarget.label.toLowerCase().includes(q)) return true;
+            const dstTarget = resolveTarget(p.destination);
+            if (dstTarget.label.toLowerCase().includes(q)) return true;
             return false;
         });
-    }, [packets, displayFilter]);
+    }, [packets, displayFilter, resolveTarget]);
 
     // Currently selected packet
     const activePacket = useMemo(() => {
@@ -1359,7 +1558,7 @@ export default function PacketCapture({ token, onNavigateToReplay }: PacketCaptu
                         type="text"
                         value={displayFilter}
                         onChange={(e) => setDisplayFilter(e.target.value)}
-                        placeholder="Apply display filter... (e.g. 'tcp', 'udp', 'rst', 'dns', '192.168.122.51', ':8080')"
+                        placeholder="Filter by protocol, IP, target (e.g. 'DC1', 'WAN', 'tcp', 'rst', '8080')..."
                         className="bg-transparent border-0 text-xs text-text-primary font-mono placeholder:text-text-muted/50 focus:outline-none w-full"
                     />
                     {displayFilter && (
@@ -1413,23 +1612,25 @@ export default function PacketCapture({ token, onNavigateToReplay }: PacketCaptu
             <div className="space-y-4">
                 {/* PANE 1: Virtual Packet Table */}
                 <div className="bg-card border border-border rounded-2xl overflow-hidden shadow-sm">
-                    <div className="h-64 sm:h-72 lg:h-80 overflow-y-auto font-mono text-xs scrollbar-thin scrollbar-thumb-border">
-                        <table className="w-full text-left border-collapse">
+                    <div className="h-64 sm:h-72 lg:h-80 overflow-y-auto overflow-x-auto font-mono text-xs scrollbar-thin scrollbar-thumb-border">
+                        <table className="w-full text-left border-collapse table-fixed min-w-[1040px]">
                             <thead className="sticky top-0 bg-card-secondary/95 backdrop-blur border-b border-border text-[9px] uppercase tracking-wider text-text-muted z-10">
                                 <tr>
-                                    <th className="py-2 px-3 w-14">No.</th>
-                                    <th className="py-2 px-3 w-24">Time (s)</th>
-                                    <th className="py-2 px-3 w-40">Source</th>
-                                    <th className="py-2 px-3 w-40">Destination</th>
-                                    <th className="py-2 px-3 w-20">Protocol</th>
-                                    <th className="py-2 px-3 w-16">Length</th>
-                                    <th className="py-2 px-3">Info</th>
+                                    <th className="py-2 px-3 w-14 shrink-0 font-bold">No.</th>
+                                    <th className="py-2 px-3 w-24 shrink-0 font-bold">Time (s)</th>
+                                    <th className="py-2 px-3 w-36 shrink-0 font-bold">Source</th>
+                                    <th className="py-2 px-3 w-32 shrink-0 font-bold">Src Target</th>
+                                    <th className="py-2 px-3 w-36 shrink-0 font-bold">Destination</th>
+                                    <th className="py-2 px-3 w-32 shrink-0 font-bold">Dst Target</th>
+                                    <th className="py-2 px-3 w-20 shrink-0 font-bold">Protocol</th>
+                                    <th className="py-2 px-3 w-16 shrink-0 font-bold">Length</th>
+                                    <th className="py-2 px-3 min-w-[200px] font-bold">Info</th>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-border/20">
                                 {loadingPackets ? (
                                     <tr>
-                                        <td colSpan={7} className="py-20 text-center text-text-muted">
+                                        <td colSpan={9} className="py-20 text-center text-text-muted">
                                             <div className="space-y-3">
                                                 <Loader2 size={32} className="animate-spin mx-auto text-cyan-400" />
                                                 <p className="text-xs font-bold text-text-primary">
@@ -1443,7 +1644,7 @@ export default function PacketCapture({ token, onNavigateToReplay }: PacketCaptu
                                     </tr>
                                 ) : filteredPackets.length === 0 ? (
                                     <tr>
-                                        <td colSpan={7} className="py-16 text-center text-text-muted">
+                                        <td colSpan={9} className="py-16 text-center text-text-muted">
                                             {capturing ? (
                                                 <div className="space-y-2">
                                                     <RefreshCw size={24} className="animate-spin mx-auto text-cyan-400" />
@@ -1461,6 +1662,8 @@ export default function PacketCapture({ token, onNavigateToReplay }: PacketCaptu
                                 ) : (
                                     filteredPackets.map((pkt) => {
                                         const isSelected = selectedPacketNo === pkt.no;
+                                        const srcTarget = resolveTarget(pkt.source);
+                                        const dstTarget = resolveTarget(pkt.destination);
                                         return (
                                             <tr
                                                 key={pkt.no}
@@ -1471,20 +1674,32 @@ export default function PacketCapture({ token, onNavigateToReplay }: PacketCaptu
                                                         : 'hover:bg-card-hover/60 text-text-secondary'
                                                 }`}
                                             >
-                                                <td className="py-1.5 px-3 text-text-muted">{pkt.no}</td>
-                                                <td className="py-1.5 px-3 text-text-muted">{pkt.time.toFixed(6)}</td>
-                                                <td className="py-1.5 px-3 text-text-primary truncate" title={pkt.source}>
+                                                <td className="py-1.5 px-3 text-text-muted truncate w-14">{pkt.no}</td>
+                                                <td className="py-1.5 px-3 text-text-muted truncate w-24">{pkt.time.toFixed(6)}</td>
+                                                <td className="py-1.5 px-3 text-text-primary truncate w-36" title={pkt.source}>
                                                     {pkt.source}{pkt.sport ? `:${pkt.sport}` : ''}
                                                 </td>
-                                                <td className="py-1.5 px-3 text-text-primary truncate" title={pkt.destination}>
+                                                <td className="py-1.5 px-3 truncate w-32">
+                                                    <TargetBadge
+                                                        target={srcTarget}
+                                                        onClick={(lbl) => setDisplayFilter(prev => prev === lbl ? '' : lbl)}
+                                                    />
+                                                </td>
+                                                <td className="py-1.5 px-3 text-text-primary truncate w-36" title={pkt.destination}>
                                                     {pkt.destination}{pkt.dport ? `:${pkt.dport}` : ''}
                                                 </td>
-                                                <td className="py-1.5 px-3">
+                                                <td className="py-1.5 px-3 truncate w-32">
+                                                    <TargetBadge
+                                                        target={dstTarget}
+                                                        onClick={(lbl) => setDisplayFilter(prev => prev === lbl ? '' : lbl)}
+                                                    />
+                                                </td>
+                                                <td className="py-1.5 px-3 w-20">
                                                     <span className={`px-1.5 py-0.5 rounded text-[9px] font-black uppercase border ${getProtoColorClass(pkt.protocol, pkt.info)}`}>
                                                         {pkt.protocol}
                                                     </span>
                                                 </td>
-                                                <td className="py-1.5 px-3 text-text-muted">{pkt.length}</td>
+                                                <td className="py-1.5 px-3 text-text-muted truncate w-16">{pkt.length}</td>
                                                 <td className="py-1.5 px-3 truncate max-w-md font-mono text-[11px]" title={pkt.info}>
                                                     {pkt.info}
                                                 </td>

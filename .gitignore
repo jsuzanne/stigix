@@ -111,3 +111,6 @@ docs/screenshots/Videos/
 *.gif
 !docs/stigix-banner.gif
 
+# Captured and Correlated Traces
+traces/
+.traces/
