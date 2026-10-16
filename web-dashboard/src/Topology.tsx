@@ -1228,11 +1228,17 @@ const SasePopNode = ({ data, selected }: any) => {
 
     return (
         <div className={cn(
-            "px-5 py-4 rounded-3xl border-2 transition-all shadow-2xl backdrop-blur-2xl flex flex-col items-center gap-2.5 w-[330px] max-w-[330px] cursor-pointer hover:scale-105 duration-200 select-none",
+            "px-5 py-4 rounded-3xl border-2 transition-all shadow-xl backdrop-blur-2xl flex flex-col items-center gap-2.5 w-[330px] max-w-[330px] cursor-pointer hover:scale-105 duration-200 select-none",
             isPrisma
-                ? (isHealthy ? "bg-purple-950/40 border-purple-500/50 shadow-purple-500/20 hover:border-purple-400" : "bg-purple-950/20 border-purple-500/30")
-                : (isHealthy ? "bg-blue-950/40 border-blue-500/50 shadow-blue-500/20 hover:border-blue-400" : "bg-rose-950/30 border-rose-500/40 shadow-rose-500/10"),
-            selected && (isPrisma ? "ring-4 ring-purple-400 shadow-purple-500/50" : "ring-4 ring-blue-400 shadow-blue-500/50")
+                ? (isHealthy 
+                    ? "bg-white/95 dark:bg-purple-950/40 border-purple-300 dark:border-purple-500/50 shadow-purple-500/10 dark:shadow-purple-500/25 hover:border-purple-500" 
+                    : "bg-white/90 dark:bg-purple-950/20 border-purple-200 dark:border-purple-500/30")
+                : (isHealthy 
+                    ? "bg-white/95 dark:bg-blue-950/40 border-blue-300 dark:border-blue-500/50 shadow-blue-500/10 dark:shadow-blue-500/25 hover:border-blue-500" 
+                    : "bg-white/90 dark:bg-rose-950/30 border-rose-300 dark:border-rose-500/40 shadow-rose-500/10"),
+            selected && (isPrisma 
+                ? "ring-4 ring-purple-400 dark:ring-purple-400 shadow-purple-500/40 dark:shadow-purple-500/60" 
+                : "ring-4 ring-blue-400 dark:ring-blue-400 shadow-blue-500/40 dark:shadow-blue-500/60")
         )}>
             <Handle type="target" position={Position.Top} id="target-top" className="!opacity-0" />
             <Handle type="target" position={Position.Bottom} id="target-bottom" className="!opacity-0" />
@@ -1241,20 +1247,20 @@ const SasePopNode = ({ data, selected }: any) => {
             <div className="flex items-center justify-between w-full gap-2">
                 <div className="flex items-center gap-1.5">
                     {isPrisma ? (
-                        <span className="px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider border bg-purple-500/20 text-purple-300 border-purple-500/30 flex items-center gap-1">
-                            <span className="w-1.5 h-1.5 rounded-full bg-orange-400 inline-block" />
-                            Palo Alto · Prisma
+                        <span className="px-2.5 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider border bg-purple-100 text-purple-700 border-purple-300/80 dark:bg-purple-500/20 dark:text-purple-300 dark:border-purple-500/30 flex items-center gap-1.5 shadow-sm">
+                            <span className="w-1.5 h-1.5 rounded-full bg-orange-500 inline-block" />
+                            Palo Alto &bull; Prisma
                         </span>
                     ) : (
-                        <span className="px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider border bg-blue-500/20 text-blue-300 border-blue-500/30 flex items-center gap-1">
-                            <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 inline-block" />
-                            Zscaler · ZIA
+                        <span className="px-2.5 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider border bg-blue-100 text-blue-700 border-blue-300/80 dark:bg-blue-500/20 dark:text-blue-300 dark:border-blue-500/30 flex items-center gap-1.5 shadow-sm">
+                            <span className="w-1.5 h-1.5 rounded-full bg-cyan-500 inline-block" />
+                            Zscaler &bull; ZIA
                         </span>
                     )}
                 </div>
                 <div className="flex items-center gap-1.5">
-                    <span className={cn("w-2 h-2 rounded-full", isHealthy ? "bg-emerald-400 animate-pulse" : "bg-rose-400")} />
-                    <span className="text-[10px] font-mono font-bold text-text-muted">
+                    <span className={cn("w-2 h-2 rounded-full", isHealthy ? "bg-emerald-500 animate-pulse" : "bg-rose-500")} />
+                    <span className="text-[10px] font-mono font-bold text-slate-600 dark:text-text-muted">
                         {data.tunnels_up || 0}/{data.tunnels_total || 0} Up
                     </span>
                 </div>
@@ -1263,25 +1269,27 @@ const SasePopNode = ({ data, selected }: any) => {
             {/* Center Icon & Title with Official Logos */}
             <div className="flex items-center gap-3 w-full my-0.5">
                 <div className={cn(
-                    "p-2 rounded-2xl shadow-inner shrink-0 flex items-center justify-center border",
-                    isPrisma ? "bg-white/10 border-purple-500/30 shadow-purple-900/50" : "bg-white/10 border-blue-500/30 shadow-blue-900/50"
+                    "p-2 rounded-2xl shrink-0 flex items-center justify-center border shadow-sm transition-colors",
+                    isPrisma 
+                        ? "bg-purple-50/90 border-purple-200 text-purple-600 dark:bg-white/10 dark:border-purple-500/30 dark:shadow-purple-900/50" 
+                        : "bg-blue-50/90 border-blue-200 text-blue-600 dark:bg-white/10 dark:border-blue-500/30 dark:shadow-blue-900/50"
                 )}>
                     {isPrisma ? (
-                        <img src="/prisma-access.png" alt="Prisma Access" className="w-8 h-8 object-contain filter drop-shadow" />
+                        <img src="/prisma-access.png" alt="Prisma Access" className="w-8 h-8 object-contain filter drop-shadow-sm" />
                     ) : (
-                        <img src="/zscaler-logo.png" alt="Zscaler" className="w-8 h-8 object-contain rounded-lg filter drop-shadow" />
+                        <img src="/zscaler-logo.png" alt="Zscaler" className="w-8 h-8 object-contain rounded-lg filter drop-shadow-sm" />
                     )}
                 </div>
                 <div className="min-w-0 flex-1">
-                    <div className="text-sm font-black text-text-primary tracking-tight truncate leading-tight">
+                    <div className="text-sm font-black text-slate-900 dark:text-text-primary tracking-tight truncate leading-tight">
                         {data.short_name || data.name}
                     </div>
                     {data.spn_name ? (
-                        <div className="text-[10px] text-text-muted font-mono truncate">
+                        <div className="text-[10px] text-slate-500 dark:text-text-muted font-mono truncate font-medium">
                             SPN: {data.spn_name}
                         </div>
                     ) : (
-                        <div className="text-[10px] text-text-muted font-mono truncate">
+                        <div className="text-[10px] text-slate-500 dark:text-text-muted font-mono truncate font-medium">
                             Region: {data.region || 'global'}
                         </div>
                     )}
@@ -1289,17 +1297,17 @@ const SasePopNode = ({ data, selected }: any) => {
             </div>
 
             {/* IP & Telemetry Footer */}
-            <div className="w-full pt-2 border-t border-border/60 flex items-center justify-between text-[10px] font-mono">
-                <div className="flex items-center gap-1 text-cyan-400 font-bold truncate">
-                    <span>GW:</span>
+            <div className="w-full pt-2 border-t border-slate-200 dark:border-border/60 flex items-center justify-between text-[10px] font-mono">
+                <div className="flex items-center gap-1 text-purple-700 dark:text-cyan-400 font-bold truncate">
+                    <span className="text-slate-400 dark:text-slate-400 text-[9px] font-semibold">GW:</span>
                     <span className="truncate">{data.primary_peer_ip || 'Anycast'}</span>
                 </div>
                 {data.liveliness_probe_ip ? (
-                    <div className="text-text-muted text-[9px] shrink-0" title="Liveliness ICMP probe">
+                    <div className="text-slate-500 dark:text-text-muted text-[9px] shrink-0 font-medium" title="Liveliness ICMP probe">
                         Probe: {data.liveliness_probe_ip}
                     </div>
                 ) : (
-                    <div className="text-text-muted text-[9px] shrink-0">
+                    <div className="text-slate-500 dark:text-text-muted text-[9px] shrink-0 font-medium">
                         {data.connected_sites?.length || 0} Sites
                     </div>
                 )}
@@ -1325,6 +1333,7 @@ const edgeTypes = {
 
 interface TopologyProps {
     token: string;
+    theme?: 'light' | 'dark';
 }
 
 export default function Topology(props: TopologyProps) {
@@ -1335,7 +1344,8 @@ export default function Topology(props: TopologyProps) {
     );
 }
 
-function TopologyContent({ token }: TopologyProps) {
+function TopologyContent({ token, theme }: TopologyProps) {
+    const isDark = (theme ?? (typeof document !== 'undefined' && document.documentElement.classList.contains('dark') ? 'dark' : 'light')) === 'dark';
     const [topology, setTopology] = useState<any>(null);
     const { gFetch, activePeerId } = usePeerContext();
     const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
@@ -3094,12 +3104,12 @@ function TopologyContent({ token }: TopologyProps) {
                     if (!isCircuitSaseMatch) isDimmed = true;
                 }
 
-                // Vibrant stroke color: Zscaler UP is ALWAYS Green (#10b981)
-                let stroke = '#ef4444';
+                // Vibrant stroke color: Zscaler UP is ALWAYS Green (#10b981 / #059669)
+                let stroke = isDark ? '#ef4444' : '#dc2626';
                 if (isUp) {
-                    stroke = isAct ? '#10b981' : '#06b6d4';
+                    stroke = isAct ? (isDark ? '#10b981' : '#059669') : (isDark ? '#06b6d4' : '#0284c7');
                 } else if (isStandby) {
-                    stroke = '#f59e0b';
+                    stroke = isDark ? '#f59e0b' : '#d97706';
                 }
 
                 currentEdge = {
@@ -3108,12 +3118,16 @@ function TopologyContent({ token }: TopologyProps) {
                     style: {
                         ...e.style,
                         stroke: stroke,
-                        strokeWidth: isDimmed ? 1 : (isAct ? 3 : 2.2),
+                        strokeWidth: isDimmed ? 1 : (isAct ? (isDark ? 3 : 2.5) : (isDark ? 2.2 : 2)),
                         strokeDasharray: isAct && isUp ? undefined : (isUp ? '6 6' : '4 4'),
-                        opacity: isDimmed ? 0.08 : 1,
-                        filter: (isTargetingSelectedPop || isTargetingSelectedSite) 
-                            ? (isAct ? 'drop-shadow(0 0 8px rgba(16,185,129,0.8))' : 'drop-shadow(0 0 8px rgba(6,182,212,0.8))')
-                            : (isUp && isAct && !isDimmed ? 'drop-shadow(0 0 5px rgba(16,185,129,0.5))' : undefined),
+                        opacity: isDimmed ? (isDark ? 0.08 : 0.12) : 1,
+                        filter: isDark
+                            ? ((isTargetingSelectedPop || isTargetingSelectedSite) 
+                                ? (isAct ? 'drop-shadow(0 0 8px rgba(16,185,129,0.8))' : 'drop-shadow(0 0 8px rgba(6,182,212,0.8))')
+                                : (isUp && isAct && !isDimmed ? 'drop-shadow(0 0 5px rgba(16,185,129,0.5))' : undefined))
+                            : ((isTargetingSelectedPop || isTargetingSelectedSite)
+                                ? (isAct ? 'drop-shadow(0 1px 3px rgba(5,150,105,0.4))' : 'drop-shadow(0 1px 3px rgba(2,132,199,0.4))')
+                                : undefined),
                         pointerEvents: isDimmed ? 'none' : 'all',
                         transition: 'opacity 0.1s ease, stroke-width 0.1s ease'
                     }
@@ -3212,7 +3226,7 @@ function TopologyContent({ token }: TopologyProps) {
 
             return currentEdge;
         });
-    }, [edges, topologyViewMode, searchQuery, selectedObject, saseTunnelTypeFilter, selectedCircuit, overlayTunnelStateFilter, logicalViewSiteId]);
+    }, [edges, topologyViewMode, searchQuery, selectedObject, saseTunnelTypeFilter, selectedCircuit, overlayTunnelStateFilter, logicalViewSiteId, isDark]);
 
     const handleFitView = useCallback(() => {
         fitView({ padding: 0.12, duration: 450, minZoom: 0.12 });
@@ -3577,7 +3591,7 @@ function TopologyContent({ token }: TopologyProps) {
                                     </button>
                                     {logicalViewSiteId && (
                                         <div className="pl-1.5 border-l border-border/60 flex items-center gap-1 shrink-0">
-                                            <span className="text-[9px] font-black text-purple-400 bg-purple-500/10 border border-purple-500/20 px-2 py-0.5 rounded-md">
+                                            <span className="text-[9px] font-black text-purple-700 bg-purple-100 border-purple-300/80 dark:text-purple-400 dark:bg-purple-500/10 dark:border-purple-500/20 px-2 py-0.5 rounded-md shadow-sm">
                                                 Site: {topology?.sites?.find((s: any) => s.site_id === logicalViewSiteId)?.site_name || logicalViewSiteId}
                                             </span>
                                             <button
@@ -3594,7 +3608,7 @@ function TopologyContent({ token }: TopologyProps) {
                                     )}
                                     {selectedObject?.isSasePop && (
                                         <div className="pl-1.5 border-l border-border/60 flex items-center gap-1 shrink-0">
-                                            <span className="text-[9px] font-black text-cyan-400 bg-cyan-500/10 border border-cyan-500/20 px-2 py-0.5 rounded-md">
+                                            <span className="text-[9px] font-black text-sky-700 bg-sky-100 border-sky-300/80 dark:text-cyan-400 dark:bg-cyan-500/10 dark:border-cyan-500/20 px-2 py-0.5 rounded-md shadow-sm">
                                                 PoP: {selectedObject.name || selectedObject.id}
                                             </span>
                                             <button
@@ -4058,7 +4072,7 @@ function TopologyContent({ token }: TopologyProps) {
                                     {topologyViewMode === 'sase' && saseTunnelTypeFilter !== 'ALL' && (
                                         <button
                                             onClick={() => setSaseTunnelTypeFilter('ALL')}
-                                            className="text-[8px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded bg-purple-500/20 text-purple-400 hover:bg-purple-500/30 transition-colors cursor-pointer"
+                                            className="text-[8px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded bg-purple-100 text-purple-700 dark:bg-purple-500/20 dark:text-purple-400 hover:bg-purple-200 dark:hover:bg-purple-500/30 transition-colors cursor-pointer"
                                         >
                                             Show All
                                         </button>
@@ -4075,8 +4089,8 @@ function TopologyContent({ token }: TopologyProps) {
                                             className={cn(
                                                 "flex items-center justify-between gap-2 px-2 py-1.5 rounded-xl text-[10px] font-bold text-left transition-all cursor-pointer border",
                                                 overlayTunnelStateFilter === 'ACTIVE'
-                                                    ? "bg-emerald-500/20 text-emerald-300 border-emerald-500/50 shadow-sm shadow-emerald-500/20"
-                                                    : "text-emerald-400 hover:bg-white/5 border-transparent"
+                                                    ? "bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 border-emerald-500/50 shadow-sm shadow-emerald-500/20"
+                                                    : "text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-white/5 border-transparent"
                                             )}
                                             title="Click to isolate Active tunnels"
                                         >
@@ -4085,7 +4099,7 @@ function TopologyContent({ token }: TopologyProps) {
                                                 <span>Overlay: Active (UP)</span>
                                             </div>
                                             {overlayTunnelStateFilter === 'ACTIVE' && (
-                                                <span className="text-[8px] font-black uppercase px-1 py-0.2 rounded bg-emerald-500/30 text-emerald-300">Filtered</span>
+                                                <span className="text-[8px] font-black uppercase px-1 py-0.2 rounded bg-emerald-500/30 text-emerald-800 dark:text-emerald-300">Filtered</span>
                                             )}
                                         </button>
 
@@ -4098,17 +4112,17 @@ function TopologyContent({ token }: TopologyProps) {
                                             className={cn(
                                                 "flex items-center justify-between gap-2 px-2 py-1.5 rounded-xl text-[10px] font-bold text-left transition-all cursor-pointer border",
                                                 overlayTunnelStateFilter === 'INACTIVE'
-                                                    ? "bg-blue-500/20 text-blue-300 border-blue-500/50 shadow-sm shadow-blue-500/20"
-                                                    : "text-blue-400 hover:bg-white/5 border-transparent"
+                                                    ? "bg-blue-500/20 text-blue-700 dark:text-blue-300 border-blue-500/50 shadow-sm shadow-blue-500/20"
+                                                    : "text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-white/5 border-transparent"
                                             )}
                                             title="Click to isolate Inactive / Standby tunnels"
                                         >
                                             <div className="flex items-center gap-2">
-                                                <div className="w-5 h-1 border-t-2 border-dashed border-blue-400" />
+                                                <div className="w-5 h-1 border-t-2 border-dashed border-blue-500 dark:border-blue-400" />
                                                 <span>Overlay: Inactive (Standby)</span>
                                             </div>
                                             {overlayTunnelStateFilter === 'INACTIVE' && (
-                                                <span className="text-[8px] font-black uppercase px-1 py-0.2 rounded bg-blue-500/30 text-blue-300">Filtered</span>
+                                                <span className="text-[8px] font-black uppercase px-1 py-0.2 rounded bg-blue-500/30 text-blue-800 dark:text-blue-300">Filtered</span>
                                             )}
                                         </button>
 
@@ -4121,8 +4135,8 @@ function TopologyContent({ token }: TopologyProps) {
                                             className={cn(
                                                 "flex items-center justify-between gap-2 px-2 py-1.5 rounded-xl text-[10px] font-bold text-left transition-all cursor-pointer border",
                                                 overlayTunnelStateFilter === 'DOWN'
-                                                    ? "bg-rose-500/20 text-rose-300 border-rose-500/50 shadow-sm shadow-rose-500/20"
-                                                    : "text-rose-400 hover:bg-white/5 border-transparent"
+                                                    ? "bg-rose-500/20 text-rose-700 dark:text-rose-300 border-rose-500/50 shadow-sm shadow-rose-500/20"
+                                                    : "text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-white/5 border-transparent"
                                             )}
                                             title="Click to isolate Down tunnels"
                                         >
@@ -4131,13 +4145,13 @@ function TopologyContent({ token }: TopologyProps) {
                                                 <span>Overlay: Down</span>
                                             </div>
                                             {overlayTunnelStateFilter === 'DOWN' && (
-                                                <span className="text-[8px] font-black uppercase px-1 py-0.2 rounded bg-rose-500/30 text-rose-300">Filtered</span>
+                                                <span className="text-[8px] font-black uppercase px-1 py-0.2 rounded bg-rose-500/30 text-rose-800 dark:text-rose-300">Filtered</span>
                                             )}
                                         </button>
 
                                         <div className="pt-1 mt-1 border-t border-border/50 flex items-center justify-between text-[9px] text-text-muted font-mono gap-2">
-                                            <span className="text-sky-400 font-bold">Circuits: Cyan (Internet)</span>
-                                            <span className="text-purple-400 font-bold">Purple (MPLS)</span>
+                                            <span className="text-sky-600 dark:text-sky-400 font-bold">Circuits: Cyan (Internet)</span>
+                                            <span className="text-purple-600 dark:text-purple-400 font-bold">Purple (MPLS)</span>
                                         </div>
                                     </>
                                 ) : topologyViewMode === 'sase' ? (
@@ -4147,17 +4161,17 @@ function TopologyContent({ token }: TopologyProps) {
                                             className={cn(
                                                 "flex items-center justify-between gap-2 px-2 py-1.5 rounded-xl text-[10px] font-bold text-left transition-all cursor-pointer border",
                                                 saseTunnelTypeFilter === 'ACTIVE'
-                                                    ? "bg-emerald-500/20 text-emerald-300 border-emerald-500/50 shadow-sm shadow-emerald-500/20"
-                                                    : "text-emerald-400 hover:bg-white/5 border-transparent"
+                                                    ? "bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 border-emerald-500/50 shadow-sm shadow-emerald-500/20"
+                                                    : "text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-white/5 border-transparent"
                                             )}
                                             title="Click to isolate Active SASE tunnels"
                                         >
                                             <div className="flex items-center gap-2">
-                                                <div className="w-5 h-1 bg-emerald-500 rounded-full shadow-[0_0_8px_rgba(16,185,129,0.5)]" />
+                                                <div className="w-5 h-1 bg-emerald-500 rounded-full shadow-sm dark:shadow-[0_0_8px_rgba(16,185,129,0.5)]" />
                                                 <span>Active SASE Tunnel (UP)</span>
                                             </div>
                                             {saseTunnelTypeFilter === 'ACTIVE' && (
-                                                <span className="text-[8px] font-black uppercase px-1 py-0.2 rounded bg-emerald-500/30 text-emerald-300">Filtered</span>
+                                                <span className="text-[8px] font-black uppercase px-1 py-0.2 rounded bg-emerald-500/30 text-emerald-800 dark:text-emerald-300">Filtered</span>
                                             )}
                                         </button>
 
@@ -4166,22 +4180,22 @@ function TopologyContent({ token }: TopologyProps) {
                                             className={cn(
                                                 "flex items-center justify-between gap-2 px-2 py-1.5 rounded-xl text-[10px] font-bold text-left transition-all cursor-pointer border",
                                                 saseTunnelTypeFilter === 'BACKUP'
-                                                    ? "bg-cyan-500/20 text-cyan-300 border-cyan-500/50 shadow-sm shadow-cyan-500/20"
-                                                    : "text-cyan-400 hover:bg-white/5 border-transparent"
+                                                    ? "bg-cyan-500/20 text-sky-700 dark:text-cyan-300 border-cyan-500/50 shadow-sm shadow-cyan-500/20"
+                                                    : "text-sky-600 dark:text-cyan-400 hover:bg-sky-50 dark:hover:bg-white/5 border-transparent"
                                             )}
                                             title="Click to isolate Backup SASE tunnels"
                                         >
                                             <div className="flex items-center gap-2">
-                                                <div className="w-5 h-1 border-t-2 border-dashed border-cyan-400" />
+                                                <div className="w-5 h-1 border-t-2 border-dashed border-sky-500 dark:border-cyan-400" />
                                                 <span>Backup SASE Tunnel (UP)</span>
                                             </div>
                                             {saseTunnelTypeFilter === 'BACKUP' && (
-                                                <span className="text-[8px] font-black uppercase px-1 py-0.2 rounded bg-cyan-500/30 text-cyan-300">Filtered</span>
+                                                <span className="text-[8px] font-black uppercase px-1 py-0.2 rounded bg-cyan-500/30 text-sky-800 dark:text-cyan-300">Filtered</span>
                                             )}
                                         </button>
 
-                                        <div className="flex items-center gap-2 px-2 py-1 text-[10px] font-bold text-amber-400/80 opacity-80">
-                                            <div className="w-5 h-1 border-t-2 border-dashed border-amber-400" />
+                                        <div className="flex items-center gap-2 px-2 py-1 text-[10px] font-bold text-amber-600 dark:text-amber-400/80">
+                                            <div className="w-5 h-1 border-t-2 border-dashed border-amber-500 dark:border-amber-400" />
                                             <span>Standby Spoke Path</span>
                                         </div>
 
@@ -4190,8 +4204,8 @@ function TopologyContent({ token }: TopologyProps) {
                                             className={cn(
                                                 "flex items-center justify-between gap-2 px-2 py-1.5 rounded-xl text-[10px] font-bold text-left transition-all cursor-pointer border",
                                                 saseTunnelTypeFilter === 'DOWN'
-                                                    ? "bg-rose-500/20 text-rose-300 border-rose-500/50 shadow-sm shadow-rose-500/20"
-                                                    : "text-rose-400 hover:bg-white/5 border-transparent"
+                                                    ? "bg-rose-500/20 text-rose-700 dark:text-rose-300 border-rose-500/50 shadow-sm shadow-rose-500/20"
+                                                    : "text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-white/5 border-transparent"
                                             )}
                                             title="Click to isolate Down / Retransmission SASE paths"
                                         >
@@ -4200,13 +4214,13 @@ function TopologyContent({ token }: TopologyProps) {
                                                 <span>Down / Retransmission</span>
                                             </div>
                                             {saseTunnelTypeFilter === 'DOWN' && (
-                                                <span className="text-[8px] font-black uppercase px-1 py-0.2 rounded bg-rose-500/30 text-rose-300">Filtered</span>
+                                                <span className="text-[8px] font-black uppercase px-1 py-0.2 rounded bg-rose-500/30 text-rose-800 dark:text-rose-300">Filtered</span>
                                             )}
                                         </button>
 
                                         <div className="pt-1 mt-1 border-t border-border/50 flex items-center justify-between text-[9px] text-text-muted font-mono">
-                                            <span className="text-purple-400 font-bold">LEFT: Prisma Access</span>
-                                            <span className="text-blue-400 font-bold">RIGHT: Zscaler</span>
+                                            <span className="text-purple-700 dark:text-purple-400 font-bold">LEFT: Prisma Access</span>
+                                            <span className="text-blue-700 dark:text-blue-400 font-bold">RIGHT: Zscaler</span>
                                         </div>
                                     </>
                                 ) : (
@@ -5063,16 +5077,16 @@ function TopologyContent({ token }: TopologyProps) {
 <div className="space-y-5">
                                             {/* SASE PoP Banner with Official Brand Logo */}
                                             <div className={cn(
-                                                "border p-5 rounded-2xl flex flex-col items-center gap-3 shadow-lg",
+                                                "border p-5 rounded-2xl flex flex-col items-center gap-3 shadow-lg transition-colors",
                                                 selectedObject.provider === 'Prisma Access'
-                                                    ? "bg-purple-950/20 border-purple-500/30 shadow-purple-500/10"
-                                                    : "bg-blue-950/20 border-blue-500/30 shadow-blue-500/10"
+                                                    ? "bg-gradient-to-b from-purple-50/90 to-white dark:bg-purple-950/20 border-purple-200 dark:border-purple-500/30 shadow-purple-500/5 dark:shadow-purple-500/10"
+                                                    : "bg-gradient-to-b from-blue-50/90 to-white dark:bg-blue-950/20 border-blue-200 dark:border-blue-500/30 shadow-blue-500/5 dark:shadow-blue-500/10"
                                             )}>
                                                 <div className={cn(
-                                                    "p-3 rounded-2xl shadow-xl flex items-center justify-center border",
+                                                    "p-3 rounded-2xl shadow-md flex items-center justify-center border",
                                                     selectedObject.provider === 'Prisma Access'
-                                                        ? "bg-white/10 border-purple-500/40 shadow-purple-900/50"
-                                                        : "bg-white/10 border-blue-500/40 shadow-blue-900/50"
+                                                        ? "bg-white dark:bg-white/10 border-purple-300 dark:border-purple-500/40 shadow-purple-900/10 dark:shadow-purple-900/50"
+                                                        : "bg-white dark:bg-white/10 border-blue-300 dark:border-blue-500/40 shadow-blue-900/10 dark:shadow-blue-900/50"
                                                 )}>
                                                     {selectedObject.provider === 'Prisma Access' ? (
                                                         <img src="/prisma-access.png" alt="Prisma Access" className="w-12 h-12 object-contain filter drop-shadow-md" />
@@ -5084,7 +5098,7 @@ function TopologyContent({ token }: TopologyProps) {
                                                     <div className="text-lg font-black text-text-primary tracking-tight leading-tight">{selectedObject.name}</div>
                                                     <div className={cn(
                                                         "text-[10px] font-bold tracking-[0.15em] mt-1.5 uppercase",
-                                                        selectedObject.provider === 'Prisma Access' ? "text-purple-400" : "text-cyan-400"
+                                                        selectedObject.provider === 'Prisma Access' ? "text-purple-700 dark:text-purple-400" : "text-sky-700 dark:text-cyan-400"
                                                     )}>
                                                         {selectedObject.provider === 'Prisma Access' ? 'PALO ALTO NETWORKS · PRISMA ACCESS POP' : 'ZSCALER INC · CLOUD SECURITY (ZIA)'}
                                                     </div>
@@ -5093,22 +5107,22 @@ function TopologyContent({ token }: TopologyProps) {
 
                                             {/* Key Specs 4-Grid */}
                                             <div className="grid grid-cols-2 gap-3">
-                                                <div className="bg-card-secondary/40 p-3 rounded-xl border border-border/60 space-y-1">
+                                                <div className="bg-card-secondary/60 dark:bg-card-secondary/40 p-3 rounded-xl border border-border/80 dark:border-border/60 space-y-1">
                                                     <div className="text-[9px] font-black text-text-muted uppercase tracking-widest">Gateway SPN IP</div>
-                                                    <div className="text-xs font-mono font-bold text-cyan-400">{selectedObject.primary_peer_ip || 'Anycast'}</div>
+                                                    <div className="text-xs font-mono font-bold text-sky-700 dark:text-cyan-400">{selectedObject.primary_peer_ip || 'Anycast'}</div>
                                                 </div>
-                                                <div className="bg-card-secondary/40 p-3 rounded-xl border border-border/60 space-y-1">
+                                                <div className="bg-card-secondary/60 dark:bg-card-secondary/40 p-3 rounded-xl border border-border/80 dark:border-border/60 space-y-1">
                                                     <div className="text-[9px] font-black text-text-muted uppercase tracking-widest">Liveliness Probe</div>
-                                                    <div className="text-xs font-mono font-bold text-emerald-400">{selectedObject.liveliness_probe_ip || '192.168.255.254'}</div>
+                                                    <div className="text-xs font-mono font-bold text-emerald-700 dark:text-emerald-400">{selectedObject.liveliness_probe_ip || '192.168.255.254'}</div>
                                                 </div>
-                                                <div className="bg-card-secondary/40 p-3 rounded-xl border border-border/60 space-y-1">
+                                                <div className="bg-card-secondary/60 dark:bg-card-secondary/40 p-3 rounded-xl border border-border/80 dark:border-border/60 space-y-1">
                                                     <div className="text-[9px] font-black text-text-muted uppercase tracking-widest">Probe Latency (ICMP)</div>
-                                                    <div className="text-xs font-mono font-bold text-emerald-400 flex items-center gap-1.5">
-                                                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                                                    <div className="text-xs font-mono font-bold text-emerald-700 dark:text-emerald-400 flex items-center gap-1.5">
+                                                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
                                                         {selectedObject.latency_ms || (selectedObject.id === 'prisma-france-south' ? 9 : 21)} ms
                                                     </div>
                                                 </div>
-                                                <div className="bg-card-secondary/40 p-3 rounded-xl border border-border/60 space-y-1">
+                                                <div className="bg-card-secondary/60 dark:bg-card-secondary/40 p-3 rounded-xl border border-border/80 dark:border-border/60 space-y-1">
                                                     <div className="text-[9px] font-black text-text-muted uppercase tracking-widest">Cluster Health</div>
                                                     <div className="text-xs font-mono font-bold text-text-primary">
                                                         {selectedObject.tunnels_up || 0}/{selectedObject.tunnels_total || 0} Tunnels Up
@@ -5174,11 +5188,11 @@ function TopologyContent({ token }: TopologyProps) {
                                                                 className={cn(
                                                                     "p-2.5 rounded-xl border text-left transition-all cursor-pointer flex flex-col",
                                                                     popTunnelFilter === 'ACTIVE'
-                                                                        ? "bg-emerald-500/20 border-emerald-500 text-white shadow-md shadow-emerald-500/20"
-                                                                        : "bg-card-secondary/40 border-border/60 hover:bg-card-secondary"
+                                                                        ? "bg-emerald-50 dark:bg-emerald-500/20 border-emerald-500 text-emerald-950 dark:text-white shadow-md shadow-emerald-500/10 dark:shadow-emerald-500/20"
+                                                                        : "bg-card-secondary/60 dark:bg-card-secondary/40 border-border/80 dark:border-border/60 hover:bg-card-secondary"
                                                                 )}
                                                             >
-                                                                <span className="text-[9px] font-black uppercase text-emerald-400">Active UP</span>
+                                                                <span className="text-[9px] font-black uppercase text-emerald-700 dark:text-emerald-400">Active UP</span>
                                                                 <span className="text-base font-black text-text-primary mt-0.5">{activeUp.length}</span>
                                                             </button>
 
@@ -5187,11 +5201,11 @@ function TopologyContent({ token }: TopologyProps) {
                                                                 className={cn(
                                                                     "p-2.5 rounded-xl border text-left transition-all cursor-pointer flex flex-col",
                                                                     popTunnelFilter === 'BACKUP'
-                                                                        ? "bg-cyan-500/20 border-cyan-500 text-white shadow-md shadow-cyan-500/20"
-                                                                        : "bg-card-secondary/40 border-border/60 hover:bg-card-secondary"
+                                                                        ? "bg-sky-50 dark:bg-cyan-500/20 border-sky-500 dark:border-cyan-500 text-sky-950 dark:text-white shadow-md shadow-sky-500/10 dark:shadow-cyan-500/20"
+                                                                        : "bg-card-secondary/60 dark:bg-card-secondary/40 border-border/80 dark:border-border/60 hover:bg-card-secondary"
                                                                 )}
                                                             >
-                                                                <span className="text-[9px] font-black uppercase text-cyan-400">Backup UP</span>
+                                                                <span className="text-[9px] font-black uppercase text-sky-700 dark:text-cyan-400">Backup UP</span>
                                                                 <span className="text-base font-black text-text-primary mt-0.5">{backupUp.length}</span>
                                                             </button>
 
@@ -5200,11 +5214,11 @@ function TopologyContent({ token }: TopologyProps) {
                                                                 className={cn(
                                                                     "p-2.5 rounded-xl border text-left transition-all cursor-pointer flex flex-col",
                                                                     popTunnelFilter === 'DOWN'
-                                                                        ? "bg-rose-500/20 border-rose-500 text-white shadow-md shadow-rose-500/20"
-                                                                        : "bg-card-secondary/40 border-border/60 hover:bg-card-secondary"
+                                                                        ? "bg-rose-50 dark:bg-rose-500/20 border-rose-500 text-rose-950 dark:text-white shadow-md shadow-rose-500/10 dark:shadow-rose-500/20"
+                                                                        : "bg-card-secondary/60 dark:bg-card-secondary/40 border-border/80 dark:border-border/60 hover:bg-card-secondary"
                                                                 )}
                                                             >
-                                                                <span className="text-[9px] font-black uppercase text-rose-400">Down / Stdby</span>
+                                                                <span className="text-[9px] font-black uppercase text-rose-700 dark:text-rose-400">Down / Stdby</span>
                                                                 <span className="text-base font-black text-text-primary mt-0.5">{downOrStandby.length}</span>
                                                             </button>
                                                         </div>
@@ -5853,16 +5867,16 @@ function TopologyContent({ token }: TopologyProps) {
                                                 const isPrisma = selectedObject.provider === 'Prisma Access';
                                                 return (
                                                     <div className={cn(
-                                                        "border p-5 rounded-2xl flex flex-col items-center gap-3 shadow-lg",
+                                                        "border p-5 rounded-2xl flex flex-col items-center gap-3 shadow-lg transition-colors",
                                                         isPrisma
-                                                            ? "bg-purple-950/20 border-purple-500/30 shadow-purple-500/10"
-                                                            : "bg-blue-950/20 border-blue-500/30 shadow-blue-500/10"
+                                                            ? "bg-gradient-to-b from-purple-50/90 to-white dark:bg-purple-950/20 border-purple-200 dark:border-purple-500/30 shadow-purple-500/5 dark:shadow-purple-500/10"
+                                                            : "bg-gradient-to-b from-blue-50/90 to-white dark:bg-blue-950/20 border-blue-200 dark:border-blue-500/30 shadow-blue-500/5 dark:shadow-blue-500/10"
                                                     )}>
                                                         <div className={cn(
-                                                            "p-2.5 rounded-2xl shadow-xl flex items-center justify-center border",
+                                                            "p-2.5 rounded-2xl shadow-md flex items-center justify-center border",
                                                             isPrisma
-                                                                ? "bg-white/10 border-purple-500/40 shadow-purple-900/50"
-                                                                : "bg-white/10 border-blue-500/40 shadow-blue-900/50"
+                                                                ? "bg-white dark:bg-white/10 border-purple-300 dark:border-purple-500/40 shadow-purple-900/10 dark:shadow-purple-900/50"
+                                                                : "bg-white dark:bg-white/10 border-blue-300 dark:border-blue-500/40 shadow-blue-900/10 dark:shadow-blue-900/50"
                                                         )}>
                                                             {isPrisma ? (
                                                                 <img src="/prisma-access.png" alt="Prisma Access" className="w-10 h-10 object-contain filter drop-shadow" />
@@ -5875,7 +5889,10 @@ function TopologyContent({ token }: TopologyProps) {
                                                             <div className="text-[10px] font-mono text-text-muted mt-0.5 truncate max-w-[340px]" title={selectedObject.name}>
                                                                 Device: {selectedObject.device} · {selectedObject.name}
                                                             </div>
-                                                            <div className="text-[10px] text-purple-400 font-bold tracking-[0.15em] mt-1 uppercase">
+                                                            <div className={cn(
+                                                                "text-[10px] font-bold tracking-[0.15em] mt-1 uppercase",
+                                                                isPrisma ? "text-purple-700 dark:text-purple-400" : "text-sky-700 dark:text-cyan-400"
+                                                            )}>
                                                                 {selectedObject.provider} · {selectedObject.role?.toUpperCase()} PATH
                                                             </div>
                                                         </div>
@@ -5887,50 +5904,50 @@ function TopologyContent({ token }: TopologyProps) {
                                             <div className={cn(
                                                 "p-3 rounded-xl border flex items-center justify-between text-xs font-bold",
                                                 selectedObject.operational_state === 'up'
-                                                    ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-400"
-                                                    : "bg-rose-500/10 border-rose-500/30 text-rose-400"
+                                                    ? "bg-emerald-50 dark:bg-emerald-500/10 border-emerald-300 dark:border-emerald-500/30 text-emerald-800 dark:text-emerald-400"
+                                                    : "bg-rose-50 dark:bg-rose-500/10 border-rose-300 dark:border-rose-500/30 text-rose-800 dark:text-rose-400"
                                             )}>
                                                 <div className="flex items-center gap-2">
-                                                    <span className={cn("w-2 h-2 rounded-full", selectedObject.operational_state === 'up' ? "bg-emerald-400 animate-pulse" : "bg-rose-400")} />
+                                                    <span className={cn("w-2 h-2 rounded-full", selectedObject.operational_state === 'up' ? "bg-emerald-500 animate-pulse" : "bg-rose-500")} />
                                                     <span>STATUS: {selectedObject.extended_state || selectedObject.operational_state}</span>
                                                 </div>
-                                                <span className="font-mono text-[10px] px-2 py-0.5 rounded bg-black/20">
+                                                <span className="font-mono text-[10px] px-2 py-0.5 rounded bg-black/5 dark:bg-black/20 text-text-secondary">
                                                     Device: {selectedObject.device}
                                                 </span>
                                             </div>
 
                                             {/* Key Specs Grid */}
                                             <div className="grid grid-cols-2 gap-3">
-                                                <div className="bg-card-secondary/40 p-3.5 rounded-xl border border-border/60 space-y-1">
+                                                <div className="bg-card-secondary/60 dark:bg-card-secondary/40 p-3.5 rounded-xl border border-border/80 dark:border-border/60 space-y-1">
                                                     <div className="text-[9px] font-black text-text-muted uppercase tracking-widest">Remote Gateway (SPN)</div>
-                                                    <div className="text-xs font-mono font-bold text-cyan-400">{selectedObject.remote_ip || 'N/A'}</div>
+                                                    <div className="text-xs font-mono font-bold text-sky-700 dark:text-cyan-400">{selectedObject.remote_ip || 'N/A'}</div>
                                                 </div>
-                                                <div className="bg-card-secondary/40 p-3.5 rounded-xl border border-border/60 space-y-1">
+                                                <div className="bg-card-secondary/60 dark:bg-card-secondary/40 p-3.5 rounded-xl border border-border/80 dark:border-border/60 space-y-1">
                                                     <div className="text-[9px] font-black text-text-muted uppercase tracking-widest">Local Tunnel IP</div>
                                                     <div className="text-xs font-mono font-bold text-text-primary">{selectedObject.local_ip || 'N/A'}</div>
                                                 </div>
-                                                <div className="bg-card-secondary/40 p-3.5 rounded-xl border border-border/60 space-y-1">
+                                                <div className="bg-card-secondary/60 dark:bg-card-secondary/40 p-3.5 rounded-xl border border-border/80 dark:border-border/60 space-y-1">
                                                     <div className="text-[9px] font-black text-text-muted uppercase tracking-widest">Inside Subnet (/31)</div>
-                                                    <div className="text-xs font-mono font-bold text-amber-400">{selectedObject.inside_ip || 'N/A'}</div>
+                                                    <div className="text-xs font-mono font-bold text-amber-700 dark:text-amber-400">{selectedObject.inside_ip || 'N/A'}</div>
                                                 </div>
-                                                <div className="bg-card-secondary/40 p-3.5 rounded-xl border border-border/60 space-y-1">
+                                                <div className="bg-card-secondary/60 dark:bg-card-secondary/40 p-3.5 rounded-xl border border-border/80 dark:border-border/60 space-y-1">
                                                     <div className="text-[9px] font-black text-text-muted uppercase tracking-widest">Liveliness Probe</div>
-                                                    <div className="text-xs font-mono font-bold text-emerald-400">{selectedObject.liveliness_probe_ip || '192.168.255.254'}</div>
+                                                    <div className="text-xs font-mono font-bold text-emerald-700 dark:text-emerald-400">{selectedObject.liveliness_probe_ip || '192.168.255.254'}</div>
                                                 </div>
                                             </div>
 
                                             {/* Real-time Telemetry: Uptime & Latency */}
                                             <div className="grid grid-cols-2 gap-3">
-                                                <div className="bg-card-secondary/40 p-3.5 rounded-xl border border-border/60 space-y-1">
+                                                <div className="bg-card-secondary/60 dark:bg-card-secondary/40 p-3.5 rounded-xl border border-border/80 dark:border-border/60 space-y-1">
                                                     <div className="text-[9px] font-black text-text-muted uppercase tracking-widest">Tunnel Uptime</div>
-                                                    <div className="text-xs font-mono font-bold text-emerald-400">
+                                                    <div className="text-xs font-mono font-bold text-emerald-700 dark:text-emerald-400">
                                                         {selectedObject.uptime_str || 'Active (UP)'}
                                                     </div>
                                                 </div>
-                                                <div className="bg-card-secondary/40 p-3.5 rounded-xl border border-border/60 space-y-1">
+                                                <div className="bg-card-secondary/60 dark:bg-card-secondary/40 p-3.5 rounded-xl border border-border/80 dark:border-border/60 space-y-1">
                                                     <div className="text-[9px] font-black text-text-muted uppercase tracking-widest">Probe Latency (ICMP)</div>
-                                                    <div className="text-xs font-mono font-bold text-cyan-400 flex items-center gap-1.5">
-                                                        <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse" />
+                                                    <div className="text-xs font-mono font-bold text-sky-700 dark:text-cyan-400 flex items-center gap-1.5">
+                                                        <span className="w-1.5 h-1.5 rounded-full bg-sky-500 animate-pulse" />
                                                         {selectedObject.latency_ms || (selectedObject.service_endpoint_name?.toLowerCase().includes('ireland') ? 21 : 9)} ms
                                                     </div>
                                                 </div>

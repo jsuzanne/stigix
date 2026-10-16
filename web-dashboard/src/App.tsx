@@ -1839,7 +1839,7 @@ export default function App() {
           setView('settings');
         }} />
       )}
-      {view === 'topology' && <Topology token={token!} />}
+      {view === 'topology' && <Topology token={token!} theme={theme} />}
       {view === 'security' && <Security token={token!} onGoToCloudSettings={() => {
         setView('settings');
         setTimeout(() => {
