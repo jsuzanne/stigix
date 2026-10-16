@@ -12,6 +12,7 @@ import type { TargetDefinition } from './types/targets';
 
 interface PacketCaptureProps {
     token: string;
+    localSiteName?: string;
     onNavigateToReplay?: () => void;
 }
 
@@ -267,7 +268,7 @@ function TargetBadge({ target, onClick }: { target: ResolvedTarget; onClick?: (l
     );
 }
 
-export default function PacketCapture({ token, onNavigateToReplay }: PacketCaptureProps) {
+export default function PacketCapture({ token, localSiteName, onNavigateToReplay }: PacketCaptureProps) {
     const { gFetch, activePeerId, activePeer, peers } = usePeerContext();
 
     const authHeaders = useMemo(() => ({
@@ -411,6 +412,69 @@ export default function PacketCapture({ token, onNavigateToReplay }: PacketCaptu
     const [openDropdown, setOpenDropdown] = useState<'interface' | 'preset' | 'duration' | 'limit' | null>(null);
     const [showVirtualInterfaces, setShowVirtualInterfaces] = useState<boolean>(false);
     const dropdownBarRef = useRef<HTMLDivElement>(null);
+
+    // Draggable Column Widths for Virtual Packet Table
+    const DEFAULT_COL_WIDTHS = useMemo(() => ({
+        no: 56,
+        time: 95,
+        source: 195,
+        srcTarget: 145,
+        destination: 195,
+        dstTarget: 145,
+        protocol: 80,
+        length: 70,
+        info: 380
+    }), []);
+
+    const [colWidths, setColWidths] = useState<Record<string, number>>(() => {
+        try {
+            const saved = localStorage.getItem('stigix_pcap_col_widths');
+            if (saved) return { ...DEFAULT_COL_WIDTHS, ...JSON.parse(saved) };
+        } catch {}
+        return DEFAULT_COL_WIDTHS;
+    });
+
+    // Save column widths to localStorage
+    useEffect(() => {
+        try {
+            localStorage.setItem('stigix_pcap_col_widths', JSON.stringify(colWidths));
+        } catch {}
+    }, [colWidths]);
+
+    const resizingRef = useRef<{ colKey: string; startX: number; startWidth: number } | null>(null);
+
+    const handleMouseDownResize = useCallback((colKey: string, e: React.MouseEvent) => {
+        e.preventDefault();
+        e.stopPropagation();
+        resizingRef.current = {
+            colKey,
+            startX: e.clientX,
+            startWidth: colWidths[colKey] || 100
+        };
+
+        const handleMouseMove = (moveEvent: MouseEvent) => {
+            if (!resizingRef.current) return;
+            const diff = moveEvent.clientX - resizingRef.current.startX;
+            const newWidth = Math.max(35, resizingRef.current.startWidth + diff);
+            setColWidths(prev => ({ ...prev, [resizingRef.current!.colKey]: newWidth }));
+        };
+
+        const handleMouseUp = () => {
+            resizingRef.current = null;
+            document.removeEventListener('mousemove', handleMouseMove);
+            document.removeEventListener('mouseup', handleMouseUp);
+        };
+
+        document.addEventListener('mousemove', handleMouseMove);
+        document.addEventListener('mouseup', handleMouseUp);
+    }, [colWidths]);
+
+    const handleResetColWidths = useCallback(() => {
+        setColWidths(DEFAULT_COL_WIDTHS);
+        try {
+            localStorage.removeItem('stigix_pcap_col_widths');
+        } catch {}
+    }, [DEFAULT_COL_WIDTHS]);
 
     useEffect(() => {
         if (!openDropdown) return;
@@ -849,14 +913,14 @@ export default function PacketCapture({ token, onNavigateToReplay }: PacketCaptu
 
         // 1. Determine local node site name
         const leaderPeer = peers.find(p => p.is_leader);
-        const localSite = activePeer?.site || leaderPeer?.site || 'Local';
+        const localSite = localSiteName || activePeer?.site || leaderPeer?.site || 'BR8';
 
         // 2. Register local node interfaces
         interfaces.forEach(iface => {
             const clean = cleanHost(iface.ip);
             if (clean && clean !== '-' && clean !== '0.0.0.0') {
                 map.set(clean, {
-                    label: `${localSite} (Local)`,
+                    label: localSite,
                     isKnownTarget: true,
                     isLocal: true,
                     type: 'local'
@@ -867,7 +931,7 @@ export default function PacketCapture({ token, onNavigateToReplay }: PacketCaptu
             const clean = cleanHost(activePeer.ip_private);
             if (clean) {
                 map.set(clean, {
-                    label: `${localSite} (Local)`,
+                    label: localSite,
                     isKnownTarget: true,
                     isLocal: true,
                     type: 'local'
@@ -879,7 +943,7 @@ export default function PacketCapture({ token, onNavigateToReplay }: PacketCaptu
         peers.forEach(peer => {
             const isLocal = Boolean(activePeer?.instance_id ? peer.instance_id === activePeer.instance_id : peer.is_leader);
             const siteName = peer.site || peer.instance_id;
-            const label = isLocal ? `${siteName} (Local)` : siteName;
+            const label = isLocal ? localSite : siteName;
             if (peer.ip_private) {
                 const clean = cleanHost(peer.ip_private);
                 if (clean && !map.has(clean)) {
@@ -1613,18 +1677,90 @@ export default function PacketCapture({ token, onNavigateToReplay }: PacketCaptu
                 {/* PANE 1: Virtual Packet Table */}
                 <div className="bg-card border border-border rounded-2xl overflow-hidden shadow-sm">
                     <div className="h-64 sm:h-72 lg:h-80 overflow-y-auto overflow-x-auto font-mono text-xs scrollbar-thin scrollbar-thumb-border">
-                        <table className="w-full text-left border-collapse table-fixed min-w-[1040px]">
-                            <thead className="sticky top-0 bg-card-secondary/95 backdrop-blur border-b border-border text-[9px] uppercase tracking-wider text-text-muted z-10">
+                        <table className="w-full text-left border-collapse min-w-[1100px]">
+                            <thead className="sticky top-0 bg-card-secondary/95 backdrop-blur border-b border-border text-[9px] uppercase tracking-wider text-text-muted z-10 select-none">
                                 <tr>
-                                    <th className="py-2 px-3 w-14 shrink-0 font-bold">No.</th>
-                                    <th className="py-2 px-3 w-24 shrink-0 font-bold">Time (s)</th>
-                                    <th className="py-2 px-3 w-36 shrink-0 font-bold">Source</th>
-                                    <th className="py-2 px-3 w-32 shrink-0 font-bold">Src Target</th>
-                                    <th className="py-2 px-3 w-36 shrink-0 font-bold">Destination</th>
-                                    <th className="py-2 px-3 w-32 shrink-0 font-bold">Dst Target</th>
-                                    <th className="py-2 px-3 w-20 shrink-0 font-bold">Protocol</th>
-                                    <th className="py-2 px-3 w-16 shrink-0 font-bold">Length</th>
-                                    <th className="py-2 px-3 min-w-[200px] font-bold">Info</th>
+                                    <th style={{ width: colWidths.no, minWidth: colWidths.no }} className="relative py-2 px-3 font-bold group">
+                                        <span>No.</span>
+                                        <div
+                                            onMouseDown={(e) => handleMouseDownResize('no', e)}
+                                            onDoubleClick={handleResetColWidths}
+                                            title="Drag to resize, double-click to reset widths"
+                                            className="absolute right-0 top-0 bottom-0 w-1.5 cursor-col-resize hover:bg-cyan-500/60 active:bg-cyan-500 transition-colors z-20"
+                                        />
+                                    </th>
+                                    <th style={{ width: colWidths.time, minWidth: colWidths.time }} className="relative py-2 px-3 font-bold group">
+                                        <span>Time (s)</span>
+                                        <div
+                                            onMouseDown={(e) => handleMouseDownResize('time', e)}
+                                            onDoubleClick={handleResetColWidths}
+                                            title="Drag to resize, double-click to reset widths"
+                                            className="absolute right-0 top-0 bottom-0 w-1.5 cursor-col-resize hover:bg-cyan-500/60 active:bg-cyan-500 transition-colors z-20"
+                                        />
+                                    </th>
+                                    <th style={{ width: colWidths.source, minWidth: colWidths.source }} className="relative py-2 px-3 font-bold group">
+                                        <span>Source</span>
+                                        <div
+                                            onMouseDown={(e) => handleMouseDownResize('source', e)}
+                                            onDoubleClick={handleResetColWidths}
+                                            title="Drag to resize, double-click to reset widths"
+                                            className="absolute right-0 top-0 bottom-0 w-1.5 cursor-col-resize hover:bg-cyan-500/60 active:bg-cyan-500 transition-colors z-20"
+                                        />
+                                    </th>
+                                    <th style={{ width: colWidths.srcTarget, minWidth: colWidths.srcTarget }} className="relative py-2 px-3 font-bold group">
+                                        <span>Src Target</span>
+                                        <div
+                                            onMouseDown={(e) => handleMouseDownResize('srcTarget', e)}
+                                            onDoubleClick={handleResetColWidths}
+                                            title="Drag to resize, double-click to reset widths"
+                                            className="absolute right-0 top-0 bottom-0 w-1.5 cursor-col-resize hover:bg-cyan-500/60 active:bg-cyan-500 transition-colors z-20"
+                                        />
+                                    </th>
+                                    <th style={{ width: colWidths.destination, minWidth: colWidths.destination }} className="relative py-2 px-3 font-bold group">
+                                        <span>Destination</span>
+                                        <div
+                                            onMouseDown={(e) => handleMouseDownResize('destination', e)}
+                                            onDoubleClick={handleResetColWidths}
+                                            title="Drag to resize, double-click to reset widths"
+                                            className="absolute right-0 top-0 bottom-0 w-1.5 cursor-col-resize hover:bg-cyan-500/60 active:bg-cyan-500 transition-colors z-20"
+                                        />
+                                    </th>
+                                    <th style={{ width: colWidths.dstTarget, minWidth: colWidths.dstTarget }} className="relative py-2 px-3 font-bold group">
+                                        <span>Dst Target</span>
+                                        <div
+                                            onMouseDown={(e) => handleMouseDownResize('dstTarget', e)}
+                                            onDoubleClick={handleResetColWidths}
+                                            title="Drag to resize, double-click to reset widths"
+                                            className="absolute right-0 top-0 bottom-0 w-1.5 cursor-col-resize hover:bg-cyan-500/60 active:bg-cyan-500 transition-colors z-20"
+                                        />
+                                    </th>
+                                    <th style={{ width: colWidths.protocol, minWidth: colWidths.protocol }} className="relative py-2 px-3 font-bold group">
+                                        <span>Protocol</span>
+                                        <div
+                                            onMouseDown={(e) => handleMouseDownResize('protocol', e)}
+                                            onDoubleClick={handleResetColWidths}
+                                            title="Drag to resize, double-click to reset widths"
+                                            className="absolute right-0 top-0 bottom-0 w-1.5 cursor-col-resize hover:bg-cyan-500/60 active:bg-cyan-500 transition-colors z-20"
+                                        />
+                                    </th>
+                                    <th style={{ width: colWidths.length, minWidth: colWidths.length }} className="relative py-2 px-3 font-bold group">
+                                        <span>Length</span>
+                                        <div
+                                            onMouseDown={(e) => handleMouseDownResize('length', e)}
+                                            onDoubleClick={handleResetColWidths}
+                                            title="Drag to resize, double-click to reset widths"
+                                            className="absolute right-0 top-0 bottom-0 w-1.5 cursor-col-resize hover:bg-cyan-500/60 active:bg-cyan-500 transition-colors z-20"
+                                        />
+                                    </th>
+                                    <th style={{ width: colWidths.info, minWidth: colWidths.info }} className="relative py-2 px-3 font-bold group">
+                                        <span>Info</span>
+                                        <div
+                                            onMouseDown={(e) => handleMouseDownResize('info', e)}
+                                            onDoubleClick={handleResetColWidths}
+                                            title="Drag to resize, double-click to reset widths"
+                                            className="absolute right-0 top-0 bottom-0 w-1.5 cursor-col-resize hover:bg-cyan-500/60 active:bg-cyan-500 transition-colors z-20"
+                                        />
+                                    </th>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-border/20">
@@ -1674,33 +1810,39 @@ export default function PacketCapture({ token, onNavigateToReplay }: PacketCaptu
                                                         : 'hover:bg-card-hover/60 text-text-secondary'
                                                 }`}
                                             >
-                                                <td className="py-1.5 px-3 text-text-muted truncate w-14">{pkt.no}</td>
-                                                <td className="py-1.5 px-3 text-text-muted truncate w-24">{pkt.time.toFixed(6)}</td>
-                                                <td className="py-1.5 px-3 text-text-primary truncate w-36" title={pkt.source}>
+                                                <td style={{ width: colWidths.no, minWidth: colWidths.no }} className="py-1.5 px-3 text-text-muted truncate">
+                                                    {pkt.no}
+                                                </td>
+                                                <td style={{ width: colWidths.time, minWidth: colWidths.time }} className="py-1.5 px-3 text-text-muted truncate">
+                                                    {pkt.time.toFixed(6)}
+                                                </td>
+                                                <td style={{ width: colWidths.source, minWidth: colWidths.source }} className="py-1.5 px-3 text-text-primary truncate" title={pkt.source + (pkt.sport ? `:${pkt.sport}` : '')}>
                                                     {pkt.source}{pkt.sport ? `:${pkt.sport}` : ''}
                                                 </td>
-                                                <td className="py-1.5 px-3 truncate w-32">
+                                                <td style={{ width: colWidths.srcTarget, minWidth: colWidths.srcTarget }} className="py-1.5 px-3 truncate">
                                                     <TargetBadge
                                                         target={srcTarget}
                                                         onClick={(lbl) => setDisplayFilter(prev => prev === lbl ? '' : lbl)}
                                                     />
                                                 </td>
-                                                <td className="py-1.5 px-3 text-text-primary truncate w-36" title={pkt.destination}>
+                                                <td style={{ width: colWidths.destination, minWidth: colWidths.destination }} className="py-1.5 px-3 text-text-primary truncate" title={pkt.destination + (pkt.dport ? `:${pkt.dport}` : '')}>
                                                     {pkt.destination}{pkt.dport ? `:${pkt.dport}` : ''}
                                                 </td>
-                                                <td className="py-1.5 px-3 truncate w-32">
+                                                <td style={{ width: colWidths.dstTarget, minWidth: colWidths.dstTarget }} className="py-1.5 px-3 truncate">
                                                     <TargetBadge
                                                         target={dstTarget}
                                                         onClick={(lbl) => setDisplayFilter(prev => prev === lbl ? '' : lbl)}
                                                     />
                                                 </td>
-                                                <td className="py-1.5 px-3 w-20">
+                                                <td style={{ width: colWidths.protocol, minWidth: colWidths.protocol }} className="py-1.5 px-3">
                                                     <span className={`px-1.5 py-0.5 rounded text-[9px] font-black uppercase border ${getProtoColorClass(pkt.protocol, pkt.info)}`}>
                                                         {pkt.protocol}
                                                     </span>
                                                 </td>
-                                                <td className="py-1.5 px-3 text-text-muted truncate w-16">{pkt.length}</td>
-                                                <td className="py-1.5 px-3 truncate max-w-md font-mono text-[11px]" title={pkt.info}>
+                                                <td style={{ width: colWidths.length, minWidth: colWidths.length }} className="py-1.5 px-3 text-text-muted truncate">
+                                                    {pkt.length}
+                                                </td>
+                                                <td style={{ width: colWidths.info, minWidth: colWidths.info }} className="py-1.5 px-3 truncate font-mono text-[11px]" title={pkt.info}>
                                                     {pkt.info}
                                                 </td>
                                             </tr>

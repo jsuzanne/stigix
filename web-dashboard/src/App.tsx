@@ -257,9 +257,15 @@ export default function App() {
     }
   );
 
-  const handleNavigate = (viewId: string, subTab?: string) => {
+  const [initialSettingsTab, setInitialSettingsTab] = useState<any>(null);
+  const [initialSettingsSubSection, setInitialSettingsSubSection] = useState<string | null>(null);
+
+  const handleNavigate = (viewId: string, subTab?: string, subSection?: string) => {
     if (subTab) {
       setInitialSettingsTab(subTab);
+    }
+    if (subSection !== undefined) {
+      setInitialSettingsSubSection(subSection || null);
     }
     setView(viewId as any);
     try {
@@ -268,7 +274,6 @@ export default function App() {
   };
 
   const [features, setFeatures] = useState<{ xfr_enabled: boolean }>({ xfr_enabled: false });
-  const [initialSettingsTab, setInitialSettingsTab] = useState<any>(null);
   const [copilotDrawerOpen, setCopilotDrawerOpen] = useState(false);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [copilotConfig, setCopilotConfig] = useState<{ enabled: boolean; featureEnabled?: boolean; hasKey: boolean } | null>(null);
@@ -1850,7 +1855,7 @@ export default function App() {
       {view === 'iot' && <Iot token={token!} />}
       {view === 'voice' && <Voice token={token!} externalStatus={globalVoiceStatus} />}
       {(view === 'failover' || view === 'convergence') && <Failover token={token!} externalStatus={globalConvStatus} />}
-      {view === 'settings' && <SettingsComponent token={token!} uiConfig={uiConfig} onUpdateUIConfig={fetchConfigUi} onUpdateCopilotConfig={fetchCopilotConfig} initialTab={initialSettingsTab} onOpenNodeRoleModal={() => setShowNodeRoleModal(true)} />}
+      {view === 'settings' && <SettingsComponent token={token!} uiConfig={uiConfig} onUpdateUIConfig={fetchConfigUi} onUpdateCopilotConfig={fetchCopilotConfig} initialTab={initialSettingsTab} initialSubSection={initialSettingsSubSection} onOpenNodeRoleModal={() => setShowNodeRoleModal(true)} />}
       {view === 'custom_apps' && <CustomApps token={token!} />}
       {view === 'multicast' && (
         <MulticastOverlayTab
@@ -1860,7 +1865,7 @@ export default function App() {
         />
       )}
       {view === 'pcap_replay' && isPcapEnabled && <PcapReplay token={token!} />}
-      {view === 'packet_capture' && <PacketCapture token={token!} onNavigateToReplay={() => setView('pcap_replay')} />}
+      {view === 'packet_capture' && <PacketCapture token={token!} localSiteName={siteInfo?.detected_site_name || registryStatus?.site_name || (isLeader ? 'DC1' : 'BR8')} onNavigateToReplay={() => setView('pcap_replay')} />}
       {view === 'speedtest' && features.xfr_enabled && <Speedtest token={token!} />}
       {view === 'events' && <LiveEvents token={token!} />}
       {copilotConfig?.featureEnabled && copilotConfig?.hasKey && view === 'copilot' && <Copilot token={token!} onOpenSettings={() => { setInitialSettingsTab('mcp'); setView('settings'); }} />}

@@ -2,7 +2,7 @@ import React from 'react';
 import {
     Activity, Server, Cloud, Cpu, Layers,
     Zap, RefreshCw, Phone, LineChart,
-    Shield, Network, Globe, Gauge, Boxes
+    Shield, Network, Globe, Gauge, Boxes, HardDrive
 } from 'lucide-react';
 import { cn } from '../../lib/utils';
 
@@ -32,7 +32,7 @@ interface HomeOverviewProps {
     onRunSpeedtest?: () => void;
     runningSpeedtest?: boolean;
     updateAvailable?: boolean;
-    onNavigate: (viewId: string, subTab?: string) => void;
+    onNavigate: (viewId: string, subTab?: string, subSection?: string) => void;
     onOpenDiagnostics?: () => void;
     onOpenNodeRoleModal?: () => void;
 }
@@ -181,6 +181,13 @@ export const HomeOverview: React.FC<HomeOverviewProps> = ({
     const totalMemGb = (totalMemBytes / (1024 * 1024 * 1024)).toFixed(1);
     const usedMemGb = (usedMemBytes / (1024 * 1024 * 1024)).toFixed(1);
     const memUsagePercent = host.memory?.usage_percent || (totalMemBytes > 0 ? Math.round((usedMemBytes / totalMemBytes) * 100) : 0);
+
+    // Host Disk Storage
+    const totalDiskBytes = host.disk?.total || 0;
+    const usedDiskBytes = host.disk?.used || 0;
+    const totalDiskGb = (totalDiskBytes / (1024 * 1024 * 1024)).toFixed(1);
+    const usedDiskGb = (usedDiskBytes / (1024 * 1024 * 1024)).toFixed(1);
+    const diskUsagePercent = host.disk?.usagePercent || (totalDiskBytes > 0 ? Math.round((usedDiskBytes / totalDiskBytes) * 100) : 0);
 
     // Primary Site Name Resolution (Remote Active Peer > Local Site Name > Fleet Leader Site > Hostname)
     const rawSiteName = (activePeerId && (activePeer?.site || activePeer?.instance_id))
@@ -723,10 +730,10 @@ export const HomeOverview: React.FC<HomeOverviewProps> = ({
                             </div>
                         </div>
 
-                        {/* CPU Load Gauge (Interactive Link to System Info) */}
+                        {/* CPU Load Gauge (Interactive Link to System Info Hardware) */}
                         <div
-                            onClick={() => onNavigate('settings', 'system')}
-                            title="Click to view detailed System Info in Settings"
+                            onClick={() => onNavigate('settings', 'system', 'hardware')}
+                            title="Click to view detailed Hardware & CPU metrics in Settings"
                             className="p-4 rounded-xl bg-slate-50 dark:bg-card-secondary/40 hover:bg-slate-100 dark:hover:bg-card-secondary/70 border border-slate-200 dark:border-[#1e293b]/70 hover:border-pink-400 dark:hover:border-pink-500/40 transition-all cursor-pointer group space-y-2"
                         >
                             <div className="flex justify-between text-xs font-bold">
@@ -743,10 +750,10 @@ export const HomeOverview: React.FC<HomeOverviewProps> = ({
                             </div>
                         </div>
 
-                        {/* Memory RAM Gauge (Interactive Link to System Info) */}
+                        {/* Memory RAM Gauge (Interactive Link to System Info Hardware) */}
                         <div
-                            onClick={() => onNavigate('settings', 'system')}
-                            title="Click to view detailed System Info in Settings"
+                            onClick={() => onNavigate('settings', 'system', 'hardware')}
+                            title="Click to view detailed Hardware & RAM metrics in Settings"
                             className="p-4 rounded-xl bg-slate-50 dark:bg-card-secondary/40 hover:bg-slate-100 dark:hover:bg-card-secondary/70 border border-slate-200 dark:border-[#1e293b]/70 hover:border-blue-400 dark:hover:border-blue-500/40 transition-all cursor-pointer group space-y-2"
                         >
                             <div className="flex justify-between text-xs font-bold">
@@ -759,6 +766,38 @@ export const HomeOverview: React.FC<HomeOverviewProps> = ({
                                 <div
                                     className="bg-gradient-to-r from-blue-500 to-indigo-500 h-2 rounded-full transition-all duration-500"
                                     style={{ width: `${Math.min(memUsagePercent, 100)}%` }}
+                                />
+                            </div>
+                        </div>
+
+                        {/* Host Disk Storage Gauge (Interactive Link to System Info Hardware) */}
+                        <div
+                            onClick={() => onNavigate('settings', 'system', 'hardware')}
+                            title="Click to view detailed Hardware & Disk metrics in Settings"
+                            className="p-4 rounded-xl bg-slate-50 dark:bg-card-secondary/40 hover:bg-slate-100 dark:hover:bg-card-secondary/70 border border-slate-200 dark:border-[#1e293b]/70 hover:border-amber-400 dark:hover:border-amber-500/40 transition-all cursor-pointer group space-y-2"
+                        >
+                            <div className="flex justify-between text-xs font-bold">
+                                <span className="text-slate-600 dark:text-text-muted flex items-center gap-1.5 group-hover:text-amber-600 dark:group-hover:text-amber-300 transition-colors">
+                                    <HardDrive size={14} className="text-amber-500 dark:text-amber-400" /> Host Disk Storage
+                                </span>
+                                <span className={cn(
+                                    "font-mono",
+                                    diskUsagePercent >= 90 ? "text-rose-500 dark:text-rose-400 font-black animate-pulse" :
+                                    diskUsagePercent >= 75 ? "text-amber-600 dark:text-amber-400 font-bold" :
+                                    "text-slate-900 dark:text-white"
+                                )}>
+                                    {totalDiskBytes > 0 ? `${usedDiskGb} / ${totalDiskGb} GB (${diskUsagePercent}%)` : '—'}
+                                </span>
+                            </div>
+                            <div className="w-full bg-slate-200 dark:bg-[#1e293b] rounded-full h-2 overflow-hidden">
+                                <div
+                                    className={cn(
+                                        "h-2 rounded-full transition-all duration-500",
+                                        diskUsagePercent >= 90 ? "bg-gradient-to-r from-rose-500 to-red-600" :
+                                        diskUsagePercent >= 75 ? "bg-gradient-to-r from-amber-500 to-orange-500" :
+                                        "bg-gradient-to-r from-purple-500 via-indigo-500 to-cyan-500"
+                                    )}
+                                    style={{ width: `${Math.min(diskUsagePercent, 100)}%` }}
                                 />
                             </div>
                         </div>

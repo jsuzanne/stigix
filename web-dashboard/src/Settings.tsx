@@ -447,12 +447,13 @@ const getSessionLogs = (logs?: string[], targetVer?: string | null): string[] =>
     return sessionLines;
 };
 
-export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCopilotConfig, initialTab, onOpenNodeRoleModal }: { 
+export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCopilotConfig, initialTab, initialSubSection, onOpenNodeRoleModal }: { 
     token: string, 
     uiConfig?: { maxCaptures: number; globalScoreTypes?: string[] },
     onUpdateUIConfig?: () => void,
     onUpdateCopilotConfig?: () => void,
     initialTab?: 'probes' | 'distribution' | 'maintenance' | 'system' | 'targets' | 'convergence' | 'registry' | 'targetService' | 'mcp' | 'prisma-api' | 'strata' | 'custom-tcp' | 'api-studio' | 'cloud',
+    initialSubSection?: string | null,
     onOpenNodeRoleModal?: () => void
 }) {
     // Route all API calls through the peer gateway when in remote view
@@ -461,12 +462,19 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
     const apiFetch = gFetch;
 
     const [activeTab, setActiveTab] = useState<'probes' | 'distribution' | 'maintenance' | 'system' | 'targets' | 'convergence' | 'registry' | 'targetService' | 'mcp' | 'prisma-api' | 'strata' | 'custom-tcp' | 'api-studio' | 'cloud'>(initialTab || 'distribution');
+    const [systemSubTab, setSystemSubTab] = useState<'hardware' | 'persistence' | 'interfaces' | 'all'>('hardware');
 
     useEffect(() => {
         if (initialTab) {
             setActiveTab(initialTab);
         }
     }, [initialTab]);
+
+    useEffect(() => {
+        if (initialSubSection && ['hardware', 'persistence', 'interfaces', 'all'].includes(initialSubSection)) {
+            setSystemSubTab(initialSubSection as any);
+        }
+    }, [initialSubSection]);
 
     // Shared State
     const [loading, setLoading] = useState(true);
@@ -5003,7 +5011,61 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                 )}
 
                 {activeTab === 'system' && (
-                    <div className="bg-card border border-border rounded-2xl p-8 shadow-sm space-y-12 animate-in fade-in duration-500">
+                    <div className="bg-card border border-border rounded-2xl p-8 shadow-sm space-y-10 animate-in fade-in duration-500">
+
+                        {/* ── Sub-navigation Pills for System Info ────────────────── */}
+                        <div className="flex flex-wrap items-center justify-between gap-4 pb-6 border-b border-border">
+                            <div className="flex flex-wrap items-center gap-2 p-1.5 bg-card-secondary/60 border border-border/80 rounded-2xl">
+                                <button
+                                    onClick={() => setSystemSubTab('hardware')}
+                                    className={cn(
+                                        "flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-black tracking-wide transition-all cursor-pointer select-none",
+                                        systemSubTab === 'hardware'
+                                            ? "bg-purple-600 text-white shadow-lg shadow-purple-900/30"
+                                            : "text-text-muted hover:text-text-primary hover:bg-card-hover"
+                                    )}
+                                >
+                                    <Cpu size={14} />
+                                    Hardware & Performance
+                                </button>
+                                <button
+                                    onClick={() => setSystemSubTab('persistence')}
+                                    className={cn(
+                                        "flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-black tracking-wide transition-all cursor-pointer select-none",
+                                        systemSubTab === 'persistence'
+                                            ? "bg-purple-600 text-white shadow-lg shadow-purple-900/30"
+                                            : "text-text-muted hover:text-text-primary hover:bg-card-hover"
+                                    )}
+                                >
+                                    <Power size={14} />
+                                    State Persistence
+                                </button>
+                                <button
+                                    onClick={() => setSystemSubTab('interfaces')}
+                                    className={cn(
+                                        "flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-black tracking-wide transition-all cursor-pointer select-none",
+                                        systemSubTab === 'interfaces'
+                                            ? "bg-purple-600 text-white shadow-lg shadow-purple-900/30"
+                                            : "text-text-muted hover:text-text-primary hover:bg-card-hover"
+                                    )}
+                                >
+                                    <Network size={14} />
+                                    Interfaces & Egress
+                                </button>
+                                <button
+                                    onClick={() => setSystemSubTab('all')}
+                                    className={cn(
+                                        "flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-black tracking-wide transition-all cursor-pointer select-none",
+                                        systemSubTab === 'all'
+                                            ? "bg-purple-600 text-white shadow-lg shadow-purple-900/30"
+                                            : "text-text-muted hover:text-text-primary hover:bg-card-hover"
+                                    )}
+                                >
+                                    <Layers size={14} />
+                                    All Sections
+                                </button>
+                            </div>
+                        </div>
 
                         {/* ── System Version & Quick Upgrade Banner ──────────────── */}
                         <div className="rounded-2xl border border-blue-500/20 bg-gradient-to-r from-blue-900/10 via-card-secondary/40 to-card p-6 flex flex-col md:flex-row md:items-center justify-between gap-6 shadow-sm">
@@ -5059,6 +5121,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                         </div>
 
                         {/* ── Startup Behaviour — global, prominent ──────────────── */}
+                        {(systemSubTab === 'all' || systemSubTab === 'persistence') && (
                         <div className="rounded-2xl border border-border bg-card-secondary/40 overflow-hidden">
                             {/* Header strip */}
                             <div className="flex items-center gap-3 px-6 py-4 border-b border-border bg-card-secondary/60">
@@ -5187,8 +5250,10 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                                 </p>
                             </div>
                         </div>
+                        )}
 
                         {/* Network Interfaces (Moved from its own tab) */}
+                        {(systemSubTab === 'all' || systemSubTab === 'interfaces') && (
                         <div className="space-y-8">
                             <div className="flex items-center gap-3">
                                 <div className="p-2 bg-purple-600/10 rounded-lg text-purple-600 dark:text-purple-400 font-bold">
@@ -5258,9 +5323,10 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                                 </div>
                             </div>
                         </div>
+                        )}
 
                         {/* Cloud Egress Context */}
-                        {latestEgressResult && (
+                        {(systemSubTab === 'all' || systemSubTab === 'interfaces') && latestEgressResult && (
                             <div className="bg-card border border-border rounded-2xl p-6 shadow-sm space-y-4 animate-in slide-in-from-top-4 duration-500 mb-8 overflow-hidden relative group">
                                 <div className="absolute top-0 right-0 p-8 opacity-[0.03] group-hover:opacity-[0.07] transition-opacity">
                                     <Globe size={120} />
@@ -5321,7 +5387,8 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                             </div>
                         )}
 
-                        <div className="pt-8 border-t border-border/50">
+                        {(systemSubTab === 'all' || systemSubTab === 'hardware') && (
+                        <div id="hardware-metrics" className="pt-8 border-t border-border/50">
                             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
                                 <div className="flex items-center gap-3">
                                     <div className="p-2 bg-purple-600/10 rounded-lg text-purple-600 dark:text-purple-400 font-bold">
@@ -5723,6 +5790,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                                 </div>
                             </div>
                         </div>
+                        )}
                     </div>
                 )}
             </div>
