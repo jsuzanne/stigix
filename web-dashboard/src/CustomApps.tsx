@@ -1213,7 +1213,7 @@ const secs = seconds % 60;
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                         {/* 1. Incoming Sessions Card */}
                         <div className="bg-card border border-border rounded-2xl p-5 shadow-sm hover:shadow-md transition-shadow flex flex-col justify-between">
-                            <div className="flex items-center justify-between text-xs">
+                            <div className="h-5 flex items-center justify-between text-xs">
                                 <span className="font-semibold flex items-center gap-1.5 text-indigo-600 dark:text-indigo-400">
                                     <ArrowDownRight size={16} /> Incoming Sessions
                                 </span>
@@ -1223,9 +1223,11 @@ const secs = seconds % 60;
                                     {metrics?.listenerState === 'listening' ? 'Listening' : 'Stopped'}
                                 </span>
                             </div>
-                            <div className="mt-3 flex items-baseline justify-between">
-                                <div className="text-3xl font-black text-text-primary">{incomingSessions.length} <span className="text-xs font-normal text-text-muted">active</span></div>
-                                <div className="text-right text-[11px] font-mono space-y-0.5">
+                            <div className="my-3 min-h-[54px] flex items-center justify-between">
+                                <div className="text-3xl font-black font-mono leading-none text-text-primary">
+                                    {incomingSessions.length} <span className="text-xs font-sans font-normal text-text-muted">active</span>
+                                </div>
+                                <div className="text-right text-[11px] font-mono space-y-0.5 leading-tight">
                                     <div className="text-text-muted">RX: <span className="text-emerald-500 font-bold">{formatBytes(serverRx)}</span></div>
                                     <div className="text-text-muted">TX: <span className="text-indigo-400 font-bold">{formatBytes(serverTx)}</span></div>
                                     {liveServerRxBps > 0 && incomingSessions.length > 0 && (
@@ -1235,7 +1237,7 @@ const secs = seconds % 60;
                                     )}
                                 </div>
                             </div>
-                            <div className="mt-2 text-[11px] text-text-muted flex justify-between pt-2.5 border-t border-border">
+                            <div className="mt-auto text-[11px] text-text-muted flex items-center justify-between pt-2.5 border-t border-border">
                                 <span>Mode: <strong className="text-text-secondary capitalize">{currentApp?.serverBehavior?.mode ? currentApp.serverBehavior.mode.replace(/_/g, ' ') : 'echo'}</strong></span>
                                 <span>Handled: <strong className="text-text-secondary">{serverHandled}</strong> {liveServerTps > 0 && incomingSessions.length > 0 && <span className="text-indigo-500 font-mono text-[10px]">({liveServerTps} tps)</span>}</span>
                             </div>
@@ -1251,7 +1253,7 @@ const secs = seconds % 60;
 
                         {/* 2. Outgoing Sessions Card */}
                         <div className="bg-card border border-border rounded-2xl p-5 shadow-sm hover:shadow-md transition-shadow flex flex-col justify-between">
-                            <div className="flex items-center justify-between text-xs">
+                            <div className="h-5 flex items-center justify-between text-xs">
                                 <span className="font-semibold flex items-center gap-1.5 text-emerald-600 dark:text-emerald-400">
                                     <ArrowUpRight size={16} /> Outgoing Sessions
                                 </span>
@@ -1261,9 +1263,11 @@ const secs = seconds % 60;
                                     {metrics?.clientWorkloadRunning ? 'Transmitting' : 'Idle'}
                                 </span>
                             </div>
-                            <div className="mt-3 flex items-baseline justify-between">
-                                <div className="text-3xl font-black text-text-primary">{outgoingSessions.filter(s => s.state === 'connected').length} <span className="text-xs font-normal text-text-muted">active</span></div>
-                                <div className="text-right text-[11px] font-mono space-y-0.5">
+                            <div className="my-3 min-h-[54px] flex items-center justify-between">
+                                <div className="text-3xl font-black font-mono leading-none text-text-primary">
+                                    {outgoingSessions.filter(s => s.state === 'connected').length} <span className="text-xs font-sans font-normal text-text-muted">active</span>
+                                </div>
+                                <div className="text-right text-[11px] font-mono space-y-0.5 leading-tight">
                                     <div className="text-text-muted">TX: <span className="text-indigo-400 font-bold">{formatBytes(clientTx)}</span></div>
                                     <div className="text-text-muted">RX: <span className="text-emerald-500 font-bold">{formatBytes(clientRx)}</span></div>
                                     {liveClientTxBps > 0 && (
@@ -1273,7 +1277,7 @@ const secs = seconds % 60;
                                     )}
                                 </div>
                             </div>
-                            <div className="mt-2 text-[11px] text-text-muted flex items-center justify-between pt-2.5 border-t border-border">
+                            <div className="mt-auto text-[11px] text-text-muted flex items-center justify-between pt-2.5 border-t border-border">
                                 <span>Peers: <strong className="text-text-secondary font-medium">{currentApp?.peers?.length || 0} configured</strong></span>
                                 <span className="whitespace-nowrap">
                                     Replies: <strong className="text-text-secondary">{clientReplies}</strong>{' '}
@@ -1298,17 +1302,17 @@ const secs = seconds % 60;
 
                         {/* 3. Latency & Jitter Card */}
                         <div className="bg-card border border-border rounded-2xl p-5 shadow-sm hover:shadow-md transition-shadow flex flex-col justify-between">
-                            <div className="flex items-center justify-between text-xs">
+                            <div className="h-5 flex items-center justify-between text-xs">
                                 <span className="font-semibold flex items-center gap-1.5 text-amber-500">
                                     <Zap size={16} /> App Latency (RTT)
                                 </span>
                                 <span className="font-mono text-[10px] text-text-muted">Live RTT</span>
                             </div>
-                            <div className="mt-3 flex items-baseline justify-between">
-                                <div className="text-3xl font-black text-amber-500 font-mono">
-                                    {metrics?.avgRttMs || 0} <span className="text-xs font-normal text-text-muted">ms avg</span>
+                            <div className="my-3 min-h-[54px] flex items-center justify-between">
+                                <div className="text-3xl font-black text-amber-500 font-mono leading-none">
+                                    {metrics?.avgRttMs || 0} <span className="text-xs font-sans font-normal text-text-muted">ms avg</span>
                                 </div>
-                                <div className="text-right text-[11px] font-mono space-y-0.5">
+                                <div className="text-right text-[11px] font-mono space-y-0.5 leading-tight">
                                     <div className="text-text-muted">
                                         p50: <span className="text-text-primary font-bold">{metrics?.p50RttMs || 0} ms</span> | p95: <span className="text-amber-500 font-bold">{metrics?.p95RttMs || 0} ms</span>
                                     </div>
@@ -1317,7 +1321,7 @@ const secs = seconds % 60;
                                     </div>
                                 </div>
                             </div>
-                            <div className="mt-2 text-[11px] text-text-muted flex justify-between pt-2.5 border-t border-border">
+                            <div className="mt-auto text-[11px] text-text-muted flex items-center justify-between pt-2.5 border-t border-border">
                                 <span>Timeouts: <strong className={metrics?.totalTimeouts ? 'text-rose-500 font-bold' : 'text-text-secondary'}>{metrics?.totalTimeouts || 0}</strong></span>
                                 <span>Errors: <strong className={metrics?.totalErrors ? 'text-rose-500 font-bold' : 'text-text-secondary'}>{metrics?.totalErrors || 0}</strong></span>
                             </div>
@@ -1325,21 +1329,21 @@ const secs = seconds % 60;
 
                         {/* 4. Chaos & Stability Card */}
                         <div className="bg-card border border-border rounded-2xl p-5 shadow-sm hover:shadow-md transition-shadow flex flex-col justify-between">
-                            <div className="flex items-center justify-between text-xs">
+                            <div className="h-5 flex items-center justify-between text-xs">
                                 <span className="font-semibold flex items-center gap-1.5 text-cyan-500">
                                     <Activity size={16} /> Stability & Failover
                                 </span>
                                 <span className="font-mono text-[10px] text-text-muted">Disruptions</span>
                             </div>
-                            <div className="mt-3 flex items-baseline justify-between">
-                                <div className="text-3xl font-black text-text-primary font-mono">
-                                    {metrics?.totalReconnects || 0} <span className="text-xs font-normal text-text-muted">reconnects</span>
+                            <div className="my-3 min-h-[54px] flex items-center justify-between">
+                                <div className="text-3xl font-black text-text-primary font-mono leading-none">
+                                    {metrics?.totalReconnects || 0} <span className="text-xs font-sans font-normal text-text-muted">reconnects</span>
                                 </div>
-                                <div className="text-right text-[11px] font-mono space-y-0.5">
+                                <div className="text-right text-[11px] font-mono space-y-0.5 leading-tight">
                                     <div className="text-text-muted">Drops: <span className={metrics?.totalSimulatedDrops ? 'text-rose-500 font-bold' : 'text-text-primary font-bold'}>{metrics?.totalSimulatedDrops || 0}</span></div>
                                 </div>
                             </div>
-                            <div className="mt-2 text-[11px] text-text-muted flex justify-between pt-2.5 border-t border-border">
+                            <div className="mt-auto text-[11px] text-text-muted flex items-center justify-between pt-2.5 border-t border-border">
                                 <span>Keepalive: <strong className="text-text-secondary">Enabled</strong></span>
                                 <span>Backoff: <strong className="text-text-secondary">Jittered</strong></span>
                             </div>
