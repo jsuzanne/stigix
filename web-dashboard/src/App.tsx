@@ -347,13 +347,23 @@ export default function App() {
 
   // --- Theme Management ---
   const [theme, setTheme] = useState<'light' | 'dark'>(() => {
-    return (localStorage.getItem('theme') as 'light' | 'dark') || 'dark';
+    const saved = (localStorage.getItem('theme') as 'light' | 'dark') || 'dark';
+    if (typeof document !== 'undefined') {
+      document.documentElement.setAttribute('data-theme', saved);
+      document.documentElement.classList.toggle('dark', saved === 'dark');
+      document.documentElement.classList.toggle('light', saved === 'light');
+      document.documentElement.style.colorScheme = saved;
+      document.documentElement.style.backgroundColor = saved === 'light' ? '#eef2f7' : '#020617';
+    }
+    return saved;
   });
 
-  useEffect(() => {
+  React.useLayoutEffect(() => {
     document.documentElement.setAttribute('data-theme', theme);
     document.documentElement.classList.toggle('dark', theme === 'dark');
     document.documentElement.classList.toggle('light', theme === 'light');
+    document.documentElement.style.colorScheme = theme;
+    document.documentElement.style.backgroundColor = theme === 'light' ? '#eef2f7' : '#020617';
     localStorage.setItem('theme', theme);
   }, [theme]);
 
@@ -1120,7 +1130,7 @@ export default function App() {
         onIperfServer={setIperfServerInfo}
         onHealthMatrix={setHealthData}
       />
-    <div className="min-h-screen bg-background text-foreground pt-4 pb-8 pr-8 pl-20 transition-all">
+    <div className="min-h-screen bg-background text-foreground pt-4 pb-8 pr-8 pl-20">
       <SidebarRail
         activeView={view}
         activeSubTab={initialSettingsTab}

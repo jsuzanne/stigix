@@ -1,11 +1,24 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" class="dark" data-theme="dark">
 
 <head>
   <meta charset="UTF-8" />
   <link rel="icon" type="image/x-icon" href="/favicon.ico" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Stigix</title>
+  <script>
+    (function () {
+      try {
+        var t = localStorage.getItem('theme') === 'light' ? 'light' : 'dark';
+        var d = document.documentElement;
+        d.setAttribute('data-theme', t);
+        d.classList.remove('light', 'dark');
+        d.classList.add(t);
+        d.style.colorScheme = t;
+        d.style.backgroundColor = t === 'light' ? '#eef2f7' : '#020617';
+      } catch (e) {}
+    })();
+  </script>
 </head>
 
 <body>

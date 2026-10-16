@@ -5,12 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [3.0.30] - 2026-10-16
+## [3.0.31] - 2026-10-16
 
-### Fixed & Enhanced
-- **Copilot Floating Launcher & Header Shortcut Light Mode (`App.tsx`)**:
+### Refactored & Fixed
+- **VoIP Simulation UX Simplification & Unified Target QoS Table (`Voice.tsx`)**:
+  - Replaced always-visible header configuration inputs (`Max Calls`, `Inter-Call`, `Egress Interface`, `Source Ports`, `Import/Export`) with compact clickable summary pills and a collapsible **`⚙️ Settings`** drawer inside the header.
+  - Globalized `RTP Codec` and `Call Duration (s)` inside the `⚙️ Settings` drawer (with automatic equal round-robin weight distribution across enabled targets) and removed repetitive per-target input columns.
+  - Merged `Per-Target QoS Statistics` directly into the **`Stigix Voice Targets & QoS Telemetry`** table (`Calls`, `Avg MOS`, `Loss`, `RTT / Jitter`, `Quality` with click-to-open QoS Radar modal) and replaced the permanent manual target form row with a compact `+ Custom Target` toggle bar.
+  - Kept the 6 global QoS KPI cards (`Avg MOS`, `Total Calls`, `Avg Loss`, `Avg Latency`, `Avg Jitter`, `RTT Variance`) permanently visible with `—` fallback before the first call finishes to eliminate layout shift.
+- **Zero-Flash Theme Reload / Anti-FOUC (`index.html`, `index.css`, `App.tsx`, `SidebarRail.tsx`)**:
+  - Added synchronous `<head>` theme initialization (`html.dark` / `html.light` + inline background color) before first paint, disabled CSS transitions during initial load (`html.no-transitions *`), and replaced hardcoded dark classes on the root shell and `SidebarRail` with theme-aware CSS variables.
+- **Copilot Floating Launcher & Header Shortcut Light Mode (`App.tsx`) [3.0.30]**:
   - Updated the bottom-right floating `Copilot ⌘J` button and top header `AI Copilot ⌘J` shortcut pill to adapt cleanly to Light Mode (`bg-white/95`, subtle border and shadow, light `⌘J` kbd badge) while preserving its dark glassmorphic style in Dark Mode.
-- **VyOS Sequences Tactical Ghost Buttons (`Vyos.tsx`)**:
+- **VyOS Sequences Tactical Ghost Buttons (`Vyos.tsx`) [3.0.30]**:
   - Replaced flashy solid purple buttons on the VyOS Sequences toolbar (`+ New Sequence`), sequence edit modal (`+ Add action`, `Save sequence`), and table row execution triggers (`▶ Run`, `⚡ Batch`, `› Steps`) with cohesive Indigo primary actions (`bg-indigo-600`) and subtle "Tactical Ghost" outline pills at rest that illuminate on hover (Emerald for `Run`, Amber for `Batch`, Blue for `Steps`).
 - **Digital Experience (`ConnectivityPerformance.tsx`) Standby / Paused Engine UX [3.0.29]**:
   - Auto-collapses the empty telemetry chart rows (*Global Experience / Score Trend* and *Performance Trends by Type*) when the local probe engine is on standby with no local execution data (`!isProbeEngineEnabled && results.length === 0`), bringing the **Probes Catalog** immediately above the fold with a `Show Telemetry Panels` toggle in the compact Standby banner.
