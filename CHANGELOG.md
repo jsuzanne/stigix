@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.0.25] - 2026-10-16
+
+### Added & Enhanced
+- **Security Global Provisioning & Local Engine Pause Mode (`server.ts`, `provisioning-manager.ts`, `Security.tsx`)**:
+  - Added automatic fleet auto-sync (`triggerAutoSyncFleetBundle('security-config')`) when saving Security test selections or schedules on the Leader, and automatically hot-reloads schedulers (`startSchedulers()`) on peers when `security-config` bundles are applied.
+  - Preserved peer-local `statistics` and `sls_config` while stripping `test_history` during `security-config` bundle synchronization so peer telemetry is never overwritten by the Leader.
+  - Added a local node `security_engine_enabled` setting (`system-settings.json`, never synced to peers) with a header toggle (`Local Engine: Active / Paused`) and Standby notice banner in `Security.tsx`, allowing a Leader/controller node to push schedules to branches without executing automated tests locally.
+- **Homepage Cockpit & System Health Modal Refinements (`HomeOverview.tsx`, `SystemHealthModal.tsx`, `server.ts`)**:
+  - Added the **Security Validation** card in Column 2 (`2. Simulation Engines`) displaying active/paused engine status, configured test count across the 5 categories (`URL`, `DNS`, `Threat`, `C2`, `AI`), active cron schedules, and local block rate (`Blocked / Total`).
+  - Enriched the **Prisma SD-WAN** card in Column 1 (`1. Connectivity & Peers`) with detected topology counts (`X DC · Y Branches (Z IONs)`) and a quick **`Map ›`** navigation shortcut to the Topology view.
+  - Removed the redundant bottom **Mission Control Workloads** section on the Home Overview page and balanced the 3-column cockpit grid (`items-stretch` with flex-spaced cards).
+- **DEM Probes & Multicast Profile Export (`Connectivity.tsx`, `multicast-manager.ts`, `server.ts`, `Multicast.tsx`)**:
+  - Added explicit engine controls, accurate home status, and Prisma SD-WAN probe deduplication with formatted `Site · Router · Port/VLAN` visual hierarchy in DEM.
+  - Fixed Express route shadowing on `/api/multicast/export` and added a direct active profile export button in `Multicast.tsx`.
+
 ## [3.0.24] - 2026-10-15
 
 ### Refactored & Simplified

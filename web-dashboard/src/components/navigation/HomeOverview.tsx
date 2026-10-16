@@ -1,8 +1,8 @@
 import React from 'react';
 import {
     Activity, Server, Cloud, Cpu, Layers,
-    Zap, ExternalLink, RefreshCw, Phone, LineChart,
-    Sparkles, Shield, Network, Radio, Monitor, Globe, Gauge, Boxes
+    Zap, RefreshCw, Phone, LineChart,
+    Shield, Network, Globe, Gauge, Boxes
 } from 'lucide-react';
 import { cn } from '../../lib/utils';
 
@@ -71,6 +71,7 @@ export const HomeOverview: React.FC<HomeOverviewProps> = ({
     const dem = sub.dem || {};
     const customAppsSub = sub.custom_apps || {};
     const iotSub = sub.iot || {};
+    const securitySub = sub.security || {};
 
     // Simulation Engines Real-time States
     const voiceSub = sub.voice || {};
@@ -313,10 +314,10 @@ export const HomeOverview: React.FC<HomeOverviewProps> = ({
             </div>
 
             {/* ── 3-COLUMN SYSTEM HEALTH MATRIX ── */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-stretch">
                 {/* 1. Network & Cloud Status */}
-                <div className="bg-white dark:bg-[#0b1020]/90 border border-slate-200 dark:border-[#1e293b] rounded-2xl p-5 space-y-4 shadow-sm dark:shadow-xl">
-                    <div className="flex items-center justify-between pb-2 border-b border-slate-100 dark:border-[#1e293b]">
+                <div className="bg-white dark:bg-[#0b1020]/90 border border-slate-200 dark:border-[#1e293b] rounded-2xl p-6 flex flex-col justify-between gap-4 shadow-sm dark:shadow-xl">
+                    <div className="flex items-center justify-between pb-2.5 border-b border-slate-100 dark:border-[#1e293b]">
                         <div className="flex items-center gap-2 text-xs font-black uppercase tracking-wider text-slate-500 dark:text-text-muted">
                             <Cloud size={15} className="text-blue-500 dark:text-blue-400" />
                             <span>1. Network & Cloud</span>
@@ -324,85 +325,114 @@ export const HomeOverview: React.FC<HomeOverviewProps> = ({
                         <span className="text-[10px] font-bold text-blue-600 dark:text-blue-400 font-mono">SASE Mesh</span>
                     </div>
 
-                    {/* Prisma SD-WAN (Interactive Link to Prisma SASE API) */}
-                    <div
-                        onClick={() => onNavigate('settings', 'prisma-api')}
-                        title="Click to configure Prisma SASE API Settings"
-                        className="p-3.5 rounded-xl bg-slate-50 dark:bg-card-secondary/40 hover:bg-slate-100 dark:hover:bg-card-secondary/70 border border-slate-200 dark:border-[#1e293b]/70 hover:border-blue-400 dark:hover:border-blue-500/40 transition-all cursor-pointer group space-y-2"
-                    >
-                        <div className="flex items-center justify-between">
-                            <span className="text-xs font-bold text-slate-900 dark:text-white flex items-center gap-1.5 group-hover:text-blue-600 dark:group-hover:text-blue-300 transition-colors">
-                                <span className={cn("w-2 h-2 rounded-full", prisma.status === 'connected' ? "bg-blue-500 dark:bg-blue-400 animate-pulse" : "bg-zinc-400 dark:bg-zinc-500")} />
-                                Prisma SD-WAN
-                            </span>
-                            <span className={cn(
-                                "px-2 py-0.2 rounded text-[9px] font-black uppercase tracking-widest",
-                                prisma.status === 'connected' ? "bg-blue-500/15 text-blue-600 dark:text-blue-400" : "bg-slate-200 dark:bg-zinc-800 text-slate-600 dark:text-zinc-400"
-                            )}>
-                                {prisma.status === 'connected' ? 'Connected' : 'Offline'}
-                            </span>
+                    <div className="flex-1 flex flex-col justify-between gap-4">
+                        {/* Prisma SD-WAN (Interactive Link to Prisma SASE API + Topology summary) */}
+                        <div
+                            onClick={() => onNavigate('settings', 'prisma-api')}
+                            title="Click to configure Prisma SASE API Settings"
+                            className="p-4 rounded-xl bg-slate-50 dark:bg-card-secondary/40 hover:bg-slate-100 dark:hover:bg-card-secondary/70 border border-slate-200 dark:border-[#1e293b]/70 hover:border-blue-400 dark:hover:border-blue-500/40 transition-all cursor-pointer group space-y-2.5"
+                        >
+                            <div className="flex items-center justify-between">
+                                <span className="text-xs font-bold text-slate-900 dark:text-white flex items-center gap-1.5 group-hover:text-blue-600 dark:group-hover:text-blue-300 transition-colors">
+                                    <span className={cn("w-2 h-2 rounded-full", prisma.status === 'connected' ? "bg-blue-500 dark:bg-blue-400 animate-pulse" : "bg-zinc-400 dark:bg-zinc-500")} />
+                                    Prisma SD-WAN
+                                </span>
+                                <span className={cn(
+                                    "px-2 py-0.2 rounded text-[9px] font-black uppercase tracking-widest",
+                                    prisma.status === 'connected' ? "bg-blue-500/15 text-blue-600 dark:text-blue-400" : "bg-slate-200 dark:bg-zinc-800 text-slate-600 dark:text-zinc-400"
+                                )}>
+                                    {prisma.status === 'connected' ? 'Connected' : 'Offline'}
+                                </span>
+                            </div>
+                            <div className="text-[11px] text-slate-600 dark:text-text-muted flex justify-between font-mono">
+                                <span>TSG ID: <strong className="text-slate-900 dark:text-text-primary">{prisma.tsg_id || '—'}</strong></span>
+                                <span>Region: <strong className="text-slate-900 dark:text-text-primary">{prisma.region || '—'}</strong></span>
+                            </div>
+                            <div className="pt-2 border-t border-slate-200/70 dark:border-[#1e293b]/70 flex items-center justify-between text-[11px] font-mono text-slate-600 dark:text-text-muted">
+                                <span>
+                                    Topology:{' '}
+                                    {prisma.total_sites > 0 || prisma.elements_count > 0 ? (
+                                        <strong className="text-blue-600 dark:text-blue-400">
+                                            {prisma.dc_count ?? 0} DC · {prisma.branch_count ?? 0} {prisma.branch_count === 1 ? 'Branch' : 'Branches'}
+                                            {prisma.elements_count > 0 ? ` (${prisma.elements_count} IONs)` : ''}
+                                        </strong>
+                                    ) : (
+                                        <strong className="text-slate-900 dark:text-text-primary">
+                                            {prisma.status === 'connected' ? 'Synced' : 'Not Synced'}
+                                        </strong>
+                                    )}
+                                </span>
+                                <button
+                                    type="button"
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        onNavigate('topology');
+                                    }}
+                                    title="Open SD-WAN Topology Map"
+                                    className="px-2 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider bg-blue-500/10 hover:bg-blue-500/20 text-blue-600 dark:text-blue-400 border border-blue-500/20 transition-colors flex items-center gap-1 cursor-pointer"
+                                >
+                                    <Network size={10} />
+                                    Map ›
+                                </button>
+                            </div>
                         </div>
-                        <div className="text-[11px] text-slate-600 dark:text-text-muted flex justify-between font-mono">
-                            <span>TSG ID: <strong className="text-slate-900 dark:text-text-primary">{prisma.tsg_id || '—'}</strong></span>
-                            <span>Region: <strong className="text-slate-900 dark:text-text-primary">{prisma.region || '—'}</strong></span>
-                        </div>
-                    </div>
 
-                    {/* Mesh & Leader (Interactive Link) */}
-                    <div
-                        onClick={() => {
-                            if (registryStatus?.mode === 'leader' || mesh.mode === 'leader') {
-                                onNavigate('fleet');
-                            } else {
-                                onNavigate('settings', 'registry');
-                            }
-                        }}
-                        title={registryStatus?.mode === 'leader' || mesh.mode === 'leader' ? "Click to open Fleet Mesh View" : "Click to open Target Controller"}
-                        className="p-3.5 rounded-xl bg-slate-50 dark:bg-card-secondary/40 border border-slate-200 dark:border-[#1e293b]/70 space-y-2 cursor-pointer hover:border-purple-400/50 hover:bg-purple-500/5 transition-all group"
-                    >
-                        <div className="flex items-center justify-between">
-                            <span className="text-xs font-bold text-slate-900 dark:text-white flex items-center gap-1.5 group-hover:text-purple-600 dark:group-hover:text-purple-300 transition-colors">
-                                <span className={cn("w-2 h-2 rounded-full", mesh.status === 'synced' ? "bg-purple-500 dark:bg-purple-400 animate-pulse" : "bg-zinc-400 dark:bg-zinc-500")} />
-                                Stigix Mesh & Leader
-                            </span>
-                            <span className="px-2 py-0.2 rounded text-[9px] font-black uppercase tracking-widest bg-purple-500/15 text-purple-600 dark:text-purple-300 border border-purple-500/20 flex items-center gap-1">
-                                {registryStatus?.mode === 'leader' || mesh.mode === 'leader' ? 'Fleet Mesh ›' : 'Target Controller ›'}
-                            </span>
+                        {/* Mesh & Leader (Interactive Link) */}
+                        <div
+                            onClick={() => {
+                                if (registryStatus?.mode === 'leader' || mesh.mode === 'leader') {
+                                    onNavigate('fleet');
+                                } else {
+                                    onNavigate('settings', 'registry');
+                                }
+                            }}
+                            title={registryStatus?.mode === 'leader' || mesh.mode === 'leader' ? "Click to open Fleet Mesh View" : "Click to open Target Controller"}
+                            className="p-4 rounded-xl bg-slate-50 dark:bg-card-secondary/40 border border-slate-200 dark:border-[#1e293b]/70 space-y-2 cursor-pointer hover:border-purple-400/50 hover:bg-purple-500/5 transition-all group"
+                        >
+                            <div className="flex items-center justify-between">
+                                <span className="text-xs font-bold text-slate-900 dark:text-white flex items-center gap-1.5 group-hover:text-purple-600 dark:group-hover:text-purple-300 transition-colors">
+                                    <span className={cn("w-2 h-2 rounded-full", mesh.status === 'synced' ? "bg-purple-500 dark:bg-purple-400 animate-pulse" : "bg-zinc-400 dark:bg-zinc-500")} />
+                                    Stigix Mesh & Leader
+                                </span>
+                                <span className="px-2 py-0.2 rounded text-[9px] font-black uppercase tracking-widest bg-purple-500/15 text-purple-600 dark:text-purple-300 border border-purple-500/20 flex items-center gap-1">
+                                    {registryStatus?.mode === 'leader' || mesh.mode === 'leader' ? 'Fleet Mesh ›' : 'Target Controller ›'}
+                                </span>
+                            </div>
+                            <div className="text-[11px] text-slate-600 dark:text-text-muted flex items-center justify-between font-mono gap-2">
+                                <span className="whitespace-nowrap shrink-0">Learned Targets: <strong className="text-slate-900 dark:text-text-primary">{mesh.learned_targets_count ?? '0'}</strong></span>
+                                <span className="whitespace-nowrap truncate text-right" title={String(mesh.leader_ip || cleanLeaderIp)}>Leader IP: <strong className="text-slate-900 dark:text-text-primary">{cleanLeaderIp}</strong></span>
+                            </div>
                         </div>
-                        <div className="text-[11px] text-slate-600 dark:text-text-muted flex items-center justify-between font-mono gap-2">
-                            <span className="whitespace-nowrap shrink-0">Learned Targets: <strong className="text-slate-900 dark:text-text-primary">{mesh.learned_targets_count ?? '0'}</strong></span>
-                            <span className="whitespace-nowrap truncate text-right" title={String(mesh.leader_ip || cleanLeaderIp)}>Leader IP: <strong className="text-slate-900 dark:text-text-primary">{cleanLeaderIp}</strong></span>
-                        </div>
-                    </div>
 
-                    {/* Cloudflare Registry */}
-                    <div 
-                        onClick={() => onNavigate('settings', 'cloud')}
-                        className="p-3.5 rounded-xl bg-slate-50 dark:bg-card-secondary/40 hover:bg-slate-100 dark:hover:bg-card-secondary/70 border border-slate-200 dark:border-[#1e293b]/70 hover:border-emerald-400 dark:hover:border-emerald-500/40 transition-all cursor-pointer group space-y-2"
-                        title="Click to configure Cloudflare Edge & Master Key in Settings"
-                    >
-                        <div className="flex items-center justify-between">
-                            <span className="text-xs font-bold text-slate-900 dark:text-white flex items-center gap-1.5 group-hover:text-emerald-600 dark:group-hover:text-emerald-300 transition-colors">
-                                <span className={cn("w-2 h-2 rounded-full", registryStatus?.is_registered ? "bg-emerald-500" : "bg-blue-400")} />
-                                Cloudflare Registry
-                            </span>
-                            <span className={cn(
-                                "px-2 py-0.2 rounded text-[9px] font-black uppercase tracking-widest",
-                                registryStatus?.is_registered ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400" : "bg-blue-500/15 text-blue-600 dark:text-blue-400"
-                            )}>
-                                {registryStatus?.is_registered ? 'Registered' : (registryStatus?.mode === 'standalone' ? 'Standalone' : 'Ready')}
-                            </span>
-                        </div>
-                        <div className="text-[11px] text-slate-600 dark:text-text-muted flex justify-between font-mono">
-                            <span>Autodiscovery: <strong className="text-slate-900 dark:text-text-primary">{registryStatus?.is_registered ? 'Worker Sync' : (registryStatus?.mode === 'leader' ? 'Leader Active' : 'Standalone')}</strong></span>
-                            <span>Edge PoP: <strong className="text-slate-900 dark:text-text-primary">Global</strong></span>
+                        {/* Cloudflare Registry */}
+                        <div
+                            onClick={() => onNavigate('settings', 'cloud')}
+                            className="p-4 rounded-xl bg-slate-50 dark:bg-card-secondary/40 hover:bg-slate-100 dark:hover:bg-card-secondary/70 border border-slate-200 dark:border-[#1e293b]/70 hover:border-emerald-400 dark:hover:border-emerald-500/40 transition-all cursor-pointer group space-y-2"
+                            title="Click to configure Cloudflare Edge & Master Key in Settings"
+                        >
+                            <div className="flex items-center justify-between">
+                                <span className="text-xs font-bold text-slate-900 dark:text-white flex items-center gap-1.5 group-hover:text-emerald-600 dark:group-hover:text-emerald-300 transition-colors">
+                                    <span className={cn("w-2 h-2 rounded-full", registryStatus?.is_registered ? "bg-emerald-500" : "bg-blue-400")} />
+                                    Cloudflare Registry
+                                </span>
+                                <span className={cn(
+                                    "px-2 py-0.2 rounded text-[9px] font-black uppercase tracking-widest",
+                                    registryStatus?.is_registered ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400" : "bg-blue-500/15 text-blue-600 dark:text-blue-400"
+                                )}>
+                                    {registryStatus?.is_registered ? 'Registered' : (registryStatus?.mode === 'standalone' ? 'Standalone' : 'Ready')}
+                                </span>
+                            </div>
+                            <div className="text-[11px] text-slate-600 dark:text-text-muted flex justify-between font-mono">
+                                <span>Autodiscovery: <strong className="text-slate-900 dark:text-text-primary">{registryStatus?.is_registered ? 'Worker Sync' : (registryStatus?.mode === 'leader' ? 'Leader Active' : 'Standalone')}</strong></span>
+                                <span>Edge PoP: <strong className="text-slate-900 dark:text-text-primary">Global</strong></span>
+                            </div>
                         </div>
                     </div>
                 </div>
 
                 {/* 2. Simulation Engines */}
-                <div className="bg-white dark:bg-[#0b1020]/90 border border-slate-200 dark:border-[#1e293b] rounded-2xl p-5 space-y-4 shadow-sm dark:shadow-xl">
-                    <div className="flex items-center justify-between pb-2 border-b border-slate-100 dark:border-[#1e293b]">
+                <div className="bg-white dark:bg-[#0b1020]/90 border border-slate-200 dark:border-[#1e293b] rounded-2xl p-6 flex flex-col justify-between gap-3.5 shadow-sm dark:shadow-xl">
+                    <div className="flex items-center justify-between pb-2.5 border-b border-slate-100 dark:border-[#1e293b]">
                         <div className="flex items-center gap-2 text-xs font-black uppercase tracking-wider text-slate-500 dark:text-text-muted">
                             <Zap size={15} className="text-indigo-500 dark:text-indigo-400" />
                             <span>2. Simulation Engines</span>
@@ -410,149 +440,208 @@ export const HomeOverview: React.FC<HomeOverviewProps> = ({
                         <span className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400 font-mono">Engines</span>
                     </div>
 
-                    {/* SaaS Traffic Status */}
-                    <div
-                        onClick={() => onNavigate('dashboard')}
-                        className="p-3.5 rounded-xl bg-slate-50 dark:bg-card-secondary/40 hover:bg-slate-100 dark:hover:bg-card-secondary/70 border border-slate-200 dark:border-[#1e293b]/70 hover:border-blue-400 dark:hover:border-blue-500/40 transition-all cursor-pointer group"
-                    >
-                        <div className="flex items-center justify-between">
-                            <span className="text-xs font-bold text-slate-900 dark:text-white flex items-center gap-1.5 group-hover:text-blue-600 dark:group-hover:text-blue-300">
-                                <Activity size={14} className={trafficRunning ? "text-emerald-500 dark:text-emerald-400 animate-pulse" : "text-slate-400 dark:text-text-muted"} />
-                                SaaS Traffic Generator
-                            </span>
-                            <span className={cn(
-                                "px-2 py-0.2 rounded text-[9px] font-black uppercase tracking-widest",
-                                trafficRunning ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400" : "bg-slate-200 dark:bg-zinc-800 text-slate-600 dark:text-zinc-400"
-                            )}>
-                                {trafficRunning ? 'Running' : 'Stopped'}
-                            </span>
-                        </div>
-                        <div className="text-[11px] text-slate-600 dark:text-text-muted flex justify-between font-mono mt-1">
-                            <span>Apps: <strong className="text-slate-900 dark:text-text-primary">{saasAppsCount || 67} Apps</strong></span>
-                            <span>Rate: <strong className={trafficRunning ? "text-emerald-600 dark:text-emerald-400 font-bold" : "text-slate-900 dark:text-text-primary"}>{trafficRunning ? (currentRpm && currentRpm > 0 ? `${Math.round(currentRpm)} req/min` : 'Active') : '0 req/min'}</strong></span>
-                        </div>
-                    </div>
-
-                    {/* Voice VoIP */}
-                    <div
-                        onClick={() => onNavigate('voice')}
-                        className="p-3.5 rounded-xl bg-slate-50 dark:bg-card-secondary/40 hover:bg-slate-100 dark:hover:bg-card-secondary/70 border border-slate-200 dark:border-[#1e293b]/70 hover:border-emerald-400 dark:hover:border-emerald-500/40 transition-all cursor-pointer group"
-                    >
-                        <div className="flex items-center justify-between">
-                            <span className="text-xs font-bold text-slate-900 dark:text-white flex items-center gap-1.5 group-hover:text-emerald-600 dark:group-hover:text-emerald-300">
-                                <Phone size={14} className={voiceRunning ? "text-emerald-500 dark:text-emerald-400 animate-pulse" : "text-slate-400 dark:text-text-muted"} />
-                                Voice & VoIP Simulator
-                            </span>
-                            <span className={cn(
-                                "px-2 py-0.2 rounded text-[9px] font-black uppercase tracking-widest",
-                                voiceRunning ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400" : "bg-slate-200 dark:bg-zinc-800 text-slate-600 dark:text-zinc-400"
-                            )}>
-                                {voiceRunning ? 'Running' : 'Stopped'}
-                            </span>
-                        </div>
-                        <div className="text-[11px] text-slate-600 dark:text-text-muted flex justify-between font-mono mt-1">
-                            <span>MOS: <strong className={voiceRunning ? "text-emerald-600 dark:text-emerald-400" : "text-slate-900 dark:text-text-primary"}>{voiceMos}</strong></span>
-                            <span>Loss: <strong className={voiceRunning ? (voiceLossVal > 1 ? "text-amber-500 dark:text-amber-400" : "text-emerald-600 dark:text-emerald-400") : "text-slate-900 dark:text-text-primary"}>{voiceLoss}</strong></span>
-                            <span>Jitter: <strong className="text-slate-900 dark:text-text-primary">{voiceJitter}</strong></span>
-                        </div>
-                    </div>
-
-                    {/* DEM & Probes */}
-                    <div
-                        onClick={() => onNavigate('performance')}
-                        className="p-3.5 rounded-xl bg-slate-50 dark:bg-card-secondary/40 hover:bg-slate-100 dark:hover:bg-card-secondary/70 border border-slate-200 dark:border-[#1e293b]/70 hover:border-purple-400 dark:hover:border-purple-500/40 transition-all cursor-pointer group"
-                    >
-                        <div className="flex items-center justify-between">
-                            <span className="text-xs font-bold text-slate-900 dark:text-white flex items-center gap-1.5 group-hover:text-purple-600 dark:group-hover:text-purple-300">
-                                <LineChart size={14} className={demActive ? "text-purple-500 dark:text-purple-400 animate-pulse" : "text-slate-400 dark:text-text-muted"} />
-                                Digital Experience (DEM)
-                            </span>
-                            <span className={cn(
-                                "px-2 py-0.2 rounded text-[9px] font-black uppercase tracking-widest",
-                                demActive ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400" : "bg-slate-200 dark:bg-zinc-800 text-slate-600 dark:text-zinc-400"
-                            )}>
-                                {demActive ? 'ON' : 'OFF'}
-                            </span>
-                        </div>
-                        <div className="text-[11px] text-slate-600 dark:text-text-muted flex justify-between font-mono mt-1">
-                            <span>Score: <strong className="text-purple-600 dark:text-purple-400">{demScore}/100</strong></span>
-                            <span>Probes: <strong className="text-slate-900 dark:text-text-primary">{demProbes} {demActive ? 'Active' : 'Configured'}</strong></span>
-                        </div>
-                    </div>
-
-                    {/* Compact Duo: Custom TCP Apps & IoT Simulation */}
-                    <div className="grid grid-cols-2 gap-2 pt-1 border-t border-slate-100 dark:border-[#1e293b]/70">
-                        {/* Custom TCP Apps */}
+                    <div className="flex-1 flex flex-col justify-between gap-3">
+                        {/* SaaS Traffic Status */}
                         <div
-                            onClick={() => onNavigate('custom_apps')}
-                            className={cn(
-                                "p-2.5 rounded-xl bg-slate-50 dark:bg-card-secondary/40 hover:bg-slate-100 dark:hover:bg-card-secondary/70 border border-slate-200 dark:border-[#1e293b]/70 hover:border-amber-400 dark:hover:border-amber-500/40 transition-all cursor-pointer group",
-                                customAppsRunning && "hover:border-emerald-400 dark:hover:border-emerald-500/40"
-                            )}
-                            title="Click to view Custom TCP/HTTP Applications"
+                            onClick={() => onNavigate('dashboard')}
+                            className="p-3.5 rounded-xl bg-slate-50 dark:bg-card-secondary/40 hover:bg-slate-100 dark:hover:bg-card-secondary/70 border border-slate-200 dark:border-[#1e293b]/70 hover:border-blue-400 dark:hover:border-blue-500/40 transition-all cursor-pointer group"
                         >
                             <div className="flex items-center justify-between">
-                                <span className="text-[11px] font-bold text-slate-900 dark:text-white flex items-center gap-1.5 group-hover:text-amber-600 dark:group-hover:text-amber-300">
-                                    <Boxes size={12} className={cn("text-amber-500 dark:text-amber-400", customAppsRunning && "text-emerald-500 dark:text-emerald-400 animate-pulse")} />
-                                    Custom Apps
+                                <span className="text-xs font-bold text-slate-900 dark:text-white flex items-center gap-1.5 group-hover:text-blue-600 dark:group-hover:text-blue-300">
+                                    <Activity size={14} className={trafficRunning ? "text-emerald-500 dark:text-emerald-400 animate-pulse" : "text-slate-400 dark:text-text-muted"} />
+                                    SaaS Traffic Generator
                                 </span>
                                 <span className={cn(
-                                    "px-1.5 py-0.2 rounded text-[8px] font-black uppercase tracking-wider",
-                                    customAppsRunning
-                                        ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 animate-pulse"
-                                        : (customAppsSub.status === 'listening' || (customAppsSub.active_listeners > 0))
-                                            ? "bg-blue-500/15 text-blue-600 dark:text-blue-400"
-                                            : "bg-slate-200 dark:bg-zinc-800 text-slate-600 dark:text-zinc-400"
+                                    "px-2 py-0.2 rounded text-[9px] font-black uppercase tracking-widest",
+                                    trafficRunning ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400" : "bg-slate-200 dark:bg-zinc-800 text-slate-600 dark:text-zinc-400"
                                 )}>
-                                    {customAppsRunning ? 'Running' : (customAppsSub.status === 'listening' || (customAppsSub.active_listeners > 0) ? 'Listening' : (customAppsCount > 0 ? 'Ready' : 'Idle'))}
+                                    {trafficRunning ? 'Running' : 'Stopped'}
                                 </span>
                             </div>
-                            <div className="text-[10px] text-slate-500 dark:text-text-muted mt-1 font-mono flex justify-between">
-                                <span>{customAppsCount} {customAppsCount > 1 ? 'Apps' : 'App'}</span>
-                                <span className={cn(customAppsFlows > 0 ? "text-emerald-600 dark:text-emerald-400 font-bold" : "text-amber-600 dark:text-amber-400")}>
-                                    {customAppsFlows} {customAppsFlows > 1 ? 'Flows' : 'Flow'}
-                                </span>
+                            <div className="text-[11px] text-slate-600 dark:text-text-muted flex justify-between font-mono mt-1">
+                                <span>Apps: <strong className="text-slate-900 dark:text-text-primary">{saasAppsCount || 67} Apps</strong></span>
+                                <span>Rate: <strong className={trafficRunning ? "text-emerald-600 dark:text-emerald-400 font-bold" : "text-slate-900 dark:text-text-primary"}>{trafficRunning ? (currentRpm && currentRpm > 0 ? `${Math.round(currentRpm)} req/min` : 'Active') : '0 req/min'}</strong></span>
                             </div>
                         </div>
 
-                        {/* IoT Simulation */}
+                        {/* Voice VoIP */}
                         <div
-                            onClick={() => onNavigate('iot')}
-                            className={cn(
-                                "p-2.5 rounded-xl bg-slate-50 dark:bg-card-secondary/40 hover:bg-slate-100 dark:hover:bg-card-secondary/70 border border-slate-200 dark:border-[#1e293b]/70 hover:border-cyan-400 dark:hover:border-cyan-500/40 transition-all cursor-pointer group",
-                                iotRunning && "hover:border-emerald-400 dark:hover:border-emerald-500/40"
-                            )}
-                            title="Click to view IoT Device Emulation"
+                            onClick={() => onNavigate('voice')}
+                            className="p-3.5 rounded-xl bg-slate-50 dark:bg-card-secondary/40 hover:bg-slate-100 dark:hover:bg-card-secondary/70 border border-slate-200 dark:border-[#1e293b]/70 hover:border-emerald-400 dark:hover:border-emerald-500/40 transition-all cursor-pointer group"
                         >
                             <div className="flex items-center justify-between">
-                                <span className="text-[11px] font-bold text-slate-900 dark:text-white flex items-center gap-1.5 group-hover:text-cyan-600 dark:group-hover:text-cyan-300">
-                                    <Cpu size={12} className={cn("text-cyan-500 dark:text-cyan-400", iotRunning && "text-emerald-500 dark:text-emerald-400 animate-pulse")} />
-                                    IoT Fleet
+                                <span className="text-xs font-bold text-slate-900 dark:text-white flex items-center gap-1.5 group-hover:text-emerald-600 dark:group-hover:text-emerald-300">
+                                    <Phone size={14} className={voiceRunning ? "text-emerald-500 dark:text-emerald-400 animate-pulse" : "text-slate-400 dark:text-text-muted"} />
+                                    Voice & VoIP Simulator
                                 </span>
                                 <span className={cn(
-                                    "px-1.5 py-0.2 rounded text-[8px] font-black uppercase tracking-wider",
-                                    iotRunning
-                                        ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 animate-pulse"
-                                        : (iotTotalCount > 0)
-                                            ? "bg-slate-200 dark:bg-zinc-800 text-slate-600 dark:text-zinc-400"
-                                            : "bg-slate-200 dark:bg-zinc-800 text-slate-500 dark:text-zinc-500"
+                                    "px-2 py-0.2 rounded text-[9px] font-black uppercase tracking-widest",
+                                    voiceRunning ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400" : "bg-slate-200 dark:bg-zinc-800 text-slate-600 dark:text-zinc-400"
                                 )}>
-                                    {iotRunning ? 'Running' : (iotTotalCount > 0 ? 'Standby' : 'Idle')}
+                                    {voiceRunning ? 'Running' : 'Stopped'}
                                 </span>
                             </div>
-                            <div className="text-[10px] text-slate-500 dark:text-text-muted mt-1 font-mono flex justify-between">
-                                <span>{iotTotalCount} {iotTotalCount > 1 ? 'Devices' : 'Device'}</span>
-                                <span className={cn(iotActiveCount > 0 ? "text-emerald-600 dark:text-emerald-400 font-bold" : "text-cyan-600 dark:text-cyan-400")}>
-                                    {iotActiveCount} Active
+                            <div className="text-[11px] text-slate-600 dark:text-text-muted flex justify-between font-mono mt-1">
+                                <span>MOS: <strong className={voiceRunning ? "text-emerald-600 dark:text-emerald-400" : "text-slate-900 dark:text-text-primary"}>{voiceMos}</strong></span>
+                                <span>Loss: <strong className={voiceRunning ? (voiceLossVal > 1 ? "text-amber-500 dark:text-amber-400" : "text-emerald-600 dark:text-emerald-400") : "text-slate-900 dark:text-text-primary"}>{voiceLoss}</strong></span>
+                                <span>Jitter: <strong className="text-slate-900 dark:text-text-primary">{voiceJitter}</strong></span>
+                            </div>
+                        </div>
+
+                        {/* DEM & Probes */}
+                        <div
+                            onClick={() => onNavigate('performance')}
+                            className="p-3.5 rounded-xl bg-slate-50 dark:bg-card-secondary/40 hover:bg-slate-100 dark:hover:bg-card-secondary/70 border border-slate-200 dark:border-[#1e293b]/70 hover:border-purple-400 dark:hover:border-purple-500/40 transition-all cursor-pointer group"
+                        >
+                            <div className="flex items-center justify-between">
+                                <span className="text-xs font-bold text-slate-900 dark:text-white flex items-center gap-1.5 group-hover:text-purple-600 dark:group-hover:text-purple-300">
+                                    <LineChart size={14} className={demActive ? "text-purple-500 dark:text-purple-400 animate-pulse" : "text-slate-400 dark:text-text-muted"} />
+                                    Digital Experience (DEM)
                                 </span>
+                                <span className={cn(
+                                    "px-2 py-0.2 rounded text-[9px] font-black uppercase tracking-widest",
+                                    demActive ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400" : "bg-slate-200 dark:bg-zinc-800 text-slate-600 dark:text-zinc-400"
+                                )}>
+                                    {demActive ? 'ON' : 'OFF'}
+                                </span>
+                            </div>
+                            <div className="text-[11px] text-slate-600 dark:text-text-muted flex justify-between font-mono mt-1">
+                                <span>Score: <strong className="text-purple-600 dark:text-purple-400">{demScore}/100</strong></span>
+                                <span>Probes: <strong className="text-slate-900 dark:text-text-primary">{demProbes} {demActive ? 'Active' : 'Configured'}</strong></span>
+                            </div>
+                        </div>
+
+                        {/* Security Validation */}
+                        {(() => {
+                            const secStatus = securitySub.status || 'standby';
+                            const secRunning = secStatus === 'running';
+                            const secPaused = secStatus === 'paused';
+                            const activeSchedules: string[] = Array.isArray(securitySub.active_schedules) ? securitySub.active_schedules : [];
+                            const totalTests = Number(securitySub.total_tests_run ?? 0);
+                            const blockRate = typeof securitySub.block_rate_pct === 'number' ? securitySub.block_rate_pct : null;
+                            return (
+                                <div
+                                    onClick={() => onNavigate('security')}
+                                    title="Click to open Security Testing & SASE Policy Validation"
+                                    className="p-3.5 rounded-xl bg-slate-50 dark:bg-card-secondary/40 hover:bg-slate-100 dark:hover:bg-card-secondary/70 border border-slate-200 dark:border-[#1e293b]/70 hover:border-rose-400 dark:hover:border-rose-500/40 transition-all cursor-pointer group"
+                                >
+                                    <div className="flex items-center justify-between">
+                                        <span className="text-xs font-bold text-slate-900 dark:text-white flex items-center gap-1.5 group-hover:text-rose-600 dark:group-hover:text-rose-300">
+                                            <Shield size={14} className={cn(
+                                                secRunning ? "text-emerald-500 dark:text-emerald-400 animate-pulse" :
+                                                secPaused ? "text-amber-500 dark:text-amber-400" :
+                                                "text-rose-500 dark:text-rose-400"
+                                            )} />
+                                            Security Validation
+                                        </span>
+                                        <span className={cn(
+                                            "px-2 py-0.2 rounded text-[9px] font-black uppercase tracking-widest",
+                                            secRunning
+                                                ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400"
+                                                : secPaused
+                                                    ? "bg-amber-500/15 text-amber-600 dark:text-amber-400"
+                                                    : "bg-slate-200 dark:bg-zinc-800 text-slate-600 dark:text-zinc-400"
+                                        )}>
+                                            {secRunning ? 'Running' : secPaused ? 'Paused' : 'Standby'}
+                                        </span>
+                                    </div>
+                                    <div className="text-[11px] text-slate-600 dark:text-text-muted flex justify-between font-mono mt-1">
+                                        <span>
+                                            Schedules:{' '}
+                                            <strong className={cn(
+                                                secRunning ? "text-emerald-600 dark:text-emerald-400" :
+                                                secPaused ? "text-amber-600 dark:text-amber-400" :
+                                                "text-slate-900 dark:text-text-primary"
+                                            )}>
+                                                {activeSchedules.length > 0 ? activeSchedules.join(' · ') : '0 Active'}
+                                            </strong>
+                                        </span>
+                                        <span>
+                                            {blockRate !== null && totalTests > 0 ? (
+                                                <>Blocked: <strong className="text-emerald-600 dark:text-emerald-400">{blockRate}%</strong> <span className="opacity-75">({totalTests})</span></>
+                                            ) : (
+                                                <>Tests: <strong className="text-slate-900 dark:text-text-primary">{totalTests} Run</strong></>
+                                            )}
+                                        </span>
+                                    </div>
+                                </div>
+                            );
+                        })()}
+
+                        {/* Compact Duo: Custom TCP Apps & IoT Simulation */}
+                        <div className="grid grid-cols-2 gap-2 pt-1 border-t border-slate-100 dark:border-[#1e293b]/70">
+                            {/* Custom TCP Apps */}
+                            <div
+                                onClick={() => onNavigate('custom_apps')}
+                                className={cn(
+                                    "p-2.5 rounded-xl bg-slate-50 dark:bg-card-secondary/40 hover:bg-slate-100 dark:hover:bg-card-secondary/70 border border-slate-200 dark:border-[#1e293b]/70 hover:border-amber-400 dark:hover:border-amber-500/40 transition-all cursor-pointer group",
+                                    customAppsRunning && "hover:border-emerald-400 dark:hover:border-emerald-500/40"
+                                )}
+                                title="Click to view Custom TCP/HTTP Applications"
+                            >
+                                <div className="flex items-center justify-between">
+                                    <span className="text-[11px] font-bold text-slate-900 dark:text-white flex items-center gap-1.5 group-hover:text-amber-600 dark:group-hover:text-amber-300">
+                                        <Boxes size={12} className={cn("text-amber-500 dark:text-amber-400", customAppsRunning && "text-emerald-500 dark:text-emerald-400 animate-pulse")} />
+                                        Custom Apps
+                                    </span>
+                                    <span className={cn(
+                                        "px-1.5 py-0.2 rounded text-[8px] font-black uppercase tracking-wider",
+                                        customAppsRunning
+                                            ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 animate-pulse"
+                                            : (customAppsSub.status === 'listening' || (customAppsSub.active_listeners > 0))
+                                                ? "bg-blue-500/15 text-blue-600 dark:text-blue-400"
+                                                : "bg-slate-200 dark:bg-zinc-800 text-slate-600 dark:text-zinc-400"
+                                    )}>
+                                        {customAppsRunning ? 'Running' : (customAppsSub.status === 'listening' || (customAppsSub.active_listeners > 0) ? 'Listening' : (customAppsCount > 0 ? 'Ready' : 'Idle'))}
+                                    </span>
+                                </div>
+                                <div className="text-[10px] text-slate-500 dark:text-text-muted mt-1 font-mono flex justify-between">
+                                    <span>{customAppsCount} {customAppsCount > 1 ? 'Apps' : 'App'}</span>
+                                    <span className={cn(customAppsFlows > 0 ? "text-emerald-600 dark:text-emerald-400 font-bold" : "text-amber-600 dark:text-amber-400")}>
+                                        {customAppsFlows} {customAppsFlows > 1 ? 'Flows' : 'Flow'}
+                                    </span>
+                                </div>
+                            </div>
+
+                            {/* IoT Simulation */}
+                            <div
+                                onClick={() => onNavigate('iot')}
+                                className={cn(
+                                    "p-2.5 rounded-xl bg-slate-50 dark:bg-card-secondary/40 hover:bg-slate-100 dark:hover:bg-card-secondary/70 border border-slate-200 dark:border-[#1e293b]/70 hover:border-cyan-400 dark:hover:border-cyan-500/40 transition-all cursor-pointer group",
+                                    iotRunning && "hover:border-emerald-400 dark:hover:border-emerald-500/40"
+                                )}
+                                title="Click to view IoT Device Emulation"
+                            >
+                                <div className="flex items-center justify-between">
+                                    <span className="text-[11px] font-bold text-slate-900 dark:text-white flex items-center gap-1.5 group-hover:text-cyan-600 dark:group-hover:text-cyan-300">
+                                        <Cpu size={12} className={cn("text-cyan-500 dark:text-cyan-400", iotRunning && "text-emerald-500 dark:text-emerald-400 animate-pulse")} />
+                                        IoT Fleet
+                                    </span>
+                                    <span className={cn(
+                                        "px-1.5 py-0.2 rounded text-[8px] font-black uppercase tracking-wider",
+                                        iotRunning
+                                            ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 animate-pulse"
+                                            : (iotTotalCount > 0)
+                                                ? "bg-slate-200 dark:bg-zinc-800 text-slate-600 dark:text-zinc-400"
+                                                : "bg-slate-200 dark:bg-zinc-800 text-slate-500 dark:text-zinc-500"
+                                    )}>
+                                        {iotRunning ? 'Running' : (iotTotalCount > 0 ? 'Standby' : 'Idle')}
+                                    </span>
+                                </div>
+                                <div className="text-[10px] text-slate-500 dark:text-text-muted mt-1 font-mono flex justify-between">
+                                    <span>{iotTotalCount} {iotTotalCount > 1 ? 'Devices' : 'Device'}</span>
+                                    <span className={cn(iotActiveCount > 0 ? "text-emerald-600 dark:text-emerald-400 font-bold" : "text-cyan-600 dark:text-cyan-400")}>
+                                        {iotActiveCount} Active
+                                    </span>
+                                </div>
                             </div>
                         </div>
                     </div>
                 </div>
 
                 {/* 3. Host & Underlay */}
-                <div className="bg-white dark:bg-[#0b1020]/90 border border-slate-200 dark:border-[#1e293b] rounded-2xl p-5 space-y-4 shadow-sm dark:shadow-xl">
-                    <div className="flex items-center justify-between pb-2 border-b border-slate-100 dark:border-[#1e293b]">
+                <div className="bg-white dark:bg-[#0b1020]/90 border border-slate-200 dark:border-[#1e293b] rounded-2xl p-6 flex flex-col justify-between gap-4 shadow-sm dark:shadow-xl">
+                    <div className="flex items-center justify-between pb-2.5 border-b border-slate-100 dark:border-[#1e293b]">
                         <div className="flex items-center gap-2 text-xs font-black uppercase tracking-wider text-slate-500 dark:text-text-muted">
                             <Server size={15} className="text-purple-500 dark:text-purple-400" />
                             <span>3. Host & Underlay</span>
@@ -560,225 +649,126 @@ export const HomeOverview: React.FC<HomeOverviewProps> = ({
                         <span className="text-[10px] font-bold text-purple-600 dark:text-purple-400 font-mono">Resources</span>
                     </div>
 
-                    {/* VyOS Underlay */}
-                    <div
-                        onClick={() => onNavigate('vyos')}
-                        className="p-3.5 rounded-xl bg-slate-50 dark:bg-card-secondary/40 hover:bg-slate-100 dark:hover:bg-card-secondary/70 border border-slate-200 dark:border-[#1e293b]/70 hover:border-blue-400 dark:hover:border-blue-500/40 transition-all cursor-pointer group"
-                    >
-                        <div className="flex items-center justify-between">
-                            <span className="text-xs font-bold text-slate-900 dark:text-white flex items-center gap-1.5 group-hover:text-blue-600 dark:group-hover:text-blue-300">
-                                <span className={cn("w-2 h-2 rounded-full", (vyos.active_routers > 0 || (vyos.status === 'online' && vyos.active_routers !== 0)) ? "bg-emerald-500" : "bg-zinc-400")} />
-                                VyOS Underlay Routers
-                            </span>
-                            <span className={cn(
-                                "px-2 py-0.2 rounded text-[9px] font-black uppercase tracking-widest",
-                                (vyos.active_routers > 0 || (vyos.status === 'online' && vyos.active_routers !== 0)) ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400" : "bg-slate-200 dark:bg-zinc-800 text-slate-600 dark:text-zinc-400"
-                            )}>
-                                {(vyos.active_routers > 0 || (vyos.status === 'online' && vyos.active_routers !== 0)) ? 'Online' : 'Standby'}
-                            </span>
-                        </div>
-                        <div className="text-[11px] text-slate-600 dark:text-text-muted flex justify-between font-mono mt-1">
-                            <span>Active Routers: <strong className="text-slate-900 dark:text-text-primary">{vyos.active_routers !== undefined ? vyos.active_routers : (host.mode === 'Host Mode' ? '0 (Host Mode)' : '0')}</strong></span>
-                            <span>Impairments: <strong className={cn(
-                                (vyos.active_qos_rules && vyos.active_qos_rules > 0)
-                                    ? "text-amber-600 dark:text-amber-400 font-bold"
-                                    : "text-emerald-600 dark:text-emerald-400"
-                            )}>
-                                {(vyos.active_qos_rules && vyos.active_qos_rules > 0) ? `${vyos.active_qos_rules} Injected` : 'None'}
-                            </strong></span>
-                        </div>
-                    </div>
-
-                    {/* CPU Load Gauge (Interactive Link to System Info) */}
-                    <div
-                        onClick={() => onNavigate('settings', 'system')}
-                        title="Click to view detailed System Info in Settings"
-                        className="p-3.5 rounded-xl bg-slate-50 dark:bg-card-secondary/40 hover:bg-slate-100 dark:hover:bg-card-secondary/70 border border-slate-200 dark:border-[#1e293b]/70 hover:border-pink-400 dark:hover:border-pink-500/40 transition-all cursor-pointer group space-y-1.5"
-                    >
-                        <div className="flex justify-between text-xs font-bold">
-                            <span className="text-slate-600 dark:text-text-muted flex items-center gap-1.5 group-hover:text-pink-600 dark:group-hover:text-pink-300 transition-colors">
-                                <Cpu size={14} className="text-pink-500 dark:text-pink-400" /> CPU Load
-                            </span>
-                            <span className="text-slate-900 dark:text-white font-mono">{cpuUsage}% ({cpuCores} Cores)</span>
-                        </div>
-                        <div className="w-full bg-slate-200 dark:bg-[#1e293b] rounded-full h-2 overflow-hidden">
-                            <div
-                                className="bg-gradient-to-r from-pink-500 to-rose-500 h-2 rounded-full transition-all duration-500"
-                                style={{ width: `${Math.min(cpuUsage, 100)}%` }}
-                            />
-                        </div>
-                    </div>
-
-                    {/* Memory RAM Gauge (Interactive Link to System Info) */}
-                    <div
-                        onClick={() => onNavigate('settings', 'system')}
-                        title="Click to view detailed System Info in Settings"
-                        className="p-3.5 rounded-xl bg-slate-50 dark:bg-card-secondary/40 hover:bg-slate-100 dark:hover:bg-card-secondary/70 border border-slate-200 dark:border-[#1e293b]/70 hover:border-blue-400 dark:hover:border-blue-500/40 transition-all cursor-pointer group space-y-1.5"
-                    >
-                        <div className="flex justify-between text-xs font-bold">
-                            <span className="text-slate-600 dark:text-text-muted flex items-center gap-1.5 group-hover:text-blue-600 dark:group-hover:text-blue-300 transition-colors">
-                                <Layers size={14} className="text-blue-500 dark:text-blue-400" /> Memory RAM
-                            </span>
-                            <span className="text-slate-900 dark:text-white font-mono">{usedMemGb} / {totalMemGb} GB ({memUsagePercent}%)</span>
-                        </div>
-                        <div className="w-full bg-slate-200 dark:bg-[#1e293b] rounded-full h-2 overflow-hidden">
-                            <div
-                                className="bg-gradient-to-r from-blue-500 to-indigo-500 h-2 rounded-full transition-all duration-500"
-                                style={{ width: `${Math.min(memUsagePercent, 100)}%` }}
-                            />
-                        </div>
-                    </div>
-
-                    {/* Underlay Network & Public IP Status */}
-                    {(publicIp || gatewayIp || localIp || siteInfo?.local_ip) && (
-                        <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-card-secondary/40 border border-slate-200 dark:border-[#1e293b]/70 space-y-2">
+                    <div className="flex-1 flex flex-col justify-between gap-4">
+                        {/* VyOS Underlay */}
+                        <div
+                            onClick={() => onNavigate('vyos')}
+                            className="p-4 rounded-xl bg-slate-50 dark:bg-card-secondary/40 hover:bg-slate-100 dark:hover:bg-card-secondary/70 border border-slate-200 dark:border-[#1e293b]/70 hover:border-blue-400 dark:hover:border-blue-500/40 transition-all cursor-pointer group"
+                        >
                             <div className="flex items-center justify-between">
-                                <span className="text-xs font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
-                                    <Globe size={14} className="text-cyan-500 dark:text-cyan-400" />
-                                    Underlay WAN
+                                <span className="text-xs font-bold text-slate-900 dark:text-white flex items-center gap-1.5 group-hover:text-blue-600 dark:group-hover:text-blue-300">
+                                    <span className={cn("w-2 h-2 rounded-full", (vyos.active_routers > 0 || (vyos.status === 'online' && vyos.active_routers !== 0)) ? "bg-emerald-500" : "bg-zinc-400")} />
+                                    VyOS Underlay Routers
                                 </span>
-                                {publicIp && (
-                                    <span className="text-xs font-mono flex items-center gap-1.5" title={publicIpCountry || 'Public IP'}>
-                                        {publicIpCountry && (
-                                            <span className="text-sm leading-none">
-                                                {String.fromCodePoint(...[...publicIpCountry.toUpperCase()].map(c => 0x1F1E6 - 65 + c.charCodeAt(0)))}
-                                            </span>
-                                        )}
-                                        <strong className="text-slate-900 dark:text-text-primary text-[10px]">{publicIp}</strong>
-                                    </span>
-                                )}
+                                <span className={cn(
+                                    "px-2 py-0.2 rounded text-[9px] font-black uppercase tracking-widest",
+                                    (vyos.active_routers > 0 || (vyos.status === 'online' && vyos.active_routers !== 0)) ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400" : "bg-slate-200 dark:bg-zinc-800 text-slate-600 dark:text-zinc-400"
+                                )}>
+                                    {(vyos.active_routers > 0 || (vyos.status === 'online' && vyos.active_routers !== 0)) ? 'Online' : 'Standby'}
+                                </span>
                             </div>
-                            <div className="text-[11px] text-slate-600 dark:text-text-muted flex justify-between items-center font-mono">
-                                <span>Local: <strong className="text-slate-900 dark:text-text-primary">{localIp || siteInfo?.local_ip || host.ip || '—'}</strong></span>
-                                <span>GW: <strong className="text-slate-900 dark:text-text-primary">{gatewayIp || '—'}</strong></span>
-                                <button
-                                    onClick={(e) => {
-                                        e.stopPropagation();
-                                        onRunSpeedtest?.();
-                                    }}
-                                    disabled={runningSpeedtest}
-                                    title="Click to run/re-run Internet Speedtest"
-                                    className={cn(
-                                        "px-2 py-0.5 rounded text-[10px] font-bold font-mono transition-all flex items-center gap-1 border shadow-xs cursor-pointer active:scale-95",
-                                        runningSpeedtest
-                                            ? "bg-blue-500/20 text-blue-500 dark:text-blue-400 border-blue-500/40 animate-pulse cursor-wait"
-                                            : speedtestResult?.download_mbps
-                                                ? "bg-cyan-500/15 hover:bg-cyan-500/25 text-cyan-700 dark:text-cyan-300 border-cyan-500/30"
-                                                : "bg-slate-200 hover:bg-slate-300 dark:bg-card-secondary dark:hover:bg-card-hover text-slate-700 dark:text-text-muted hover:text-slate-900 dark:hover:text-white border-slate-300 dark:border-border"
+                            <div className="text-[11px] text-slate-600 dark:text-text-muted flex justify-between font-mono mt-1.5">
+                                <span>Active Routers: <strong className="text-slate-900 dark:text-text-primary">{vyos.active_routers !== undefined ? vyos.active_routers : (host.mode === 'Host Mode' ? '0 (Host Mode)' : '0')}</strong></span>
+                                <span>Impairments: <strong className={cn(
+                                    (vyos.active_qos_rules && vyos.active_qos_rules > 0)
+                                        ? "text-amber-600 dark:text-amber-400 font-bold"
+                                        : "text-emerald-600 dark:text-emerald-400"
+                                )}>
+                                    {(vyos.active_qos_rules && vyos.active_qos_rules > 0) ? `${vyos.active_qos_rules} Injected` : 'None'}
+                                </strong></span>
+                            </div>
+                        </div>
+
+                        {/* CPU Load Gauge (Interactive Link to System Info) */}
+                        <div
+                            onClick={() => onNavigate('settings', 'system')}
+                            title="Click to view detailed System Info in Settings"
+                            className="p-4 rounded-xl bg-slate-50 dark:bg-card-secondary/40 hover:bg-slate-100 dark:hover:bg-card-secondary/70 border border-slate-200 dark:border-[#1e293b]/70 hover:border-pink-400 dark:hover:border-pink-500/40 transition-all cursor-pointer group space-y-2"
+                        >
+                            <div className="flex justify-between text-xs font-bold">
+                                <span className="text-slate-600 dark:text-text-muted flex items-center gap-1.5 group-hover:text-pink-600 dark:group-hover:text-pink-300 transition-colors">
+                                    <Cpu size={14} className="text-pink-500 dark:text-pink-400" /> CPU Load
+                                </span>
+                                <span className="text-slate-900 dark:text-white font-mono">{cpuUsage}% ({cpuCores} Cores)</span>
+                            </div>
+                            <div className="w-full bg-slate-200 dark:bg-[#1e293b] rounded-full h-2 overflow-hidden">
+                                <div
+                                    className="bg-gradient-to-r from-pink-500 to-rose-500 h-2 rounded-full transition-all duration-500"
+                                    style={{ width: `${Math.min(cpuUsage, 100)}%` }}
+                                />
+                            </div>
+                        </div>
+
+                        {/* Memory RAM Gauge (Interactive Link to System Info) */}
+                        <div
+                            onClick={() => onNavigate('settings', 'system')}
+                            title="Click to view detailed System Info in Settings"
+                            className="p-4 rounded-xl bg-slate-50 dark:bg-card-secondary/40 hover:bg-slate-100 dark:hover:bg-card-secondary/70 border border-slate-200 dark:border-[#1e293b]/70 hover:border-blue-400 dark:hover:border-blue-500/40 transition-all cursor-pointer group space-y-2"
+                        >
+                            <div className="flex justify-between text-xs font-bold">
+                                <span className="text-slate-600 dark:text-text-muted flex items-center gap-1.5 group-hover:text-blue-600 dark:group-hover:text-blue-300 transition-colors">
+                                    <Layers size={14} className="text-blue-500 dark:text-blue-400" /> Memory RAM
+                                </span>
+                                <span className="text-slate-900 dark:text-white font-mono">{usedMemGb} / {totalMemGb} GB ({memUsagePercent}%)</span>
+                            </div>
+                            <div className="w-full bg-slate-200 dark:bg-[#1e293b] rounded-full h-2 overflow-hidden">
+                                <div
+                                    className="bg-gradient-to-r from-blue-500 to-indigo-500 h-2 rounded-full transition-all duration-500"
+                                    style={{ width: `${Math.min(memUsagePercent, 100)}%` }}
+                                />
+                            </div>
+                        </div>
+
+                        {/* Underlay Network & Public IP Status */}
+                        {(publicIp || gatewayIp || localIp || siteInfo?.local_ip) && (
+                            <div className="p-4 rounded-xl bg-slate-50 dark:bg-card-secondary/40 border border-slate-200 dark:border-[#1e293b]/70 space-y-2">
+                                <div className="flex items-center justify-between">
+                                    <span className="text-xs font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
+                                        <Globe size={14} className="text-cyan-500 dark:text-cyan-400" />
+                                        Underlay WAN
+                                    </span>
+                                    {publicIp && (
+                                        <span className="text-xs font-mono flex items-center gap-1.5" title={publicIpCountry || 'Public IP'}>
+                                            {publicIpCountry && (
+                                                <span className="text-sm leading-none">
+                                                    {String.fromCodePoint(...[...publicIpCountry.toUpperCase()].map(c => 0x1F1E6 - 65 + c.charCodeAt(0)))}
+                                                </span>
+                                            )}
+                                            <strong className="text-slate-900 dark:text-text-primary text-[10px]">{publicIp}</strong>
+                                        </span>
                                     )}
-                                >
-                                    <Gauge size={11} className={runningSpeedtest ? "animate-spin text-blue-500" : "text-cyan-500 dark:text-cyan-400"} />
-                                    <span>
-                                        {runningSpeedtest
-                                            ? "Testing..."
-                                            : speedtestResult?.download_mbps
-                                                ? `${Math.round(speedtestResult.download_mbps)} Mbps`
-                                                : "Speedtest"}
-                                    </span>
-                                </button>
+                                </div>
+                                <div className="text-[11px] text-slate-600 dark:text-text-muted flex justify-between items-center font-mono">
+                                    <span>Local: <strong className="text-slate-900 dark:text-text-primary">{localIp || siteInfo?.local_ip || host.ip || '—'}</strong></span>
+                                    <span>GW: <strong className="text-slate-900 dark:text-text-primary">{gatewayIp || '—'}</strong></span>
+                                    <button
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            onRunSpeedtest?.();
+                                        }}
+                                        disabled={runningSpeedtest}
+                                        title="Click to run/re-run Internet Speedtest"
+                                        className={cn(
+                                            "px-2 py-0.5 rounded text-[10px] font-bold font-mono transition-all flex items-center gap-1 border shadow-xs cursor-pointer active:scale-95",
+                                            runningSpeedtest
+                                                ? "bg-blue-500/20 text-blue-500 dark:text-blue-400 border-blue-500/40 animate-pulse cursor-wait"
+                                                : speedtestResult?.download_mbps
+                                                    ? "bg-cyan-500/15 hover:bg-cyan-500/25 text-cyan-700 dark:text-cyan-300 border-cyan-500/30"
+                                                    : "bg-slate-200 hover:bg-slate-300 dark:bg-card-secondary dark:hover:bg-card-hover text-slate-700 dark:text-text-muted hover:text-slate-900 dark:hover:text-white border-slate-300 dark:border-border"
+                                        )}
+                                    >
+                                        <Gauge size={11} className={runningSpeedtest ? "animate-spin text-blue-500" : "text-cyan-500 dark:text-cyan-400"} />
+                                        <span>
+                                            {runningSpeedtest
+                                                ? "Testing..."
+                                                : speedtestResult?.download_mbps
+                                                    ? `${Math.round(speedtestResult.download_mbps)} Mbps`
+                                                    : "Speedtest"}
+                                        </span>
+                                    </button>
+                                </div>
                             </div>
-                        </div>
-                    )}
-                </div>
-            </div>
-
-            {/* ── WORKLOADS & MISSION CONTROL QUICK ACTIONS ── */}
-            <div className="space-y-4">
-                <div className="flex items-center justify-between">
-                    <div>
-                        <h2 className="text-base font-black text-slate-900 dark:text-white tracking-wide uppercase flex items-center gap-2">
-                            <Sparkles size={18} className="text-blue-500 dark:text-blue-400" />
-                            Mission Control Workloads
-                        </h2>
-                        <p className="text-xs text-slate-500 dark:text-text-muted mt-0.5">
-                            Launch, monitor and validate SD-WAN & SASE capabilities with one click.
-                        </p>
-                    </div>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                    {/* Security Validation */}
-                    <div
-                        onClick={() => onNavigate('security')}
-                        className="p-5 rounded-2xl bg-white dark:bg-[#0c1324]/80 hover:bg-slate-50 dark:hover:bg-[#111933] border border-slate-200 dark:border-[#1e293b] hover:border-blue-400 dark:hover:border-blue-500/50 transition-all duration-200 cursor-pointer shadow-sm dark:shadow-lg group hover:-translate-y-0.5"
-                    >
-                        <div className="flex items-center justify-between mb-3">
-                            <div className="p-2.5 rounded-xl bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20 group-hover:bg-blue-600 group-hover:text-white transition-all shadow-inner">
-                                <Shield size={18} />
-                            </div>
-                            <span className="text-[10px] font-bold text-slate-400 dark:text-text-muted uppercase tracking-wider group-hover:text-blue-600 dark:group-hover:text-blue-400 flex items-center gap-1">
-                                Open <ExternalLink size={10} />
-                            </span>
-                        </div>
-                        <h3 className="text-sm font-black text-slate-900 dark:text-white group-hover:text-blue-600 dark:group-hover:text-blue-300 transition-colors">
-                            Security Validation
-                        </h3>
-                        <p className="text-xs text-slate-500 dark:text-text-muted mt-1 leading-relaxed">
-                            Run automated SASE NGFW inspection suites (URL, DNS, Threats, EICAR).
-                        </p>
-                    </div>
-
-                    {/* Topology Map */}
-                    <div
-                        onClick={() => onNavigate('topology')}
-                        className="p-5 rounded-2xl bg-white dark:bg-[#0c1324]/80 hover:bg-slate-50 dark:hover:bg-[#111933] border border-slate-200 dark:border-[#1e293b] hover:border-purple-400 dark:hover:border-purple-500/50 transition-all duration-200 cursor-pointer shadow-sm dark:shadow-lg group hover:-translate-y-0.5"
-                    >
-                        <div className="flex items-center justify-between mb-3">
-                            <div className="p-2.5 rounded-xl bg-purple-500/10 text-purple-600 dark:text-purple-400 border border-purple-500/20 group-hover:bg-purple-600 group-hover:text-white transition-all shadow-inner">
-                                <Network size={18} />
-                            </div>
-                            <span className="text-[10px] font-bold text-slate-400 dark:text-text-muted uppercase tracking-wider group-hover:text-purple-600 dark:group-hover:text-purple-400 flex items-center gap-1">
-                                Open <ExternalLink size={10} />
-                            </span>
-                        </div>
-                        <h3 className="text-sm font-black text-slate-900 dark:text-white group-hover:text-purple-600 dark:group-hover:text-purple-300 transition-colors">
-                            SD-WAN Topology
-                        </h3>
-                        <p className="text-xs text-slate-500 dark:text-text-muted mt-1 leading-relaxed">
-                            Visualize underlay mesh, SD-WAN tunnels, and live SASE branch paths.
-                        </p>
-                    </div>
-
-                    {/* Packet Capture */}
-                    <div
-                        onClick={() => onNavigate('packet_capture')}
-                        className="p-5 rounded-2xl bg-white dark:bg-[#0c1324]/80 hover:bg-slate-50 dark:hover:bg-[#111933] border border-slate-200 dark:border-[#1e293b] hover:border-cyan-400 dark:hover:border-cyan-500/50 transition-all duration-200 cursor-pointer shadow-sm dark:shadow-lg group hover:-translate-y-0.5"
-                    >
-                        <div className="flex items-center justify-between mb-3">
-                            <div className="p-2.5 rounded-xl bg-cyan-500/10 text-cyan-600 dark:text-cyan-400 border border-cyan-500/20 group-hover:bg-cyan-600 group-hover:text-white transition-all shadow-inner">
-                                <Radio size={18} />
-                            </div>
-                            <span className="text-[10px] font-bold text-slate-400 dark:text-text-muted uppercase tracking-wider group-hover:text-cyan-600 dark:group-hover:text-cyan-400 flex items-center gap-1">
-                                Open <ExternalLink size={10} />
-                            </span>
-                        </div>
-                        <h3 className="text-sm font-black text-slate-900 dark:text-white group-hover:text-cyan-600 dark:group-hover:text-cyan-300 transition-colors">
-                            Packet Sniffer (BPF)
-                        </h3>
-                        <p className="text-xs text-slate-500 dark:text-text-muted mt-1 leading-relaxed">
-                            Capture live traffic with Wireshark-grade 3-pane packet analysis.
-                        </p>
-                    </div>
-
-                    {/* VyOS WAN Impairments */}
-                    <div
-                        onClick={() => onNavigate('vyos')}
-                        className="p-5 rounded-2xl bg-white dark:bg-[#0c1324]/80 hover:bg-slate-50 dark:hover:bg-[#111933] border border-slate-200 dark:border-[#1e293b] hover:border-amber-400 dark:hover:border-amber-500/50 transition-all duration-200 cursor-pointer shadow-sm dark:shadow-lg group hover:-translate-y-0.5"
-                    >
-                        <div className="flex items-center justify-between mb-3">
-                            <div className="p-2.5 rounded-xl bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20 group-hover:bg-amber-600 group-hover:text-white transition-all shadow-inner">
-                                <Monitor size={18} />
-                            </div>
-                            <span className="text-[10px] font-bold text-slate-400 dark:text-text-muted uppercase tracking-wider group-hover:text-amber-600 dark:group-hover:text-amber-400 flex items-center gap-1">
-                                Open <ExternalLink size={10} />
-                            </span>
-                        </div>
-                        <h3 className="text-sm font-black text-slate-900 dark:text-white group-hover:text-amber-600 dark:group-hover:text-amber-300 transition-colors">
-                            VyOS WAN Impairments
-                        </h3>
-                        <p className="text-xs text-slate-500 dark:text-text-muted mt-1 leading-relaxed">
-                            Inject latency, loss, and jitter on VyOS routers to stress test SD-WAN failover.
-                        </p>
+                        )}
                     </div>
                 </div>
             </div>

@@ -552,6 +552,7 @@ interface SystemSettings {
     auto_restart_traffic: boolean;
     auto_restart_probes: boolean;
     auto_restart_custom_tcp: boolean;
+    security_engine_enabled?: boolean; // Local node security scheduler execution (Standby mode on Leader when false)
     auto_sync_probes_to_fleet?: boolean; // Auto-push configuration bundles (probes, apps) to peers with debounce
     pcap_max_auto_sync_mb?: number;
     registry_mode?: 'auto' | 'leader' | 'peer';
@@ -562,6 +563,7 @@ const DEFAULT_SYSTEM_SETTINGS: SystemSettings = {
     auto_restart_traffic: true,   // retrocompat: traffic was always auto-starting
     auto_restart_probes: true,    // retrocompat: probes were always auto-starting
     auto_restart_custom_tcp: true, // Custom TCP apps state persistence across reboots
+    security_engine_enabled: true, // Local security scheduler execution enabled by default
     auto_sync_probes_to_fleet: true, // Default enabled: auto-push changes to fleet with debounce
     pcap_max_auto_sync_mb: 10,     // Auto-sync threshold for PCAP profiles (<= 50MB, safety ratio of WS buffer)
     registry_mode: 'auto',
@@ -7697,6 +7699,8 @@ const getSecurityUIConfig = () => {
             }
         });
     }
+    // 3. Attach local node's security_engine_enabled state (stored in system-settings.json, never synced to fleet)
+    uiConfig.security_engine_enabled = getSystemSettings().security_engine_enabled ?? true;
     return uiConfig;
 };
 
@@ -7705,6 +7709,7 @@ const saveSecurityConfig = (config: any) => {
     try {
         const configToSave = { ...config };
         delete configToSave.test_history; // History is in .jsonl now
+        delete configToSave.security_engine_enabled; // Local node state lives in system-settings.json
         fs.writeFileSync(SECURITY_CONFIG_FILE, JSON.stringify(configToSave, null, 2));
         return true;
     } catch (e) {
@@ -8650,14 +8655,30 @@ const runScheduledC2Tests = async () => {
     logTest(`[C2-SCHED] Batch completed`);
 };
 
+const stopAllSchedulers = () => {
+    if (urlTestInterval) { clearInterval(urlTestInterval); urlTestInterval = null; }
+    if (dnsTestInterval) { clearInterval(dnsTestInterval); dnsTestInterval = null; }
+    if (threatTestInterval) { clearInterval(threatTestInterval); threatTestInterval = null; }
+    if (c2TestInterval) { clearInterval(c2TestInterval); c2TestInterval = null; }
+    if (aiTestInterval) { clearInterval(aiTestInterval); aiTestInterval = null; }
+    console.log('[SECURITY] All local security schedulers stopped');
+};
+
 const startSchedulers = () => {
+    const sysSettings = getSystemSettings();
+    if (sysSettings.security_engine_enabled === false) {
+        stopAllSchedulers();
+        console.log('[SECURITY] Local Security Engine is PAUSED (Standby mode) — scheduled execution skipped on this node');
+        return;
+    }
+
     const config = getSecurityConfig();
     if (!config || !config.scheduled_execution) return;
 
     let modified = false;
 
     // URL Scheduler
-    if (urlTestInterval) clearInterval(urlTestInterval);
+    if (urlTestInterval) { clearInterval(urlTestInterval); urlTestInterval = null; }
     if (config.scheduled_execution.url?.enabled) {
         const interval = (config.scheduled_execution.url.interval_minutes || 15) * 60 * 1000;
         urlTestInterval = setInterval(runScheduledUrlTests, interval);
@@ -8667,7 +8688,7 @@ const startSchedulers = () => {
     }
 
     // DNS Scheduler
-    if (dnsTestInterval) clearInterval(dnsTestInterval);
+    if (dnsTestInterval) { clearInterval(dnsTestInterval); dnsTestInterval = null; }
     if (config.scheduled_execution.dns?.enabled) {
         const interval = (config.scheduled_execution.dns.interval_minutes || 15) * 60 * 1000;
         dnsTestInterval = setInterval(runScheduledDnsTests, interval);
@@ -8677,7 +8698,7 @@ const startSchedulers = () => {
     }
 
     // Threat Scheduler
-    if (threatTestInterval) clearInterval(threatTestInterval);
+    if (threatTestInterval) { clearInterval(threatTestInterval); threatTestInterval = null; }
     if (config.scheduled_execution.threat?.enabled) {
         const interval = (config.scheduled_execution.threat.interval_minutes || 30) * 60 * 1000;
         threatTestInterval = setInterval(runScheduledThreatTests, interval);
@@ -8687,7 +8708,7 @@ const startSchedulers = () => {
     }
 
     // C2 Scheduler
-    if (c2TestInterval) clearInterval(c2TestInterval);
+    if (c2TestInterval) { clearInterval(c2TestInterval); c2TestInterval = null; }
     const c2Sched = (config.scheduled_execution as any).c2;
     if (c2Sched?.enabled) {
         const interval = (c2Sched.interval_minutes || 30) * 60 * 1000;
@@ -8698,7 +8719,7 @@ const startSchedulers = () => {
     }
 
     // AI Security Scheduler
-    if (aiTestInterval) clearInterval(aiTestInterval);
+    if (aiTestInterval) { clearInterval(aiTestInterval); aiTestInterval = null; }
     const aiSched = (config.scheduled_execution as any).ai;
     if (aiSched?.enabled) {
         const interval = (aiSched.interval_minutes || 30) * 60 * 1000;
@@ -8776,13 +8797,6 @@ const scheduleMidnightReset = () => {
             performSecurityStatsReset();
         }, 24 * 60 * 60 * 1000);
     }, msUntilMidnight);
-};
-
-const stopAllSchedulers = () => {
-    if (urlTestInterval) { clearInterval(urlTestInterval); urlTestInterval = null; }
-    if (dnsTestInterval) { clearInterval(dnsTestInterval); dnsTestInterval = null; }
-    if (threatTestInterval) { clearInterval(threatTestInterval); threatTestInterval = null; }
-    console.log('All security schedulers disabled');
 };
 
 // Start schedulers on server startup
@@ -8952,11 +8966,17 @@ app.post('/api/security/config', authenticateToken, (req, res) => {
     const config = getSecurityConfig();
     if (!config) return res.status(500).json({ error: 'Failed to read config' });
 
-    const { url_filtering, dns_security, threat_prevention, scheduled_execution, sls_config } = req.body;
+    const { url_filtering, dns_security, threat_prevention, scheduled_execution, sls_config, security_engine_enabled } = req.body;
 
-    if (url_filtering) config.url_filtering = url_filtering;
-    if (dns_security) config.dns_security = dns_security;
-    if (threat_prevention) config.threat_prevention = threat_prevention;
+    if (typeof security_engine_enabled === 'boolean') {
+        saveSystemSettings({ security_engine_enabled });
+        startSchedulers();
+    }
+
+    let fleetSyncNeeded = false;
+    if (url_filtering) { config.url_filtering = url_filtering; fleetSyncNeeded = true; }
+    if (dns_security) { config.dns_security = dns_security; fleetSyncNeeded = true; }
+    if (threat_prevention) { config.threat_prevention = threat_prevention; fleetSyncNeeded = true; }
     if (sls_config) {
         config.sls_config = sls_config;
         // Also save to global Prisma config for other managers
@@ -8974,11 +8994,15 @@ app.post('/api/security/config', authenticateToken, (req, res) => {
     }
     if (scheduled_execution !== undefined) {
         config.scheduled_execution = scheduled_execution;
+        fleetSyncNeeded = true;
         // Re-initialize all schedulers with new settings
         startSchedulers();
     }
 
     if (saveSecurityConfig(config)) {
+        if (fleetSyncNeeded) {
+            triggerAutoSyncFleetBundle('security-config');
+        }
         res.json({ success: true, config: getSecurityUIConfig() });
     } else {
         res.status(500).json({ error: 'Failed to save config' });
@@ -11506,7 +11530,11 @@ app.get('/api/system/health-matrix', authenticateToken, async (req, res) => {
             tsg_id: null,
             region: null,
             configured: false,
-            synced_apps_count: 0
+            synced_apps_count: 0,
+            dc_count: 0,
+            branch_count: 0,
+            elements_count: 0,
+            total_sites: 0
         };
         const prismaPaths = [
             PRISMA_CONFIG_FILE,
@@ -11536,6 +11564,26 @@ app.get('/api/system/health-matrix', authenticateToken, async (req, res) => {
             prismaStatus.region = process.env.PRISMA_SDWAN_REGION || process.env.PRISMA_REGION || 'default';
             prismaStatus.status = 'connected';
         }
+        try {
+            if (discoveryManager && typeof discoveryManager.getProbes === 'function') {
+                const discovered = discoveryManager.getProbes().filter((p: any) => !p.stale);
+                const dcSites = new Set<string>();
+                const branchSites = new Set<string>();
+                const elements = new Set<string>();
+                for (const p of discovered) {
+                    const siteKey = p.site_id || p.site_name;
+                    if (siteKey) {
+                        if (p.scope === 'dc') dcSites.add(siteKey);
+                        else branchSites.add(siteKey);
+                    }
+                    if (p.element_name) elements.add(p.element_name);
+                }
+                prismaStatus.dc_count = dcSites.size;
+                prismaStatus.branch_count = branchSites.size;
+                prismaStatus.elements_count = elements.size;
+                prismaStatus.total_sites = dcSites.size + branchSites.size;
+            }
+        } catch {}
 
         // 2. VyOS Underlay Router
         let vyosStatus: any = {
@@ -11916,6 +11964,55 @@ app.get('/api/system/health-matrix', authenticateToken, async (req, res) => {
             cloudStatus.status = hasMasterKey ? 'connected' : 'ready';
         } catch {}
 
+        // 10. Security Validation Engine
+        let securityStatus: any = {
+            engine_enabled: getSystemSettings().security_engine_enabled ?? true,
+            status: 'standby',
+            active_schedules_count: 0,
+            active_schedules: [],
+            total_tests_run: 0,
+            blocked_count: 0,
+            block_rate_pct: null,
+            url_categories_enabled: 0,
+            dns_tests_enabled: 0
+        };
+        try {
+            const secCfg = getSecurityConfig();
+            if (secCfg) {
+                const sched = secCfg.scheduled_execution || {};
+                const activeScheds: string[] = [];
+                if (sched.url?.enabled) activeScheds.push('URL');
+                if (sched.dns?.enabled) activeScheds.push('DNS');
+                if (sched.threat?.enabled) activeScheds.push('EICAR');
+                if ((sched as any).c2?.enabled) activeScheds.push('C2');
+                if ((sched as any).ai?.enabled) activeScheds.push('AI');
+                securityStatus.active_schedules = activeScheds;
+                securityStatus.active_schedules_count = activeScheds.length;
+                securityStatus.url_categories_enabled = secCfg.url_filtering?.enabled_categories?.length || 0;
+                securityStatus.dns_tests_enabled = secCfg.dns_security?.enabled_tests?.length || 0;
+
+                const stats = secCfg.statistics || {};
+                const totalRun = Number(stats.total_tests_run || 0);
+                const blocked = Number(stats.url_tests_blocked || 0)
+                    + Number(stats.dns_tests_blocked || 0)
+                    + Number(stats.dns_tests_sinkholed || 0)
+                    + Number(stats.threat_tests_blocked || 0);
+                securityStatus.total_tests_run = totalRun;
+                securityStatus.blocked_count = blocked;
+                if (totalRun > 0) {
+                    securityStatus.block_rate_pct = Math.min(100, Math.round((blocked / totalRun) * 100));
+                }
+
+                if (!securityStatus.engine_enabled) {
+                    securityStatus.status = 'paused';
+                } else if (activeScheds.length > 0) {
+                    securityStatus.status = 'running';
+                } else {
+                    securityStatus.status = 'standby';
+                }
+            }
+        } catch {}
+
         // Overall Score Calculation (0-100)
         let totalEngines = 7;
         let healthyEngines = 7;
@@ -11947,6 +12044,7 @@ app.get('/api/system/health-matrix', authenticateToken, async (req, res) => {
                 multicast: multicastStatus,
                 iot: iotStatus,
                 dem: demStatus,
+                security: securityStatus,
                 bandwidth: bandwidthStatus,
                 voice: voiceStatus,
                 events: eventsStatus,
@@ -15488,6 +15586,9 @@ provisioningManager.onBundleApplied((type, payload) => {
         if (process.env.ENABLE_PCAP_REPLAY !== 'true') return;
         const count = payload?.profiles?.length || 0;
         log('PROVISIONING', `⚡ Synchronized ${count} PCAP Replay profile(s) on peer.`);
+    } else if (type === 'security-config') {
+        log('PROVISIONING', `⚡ Hot-reloading Security configuration and schedulers on peer...`);
+        startSchedulers();
     }
 });
 
@@ -16608,7 +16709,8 @@ app.post('/api/config/system-settings', authenticateToken, async (req, res) => {
             auto_restart_probes,
             auto_restart_custom_tcp,
             auto_sync_probes_to_fleet,
-            registry_mode
+            registry_mode,
+            security_engine_enabled
         } = req.body;
         const patch: Partial<SystemSettings> = {};
         if (typeof auto_restart_iot === 'boolean') patch.auto_restart_iot = auto_restart_iot;
@@ -16627,9 +16729,16 @@ app.post('/api/config/system-settings', authenticateToken, async (req, res) => {
         if (registry_mode === 'auto' || registry_mode === 'leader' || registry_mode === 'peer') {
             patch.registry_mode = registry_mode;
         }
+        if (typeof security_engine_enabled === 'boolean') {
+            patch.security_engine_enabled = security_engine_enabled;
+        }
 
         const saved = saveSystemSettings(patch);
         log('SYSTEM', `System settings updated: ${JSON.stringify(saved)}`);
+
+        if (typeof security_engine_enabled === 'boolean') {
+            startSchedulers();
+        }
 
         // If registry mode was updated, hot-reload the registry orchestration
         if (patch.registry_mode) {

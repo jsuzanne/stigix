@@ -1,9 +1,9 @@
-> **Last Updated:** 2026-10-14 | **Created:** 2026-01-25 (v1.0.0)
+> **Last Updated:** 2026-10-16 | **Created:** 2026-01-25 (v1.0.0)
 
 # 🕸️ Stigix — Advanced Networking & Security Simulation Environment
 
-[![Version](https://img.shields.io/badge/Version-3.0.21-blue.svg)](https://github.com/jsuzanne/stigix/releases)
-[![Last Updated](https://img.shields.io/badge/Updated-2026--10--14-brightgreen.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/Version-3.0.25-blue.svg)](https://github.com/jsuzanne/stigix/releases)
+[![Last Updated](https://img.shields.io/badge/Updated-2026--10--16-brightgreen.svg)](CHANGELOG.md)
 [![Docker Pulls](https://img.shields.io/docker/pulls/jlsuzanne/stigix)](https://hub.docker.com/r/jlsuzanne/stigix)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 

@@ -240,6 +240,7 @@ export const SystemHealthModal: React.FC<SystemHealthModalProps> = ({
     const bandwidth = sub.bandwidth || {};
     const voice = sub.voice || {};
     const events = sub.events || {};
+    const security = sub.security || {};
 
     const formatUptime = (seconds: number) => {
         if (!seconds || seconds <= 0) return '0s';
@@ -386,6 +387,14 @@ export const SystemHealthModal: React.FC<SystemHealthModalProps> = ({
                                     <div className="flex justify-between">
                                         <span>Region:</span>
                                         <strong className="text-text-primary uppercase">{prisma.region || 'EU'}</strong>
+                                    </div>
+                                    <div className="flex justify-between">
+                                        <span>Topology:</span>
+                                        <strong className="text-blue-500">
+                                            {prisma.total_sites > 0 || prisma.elements_count > 0
+                                                ? `${prisma.dc_count ?? 0} DC · ${prisma.branch_count ?? 0} Branches (${prisma.elements_count ?? 0} IONs)`
+                                                : (prisma.status === 'connected' ? 'Synced' : 'Standby')}
+                                        </strong>
                                     </div>
                                     <div className="flex justify-between items-center">
                                         <span>App-ID Sync:</span>
@@ -568,6 +577,46 @@ export const SystemHealthModal: React.FC<SystemHealthModalProps> = ({
                                         <span>Packet Loss:</span>
                                         <strong className={voice.avg_loss_pct > 0 ? "text-amber-500" : "text-emerald-500"}>
                                             {voice.avg_loss_pct !== undefined ? `${voice.avg_loss_pct}% Loss` : '0% Loss (Clean)'}
+                                        </strong>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Security Validation */}
+                            <div className="bg-card-secondary/50 border border-border/80 rounded-2xl p-4 space-y-2.5 shadow-sm">
+                                <div className="flex items-center justify-between">
+                                    <div className="flex items-center gap-2">
+                                        <div className={cn(
+                                            "w-2 h-2 rounded-full",
+                                            security.status === 'running' ? "bg-emerald-500 animate-pulse" :
+                                            security.status === 'paused' ? "bg-amber-500" : "bg-zinc-500"
+                                        )} />
+                                        <span className="text-xs font-bold text-text-primary">Security Validation</span>
+                                    </div>
+                                    <span className={cn(
+                                        "text-[9px] font-black px-2 py-0.5 rounded-md border uppercase",
+                                        security.status === 'running'
+                                            ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border-emerald-500/30"
+                                            : security.status === 'paused'
+                                                ? "bg-amber-500/15 text-amber-600 dark:text-amber-400 border-amber-500/30"
+                                                : "bg-card text-text-muted border-border"
+                                    )}>
+                                        {security.status === 'running' ? 'RUNNING' : security.status === 'paused' ? 'PAUSED' : 'STANDBY'}
+                                    </span>
+                                </div>
+                                <div className="text-[11px] font-mono space-y-1 text-text-muted">
+                                    <div className="flex justify-between">
+                                        <span>Active Schedules:</span>
+                                        <strong className="text-text-primary">
+                                            {Array.isArray(security.active_schedules) && security.active_schedules.length > 0
+                                                ? security.active_schedules.join(' · ')
+                                                : '0 Active'}
+                                        </strong>
+                                    </div>
+                                    <div className="flex justify-between">
+                                        <span>Total Tests Run:</span>
+                                        <strong className="text-emerald-600 dark:text-emerald-400">
+                                            {security.total_tests_run ?? 0} Tests{typeof security.block_rate_pct === 'number' ? ` (${security.block_rate_pct}% Blocked)` : ''}
                                         </strong>
                                     </div>
                                 </div>
