@@ -1075,16 +1075,16 @@ export default function PacketCapture({ token, localSiteName, onNavigateToReplay
     };
 
     const getProtoColorClass = (proto: string, info: string) => {
-        if (info.includes('RST')) return 'bg-rose-500/10 text-rose-400 border-rose-500/30';
+        if (info.includes('RST')) return 'bg-rose-500/10 text-rose-700 dark:text-rose-400 border-rose-500/30';
         switch (proto.toUpperCase()) {
-            case 'TCP': return 'bg-cyan-500/10 text-cyan-400 border-cyan-500/30';
-            case 'UDP': return 'bg-amber-500/10 text-amber-400 border-amber-500/30';
-            case 'ICMP': return 'bg-purple-500/10 text-purple-400 border-purple-500/30';
-            case 'DNS': return 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30';
-            case 'TLS': return 'bg-blue-500/10 text-blue-400 border-blue-500/30';
-            case 'HTTP': return 'bg-teal-500/10 text-teal-400 border-teal-500/30';
-            case 'RTP': return 'bg-orange-500/10 text-orange-400 border-orange-500/30';
-            case 'ARP': return 'bg-slate-500/10 text-slate-400 border-slate-500/30';
+            case 'TCP': return 'bg-cyan-500/15 text-cyan-800 dark:text-cyan-400 border-cyan-500/30';
+            case 'UDP': return 'bg-amber-500/15 text-amber-800 dark:text-amber-400 border-amber-500/30';
+            case 'ICMP': return 'bg-purple-500/15 text-purple-800 dark:text-purple-400 border-purple-500/30';
+            case 'DNS': return 'bg-emerald-500/15 text-emerald-800 dark:text-emerald-400 border-emerald-500/30';
+            case 'TLS': return 'bg-blue-500/15 text-blue-800 dark:text-blue-400 border-blue-500/30';
+            case 'HTTP': return 'bg-teal-500/15 text-teal-800 dark:text-teal-400 border-teal-500/30';
+            case 'RTP': return 'bg-orange-500/15 text-orange-800 dark:text-orange-400 border-orange-500/30';
+            case 'ARP': return 'bg-slate-500/15 text-slate-800 dark:text-slate-400 border-slate-500/30';
             default: return 'bg-card-secondary text-text-muted border-border';
         }
     };
@@ -1806,7 +1806,7 @@ export default function PacketCapture({ token, localSiteName, onNavigateToReplay
                                                 onClick={() => setSelectedPacketNo(pkt.no)}
                                                 className={`cursor-pointer transition-colors text-[11px] select-none ${
                                                     isSelected 
-                                                        ? 'bg-blue-600/20 text-text-primary font-bold border-l-2 border-l-blue-500' 
+                                                        ? 'bg-blue-500/15 dark:bg-blue-600/25 text-blue-900 dark:text-text-primary font-bold border-l-4 border-l-blue-500' 
                                                         : 'hover:bg-card-hover/60 text-text-secondary'
                                                 }`}
                                             >
@@ -1897,13 +1897,13 @@ export default function PacketCapture({ token, localSiteName, onNavigateToReplay
                                                 </div>
                                             </button>
 
-                                            {isExpanded && (
-                                                <div className="p-2.5 bg-black/20 space-y-1 border-t border-border/30">
+                                             {isExpanded && (
+                                                <div className="p-2.5 bg-slate-100/70 dark:bg-black/20 space-y-1 border-t border-border/30">
                                                     {typeof layerData === 'object' && layerData !== null ? (
                                                         Object.entries(layerData).map(([k, v]) => (
                                                             <div key={k} className="flex gap-2 text-[10px]">
-                                                                <span className="text-text-muted shrink-0 min-w-36">{k}:</span>
-                                                                <span className="text-cyan-300 font-bold break-all">{String(v)}</span>
+                                                                <span className="text-slate-600 dark:text-text-muted shrink-0 min-w-36 font-semibold">{k}:</span>
+                                                                <span className="text-cyan-700 dark:text-cyan-300 font-bold break-all">{String(v)}</span>
                                                             </div>
                                                         ))
                                                     ) : (
@@ -1922,7 +1922,7 @@ export default function PacketCapture({ token, localSiteName, onNavigateToReplay
                     <div className="bg-card border border-border rounded-2xl p-4 shadow-sm flex flex-col h-72 lg:h-80">
                         <div className="flex items-center justify-between pb-3 border-b border-border/60">
                             <div className="flex items-center gap-2">
-                                <Binary size={15} className="text-purple-400" />
+                                <Binary size={15} className="text-purple-600 dark:text-purple-400" />
                                 <h3 className="text-xs font-black uppercase tracking-wider text-text-primary">
                                     Hex / ASCII Raw Stream
                                 </h3>
@@ -1933,13 +1933,13 @@ export default function PacketCapture({ token, localSiteName, onNavigateToReplay
                                     className="p-1 px-2 text-[10px] font-bold text-text-muted hover:text-text-primary bg-card-secondary hover:bg-card-hover rounded-lg border border-border flex items-center gap-1 transition-all cursor-pointer"
                                     title="Copy raw hex stream"
                                 >
-                                    {copiedHex ? <Check size={11} className="text-emerald-400" /> : <Copy size={11} />}
+                                    {copiedHex ? <Check size={11} className="text-emerald-500 dark:text-emerald-400" /> : <Copy size={11} />}
                                     {copiedHex ? "Copied" : "Copy Hex"}
                                 </button>
                             )}
                         </div>
 
-                        <div className="flex-1 overflow-y-auto mt-2 bg-black/60 border border-border/40 rounded-xl p-3 font-mono text-[10px] leading-relaxed text-text-muted scrollbar-thin scrollbar-thumb-border">
+                        <div className="flex-1 overflow-y-auto mt-2 bg-slate-900 dark:bg-black/60 border border-slate-700/60 dark:border-border/40 rounded-xl p-3 font-mono text-[10px] leading-relaxed text-slate-300 dark:text-text-muted scrollbar-thin scrollbar-thumb-border shadow-inner">
                             {loadingPackets ? (
                                 <div className="h-full flex flex-col items-center justify-center gap-2 text-text-muted text-xs">
                                     <Loader2 size={20} className="animate-spin text-purple-400" />
@@ -1951,10 +1951,10 @@ export default function PacketCapture({ token, localSiteName, onNavigateToReplay
                                 </div>
                             ) : (
                                 activePacket.hex_dump.map((line, idx) => (
-                                    <div key={idx} className="flex gap-3 hover:bg-white/5 py-0.5 px-1 rounded transition-colors">
-                                        <span className="text-purple-400/80 shrink-0 select-none">{line.offset}</span>
-                                        <span className="text-cyan-300 tracking-wider shrink-0 select-text">{line.hex}</span>
-                                        <span className="text-text-primary/90 tracking-widest pl-2 border-l border-border/40 select-text">{line.ascii}</span>
+                                    <div key={idx} className="flex gap-3 hover:bg-white/10 py-0.5 px-1 rounded transition-colors">
+                                        <span className="text-purple-300 dark:text-purple-400/80 shrink-0 select-none font-semibold">{line.offset}</span>
+                                        <span className="text-cyan-300 dark:text-cyan-300 tracking-wider shrink-0 select-text">{line.hex}</span>
+                                        <span className="text-slate-100 dark:text-text-primary/90 tracking-widest pl-2 border-l border-slate-700 dark:border-border/40 select-text">{line.ascii}</span>
                                     </div>
                                 ))
                             )}

@@ -146,11 +146,14 @@ export const HomeOverview: React.FC<HomeOverviewProps> = ({
     const iotActiveCount = Number(iotSub.running_devices ?? 0);
 
     // Robust Uptime Formatting (handles numeric seconds, string seconds, or pre-formatted strings)
-    const uptimeRaw = host.uptime_system
+    const hostUptimeRaw = host.uptime_system
         || host.uptime?.system
         || host.uptime_seconds
         || host.uptime_process
         || (typeof host.uptime === 'number' ? host.uptime : 0);
+    const stigixUptimeRaw = host.uptime_process
+        || host.uptime?.process
+        || 0;
     const formatUptime = (val: any) => {
         if (!val) return 'Up';
         if (typeof val === 'string' && isNaN(Number(val))) {
@@ -245,7 +248,13 @@ export const HomeOverview: React.FC<HomeOverviewProps> = ({
                             <p className="text-xs text-slate-600 dark:text-text-muted mt-1.5 font-medium flex items-center gap-2 flex-wrap">
                                 <span>Host: <strong className="text-slate-900 dark:text-text-primary">{isRemote ? (activePeer?.instance_id || host.hostname || 'Remote Host') : (host.hostname || 'Host Mode')}</strong></span>
                                 <span>•</span>
-                                <span>Uptime: <strong className="text-emerald-600 dark:text-emerald-400 font-mono">{formatUptime(uptimeRaw)}</strong></span>
+                                <span title="Host VM uptime">Host Uptime: <strong className="text-emerald-600 dark:text-emerald-400 font-mono">{formatUptime(hostUptimeRaw)}</strong></span>
+                                {stigixUptimeRaw > 0 && (
+                                    <>
+                                        <span>•</span>
+                                        <span title="Stigix engine / container uptime">Stigix Uptime: <strong className="text-cyan-600 dark:text-cyan-400 font-mono">{formatUptime(stigixUptimeRaw)}</strong></span>
+                                    </>
+                                )}
                                 <span>•</span>
                                 <span>Underlay: <strong className="text-slate-900 dark:text-text-primary">{host.mode || 'Host Mode'}</strong></span>
                             </p>
