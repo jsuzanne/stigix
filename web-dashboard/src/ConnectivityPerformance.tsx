@@ -497,16 +497,52 @@ export default function ConnectivityPerformance({ token, uiConfig, onManage, isL
         return val < 10 ? val.toFixed(2) : val.toFixed(1);
     };
 
-    const getProbeDisplayName = (e: any): string => {
-        if (!e) return '';
-        if (e.source === 'discovery') {
-            const port = e.port_name || e.selected_interface_label || e.selected_interface_name;
-            const parts = [e.site_name, e.element_name, port].filter(Boolean);
-            if (parts.length > 0) {
-                return parts.join(' - ');
+    const parseProbeDetails = (e: any) => {
+        if (!e) return { title: '', subtitle: '' };
+        if (e.source === 'discovery' || e.element_name || e.site_name) {
+            const site = e.site_name || (e.name ? e.name.split(' - ')[0] : 'Probe');
+            const router = e.element_name;
+            let port = e.port_name || e.selected_interface_label || e.selected_interface_name;
+            if (port && /^\d+(\.\d+)?$/.test(String(port).trim())) {
+                port = `Port ${port}`;
             }
+            const details: string[] = [];
+            if (router && router.trim().toLowerCase() !== site.trim().toLowerCase()) {
+                details.push(router);
+            }
+            if (port) {
+                details.push(port);
+            }
+            return {
+                title: site,
+                subtitle: details.length > 0 ? `(${details.join(' · ')})` : ''
+            };
         }
-        return e.name || e.id || '';
+        return { title: e.name || e.id || '', subtitle: '' };
+    };
+
+    const getProbeDisplayName = (e: any): string => {
+        const { title, subtitle } = parseProbeDetails(e);
+        return subtitle ? `${title} ${subtitle}` : title;
+    };
+
+    const renderProbeTitle = (e: any, isPending = false) => {
+        const { title, subtitle } = parseProbeDetails(e);
+        return (
+            <span className={cn(
+                "text-sm tracking-tight flex items-baseline gap-1.5 flex-wrap",
+                isPending ? "opacity-70" : ""
+            )}>
+                <span className="font-bold text-text-primary group-hover:text-blue-500 transition-colors">
+                    {title}
+                </span>
+                {subtitle && (
+                    <span className="text-xs font-normal text-text-muted">
+                        {subtitle}
+                    </span>
+                )}
+            </span>
+        );
     };
 
     // Phase 1: Load probes config immediately (fast endpoints < 200ms)
@@ -790,7 +826,7 @@ export default function ConnectivityPerformance({ token, uiConfig, onManage, isL
             groups[r.endpointId].push(r);
         });
 
-        return Object.entries(groups).map(([id, endpointResults]) => {
+        const filtered = Object.entries(groups).map(([id, endpointResults]) => {
             const last = endpointResults[0];
             const reachable = endpointResults.filter(r => r.reachable);
 
@@ -858,7 +894,32 @@ export default function ConnectivityPerformance({ token, uiConfig, onManage, isL
                 }
             }
             return true;
-        }).sort((a: any, b: any) => {
+        });
+        // Deduplicate endpoints sharing the same target IP (e.g. historical name changes)
+        const seenTargets = new Map<string, any>();
+        const deduped: any[] = [];
+        for (const ep of filtered) {
+            const target = (ep.target || '').trim();
+            const key = target ? `${ep.type}:${target}` : ep.id;
+            if (!seenTargets.has(key)) {
+                seenTargets.set(key, ep);
+                deduped.push(ep);
+            } else {
+                const existing = seenTargets.get(key);
+                // Prefer discovered probe or the one with higher check count
+                if (ep.source === 'discovery' && existing.source !== 'discovery') {
+                    const idx = deduped.indexOf(existing);
+                    if (idx !== -1) deduped[idx] = ep;
+                    seenTargets.set(key, ep);
+                } else if (ep.checks > existing.checks) {
+                    const idx = deduped.indexOf(existing);
+                    if (idx !== -1) deduped[idx] = ep;
+                    seenTargets.set(key, ep);
+                }
+            }
+        }
+
+        return deduped.sort((a: any, b: any) => {
             // First sort by enabled status (enabled first)
             if (a.enabled !== b.enabled) {
                 return a.enabled ? -1 : 1;
@@ -888,8 +949,11 @@ export default function ConnectivityPerformance({ token, uiConfig, onManage, isL
     // Pending probes: configs that have no result yet — shown as "ghost" rows
     const pendingProbes = React.useMemo(() => {
         const idsWithResults = new Set(results.map(r => r.endpointId));
+        const activeTargets = new Set(endpoints.map(e => (e.target || '').trim()).filter(Boolean));
         const pending: any[] = [];
         endpointConfigs.forEach((config, id) => {
+            const target = (config.target || '').trim();
+            if (target && activeTargets.has(target)) return;
             if (!idsWithResults.has(id) && config.enabled !== false) {
                 pending.push({
                     id,
@@ -1414,7 +1478,7 @@ export default function ConnectivityPerformance({ token, uiConfig, onManage, isL
                                 <td className="px-6 py-4">
                                     <div className="flex flex-col">
                                         <div className="flex items-center gap-2">
-                                            <span className="text-sm font-bold text-text-primary tracking-tight opacity-70">{getProbeDisplayName(e)}</span>
+                                            {renderProbeTitle(e, true)}
                                             <span className="px-1.5 py-0.5 rounded-[4px] text-[8px] font-black uppercase tracking-widest bg-slate-500/10 text-slate-400 flex items-center gap-1">
                                                 <Activity size={9} className="animate-spin" style={{animationDuration:'3s'}}/>
                                                 pending
@@ -1497,7 +1561,7 @@ export default function ConnectivityPerformance({ token, uiConfig, onManage, isL
                                 <td className="px-6 py-4">
                                     <div className="flex flex-col">
                                         <div className="flex items-center gap-2 flex-wrap">
-                                            <span className="text-sm font-bold text-text-primary group-hover:text-blue-500 transition-colors tracking-tight">{getProbeDisplayName(e)}</span>
+                                            {renderProbeTitle(e, false)}
                                             {(e as any)._source === 'global' && (
                                                 <span className="px-1.5 py-0.5 rounded text-[8px] font-black uppercase tracking-widest bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 shadow-sm" title="Global provisioned probe from Leader">
                                                     🌐 Global

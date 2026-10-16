@@ -134,9 +134,21 @@ export class DiscoveryManager {
                 const scope = candidates[0].scope;
 
                 const buildProbeName = (cand: any): string => {
-                    const port = cand.port_name || cand.interface_label || cand.interface_name;
-                    const parts = [cand.site_name, cand.element_name, port].filter(Boolean);
-                    return parts.length > 0 ? parts.join(' - ') : (cand.site_name || 'Probe');
+                    const site = cand.site_name || 'Probe';
+                    const router = cand.element_name;
+                    let port = cand.port_name || cand.interface_label || cand.interface_name;
+                    if (port && /^\d+(\.\d+)?$/.test(String(port).trim())) {
+                        port = `Port ${port}`;
+                    }
+
+                    const details: string[] = [];
+                    if (router && router.trim().toLowerCase() !== site.trim().toLowerCase()) {
+                        details.push(router);
+                    }
+                    if (port) {
+                        details.push(port);
+                    }
+                    return details.length > 0 ? `${site} (${details.join(' · ')})` : site;
                 };
 
                 if (scope === 'dc') {
@@ -216,11 +228,24 @@ export class DiscoveryManager {
                 }
             });
 
-            result.totalDiscovered = newProbesList.length;
+            // Dedup by target IP: ensure no multiple probes for the exact same target IP
+            const uniqueProbes: DiscoveredProbe[] = [];
+            const seenTargets = new Set<string>();
+            for (const probe of newProbesList) {
+                const targetKey = (probe.target || '').trim();
+                if (targetKey && seenTargets.has(targetKey)) {
+                    log('DISCOVERY', `Purged duplicate target IP probe: ${probe.name} (${probe.target})`);
+                    continue;
+                }
+                if (targetKey) seenTargets.add(targetKey);
+                uniqueProbes.push(probe);
+            }
+
+            result.totalDiscovered = uniqueProbes.length;
 
             // Atomic write
             const tempFile = `${this.discoveredFile}.tmp`;
-            fs.writeFileSync(tempFile, JSON.stringify(newProbesList, null, 2));
+            fs.writeFileSync(tempFile, JSON.stringify(uniqueProbes, null, 2));
             fs.renameSync(tempFile, this.discoveredFile);
 
             return result;

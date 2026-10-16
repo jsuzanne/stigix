@@ -16,6 +16,7 @@ import sys
 import socket
 import ipaddress
 import os
+import re
 from typing import Optional, Dict, Any
 import concurrent.futures
 
@@ -377,7 +378,7 @@ def get_interface_description(interface: Dict[str, Any]) -> Optional[str]:
 
 def get_interface_port_label(interface: Dict[str, Any]) -> str:
     """
-    Format a clean LAN port label for Stigix probes (e.g. 'Port 1', 'Users (VLAN 219)', 'VLAN (219)').
+    Format a clean LAN port label for Stigix probes (e.g. 'Port 1', 'Users (VLAN 219)', 'VLAN 219').
     """
     name = (interface.get('name') or '').strip()
     intf_type = (interface.get('type') or '').strip()
@@ -395,13 +396,13 @@ def get_interface_port_label(interface: Dict[str, Any]) -> str:
         if '(' in intf_type and ')' in intf_type:
             vlan_badge = intf_type
         elif vlan_id:
-            vlan_badge = f"VLAN ({vlan_id})"
+            vlan_badge = f"VLAN {vlan_id}"
         else:
             vlan_badge = "VLAN"
 
         if name and name.lower() not in ['vlan', 'unknown', 'none']:
             if vlan_id and str(vlan_id) in name:
-                return name
+                return f"VLAN {name}" if not name.lower().startswith('vlan') else name
             if vlan_id:
                 return f"{name} (VLAN {vlan_id})"
             return f"{name} ({vlan_badge})"
@@ -410,9 +411,16 @@ def get_interface_port_label(interface: Dict[str, Any]) -> str:
     if vlan_id:
         if name and name.lower() not in ['vlan', 'unknown', 'none']:
             if str(vlan_id) in name:
-                return name
+                return f"VLAN {name}" if not name.lower().startswith('vlan') else name
             return f"{name} (VLAN {vlan_id})"
-        return f"VLAN ({vlan_id})"
+        return f"VLAN {vlan_id}"
+
+    # If it's a numeric port or sub-port like '1' or '3.217'
+    if re.match(r'^\d+(\.\d+)?$', name):
+        return f"Port {name}"
+
+    if name.lower().startswith('port '):
+        return f"Port {name[5:].strip()}"
 
     return name or 'Port'
 

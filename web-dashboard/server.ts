@@ -4785,15 +4785,49 @@ const getFullEffectiveConnectivityProbes = () => {
     const discovered = discoveryManager ? discoveryManager.getProbes() : [];
     const autoMesh = getAutoMeshProbes();
 
+    // Collect discovered targets and site IDs to purge duplicate legacy custom entries
+    const discoveredTargets = new Set(discovered.map((d: any) => (d.target || '').trim()).filter(Boolean));
+    const discoveredSiteIds = new Set(discovered.map((d: any) => (d.site_id || '').trim()).filter(Boolean));
+
     // Merge custom state into env probes and serve them all
     const mergedEnvProbes = envProbes.map((p: any) => {
         const override = custom.find((cp: any) => cp.name === p.name);
         return override ? { ...p, ...override } : p;
     });
 
-    const pureCustom = custom.filter((p: any) => !envProbes.find(ep => ep.name === p.name));
+    const pureCustom = custom.filter((p: any) => {
+        if (envProbes.find(ep => ep.name === p.name)) return false;
+        if (p.source === 'discovery') return false;
+        // Purge duplicates of discovered probes (stale entries from previous naming/configs)
+        const target = (p.target || '').trim();
+        if (target && discoveredTargets.has(target)) return false;
+        const siteId = (p.site_id || '').trim();
+        if (siteId && discoveredSiteIds.has(siteId)) return false;
+        return true;
+    });
 
-    return [...mergedEnvProbes, ...pureCustom, ...discovered, ...autoMesh];
+    const combined = [...mergedEnvProbes, ...pureCustom, ...discovered, ...autoMesh];
+
+    // Final dedup by target IP: if two probes share the exact same target IP, prefer discovered probe
+    const seenTargets = new Map<string, any>();
+    const deduplicated: any[] = [];
+    for (const probe of combined) {
+        const target = (probe.target || '').trim();
+        const key = target ? `${probe.type}:${target}` : probe.name;
+        if (!seenTargets.has(key)) {
+            seenTargets.set(key, probe);
+            deduplicated.push(probe);
+        } else {
+            const existing = seenTargets.get(key);
+            if (probe.source === 'discovery' && existing.source !== 'discovery') {
+                const idx = deduplicated.indexOf(existing);
+                if (idx !== -1) deduplicated[idx] = probe;
+                seenTargets.set(key, probe);
+            }
+        }
+    }
+
+    return deduplicated;
 };
 
 // API: Refresh Discovered Connectivity Probes
@@ -5165,12 +5199,28 @@ const applyCustomConnectivityEndpoints = async (endpoints: any[]): Promise<boole
     const discoveredProbes = endpoints.filter(p => p.source === 'discovery');
     const customAndEnvProbes = endpoints.filter(p => p.source !== 'discovery' && p.source !== 'auto-mesh');
 
+    // Deduplicate against discovered probes: ensure legacy/stale entries with the same target IP or site_id are purged
+    const allDiscovered = [
+        ...discoveredProbes,
+        ...(discoveryManager ? discoveryManager.getProbes() : [])
+    ];
+    const discoveredTargets = new Set(allDiscovered.map(d => (d.target || '').trim()).filter(Boolean));
+    const discoveredSiteIds = new Set(allDiscovered.map(d => (d.site_id || '').trim()).filter(Boolean));
+
+    const cleanedCustomAndEnv = customAndEnvProbes.filter(p => {
+        const target = (p.target || '').trim();
+        if (target && discoveredTargets.has(target)) return false;
+        const siteId = (p.site_id || '').trim();
+        if (siteId && discoveredSiteIds.has(siteId)) return false;
+        return true;
+    });
+
     // Detect newly added probes (not previously in the saved config) for immediate trigger
     const existing = getCustomConnectivityEndpoints();
     const existingKeys = new Set(existing.map((p: any) => `${p.type}:${p.name}`));
-    const newProbes = customAndEnvProbes.filter(p => !existingKeys.has(`${p.type}:${p.name}`) && p.enabled !== false);
+    const newProbes = cleanedCustomAndEnv.filter(p => !existingKeys.has(`${p.type}:${p.name}`) && p.enabled !== false);
 
-    const customSuccess = saveCustomConnectivityEndpoints(customAndEnvProbes);
+    const customSuccess = saveCustomConnectivityEndpoints(cleanedCustomAndEnv);
     if (discoveryManager) {
         discoveryManager.updateProbesFromUI(discoveredProbes);
     }
@@ -5178,7 +5228,7 @@ const applyCustomConnectivityEndpoints = async (endpoints: any[]): Promise<boole
     // Save field-level local overrides and sync all configured probes across the fleet
     if (provisioningManager) {
         const fleetProbesToSync = [
-            ...customAndEnvProbes,
+            ...cleanedCustomAndEnv,
             ...discoveredProbes
         ];
         provisioningManager.handleLocalSave('connectivity-probes', fleetProbesToSync);
