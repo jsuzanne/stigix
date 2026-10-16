@@ -20,6 +20,7 @@ import type {
 } from '../../../custom-tcp-apps/types';
 import { MicroSparkline } from './MicroSparkline';
 import { usePeerContext } from '../../PeerContext';
+import { StigixSelect } from '../common/StigixSelect';
 
 interface MulticastOverlayTabProps {
     token: string | null;
@@ -1043,18 +1044,19 @@ export const MulticastOverlayTab: React.FC<MulticastOverlayTabProps> = ({
 
                     {/* Profile Selector */}
                     <div className="flex flex-wrap items-center gap-2 ml-0 lg:ml-3">
-                        <select
-                            aria-label="Select Multicast Profile"
+                        <StigixSelect
                             value={selectedAppId}
-                            onChange={(e) => setSelectedAppId(e.target.value)}
-                            className="bg-background border border-border rounded-lg px-3 py-2 text-xs font-bold text-text-primary focus:outline-none focus:border-purple-500"
-                        >
-                            {profiles.map((p) => (
-                                <option key={p.id} value={p.id}>
-                                    {p.name} ({p.mode.toUpperCase()} {p.group}:{p.port})
-                                </option>
-                            ))}
-                        </select>
+                            onChange={(val) => setSelectedAppId(val)}
+                            options={profiles.map((p) => ({
+                                value: p.id,
+                                label: p.name,
+                                sublabel: `${p.mode.toUpperCase()} ${p.group}:${p.port}`,
+                                badge: p.mode.toUpperCase(),
+                            }))}
+                            accent="purple"
+                            size="sm"
+                            className="min-w-[240px] max-w-full"
+                        />
 
                         {selectedProfile && (
                             <>
@@ -1738,10 +1740,10 @@ export const MulticastOverlayTab: React.FC<MulticastOverlayTabProps> = ({
                                     <label className="block text-[10px] font-bold uppercase text-text-muted mb-1">
                                         Addressing Mode
                                     </label>
-                                    <select
+                                    <StigixSelect
                                         value={formMode}
-                                        onChange={(e) => {
-                                            const m = e.target.value as MulticastAddressingMode;
+                                        onChange={(val) => {
+                                            const m = val as MulticastAddressingMode;
                                             setFormMode(m);
                                             if (m === 'ssm' && formGroup.startsWith('239.')) {
                                                 setFormGroup('232.10.10.1');
@@ -1749,11 +1751,14 @@ export const MulticastOverlayTab: React.FC<MulticastOverlayTabProps> = ({
                                                 setFormGroup('239.10.10.1');
                                             }
                                         }}
-                                        className="w-full bg-background border border-border rounded-lg px-2.5 py-2 text-text-primary font-bold"
-                                    >
-                                        <option value="asm">ASM (*,G — 239/8)</option>
-                                        <option value="ssm">SSM (S,G — 232/8)</option>
-                                    </select>
+                                        options={[
+                                            { value: 'asm', label: 'ASM (*,G — 239/8)' },
+                                            { value: 'ssm', label: 'SSM (S,G — 232/8)' },
+                                        ]}
+                                        accent="purple"
+                                        size="sm"
+                                        className="w-full"
+                                    />
                                 </div>
                                 <div>
                                     <label className="block text-[10px] font-bold uppercase text-text-muted mb-1">
@@ -1784,16 +1789,18 @@ export const MulticastOverlayTab: React.FC<MulticastOverlayTabProps> = ({
                                     <label className="block text-[10px] font-bold uppercase text-purple-400 mb-1">
                                         L7 App-ID Framing
                                     </label>
-                                    <select
+                                    <StigixSelect
                                         value={formPayloadFormat}
-                                        onChange={(e) => setFormPayloadFormat(e.target.value as MulticastPayloadFormat)}
-                                        className="w-full bg-background border border-purple-500/40 rounded-lg px-2.5 py-2 text-text-primary font-bold"
-                                        title="Embeds authentic RTP/MPEG-TS or RTP/G.711 headers ahead of the Stigix sequence trailer for NGFW App-ID & Wireshark"
-                                    >
-                                        <option value="raw-stgx">Raw STGX (24B Header)</option>
-                                        <option value="rtp-mpegts">RTP + MPEG-TS (PT=33 Video)</option>
-                                        <option value="rtp-g711">RTP + G.711 PCMU (PT=0 Audio)</option>
-                                    </select>
+                                        onChange={(val) => setFormPayloadFormat(val as MulticastPayloadFormat)}
+                                        options={[
+                                            { value: 'raw-stgx', label: 'Raw STGX (24B Header)' },
+                                            { value: 'rtp-mpegts', label: 'RTP + MPEG-TS (PT=33 Video)' },
+                                            { value: 'rtp-g711', label: 'RTP + G.711 PCMU (PT=0 Audio)' },
+                                        ]}
+                                        accent="purple"
+                                        size="sm"
+                                        className="w-full"
+                                    />
                                 </div>
                             </div>
 
@@ -1820,10 +1827,9 @@ export const MulticastOverlayTab: React.FC<MulticastOverlayTabProps> = ({
                                         Sender Node (Source DR)
                                     </label>
                                     {knownTargets.length > 0 ? (
-                                        <select
+                                        <StigixSelect
                                             value={formSenderNode}
-                                            onChange={(e) => {
-                                                const val = e.target.value;
+                                            onChange={(val) => {
                                                 setFormSenderNode(val);
                                                 const resolvedIp = resolveTargetHost(val);
                                                 setFormSenderIfaceIp(resolvedIp);
@@ -1831,23 +1837,29 @@ export const MulticastOverlayTab: React.FC<MulticastOverlayTabProps> = ({
                                                     setFormSsmSource(resolvedIp);
                                                 }
                                             }}
-                                            className="w-full bg-background border border-border rounded-lg px-3 py-2 text-text-primary font-bold"
-                                        >
-                                            {!knownTargets.some(
-                                                (t) => t.name.toLowerCase() === formSenderNode.toLowerCase()
-                                            ) &&
-                                                formSenderNode && (
-                                                    <option value={formSenderNode}>
-                                                        {formSenderNode} ({formSenderIfaceIp || 'auto'})
-                                                    </option>
-                                                )}
-                                            {knownTargets.map((t) => (
-                                                <option key={t.name} value={t.name}>
-                                                    {t.name} ({t.host !== 'auto' ? t.host : 'auto-detect'})
-                                                    {t.isSelf ? ' — Local' : ''}
-                                                </option>
-                                            ))}
-                                        </select>
+                                            options={[
+                                                ...(!knownTargets.some(
+                                                    (t) => t.name.toLowerCase() === formSenderNode.toLowerCase()
+                                                ) && formSenderNode
+                                                    ? [
+                                                          {
+                                                              value: formSenderNode,
+                                                              label: formSenderNode,
+                                                              sublabel: formSenderIfaceIp || 'auto',
+                                                          },
+                                                      ]
+                                                    : []),
+                                                ...knownTargets.map((t) => ({
+                                                    value: t.name,
+                                                    label: t.name,
+                                                    sublabel: t.host !== 'auto' ? t.host : 'auto-detect',
+                                                    badge: t.isSelf ? 'Local' : undefined,
+                                                })),
+                                            ]}
+                                            accent="purple"
+                                            size="sm"
+                                            className="w-full"
+                                        />
                                     ) : (
                                         <input
                                             type="text"
@@ -1882,15 +1894,18 @@ export const MulticastOverlayTab: React.FC<MulticastOverlayTabProps> = ({
                                     <label className="block text-[10px] font-bold uppercase text-text-muted mb-1">
                                         Rate Mode &amp; Bitrate (kbps)
                                     </label>
-                                    <div className="flex gap-1.5">
-                                        <select
+                                    <div className="flex gap-1.5 items-center">
+                                        <StigixSelect
                                             value={formRateMode}
-                                            onChange={(e) => setFormRateMode(e.target.value as MulticastRateMode)}
-                                            className="bg-background border border-border rounded-lg px-2 py-2 text-text-primary font-bold"
-                                        >
-                                            <option value="cbr">CBR</option>
-                                            <option value="burst">Burst</option>
-                                        </select>
+                                            onChange={(val) => setFormRateMode(val as MulticastRateMode)}
+                                            options={[
+                                                { value: 'cbr', label: 'CBR' },
+                                                { value: 'burst', label: 'Burst' },
+                                            ]}
+                                            accent="purple"
+                                            size="sm"
+                                            className="w-28 shrink-0"
+                                        />
                                         <input
                                             type="number"
                                             min={16}
@@ -1929,7 +1944,7 @@ export const MulticastOverlayTab: React.FC<MulticastOverlayTabProps> = ({
                                     <label className="block text-[10px] font-bold uppercase text-text-muted mb-1">
                                         Payload / TTL / DSCP
                                     </label>
-                                    <div className="grid grid-cols-3 gap-1">
+                                    <div className="grid grid-cols-3 gap-1 items-center">
                                         <input
                                             type="number"
                                             min={64}
@@ -1948,19 +1963,21 @@ export const MulticastOverlayTab: React.FC<MulticastOverlayTabProps> = ({
                                             title="IP Multicast TTL (Must be >1 to cross router hops)"
                                             className="bg-background border border-border rounded-lg px-2 py-2 text-text-primary font-mono"
                                         />
-                                        <select
+                                        <StigixSelect
                                             value={formDscp}
-                                            onChange={(e) => setFormDscp(e.target.value)}
-                                            title="DSCP Marking"
-                                            className="bg-background border border-border rounded-lg px-1.5 py-2 text-text-primary font-mono"
-                                        >
-                                            <option value="EF">EF</option>
-                                            <option value="AF41">AF41</option>
-                                            <option value="CS5">CS5</option>
-                                            <option value="CS4">CS4</option>
-                                            <option value="CS2">CS2</option>
-                                            <option value="BE">BE</option>
-                                        </select>
+                                            onChange={(val) => setFormDscp(val)}
+                                            options={[
+                                                { value: 'EF', label: 'EF' },
+                                                { value: 'AF41', label: 'AF41' },
+                                                { value: 'CS5', label: 'CS5' },
+                                                { value: 'CS4', label: 'CS4' },
+                                                { value: 'CS2', label: 'CS2' },
+                                                { value: 'BE', label: 'BE' },
+                                            ]}
+                                            accent="purple"
+                                            size="sm"
+                                            className="w-full"
+                                        />
                                     </div>
                                 </div>
                             </div>
@@ -2111,28 +2128,30 @@ export const MulticastOverlayTab: React.FC<MulticastOverlayTabProps> = ({
                                     </div>
                                 )}
 
-                                <div className="flex gap-2">
+                                <div className="flex gap-2 items-center">
                                     {knownTargets.length > 0 ? (
-                                        <select
-                                            value={newReceiverNode}
-                                            onChange={(e) => setNewReceiverNode(e.target.value)}
-                                            className="flex-1 bg-background border border-border rounded-lg px-3 py-1.5 text-text-primary font-bold"
-                                        >
-                                            <option value="">
-                                                -- Select a Stigix Target to add as Receiver --
-                                            </option>
-                                            {knownTargets.map((t) => {
-                                                const alreadyAdded = formReceivers.some(
-                                                    (r) => r.node.toLowerCase() === t.name.toLowerCase()
-                                                );
-                                                return (
-                                                    <option key={t.name} value={t.name} disabled={alreadyAdded}>
-                                                        {t.name} — LAN IP: {t.host}
-                                                        {alreadyAdded ? ' (Already added)' : ''}
-                                                    </option>
-                                                );
-                                            })}
-                                        </select>
+                                        <div className="flex-1 min-w-0">
+                                            <StigixSelect
+                                                value={newReceiverNode}
+                                                onChange={(val) => setNewReceiverNode(val)}
+                                                placeholder="-- Select Stigix Target as Receiver --"
+                                                options={knownTargets.map((t) => {
+                                                    const alreadyAdded = formReceivers.some(
+                                                        (r) => r.node.toLowerCase() === t.name.toLowerCase()
+                                                    );
+                                                    return {
+                                                        value: t.name,
+                                                        label: t.name,
+                                                        sublabel: `LAN: ${t.host}`,
+                                                        badge: alreadyAdded ? 'Added' : undefined,
+                                                        disabled: alreadyAdded,
+                                                    };
+                                                })}
+                                                accent="purple"
+                                                size="sm"
+                                                className="w-full"
+                                            />
+                                        </div>
                                     ) : (
                                         <input
                                             type="text"
@@ -2143,18 +2162,23 @@ export const MulticastOverlayTab: React.FC<MulticastOverlayTabProps> = ({
                                             className="flex-1 bg-background border border-border rounded-lg px-3 py-1.5 text-text-primary"
                                         />
                                     )}
-                                    <select
-                                        value={newReceiverExpect}
-                                        onChange={(e) => setNewReceiverExpect(e.target.value as MulticastExpectationMode)}
-                                        className="bg-background border border-border rounded-lg px-2.5 py-1.5 text-text-primary font-bold"
-                                    >
-                                        <option value="traffic">EXPECT_TRAFFIC (Normal)</option>
-                                        <option value="none">EXPECT_NONE (Policy Leak Test)</option>
-                                    </select>
+                                    <div className="w-56 shrink-0">
+                                        <StigixSelect
+                                            value={newReceiverExpect}
+                                            onChange={(val) => setNewReceiverExpect(val as MulticastExpectationMode)}
+                                            options={[
+                                                { value: 'traffic', label: 'EXPECT_TRAFFIC (Normal)' },
+                                                { value: 'none', label: 'EXPECT_NONE (Policy Leak)' },
+                                            ]}
+                                            accent="purple"
+                                            size="sm"
+                                            className="w-full"
+                                        />
+                                    </div>
                                     <button
                                         type="button"
                                         onClick={() => addReceiverToForm()}
-                                        className="px-3 py-1.5 rounded-lg bg-purple-600/20 hover:bg-purple-600/30 text-purple-300 border border-purple-500/30 font-bold"
+                                        className="px-3 py-1.5 rounded-lg bg-purple-600/20 hover:bg-purple-600/30 text-purple-300 border border-purple-500/30 font-bold shrink-0 text-xs"
                                     >
                                         + Add Receiver
                                     </button>
@@ -2176,21 +2200,24 @@ export const MulticastOverlayTab: React.FC<MulticastOverlayTabProps> = ({
                                                     <span className="px-1.5 py-0.5 rounded bg-cyan-500/10 border border-cyan-500/30 text-cyan-300 font-mono text-[10px]">
                                                         LAN IP: {resolvedIp}
                                                     </span>
-                                                    <select
+                                                    <StigixSelect
                                                         value={r.expect}
-                                                        onChange={(e) => {
+                                                        onChange={(val) => {
                                                             const next = [...formReceivers];
                                                             next[idx] = {
                                                                 ...r,
-                                                                expect: e.target.value as MulticastExpectationMode,
+                                                                expect: val as MulticastExpectationMode,
                                                             };
                                                             setFormReceivers(next);
                                                         }}
-                                                        className="bg-background border border-border rounded px-2 py-0.5 text-[10px] font-bold text-text-secondary"
-                                                    >
-                                                        <option value="traffic">EXPECT_TRAFFIC</option>
-                                                        <option value="none">EXPECT_NONE (Deny Test)</option>
-                                                    </select>
+                                                        options={[
+                                                            { value: 'traffic', label: 'EXPECT_TRAFFIC' },
+                                                            { value: 'none', label: 'EXPECT_NONE' },
+                                                        ]}
+                                                        accent="purple"
+                                                        size="xs"
+                                                        className="w-36"
+                                                    />
                                                 </div>
                                                 <button
                                                     type="button"
@@ -2413,14 +2440,17 @@ export const MulticastOverlayTab: React.FC<MulticastOverlayTabProps> = ({
 
                                 <div className="flex items-center gap-2">
                                     <span className="text-text-muted font-bold">Import Mode:</span>
-                                    <select
+                                    <StigixSelect
                                         value={importMode}
-                                        onChange={(e) => setImportMode(e.target.value as 'merge' | 'replace')}
-                                        className="bg-background border border-border rounded-lg px-2.5 py-1.5 text-text-primary font-bold"
-                                    >
-                                        <option value="merge">Merge (Add / Update by ID)</option>
-                                        <option value="replace">Replace All Profiles</option>
-                                    </select>
+                                        onChange={(val) => setImportMode(val as 'merge' | 'replace')}
+                                        options={[
+                                            { value: 'merge', label: 'Merge (Add / Update by ID)' },
+                                            { value: 'replace', label: 'Replace All Profiles' },
+                                        ]}
+                                        accent="purple"
+                                        size="sm"
+                                        className="w-56"
+                                    />
                                 </div>
                             </div>
 

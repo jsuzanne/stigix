@@ -61,12 +61,15 @@ import {
     Gauge,
     Route,
     Loader2,
-    Maximize
+    Maximize,
+    ShieldAlert,
+    ShieldX
 } from 'lucide-react';
 import { toPng } from 'html-to-image';
 import { clsx } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 import { TracerouteModal } from './components/TracerouteModal';
+import { VyosTrafficControlModal } from './components/VyosTrafficControlModal';
 
 function cn(...inputs: (string | undefined | null | false)[]) {
     return twMerge(clsx(inputs));
@@ -128,6 +131,7 @@ type UnderlayRouterSummary = {
     host: string;
     location?: string | null;
     status?: string | null;
+    blackholeBlocks?: Array<{ prefix: string; description?: string }>;
     interfaces: Array<{
         name: string;
         description?: string | null;
@@ -877,8 +881,25 @@ const CloudNode = ({ data }: any) => {
 };
 
 const VyOSRouterNode = ({ data }: any) => {
-    const { router, connectedCount = 0, resolutions = [], siteOrder = new Map(), onSelectResolution } = data;
+    const { router, connectedCount = 0, resolutions = [], siteOrder = new Map(), onSelectResolution, onOpenRouterControl } = data;
     const isOnline = router.status !== 'down';
+    const blackholeBlocks: Array<{ prefix: string; description?: string }> = Array.isArray(router.blackholeBlocks) ? router.blackholeBlocks : [];
+    const blockedCount = blackholeBlocks.length;
+
+    // Helper to check if a resolution's IP or network is in the router's blackhole blocks
+    const isResolutionBlocked = (res?: any) => {
+        if (!res || blockedCount === 0) return false;
+        const wanIp = (res.prismaWan?.ip || '').replace(/\/32$/, '');
+        const wanCidr = res.prismaWan?.ipCidr || '';
+        const wanNet = res.prismaWan?.network || '';
+        return blackholeBlocks.some(b => {
+            const cleanPrefix = b.prefix.replace(/\/32$/, '');
+            if (wanIp && cleanPrefix === wanIp) return true;
+            if (wanCidr && b.prefix === wanCidr) return true;
+            if (wanNet && b.prefix === wanNet) return true;
+            return false;
+        });
+    };
 
     // Group resolutions into Hub-connected and Spoke-connected
     const hubResolutions = resolutions.filter((r: any) => r.isHub);
@@ -926,6 +947,7 @@ const VyOSRouterNode = ({ data }: any) => {
         const matchedRes = resolutions.find((r: any) => r.vyos?.interfaceName === iface.name);
         const isConnected = !!matchedRes;
         const isIfaceUp = iface.status !== 'down';
+        const isBlocked = isResolutionBlocked(matchedRes);
         const fullIp = iface.address?.[0] || iface.ipCidr || iface.ip || matchedRes?.vyos?.ipCidr || matchedRes?.vyos?.ip || '—';
         const portQos = normalizeQos(iface.qos || matchedRes?.vyos?.qos);
         const hasQos = !!portQos;
@@ -942,12 +964,14 @@ const VyOSRouterNode = ({ data }: any) => {
                 className={cn(
                     "relative px-4 py-3 rounded-2xl border text-[11px] transition-all flex flex-col justify-between group/port min-w-[195px] max-w-[230px] min-h-[76px] gap-1.5 shadow-sm",
                     isConnected 
-                        ? (isIfaceUp
-                            ? "bg-card border-amber-500/50 hover:border-amber-400 hover:bg-card-secondary/70 shadow-md shadow-amber-500/10 cursor-pointer"
-                            : "bg-rose-950/20 border-rose-500/50 hover:border-rose-400 hover:bg-rose-950/30 shadow-md shadow-rose-500/10 cursor-pointer") 
+                        ? (isBlocked
+                            ? "bg-rose-950/20 border-rose-500 hover:border-rose-400 hover:bg-rose-950/30 shadow-md shadow-rose-500/20 ring-1 ring-rose-500/50 cursor-pointer"
+                            : isIfaceUp
+                                ? "bg-card border-amber-500/50 hover:border-amber-400 hover:bg-card-secondary/70 shadow-md shadow-amber-500/10 cursor-pointer"
+                                : "bg-rose-950/20 border-rose-500/50 hover:border-rose-400 hover:bg-rose-950/30 shadow-md shadow-rose-500/10 cursor-pointer") 
                         : "bg-card-secondary/40 border-border text-text-muted opacity-40 cursor-default"
                 )}
-                title={matchedRes ? `Connected to ${matchedRes.prismaWan.siteName} (${matchedRes.prismaWan.interfaceName}) · Click to inspect` : (iface.description || iface.name)}
+                title={matchedRes ? `Connected to ${matchedRes.prismaWan.siteName} (${matchedRes.prismaWan.interfaceName})${isBlocked ? ' · 🚫 TRAFFIC BLOCKED' : ''} · Click to inspect` : (iface.description || iface.name)}
             >
                 {/* Dedicated ReactFlow Handle for direct 1:1 cable termination */}
                 <Handle
@@ -963,6 +987,11 @@ const VyOSRouterNode = ({ data }: any) => {
                         {iface.name}
                     </span>
                     <div className="flex items-center gap-1">
+                        {isBlocked && (
+                            <span className="text-[8px] font-black px-1.5 py-0.2 rounded bg-rose-500/20 text-rose-500 border border-rose-500/40 flex items-center gap-0.5 animate-pulse" title="Traffic to this endpoint is blocked by router-level blackhole rule">
+                                <ShieldAlert size={9} /> DENIED
+                            </span>
+                        )}
                         {hasQos && (
                             <span className="text-[8px] font-black px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-400 border border-amber-500/40">
                                 ⏱️ +{portQos.latency || 0}ms
@@ -1030,15 +1059,47 @@ const VyOSRouterNode = ({ data }: any) => {
                     </div>
                 </div>
 
-                <div className="text-right">
-                    <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-amber-500/15 border border-amber-500/40 text-amber-700 dark:text-amber-300 text-[10px] font-black uppercase tracking-wider">
-                        <span>{connectedCount} Circuits</span>
-                    </div>
-                    {router.location && (
-                        <div className="text-[10px] text-text-muted mt-1 font-mono">
-                            {router.location}
-                        </div>
+                <div className="flex items-center gap-2">
+                    {/* Traffic Control Button */}
+                    {onOpenRouterControl && (
+                        <button
+                            type="button"
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                onOpenRouterControl(router);
+                            }}
+                            className={cn(
+                                "px-3 py-1.5 rounded-xl font-black text-[11px] flex items-center gap-1.5 border transition-all cursor-pointer shadow-sm",
+                                blockedCount > 0
+                                    ? "bg-rose-500/20 hover:bg-rose-500/30 text-rose-500 dark:text-rose-400 border-rose-500/50 shadow-rose-500/20 ring-1 ring-rose-500/40"
+                                    : "bg-amber-500/15 hover:bg-amber-500/25 text-amber-700 dark:text-amber-300 border-amber-500/40 hover:border-amber-400"
+                            )}
+                            title="Manage router-level Allow/Deny traffic policies"
+                        >
+                            {blockedCount > 0 ? (
+                                <>
+                                    <ShieldAlert size={14} className="text-rose-500 animate-pulse" />
+                                    <span>{blockedCount} BLOCKED</span>
+                                </>
+                            ) : (
+                                <>
+                                    <Shield size={14} />
+                                    <span>TRAFFIC CONTROL</span>
+                                </>
+                            )}
+                        </button>
                     )}
+
+                    <div className="text-right">
+                        <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-amber-500/15 border border-amber-500/40 text-amber-700 dark:text-amber-300 text-[10px] font-black uppercase tracking-wider">
+                            <span>{connectedCount} Circuits</span>
+                        </div>
+                        {router.location && (
+                            <div className="text-[10px] text-text-muted mt-1 font-mono">
+                                {router.location}
+                            </div>
+                        )}
+                    </div>
                 </div>
             </div>
 
@@ -1373,6 +1434,28 @@ function TopologyContent({ token }: TopologyProps) {
     const [netemTarget, setNetemTarget] = useState<{ routerName: string; interfaceName: string; siteName?: string } | null>(null);
     const [portShutStates, setPortShutStates] = useState<Record<string, boolean>>({});
     const [portQosStates, setPortQosStates] = useState<Record<string, { latency?: number; loss?: number }>>({});
+    const [selectedRouterForTrafficControl, setSelectedRouterForTrafficControl] = useState<any | null>(null);
+
+    // Discovered unique lab sites and IP endpoints for quick selection in traffic control
+    const discoveredSitesForVyos = useMemo(() => {
+        const seen = new Set<string>();
+        const list: Array<{ siteName: string; ip: string; ipCidr?: string; network?: string; interfaceName?: string }> = [];
+        (underlayData?.resolutions || []).forEach(res => {
+            const ip = res.prismaWan?.ip;
+            const siteName = res.prismaWan?.siteName;
+            if (ip && siteName && !seen.has(ip)) {
+                seen.add(ip);
+                list.push({
+                    siteName,
+                    ip,
+                    ipCidr: res.prismaWan?.ipCidr || undefined,
+                    network: res.prismaWan?.network || undefined,
+                    interfaceName: res.prismaWan?.interfaceName || undefined
+                });
+            }
+        });
+        return list;
+    }, [underlayData?.resolutions]);
 
     // Dynamic helper to resolve the true current status of any VyOS interface
     const getVyosInterfaceStatus = useCallback((routerName?: string | null, ifaceName?: string | null): 'up' | 'down' => {
@@ -1450,11 +1533,11 @@ function TopologyContent({ token }: TopologyProps) {
 
     const handleVyosDirectAction = async (
         routerName: string,
-        iface: string,
-        command: string,
+        iface?: string,
+        command: string = '',
         params: any = {},
         siteName?: string
-    ) => {
+    ): Promise<{ success: boolean; durationMs?: number; error?: string }> => {
         setIsVyosExecuting(true);
         setVyosExecutingAction(command);
         setVyosActionResult(null);
@@ -1467,10 +1550,10 @@ function TopologyContent({ token }: TopologyProps) {
                 },
                 body: JSON.stringify({
                     routerName,
-                    interface: iface,
+                    interface: iface || undefined,
                     command,
                     params,
-                    source: `Topology: ${siteName || 'Link'} (${iface})`
+                    source: `Topology: ${siteName || 'Router'} ${iface ? `(${iface})` : ''}`
                 })
             });
             const data = await res.json();
@@ -1478,22 +1561,24 @@ function TopologyContent({ token }: TopologyProps) {
                 throw new Error(data.error || 'Failed to execute VyOS action');
             }
 
-            const portKey = `${routerName}:${iface}`;
-            if (command === 'shut') {
-                setPortShutStates(prev => ({ ...prev, [portKey]: true }));
-            } else if (command === 'no-shut') {
-                setPortShutStates(prev => ({ ...prev, [portKey]: false }));
-            } else if (command === 'set-qos') {
-                setPortQosStates(prev => ({ ...prev, [portKey]: { latency: params.latency, loss: params.loss } }));
-            } else if (command === 'clear-qos') {
-                setPortQosStates(prev => {
-                    const copy = { ...prev };
-                    delete copy[portKey];
-                    return copy;
-                });
+            if (iface) {
+                const portKey = `${routerName}:${iface}`;
+                if (command === 'shut') {
+                    setPortShutStates(prev => ({ ...prev, [portKey]: true }));
+                } else if (command === 'no-shut') {
+                    setPortShutStates(prev => ({ ...prev, [portKey]: false }));
+                } else if (command === 'set-qos') {
+                    setPortQosStates(prev => ({ ...prev, [portKey]: { latency: params.latency, loss: params.loss } }));
+                } else if (command === 'clear-qos') {
+                    setPortQosStates(prev => {
+                        const copy = { ...prev };
+                        delete copy[portKey];
+                        return copy;
+                    });
+                }
             }
 
-            // Immediately poll /api/topology/underlay-debug to refresh underlay routers and interface statuses
+            // Immediately poll /api/topology/underlay-debug to refresh underlay routers, interface statuses, and blackhole blocks
             gFetch('/api/topology/underlay-debug', {
                 headers: { 'Authorization': `Bearer ${token}` }
             })
@@ -1501,29 +1586,45 @@ function TopologyContent({ token }: TopologyProps) {
             .then(d => {
                 if (d?.underlay) {
                     setUnderlayData(d.underlay);
+                    // Also refresh the router selected in traffic control modal if open
+                    if (d.underlay.routers) {
+                        setSelectedRouterForTrafficControl((prev: any) => {
+                            if (!prev) return null;
+                            const found = d.underlay.routers.find((r: any) => 
+                                (r.name && r.name.toLowerCase() === prev.name?.toLowerCase()) || 
+                                (r.id && r.id.toLowerCase() === prev.id?.toLowerCase())
+                            );
+                            return found ? { ...found } : prev;
+                        });
+                    }
                 }
             })
             .catch(() => {});
 
+            let successMsg = `Action ${command} executed successfully`;
+            if (command === 'shut') successMsg = `Port ${iface} disabled (SHUT)`;
+            else if (command === 'no-shut') successMsg = `Port ${iface} enabled (NO SHUT)`;
+            else if (command === 'clear-qos') successMsg = `QoS cleared on ${iface}`;
+            else if (command === 'set-qos') successMsg = `Applied QoS (+${params.latency || 0}ms, ${params.loss || 0}% loss) on ${iface}`;
+            else if (command === 'deny-traffic') successMsg = `Traffic blocked for ${params.ip || 'target'} on ${routerName}`;
+            else if (command === 'allow-traffic') successMsg = `Traffic unblocked for ${params.ip || 'target'} on ${routerName}`;
+            else if (command === 'clear-all-blocks') successMsg = `All traffic blocks cleared on ${routerName}`;
+
             setVyosActionResult({
                 success: true,
-                message: command === 'shut'
-                    ? `Port ${iface} disabled (SHUT)`
-                    : command === 'no-shut'
-                    ? `Port ${iface} enabled (NO SHUT)`
-                    : command === 'clear-qos'
-                    ? `QoS cleared on ${iface}`
-                    : `Applied QoS (+${params.latency || 0}ms, ${params.loss || 0}% loss) on ${iface}`,
+                message: successMsg,
                 durationMs: data.durationMs
             });
 
             setTimeout(() => setVyosActionResult(null), 5000);
             setShowNetemModal(false);
+            return { success: true, durationMs: data.durationMs };
         } catch (err: any) {
             setVyosActionResult({
                 success: false,
                 message: err.message
             });
+            return { success: false, error: err.message };
         } finally {
             setIsVyosExecuting(false);
             setVyosExecutingAction(null);
@@ -1698,6 +1799,73 @@ function TopologyContent({ token }: TopologyProps) {
                         )}
                     </button>
                 </div>
+
+                {/* Router-Level Firewall Control for Connected Endpoint */}
+                {(() => {
+                    const targetIp = res.prismaWan.ip || res.vyos.ip || '';
+                    const rObj = (underlayData?.routers || []).find(r => 
+                        (r.name && r.name.toLowerCase() === routerName.toLowerCase()) || 
+                        (r.id && r.id.toLowerCase() === routerName.toLowerCase())
+                    );
+                    const cleanTargetIp = targetIp.replace(/\/32$/, '');
+                    const isIpBlocked = !!(rObj?.blackholeBlocks || []).some((b: any) => {
+                        const cleanPrefix = b.prefix.replace(/\/32$/, '');
+                        return (cleanTargetIp && cleanPrefix === cleanTargetIp) || 
+                               (res.prismaWan.ipCidr && b.prefix === res.prismaWan.ipCidr) ||
+                               (res.prismaWan.network && b.prefix === res.prismaWan.network);
+                    });
+                    const isBlocking = isVyosExecuting && (vyosExecutingAction === 'deny-traffic' || vyosExecutingAction === 'allow-traffic');
+
+                    return (
+                        <div className="pt-2 border-t border-border/50 flex items-center justify-between gap-2">
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    if (isIpBlocked) {
+                                        handleVyosDirectAction(routerName, undefined, 'allow-traffic', { ip: targetIp }, res.prismaWan.siteName);
+                                    } else {
+                                        handleVyosDirectAction(routerName, undefined, 'deny-traffic', { ip: targetIp }, res.prismaWan.siteName);
+                                    }
+                                }}
+                                disabled={isVyosExecuting || !targetIp}
+                                className={cn(
+                                    "flex-1 py-2 px-3 rounded-xl font-bold text-[11px] flex items-center justify-center gap-1.5 transition-all border shadow-sm cursor-pointer disabled:opacity-60 disabled:cursor-wait",
+                                    isIpBlocked
+                                        ? "bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-600 dark:text-emerald-400 border-emerald-500/40"
+                                        : "bg-rose-500/15 hover:bg-rose-500/25 text-rose-600 dark:text-rose-400 border-rose-500/40"
+                                )}
+                                title={isIpBlocked ? `Allow traffic from/to ${targetIp}` : `Block traffic from/to ${targetIp} via router blackhole`}
+                            >
+                                {isBlocking ? (
+                                    <Loader2 size={13} className="animate-spin text-amber-500" />
+                                ) : isIpBlocked ? (
+                                    <ShieldCheck size={13} />
+                                ) : (
+                                    <ShieldAlert size={13} />
+                                )}
+                                <span className="font-mono tracking-tight">
+                                    {isBlocking 
+                                        ? 'UPDATING...' 
+                                        : isIpBlocked 
+                                            ? `ALLOW SITE (${targetIp})` 
+                                            : `DENY SITE (${targetIp})`}
+                                </span>
+                            </button>
+
+                            {rObj && (
+                                <button
+                                    type="button"
+                                    onClick={() => setSelectedRouterForTrafficControl(rObj)}
+                                    className="py-2 px-2.5 rounded-xl bg-card hover:bg-card-hover border border-border text-text-muted hover:text-text-primary text-[10px] font-bold flex items-center gap-1 transition-all cursor-pointer"
+                                    title="Open full Traffic Control Manager for this router"
+                                >
+                                    <Shield size={12} />
+                                    <span>Rules ({rObj.blackholeBlocks?.length || 0})</span>
+                                </button>
+                            )}
+                        </div>
+                    );
+                })()}
 
                 {/* Feedback Message */}
                 {vyosActionResult && (
@@ -2014,6 +2182,7 @@ function TopologyContent({ token }: TopologyProps) {
                     host: fromPayload?.host || routerResolutions[0]?.vyos?.routerId || '192.168.122.254',
                     location: fromPayload?.location || 'VyOS Underlay Backbone',
                     status: fromPayload?.status || 'up',
+                    blackholeBlocks: Array.isArray(fromPayload?.blackholeBlocks) ? fromPayload.blackholeBlocks : [],
                     interfaces: Array.from(ifaceMap.values()),
                     resolutions: routerResolutions,
                     connectedCount: routerResolutions.length
@@ -2046,7 +2215,8 @@ function TopologyContent({ token }: TopologyProps) {
                         connectedCount: r.connectedCount,
                         resolutions: r.resolutions,
                         siteOrder: sitePositions,
-                        onSelectResolution: (res: any) => setUnderlayDrawerResolution(res)
+                        onSelectResolution: (res: any) => setUnderlayDrawerResolution(res),
+                        onOpenRouterControl: (routerObj: any) => setSelectedRouterForTrafficControl(routerObj)
                     }
                 });
             });
@@ -6680,6 +6850,18 @@ function TopologyContent({ token }: TopologyProps) {
                     </div>
                 </div>
             )}
+
+            {/* VyOS Router-level Traffic Control Modal */}
+            <VyosTrafficControlModal
+                isOpen={selectedRouterForTrafficControl !== null}
+                onClose={() => setSelectedRouterForTrafficControl(null)}
+                router={selectedRouterForTrafficControl}
+                discoveredSites={discoveredSitesForVyos}
+                onExecuteAction={(routerName, command, params) => 
+                    handleVyosDirectAction(routerName, undefined, command, params)
+                }
+                isExecuting={isVyosExecuting}
+            />
 
             {/* Traceroute Modal */}
             <TracerouteModal

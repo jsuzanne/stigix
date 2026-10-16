@@ -71,6 +71,7 @@ export type UnderlayRouterSummary = {
     host: string;
     location?: string | null;
     status?: string | null;
+    blackholeBlocks?: { prefix: string; description?: string }[];
     interfaces: {
         name: string;
         description?: string | null;
@@ -406,6 +407,7 @@ export class UnderlayTopologyManager {
                     host: r.host,
                     location: r.location || null,
                     status: r.status || 'up',
+                    blackholeBlocks: Array.isArray(r.blackholeBlocks) ? r.blackholeBlocks : [],
                     interfaces: (r.interfaces || []).map((i: any) => ({
                         name: i.name,
                         description: i.description || null,
