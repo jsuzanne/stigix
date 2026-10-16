@@ -4925,26 +4925,81 @@ app.get('/api/connectivity/test', authenticateToken, async (req, res) => {
     });
 });
 
+const CF_POP_CITIES: Record<string, string> = {
+    CDG: 'Paris', MRS: 'Marseille', LYS: 'Lyon', BOD: 'Bordeaux',
+    FRA: 'Frankfurt', MUC: 'Munich', DUS: 'Düsseldorf', HAM: 'Hamburg', TXL: 'Berlin', BER: 'Berlin',
+    LHR: 'London', MAN: 'Manchester', EDI: 'Edinburgh', DUB: 'Dublin',
+    AMS: 'Amsterdam', BRU: 'Brussels', LUX: 'Luxembourg', ZRH: 'Zurich', GVA: 'Geneva', VIE: 'Vienna',
+    MAD: 'Madrid', BCN: 'Barcelona', LIS: 'Lisbon', MXP: 'Milan', FCO: 'Rome',
+    WAW: 'Warsaw', PRG: 'Prague', BUD: 'Budapest', OTP: 'Bucharest', SOF: 'Sofia', ATH: 'Athens',
+    ARN: 'Stockholm', CPH: 'Copenhagen', OSL: 'Oslo', HEL: 'Helsinki',
+    IAD: 'Ashburn', EWR: 'Newark', JFK: 'New York', BOS: 'Boston', ORD: 'Chicago', ATL: 'Atlanta',
+    MIA: 'Miami', DFW: 'Dallas', DEN: 'Denver', SEA: 'Seattle', SJC: 'San Jose', LAX: 'Los Angeles',
+    YYZ: 'Toronto', YVR: 'Vancouver', YUL: 'Montreal',
+    NRT: 'Tokyo', KIX: 'Osaka', ICN: 'Seoul', HKG: 'Hong Kong', SIN: 'Singapore',
+    SYD: 'Sydney', MEL: 'Melbourne', BOM: 'Mumbai', DEL: 'New Delhi', DXB: 'Dubai', GRU: 'São Paulo'
+};
+
 app.get(['/api/connectivity/public-ip', '/api/system/public-ip'], authenticateToken, async (req, res) => {
+    // Helper to fetch Cloudflare trace (ip, colo/PoP, loc/country) in <1.5s
+    const fetchCfTrace = async (): Promise<{ ip?: string; pop?: string; countryCode?: string; city?: string }> => {
+        try {
+            const traceRes = await fetch('https://1.1.1.1/cdn-cgi/trace', {
+                signal: AbortSignal.timeout(2500)
+            });
+            if (traceRes.ok) {
+                const text = await traceRes.text();
+                const map: Record<string, string> = {};
+                text.split('\n').forEach(line => {
+                    const idx = line.indexOf('=');
+                    if (idx > 0) map[line.slice(0, idx).trim()] = line.slice(idx + 1).trim();
+                });
+                const pop = map.colo ? map.colo.toUpperCase() : undefined;
+                return {
+                    ip: map.ip,
+                    pop,
+                    countryCode: map.loc ? map.loc.toUpperCase() : undefined,
+                    city: pop ? CF_POP_CITIES[pop] : undefined
+                };
+            }
+        } catch {}
+        return {};
+    };
+
     try {
         // 1. Attempt Cloudflare Target Probe first (robust, no rate limits, authenticates TSG)
         if (targetManager) {
             try {
                 const probeResult = await targetManager.runProbe('egress-info', 5000);
                 if (probeResult.success && probeResult.data && probeResult.data.ip) {
+                    const pop = probeResult.data.pop ? String(probeResult.data.pop).toUpperCase() : null;
+                    const city = probeResult.data.city || (pop ? CF_POP_CITIES[pop] || null : null);
                     return res.json({
                         ip: probeResult.data.ip,
                         countryCode: probeResult.data.country || null,
                         country: probeResult.data.country || null,
-                        city: probeResult.data.city || null,
-                        pop: probeResult.data.pop || null,
+                        city,
+                        pop,
                         source: 'cloudflare'
                     });
                 }
-                log('API', '[Public IP] Cloudflare probe failed or missing data, falling back to ifconfig.co', 'debug');
+                log('API', '[Public IP] Cloudflare probe failed or missing data, falling back to cdn-cgi/trace & ifconfig.co', 'debug');
             } catch (err: any) {
-                log('API', `[Public IP] Cloudflare probe exception: ${err.message}, falling back to ifconfig.co`, 'debug');
+                log('API', `[Public IP] Cloudflare probe exception: ${err.message}, falling back to cdn-cgi/trace & ifconfig.co`, 'debug');
             }
+        }
+
+        // 1b. Fast Cloudflare 1.1.1.1 trace (provides IP + exact Edge PoP IATA code)
+        const cfTrace = await fetchCfTrace();
+        if (cfTrace.ip && cfTrace.pop) {
+            return res.json({
+                ip: cfTrace.ip,
+                countryCode: cfTrace.countryCode || null,
+                country: cfTrace.countryCode || null,
+                city: cfTrace.city || null,
+                pop: cfTrace.pop,
+                source: 'cloudflare-trace'
+            });
         }
 
         // 2. Fallback to ifconfig.co (JSON response, high limits)
@@ -4958,9 +5013,10 @@ app.get(['/api/connectivity/public-ip', '/api/system/public-ip'], authenticateTo
                 if (data && data.ip) {
                     return res.json({
                         ip: data.ip,
-                        countryCode: data.country_iso || null,
+                        countryCode: data.country_iso || cfTrace.countryCode || null,
                         country: data.country || null,
-                        city: data.city || null,
+                        city: data.city || cfTrace.city || null,
+                        pop: cfTrace.pop || null,
                         source: 'ifconfig.co'
                     });
                 }
@@ -4980,9 +5036,10 @@ app.get(['/api/connectivity/public-ip', '/api/system/public-ip'], authenticateTo
                 if (data && data.ip) {
                     return res.json({
                         ip: data.ip,
-                        countryCode: null,
+                        countryCode: cfTrace.countryCode || null,
                         country: null,
-                        city: null,
+                        city: cfTrace.city || null,
+                        pop: cfTrace.pop || null,
                         source: 'ipify'
                     });
                 }
@@ -5001,9 +5058,10 @@ app.get(['/api/connectivity/public-ip', '/api/system/public-ip'], authenticateTo
                 const data = await response.json() as any;
                 return res.json({
                     ip: data.ip,
-                    countryCode: data.country_code || null,
+                    countryCode: data.country_code || cfTrace.countryCode || null,
                     country: data.country_name || null,
-                    city: data.city || null,
+                    city: data.city || cfTrace.city || null,
+                    pop: cfTrace.pop || null,
                     source: 'ipapi'
                 });
             }
@@ -5018,41 +5076,194 @@ app.get(['/api/connectivity/public-ip', '/api/system/public-ip'], authenticateTo
 app.get('/api/system/gateway-ip', authenticateToken, async (req, res) => {
     try {
         const platform = os.platform();
-        let cmd = '';
-        let localIp = '';
+        const execPromise = promisify(exec);
 
-        // Extract primary non-internal IPv4 from host network interfaces
-        const interfaces = os.networkInterfaces();
-        for (const name of Object.keys(interfaces)) {
-            for (const iface of interfaces[name] || []) {
-                if (iface.family === 'IPv4' && !iface.internal && !iface.address.startsWith('172.17.') && !iface.address.startsWith('172.18.') && !iface.address.startsWith('127.')) {
-                    if (!localIp || (!localIp.startsWith('192.168.') && iface.address.startsWith('192.168.'))) {
-                        localIp = iface.address;
+        // Helper to check OS link state on Linux (/sys/class/net/<iface>/operstate & carrier)
+        const isInterfaceUp = (ifaceName: string, hasIp: boolean): boolean => {
+            if (!ifaceName) return false;
+            if (platform === 'linux') {
+                try {
+                    const operFile = `/sys/class/net/${ifaceName}/operstate`;
+                    if (fs.existsSync(operFile)) {
+                        const oper = fs.readFileSync(operFile, 'utf8').trim().toLowerCase();
+                        if (oper === 'down') return false;
+                        if (oper === 'up') return true;
                     }
+                    const carrierFile = `/sys/class/net/${ifaceName}/carrier`;
+                    if (fs.existsSync(carrierFile)) {
+                        const carrier = fs.readFileSync(carrierFile, 'utf8').trim();
+                        return carrier === '1';
+                    }
+                } catch {}
+            }
+            return hasIp;
+        };
+
+        // 1. Enumerate all non-virtual host IPv4 interfaces
+        const rawInterfaces = os.networkInterfaces();
+        const hostIfaces: { name: string; ip: string; up: boolean }[] = [];
+        for (const name of Object.keys(rawInterfaces)) {
+            if (
+                name.startsWith('lo') ||
+                name.startsWith('docker') ||
+                name.startsWith('br-') ||
+                name.startsWith('veth') ||
+                name.startsWith('virbr') ||
+                name.startsWith('vnet') ||
+                name.startsWith('utun') ||
+                name.startsWith('awdl') ||
+                name.startsWith('llw') ||
+                name.startsWith('bridge')
+            ) {
+                continue;
+            }
+            for (const details of rawInterfaces[name] || []) {
+                if (
+                    details.family === 'IPv4' &&
+                    !details.internal &&
+                    !details.address.startsWith('127.') &&
+                    !details.address.startsWith('169.254.') &&
+                    !details.address.startsWith('172.17.') &&
+                    !details.address.startsWith('172.18.')
+                ) {
+                    hostIfaces.push({
+                        name,
+                        ip: details.address,
+                        up: isInterfaceUp(name, true)
+                    });
                 }
             }
         }
 
+        // 2. Determine Default Gateway IP, Default Route Interface, and Traffic Interface
+        let gwIp = '';
+        let defaultIface = '';
+        let routeSrcIp = '';
+
         if (platform === 'darwin') {
-            cmd = "route -n get default | awk '/gateway/ {print $2}'";
-        } else if (platform === 'linux') {
-            cmd = "ip route | grep default | awk '{print $3}' | head -n 1";
-        } else {
-            return res.json({ ip: 'Unknown OS', local_ip: localIp });
-        }
-
-        const execPromise = promisify(exec);
-        const { stdout } = await execPromise(cmd);
-
-        // On Linux, try to get exact src IP used for routing to public internet
-        if (platform === 'linux') {
             try {
-                const { stdout: srcOut } = await execPromise("ip route get 1.1.1.1 2>/dev/null | awk '{for(i=1;i<=NF;i++) if($i==\"src\") print $(i+1)}' | head -n 1");
-                if (srcOut.trim()) localIp = srcOut.trim();
+                const { stdout } = await execPromise("route -n get default 2>/dev/null");
+                const gwMatch = stdout.match(/gateway:\s+(\S+)/);
+                const ifMatch = stdout.match(/interface:\s+(\S+)/);
+                if (gwMatch) gwIp = gwMatch[1].trim();
+                if (ifMatch) defaultIface = ifMatch[1].trim();
+            } catch {}
+        } else if (platform === 'linux') {
+            try {
+                const { stdout } = await execPromise("ip route show default 2>/dev/null | head -n 1");
+                const viaMatch = stdout.match(/via\s+(\S+)/);
+                const devMatch = stdout.match(/dev\s+(\S+)/);
+                if (viaMatch) gwIp = viaMatch[1].trim();
+                if (devMatch) defaultIface = devMatch[1].trim();
+            } catch {}
+            try {
+                const { stdout: srcOut } = await execPromise("ip route get 1.1.1.1 2>/dev/null | head -n 1");
+                const srcMatch = srcOut.match(/src\s+(\S+)/);
+                const devMatch = srcOut.match(/dev\s+(\S+)/);
+                const viaMatch = srcOut.match(/via\s+(\S+)/);
+                if (srcMatch) routeSrcIp = srcMatch[1].trim();
+                if (!defaultIface && devMatch) defaultIface = devMatch[1].trim();
+                if (!gwIp && viaMatch) gwIp = viaMatch[1].trim();
             } catch {}
         }
 
-        res.json({ ip: stdout.trim(), local_ip: localIp });
+        // Configured Stigix traffic interface (from interfaces.txt or default route)
+        const configuredIface = (() => {
+            try { return getInterface(); } catch { return ''; }
+        })();
+        const trafficIface = defaultIface || configuredIface || hostIfaces[0]?.name || '';
+        const matchedTrafficEntry = hostIfaces.find(i => i.name === trafficIface) ||
+            (routeSrcIp ? hostIfaces.find(i => i.ip === routeSrcIp) : undefined) ||
+            hostIfaces[0];
+
+        const trafficIp = routeSrcIp || matchedTrafficEntry?.ip || '';
+        const trafficIfaceUp = isInterfaceUp(trafficIface, Boolean(trafficIp));
+
+        // 3. Active ICMP Ping check against the SD-WAN Gateway (timeout 1s)
+        let gwReachable: boolean | null = null;
+        let gwLatencyMs: number | null = null;
+        if (gwIp && /^(\d{1,3}\.){3}\d{1,3}$/.test(gwIp)) {
+            if (!trafficIfaceUp) {
+                gwReachable = false;
+            } else {
+                try {
+                    const pingCmd = platform === 'darwin'
+                        ? `ping -c 1 -t 1 ${gwIp} 2>/dev/null`
+                        : `ping -c 1 -W 1 ${gwIp} 2>/dev/null`;
+                    const { stdout: pingOut } = await execPromise(pingCmd, { timeout: 1500 });
+                    gwReachable = true;
+                    const timeMatch = pingOut.match(/time[=<]([\d.]+)\s*ms/i);
+                    if (timeMatch) {
+                        gwLatencyMs = Math.round(parseFloat(timeMatch[1]) * 10) / 10;
+                    }
+                } catch {
+                    gwReachable = false;
+                }
+            }
+        }
+
+        // 4. Secondary / Out-of-Band Management Interface detection (if VM has 2+ NICs)
+        const secondaryIfaces = hostIfaces.filter(i => i.name !== trafficIface && i.ip !== trafficIp);
+        const mgmtEntry = secondaryIfaces[0] || null;
+
+        // 5. Determine how the operator is currently accessing the Stigix UI
+        const gwSourceHeader = String(req.headers['x-gateway-source'] || '');
+        const cfRayHeader = String(req.headers['cf-ray'] || req.headers['cf-connecting-ip'] || '');
+        const rawHost = String(req.headers['x-forwarded-host'] || req.headers.host || '').split(':')[0].trim();
+        const socketLocalIp = String(req.socket?.localAddress || '').replace(/^::ffff:/, '').trim();
+        const arrivalIp = /^(\d{1,3}\.){3}\d{1,3}$/.test(rawHost) ? rawHost : socketLocalIp;
+
+        let accessMode: 'in_band' | 'out_of_band' | 'cloudflare' | 'leader_proxy' | 'direct' = 'in_band';
+        let accessLabel = trafficIface ? `In-Band (${trafficIface})` : 'In-Band';
+        let accessIface: string | null = trafficIface || null;
+
+        if (gwSourceHeader === 'stigix-leader') {
+            accessMode = 'leader_proxy';
+            accessLabel = 'Fleet Leader Proxy';
+            accessIface = null;
+        } else if (cfRayHeader) {
+            accessMode = 'cloudflare';
+            accessLabel = rawHost ? `CF Tunnel (${rawHost})` : 'Cloudflare Tunnel';
+            accessIface = null;
+        } else if (mgmtEntry && arrivalIp === mgmtEntry.ip) {
+            accessMode = 'out_of_band';
+            accessIface = mgmtEntry.name;
+            accessLabel = `Out-of-Band (${mgmtEntry.name})`;
+        } else if (trafficIp && arrivalIp === trafficIp) {
+            accessMode = 'in_band';
+            accessIface = trafficIface || null;
+            accessLabel = trafficIface ? `In-Band (${trafficIface})` : `In-Band (${trafficIp})`;
+        } else {
+            const matchedArrival = hostIfaces.find(i => i.ip === arrivalIp);
+            if (matchedArrival) {
+                const isTraffic = matchedArrival.name === trafficIface || matchedArrival.ip === trafficIp;
+                accessMode = isTraffic ? 'in_band' : 'out_of_band';
+                accessIface = matchedArrival.name;
+                accessLabel = `${isTraffic ? 'In-Band' : 'Out-of-Band'} (${matchedArrival.name})`;
+            } else if (rawHost && rawHost !== 'localhost' && !rawHost.startsWith('127.')) {
+                accessMode = 'direct';
+                accessLabel = `Direct (${rawHost})`;
+            }
+        }
+
+        res.json({
+            ip: gwIp,
+            local_ip: trafficIp,
+            traffic_iface: trafficIface || null,
+            traffic_ip: trafficIp || null,
+            traffic_iface_up: trafficIfaceUp,
+            gw_ip: gwIp || null,
+            gw_reachable: gwReachable,
+            gw_latency_ms: gwLatencyMs,
+            mgmt_iface: mgmtEntry?.name || null,
+            mgmt_ip: mgmtEntry?.ip || null,
+            mgmt_iface_up: mgmtEntry?.up ?? null,
+            access_mode: accessMode,
+            access_label: accessLabel,
+            access_host: rawHost || null,
+            access_iface: accessIface,
+            interfaces: hostIfaces
+        });
     } catch (e: any) {
         console.error('Failed to get gateway IP:', e.message);
         res.status(500).json({ error: e.message });

@@ -67,9 +67,9 @@ function PeerStatusSync({
   onStatus?: (v: 'running' | 'stopped' | 'unknown') => void;
   onTrafficStatus?: (running: boolean, rate?: number, count?: number) => void;
   onHistory?: (history: any[]) => void;
-  onGatewayIp?: (gw: string | null) => void;
+  onGatewayIp?: (gw: string | null, info?: any) => void;
   onLocalIp?: (ip: string | null) => void;
-  onPublicIp?: (ip: string | null, country?: string | null) => void;
+  onPublicIp?: (ip: string | null, country?: string | null, info?: any) => void;
   onSiteInfo?: (info: any) => void;
   onConnectivity?: (conn: any) => void;
   onIperfServer?: (info: any) => void;
@@ -77,7 +77,7 @@ function PeerStatusSync({
 }) {
   const { gFetch, activePeerId } = usePeerContext();
 
-  // ── Network loop: gateway, public ip, siteinfo, connectivity, health-matrix (30s & immediate on peer change) ──
+  // ── Network loop: gateway, public ip, siteinfo, connectivity, health-matrix (15s & immediate on peer change) ──
   useEffect(() => {
     if (!token || !activePeerId) return;
 
@@ -93,12 +93,12 @@ function PeerStatusSync({
         ]);
         if (gwRes.status === 'fulfilled' && gwRes.value.ok) {
           const data = await gwRes.value.json();
-          onGatewayIp?.(data.ip || null);
+          onGatewayIp?.(data.ip || null, data);
           if (data.local_ip) onLocalIp?.(data.local_ip);
         }
         if (ipRes.status === 'fulfilled' && ipRes.value.ok) {
           const data = await ipRes.value.json();
-          onPublicIp?.(data.ip || null, data.countryCode || null);
+          onPublicIp?.(data.ip || null, data.countryCode || null, data);
         }
         if (siteRes.status === 'fulfilled' && siteRes.value.ok) {
           const data = await siteRes.value.json();
@@ -409,8 +409,10 @@ export default function App() {
   const [iperfServerInfo, setIperfServerInfo] = useState<any>(null);
   const [publicIp, setPublicIp] = useState<string | null>(null);
   const [publicIpCountry, setPublicIpCountry] = useState<string | null>(null);
+  const [publicIpInfo, setPublicIpInfo] = useState<any>(null);
   const [gatewayIp, setGatewayIp] = useState<string | null>(null);
   const [localIp, setLocalIp] = useState<string | null>(null);
+  const [gatewayInfo, setGatewayInfo] = useState<any>(null);
 
   // Maintenance State
   const [maintenance, setMaintenance] = useState<{ updateAvailable: boolean } | null>(null);
@@ -917,6 +919,7 @@ export default function App() {
         const data = await res.json();
         setPublicIp(data.ip);
         if (data.countryCode) setPublicIpCountry(data.countryCode);
+        setPublicIpInfo(data);
       }
     } catch (e) {
       console.error('Failed to fetch public IP');
@@ -930,6 +933,7 @@ export default function App() {
         const data = await res.json();
         setGatewayIp(data.ip);
         if (data.local_ip) setLocalIp(data.local_ip);
+        setGatewayInfo(data);
       }
     } catch (e) {
       console.error('Failed to fetch gateway IP');
@@ -1010,7 +1014,7 @@ export default function App() {
       fetchPublicIp();
       fetchGatewayIp();
       fetchSiteInfo();
-    }, 30000);
+    }, 15000);
 
     const maintenanceInterval = setInterval(() => {
       fetchMaintenance();
@@ -1101,11 +1105,15 @@ export default function App() {
           if (count !== undefined) setTrafficClientCount(count);
         }}
         onHistory={setHistory}
-        onGatewayIp={setGatewayIp}
+        onGatewayIp={(gw, info) => {
+          setGatewayIp(gw);
+          if (info) setGatewayInfo(info);
+        }}
         onLocalIp={setLocalIp}
-        onPublicIp={(ip, country) => {
+        onPublicIp={(ip, country, info) => {
           setPublicIp(ip);
           if (country !== undefined) setPublicIpCountry(country);
+          if (info) setPublicIpInfo(info);
         }}
         onSiteInfo={setSiteInfo}
         onConnectivity={setConnectivity}
@@ -1459,10 +1467,14 @@ export default function App() {
           token={token}
           healthData={healthData}
           isLoadingHealth={isHealthLoading}
-          onRefreshHealth={fetchHealthMatrix}
+          onRefreshHealth={() => {
+            fetchHealthMatrix();
+            fetchGatewayIp();
+            fetchPublicIp();
+          }}
           registryStatus={registryStatus}
           siteInfo={siteInfo}
-          version="v3.0.0"
+          version={version || 'v3.0.0'}
           trafficRunning={trafficRunning}
           currentRpm={currentRpm}
           saasAppsCount={trafficRunning && activeSaasAppsCount > 0 ? activeSaasAppsCount : totalConfiguredSaasApps}
@@ -1471,8 +1483,10 @@ export default function App() {
           isLeader={isLeader}
           publicIp={publicIp}
           publicIpCountry={publicIpCountry}
+          publicIpInfo={publicIpInfo}
           gatewayIp={gatewayIp}
           localIp={localIp}
+          gatewayInfo={gatewayInfo}
           updateAvailable={Boolean(maintenance?.updateAvailable)}
           speedtestResult={speedtestResult}
           onRunSpeedtest={runSpeedtest}

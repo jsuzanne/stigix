@@ -24,8 +24,10 @@ interface HomeOverviewProps {
     isLeader?: boolean;
     publicIp?: string | null;
     publicIpCountry?: string | null;
+    publicIpInfo?: any;
     gatewayIp?: string | null;
     localIp?: string | null;
+    gatewayInfo?: any;
     speedtestResult?: any;
     onRunSpeedtest?: () => void;
     runningSpeedtest?: boolean;
@@ -49,8 +51,10 @@ export const HomeOverview: React.FC<HomeOverviewProps> = ({
     isLeader,
     publicIp,
     publicIpCountry,
+    publicIpInfo,
     gatewayIp,
     localIp,
+    gatewayInfo,
     speedtestResult,
     onRunSpeedtest,
     runningSpeedtest,
@@ -422,9 +426,27 @@ export const HomeOverview: React.FC<HomeOverviewProps> = ({
                                     {registryStatus?.is_registered ? 'Registered' : (registryStatus?.mode === 'standalone' ? 'Standalone' : 'Ready')}
                                 </span>
                             </div>
-                            <div className="text-[11px] text-slate-600 dark:text-text-muted flex justify-between font-mono">
-                                <span>Autodiscovery: <strong className="text-slate-900 dark:text-text-primary">{registryStatus?.is_registered ? 'Worker Sync' : (registryStatus?.mode === 'leader' ? 'Leader Active' : 'Standalone')}</strong></span>
-                                <span>Edge PoP: <strong className="text-slate-900 dark:text-text-primary">Global</strong></span>
+                            <div className="text-[11px] text-slate-600 dark:text-text-muted flex justify-between items-center font-mono gap-2">
+                                <span className="truncate">
+                                    {registryStatus?.poc_id ? (
+                                        <>PoC Group: <strong className="text-slate-900 dark:text-text-primary">#{registryStatus.poc_id}</strong></>
+                                    ) : (
+                                        <>Autodiscovery: <strong className="text-slate-900 dark:text-text-primary">{registryStatus?.is_registered ? 'Worker Sync' : (registryStatus?.mode === 'leader' ? 'Leader Active' : 'Standalone')}</strong></>
+                                    )}
+                                </span>
+                                <span className="shrink-0 flex items-center gap-1" title={publicIpInfo?.pop ? `Cloudflare Anycast Edge PoP: ${publicIpInfo.pop}${publicIpInfo.city ? ` (${publicIpInfo.city})` : ''}` : 'Cloudflare Anycast Edge Network'}>
+                                    Edge PoP:{' '}
+                                    {publicIpCountry && publicIpInfo?.pop && (
+                                        <span className="text-xs leading-none">
+                                            {String.fromCodePoint(...[...publicIpCountry.toUpperCase()].map(c => 0x1F1E6 - 65 + c.charCodeAt(0)))}
+                                        </span>
+                                    )}
+                                    <strong className="text-slate-900 dark:text-text-primary">
+                                        {publicIpInfo?.pop
+                                            ? (publicIpInfo.city ? `${publicIpInfo.pop} · ${publicIpInfo.city}` : publicIpInfo.pop)
+                                            : 'Global'}
+                                    </strong>
+                                </span>
                             </div>
                         </div>
                     </div>
@@ -719,56 +741,162 @@ export const HomeOverview: React.FC<HomeOverviewProps> = ({
                             </div>
                         </div>
 
-                        {/* Underlay Network & Public IP Status */}
-                        {(publicIp || gatewayIp || localIp || siteInfo?.local_ip) && (
-                            <div className="p-4 rounded-xl bg-slate-50 dark:bg-card-secondary/40 border border-slate-200 dark:border-[#1e293b]/70 space-y-2">
-                                <div className="flex items-center justify-between">
-                                    <span className="text-xs font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
-                                        <Globe size={14} className="text-cyan-500 dark:text-cyan-400" />
-                                        Underlay WAN
-                                    </span>
-                                    {publicIp && (
-                                        <span className="text-xs font-mono flex items-center gap-1.5" title={publicIpCountry || 'Public IP'}>
-                                            {publicIpCountry && (
-                                                <span className="text-sm leading-none">
-                                                    {String.fromCodePoint(...[...publicIpCountry.toUpperCase()].map(c => 0x1F1E6 - 65 + c.charCodeAt(0)))}
+                        {/* SD-WAN Dataplane, Gateway Reachability & Management Access */}
+                        {(publicIp || gatewayIp || localIp || siteInfo?.local_ip || gatewayInfo) && (() => {
+                            const trafficIface = gatewayInfo?.traffic_iface || null;
+                            const trafficIp = gatewayInfo?.traffic_ip || localIp || siteInfo?.local_ip || host.ip || '—';
+                            const trafficIfaceUp = gatewayInfo?.traffic_iface_up !== false;
+                            const gwAddr = gatewayInfo?.gw_ip || gatewayIp || '—';
+                            const gwReachable = gatewayInfo ? Boolean(gatewayInfo.gw_reachable) : Boolean(gatewayIp);
+                            const gwLatencyMs = gatewayInfo?.gw_latency_ms;
+                            const mgmtIface = gatewayInfo?.mgmt_iface || null;
+                            const mgmtIp = gatewayInfo?.mgmt_ip || null;
+                            const mgmtIfaceUp = gatewayInfo?.mgmt_iface_up !== false;
+                            const accessMode = gatewayInfo?.access_mode || 'in_band';
+                            const accessLabel = gatewayInfo?.access_label || 'In-Band';
+                            const accessHost = gatewayInfo?.access_host || null;
+                            const hasDataplaneFault = Boolean(gatewayInfo && (!trafficIfaceUp || (gwAddr !== '—' && !gwReachable)));
+
+                            return (
+                                <div className={cn(
+                                    "p-3.5 rounded-xl border space-y-2 transition-colors",
+                                    hasDataplaneFault
+                                        ? "bg-rose-500/5 dark:bg-rose-500/10 border-rose-500/40 dark:border-rose-500/40"
+                                        : "bg-slate-50 dark:bg-card-secondary/40 border-slate-200 dark:border-[#1e293b]/70"
+                                )}>
+                                    {/* Header: Title + GW Reachability Badge + Public IP */}
+                                    <div className="flex items-center justify-between gap-2">
+                                        <div className="flex items-center gap-2 min-w-0">
+                                            <span className="text-xs font-bold text-slate-900 dark:text-white flex items-center gap-1.5 shrink-0">
+                                                <Globe size={14} className={hasDataplaneFault ? "text-rose-500 dark:text-rose-400" : "text-cyan-500 dark:text-cyan-400"} />
+                                                SD-WAN Dataplane & WAN
+                                            </span>
+                                            {gatewayInfo && (
+                                                <span
+                                                    title={
+                                                        !trafficIfaceUp
+                                                            ? `Traffic interface ${trafficIface || ''} is DOWN`
+                                                            : !gwReachable
+                                                            ? `SD-WAN Gateway (${gwAddr}) is UNREACHABLE via ICMP ping`
+                                                            : `SD-WAN Gateway (${gwAddr}) is reachable${gwLatencyMs !== null && gwLatencyMs !== undefined ? ` (${gwLatencyMs}ms)` : ''}`
+                                                    }
+                                                    className={cn(
+                                                        "px-1.5 py-0.5 rounded text-[9px] font-black uppercase tracking-wider font-mono flex items-center gap-1 shrink-0",
+                                                        !trafficIfaceUp || !gwReachable
+                                                            ? "bg-rose-500/15 text-rose-600 dark:text-rose-400 border border-rose-500/30 animate-pulse"
+                                                            : "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400"
+                                                    )}
+                                                >
+                                                    <span className={cn("w-1.5 h-1.5 rounded-full", (!trafficIfaceUp || !gwReachable) ? "bg-rose-500" : "bg-emerald-500")} />
+                                                    {!trafficIfaceUp
+                                                        ? 'IFACE DOWN'
+                                                        : !gwReachable
+                                                        ? 'GW UNREACHABLE'
+                                                        : `GW OK${gwLatencyMs !== null && gwLatencyMs !== undefined ? ` · ${gwLatencyMs}ms` : ''}`}
                                                 </span>
                                             )}
-                                            <strong className="text-slate-900 dark:text-text-primary text-[10px]">{publicIp}</strong>
-                                        </span>
-                                    )}
-                                </div>
-                                <div className="text-[11px] text-slate-600 dark:text-text-muted flex justify-between items-center font-mono">
-                                    <span>Local: <strong className="text-slate-900 dark:text-text-primary">{localIp || siteInfo?.local_ip || host.ip || '—'}</strong></span>
-                                    <span>GW: <strong className="text-slate-900 dark:text-text-primary">{gatewayIp || '—'}</strong></span>
-                                    <button
-                                        onClick={(e) => {
-                                            e.stopPropagation();
-                                            onRunSpeedtest?.();
-                                        }}
-                                        disabled={runningSpeedtest}
-                                        title="Click to run/re-run Internet Speedtest"
-                                        className={cn(
-                                            "px-2 py-0.5 rounded text-[10px] font-bold font-mono transition-all flex items-center gap-1 border shadow-xs cursor-pointer active:scale-95",
-                                            runningSpeedtest
-                                                ? "bg-blue-500/20 text-blue-500 dark:text-blue-400 border-blue-500/40 animate-pulse cursor-wait"
-                                                : speedtestResult?.download_mbps
-                                                    ? "bg-cyan-500/15 hover:bg-cyan-500/25 text-cyan-700 dark:text-cyan-300 border-cyan-500/30"
-                                                    : "bg-slate-200 hover:bg-slate-300 dark:bg-card-secondary dark:hover:bg-card-hover text-slate-700 dark:text-text-muted hover:text-slate-900 dark:hover:text-white border-slate-300 dark:border-border"
+                                        </div>
+                                        {publicIp && (
+                                            <span className="text-xs font-mono flex items-center gap-1.5 shrink-0" title={publicIpCountry ? `Egress Public IP (${publicIpCountry})` : 'Egress Public IP'}>
+                                                {publicIpCountry && (
+                                                    <span className="text-sm leading-none">
+                                                        {String.fromCodePoint(...[...publicIpCountry.toUpperCase()].map(c => 0x1F1E6 - 65 + c.charCodeAt(0)))}
+                                                    </span>
+                                                )}
+                                                <strong className="text-slate-900 dark:text-text-primary text-[10px]">{publicIp}</strong>
+                                            </span>
                                         )}
-                                    >
-                                        <Gauge size={11} className={runningSpeedtest ? "animate-spin text-blue-500" : "text-cyan-500 dark:text-cyan-400"} />
-                                        <span>
-                                            {runningSpeedtest
-                                                ? "Testing..."
-                                                : speedtestResult?.download_mbps
-                                                    ? `${Math.round(speedtestResult.download_mbps)} Mbps`
-                                                    : "Speedtest"}
+                                    </div>
+
+                                    {/* Row 1: Traffic / Default Route Interface & SD-WAN Gateway + Speedtest */}
+                                    <div className="text-[11px] text-slate-600 dark:text-text-muted flex justify-between items-center font-mono gap-2">
+                                        <span className="flex items-center gap-1 truncate" title={`Default route interface used for traffic generation (${trafficIface || 'default'})`}>
+                                            <span>Traffic{trafficIface ? ` (${trafficIface})` : ''}:</span>
+                                            <span className={cn("w-1.5 h-1.5 rounded-full shrink-0", trafficIfaceUp ? "bg-emerald-500" : "bg-rose-500")} />
+                                            <strong className={cn("truncate", trafficIfaceUp ? "text-slate-900 dark:text-text-primary" : "text-rose-600 dark:text-rose-400")}>{trafficIp}</strong>
                                         </span>
-                                    </button>
+                                        <span className="flex items-center gap-1 shrink-0" title={gwReachable ? `SD-WAN Gateway ${gwAddr} reachable` : `SD-WAN Gateway ${gwAddr} unreachable!`}>
+                                            <span>GW:</span>
+                                            <span className={cn("w-1.5 h-1.5 rounded-full shrink-0", gwReachable ? "bg-emerald-500" : "bg-rose-500 animate-ping")} />
+                                            <strong className={cn(gwReachable ? "text-slate-900 dark:text-text-primary" : "text-rose-600 dark:text-rose-400 font-black")}>{gwAddr}</strong>
+                                        </span>
+                                        <button
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                onRunSpeedtest?.();
+                                            }}
+                                            disabled={runningSpeedtest}
+                                            title="Click to run/re-run Internet Speedtest"
+                                            className={cn(
+                                                "px-2 py-0.5 rounded text-[10px] font-bold font-mono transition-all flex items-center gap-1 border shadow-xs cursor-pointer active:scale-95 shrink-0",
+                                                runningSpeedtest
+                                                    ? "bg-blue-500/20 text-blue-500 dark:text-blue-400 border-blue-500/40 animate-pulse cursor-wait"
+                                                    : speedtestResult?.download_mbps
+                                                        ? "bg-cyan-500/15 hover:bg-cyan-500/25 text-cyan-700 dark:text-cyan-300 border-cyan-500/30"
+                                                        : "bg-slate-200 hover:bg-slate-300 dark:bg-card-secondary dark:hover:bg-card-hover text-slate-700 dark:text-text-muted hover:text-slate-900 dark:hover:text-white border-slate-300 dark:border-border"
+                                            )}
+                                        >
+                                            <Gauge size={11} className={runningSpeedtest ? "animate-spin text-blue-500" : "text-cyan-500 dark:text-cyan-400"} />
+                                            <span>
+                                                {runningSpeedtest
+                                                    ? "Testing..."
+                                                    : speedtestResult?.download_mbps
+                                                        ? `${Math.round(speedtestResult.download_mbps)} Mbps`
+                                                        : "Speedtest"}
+                                            </span>
+                                        </button>
+                                    </div>
+
+                                    {/* Row 2: Management Interface & Current UI Access Path */}
+                                    <div className="pt-1.5 border-t border-slate-200/70 dark:border-[#1e293b]/80 text-[10px] text-slate-500 dark:text-text-muted flex justify-between items-center font-mono gap-2">
+                                        {mgmtIp ? (
+                                            <>
+                                                <span className="flex items-center gap-1 truncate" title={`Dedicated Out-of-Band Management Interface (${mgmtIface || 'mgmt'})`}>
+                                                    <span>Mgmt{mgmtIface ? ` (${mgmtIface})` : ''}:</span>
+                                                    <span className={cn("w-1.5 h-1.5 rounded-full shrink-0", mgmtIfaceUp ? "bg-emerald-500" : "bg-amber-500")} />
+                                                    <strong className="text-slate-800 dark:text-slate-200">{mgmtIp}</strong>
+                                                </span>
+                                                <span className="flex items-center gap-1 shrink-0" title={accessHost ? `Connected via ${accessLabel} (${accessHost})` : `Connected via ${accessLabel}`}>
+                                                    <span>UI:</span>
+                                                    <strong className={cn(
+                                                        "px-1.5 py-0.2 rounded text-[9px] font-bold",
+                                                        accessMode === 'cloudflare'
+                                                            ? "bg-amber-500/15 text-amber-600 dark:text-amber-400"
+                                                            : accessMode === 'out_of_band'
+                                                            ? "bg-indigo-500/15 text-indigo-600 dark:text-indigo-400"
+                                                            : accessMode === 'leader_proxy'
+                                                            ? "bg-purple-500/15 text-purple-600 dark:text-purple-400"
+                                                            : "bg-cyan-500/15 text-cyan-700 dark:text-cyan-300"
+                                                    )}>
+                                                        {accessLabel}
+                                                    </strong>
+                                                </span>
+                                            </>
+                                        ) : (
+                                            <>
+                                                <span className="flex items-center gap-1.5 truncate" title={accessHost ? `UI session via ${accessLabel} (${accessHost})` : `UI session via ${accessLabel}`}>
+                                                    <span>UI Access:</span>
+                                                    <strong className={cn(
+                                                        "px-1.5 py-0.2 rounded text-[9px] font-bold",
+                                                        accessMode === 'cloudflare'
+                                                            ? "bg-amber-500/15 text-amber-600 dark:text-amber-400"
+                                                            : accessMode === 'leader_proxy'
+                                                            ? "bg-purple-500/15 text-purple-600 dark:text-purple-400"
+                                                            : "bg-cyan-500/15 text-cyan-700 dark:text-cyan-300"
+                                                    )}>
+                                                        {accessLabel}
+                                                    </strong>
+                                                    <span className="text-slate-400 dark:text-slate-500 truncate">
+                                                        ({accessMode === 'cloudflare' && accessHost ? accessHost : trafficIp})
+                                                    </span>
+                                                </span>
+                                                <span className="text-[9px] text-slate-400 dark:text-slate-500 shrink-0">Single-NIC</span>
+                                            </>
+                                        )}
+                                    </div>
                                 </div>
-                            </div>
-                        )}
+                            );
+                        })()}
                     </div>
                 </div>
             </div>
