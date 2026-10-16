@@ -142,7 +142,7 @@ export const STIGIX_NAVIGATION_DOMAINS: NavDomainConfig[] = [
             },
             {
                 id: 'speedtest',
-                label: 'Bandwidth Test (XFR)',
+                label: 'Bandwidth Test',
                 icon: Gauge,
                 route: '#/validate/bandwidth',
                 description: 'Multi-stream WAN throughput testing, TCP retransmits & latency benchmark',

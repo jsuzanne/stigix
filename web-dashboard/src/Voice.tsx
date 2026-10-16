@@ -819,8 +819,8 @@ export default function Voice(props: VoiceProps) {
                     </div>
                 )}
 
-                {/* Always-visible QoS Global KPIs */}
-                <div className="mt-7 grid grid-cols-2 lg:grid-cols-6 gap-4 relative z-10">
+                {/* Always-visible QoS Global KPIs (single-line compact strip) */}
+                <div className="mt-6 grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 relative z-10">
                     {[
                         {
                             label: 'Avg MOS',
@@ -863,18 +863,25 @@ export default function Voice(props: VoiceProps) {
                             color: qosSummary ? 'text-purple-500' : 'text-text-muted opacity-50'
                         },
                         {
-                            label: 'RTT Variance',
-                            value: qosSummary ? `${qosSummary.minRtt} / ${qosSummary.maxRtt}ms` : '—',
+                            label: 'RTT Min/Max',
+                            value: qosSummary ? `${qosSummary.minRtt}/${qosSummary.maxRtt}ms` : '—',
                             icon: BarChart2,
-                            color: 'text-text-muted'
+                            color: 'text-text-secondary'
                         },
                     ].map((s, i) => (
-                        <div key={i} className="bg-card-secondary/50 border border-border rounded-2xl p-4 shadow-sm hover:border-blue-500/30 transition-colors">
-                            <div className="flex items-center gap-2 mb-1.5">
-                                <s.icon size={12} className="text-text-muted opacity-50" />
-                                <label className="text-[9px] font-black text-text-muted uppercase tracking-widest">{s.label}</label>
+                        <div
+                            key={i}
+                            className="bg-card-secondary/50 border border-border rounded-xl px-3.5 py-2.5 shadow-sm hover:border-blue-500/30 transition-colors flex items-center justify-between gap-2"
+                        >
+                            <div className="flex items-center gap-1.5 min-w-0">
+                                <s.icon size={12} className="text-text-muted opacity-50 shrink-0" />
+                                <span className="text-[9px] font-black text-text-muted uppercase tracking-wider truncate">
+                                    {s.label}
+                                </span>
                             </div>
-                            <div className={cn('text-lg font-black tracking-tighter truncate', s.color)}>{s.value}</div>
+                            <div className={cn('text-sm font-mono font-black tracking-tight shrink-0', s.color)}>
+                                {s.value}
+                            </div>
                         </div>
                     ))}
                 </div>

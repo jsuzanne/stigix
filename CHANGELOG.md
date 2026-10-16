@@ -5,10 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [3.0.31] - 2026-10-16
+## [3.0.32] - 2026-10-16
 
 ### Refactored & Fixed
-- **VoIP Simulation UX Simplification & Unified Target QoS Table (`Voice.tsx`)**:
+- **Bandwidth Test Historical Time-Series Chart & Navigation Label (`Speedtest.tsx`, `server.ts`, `navigationConfig.ts`)**:
+  - Renamed the sidebar navigation entry from `Bandwidth Test (XFR)` to **`Bandwidth Test`**.
+  - Embedded the full interactive time-series `ComposedChart` (`Throughput` Sent/Received Mbps, `RTT` ms, `Retransmits` / `Loss %`, and `TCP Window (cwnd)` tooltip) inside the **`Test Details`** modal (`max-w-2xl`) by fetching second-by-second `intervals` from `GET /api/tests/xfr/:id`.
+  - Auto-loaded the most recent historical run into the top main chart panel on initial page load (eliminating the empty `0 Mbps` state after browser refresh) and synchronized the top chart when clicking any historical run while idle.
+- **Compact Inline VoIP Global KPI Strip (`Voice.tsx`)**:
+  - Redesigned the 6 global VoIP KPI cards (`Avg MOS`, `Total Calls`, `Avg Loss`, `Avg Latency`, `Avg Jitter`, `RTT Variance`) into a single-line horizontal layout (`justify-between`, icon + label on the left, metric value + unit on the right) to reduce vertical footprint.
+- **VoIP Simulation UX Simplification & Unified Target QoS Table (`Voice.tsx`) [3.0.31]**:
   - Replaced always-visible header configuration inputs (`Max Calls`, `Inter-Call`, `Egress Interface`, `Source Ports`, `Import/Export`) with compact clickable summary pills and a collapsible **`⚙️ Settings`** drawer inside the header.
   - Globalized `RTP Codec` and `Call Duration (s)` inside the `⚙️ Settings` drawer (with automatic equal round-robin weight distribution across enabled targets) and removed repetitive per-target input columns.
   - Merged `Per-Target QoS Statistics` directly into the **`Stigix Voice Targets & QoS Telemetry`** table (`Calls`, `Avg MOS`, `Loss`, `RTT / Jitter`, `Quality` with click-to-open QoS Radar modal) and replaced the permanent manual target form row with a compact `+ Custom Target` toggle bar.

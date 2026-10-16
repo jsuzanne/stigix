@@ -3051,6 +3051,7 @@ app.get('/api/tests/xfr/:id', authenticateToken, (req, res) => {
 
     res.json({
         id: job.id,
+        sequence_id: job.sequence_id,
         status: job.status,
         started_at: job.started_at,
         finished_at: job.finished_at,
