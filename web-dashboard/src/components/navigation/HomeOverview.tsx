@@ -112,7 +112,14 @@ export const HomeOverview: React.FC<HomeOverviewProps> = ({
     const voiceJitter = voiceSub.avg_jitter_ms ? `${voiceSub.avg_jitter_ms}ms RTT` : '<10ms RTT';
 
     const cleanLeaderIp = (() => {
-        const raw = mesh.leader_ip || (registryStatus?.mode === 'leader' || mesh.mode === 'leader' ? 'Local Leader' : (mesh.status === 'connected' ? (leaderSite || 'Connected') : '—'));
+        if (registryStatus?.mode === 'leader' || mesh.mode === 'leader') {
+            const selfIp = registryStatus?.detected_ip || localIp || (mesh.leader_ip && mesh.leader_ip !== 'Local Leader' ? mesh.leader_ip : null);
+            if (selfIp) {
+                return String(selfIp).includes('(Self)') ? String(selfIp) : `${selfIp} (Self)`;
+            }
+            return 'Local Leader';
+        }
+        const raw = mesh.leader_ip || registryStatus?.leader_info?.ip || registryStatus?.static_leader_url || (mesh.status === 'connected' ? (leaderSite || 'Connected') : '—');
         if (typeof raw === 'string' && (raw.startsWith('http://') || raw.startsWith('https://'))) {
             try {
                 const parsed = new URL(raw);
@@ -387,24 +394,39 @@ export const HomeOverview: React.FC<HomeOverviewProps> = ({
                                 if (registryStatus?.mode === 'leader' || mesh.mode === 'leader') {
                                     onNavigate('fleet');
                                 } else {
-                                    onNavigate('settings', 'registry');
+                                    onNavigate('settings', 'targets');
                                 }
                             }}
-                            title={registryStatus?.mode === 'leader' || mesh.mode === 'leader' ? "Click to open Fleet Mesh View" : "Click to open Target Controller"}
+                            title={registryStatus?.mode === 'leader' || mesh.mode === 'leader' ? "Click to open Fleet Mesh View" : "Click to view Learned Peers & Stigix Targets"}
                             className="p-4 rounded-xl bg-slate-50 dark:bg-card-secondary/40 border border-slate-200 dark:border-[#1e293b]/70 space-y-2 cursor-pointer hover:border-purple-400/50 hover:bg-purple-500/5 transition-all group"
                         >
                             <div className="flex items-center justify-between">
                                 <span className="text-xs font-bold text-slate-900 dark:text-white flex items-center gap-1.5 group-hover:text-purple-600 dark:group-hover:text-purple-300 transition-colors">
-                                    <span className={cn("w-2 h-2 rounded-full", mesh.status === 'synced' ? "bg-purple-500 dark:bg-purple-400 animate-pulse" : "bg-zinc-400 dark:bg-zinc-500")} />
+                                    <span className={cn("w-2 h-2 rounded-full", (mesh.status === 'synced' || mesh.status === 'leader' || mesh.status === 'connected') ? "bg-purple-500 dark:bg-purple-400 animate-pulse" : "bg-zinc-400 dark:bg-zinc-500")} />
                                     Stigix Mesh & Leader
                                 </span>
-                                <span className="px-2 py-0.2 rounded text-[9px] font-black uppercase tracking-widest bg-purple-500/15 text-purple-600 dark:text-purple-300 border border-purple-500/20 flex items-center gap-1">
-                                    {registryStatus?.mode === 'leader' || mesh.mode === 'leader' ? 'Fleet Mesh ›' : 'Target Controller ›'}
-                                </span>
+                                <div className="flex items-center gap-1.5">
+                                    {!(registryStatus?.mode === 'leader' || mesh.mode === 'leader') && (
+                                        <button
+                                            type="button"
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                onNavigate('settings', 'registry');
+                                            }}
+                                            title="Open Target Controller & Mesh Sync Status"
+                                            className="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider bg-slate-200/70 hover:bg-purple-500/20 dark:bg-white/5 dark:hover:bg-purple-500/20 text-slate-600 hover:text-purple-600 dark:text-slate-400 dark:hover:text-purple-300 border border-slate-300/60 dark:border-white/10 transition-colors cursor-pointer"
+                                        >
+                                            Sync ›
+                                        </button>
+                                    )}
+                                    <span className="px-2 py-0.2 rounded text-[9px] font-black uppercase tracking-widest bg-purple-500/15 text-purple-600 dark:text-purple-300 border border-purple-500/20 flex items-center gap-1">
+                                        {registryStatus?.mode === 'leader' || mesh.mode === 'leader' ? 'Fleet Mesh ›' : 'Learned Peers ›'}
+                                    </span>
+                                </div>
                             </div>
                             <div className="text-[11px] text-slate-600 dark:text-text-muted flex items-center justify-between font-mono gap-2">
                                 <span className="whitespace-nowrap shrink-0">Learned Targets: <strong className="text-slate-900 dark:text-text-primary">{mesh.learned_targets_count ?? '0'}</strong></span>
-                                <span className="whitespace-nowrap truncate text-right" title={String(mesh.leader_ip || cleanLeaderIp)}>Leader IP: <strong className="text-slate-900 dark:text-text-primary">{cleanLeaderIp}</strong></span>
+                                <span className="whitespace-nowrap truncate text-right" title={String(cleanLeaderIp)}>Leader IP: <strong className="text-slate-900 dark:text-text-primary">{cleanLeaderIp}</strong></span>
                             </div>
                         </div>
 

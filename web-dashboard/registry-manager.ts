@@ -456,6 +456,14 @@ export class RegistryManager {
         log('REGISTRY', `Final Role: ${mode.toUpperCase()} for PoC: ${config.pocId}`);
 
         if (mode === 'leader') {
+            this.leaderInfo = null;
+            if (this.staticLeaderUrl && !this.directMode) {
+                try {
+                    const staticFile = path.join(this.configDir, 'static-leader.json');
+                    if (fs.existsSync(staticFile)) fs.unlinkSync(staticFile);
+                } catch {}
+                this.staticLeaderUrl = null;
+            }
             // Ensure Leader has a fallback pocId so discovery fetchInstances() works locally
             if (!config.pocId) {
                 (config as any).pocId = 'local-leader';
@@ -801,15 +809,15 @@ export class RegistryManager {
             // Direct mode fields (backward-compatible additions)
             direct_mode: this.directMode,
             controller_url: this.directMode ? this.staticLeaderUrl : null,
-            static_leader_url: this.staticLeaderUrl,
-            is_static_leader: !!this.staticLeaderUrl,
+            static_leader_url: mode === 'leader' ? null : this.staticLeaderUrl,
+            is_static_leader: mode !== 'leader' && !!this.staticLeaderUrl,
             site_name: this.getSiteName(),
             stats: this.stats,
             // Cluster Enrollment fields
             is_cluster_enrolled: isClusterEnrolled,
             enrolled_token_prefix: enrollment?.tokenPrefix || (process.env.STIGIX_JOIN_TOKEN ? (process.env.STIGIX_JOIN_TOKEN.slice(0, 12) + '...') : null),
             enrolled_at: enrollment?.enrolledAt || null,
-            enrolled_leader_url: enrollment?.leaderUrl || this.staticLeaderUrl
+            enrolled_leader_url: mode === 'leader' ? null : (enrollment?.leaderUrl || this.staticLeaderUrl)
         };
     }
 

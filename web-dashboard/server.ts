@@ -12147,7 +12147,9 @@ app.get('/api/system/health-matrix', authenticateToken, async (req, res) => {
                 meshStatus.is_registered = reg.is_registered || false;
                 meshStatus.poc_id = reg.poc_id || null;
                 meshStatus.peer_count = reg.peer_count || 0;
-                meshStatus.leader_ip = reg.leader_info?.ip || reg.static_leader_url || (reg.mode === 'leader' ? 'Local Leader' : null);
+                meshStatus.leader_ip = reg.mode === 'leader'
+                    ? (reg.detected_ip ? `${reg.detected_ip} (Self)` : 'Local Leader')
+                    : (reg.leader_info?.ip || reg.static_leader_url || null);
 
                 // Learned mesh targets
                 const synthesized = targetsManager ? targetsManager.getMergedTargets().filter((t: any) => t.source === 'synthesized' || t.source === 'mesh') : [];
