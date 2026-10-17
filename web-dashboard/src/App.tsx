@@ -1179,35 +1179,39 @@ export default function App() {
 
       <header className="mb-6 flex justify-between items-center gap-4">
         {/* Left: Brand Identity Logo & Single-Line Platform Title */}
-        <div className="flex items-center gap-4 min-w-0">
-          {/* Fluo Pulse Gem Icon (Scaled for bold brand presence) */}
+        <div className="flex items-center gap-3.5 min-w-0">
+          {/* Unified Neon Brand Badge (Continuous ECG Wave + Stigix Wordmark inside frame, no inner square, no green dot) */}
           <div className="relative flex-shrink-0 neon-squircle">
-            <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-blue-600 via-indigo-600 to-purple-600 p-[2.5px] shadow-lg shadow-blue-500/20 dark:shadow-xl dark:shadow-blue-500/30">
-              <div className="w-full h-full bg-white dark:bg-[#0a0f1d] rounded-[13px] flex items-center justify-center transition-colors">
-                <svg className="w-6 h-6 pulse-path" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M22 12h-4l-3 9L9 3l-3 9H2" />
+            <div className="rounded-2xl bg-gradient-to-r from-cyan-500 via-blue-600 to-purple-600 p-[2.5px] shadow-lg shadow-blue-500/15 dark:shadow-xl dark:shadow-blue-500/30">
+              <div className="bg-white dark:bg-[#070b14] rounded-[13.5px] px-4 py-2 flex items-center gap-2.5 relative overflow-hidden transition-colors">
+                {/* Ambient internal top light */}
+                <div className="absolute top-0 left-6 right-6 h-[1px] bg-gradient-to-r from-transparent via-blue-400/40 dark:via-cyan-400/60 to-transparent" />
+
+                {/* Continuous ECG wave leading into Stigix */}
+                <svg className="w-7 h-7 pulse-path -mr-0.5 flex-shrink-0" viewBox="0 0 28 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M2 12h4l3-8 5 16 3-8h9" />
                 </svg>
+
+                {/* Wordmark Stigix inside frame with lowered optical neon dots (Full Light & Dark Theme Support) */}
+                <h1 className="text-3xl sm:text-[32px] font-black tracking-[-0.035em] leading-none text-slate-900 dark:text-white flex items-baseline select-none font-sans">
+                  St
+                  <span className="relative inline-block mx-[1px]">
+                    <span className="absolute -top-[3.5px] left-1/2 -translate-x-1/2 w-[6.5px] h-[6.5px] rounded-full bg-blue-600 dark:bg-cyan-400 neon-dot border border-blue-400/90 dark:border-cyan-200/90 shadow-[0_0_8px_rgba(37,99,235,0.6)] dark:shadow-[0_0_8px_rgba(34,211,238,0.85)]" />
+                    ı
+                  </span>
+                  g
+                  <span className="relative inline-block mx-[1px]">
+                    <span className="absolute -top-[3.5px] left-1/2 -translate-x-1/2 w-[6.5px] h-[6.5px] rounded-full bg-blue-600 dark:bg-cyan-400 neon-dot-delay border border-blue-400/90 dark:border-cyan-200/90 shadow-[0_0_8px_rgba(37,99,235,0.6)] dark:shadow-[0_0_8px_rgba(34,211,238,0.85)]" />
+                    ı
+                  </span>
+                  x
+                </h1>
               </div>
             </div>
-            <span className="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full bg-emerald-400 border-2 border-white dark:border-[#0a0f1d] shadow-[0_0_10px_rgba(52,211,153,0.9)]" />
           </div>
 
-          {/* Wordmark Stigix & Single-Line Metadata (Full Light & Dark Theme Support) */}
-          <div className="flex items-baseline gap-3.5 flex-wrap sm:flex-nowrap">
-            <h1 className="text-4xl sm:text-[40px] font-black tracking-[-0.035em] leading-none text-slate-900 dark:text-text-primary flex items-baseline select-none font-sans">
-              St
-              <span className="relative inline-block mx-[1px]">
-                <span className="absolute -top-2 left-1/2 -translate-x-1/2 w-[7px] h-[7px] rounded-full bg-blue-600 dark:bg-cyan-400 neon-dot border border-blue-400/80 dark:border-cyan-300/80 shadow-[0_0_8px_rgba(37,99,235,0.6)] dark:shadow-[0_0_8px_rgba(34,211,238,0.8)]" />
-                ı
-              </span>
-              g
-              <span className="relative inline-block mx-[1px]">
-                <span className="absolute -top-2 left-1/2 -translate-x-1/2 w-[7px] h-[7px] rounded-full bg-blue-600 dark:bg-cyan-400 neon-dot-delay border border-blue-400/80 dark:border-cyan-300/80 shadow-[0_0_8px_rgba(37,99,235,0.6)] dark:shadow-[0_0_8px_rgba(34,211,238,0.8)]" />
-                ı
-              </span>
-              x
-            </h1>
-
+          {/* Single-Line Metadata (Full Light & Dark Theme Support) */}
+          <div className="flex items-center gap-3.5 flex-wrap sm:flex-nowrap">
             {/* Divider */}
             <span className="text-slate-300 dark:text-slate-700 font-light text-lg hidden sm:inline">|</span>
 
