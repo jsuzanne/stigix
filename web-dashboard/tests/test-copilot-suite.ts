@@ -820,6 +820,21 @@ export class CopilotTestSuite {
             return { error: res.error };
         });
 
+        // 47. Regression Test: get_test_status wait_seconds pause support
+        await this.runTest('47. Tool "get_test_status" (wait_seconds convergence pause support)', async () => {
+            const t0 = Date.now();
+            const res = await executeCopilotTool('get_test_status', {
+                agent_id: this.host,
+                wait_seconds: 1
+            }, remoteCtx);
+            const elapsed = Date.now() - t0;
+            if (res.error) throw new Error(res.error);
+            if (res.waited_seconds !== 1 || elapsed < 900) {
+                throw new Error(`Expected waited_seconds=1 and >=900ms elapsed, got waited_seconds=${res.waited_seconds}, elapsed=${elapsed}ms`);
+            }
+            return { waited_seconds: res.waited_seconds, elapsed_ms: elapsed };
+        });
+
         // Summary
         const passedCount = this.results.filter(r => r.passed).length;
         const totalCount = this.results.length;

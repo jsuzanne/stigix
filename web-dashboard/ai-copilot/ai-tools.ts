@@ -304,17 +304,21 @@ export const COPILOT_TOOLS: AnthropicToolDefinition[] = [
     },
     {
         name: 'get_test_status',
-        description: 'Get the status and metrics of a specific test on a SOURCE node. CRITICAL: you MUST pass (1) agent_id = the source node that ran the test (NOT the target, NOT the local node) and (2) test_id = the sequence_id returned by run_test (e.g. "XFR-0003", never a UUID). Poll this tool every 2-3 seconds until status="completed", then read metrics. If the test_id is not found, check that agent_id matches the source node.',
+        description: 'Get the status and metrics of a specific test on a SOURCE node. CRITICAL: you MUST pass (1) agent_id = the source node that ran the test (NOT the target, NOT the local node) and (2) test_id = the sequence_id returned by run_test (e.g. "XFR-0003" or "CONV-0001", never a UUID). For XFR speedtests, this tool automatically waits up to 25s for completion. For continuous convergence probes (CONV-*), pass wait_seconds (e.g. 15 or 30) to pause for a baseline window or failover convergence before sampling live_loss_pct, current_rtt_ms, and duration_s.',
         input_schema: {
             type: 'object',
             properties: {
                 test_id: {
                     type: 'string',
-                    description: 'Optional test ID (e.g. CONV-0001, XFR-0001). If omitted, returns active tests.'
+                    description: 'Optional test ID (e.g. CONV-0001, XFR-0001). If omitted, returns active tests and last completed XFR speedtest.'
                 },
                 agent_id: {
                     type: 'string',
                     description: 'Optional Stigix node ID to check on.'
+                },
+                wait_seconds: {
+                    type: 'number',
+                    description: 'Optional seconds to wait (1-30) BEFORE sampling status. Use during convergence tests (CONV-*) to wait for baseline or failover stabilization.'
                 }
             }
         }
@@ -1952,8 +1956,16 @@ export async function executeCopilotTool(
                 }
                 const testIdFilter = String(args.test_id || '').toLowerCase().trim();
                 const shouldWait = args.wait !== false;
+                const requestedWaitSec = Number(args.wait_seconds);
+                const explicitWaitSec = (!isNaN(requestedWaitSec) && requestedWaitSec > 0)
+                    ? Math.min(30, Math.max(1, Math.round(requestedWaitSec)))
+                    : 0;
 
                 try {
+                    if (explicitWaitSec > 0) {
+                        await new Promise(r => setTimeout(r, explicitWaitSec * 1000));
+                    }
+
                     const loadJobsAndProbes = async () => {
                         const [xfrData, convData] = await Promise.all([
                             (nodeCtx.isLocal && ctx.xfrManager)
@@ -1974,10 +1986,10 @@ export async function executeCopilotTool(
                         (j.sequence_id && j.sequence_id.toLowerCase().includes(testIdFilter))
                     );
 
-                    // Auto-poll up to 15 seconds if an XFR speedtest is currently running or queued
-                    if (shouldWait) {
+                    // Auto-poll up to 25 seconds if an XFR speedtest is currently running or queued
+                    if (shouldWait && explicitWaitSec === 0) {
                         const pollStart = Date.now();
-                        while (Date.now() - pollStart < 15000) {
+                        while (Date.now() - pollStart < 25000) {
                             if (testIdFilter) {
                                 const m = findMatchedXfr(xfrJobs);
                                 if (!m || (m.status !== 'running' && m.status !== 'queued')) break;
@@ -2019,7 +2031,8 @@ export async function executeCopilotTool(
                             loss_pct: sum?.loss_percent ?? 0,
                             total_bytes: sum?.bytes_total,
                             summary: sum,
-                            error: job.error
+                            error: job.error,
+                            ...(explicitWaitSec > 0 ? { waited_seconds: explicitWaitSec } : {})
                         };
                     };
 
@@ -2044,7 +2057,8 @@ export async function executeCopilotTool(
                                 target: matchedConv.target,
                                 current_rtt_ms: matchedConv.current_rtt_ms,
                                 live_loss_pct: matchedConv.live_loss_pct,
-                                duration_s: matchedConv.duration_s
+                                duration_s: matchedConv.duration_s,
+                                ...(explicitWaitSec > 0 ? { waited_seconds: explicitWaitSec } : {})
                             };
                         }
 
@@ -2062,6 +2076,7 @@ export async function executeCopilotTool(
 
                     return {
                         node: nodeCtx.siteName,
+                        ...(explicitWaitSec > 0 ? { waited_seconds: explicitWaitSec } : {}),
                         is_any_test_running: (runningXfr.length + runningConv.length) > 0,
                         running_tests_count: runningXfr.length + runningConv.length,
                         running_xfr_speedtests: runningXfr.map((j: any) => ({
@@ -2077,6 +2092,9 @@ export async function executeCopilotTool(
                             label: c.label,
                             target: c.target,
                             pps: c.pps,
+                            current_rtt_ms: c.current_rtt_ms,
+                            live_loss_pct: c.live_loss_pct,
+                            duration_s: c.duration_s,
                             started_at: c.started_at
                         }))
                     };
@@ -3071,9 +3089,28 @@ export async function executeCopilotTool(
 
             case 'list_active_impairments': {
                 const endpoints = (ctx.fabricEndpoints && ctx.fabricEndpoints.length > 0) ? ctx.fabricEndpoints : (ctx.targets || []);
-                const targetAgents = args.agent_id
-                    ? [resolveNodeContext(args.agent_id, ctx)]
-                    : endpoints.map((ep: any) => resolveNodeContext(ep.id || ep.host, ctx));
+                let targetAgents: NodeContext[] = [];
+                if (args.agent_id) {
+                    const resolved = resolveNodeContext(args.agent_id, ctx);
+                    if (resolved.unknownNode) {
+                        return {
+                            error: `Unknown Stigix node "${resolved.requestedNode || resolved.siteName}". Available nodes in fabric: ${(resolved.availableNodes || []).join(', ') || 'LOCAL'}`
+                        };
+                    }
+                    targetAgents = [resolved];
+                } else {
+                    const rawAgents = [
+                        resolveNodeContext(undefined, ctx),
+                        ...endpoints.map((ep: any) => resolveNodeContext(ep.id || ep.name || ep.host, ctx))
+                    ];
+                    const seenBaseUrls = new Set<string>();
+                    for (const ag of rawAgents) {
+                        if (!ag.unknownNode && !seenBaseUrls.has(ag.baseUrl)) {
+                            seenBaseUrls.add(ag.baseUrl);
+                            targetAgents.push(ag);
+                        }
+                    }
+                }
 
                 const activeImpairments: any[] = [];
                 for (const nodeCtx of targetAgents) {
@@ -3084,52 +3121,69 @@ export async function executeCopilotTool(
                             const rId = router.id || router.name;
                             if (!rId) continue;
                             const state = await fetchApi(nodeCtx, `/api/vyos/routers/${rId}/state`).catch(() => null);
-                            if (!state || !state.interfaces) continue;
+                            if (!state) continue;
 
-                            const ifaces = state.interfaces;
-                            const ifEntries = Array.isArray(ifaces)
-                                ? ifaces.map((item: any, i: number) => [item.name || `iface-${i}`, item])
-                                : Object.entries(ifaces);
+                            if (state.interfaces) {
+                                const ifaces = state.interfaces;
+                                const ifEntries = Array.isArray(ifaces)
+                                    ? ifaces.map((item: any, i: number) => [item.name || `iface-${i}`, item])
+                                    : Object.entries(ifaces);
 
-                            for (const [ifName, ifInfo] of ifEntries as any) {
-                                if (!ifInfo || typeof ifInfo !== 'object') continue;
-                                const adminStatus = String(ifInfo.admin_status || ifInfo.status || '').toLowerCase();
-                                const operStatus = String(ifInfo.oper_status || ifInfo.link || '').toLowerCase();
-                                if (['down', 'disable', 'disabled', 'shutdown'].includes(adminStatus) || ['down', 'lowerlayerdown'].includes(operStatus)) {
-                                    activeImpairments.push({
-                                        agent_id: nodeCtx.siteName,
-                                        router_id: rId,
-                                        interface: ifName,
-                                        type: 'interface_down',
-                                        severity: 'CRITICAL',
-                                        details: `Interface ${ifName} is administratively down / shut.`
-                                    });
+                                for (const [ifName, ifInfo] of ifEntries as any) {
+                                    if (!ifInfo || typeof ifInfo !== 'object') continue;
+                                    const adminStatus = String(ifInfo.admin_state || ifInfo.admin_status || ifInfo.status || '').toLowerCase();
+                                    const operStatus = String(ifInfo.oper_state || ifInfo.oper_status || ifInfo.link || '').toLowerCase();
+                                    if (['down', 'disable', 'disabled', 'shutdown'].includes(adminStatus) || ['down', 'lowerlayerdown'].includes(operStatus)) {
+                                        activeImpairments.push({
+                                            agent_id: nodeCtx.siteName,
+                                            router_id: rId,
+                                            interface: ifName,
+                                            type: 'interface_down',
+                                            severity: 'CRITICAL',
+                                            details: `Interface ${ifName} is administratively down / shut.`
+                                        });
+                                    }
+
+                                    const qos = ifInfo.qos_active || ifInfo.qos || ifInfo.impairment || {};
+                                    const lat = qos.delay_ms ?? qos.latency ?? ifInfo.latency_ms ?? ifInfo.latency;
+                                    const loss = qos.loss_pct ?? qos.loss ?? ifInfo.loss_pct ?? ifInfo.loss;
+                                    const rate = qos.rate_mbit ?? qos.rate ?? ifInfo.bandwidth_limit;
+
+                                    const hasLat = lat !== undefined && lat !== null && Number(lat) > 0;
+                                    const hasLoss = loss !== undefined && loss !== null && Number(loss) > 0;
+                                    const hasRate = rate !== undefined && rate !== null && !['0', 'none', 'unlimited', ''].includes(String(rate).toLowerCase());
+
+                                    if (hasLat || hasLoss || hasRate) {
+                                        const parts = [];
+                                        if (hasLat) parts.push(`+${lat}ms latency`);
+                                        if (hasLoss) parts.push(`${loss}% loss`);
+                                        if (hasRate) parts.push(`rate ${rate}${typeof rate === 'number' ? 'mbit' : ''}`);
+                                        activeImpairments.push({
+                                            agent_id: nodeCtx.siteName,
+                                            router_id: rId,
+                                            interface: ifName,
+                                            type: 'traffic_impairment',
+                                            severity: 'WARNING',
+                                            details: `Interface ${ifName} has active shaping: ${parts.join(', ')}`,
+                                            parameters: { latency_ms: lat, loss_pct: loss, rate_mbit: rate, policy: qos.policy }
+                                        });
+                                    }
                                 }
+                            }
 
-                                const qos = ifInfo.qos || ifInfo.impairment || {};
-                                const lat = qos.latency ?? ifInfo.latency_ms ?? ifInfo.latency;
-                                const loss = qos.loss ?? ifInfo.loss_pct ?? ifInfo.loss;
-                                const rate = qos.rate ?? ifInfo.bandwidth_limit;
-
-                                const hasLat = lat !== undefined && lat !== null && Number(lat) > 0;
-                                const hasLoss = loss !== undefined && loss !== null && Number(loss) > 0;
-                                const hasRate = rate && !['0', 'none', 'unlimited', ''].includes(String(rate).toLowerCase());
-
-                                if (hasLat || hasLoss || hasRate) {
-                                    const parts = [];
-                                    if (hasLat) parts.push(`+${lat}ms latency`);
-                                    if (hasLoss) parts.push(`${loss}% loss`);
-                                    if (hasRate) parts.push(`rate ${rate}`);
-                                    activeImpairments.push({
-                                        agent_id: nodeCtx.siteName,
-                                        router_id: rId,
-                                        interface: ifName,
-                                        type: 'traffic_impairment',
-                                        severity: 'WARNING',
-                                        details: `Interface ${ifName} has active shaping: ${parts.join(', ')}`,
-                                        parameters: { latency_ms: lat, loss_pct: loss, rate }
-                                    });
-                                }
+                            const blackholes = Array.isArray(state.blackholes)
+                                ? state.blackholes
+                                : (Array.isArray(state.blocked_ips) ? state.blocked_ips : []);
+                            for (const bh of blackholes) {
+                                const prefix = typeof bh === 'string' ? bh : (bh?.prefix || bh?.ip || JSON.stringify(bh));
+                                activeImpairments.push({
+                                    agent_id: nodeCtx.siteName,
+                                    router_id: rId,
+                                    target_ip: prefix,
+                                    type: 'ip_blackhole',
+                                    severity: 'WARNING',
+                                    details: `Active static blackhole route (tag 999) blocking ${prefix} on ${rId}`
+                                });
                             }
                         }
                     } catch {}
@@ -3140,7 +3194,7 @@ export async function executeCopilotTool(
                     has_active_impairments: activeImpairments.length > 0,
                     summary: activeImpairments.length > 0
                         ? `Found ${activeImpairments.length} active impairment(s) across the fabric.`
-                        : 'Clean state: No active network impairments or disabled interfaces detected on any VyOS router.',
+                        : 'Clean state: No active network impairments, blackholes, or disabled interfaces detected on any VyOS router.',
                     impairments: activeImpairments
                 };
             }
