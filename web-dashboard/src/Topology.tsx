@@ -2923,6 +2923,64 @@ function TopologyContent({ token, theme }: TopologyProps) {
         return m;
     }, [underlayData]);
 
+    const searchScope = useMemo(() => {
+        const cleanSearch = searchQuery.trim().toLowerCase();
+        if (!cleanSearch) return null;
+
+        const directMatchNodeIds = new Set<string>();
+        const connectedNodeIds = new Set<string>();
+        const matchedEdgeIds = new Set<string>();
+
+        // 1. Identify directly matching nodes
+        nodes.forEach(n => {
+            const nData = n.data as any;
+            const isMatch = Boolean(
+                (nData?.name && String(nData.name).toLowerCase().includes(cleanSearch)) ||
+                (nData?.site_name && String(nData.site_name).toLowerCase().includes(cleanSearch)) ||
+                (nData?.id && String(nData.id).toLowerCase().includes(cleanSearch)) ||
+                (nData?.site_id && String(nData.site_id).toLowerCase().includes(cleanSearch)) ||
+                (n.id && n.id.toLowerCase().includes(cleanSearch)) ||
+                (Array.isArray(nData?.devices) && nData.devices.some((d: any) =>
+                    (d.device_name && String(d.device_name).toLowerCase().includes(cleanSearch)) ||
+                    (Array.isArray(d.wan_interfaces) && d.wan_interfaces.some((w: any) =>
+                        (w.name && String(w.name).toLowerCase().includes(cleanSearch)) ||
+                        (w.ip && String(w.ip).toLowerCase().includes(cleanSearch))
+                    ))
+                )) ||
+                (Array.isArray(nData?.interfaces) && nData.interfaces.some((iface: any) =>
+                    (iface.name && String(iface.name).toLowerCase().includes(cleanSearch)) ||
+                    (Array.isArray(iface.address) && iface.address.some((addr: string) => String(addr).toLowerCase().includes(cleanSearch)))
+                ))
+            );
+            if (isMatch) {
+                directMatchNodeIds.add(n.id);
+            }
+        });
+
+        // 2. Identify matching and 1-hop connected edges and their neighbor nodes
+        edges.forEach(e => {
+            const eData = e.data as any;
+            const isConnectedToDirect = directMatchNodeIds.has(e.source) || directMatchNodeIds.has(e.target);
+            const isEdgeDirectMatch = Boolean(
+                (e.id && e.id.toLowerCase().includes(cleanSearch)) ||
+                (eData?.sourceSiteId && String(eData.sourceSiteId).toLowerCase().includes(cleanSearch)) ||
+                (eData?.peer_site_id && String(eData.peer_site_id).toLowerCase().includes(cleanSearch)) ||
+                (eData?.site_name && String(eData.site_name).toLowerCase().includes(cleanSearch)) ||
+                (eData?.peer_site_name && String(eData.peer_site_name).toLowerCase().includes(cleanSearch)) ||
+                (eData?.ip && String(eData.ip).toLowerCase().includes(cleanSearch)) ||
+                (eData?.interface_ip && String(eData.interface_ip).toLowerCase().includes(cleanSearch))
+            );
+
+            if (isConnectedToDirect || isEdgeDirectMatch) {
+                matchedEdgeIds.add(e.id);
+                if (e.source) connectedNodeIds.add(e.source);
+                if (e.target) connectedNodeIds.add(e.target);
+            }
+        });
+
+        return { directMatchNodeIds, connectedNodeIds, matchedEdgeIds };
+    }, [searchQuery, nodes, edges]);
+
     const filteredNodes = useMemo(() => {
         const modeNodes = nodes.filter(n => {
             if (topologyViewMode === 'overlay') {
@@ -3009,9 +3067,17 @@ function TopologyContent({ token, theme }: TopologyProps) {
                 }
             }
 
-            if (searchQuery) {
-                const matches = nodeData.name?.toLowerCase().includes(searchQuery.toLowerCase());
-                nodeOpacity = matches ? (nodeOpacity ?? 1) : 0.15;
+            if (searchScope) {
+                const isDirect = searchScope.directMatchNodeIds.has(n.id);
+                const isConnected = searchScope.connectedNodeIds.has(n.id);
+                if (isDirect) {
+                    nodeOpacity = 1;
+                } else if (isConnected) {
+                    nodeOpacity = 0.95;
+                } else {
+                    nodeOpacity = 0.12;
+                    nodeFilter = 'grayscale(0.85)';
+                }
             }
 
             if (nodeOpacity !== undefined || nodeFilter !== undefined) {
@@ -3028,7 +3094,7 @@ function TopologyContent({ token, theme }: TopologyProps) {
 
             return enriched;
         });
-    }, [nodes, topologyViewMode, searchQuery, underlayMode, underlayResolutionMap, underlayData, selectedCircuit, handleSelectCircuit, logicalViewSiteId]);
+    }, [nodes, topologyViewMode, searchScope, underlayMode, underlayResolutionMap, underlayData, selectedCircuit, handleSelectCircuit, logicalViewSiteId]);
 
 
     const filteredEdges = useMemo(() => {
@@ -3216,17 +3282,21 @@ function TopologyContent({ token, theme }: TopologyProps) {
                 }
             }
 
-            if (searchQuery) {
-                const nodeMatch = currentEdge.id.toLowerCase().includes(searchQuery.toLowerCase());
+            if (searchScope) {
+                const isEdgeMatch = searchScope.matchedEdgeIds.has(currentEdge.id);
                 return {
                     ...currentEdge,
-                    style: { ...currentEdge.style, opacity: nodeMatch ? (currentEdge.style?.opacity ?? 1) : 0.1 }
+                    style: {
+                        ...currentEdge.style,
+                        opacity: isEdgeMatch ? (currentEdge.style?.opacity ?? 1) : 0.08,
+                        pointerEvents: isEdgeMatch ? ('auto' as const) : ('none' as const)
+                    }
                 };
             }
 
             return currentEdge;
         });
-    }, [edges, topologyViewMode, searchQuery, selectedObject, saseTunnelTypeFilter, selectedCircuit, overlayTunnelStateFilter, logicalViewSiteId, isDark]);
+    }, [edges, topologyViewMode, searchScope, selectedObject, saseTunnelTypeFilter, selectedCircuit, overlayTunnelStateFilter, logicalViewSiteId, isDark]);
 
     const handleFitView = useCallback(() => {
         fitView({ padding: 0.12, duration: 450, minZoom: 0.12 });
@@ -4036,20 +4106,57 @@ function TopologyContent({ token, theme }: TopologyProps) {
 
                         {/* Middle-Left Compact Search Widget */}
                         <Panel position="top-left" className="!top-1/2 -translate-y-1/2 !left-4 mt-20">
-                            <div className="bg-card/90 backdrop-blur-md border border-border p-1.5 rounded-2xl shadow-2xl flex flex-col items-center gap-3 group transition-all duration-300 hover:p-2">
-                                <div className="p-2.5 bg-card-secondary rounded-xl text-text-muted group-hover:bg-blue-500 group-hover:text-white transition-all shadow-inner">
-                                    <Search size={18} />
+                            <div className={cn(
+                                "bg-card/90 backdrop-blur-md border border-border p-1.5 rounded-2xl shadow-2xl flex flex-col gap-2 transition-all duration-300",
+                                searchQuery ? "w-60 p-2.5 ring-1 ring-blue-500/40" : "group hover:p-2 items-center"
+                            )}>
+                                <div className="flex items-center gap-2 w-full">
+                                    <div className={cn(
+                                        "p-2 rounded-xl transition-all shadow-inner shrink-0",
+                                        searchQuery ? "bg-blue-500 text-white" : "bg-card-secondary text-text-muted group-hover:bg-blue-500 group-hover:text-white"
+                                    )}>
+                                        <Search size={16} />
+                                    </div>
+                                    <div className={cn(
+                                        "flex items-center gap-1.5 overflow-hidden transition-all duration-300 flex-1",
+                                        searchQuery ? "w-full" : "w-10 group-hover:w-44"
+                                    )}>
+                                        <input
+                                            type="text"
+                                            placeholder="Filter nodes & peers..."
+                                            value={searchQuery}
+                                            onChange={(e) => setSearchQuery(e.target.value)}
+                                            onKeyDown={(e) => {
+                                                if (e.key === 'Enter' && searchScope && searchScope.directMatchNodeIds.size === 1) {
+                                                    const targetId = Array.from(searchScope.directMatchNodeIds)[0];
+                                                    fitView({
+                                                        nodes: [{ id: targetId }],
+                                                        duration: 500,
+                                                        padding: 0.4
+                                                    });
+                                                }
+                                            }}
+                                            className="bg-transparent border-none text-[11px] font-bold py-1 px-1 focus:outline-none placeholder:text-text-muted/50 w-full text-text-primary"
+                                        />
+                                        {searchQuery && (
+                                            <button
+                                                onClick={() => setSearchQuery('')}
+                                                className="text-text-muted hover:text-text-primary p-1 rounded-md hover:bg-card-secondary transition-colors"
+                                                title="Clear search"
+                                            >
+                                                <X size={13} />
+                                            </button>
+                                        )}
+                                    </div>
                                 </div>
-                                <div className="flex flex-col gap-2 overflow-hidden w-10 group-hover:w-48 transition-all duration-500 ease-in-out">
-                                    <input
-                                        type="text"
-                                        placeholder="Filter nodes..."
-                                        value={searchQuery}
-                                        onChange={(e) => setSearchQuery(e.target.value)}
-                                        className="bg-transparent border-none text-[11px] font-bold py-1 px-1 focus:outline-none placeholder:text-text-muted/50 w-full"
-                                    />
-                                    <div className="h-px bg-gradient-to-r from-blue-500/50 to-transparent w-full scale-x-0 group-hover:scale-x-100 transition-transform origin-left duration-500" />
-                                </div>
+                                {searchQuery && searchScope && (
+                                    <div className="text-[9px] font-semibold text-text-muted px-1 pt-1 border-t border-border/50 flex items-center justify-between w-full">
+                                        <span className="text-text-primary">{searchScope.directMatchNodeIds.size} match{searchScope.directMatchNodeIds.size !== 1 ? 'es' : ''}</span>
+                                        <span className="text-blue-500 dark:text-blue-400">
+                                            +{Math.max(0, searchScope.connectedNodeIds.size - searchScope.directMatchNodeIds.size)} peer{Math.max(0, searchScope.connectedNodeIds.size - searchScope.directMatchNodeIds.size) !== 1 ? 's' : ''} visible
+                                        </span>
+                                    </div>
+                                )}
                             </div>
                         </Panel>
 
