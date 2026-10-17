@@ -58,6 +58,7 @@ export const PcapReplay: React.FC<PcapReplayProps> = ({ token }) => {
 
     // Import / Modal state
     const [isPcapModalOpen, setIsPcapModalOpen] = useState(false);
+    const [isImportMenuOpen, setIsImportMenuOpen] = useState(false);
     const profileUploadInputRef = useRef<HTMLInputElement>(null);
 
     // Execution / Orchestrator state
@@ -997,42 +998,27 @@ export const PcapReplay: React.FC<PcapReplayProps> = ({ token }) => {
     return (
         <div className="space-y-3.5 animate-in fade-in duration-300">
             {/* ─── Top Banner / Header (Compact) ─── */}
-            <div className="bg-card border border-border rounded-2xl p-3.5 px-5 shadow-lg relative overflow-hidden shrink-0">
-                <div className="absolute top-0 right-0 w-80 h-80 bg-indigo-500/5 rounded-full blur-3xl pointer-events-none" />
-                <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 relative z-10">
+            <div className="bg-card border border-border rounded-2xl p-3.5 px-5 shadow-lg relative shrink-0">
+                <div className="absolute inset-0 overflow-hidden rounded-2xl pointer-events-none">
+                    <div className="absolute top-0 right-0 w-80 h-80 bg-indigo-500/5 rounded-full blur-3xl" />
+                </div>
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 relative z-20">
                     <div className="flex items-center gap-3">
                         <div className="p-2.5 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-xl text-white shadow-md shadow-indigo-500/25 shrink-0">
-                            <Layers size={22} />
+                            <Layers size={20} />
                         </div>
                         <div>
-                            <div className="flex items-center gap-2">
-                                <h1 className="text-base font-black text-text-primary tracking-tight">
-                                    Stateful PCAP Replay Engine
-                                </h1>
-                                <span className="px-1.5 py-0.5 rounded text-[9px] font-black uppercase tracking-wider bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">
-                                    L7 Steps
-                                </span>
-                                <span className="px-1.5 py-0.5 rounded text-[9px] font-black uppercase tracking-wider bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 flex items-center gap-1">
-                                    <Sparkles size={9} /> Auto-Sync Fleet
-                                </span>
-                            </div>
+                            <h1 className="text-base font-black text-text-primary tracking-tight">
+                                Stateful PCAP Replay Engine
+                            </h1>
                             <p className="text-[11px] text-text-muted mt-0.5 line-clamp-1 max-w-2xl">
-                                Package raw PCAP traces into zero-config replay profiles, auto-scrub credentials, distribute across spokes & execute synchronized client/server steps with SASE verdict enforcement.
+                                Package raw PCAP traces into replay profiles, distribute across spokes &amp; execute synchronized L7 client/server steps.
                             </p>
                         </div>
                     </div>
 
-                    {/* Action Bar */}
-                    <div className="flex items-center gap-2 shrink-0">
-                        {/* Import / Parse Raw PCAP */}
-                        <button
-                            onClick={() => setIsPcapModalOpen(true)}
-                            className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-black uppercase tracking-wider transition-all flex items-center gap-1.5 shadow-md shadow-indigo-600/20 cursor-pointer"
-                        >
-                            <Upload size={13} /> Import & Parse PCAP
-                        </button>
-
-                        {/* Import Ready .stx-replay Profile */}
+                    {/* Action Bar: Single Unified Import Dropdown + Refresh */}
+                    <div className="flex items-center gap-2 shrink-0 relative">
                         <input
                             type="file"
                             ref={profileUploadInputRef}
@@ -1040,19 +1026,66 @@ export const PcapReplay: React.FC<PcapReplayProps> = ({ token }) => {
                             accept=".stx-replay,.gz"
                             className="hidden"
                         />
-                        <button
-                            onClick={() => profileUploadInputRef.current?.click()}
-                            className="px-3 py-1.5 bg-card-secondary hover:bg-card-secondary/80 text-text-primary border border-border rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer"
-                            title="Import an existing .stx-replay profile directly with zero configuration"
-                        >
-                            <FileCode size={13} className="text-purple-400" />
-                            <span>Import Profile</span>
-                        </button>
+
+                        <div className="relative">
+                            <button
+                                type="button"
+                                onClick={() => setIsImportMenuOpen((prev) => !prev)}
+                                className="px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 shadow-sm shadow-indigo-600/20 cursor-pointer"
+                            >
+                                <Upload size={13} />
+                                <span>Import</span>
+                                <ChevronRight size={12} className={`transition-transform duration-150 ${isImportMenuOpen ? 'rotate-90' : ''}`} />
+                            </button>
+
+                            {isImportMenuOpen && (
+                                <>
+                                    <div
+                                        className="fixed inset-0 z-30"
+                                        onClick={() => setIsImportMenuOpen(false)}
+                                    />
+                                    <div className="absolute right-0 mt-1.5 w-64 bg-card border border-border rounded-xl shadow-2xl p-1.5 z-40 space-y-1 animate-in fade-in zoom-in-95 duration-150">
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                setIsImportMenuOpen(false);
+                                                setIsPcapModalOpen(true);
+                                            }}
+                                            className="w-full text-left px-3 py-2 rounded-lg hover:bg-card-secondary transition-colors flex items-start gap-2.5 cursor-pointer"
+                                        >
+                                            <Upload size={14} className="text-indigo-400 mt-0.5 shrink-0" />
+                                            <div>
+                                                <div className="text-xs font-bold text-text-primary">Parse Raw PCAP (.pcap)</div>
+                                                <div className="text-[10px] text-text-muted leading-tight mt-0.5">
+                                                    Extract L7 flows, scrub data &amp; compile profile
+                                                </div>
+                                            </div>
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                setIsImportMenuOpen(false);
+                                                profileUploadInputRef.current?.click();
+                                            }}
+                                            className="w-full text-left px-3 py-2 rounded-lg hover:bg-card-secondary transition-colors flex items-start gap-2.5 cursor-pointer"
+                                        >
+                                            <FileCode size={14} className="text-purple-400 mt-0.5 shrink-0" />
+                                            <div>
+                                                <div className="text-xs font-bold text-text-primary">Import Profile (.stx-replay)</div>
+                                                <div className="text-[10px] text-text-muted leading-tight mt-0.5">
+                                                    Load pre-compiled replay scenario directly
+                                                </div>
+                                            </div>
+                                        </button>
+                                    </div>
+                                </>
+                            )}
+                        </div>
 
                         {/* Refresh */}
                         <button
                             onClick={() => { fetchProfiles(); pollActiveJobs(); }}
-                            className="p-1.5 hover:bg-card-secondary rounded-lg text-text-muted hover:text-text-primary border border-border transition-all cursor-pointer"
+                            className="p-1.5 hover:bg-card-secondary rounded-xl text-text-muted hover:text-text-primary border border-border transition-all cursor-pointer"
                             title="Refresh profiles catalogue"
                         >
                             <RefreshCw size={14} />
@@ -1068,7 +1101,7 @@ export const PcapReplay: React.FC<PcapReplayProps> = ({ token }) => {
                 )}
 
                 {/* Integrated Stateful Replay Control Ribbon */}
-                <div className="mt-3 pt-3 border-t border-border/60 flex flex-wrap items-center justify-between gap-3">
+                <div className="mt-3 pt-3 border-t border-border/60 flex flex-wrap items-center justify-between gap-3 relative z-10">
                     {/* Left: Role Switcher & Inline Parameters */}
                     <div className="flex flex-wrap items-center gap-2.5">
                         {/* Role Switcher */}
@@ -1076,7 +1109,7 @@ export const PcapReplay: React.FC<PcapReplayProps> = ({ token }) => {
                             <button
                                 type="button"
                                 onClick={() => setReplayRole('server')}
-                                className={`py-1.5 px-3 rounded-lg text-xs font-black uppercase tracking-wider transition-all flex items-center gap-1.5 cursor-pointer ${
+                                className={`py-1.5 px-3 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
                                     replayRole === 'server'
                                         ? 'bg-purple-600 text-white shadow-sm shadow-purple-600/25'
                                         : 'text-text-muted hover:text-text-primary'
@@ -1088,7 +1121,7 @@ export const PcapReplay: React.FC<PcapReplayProps> = ({ token }) => {
                             <button
                                 type="button"
                                 onClick={() => setReplayRole('client')}
-                                className={`py-1.5 px-3 rounded-lg text-xs font-black uppercase tracking-wider transition-all flex items-center gap-1.5 cursor-pointer ${
+                                className={`py-1.5 px-3 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
                                     replayRole === 'client'
                                         ? 'bg-emerald-600 text-white shadow-sm shadow-emerald-600/25'
                                         : 'text-text-muted hover:text-text-primary'
@@ -1102,17 +1135,17 @@ export const PcapReplay: React.FC<PcapReplayProps> = ({ token }) => {
                         {/* Inline Role Parameters */}
                         {replayRole === 'server' ? (
                             <div className="flex items-center gap-2 text-xs">
-                                <span className="text-[11px] text-text-muted font-bold font-mono bg-card-secondary dark:bg-black/30 px-2 py-1 rounded-lg border border-border">
-                                    Bind: 0.0.0.0
+                                <span className="text-[11px] text-text-muted font-mono bg-card-secondary dark:bg-black/30 px-2.5 py-1 rounded-lg border border-border">
+                                    0.0.0.0
                                 </span>
                                 <div className="flex items-center gap-1.5 bg-card-secondary dark:bg-black/30 px-2.5 py-1 rounded-lg border border-border">
-                                    <span className="text-[10px] text-text-muted font-bold uppercase">Port:</span>
+                                    <span className="text-[10px] text-text-muted font-semibold uppercase">Port</span>
                                     <input
                                         type="number"
                                         value={portOverride}
                                         onChange={(e) => setPortOverride(e.target.value)}
                                         placeholder="18443"
-                                        className="w-16 bg-transparent text-xs font-mono font-bold text-text-primary focus:outline-none"
+                                        className="w-16 bg-transparent text-xs font-mono font-bold text-text-primary focus:outline-none tabular-nums"
                                     />
                                 </div>
                             </div>
@@ -1134,7 +1167,7 @@ export const PcapReplay: React.FC<PcapReplayProps> = ({ token }) => {
                                         })),
                                         ...(serverNodeId === 'custom' ? [{
                                             value: 'custom',
-                                            label: 'Custom Host',
+                                            label: 'Custom IP',
                                             badge: customTargetIp
                                         }] : []),
                                         { value: 'local', label: 'Local Node', badge: '127.0.0.1' }
@@ -1149,25 +1182,25 @@ export const PcapReplay: React.FC<PcapReplayProps> = ({ token }) => {
                                         value={customTargetIp}
                                         onChange={(e) => handleCustomTargetIpChange(e.target.value)}
                                         placeholder="192.168.203.100"
-                                        className="w-28 bg-transparent text-xs font-mono font-bold text-text-primary focus:outline-none"
+                                        className="w-28 bg-transparent text-xs font-mono font-bold text-text-primary focus:outline-none tabular-nums"
                                     />
                                 </div>
 
                                 {/* Port */}
                                 <div className="flex items-center gap-1.5 bg-card-secondary dark:bg-black/30 px-2.5 py-1 rounded-lg border border-border">
-                                    <span className="text-[10px] text-text-muted font-bold uppercase">Port:</span>
+                                    <span className="text-[10px] text-text-muted font-semibold uppercase">Port</span>
                                     <input
                                         type="number"
                                         value={portOverride}
                                         onChange={(e) => setPortOverride(e.target.value)}
                                         placeholder="Port"
-                                        className="w-16 bg-transparent text-xs font-mono font-bold text-text-primary focus:outline-none"
+                                        className="w-16 bg-transparent text-xs font-mono font-bold text-text-primary focus:outline-none tabular-nums"
                                     />
                                 </div>
 
                                 {/* Loop Toggle */}
-                                <div className="flex items-center gap-1 bg-card-secondary dark:bg-black/30 px-2 py-1 rounded-lg border border-border">
-                                    <label className="flex items-center gap-1.5 cursor-pointer text-[10px] font-bold text-text-muted hover:text-text-primary">
+                                <div className="flex items-center gap-1 bg-card-secondary dark:bg-black/30 px-2.5 py-1 rounded-lg border border-border">
+                                    <label className="flex items-center gap-1.5 cursor-pointer text-[11px] font-medium text-text-secondary hover:text-text-primary">
                                         <input
                                             type="checkbox"
                                             checked={isLooping}
@@ -1177,81 +1210,76 @@ export const PcapReplay: React.FC<PcapReplayProps> = ({ token }) => {
                                         <span>Loop</span>
                                     </label>
                                     {isLooping && (
-                                        <div className="flex items-center gap-0.5 text-[9px] font-mono text-text-muted border-l border-border/50 pl-1.5 ml-1">
+                                        <div className="flex items-center gap-0.5 text-[10px] font-mono text-text-muted border-l border-border/50 pl-1.5 ml-1">
                                             <input
                                                 type="number"
                                                 min={1}
                                                 max={60}
                                                 value={loopInterval}
                                                 onChange={(e) => setLoopInterval(Math.max(1, parseInt(e.target.value) || 1))}
-                                                className="w-7 bg-card dark:bg-black/40 border border-border/80 rounded px-1 text-center text-text-primary focus:outline-none text-[9px]"
+                                                className="w-7 bg-card dark:bg-black/40 border border-border/80 rounded px-1 text-center text-text-primary focus:outline-none text-[10px] tabular-nums"
                                                 title="Loop interval in seconds"
                                             />
                                             <span>s</span>
                                         </div>
                                     )}
                                 </div>
+
+                                {/* Only show warning if user targets loopback */}
+                                {(customTargetIp === '127.0.0.1' || serverNodeId === 'local') && (
+                                    <span className="hidden xl:inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-amber-500/10 border border-amber-500/25 text-[10px] font-mono text-amber-600 dark:text-amber-400">
+                                        Loopback 127.0.0.1
+                                    </span>
+                                )}
                             </div>
                         )}
-
-                        {/* Telemetry Path Pill */}
-                        <div className={`hidden xl:flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-[10px] font-mono ${
-                            customTargetIp === '127.0.0.1' || serverNodeId === 'local'
-                                ? 'bg-amber-500/10 border-amber-500/30 text-amber-700 dark:text-amber-300'
-                                : 'bg-emerald-500/10 border-emerald-500/30 text-emerald-700 dark:text-emerald-300'
-                        }`}>
-                            {customTargetIp === '127.0.0.1' || serverNodeId === 'local' ? (
-                                <span>⚠️ Loopback 127.0.0.1</span>
-                            ) : (
-                                <span>⚡ SD-WAN: Local ➔ {serverNodeId} ({customTargetIp})</span>
-                            )}
-                        </div>
                     </div>
 
-                    {/* Right: Primary Action Button */}
+                    {/* Right: Crisp Primary Action Button */}
                     <div className="flex items-center gap-2">
                         {activeJob && activeJob.status !== 'running' && (
                             <button
                                 type="button"
                                 onClick={handleClearReplayHistory}
-                                className="px-3 py-1.5 rounded-xl bg-card-secondary/80 hover:bg-card-secondary text-text-muted hover:text-text-primary border border-border/60 hover:border-border font-bold text-xs flex items-center gap-1.5 transition-all cursor-pointer shadow-sm"
+                                className="px-3 py-1.5 rounded-xl bg-card-secondary/80 hover:bg-card-secondary text-text-muted hover:text-text-primary border border-border/60 hover:border-border font-semibold text-xs flex items-center gap-1.5 transition-all cursor-pointer"
                                 title="Clear previous execution verdict & reset conversation steps"
                             >
                                 <RotateCcw size={12} />
-                                <span>Reset / Clear</span>
+                                <span>Reset</span>
                             </button>
                         )}
                         {activeJob?.status === 'running' ? (
                             <button
                                 type="button"
                                 onClick={handleStopReplay}
-                                className="px-4 py-1.5 rounded-xl bg-red-600 hover:bg-red-500 text-white font-black uppercase tracking-wider text-xs flex items-center gap-1.5 shadow-md shadow-red-600/20 cursor-pointer transition-all animate-pulse"
-                                title={`Stop running ${activeJob.role} process (PID: ${activeJob.pid})`}
+                                className="px-4 py-1.5 rounded-xl bg-red-600 hover:bg-red-500 text-white font-bold text-xs flex items-center gap-1.5 shadow-md shadow-red-600/20 cursor-pointer transition-all"
+                                title={`Stop running ${activeJob.role} process (${runningProfileName} · PID ${activeJob.pid})`}
                             >
                                 <Square size={13} />
-                                <span>Stop {activeJob.role === 'server' ? 'Server' : 'Client'}: {runningProfileName} (PID: {activeJob.pid})</span>
+                                <span>Stop {activeJob.role === 'server' ? 'Server' : 'Client'}</span>
+                                <span className="text-[10px] font-mono opacity-80">({activeJob.pid})</span>
                             </button>
                         ) : replayRole === 'server' ? (
                             <button
                                 type="button"
                                 onClick={handleLaunchReplay}
                                 disabled={isStartingReplay || !selectedProfileFile}
-                                className="px-4 py-1.5 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-black uppercase tracking-wider text-xs flex items-center gap-1.5 shadow-md shadow-purple-600/20 cursor-pointer transition-all disabled:opacity-50"
-                                title={`Start Server Listener for ${selectedProfileName}`}
+                                className="px-4 py-1.5 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs flex items-center gap-1.5 shadow-md shadow-purple-600/20 cursor-pointer transition-all disabled:opacity-50"
+                                title={`Start Server Listener for ${selectedProfileName} on port ${portOverride || activeFlow?.server_port || '10080'}`}
                             >
                                 <Headphones size={13} />
-                                <span>{isStartingReplay ? 'Starting...' : `Start Server: ${selectedProfileName} (Port ${portOverride || activeFlow?.server_port || '10080'})`}</span>
+                                <span>{isStartingReplay ? 'Starting...' : 'Start Server'}</span>
                             </button>
                         ) : (
                             <button
                                 type="button"
                                 onClick={handleLaunchReplay}
                                 disabled={isStartingReplay || !selectedProfileFile}
-                                className="px-4 py-1.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-500 hover:from-emerald-500 hover:to-teal-400 text-white font-black uppercase tracking-wider text-xs flex items-center gap-1.5 shadow-md shadow-emerald-600/20 cursor-pointer transition-all disabled:opacity-50"
-                                title={`Launch Client Replay for ${selectedProfileName}`}
+                                className="px-4 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs flex items-center gap-1.5 shadow-md shadow-emerald-600/20 cursor-pointer transition-all disabled:opacity-50"
+                                title={`Launch Client Replay (${selectedProfileName} ➔ ${customTargetIp || '192.168.203.100'})`}
                             >
                                 <Play size={13} />
-                                <span>{isStartingReplay ? 'Connecting...' : `Launch Client: ${selectedProfileName} ➔ ${customTargetIp || '192.168.203.100'}`}</span>
+                                <span>{isStartingReplay ? 'Connecting...' : 'Launch Client'}</span>
                             </button>
                         )}
                     </div>
@@ -1261,36 +1289,48 @@ export const PcapReplay: React.FC<PcapReplayProps> = ({ token }) => {
             {/* ─── Three-Column Main Workspace ─── */}
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-3.5 h-[calc(100vh-215px)] min-h-[500px]">
 
-                {/* ─── Column 1: Profiles Catalogue (Narrow: lg:col-span-3) ─── */}
+                {/* ─── Column 1: Profiles Catalogue (lg:col-span-3) ─── */}
                 <div className="lg:col-span-3 flex flex-col h-full overflow-hidden">
                     <div className="bg-card border border-border rounded-2xl p-3 shadow-xl flex flex-col h-full overflow-hidden">
-                        {/* Catalogue Header */}
+                        {/* Catalogue Header: Calm & Aligned */}
                         <div className="flex items-center justify-between pb-2 border-b border-border shrink-0">
-                            <div>
-                                <h2 className="text-xs font-black text-text-primary uppercase tracking-tight flex items-center gap-1.5">
-                                    <FileCode size={13} className="text-indigo-400" />
-                                    <span>Profiles Catalogue</span>
+                            <div className="flex items-center gap-1.5">
+                                <FileCode size={14} className="text-indigo-400 shrink-0" />
+                                <h2 className="text-xs font-bold text-text-primary tracking-tight">
+                                    Profiles
                                 </h2>
-                                <p className="text-[9px] text-text-muted font-bold tracking-wider mt-0.5">
-                                    {profiles.length} COMPILED
-                                </p>
+                                <span className="text-[11px] font-mono tabular-nums text-text-muted">
+                                    ({profiles.length})
+                                </span>
                             </div>
-                            <span className="text-[8px] font-black text-emerald-400 bg-emerald-500/10 px-1.5 py-0.5 rounded border border-emerald-500/20" title="Profiles up to this threshold are auto-synced across the Mesh tunnel.">
-                                Mesh Sync: &le; {profiles[0]?.sync_threshold_mb || 10}MB
+                            <span
+                                className="text-[10px] text-text-muted flex items-center gap-1 cursor-help"
+                                title={`Profiles up to ${profiles[0]?.sync_threshold_mb || 10}MB are automatically synced across all mesh nodes.`}
+                            >
+                                <span>Auto-sync &le;{profiles[0]?.sync_threshold_mb || 10}MB</span>
                             </span>
                         </div>
 
                         {/* Search and Category Filters */}
                         <div className="py-2 space-y-1.5 border-b border-border/50 shrink-0">
                             <div className="relative">
-                                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 text-text-muted" size={11} />
+                                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 text-text-muted" size={12} />
                                 <input
                                     type="text"
-                                    placeholder="Search..."
+                                    placeholder="Filter profiles..."
                                     value={searchQuery}
                                     onChange={(e) => setSearchQuery(e.target.value)}
-                                    className="w-full bg-card-secondary/50 border border-border rounded-lg pl-7 pr-2 py-1 text-[11px] text-text-primary placeholder:text-text-muted focus:outline-none focus:ring-1 focus:ring-indigo-500/50"
+                                    className="w-full bg-card-secondary/50 border border-border rounded-lg pl-7 pr-6 py-1 text-[11px] text-text-primary placeholder:text-text-muted focus:outline-none focus:ring-1 focus:ring-indigo-500/50"
                                 />
+                                {searchQuery && (
+                                    <button
+                                        type="button"
+                                        onClick={() => setSearchQuery('')}
+                                        className="absolute right-2 top-1/2 -translate-y-1/2 text-text-muted hover:text-text-primary"
+                                    >
+                                        <X size={10} />
+                                    </button>
+                                )}
                             </div>
 
                             {/* Category Filter Pills */}
@@ -1300,9 +1340,9 @@ export const PcapReplay: React.FC<PcapReplayProps> = ({ token }) => {
                                         <button
                                             key={cat}
                                             onClick={() => setCategoryFilter(cat)}
-                                            className={`px-1.5 py-0.2 rounded text-[8px] font-black uppercase tracking-wider transition-all whitespace-nowrap cursor-pointer ${
+                                            className={`px-2 py-0.5 rounded-md text-[9px] font-semibold uppercase tracking-wider transition-all whitespace-nowrap cursor-pointer ${
                                                 categoryFilter === cat
-                                                    ? 'bg-indigo-600 text-white shadow-sm shadow-indigo-600/20'
+                                                    ? 'bg-indigo-600 text-white'
                                                     : 'bg-card-secondary/50 hover:bg-card-secondary text-text-muted hover:text-text-primary'
                                             }`}
                                         >
@@ -1313,99 +1353,122 @@ export const PcapReplay: React.FC<PcapReplayProps> = ({ token }) => {
                             )}
                         </div>
 
-                        {/* Profile List Container */}
-                        <div className="flex-1 min-h-0 overflow-y-auto pt-1.5 space-y-1.5 pr-1 scrollbar-thin scrollbar-thumb-border">
+                        {/* Profile List Container: Strict Vertical Alignment, Zero Badge Clutter */}
+                        <div className="flex-1 min-h-0 overflow-y-auto pt-1.5 space-y-1 pr-1 scrollbar-thin scrollbar-thumb-border">
                             {isLoading ? (
                                 <div className="flex flex-col items-center justify-center h-48 text-text-muted gap-2">
                                     <RefreshCw className="animate-spin" size={16} />
                                     <span className="text-[11px]">Loading catalogue...</span>
                                 </div>
                             ) : filteredProfiles.length === 0 ? (
-                                <div className="flex flex-col items-center justify-center h-48 text-text-muted text-center p-3 border-2 border-dashed border-border/60 rounded-xl">
-                                    <FileCode size={22} className="opacity-30 mb-1" />
-                                    <p className="text-[11px] font-bold">No Profiles Found</p>
+                                <div className="flex flex-col items-center justify-center h-48 text-text-muted text-center p-3 border border-dashed border-border/60 rounded-xl">
+                                    <FileCode size={20} className="opacity-30 mb-1" />
+                                    <p className="text-[11px] font-semibold">No Profiles Found</p>
                                 </div>
                             ) : (
                                 filteredProfiles.map(p => {
                                     const isSelected = selectedProfileFile === p.file_name;
                                     const isRunningThisJob = activeJob?.status === 'running' && activeJob?.profile_file === p.file_name;
                                     const flow = p.primary_flow;
+                                    const customCategory = p.category && p.category.toUpperCase() !== 'CUSTOM' ? p.category : null;
+
                                     return (
                                         <div
                                             key={p.file_name}
                                             onClick={() => setSelectedProfileFile(p.file_name)}
                                             title={p.file_name}
-                                            className={`py-1.5 px-2 rounded-xl border transition-all cursor-pointer relative group ${
+                                            className={`py-2 px-2.5 rounded-xl border transition-all cursor-pointer relative group ${
                                                 isSelected
-                                                    ? 'bg-indigo-500/15 border-indigo-500/50 shadow-sm shadow-indigo-500/10'
+                                                    ? 'bg-indigo-500/12 border-indigo-500/50'
                                                     : isRunningThisJob
-                                                    ? 'bg-emerald-500/10 border-emerald-500/40 shadow-sm shadow-emerald-500/10'
-                                                    : 'bg-card-secondary/25 hover:bg-card-secondary/60 border-border/60'
+                                                    ? 'bg-emerald-500/10 border-emerald-500/40'
+                                                    : 'bg-transparent hover:bg-card-secondary/50 border-transparent hover:border-border/60'
                                             }`}
                                         >
-                                            <div className="flex items-center justify-between gap-1">
-                                                <div className="flex items-center gap-1 min-w-0 flex-1">
-                                                    <span className="text-[11px] font-bold text-text-primary truncate">
+                                            {/* Row 1: Left-aligned Name | Right-aligned Port (swaps to actions on hover) */}
+                                            <div className="flex items-center justify-between gap-2">
+                                                <div className="flex items-center gap-1.5 min-w-0 flex-1">
+                                                    {isRunningThisJob ? (
+                                                        <span
+                                                            className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse shrink-0"
+                                                            title={`Running ${activeJob.role}`}
+                                                        />
+                                                    ) : (
+                                                        <span
+                                                            className={`w-1.5 h-1.5 rounded-full shrink-0 transition-colors ${
+                                                                isSelected ? 'bg-indigo-400' : 'bg-border group-hover:bg-text-muted/50'
+                                                            }`}
+                                                        />
+                                                    )}
+                                                    <span className={`text-xs truncate ${
+                                                        isSelected ? 'font-bold text-text-primary' : 'font-medium text-text-primary/90'
+                                                    }`}>
                                                         {p.name || p.file_name.replace('.stx-replay', '')}
                                                     </span>
-                                                    {isRunningThisJob ? (
-                                                        <span className="text-[7px] px-1.5 py-0.2 bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 rounded-full font-black uppercase shrink-0 animate-pulse flex items-center gap-1">
-                                                            <span className="w-1 h-1 rounded-full bg-emerald-400"></span>
-                                                            {activeJob.role === 'server' ? 'Server' : 'Client'}
-                                                        </span>
-                                                    ) : p.category && (
-                                                        <span className="text-[7px] px-1 py-0.2 bg-card-secondary text-text-secondary border border-border rounded font-black uppercase shrink-0">
-                                                            {p.category}
-                                                        </span>
-                                                    )}
                                                 </div>
 
-                                                <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
-                                                    <button
-                                                        onClick={(e) => { e.stopPropagation(); handleOpenEditModal(p); }}
-                                                        className="p-0.5 hover:bg-card-secondary rounded text-text-muted hover:text-indigo-400 transition-colors cursor-pointer"
-                                                        title="Edit profile"
-                                                    >
-                                                        <Edit3 size={11} />
-                                                    </button>
-                                                    <button
-                                                        onClick={(e) => { e.stopPropagation(); handleDownloadProfile(p.file_name); }}
-                                                        className="p-0.5 hover:bg-card-secondary rounded text-text-muted hover:text-text-primary transition-colors cursor-pointer"
-                                                        title="Download"
-                                                    >
-                                                        <Download size={11} />
-                                                    </button>
-                                                    <button
-                                                        onClick={(e) => { e.stopPropagation(); handleDeleteProfile(p.file_name); }}
-                                                        className="p-0.5 hover:bg-red-500/20 rounded text-text-muted hover:text-red-400 transition-colors cursor-pointer"
-                                                        title="Delete"
-                                                    >
-                                                        <Trash2 size={11} />
-                                                    </button>
+                                                {/* Right Column: Port by default, Action Icons on Hover */}
+                                                <div className="flex items-center shrink-0">
+                                                    {flow?.server_port && (
+                                                        <span className="font-mono tabular-nums text-[11px] text-text-muted group-hover:hidden">
+                                                            :{flow.server_port}
+                                                        </span>
+                                                    )}
+                                                    <div className="hidden group-hover:flex items-center gap-0.5">
+                                                        <button
+                                                            type="button"
+                                                            onClick={(e) => { e.stopPropagation(); handleOpenEditModal(p); }}
+                                                            className="p-1 hover:bg-card rounded text-text-muted hover:text-indigo-400 transition-colors cursor-pointer"
+                                                            title="Edit profile"
+                                                        >
+                                                            <Edit3 size={11} />
+                                                        </button>
+                                                        <button
+                                                            type="button"
+                                                            onClick={(e) => { e.stopPropagation(); handleDownloadProfile(p.file_name); }}
+                                                            className="p-1 hover:bg-card rounded text-text-muted hover:text-text-primary transition-colors cursor-pointer"
+                                                            title="Download (.stx-replay)"
+                                                        >
+                                                            <Download size={11} />
+                                                        </button>
+                                                        <button
+                                                            type="button"
+                                                            onClick={(e) => { e.stopPropagation(); handleDeleteProfile(p.file_name); }}
+                                                            className="p-1 hover:bg-red-500/15 rounded text-text-muted hover:text-red-400 transition-colors cursor-pointer"
+                                                            title="Delete profile"
+                                                        >
+                                                            <Trash2 size={11} />
+                                                        </button>
+                                                    </div>
                                                 </div>
                                             </div>
 
-                                            <div className="flex items-center gap-2 mt-0.5 text-[9px] text-text-muted">
-                                                <span className="flex items-center gap-1 font-semibold text-text-secondary">
-                                                    <Radio size={8} className="text-indigo-400" />
+                                            {/* Row 2: Calm Tabular Metadata */}
+                                            <div className="flex items-center justify-between gap-2 mt-0.5 pl-3 text-[10px] text-text-muted font-mono tabular-nums">
+                                                <div className="flex items-center gap-1.5 truncate">
                                                     <span>{p.total_turns || 0} steps</span>
-                                                </span>
-                                                {flow?.server_port && (
-                                                    <span className="font-mono text-purple-400 font-bold bg-purple-500/10 px-1 py-0.2 rounded border border-purple-500/20 text-[8px]">
-                                                        Port {flow.server_port}
-                                                    </span>
-                                                )}
-                                                {p.is_fleet_synced !== undefined && (
-                                                    <span className={`text-[7px] px-1 py-0.2 rounded font-black uppercase shrink-0 border ${
-                                                        p.is_fleet_synced
-                                                            ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30'
-                                                            : 'bg-amber-500/10 text-amber-300 border-amber-500/30'
-                                                    }`} title={p.is_fleet_synced ? `Auto-synced across fleet (≤ ${p.sync_threshold_mb || 10}MB)` : `Local only (> ${p.sync_threshold_mb || 10}MB) — Export to sync manually`}>
-                                                        {p.is_fleet_synced ? 'Synced' : 'Local Only'}
-                                                    </span>
-                                                )}
+                                                    {customCategory && (
+                                                        <>
+                                                            <span className="opacity-40">·</span>
+                                                            <span className="font-sans text-[9px] uppercase tracking-wider text-text-secondary">
+                                                                {customCategory}
+                                                            </span>
+                                                        </>
+                                                    )}
+                                                    {p.is_fleet_synced === false && (
+                                                        <>
+                                                            <span className="opacity-40">·</span>
+                                                            <span
+                                                                className="font-sans text-[9px] text-amber-400"
+                                                                title={`Local only (> ${p.sync_threshold_mb || 10}MB)`}
+                                                            >
+                                                                Local only
+                                                            </span>
+                                                        </>
+                                                    )}
+                                                </div>
                                                 {p.size_bytes && (
-                                                    <span className="text-[8px] text-text-muted/60 font-mono ml-auto">
+                                                    <span className="text-[10px] text-text-muted/70 shrink-0">
                                                         {(p.size_bytes / 1024).toFixed(1)} KB
                                                     </span>
                                                 )}
@@ -1443,103 +1506,94 @@ export const PcapReplay: React.FC<PcapReplayProps> = ({ token }) => {
                         {/* Header with High-Level Conversation KPIs */}
                         <div className="pb-2.5 border-b border-border shrink-0 space-y-2">
                             <div className="flex items-center justify-between">
-                                <div className="flex items-center gap-1.5">
-                                    <div className="p-1 rounded-lg bg-purple-500/10 border border-purple-500/20 text-purple-400">
-                                        <Radio size={13} />
-                                    </div>
-                                    <div>
-                                        <h3 className="text-xs font-black text-text-primary uppercase tracking-tight">
-                                            Conversation Sequence
-                                        </h3>
-                                        <p className="text-[9px] text-text-muted font-bold tracking-wider">
-                                            {profileDetails ? `${turns.length} DIRECTIONAL STEPS` : 'SELECT A PROFILE'}
-                                        </p>
-                                    </div>
+                                <div className="flex items-center gap-2">
+                                    <Radio size={14} className="text-purple-400 shrink-0" />
+                                    <h3 className="text-xs font-bold text-text-primary tracking-tight">
+                                        Conversation Sequence
+                                    </h3>
+                                    {profileDetails && (
+                                        <span className="text-[11px] font-mono tabular-nums text-text-muted">
+                                            ({turns.length})
+                                        </span>
+                                    )}
                                 </div>
                                 {profileDetails && (
-                                    <span className="text-[9px] font-mono text-purple-400 bg-purple-500/10 px-2 py-0.5 rounded-lg border border-purple-500/20 font-bold">
-                                        {activeFlow?.transport?.toUpperCase() || 'TCP'}:{portOverride || activeFlow?.server_port || 18443}
+                                    <span className="text-[11px] font-mono tabular-nums text-text-secondary">
+                                        {activeFlow?.transport?.toUpperCase() || 'TCP'} :{portOverride || activeFlow?.server_port || 18443}
                                     </span>
                                 )}
                             </div>
 
-                            {/* Conversation Summary Bar */}
+                            {/* Conversation Summary Bar (Compact Single Strip) */}
                             {profileDetails && turns.length > 0 && (
-                                <div className="grid grid-cols-2 gap-1.5 pt-0.5">
-                                    <div className="bg-blue-500/10 border border-blue-500/20 rounded-lg px-2 py-1 flex items-center justify-between text-[9px]">
-                                        <span className="text-blue-400 font-bold flex items-center gap-1">
-                                            <ArrowRight size={10} /> Client Sent
-                                        </span>
-                                        <span className="font-mono text-text-primary font-bold">
-                                            {turnsSummary.clientTurns} steps · {(turnsSummary.clientBytes / 1024).toFixed(1)} KB
-                                        </span>
-                                    </div>
-                                    <div className="bg-purple-500/10 border border-purple-500/20 rounded-lg px-2 py-1 flex items-center justify-between text-[9px]">
-                                        <span className="text-purple-400 font-bold flex items-center gap-1">
-                                            <ArrowDownRight size={10} /> Server Sent
-                                        </span>
-                                        <span className="font-mono text-text-primary font-bold">
-                                            {turnsSummary.serverTurns} steps · {(turnsSummary.serverBytes / 1024).toFixed(1)} KB
-                                        </span>
-                                    </div>
+                                <div className="flex items-center justify-between text-[10px] bg-card-secondary/50 border border-border/60 rounded-lg px-2.5 py-1 font-mono tabular-nums">
+                                    <span className="text-blue-400 flex items-center gap-1">
+                                        <ArrowRight size={10} />
+                                        <span className="font-sans font-medium">Client:</span>
+                                        <b>{turnsSummary.clientTurns}</b> ({(turnsSummary.clientBytes / 1024).toFixed(1)} KB)
+                                    </span>
+                                    <span className="text-border">|</span>
+                                    <span className="text-purple-400 flex items-center gap-1">
+                                        <ArrowDownRight size={10} />
+                                        <span className="font-sans font-medium">Server:</span>
+                                        <b>{turnsSummary.serverTurns}</b> ({(turnsSummary.serverBytes / 1024).toFixed(1)} KB)
+                                    </span>
                                 </div>
                             )}
 
                             {/* Turns Filter and Search Toolbar */}
                             {profileDetails && turns.length > 0 && (
-                                <div className="flex items-center gap-1.5 pt-1">
+                                <div className="flex items-center gap-1.5">
                                     <div className="flex p-0.5 bg-card-secondary dark:bg-black/40 border border-border/70 rounded-lg shrink-0">
                                         <button
                                             type="button"
                                             onClick={() => setTurnFilter('all')}
-                                            className={`px-2 py-0.5 rounded text-[8px] font-bold transition-all cursor-pointer ${
+                                            className={`px-2 py-0.5 rounded text-[9px] font-semibold transition-all cursor-pointer ${
                                                 turnFilter === 'all'
-                                                    ? 'bg-purple-600 text-white shadow-sm'
+                                                    ? 'bg-purple-600 text-white'
                                                     : 'text-text-muted hover:text-text-primary'
                                             }`}
                                         >
-                                            All ({turns.length})
+                                            All
                                         </button>
                                         <button
                                             type="button"
                                             onClick={() => setTurnFilter('client')}
-                                            className={`px-2 py-0.5 rounded text-[8px] font-bold transition-all cursor-pointer flex items-center gap-0.5 ${
+                                            className={`px-2 py-0.5 rounded text-[9px] font-semibold transition-all cursor-pointer ${
                                                 turnFilter === 'client'
-                                                    ? 'bg-blue-600 text-white shadow-sm'
+                                                    ? 'bg-blue-600 text-white'
                                                     : 'text-text-muted hover:text-blue-400'
                                             }`}
                                         >
-                                            <span>⬆️ Client</span>
-                                            <span>({turnsSummary.clientTurns})</span>
+                                            Client ({turnsSummary.clientTurns})
                                         </button>
                                         <button
                                             type="button"
                                             onClick={() => setTurnFilter('server')}
-                                            className={`px-2 py-0.5 rounded text-[8px] font-bold transition-all cursor-pointer flex items-center gap-0.5 ${
+                                            className={`px-2 py-0.5 rounded text-[9px] font-semibold transition-all cursor-pointer ${
                                                 turnFilter === 'server'
-                                                    ? 'bg-purple-600 text-white shadow-sm'
+                                                    ? 'bg-purple-600 text-white'
                                                     : 'text-text-muted hover:text-purple-400'
                                             }`}
                                         >
-                                            <span>⬇️ Server</span>
-                                            <span>({turnsSummary.serverTurns})</span>
+                                            Server ({turnsSummary.serverTurns})
                                         </button>
                                     </div>
 
                                     <div className="relative flex-1">
-                                        <Search size={10} className="absolute left-2 top-2 text-text-muted" />
+                                        <Search size={10} className="absolute left-2 top-1/2 -translate-y-1/2 text-text-muted" />
                                         <input
                                             type="text"
                                             value={turnSearchQuery}
                                             onChange={(e) => setTurnSearchQuery(e.target.value)}
                                             placeholder="Search payload, hex, #..."
-                                            className="w-full bg-card-secondary dark:bg-black/40 border border-border/70 rounded-lg pl-6 pr-2 py-0.5 text-[9px] text-text-primary focus:outline-none focus:border-purple-500/50 transition-colors"
+                                            className="w-full bg-card-secondary dark:bg-black/40 border border-border/70 rounded-lg pl-6 pr-5 py-0.5 text-[10px] text-text-primary focus:outline-none focus:border-purple-500/50 transition-colors"
                                         />
                                         {turnSearchQuery && (
                                             <button
                                                 type="button"
                                                 onClick={() => setTurnSearchQuery('')}
-                                                className="absolute right-1.5 top-1.5 text-text-muted hover:text-text-primary"
+                                                className="absolute right-1.5 top-1/2 -translate-y-1/2 text-text-muted hover:text-text-primary"
                                             >
                                                 <X size={9} />
                                             </button>
@@ -1560,9 +1614,9 @@ export const PcapReplay: React.FC<PcapReplayProps> = ({ token }) => {
                                 <p className="text-[10px] opacity-70 mt-1">Select a profile on the left to inspect its step sequence.</p>
                             </div>
                         ) : (
-                            <div className="flex-1 min-h-0 flex flex-col pt-2 gap-2">
-                                {/* Step List with Informative Directional Cards */}
-                                <div className="flex-1 min-h-0 overflow-y-auto space-y-1.5 pr-1 scrollbar-thin scrollbar-thumb-border">
+                            <div className="flex-1 min-h-0 flex flex-col pt-2 gap-1">
+                                {/* Clean Tabular Step List */}
+                                <div className="flex-1 min-h-0 overflow-y-auto space-y-1 pr-1 scrollbar-thin scrollbar-thumb-border">
                                     {filteredTurns.length === 0 ? (
                                         <div className="text-center py-6 text-text-muted text-[10px] italic">
                                             No conversation steps match the current filter.
@@ -1578,69 +1632,57 @@ export const PcapReplay: React.FC<PcapReplayProps> = ({ token }) => {
                                                 const isActive = (idx + 1) === (lastCompletedTurnSeq + 1) && activeJob?.status === 'running';
                                                 const analysis = analyzeTurn(turn);
                                                 const len = turn.length || turn.payload_len || 0;
+                                                const isGenericProto = analysis.proto === 'Plain Text' || analysis.proto === 'Binary L7';
 
                                                 return (
                                                     <div
                                                         key={idx}
                                                         onClick={() => setSelectedTurnIndex(idx)}
-                                                        className={`p-1.5 px-2 rounded-xl border transition-all cursor-pointer flex flex-col gap-1 ${
+                                                        className={`py-1.5 px-2.5 rounded-lg border transition-all cursor-pointer flex flex-col gap-0.5 ${
                                                             isTurnSelected
-                                                                ? 'bg-purple-500/15 border-purple-500/60 shadow-md ring-1 ring-purple-500/30'
+                                                                ? 'bg-purple-500/12 border-purple-500/50'
                                                                 : isCompleted
                                                                 ? 'bg-emerald-500/5 hover:bg-emerald-500/10 border-emerald-500/25'
                                                                 : isActive
                                                                 ? 'bg-indigo-500/10 border-indigo-500/40 animate-pulse'
-                                                                : 'bg-card-secondary/30 hover:bg-card-secondary/70 border-border/50'
+                                                                : 'bg-transparent hover:bg-card-secondary/50 border-border/40'
                                                         }`}
                                                     >
-                                                        <div className="flex items-center justify-between gap-1.5">
-                                                            <div className="flex items-center gap-1.5 min-w-0">
-                                                                <span className={`w-4 h-4 rounded border flex items-center justify-center font-mono text-[8px] font-black shrink-0 ${
-                                                                    isCompleted
-                                                                        ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/40'
-                                                                        : isActive
-                                                                        ? 'bg-indigo-500/20 text-indigo-400 border-indigo-500/40'
-                                                                        : 'bg-card border-border text-text-muted'
+                                                        {/* Line 1: Aligned Columns -> [#Seq] [Direction] [Protocol] [Bytes] */}
+                                                        <div className="flex items-center justify-between gap-2 text-[10px] font-mono tabular-nums">
+                                                            <div className="flex items-center gap-2 min-w-0">
+                                                                <span className={`w-5 text-right font-bold shrink-0 ${
+                                                                    isCompleted ? 'text-emerald-400' : isTurnSelected ? 'text-purple-400' : 'text-text-muted'
                                                                 }`}>
-                                                                    {isCompleted ? '✓' : idx + 1}
+                                                                    {isCompleted ? '✓' : `#${idx + 1}`}
                                                                 </span>
-                                                                <span className={`px-1.5 py-0.2 rounded text-[8px] font-black uppercase tracking-wider flex items-center gap-1 shrink-0 ${
-                                                                    isClient
-                                                                        ? 'bg-blue-500/20 text-blue-400 border border-blue-500/30'
-                                                                        : 'bg-purple-500/20 text-purple-400 border border-purple-500/30'
+                                                                <span className={`w-16 font-sans font-semibold flex items-center gap-1 shrink-0 ${
+                                                                    isClient ? 'text-blue-400' : 'text-purple-400'
                                                                 }`}>
-                                                                    {isClient ? <ArrowRight size={8} /> : <ArrowDownRight size={8} />}
+                                                                    {isClient ? <ArrowRight size={10} /> : <ArrowDownRight size={10} />}
                                                                     <span>{isClient ? 'Client' : 'Server'}</span>
                                                                 </span>
-                                                                <span className="text-[9px] font-mono font-bold text-text-primary shrink-0">
-                                                                    {len}B
-                                                                </span>
+                                                                {!isGenericProto && (
+                                                                    <span className="text-[9px] px-1.5 py-0.2 rounded bg-card-secondary text-text-secondary border border-border/60 font-sans font-semibold">
+                                                                        {analysis.proto}
+                                                                    </span>
+                                                                )}
+                                                            </div>
+
+                                                            <div className="flex items-center gap-2 shrink-0 text-text-muted">
                                                                 {turn.delay_ms !== undefined && turn.delay_ms > 0 && (
-                                                                    <span className="text-[8px] font-mono text-text-muted/70 shrink-0">
+                                                                    <span className="text-[9px] opacity-60">
                                                                         +{turn.delay_ms}ms
                                                                     </span>
                                                                 )}
-                                                            </div>
-
-                                                            <div className="flex items-center gap-1 shrink-0">
-                                                                <span className={`text-[7px] px-1.5 py-0.2 rounded border font-bold uppercase ${analysis.badge}`}>
-                                                                    {analysis.proto}
+                                                                <span className="text-text-secondary font-medium w-12 text-right">
+                                                                    {len} B
                                                                 </span>
-                                                                {isCompleted && (
-                                                                    <span className="px-1 py-0.2 rounded bg-emerald-500/20 text-emerald-400 font-black text-[7px] border border-emerald-500/30">
-                                                                        DONE
-                                                                    </span>
-                                                                )}
-                                                                {isActive && (
-                                                                    <span className="px-1 py-0.2 rounded bg-indigo-500/20 text-indigo-400 font-black text-[7px] border border-indigo-500/30 animate-pulse">
-                                                                        LIVE
-                                                                    </span>
-                                                                )}
                                                             </div>
                                                         </div>
 
-                                                        {/* Readable Payload Snippet */}
-                                                        <div className="text-[9px] font-mono text-text-secondary truncate bg-card-secondary dark:bg-black/35 px-1.5 py-0.5 rounded border border-border/40 leading-tight">
+                                                        {/* Line 2: Clean Single-Line Payload Preview (Indented under Direction) */}
+                                                        <div className="pl-7 text-[10px] font-mono text-text-muted truncate">
                                                             {analysis.snippet}
                                                         </div>
                                                     </div>
