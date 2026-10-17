@@ -106,6 +106,7 @@ type UnderlayResolutionStatus = 'matched' | 'no_match' | 'ambiguous' | 'wan_ip_u
 type UnderlayResolution = {
     id: string;
     status: UnderlayResolutionStatus;
+    scope?: 'wan' | 'lan';
     prismaWan: {
         elementId: string; elementName?: string; siteId?: string; siteName?: string;
         interfaceId?: string; interfaceName?: string; ipCidr?: string | null;
@@ -150,8 +151,10 @@ type UnderlayPayload = {
         noMatch: number;
         ambiguous: number;
         wanIpUnavailable: number;
+        lanMatched?: number;
     };
     resolutions: UnderlayResolution[];
+    lanResolutions?: UnderlayResolution[];
     routers?: UnderlayRouterSummary[];
 };
 
@@ -416,6 +419,8 @@ const SiteNode = ({ data }: any) => {
     const underlayMode = data.underlayMode as ('off' | 'badges') | undefined;
     const underlayResolutionMap = data.underlayResolutionMap as Map<string, any> | undefined;
     const onInspectUnderlayCircuit = data.onInspectUnderlayCircuit as ((r: any) => void) | undefined;
+    const lanVyosRouters = (data.lanVyosRouters as any[]) || [];
+    const onInspectLanVyos = data.onInspectLanVyos as ((r: any) => void) | undefined;
 
     const getUnderlayBadge = (wan: any) => {
         if (underlayMode !== 'badges' || !underlayResolutionMap) return null;
@@ -472,6 +477,65 @@ const SiteNode = ({ data }: any) => {
                 {subnet}
             </div>
         );
+    };
+
+    // Discreet LAN VyOS Badge Renderer: strictly shown when a VyOS router is directly connected to this site's LAN
+    const renderLanVyosBadges = () => {
+        if (!lanVyosRouters || lanVyosRouters.length === 0) return null;
+        return lanVyosRouters.map((lr: any, idx: number) => {
+            const hasShut = Boolean(lr.hasShut);
+            const activeQos = lr.primaryQos;
+            const blockedCount = lr.blockedCount || 0;
+            const hasImpairment = hasShut || Boolean(activeQos) || blockedCount > 0;
+
+            return (
+                <div
+                    key={`lan-vyos-${lr.name || idx}`}
+                    onClick={(e) => {
+                        e.stopPropagation();
+                        if (onInspectLanVyos && lr.defaultResolution) {
+                            onInspectLanVyos(lr.defaultResolution);
+                        }
+                    }}
+                    title={`VyOS LAN Router: ${lr.name} (${lr.lanInterfaceName || 'LAN'} • ${lr.lanIp || ''}) — Click to inject egress/LAN latency, packet loss, shut port, or filter traffic`}
+                    className={cn(
+                        "px-2.5 py-1 rounded-xl border text-[10px] font-mono font-black relative z-20 transition-all hover:scale-105 flex items-center gap-1.5 cursor-pointer h-[30px] shadow-md",
+                        hasShut || blockedCount > 0
+                            ? "bg-rose-500/20 border-rose-500/50 text-rose-300 hover:bg-rose-500/30 hover:border-rose-400 shadow-rose-500/15"
+                            : activeQos
+                                ? "bg-amber-500/25 border-amber-400/60 text-amber-200 hover:bg-amber-500/35 hover:border-amber-300 shadow-amber-500/20"
+                                : "bg-amber-500/15 border-amber-500/35 text-amber-300 hover:bg-amber-500/25 hover:border-amber-400/70 shadow-amber-500/10"
+                    )}
+                >
+                    <span className={cn(
+                        "w-2 h-2 rounded-full shrink-0",
+                        hasShut ? "bg-rose-500 animate-pulse" : activeQos ? "bg-amber-400 animate-pulse" : "bg-emerald-400"
+                    )} />
+                    <Server size={11} className="text-amber-400 shrink-0" />
+                    <span className="tracking-wider uppercase">VyOS</span>
+                    {activeQos && (
+                        <span className="px-1.5 py-0.2 rounded bg-amber-500/30 border border-amber-400/50 text-[8.5px] text-amber-100 font-black">
+                            +{activeQos.latency || 0}ms{activeQos.loss ? ` ${activeQos.loss}%` : ''}
+                        </span>
+                    )}
+                    {hasShut && (
+                        <span className="px-1.5 py-0.2 rounded bg-rose-500/30 border border-rose-400/50 text-[8.5px] text-rose-200 font-black">
+                            SHUT
+                        </span>
+                    )}
+                    {blockedCount > 0 && !hasShut && (
+                        <span className="px-1.5 py-0.2 rounded bg-rose-500/30 border border-rose-400/50 text-[8.5px] text-rose-200 font-black">
+                            {blockedCount} BLK
+                        </span>
+                    )}
+                    {!hasImpairment && (
+                        <span className="text-[8.5px] opacity-75 font-bold">
+                            {lr.lanInterfaceName || 'LAN'}
+                        </span>
+                    )}
+                </div>
+            );
+        });
     };
 
     return (
@@ -565,6 +629,13 @@ const SiteNode = ({ data }: any) => {
                         ? "border-blue-500/30 shadow-blue-500/5 shadow-[0_0_50px_-12px_rgba(59,130,246,0.15)] w-full"
                         : "border-border shadow-black/40 shadow-[0_40px_100px_-20px_rgba(0,0,0,0.5)] w-full"
             )}>
+                {/* Peripheral LAN Handle (Top for Hub, Bottom for Spoke/Gateway) */}
+                <Handle
+                    type="source"
+                    position={isHub ? Position.Top : Position.Bottom}
+                    id="lan-periphery"
+                    className="!w-3 !h-1.5 !opacity-0"
+                />
 
                 {/* SVG Layer for ALL internal wiring (1:1 Exact Math Coordinates) */}
                 <svg className="absolute top-0 left-1/2 overflow-visible z-0" width="1" height="1">
@@ -644,6 +715,7 @@ const SiteNode = ({ data }: any) => {
                         <div className="text-[20px] font-black text-text-primary uppercase tracking-[0.4em] opacity-85 mb-3 drop-shadow-lg relative z-10">{data.name}</div>
                         <div className="flex gap-2.5 items-center justify-center flex-wrap max-w-full">
                             {uniqueSubeNets.map((subnet, sIdx) => renderSubnetPill(subnet, sIdx))}
+                            {renderLanVyosBadges()}
                         </div>
                     </div>
                 )}
@@ -737,6 +809,7 @@ const SiteNode = ({ data }: any) => {
                     <div className="flex flex-col items-center relative z-20 w-full mb-2">
                         <div className="flex gap-2.5 items-center justify-center flex-wrap max-w-full">
                             {uniqueSubeNets.map((subnet, sIdx) => renderSubnetPill(subnet, sIdx))}
+                            {renderLanVyosBadges()}
                         </div>
                         <div className="absolute inset-x-0 -bottom-6 flex justify-center w-full z-0 overflow-hidden pointer-events-none">
                             <div className="text-[72px] font-black text-white/[0.02] select-none uppercase tracking-[0.2em] whitespace-nowrap px-6">{data.name}</div>
@@ -750,6 +823,7 @@ const SiteNode = ({ data }: any) => {
                     <div className="flex flex-col items-center relative z-20 w-full mb-1">
                         <div className="flex gap-2.5 items-center justify-center flex-wrap max-w-full">
                             {uniqueSubeNets.map((subnet, sIdx) => renderSubnetPill(subnet, sIdx))}
+                            {renderLanVyosBadges()}
                         </div>
                     </div>
                 )}
@@ -1119,6 +1193,166 @@ const VyOSRouterNode = ({ data }: any) => {
     );
 };
 
+// --- Peripheral LAN VyOS Router Node (Positioned above DC/Hub LAN or below Branch/Spoke LAN in Underlay mode) ---
+const VyOSLanRouterNode = ({ data }: any) => {
+    const {
+        router,
+        siteName,
+        isAboveSite = false,
+        interfaceItems = [],
+        onSelectResolution,
+        onOpenRouterControl
+    } = data;
+
+    const isOnline = router?.status === 'up';
+    const blackholeBlocks: Array<{ prefix: string }> = Array.isArray(router?.blackholeBlocks) ? router.blackholeBlocks : [];
+    const blockedCount = blackholeBlocks.length;
+
+    return (
+        <div className="bg-card/95 backdrop-blur-2xl border-2 border-emerald-500/45 hover:border-amber-400 rounded-[28px] p-5 shadow-2xl shadow-emerald-500/10 dark:shadow-amber-500/15 transition-all group relative flex flex-col gap-3.5 min-w-[380px] max-w-[640px]">
+            {/* Target Handle facing the Site's LAN block (Bottom if router is above a Hub, Top if router is below a Spoke) */}
+            <Handle
+                type="target"
+                position={isAboveSite ? Position.Bottom : Position.Top}
+                id="lan-link"
+                className="!w-4 !h-2 !bg-emerald-500 dark:!bg-emerald-400 !border !border-card !rounded-sm"
+            />
+
+            {/* Header: VyOS LAN Router Identity & Traffic Control */}
+            <div className="flex items-center justify-between gap-4 p-3.5 bg-card-secondary/80 border border-amber-500/30 rounded-2xl shadow-inner">
+                <div className="flex items-center gap-3">
+                    <div className="p-2.5 bg-gradient-to-br from-amber-500 to-orange-600 rounded-xl text-white dark:text-slate-950 shadow-md shadow-amber-500/30 font-black">
+                        <Server size={19} />
+                    </div>
+                    <div>
+                        <div className="flex items-center gap-2">
+                            <span className="text-sm font-black text-text-primary tracking-tight uppercase">{router?.name || 'VyOS-LAN'}</span>
+                            <span className={cn(
+                                "w-2 h-2 rounded-full",
+                                isOnline ? "bg-green-500 dark:bg-green-400 shadow-[0_0_8px_rgba(34,197,94,0.8)]" : "bg-red-500"
+                            )} />
+                            <span className="px-2 py-0.5 rounded-md bg-emerald-500/15 border border-emerald-500/35 text-emerald-400 text-[9px] font-black uppercase tracking-wider">
+                                {siteName} LAN Periphery
+                            </span>
+                        </div>
+                        <div className="text-[11px] text-amber-600 dark:text-amber-400 font-mono font-bold mt-0.5">
+                            Mgmt IP: {router?.host || '—'} &bull; LAN &amp; Egress Impairment
+                        </div>
+                    </div>
+                </div>
+
+                <div className="flex items-center gap-2">
+                    {onOpenRouterControl && (
+                        <button
+                            type="button"
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                onOpenRouterControl(router);
+                            }}
+                            className={cn(
+                                "px-2.5 py-1.5 rounded-xl font-black text-[10px] flex items-center gap-1.5 border transition-all cursor-pointer shadow-sm",
+                                blockedCount > 0
+                                    ? "bg-rose-500/20 hover:bg-rose-500/30 text-rose-500 dark:text-rose-400 border-rose-500/50 shadow-rose-500/20 ring-1 ring-rose-500/40"
+                                    : "bg-amber-500/15 hover:bg-amber-500/25 text-amber-700 dark:text-amber-300 border-amber-500/40 hover:border-amber-400"
+                            )}
+                            title="Manage router-level Allow/Deny traffic policies"
+                        >
+                            {blockedCount > 0 ? (
+                                <>
+                                    <ShieldAlert size={13} className="text-rose-500 animate-pulse" />
+                                    <span>{blockedCount} BLOCKED</span>
+                                </>
+                            ) : (
+                                <>
+                                    <Shield size={13} />
+                                    <span>TRAFFIC CONTROL</span>
+                                </>
+                            )}
+                        </button>
+                    )}
+                </div>
+            </div>
+
+            {/* Interfaces Grid: ION-facing LAN port + Egress / NAT / BGP ports */}
+            <div className="flex flex-col gap-1.5">
+                <div className="flex items-center justify-between text-[9.5px] font-black text-amber-600 dark:text-amber-400/90 uppercase tracking-wider px-1">
+                    <span>Click any interface to inject Egress / LAN Latency, Loss, or Shut Port</span>
+                    <span className="font-mono text-text-muted">{interfaceItems.length} Interfaces</span>
+                </div>
+                <div className="flex flex-wrap items-center gap-2.5">
+                    {interfaceItems.map((item: any) => {
+                        const isIfaceUp = item.status !== 'down';
+                        const portQos = normalizeQos(item.qos);
+                        const hasQos = !!portQos;
+                        const isIonLan = Boolean(item.isIonLan);
+
+                        return (
+                            <div
+                                key={item.name}
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    if (onSelectResolution && item.resolution) {
+                                        onSelectResolution(item.resolution);
+                                    }
+                                }}
+                                className={cn(
+                                    "relative px-3.5 py-2.5 rounded-2xl border text-[11px] transition-all flex flex-col justify-between min-w-[175px] flex-1 gap-1 shadow-sm cursor-pointer",
+                                    !isIfaceUp
+                                        ? "bg-rose-950/25 border-rose-500/60 hover:border-rose-400 shadow-rose-500/10"
+                                        : hasQos
+                                            ? "bg-amber-500/15 border-amber-400/70 hover:border-amber-300 shadow-amber-500/15 ring-1 ring-amber-500/30"
+                                            : isIonLan
+                                                ? "bg-emerald-500/10 border-emerald-500/45 hover:border-emerald-400 hover:bg-emerald-500/15 shadow-emerald-500/10"
+                                                : "bg-card border-amber-500/40 hover:border-amber-400 hover:bg-card-secondary/70 shadow-amber-500/10"
+                                )}
+                                title={`${item.name} (${item.ipCidr || item.ip || '—'}) • ${isIonLan ? `Connected to ${siteName} ION LAN` : (item.description || 'Egress / Transit / NAT')} — Click to configure QoS or Shut`}
+                            >
+                                <div className="flex items-center justify-between pb-1 border-b border-border/50 gap-2">
+                                    <span className="font-mono font-black text-amber-600 dark:text-amber-400 flex items-center gap-1.5">
+                                        <span className={cn(
+                                            "w-2 h-2 rounded-full",
+                                            isIfaceUp ? "bg-green-500 shadow-[0_0_6px_rgba(34,197,94,0.8)]" : "bg-red-500 shadow-[0_0_6px_rgba(239,68,68,0.8)]"
+                                        )} />
+                                        {item.name}
+                                    </span>
+                                    <div className="flex items-center gap-1">
+                                        {!isIfaceUp && (
+                                            <span className="text-[8px] font-black px-1.5 py-0.2 rounded bg-rose-500/25 text-rose-400 border border-rose-500/40">
+                                                SHUT
+                                            </span>
+                                        )}
+                                        {hasQos && (
+                                            <span className="text-[8px] font-black px-1.5 py-0.2 rounded bg-amber-500/25 text-amber-300 border border-amber-500/40">
+                                                ⏱️ +{portQos.latency || 0}ms{portQos.loss ? ` ${portQos.loss}%` : ''}
+                                            </span>
+                                        )}
+                                        <span className={cn(
+                                            "text-[8px] font-black px-1.5 py-0.2 rounded border uppercase",
+                                            isIonLan
+                                                ? "bg-emerald-500/20 text-emerald-300 border-emerald-500/40"
+                                                : "bg-blue-500/15 text-blue-300 border-blue-500/35"
+                                        )}>
+                                            {isIonLan ? `${siteName} LAN` : 'EGRESS / NAT'}
+                                        </span>
+                                    </div>
+                                </div>
+
+                                <div className="font-mono text-text-primary font-black text-[11px] whitespace-nowrap tracking-tight">
+                                    {item.ipCidr || item.ip || '—'}
+                                </div>
+
+                                <div className="text-[9px] text-text-muted truncate font-mono" title={item.description || (isIonLan ? `Direct LAN to ${siteName}` : 'Egress / Transit Interface')}>
+                                    {item.description || (isIonLan ? `Direct LAN to ${siteName}` : 'Egress / Transit Interface')}
+                                </div>
+                            </div>
+                        );
+                    })}
+                </div>
+            </div>
+        </div>
+    );
+};
+
 // --- Custom Underlay Peer Gateway Node (Direct 1:1 Interface Block in vis-à-vis) ---
 const UnderlayGatewayNode = ({ data }: any) => {
     const { resolution, isHubPeer = false, onInspect } = data;
@@ -1320,6 +1554,7 @@ const nodeTypes = {
     site: SiteNode,
     cloud: CloudNode,
     vyosRouter: VyOSRouterNode,
+    vyosLanRouter: VyOSLanRouterNode,
     underlayGateway: UnderlayGatewayNode,
     sasePop: SasePopNode,
 };
@@ -1483,8 +1718,9 @@ function TopologyContent({ token, theme }: TopologyProps) {
         if (ifObj?.status) {
             return ifObj.status.toLowerCase() === 'down' ? 'down' : 'up';
         }
-        // Check resolutions
-        const resObj = (underlayData?.resolutions || []).find(r => 
+        // Check resolutions (WAN + LAN)
+        const allRes = [...(underlayData?.resolutions || []), ...(underlayData?.lanResolutions || [])];
+        const resObj = allRes.find(r => 
             r.vyos?.routerName.toLowerCase() === routerName.toLowerCase() && 
             r.vyos?.interfaceName.toLowerCase() === ifaceName.toLowerCase()
         );
@@ -1511,8 +1747,9 @@ function TopologyContent({ token, theme }: TopologyProps) {
             const norm = normalizeQos(ifObj.qos);
             if (norm) return norm;
         }
-        // Check resolutions
-        const resObj = (underlayData?.resolutions || []).find(r => 
+        // Check resolutions (WAN + LAN)
+        const allRes = [...(underlayData?.resolutions || []), ...(underlayData?.lanResolutions || [])];
+        const resObj = allRes.find(r => 
             r.vyos?.routerName.toLowerCase() === routerName.toLowerCase() && 
             r.vyos?.interfaceName.toLowerCase() === ifaceName.toLowerCase()
         );
@@ -1980,6 +2217,189 @@ function TopologyContent({ token, theme }: TopologyProps) {
         return role === 'HUB' || (isBG && effectiveBgAsHub);
     }, [siteHubStatus, effectiveBgAsHub]);
 
+    // Build a lookup: siteName → LAN-connected VyOS routers with all their IPv4 interfaces (ION LAN + Egress/NAT/BGP)
+    const siteLanVyosMap = useMemo(() => {
+        const map = new Map<string, any[]>();
+        if (!underlayData?.lanResolutions) return map;
+
+        const allRouters = underlayData.routers || [];
+        const matchedLanResolutions = underlayData.lanResolutions.filter(
+            (r) => r.status === 'matched' && r.vyos?.routerName && r.prismaWan?.siteName
+        );
+
+        // Group by siteName -> routerName
+        const bySite = new Map<string, Map<string, UnderlayResolution[]>>();
+        matchedLanResolutions.forEach((res) => {
+            const sName = res.prismaWan.siteName;
+            const rName = res.vyos?.routerName;
+            if (!sName || !rName) return;
+            if (!bySite.has(sName)) bySite.set(sName, new Map());
+            const rMap = bySite.get(sName)!;
+            if (!rMap.has(rName)) rMap.set(rName, []);
+            rMap.get(rName)!.push(res);
+        });
+
+        bySite.forEach((rMap, siteName) => {
+            const siteRouters: any[] = [];
+            rMap.forEach((resList, routerName) => {
+                const primaryLanRes = resList[0];
+                const fromPayload = allRouters.find(
+                    (r) =>
+                        (r.name && r.name.toLowerCase() === routerName.toLowerCase()) ||
+                        (r.id && r.id.toLowerCase() === routerName.toLowerCase())
+                );
+
+                const matchedLanIfNames = new Set(
+                    resList.map((r) => (r.vyos?.interfaceName || '').toLowerCase()).filter(Boolean)
+                );
+
+                // Collect all non-loopback IPv4 interfaces on this VyOS router (ION LAN + Egress/NAT/BGP)
+                const rawIfaces = new Map<string, any>();
+                (fromPayload?.interfaces || []).forEach((iface: any) => {
+                    if (!iface.name || iface.name.toLowerCase() === 'lo') return;
+                    const hasIp = Boolean(iface.ip || iface.ipCidr || (Array.isArray(iface.address) && iface.address.length > 0));
+                    if (!hasIp && !matchedLanIfNames.has(iface.name.toLowerCase())) return;
+                    rawIfaces.set(iface.name, { ...iface });
+                });
+
+                // Ensure all matched LAN interfaces are present
+                resList.forEach((res) => {
+                    const ifName = res.vyos?.interfaceName;
+                    if (!ifName) return;
+                    const existing = rawIfaces.get(ifName) || {};
+                    const ipCidr = res.vyos?.ipCidr || res.vyos?.ip || existing.ipCidr || existing.address?.[0];
+                    rawIfaces.set(ifName, {
+                        ...existing,
+                        name: ifName,
+                        type: existing.type || 'ethernet',
+                        description: existing.description || res.vyos?.description,
+                        ipCidr,
+                        ip: res.vyos?.ip || existing.ip || (ipCidr ? ipCidr.split('/')[0] : undefined),
+                        network: res.vyos?.network || existing.network,
+                        status: res.vyos?.status || existing.status || 'up',
+                        qos: res.vyos?.qos || existing.qos || null,
+                    });
+                });
+
+                // Sort interfaces so ION-connected LAN interfaces appear first, then Egress/NAT interfaces by name
+                const sortedIfaces = Array.from(rawIfaces.values()).sort((a, b) => {
+                    const aIsLan = matchedLanIfNames.has(a.name.toLowerCase()) ? 0 : 1;
+                    const bIsLan = matchedLanIfNames.has(b.name.toLowerCase()) ? 0 : 1;
+                    if (aIsLan !== bIsLan) return aIsLan - bIsLan;
+                    return a.name.localeCompare(b.name);
+                });
+
+                const interfaceItems = sortedIfaces.map((iface: any) => {
+                    const ifName = iface.name;
+                    const matchedRes = resList.find((r) => r.vyos?.interfaceName.toLowerCase() === ifName.toLowerCase());
+                    const isIonLan = Boolean(matchedRes);
+                    const ipCidr = iface.ipCidr || (Array.isArray(iface.address) ? iface.address[0] : undefined) || matchedRes?.vyos?.ipCidr || '';
+                    const ip = iface.ip || (ipCidr ? ipCidr.split('/')[0] : undefined) || matchedRes?.vyos?.ip || '';
+                    const liveStatus = getVyosInterfaceStatus(routerName, ifName);
+                    const liveQos = getVyosInterfaceQos(routerName, ifName);
+                    const normQos = normalizeQos(liveQos);
+
+                    const resolution: UnderlayResolution = matchedRes
+                        ? {
+                              ...matchedRes,
+                              scope: 'lan',
+                              vyos: matchedRes.vyos
+                                  ? {
+                                        ...matchedRes.vyos,
+                                        status: liveStatus,
+                                        qos: liveQos,
+                                    }
+                                  : undefined,
+                          }
+                        : {
+                              id: `${primaryLanRes.id}:${ifName}`,
+                              prismaWan: {
+                                  siteId: primaryLanRes.prismaWan.siteId,
+                                  siteName: primaryLanRes.prismaWan.siteName,
+                                  elementId: primaryLanRes.prismaWan.elementId,
+                                  elementName: primaryLanRes.prismaWan.elementName,
+                                  interfaceId: `${primaryLanRes.prismaWan.interfaceId}:${ifName}`,
+                                  interfaceName: `${ifName} (Egress / NAT)`,
+                                  linkType: 'LAN-EGRESS',
+                                  ip: ip || null,
+                                  ipCidr: ipCidr || null,
+                                  network: iface.network || ipCidr || null,
+                              },
+                              status: 'matched',
+                              scope: 'lan',
+                              matchedNetwork: iface.network || ipCidr || primaryLanRes.matchedNetwork,
+                              vyos: {
+                                  routerId: fromPayload?.id || primaryLanRes.vyos?.routerId || routerName,
+                                  routerName: routerName,
+                                  location: fromPayload?.location || primaryLanRes.vyos?.location,
+                                  interfaceName: ifName,
+                                  ip: ip || '',
+                                  ipCidr: ipCidr || '',
+                                  network: iface.network || ipCidr || '',
+                                  status: liveStatus,
+                                  description: iface.description || 'Egress / NAT / BGP Transit',
+                                  qos: liveQos,
+                              },
+                              diagnostic: `VyOS router ${routerName} interface ${ifName} (${iface.description || 'Egress / Transit'}) on ${siteName} LAN periphery.`,
+                          };
+
+                    return {
+                        name: ifName,
+                        ifName,
+                        ip,
+                        ipCidr,
+                        description: iface.description,
+                        status: liveStatus,
+                        isDown: liveStatus === 'down',
+                        qos: normQos || liveQos,
+                        hasQos: Boolean(normQos),
+                        isIonLan,
+                        isLanLink: isIonLan,
+                        roleLabel: isIonLan ? 'ION LAN' : 'EGRESS / NAT',
+                        resolution,
+                    };
+                });
+
+                const hasShut = interfaceItems.some((item) => item.status === 'down');
+                const qosItem = interfaceItems.find((item) => Boolean(normalizeQos(item.qos)));
+                const primaryQos = qosItem ? normalizeQos(qosItem.qos) : null;
+                const blackholeBlocks = Array.isArray(fromPayload?.blackholeBlocks) ? fromPayload.blackholeBlocks : [];
+                const blockedCount = blackholeBlocks.length;
+
+                const routerObj = {
+                    id: fromPayload?.id || routerName,
+                    name: routerName,
+                    host: fromPayload?.host || primaryLanRes.vyos?.routerId || '—',
+                    location: fromPayload?.location || `${siteName} LAN Periphery`,
+                    status: fromPayload?.status || 'up',
+                    blackholeBlocks,
+                    interfaces: sortedIfaces,
+                };
+
+                siteRouters.push({
+                    name: routerName,
+                    routerName,
+                    id: routerObj.id,
+                    router: routerObj,
+                    resolutions: resList,
+                    lanInterfaceName: primaryLanRes.vyos?.interfaceName || interfaceItems[0]?.name || 'eth',
+                    lanIp: primaryLanRes.vyos?.ipCidr || primaryLanRes.vyos?.ip || interfaceItems[0]?.ipCidr || '—',
+                    hasShut,
+                    primaryQos,
+                    blockedCount,
+                    interfaceItems,
+                    defaultResolution: interfaceItems[0]?.resolution || primaryLanRes,
+                });
+            });
+
+            if (siteRouters.length > 0) {
+                map.set(siteName, siteRouters);
+            }
+        });
+
+        return map;
+    }, [underlayData, getVyosInterfaceStatus, getVyosInterfaceQos]);
+
     const processTopology = useCallback((data: any) => {
         if (!data.sites) return;
 
@@ -2116,6 +2536,8 @@ function TopologyContent({ token, theme }: TopologyProps) {
                 sitePositions.set(site.site_id, x);
                 sitePositions.set(site.site_name, x);
 
+                const siteLanRouters = siteLanVyosMap.get(site.site_name) || [];
+
                 newNodes.push({
                     id: `site:${site.site_id}`,
                     type: 'site',
@@ -2128,9 +2550,37 @@ function TopologyContent({ token, theme }: TopologyProps) {
                         fleetNodes,
                         underlayMode: topologyViewMode === 'underlay' ? 'badges' : 'off',
                         underlayResolutionMap,
-                        onInspectUnderlayCircuit: (res: any) => setUnderlayDrawerResolution(res)
+                        onInspectUnderlayCircuit: (res: any) => setUnderlayDrawerResolution(res),
+                        lanVyosRouters: siteLanRouters,
+                        onInspectLanVyos: (res: any) => setUnderlayDrawerResolution(res)
                     },
                 });
+
+                // In Underlay Mode, place peripheral LAN VyOS router(s) above Hubs or below Spokes
+                if (topologyViewMode === 'underlay' && siteLanRouters.length > 0) {
+                    const isHubRole = role === 'HUB';
+                    const lanY = isHubRole ? yPos - 390 : yPos + 390;
+                    const LAN_ROUTER_STEP = 440;
+                    siteLanRouters.forEach((lr: any, lrIdx: number) => {
+                        const offsetX = (lrIdx - (siteLanRouters.length - 1) / 2) * LAN_ROUTER_STEP;
+                        newNodes.push({
+                            id: `vyos-lan:${site.site_id}:${lr.name}`,
+                            type: 'vyosLanRouter',
+                            position: { x: x + offsetX, y: lanY },
+                            origin: [0.5, 0.5],
+                            data: {
+                                router: lr.router,
+                                siteId: site.site_id,
+                                siteName: site.site_name,
+                                isAboveSite: isHubRole,
+                                interfaceItems: lr.interfaceItems,
+                                resolutions: lr.interfaceItems.map((it: any) => it.resolution),
+                                onSelectResolution: (res: any) => setUnderlayDrawerResolution(res),
+                                onOpenRouterControl: (routerObj: any) => setSelectedRouterForTrafficControl(routerObj)
+                            }
+                        });
+                    });
+                }
             });
         };
 
@@ -2385,6 +2835,8 @@ function TopologyContent({ token, theme }: TopologyProps) {
                 sitePositions.set(gw.site_id, gwX);
                 sitePositions.set(gw.site_name, gwX);
 
+                const gwLanRouters = siteLanVyosMap.get(gw.site_name) || [];
+
                 newNodes.push({
                     id: `site:${gw.site_id}`,
                     type: 'site',
@@ -2397,9 +2849,34 @@ function TopologyContent({ token, theme }: TopologyProps) {
                         fleetNodes,
                         underlayMode: topologyViewMode === 'underlay' ? 'badges' : 'off',
                         underlayResolutionMap,
-                        onInspectUnderlayCircuit: (res: any) => setUnderlayDrawerResolution(res)
+                        onInspectUnderlayCircuit: (res: any) => setUnderlayDrawerResolution(res),
+                        lanVyosRouters: gwLanRouters,
+                        onInspectLanVyos: (res: any) => setUnderlayDrawerResolution(res)
                     },
                 });
+
+                if (topologyViewMode === 'underlay' && gwLanRouters.length > 0) {
+                    const LAN_ROUTER_STEP = 440;
+                    gwLanRouters.forEach((lr: any, lrIdx: number) => {
+                        const offsetX = (lrIdx - (gwLanRouters.length - 1) / 2) * LAN_ROUTER_STEP;
+                        newNodes.push({
+                            id: `vyos-lan:${gw.site_id}:${lr.name}`,
+                            type: 'vyosLanRouter',
+                            position: { x: gwX + offsetX, y: gwY + 360 },
+                            origin: [0.5, 0.5],
+                            data: {
+                                router: lr.router,
+                                siteId: gw.site_id,
+                                siteName: gw.site_name,
+                                isAboveSite: false,
+                                interfaceItems: lr.interfaceItems,
+                                resolutions: lr.interfaceItems.map((it: any) => it.resolution),
+                                onSelectResolution: (res: any) => setUnderlayDrawerResolution(res),
+                                onOpenRouterControl: (routerObj: any) => setSelectedRouterForTrafficControl(routerObj)
+                            }
+                        });
+                    });
+                }
             });
         }
 
@@ -2580,6 +3057,35 @@ function TopologyContent({ token, theme }: TopologyProps) {
                         });
                     });
                 });
+
+                // Also draw peripheral LAN cables from Site LAN block to any matched LAN VyOS router
+                const siteLanRouters = siteLanVyosMap.get(site.site_name) || [];
+                siteLanRouters.forEach((lr: any) => {
+                    const lanNodeId = `vyos-lan:${site.site_id}:${lr.name}`;
+                    const isLanLinkDown = lr.interfaceItems.some((it: any) => it.isIonLan && it.status === 'down');
+                    const hasLanQos = lr.interfaceItems.some((it: any) => Boolean(normalizeQos(it.qos)));
+                    newEdges.push({
+                        id: `underlay-edge:lan:${site.site_id}:${lr.name}`,
+                        type: 'site',
+                        source: `site:${site.site_id}`,
+                        target: lanNodeId,
+                        sourceHandle: 'lan-periphery',
+                        targetHandle: 'lan-link',
+                        animated: !isLanLinkDown,
+                        style: {
+                            stroke: isLanLinkDown ? '#ef4444' : (hasLanQos ? '#f59e0b' : '#10b981'),
+                            strokeWidth: 3,
+                            strokeDasharray: isLanLinkDown ? '4 4' : undefined
+                        },
+                        data: {
+                            site_name: site.site_name,
+                            hideLabel: true,
+                            resolution: lr.defaultResolution,
+                            isUnderlayEdge: true,
+                            isLanPeripheryEdge: true
+                        }
+                    });
+                });
             });
         } else if (topologyViewMode === 'sase') {
             // mode SASE: Draw ServiceLink IPsec tunnels from Branches to SASE PoPs
@@ -2707,7 +3213,7 @@ function TopologyContent({ token, theme }: TopologyProps) {
 
         setNodes(newNodes);
         setEdges(newEdges);
-    }, [logicalViewSiteId, selectedNetwork, setNodes, setEdges, visibleSiteIds, isHubLike, siteHubStatus, topologyViewMode, underlayData, fleetNodes, pathFilter, bgLayout, showBranchMesh, hasPureHubs, effectiveBgAsHub, getVyosInterfaceStatus]);
+    }, [logicalViewSiteId, selectedNetwork, setNodes, setEdges, visibleSiteIds, isHubLike, siteHubStatus, topologyViewMode, underlayData, fleetNodes, pathFilter, bgLayout, showBranchMesh, hasPureHubs, effectiveBgAsHub, getVyosInterfaceStatus, siteLanVyosMap]);
 
     const fetchTopology = useCallback(async () => {
         setLoading(true);
@@ -2797,7 +3303,7 @@ function TopologyContent({ token, theme }: TopologyProps) {
         setHoveredEdge(null);
         if (node.type === 'underlayGateway' && nodeData?.resolution) {
             setUnderlayDrawerResolution(nodeData.resolution);
-        } else if (node.type === 'vyosRouter' && Array.isArray(nodeData?.resolutions) && nodeData.resolutions.length > 0) {
+        } else if ((node.type === 'vyosRouter' || node.type === 'vyosLanRouter') && Array.isArray(nodeData?.resolutions) && nodeData.resolutions.length > 0) {
             setUnderlayDrawerResolution(nodeData.resolutions[0]);
         }
     }, [topologyViewMode]);
@@ -2987,7 +3493,7 @@ function TopologyContent({ token, theme }: TopologyProps) {
                 return n.type === 'site' || n.type === 'sasePop';
             }
             if (topologyViewMode === 'underlay') {
-                return n.type === 'site' || n.type === 'vyosRouter' || n.type === 'underlayGateway' || n.id === 'cloud:EXTERNAL';
+                return n.type === 'site' || n.type === 'vyosRouter' || n.type === 'vyosLanRouter' || n.type === 'underlayGateway' || n.id === 'cloud:EXTERNAL';
             }
             return true;
         });
@@ -3002,15 +3508,31 @@ function TopologyContent({ token, theme }: TopologyProps) {
                         ...nodeData,
                         underlayMode,
                         underlayResolutionMap,
+                        lanVyosRouters: siteLanVyosMap.get(nodeData.site_name || nodeData.name) || [],
+                        onInspectLanVyos: (resolution: UnderlayResolution) => {
+                            setUnderlayDrawerResolution(resolution);
+                        },
                         onInspectUnderlayCircuit: (resolution: UnderlayResolution) => {
-                            setUnderlayPanelResolution(resolution);
-                            setShowUnderlayPanel(true);
+                            setUnderlayDrawerResolution(resolution);
                         },
                         selectedCircuitKey: selectedCircuit?.circuitKey,
                         onSelectCircuit: handleSelectCircuit,
                     }
                 }
-                : n;
+                : (n.type === 'vyosLanRouter')
+                    ? (() => {
+                        const siteEntry = (siteLanVyosMap.get(nodeData.siteName) || []).find((entry: any) => entry.routerName === nodeData.routerName);
+                        return siteEntry ? {
+                            ...n,
+                            data: {
+                                ...nodeData,
+                                router: siteEntry.router,
+                                resolutions: siteEntry.resolutions,
+                                interfaceItems: siteEntry.interfaceItems,
+                            }
+                        } : n;
+                    })()
+                    : n;
 
             let nodeOpacity: number | undefined = undefined;
             let nodeFilter: string | undefined = undefined;
@@ -3088,7 +3610,7 @@ function TopologyContent({ token, theme }: TopologyProps) {
 
             return enriched;
         });
-    }, [nodes, topologyViewMode, searchScope, underlayMode, underlayResolutionMap, underlayData, selectedCircuit, handleSelectCircuit, logicalViewSiteId]);
+    }, [nodes, topologyViewMode, searchScope, underlayMode, underlayResolutionMap, siteLanVyosMap, underlayData, selectedCircuit, handleSelectCircuit, logicalViewSiteId]);
 
 
     const filteredEdges = useMemo(() => {
@@ -6694,7 +7216,16 @@ function TopologyContent({ token, theme }: TopologyProps) {
             )}
 
             {/* Interactive Physical Link Trace Inspector (Compact Centered Action Modal) */}
-            {underlayDrawerResolution && (
+            {underlayDrawerResolution && (() => {
+                const isLanScope = underlayDrawerResolution.scope === 'lan';
+                const lanRouterEntry = isLanScope && underlayDrawerResolution.vyos?.routerName
+                    ? (siteLanVyosMap.get(underlayDrawerResolution.prismaWan.siteName || '') || []).find(
+                        (e: any) => e.routerName === underlayDrawerResolution.vyos?.routerName || e.name === underlayDrawerResolution.vyos?.routerName
+                    )
+                    : null;
+                const availableInterfaces = lanRouterEntry?.interfaceItems || [];
+
+                return (
                 <div 
                     className="fixed inset-0 z-[80] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-in fade-in duration-200"
                     onClick={() => setUnderlayDrawerResolution(null)}
@@ -6707,19 +7238,19 @@ function TopologyContent({ token, theme }: TopologyProps) {
                         <div className="flex items-center justify-between pb-3 border-b border-border/70">
                             <div className="flex items-center gap-2.5 min-w-0">
                                 <div className="p-2 rounded-xl bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30 flex-shrink-0">
-                                    <Activity size={18} />
+                                    {isLanScope ? <Router size={18} /> : <Activity size={18} />}
                                 </div>
                                 <div className="min-w-0">
                                     <div className="flex items-center gap-2">
                                         <h3 className="text-sm font-black uppercase text-text-primary tracking-wider">
-                                            WAN Link Details
+                                            {isLanScope ? 'LAN / Egress VyOS Control' : 'WAN Link Details'}
                                         </h3>
                                         {underlayDrawerResolution.status === 'matched' ? (
                                             <span 
                                                 className="text-[9px] font-black px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 inline-flex items-center gap-1"
-                                                title={`Subnet Correlated: ${underlayDrawerResolution.matchedNetwork || ''} (Prisma WAN and VyOS share the same transit subnet)`}
+                                                title={`Subnet Correlated: ${underlayDrawerResolution.matchedNetwork || ''}`}
                                             >
-                                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" /> LINK CONNECTED
+                                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" /> {isLanScope ? 'LAN ATTACHED' : 'LINK CONNECTED'}
                                             </span>
                                         ) : (
                                             <span className="text-[9px] font-black px-2 py-0.5 rounded-full bg-card-secondary text-text-muted border border-border">
@@ -6727,7 +7258,7 @@ function TopologyContent({ token, theme }: TopologyProps) {
                                             </span>
                                         )}
                                     </div>
-                                    <p className="text-[11px] text-text-muted font-mono truncate max-w-[320px] mt-0.5">
+                                    <p className="text-[11px] text-text-muted font-mono truncate max-w-[340px] mt-0.5">
                                         {underlayDrawerResolution.prismaWan.siteName} ({underlayDrawerResolution.prismaWan.interfaceName}) ⟷ {underlayDrawerResolution.vyos?.routerName || 'External WAN'}{underlayDrawerResolution.vyos ? ` (${underlayDrawerResolution.vyos.interfaceName})` : ''}
                                     </p>
                                 </div>
@@ -6740,6 +7271,53 @@ function TopologyContent({ token, theme }: TopologyProps) {
                                 <X size={18} />
                             </button>
                         </div>
+
+                        {/* Interface Switcher Pill Bar for LAN VyOS Routers (ION LAN port + Egress/NAT/BGP ports) */}
+                        {isLanScope && availableInterfaces.length > 1 && (
+                            <div className="space-y-1.5">
+                                <div className="flex items-center justify-between text-[10px] font-bold uppercase tracking-wider text-text-muted">
+                                    <span>Select Interface on {underlayDrawerResolution.vyos?.routerName} (LAN or Egress / NAT):</span>
+                                    <span className="text-[9px] font-mono text-amber-500">{availableInterfaces.length} ports</span>
+                                </div>
+                                <div className="flex flex-wrap gap-1.5">
+                                    {availableInterfaces.map((item: any) => {
+                                        const isSelected = underlayDrawerResolution.vyos?.interfaceName === item.ifName;
+                                        return (
+                                            <button
+                                                key={item.ifName}
+                                                onClick={() => setUnderlayDrawerResolution(item.resolution)}
+                                                className={cn(
+                                                    "px-2.5 py-1.5 rounded-xl border text-[10px] font-mono transition-all cursor-pointer flex items-center gap-1.5",
+                                                    isSelected
+                                                        ? "bg-amber-500/20 border-amber-500 text-amber-600 dark:text-amber-300 font-black shadow-sm"
+                                                        : "bg-card-secondary/60 border-border/70 text-text-secondary hover:border-amber-500/40 hover:text-text-primary"
+                                                )}
+                                            >
+                                                <span className={cn(
+                                                    "w-1.5 h-1.5 rounded-full flex-shrink-0",
+                                                    item.isDown ? "bg-rose-500" : item.hasQos ? "bg-amber-500 animate-pulse" : "bg-emerald-500"
+                                                )} />
+                                                <span className="font-bold">{item.ifName}</span>
+                                                <span className={cn(
+                                                    "text-[8px] font-black uppercase px-1 py-0.2 rounded border",
+                                                    item.isLanLink
+                                                        ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border-emerald-500/30"
+                                                        : "bg-sky-500/15 text-sky-600 dark:text-sky-400 border-sky-500/30"
+                                                )}>
+                                                    {item.roleLabel}
+                                                </span>
+                                                <span className="text-[9px] text-text-muted">{item.ipCidr.split('/')[0]}</span>
+                                                {item.hasQos && (
+                                                    <span className="text-[8px] font-black text-amber-500">
+                                                        {item.qos.latency ? `+${item.qos.latency}ms` : ''}{item.qos.loss ? ` ${item.qos.loss}%` : ''}
+                                                    </span>
+                                                )}
+                                            </button>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+                        )}
 
                         {/* Top: Interactive Action Controls (Immediate access under user focus!) */}
                         {renderVyosControls(underlayDrawerResolution)}
@@ -6758,12 +7336,12 @@ function TopologyContent({ token, theme }: TopologyProps) {
                                 </div>
                                 <div className="text-[11px] font-mono space-y-1.5 pt-1">
                                     <div className="flex justify-between items-center">
-                                        <span className="text-text-muted">Circuit:</span>
+                                        <span className="text-text-muted">{isLanScope ? 'ION Port:' : 'Circuit:'}</span>
                                         <strong className="text-text-primary truncate max-w-[120px]">{underlayDrawerResolution.prismaWan.interfaceName}</strong>
                                     </div>
                                     <div className="flex justify-between items-center">
                                         <span className="text-text-muted">Type:</span>
-                                        <strong className="text-blue-600 dark:text-blue-400 uppercase">{underlayDrawerResolution.prismaWan.linkType || 'WAN'}</strong>
+                                        <strong className="text-blue-600 dark:text-blue-400 uppercase">{underlayDrawerResolution.prismaWan.linkType || (isLanScope ? 'LAN' : 'WAN')}</strong>
                                     </div>
                                     <div className="flex justify-between items-center">
                                         <span className="text-text-muted">ION IP:</span>
@@ -6788,7 +7366,7 @@ function TopologyContent({ token, theme }: TopologyProps) {
                                         <strong className="text-text-primary">{underlayDrawerResolution.vyos?.interfaceName || '—'}</strong>
                                     </div>
                                     <div className="flex justify-between items-center">
-                                        <span className="text-text-muted">Next-Hop:</span>
+                                        <span className="text-text-muted">{isLanScope ? 'VyOS IP:' : 'Next-Hop:'}</span>
                                         <strong className="text-emerald-600 dark:text-emerald-400">{underlayDrawerResolution.vyos?.ipCidr || underlayDrawerResolution.vyos?.ip || '—'}</strong>
                                     </div>
                                     <div className="flex justify-between items-center">
@@ -6814,7 +7392,7 @@ function TopologyContent({ token, theme }: TopologyProps) {
                         {/* Bottom: Transit Subnet Banner */}
                         <div className="flex items-center justify-between px-4 py-2.5 rounded-xl bg-card-secondary/70 border border-amber-500/30 font-mono text-[11px] shadow-sm">
                             <span className="text-[10px] font-black uppercase tracking-wider text-amber-600 dark:text-amber-400">
-                                Transit Subnet:
+                                {isLanScope ? 'Interface Subnet:' : 'Transit Subnet:'}
                             </span>
                             <span className="px-2.5 py-0.5 rounded-md bg-amber-500/20 text-amber-700 dark:text-amber-300 font-bold border border-amber-500/30">
                                 {underlayDrawerResolution.matchedNetwork || underlayDrawerResolution.vyos?.network || '—'}
@@ -6822,7 +7400,8 @@ function TopologyContent({ token, theme }: TopologyProps) {
                         </div>
                     </div>
                 </div>
-            )}
+                );
+            })()}
 
             {/* Interactive Netem QoS Modal */}
             {showNetemModal && netemTarget && (
