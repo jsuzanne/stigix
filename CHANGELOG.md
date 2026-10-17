@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.0.37] - 2026-10-17
+
+### Fixed & Enhanced
+- **Security Dashboard — Responsive Grid, High-Contrast Category Titles & Selection Reliability (`Security.tsx`)**:
+  - **Responsive Breakpoints for 13" MacBook Air vs. 27" Displays**: Adjusted grid breakpoints from `xl:grid-cols-4 2xl:grid-cols-5` to `lg:grid-cols-3 min-[1800px]:grid-cols-4 min-[2200px]:grid-cols-5` (URL Filtering) and `lg:grid-cols-3 min-[1800px]:grid-cols-4` (DNS Security, C2 Scenarios, AI Security) so 13" Retina screens display 3 spacious columns without truncating titles while 27" monitors retain 4–5 columns.
+  - **High-Contrast Bright White Category Titles**: Removed `opacity-60` card attenuation and `text-text-muted` dimming on unselected items so all category, domain, and scenario names remain bright white (`text-text-primary dark:text-white`) regardless of selection state.
+  - **Instant Optimistic Selection & Custom Checkboxes**: Replaced native `<input type="checkbox">` controls with custom `<Check />` badges and clickable card headers, added immediate optimistic React state updates in `saveConfig()`, and guarded 15s background polling (`fetchConfig()`) with `savingConfigCountRef` to prevent race conditions when toggling individual categories or *Select All*.
+- **DEM / Connectivity Logger Cache Optimization (`connectivity-logger.ts`)**:
+  - Preserved the 5-second TTL on `statsCache` in `ConnectivityLogger.getStats()` instead of invalidating it on every single background probe write, reducing synchronous JSONL disk parsing overhead during DEM page loads.
+
 ## [3.0.36] - 2026-10-17
 
 ### Added & Enhanced
