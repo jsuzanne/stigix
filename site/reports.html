@@ -619,6 +619,44 @@
 // ── Embedded Fallback Data (allows opening directly via file:// in Finder) ──
 const FALLBACK_REPORTS_DATA = [
   {
+    "id": "whitepaper-sdwan-multicast-validation",
+    "title": "SD-WAN Multicast Validation & Troubleshooting Guide",
+    "category": "White Paper",
+    "tags": ["Multicast", "IGMPv3", "PIM-SM", "Prisma SD-WAN", "VyOS", "SPT Switchover"],
+    "date": "2026-10-16",
+    "author": "Jean-Louis SUZANNE, Technical Sales Manager, Palo Alto Networks",
+    "summary": "End-to-end architecture and lab validation guide for testing IP Multicast (IGMPv2/v3, PIM-SM, Rendezvous Point, and SPT switchover) across Prisma SD-WAN and VyOS transit routers from a single Stigix Leader dashboard.",
+    "highlights": [
+      "4-step automated orchestration: Receiver IGMPv3 Join → Sender UDP stream → Live telemetry → Clean IGMP Leave",
+      "Hub-to-Branch (DC1 → BR5) and Branch-to-Branch (BR8 → BR5) validation with Shortest-Path Tree (SPT) switchover",
+      "Complete Prisma SD-WAN ION and VyOS PIM-SM / IGMP reference configurations",
+      "Real-time diagnostic verdicts separating healthy replication, WAN loss/jitter, and PIM/RP blackholes"
+    ],
+    "pdf_file": "WHITEPAPER_SDWAN_MULTICAST_VALIDATION.pdf",
+    "markdown_file": "WHITEPAPER_SDWAN_MULTICAST_VALIDATION.md",
+    "featured": true,
+    "size": "1.63 MB"
+  },
+  {
+    "id": "stigix-mcp-scenarios-capabilities",
+    "title": "Stigix MCP: Scenarios & Capabilities",
+    "category": "White Paper",
+    "tags": ["FastMCP", "AI Orchestration", "Claude", "SD-WAN Automation", "Scenarios"],
+    "date": "2026-10-10",
+    "author": "Jean-Louis SUZANNE, Technical Sales Manager, Palo Alto Networks",
+    "summary": "Concrete use cases enabled by the Stigix SD-WAN FastMCP integration with Claude: 12 self-contained, reproducible scenarios triggered in natural language — from automated failover drills and DEM onboarding to QoS load demos and zero-touch branch provisioning.",
+    "highlights": [
+      "12 concrete AI-native SD-WAN & SASE automation scenarios",
+      "Triggered in plain English with Claude Desktop — no CLI or manual scripts required",
+      "Covers failover drills, DEM path correlation, security audits, and zero-touch onboarding",
+      "Fully validated on the Stigix multi-site lab fabric"
+    ],
+    "pdf_file": "Stigix_MCP_Scenarios_and_Capabilities.pdf",
+    "markdown_file": "Stigix_MCP_Scenarios_and_Capabilities.md",
+    "featured": true,
+    "size": "143 KB"
+  },
+  {
     "id": "whitepaper-app-vs-network",
     "title": "Beyond Ping: Separating Application from Network Issues",
     "category": "White Paper",
@@ -774,6 +812,11 @@ async function initReports() {
   }
   updateCategoryCounts();
   renderReports();
+  const targetId = new URLSearchParams(window.location.search).get('id');
+  if (targetId) {
+    const targetRep = allReports.find(r => r.id === targetId);
+    if (targetRep && targetRep.markdown_file) openDocModal(targetRep);
+  }
 }
 
 function updateCategoryCounts() {

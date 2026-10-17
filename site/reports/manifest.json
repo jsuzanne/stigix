@@ -1,5 +1,24 @@
 [
   {
+    "id": "whitepaper-sdwan-multicast-validation",
+    "title": "SD-WAN Multicast Validation & Troubleshooting Guide",
+    "category": "White Paper",
+    "tags": ["Multicast", "IGMPv3", "PIM-SM", "Prisma SD-WAN", "VyOS", "SPT Switchover"],
+    "date": "2026-10-16",
+    "author": "Jean-Louis SUZANNE, Technical Sales Manager, Palo Alto Networks",
+    "summary": "End-to-end architecture and lab validation guide for testing IP Multicast (IGMPv2/v3, PIM-SM, Rendezvous Point, and SPT switchover) across Prisma SD-WAN and VyOS transit routers from a single Stigix Leader dashboard.",
+    "highlights": [
+      "4-step automated orchestration: Receiver IGMPv3 Join → Sender UDP stream → Live telemetry → Clean IGMP Leave",
+      "Hub-to-Branch (DC1 → BR5) and Branch-to-Branch (BR8 → BR5) validation with Shortest-Path Tree (SPT) switchover",
+      "Complete Prisma SD-WAN ION and VyOS PIM-SM / IGMP reference configurations",
+      "Real-time diagnostic verdicts separating healthy replication, WAN loss/jitter, and PIM/RP blackholes"
+    ],
+    "pdf_file": "WHITEPAPER_SDWAN_MULTICAST_VALIDATION.pdf",
+    "markdown_file": "WHITEPAPER_SDWAN_MULTICAST_VALIDATION.md",
+    "featured": true,
+    "size": "1.63 MB"
+  },
+  {
     "id": "stigix-mcp-scenarios-capabilities",
     "title": "Stigix MCP: Scenarios & Capabilities",
     "category": "White Paper",

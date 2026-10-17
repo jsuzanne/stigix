@@ -141,9 +141,9 @@
       <button class="faq-tab-btn"           data-tab="ops"      role="tab" aria-selected="false" aria-controls="panel-ops">Operations</button>
       <button class="faq-tab-btn"           data-tab="cli"      role="tab" aria-selected="false" aria-controls="panel-cli">Stigix CLI</button>
       <button class="faq-tab-btn"           data-tab="mcp"      role="tab" aria-selected="false" aria-controls="panel-mcp">Claude &amp; MCP <span class="faq-badge faq-badge--new">AI</span></button>
-      <button class="faq-tab-btn"           data-tab="custom-tcp"   role="tab" aria-selected="false" aria-controls="panel-custom-tcp">Custom TCP Apps <span class="faq-badge faq-badge--new">V2</span></button>
-      <button class="faq-tab-btn"           data-tab="provisioning" role="tab" aria-selected="false" aria-controls="panel-provisioning">Global Provisioning <span class="faq-badge faq-badge--new">V2</span></button>
-      <button class="faq-tab-btn"           data-tab="topologies"   role="tab" aria-selected="false" aria-controls="panel-topologies">Deployment Topologies <span class="faq-badge faq-badge--new">V2</span></button>
+      <button class="faq-tab-btn"           data-tab="custom-tcp"   role="tab" aria-selected="false" aria-controls="panel-custom-tcp">Custom Apps &amp; Multicast <span class="faq-badge faq-badge--new">V3</span></button>
+      <button class="faq-tab-btn"           data-tab="provisioning" role="tab" aria-selected="false" aria-controls="panel-provisioning">Global Provisioning <span class="faq-badge faq-badge--new">V3</span></button>
+      <button class="faq-tab-btn"           data-tab="topologies"   role="tab" aria-selected="false" aria-controls="panel-topologies">Deployment Topologies <span class="faq-badge faq-badge--new">V3</span></button>
       <button class="faq-tab-btn"           data-tab="registry"     role="tab" aria-selected="false" aria-controls="panel-registry">Targets &amp; Registry</button>
     </div>
 
@@ -1872,7 +1872,7 @@ voice start --target all</pre>
   }
 }</pre>
             <p>Config file locations: <strong>macOS</strong> &rarr; <code>~/Library/Application Support/Claude/claude_desktop_config.json</code> &nbsp; <strong>Windows</strong> &rarr; <code>%APPDATA%\Claude\claude_desktop_config.json</code></p>
-            <p>After saving, <strong>fully restart Claude Desktop</strong> (Cmd+Q, reopen). Click the hammer icon &mdash; you should see Stigix with a green status and 79 tools available.</p>
+            <p>After saving, <strong>fully restart Claude Desktop</strong> (Cmd+Q, reopen). Click the hammer icon &mdash; you should see Stigix with a green status and 89 tools available.</p>
             <p>No Node.js? Use the Python bridge instead: clone the repo, run <code>./mcp-server/setup-bridge.sh</code>, then point the config to the local Python bridge script. See <a href="https://github.com/jsuzanne/stigix/blob/main/docs/MCP_SERVER.md" target="_blank" rel="noopener noreferrer">MCP_SERVER.md</a> for the full setup.</p>
             <p><strong>&#128276; Claude Pro recommended:</strong> Stigix MCP sessions are tool-heavy &mdash; a single fabric-wide report or full security audit can invoke 10&ndash;20 tools and return thousands of tokens of data. The Claude <strong>free tier</strong> hits its usage limit very quickly under this load and will stop mid-session asking you to wait until the next usage window. A <strong>Claude Pro</strong> (or Teams / Enterprise) subscription is strongly recommended for a smooth, uninterrupted experience.</p>
           </div></div></div>
@@ -1881,7 +1881,7 @@ voice start --target all</pre>
         <div class="faq-item">
           <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">Can Claude generate executive engineering reports and whitepapers from Stigix MCP?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
           <div class="faq-item__body"><div class="faq-item__inner"><div class="faq-item__answer">
-            <p><strong>Yes, absolutely.</strong> This is one of the most powerful workflows enabled by the 79 FastMCP tools. Instead of manual data exports and spreadsheet charting, Claude can autonomously investigate live fabric metrics, correlate multi-site SD-WAN failover curves, analyze application-layer vs network-layer impairments, and synthesize comprehensive executive reports.</p>
+            <p><strong>Yes, absolutely.</strong> This is one of the most powerful workflows enabled by the 89 FastMCP tools. Instead of manual data exports and spreadsheet charting, Claude can autonomously investigate live fabric metrics, correlate multi-site SD-WAN failover curves, analyze application-layer vs network-layer impairments, and synthesize comprehensive executive reports.</p>
             <p><strong>Available output formats &amp; topics:</strong></p>
             <ul>
               <li><strong>Technical Whitepapers &amp; PoC Validation Reports</strong> (PDF / Markdown / DOCX) with executive summaries, topology diagrams, failover latency curves, and SLA compliance tables.</li>
@@ -2300,6 +2300,30 @@ docker compose restart</pre>
           </div></div></div>
         </div>
 
+        <div class="faq-item">
+          <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">How does SD-WAN Multicast Overlay (IGMPv2/v3 &amp; PIM-SM) validation work? <span class="faq-badge faq-badge--new">V3</span></span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
+          <div class="faq-item__body"><div class="faq-item__inner"><div class="faq-item__answer">
+            <p>In <strong>Custom Apps &rarr; Multicast Overlay</strong>, Stigix separates the <strong>Control Plane</strong> (the Leader dashboard) from the <strong>Data Plane</strong> (real UDP multicast packets injected onto the physical LAN) to validate end-to-end multicast replication across Prisma SD-WAN and transit routers in one click:</p>
+            <ul>
+              <li><strong>3 Modes Supported:</strong> <code>ASM (*,G — 239.0.0.0/8)</code> using a Rendezvous Point, <code>SSM (S,G — 232.0.0.0/8)</code> via IGMPv3 source-specific joins, and <code>Link-Local (224.0.0.x)</code> to verify that routers do not leak local multicast across the WAN.</li>
+              <li><strong>4-Step Automated Sequence:</strong> (1) Selected branch Receivers subscribe first via native kernel <strong>IGMPv3 Membership Reports</strong> (`IP_ADD_MEMBERSHIP` / `IP_ADD_SOURCE_MEMBERSHIP`); (2) the Sender injects sequence-numbered, timestamped UDP multicast frames with configurable CBR/Burst bitrate, TTL, and DSCP (e.g., <code>EF</code>); (3) the Leader polls per-receiver packet loss, jitter, and mid-stream interruption gaps every 2s; (4) on Stop, the Sender halts before Receivers send an <strong>IGMP Leave</strong> to avoid false loss counters.</li>
+              <li><strong>Hub-to-Branch &amp; Branch-to-Branch (SPT Switchover):</strong> Any peer in the fleet can act as Sender or Receiver, making it effortless to validate both Hub RP replication (<code>DC1 &rarr; BR5</code>) and direct branch-to-branch Shortest-Path Tree switchover (<code>BR8 &rarr; BR5</code>).</li>
+            </ul>
+            <p>Read the full <a href="reports.html?id=whitepaper-sdwan-multicast-validation">SD-WAN Multicast Validation &amp; Troubleshooting White Paper</a> for Prisma SD-WAN ION and VyOS PIM-SM reference configurations.</p>
+          </div></div></div>
+        </div>
+
+        <div class="faq-item">
+          <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">How do Live Packet Capture (Web Wireshark) and Stateful L7 PCAP Replay work? <span class="faq-badge faq-badge--new">V3</span></span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
+          <div class="faq-item__body"><div class="faq-item__inner"><div class="faq-item__answer">
+            <p>Stigix V3 introduces two complementary packet-level engines:</p>
+            <ul>
+              <li><strong>Live Packet Capture (Operations &rarr; Packet Capture):</strong> A browser-native 3-pane packet analyzer (packet list, L2/L3/L4 protocol tree, and synchronized hex/ASCII dump) powered by <code>tshark</code>. Filter by interface, protocol (TCP, UDP, ICMP, IGMP, DNS, HTTP, TLS), host IP, port, or raw BPF expression, and download standard <code>.pcap</code> files in one click.</li>
+              <li><strong>Stateful L7 PCAP Replay (Custom Apps &rarr; PCAP Replay):</strong> Upload any multi-packet <code>.pcap</code> capture (up to 5 MB) or pick from built-in enterprise templates (SAP GUI, Citrix ICA, SMBv2, LDAP, Oracle TNS, RTSP). Stigix extracts the bidirectional Client &harr; Server payload turns and replays them over real stateful TCP sockets or UDP datagrams so Next-Gen Firewalls and SD-WAN Deep Packet Inspection (App-ID) engines classify the exact application signature.</li>
+            </ul>
+          </div></div></div>
+        </div>
+
       </div><!-- /panel-custom-tcp -->
 
 
@@ -2605,7 +2629,7 @@ stigix-cli provision peers</pre>
       </ul>
     </div>
     <p class="footer__note" style="margin-top:12px;padding-top:12px;border-top:1px solid var(--stroke);font-family:var(--mono);font-size:0.72rem;color:var(--muted);">
-      Site last updated: <strong id="faq-footer-date" style="color:var(--mid)">2026-10-10</strong> &nbsp;&middot;&nbsp; Covers release <a href="https://github.com/jsuzanne/stigix/releases" target="_blank" rel="noopener noreferrer" style="color:var(--teal);">v2.2.0</a> &nbsp;&middot;&nbsp; <a href="https://github.com/jsuzanne/stigix/blob/main/CHANGELOG_V2.md" target="_blank" rel="noopener noreferrer" style="color:var(--teal);">View V2 changelog &rarr;</a>
+      Site last updated: <strong id="faq-footer-date" style="color:var(--mid)">2026-10-17</strong> &nbsp;&middot;&nbsp; Covers release <a href="https://github.com/jsuzanne/stigix/releases" target="_blank" rel="noopener noreferrer" style="color:var(--teal);">v3.0.34</a> &nbsp;&middot;&nbsp; <a href="https://github.com/jsuzanne/stigix/blob/main/CHANGELOG_V2.md" target="_blank" rel="noopener noreferrer" style="color:var(--teal);">View changelog &rarr;</a>
     </p>
     <script>var fd=new Date(document.lastModified);if(fd.getFullYear()>2000){document.getElementById('faq-footer-date').textContent=fd.toISOString().slice(0,10);}</script>
     <p class="footer__note" style="margin-top:8px;font-family:var(--mono);font-size:0.72rem;color:var(--muted);">
