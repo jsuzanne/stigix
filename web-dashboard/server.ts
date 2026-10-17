@@ -2083,7 +2083,7 @@ const getDnsCommand = (domain: string, srcPort?: number, bindIp?: string): { com
 
     // Priority 2: nslookup (Universal and provides CNAME info which is vital for sinkhole detection)
     if (availableCommands.nslookup) {
-        const cmd = `nslookup -timeout=5 ${domain}.`;
+        const cmd = `nslookup -timeout=2 ${domain}.`;
         return { command: cmd, type: 'nslookup', port: srcPort };
     }
 
@@ -2097,7 +2097,7 @@ const getDnsCommand = (domain: string, srcPort?: number, bindIp?: string): { com
     }
 
     // Ultimate fallback
-    return { command: `nslookup -timeout=5 ${domain}.`, type: 'nslookup', port: srcPort };
+    return { command: `nslookup -timeout=2 ${domain}.`, type: 'nslookup', port: srcPort };
 };
 
 // Parse DNS command output based on command type
@@ -8364,23 +8364,25 @@ const addTestResult = async (testType: string, testName: string, result: any, te
         runId
     };
 
-    // 4. Enrich with SCM / SASE telemetry if available
-    try {
-        let srcIp = process.env.STIGIX_IP || 'auto';
-        if (srcIp === 'auto') {
-            srcIp = await getLatestEgressIp() || 'auto';
-        }
-        await enrichWithSLS(testResult, srcIp);
-        if (testResult.slsDiagnostic) {
-            result.slsDiagnostic = testResult.slsDiagnostic;
-            if (details) details.slsDiagnostic = testResult.slsDiagnostic;
-        }
-    } catch (e: any) {
-        log('SLS', `Auto-enrichment skipped: ${e.message}`, 'warn');
-    }
-
     const previousStatus = await testLogger.getLatestStatus(testResult.type, testResult.name);
     await testLogger.logTest(testResult);
+
+    // 4. Enrich with SCM / SASE telemetry asynchronously in background (do not block test response)
+    (async () => {
+        try {
+            let srcIp = process.env.STIGIX_IP || 'auto';
+            if (srcIp === 'auto') {
+                srcIp = await getLatestEgressIp() || 'auto';
+            }
+            await enrichWithSLS(testResult, srcIp);
+            if (testResult.slsDiagnostic) {
+                result.slsDiagnostic = testResult.slsDiagnostic;
+                if (details) details.slsDiagnostic = testResult.slsDiagnostic;
+            }
+        } catch (e: any) {
+            log('SLS', `Auto-enrichment skipped: ${e.message}`, 'warn');
+        }
+    })();
 
     return { id, previousStatus, slsDiagnostic: testResult.slsDiagnostic };
 };
@@ -9591,8 +9593,11 @@ const getCurlErrorInfo = (exitCode: number, errMsg: string): {
     }
 };
 
+const preDnsCache = new Map<string, { ts: number; issue: { status: string; errorType: string; errorDescription: string; technicalDetail: string; likelyFirewallBlock: boolean } | null }>();
+const PRE_DNS_CACHE_TTL_MS = 60_000;
+
 /**
- * Pre-DNS check: resolves hostname via nslookup (4s timeout) BEFORE launching curl.
+ * Pre-DNS check: resolves hostname via nslookup (2s timeout, cached 60s per hostname) BEFORE launching curl.
  * Fixes the "first test = curl exit 28 timeout, second = exit 6" artifact caused by slow
  * DNS proxy resolution on first query (DNS result arrives after curl already gave up).
  * Returns null if DNS is fine, or a getCurlErrorInfo-compatible object if unresolvable.
@@ -9604,9 +9609,16 @@ const preDnsCheck = async (url: string): Promise<{
     let hostname: string;
     try { hostname = new URL(url).hostname; } catch { return null; }
     if (!hostname) return null;
+
+    const cached = preDnsCache.get(hostname);
+    if (cached && (Date.now() - cached.ts) < PRE_DNS_CACHE_TTL_MS) {
+        return cached.issue;
+    }
+
     try {
         const execP = promisify(exec);
-        await execP(`nslookup -timeout=4 ${hostname}.`, { timeout: 5000 });
+        await execP(`nslookup -timeout=2 ${hostname}.`, { timeout: 2500 });
+        preDnsCache.set(hostname, { ts: Date.now(), issue: null });
         return null; // resolved OK — proceed with curl
     } catch (e: any) {
         const out: string = (e.stdout || '') + (e.stderr || '') + (e.message || '');
@@ -9614,13 +9626,15 @@ const preDnsCheck = async (url: string): Promise<{
             out.includes("server can't find") || out.includes('Non-existent domain');
         const isTimeout  = out.includes('timed out') || out.includes('connection timeout');
         if (isNxDomain || isTimeout) {
-            return {
+            const issue = {
                 status: 'dns_error',
                 errorType: 'DNS_RESOLUTION_FAILURE',
                 likelyFirewallBlock: false,
                 errorDescription: `The hostname "${hostname}" could not be resolved${isNxDomain ? ' (NXDOMAIN)' : ' (DNS timeout)'}. The domain does not exist, is misspelled, or DNS is unavailable from this node.`,
-                technicalDetail: `nslookup pre-check failed for ${hostname} — ${isNxDomain ? 'NXDOMAIN returned' : 'DNS query timed out after 4s'}. Skipping curl to avoid misleading 10s timeout result.`
+                technicalDetail: `nslookup pre-check failed for ${hostname} — ${isNxDomain ? 'NXDOMAIN returned' : 'DNS query timed out after 2s'}. Skipping curl to avoid misleading timeout result.`
             };
+            preDnsCache.set(hostname, { ts: Date.now(), issue });
+            return issue;
         }
         return null; // other nslookup failure — let curl attempt anyway
     }
@@ -9643,7 +9657,7 @@ app.post('/api/security/url-test', authenticateToken, async (req, res) => {
         // util.promisify already imported as promisify
         const execPromise = promisify(exec);
 
-        // ── Pre-DNS check (avoids misleading 10s curl timeout on first query) ──
+        // ── Pre-DNS check (avoids misleading curl timeout on first query) ──
         const dnsIssue = await preDnsCheck(url);
         if (dnsIssue) {
             logTest(`[URL-TEST-${testId}] Pre-DNS check failed for ${url}: ${dnsIssue.errorType}`);
@@ -9655,7 +9669,7 @@ app.post('/api/security/url-test', authenticateToken, async (req, res) => {
                 error: dnsIssue.technicalDetail,
                 likelyFirewallBlock: dnsIssue.likelyFirewallBlock,
                 reason: `${dnsIssue.errorType}: ${dnsIssue.errorDescription}`,
-                command: `nslookup -timeout=4 ${new URL(url).hostname}.`,
+                command: `nslookup -timeout=2 ${new URL(url).hostname}.`,
                 ...(mcp_source && { mcp_source })
             };
             const { previousStatus } = await addTestResult('url_filtering', category || url, result, testId);
@@ -9664,7 +9678,7 @@ app.post('/api/security/url-test', authenticateToken, async (req, res) => {
 
         const { ifaceFlag } = getEgressConfig();
         const targetPort = getPredictiveSourcePort('url_filtering', testId);
-        const curlCommand = `curl -sSL --max-time 10 ${ifaceFlag} --local-port ${targetPort} -w '\n__HTTP__:%{http_code}\n__PORT__:%{local_port}' '${url}'`;
+        const curlCommand = `curl -sSL --connect-timeout 3 --max-time 4 ${ifaceFlag} --local-port ${targetPort} -w '\n__HTTP__:%{http_code}\n__PORT__:%{local_port}' '${url}'`;
         logTest(`[URL-TEST-${testId}] Executing URL test for ${url} (${category || 'Uncategorized'}): ${curlCommand}`);
 
         try {
@@ -9694,7 +9708,7 @@ app.post('/api/security/url-test', authenticateToken, async (req, res) => {
             }
 
             const status = (httpCode >= 200 && httpCode < 400 && !isBlockPage) || (httpCode === 404 && !isBlockPage) ? 'allowed' : 'blocked';
-            const executedCommand = `curl -sSL --max-time 10 ${ifaceFlag} --local-port ${srcPort} -w '\n__HTTP__:%{http_code}\n__PORT__:%{local_port}' '${url}'`;
+            const executedCommand = `curl -sSL --connect-timeout 3 --max-time 4 ${ifaceFlag} --local-port ${srcPort} -w '\n__HTTP__:%{http_code}\n__PORT__:%{local_port}' '${url}'`;
 
             const result = {
                 success: status === 'allowed',
@@ -9722,7 +9736,7 @@ app.post('/api/security/url-test', authenticateToken, async (req, res) => {
             const exitCode = parseCurlExitCode(curlError.message);
             const errInfo = getCurlErrorInfo(exitCode, curlError.message);
             const srcPort = targetPort;
-            const curlCmd = `curl -sSL --max-time 10 ${ifaceFlag} --local-port ${targetPort} -w '\n__HTTP__:%{http_code}\n__PORT__:%{local_port}' '${url}'`;
+            const curlCmd = `curl -sSL --connect-timeout 3 --max-time 4 ${ifaceFlag} --local-port ${targetPort} -w '\n__HTTP__:%{http_code}\n__PORT__:%{local_port}' '${url}'`;
 
             const result = {
                 success: false,
@@ -9753,7 +9767,7 @@ app.post('/api/security/url-test', authenticateToken, async (req, res) => {
     }
 });
 
-// API: URL Filtering Batch Test
+// API: URL Filtering Batch Test (parallel worker pool)
 app.post('/api/security/url-test-batch', authenticateToken, async (req, res) => {
     const { tests } = req.body; // Array of { url, category }
 
@@ -9762,155 +9776,168 @@ app.post('/api/security/url-test-batch', authenticateToken, async (req, res) => 
     }
 
     const runId = `manual-url-${Date.now()}`;
-    const results = [];
+    const results: any[] = new Array(tests.length);
     const { ifaceFlag } = getEgressConfig();
+    const execPromise = promisify(exec);
 
-    logTest(`[URL-BATCH-${runId}] Starting batch URL filtering test with ${tests.length} tests`);
+    logTest(`[URL-BATCH-${runId}] Starting parallel batch URL filtering test with ${tests.length} tests`);
 
-    for (let i = 0; i < tests.length; i++) {
-        const test = tests[i];
-        const testId = getNextTestId();
-        const targetPort = getPredictiveSourcePort('url_filtering', testId);
+    // Warm up preDnsCheck for the first URL hostname so workers share the cache
+    if (tests[0]?.url) {
+        await preDnsCheck(tests[0].url);
+    }
 
-        try {
-            logTest(`[URL-BATCH-${runId}][URL-TEST-${testId}] [${i + 1}/${tests.length}] Testing: ${test.url} (${test.category}, Port ${targetPort})`);
+    let cursor = 0;
+    const concurrency = Math.min(8, tests.length);
 
-            const execPromise = promisify(exec);
+    const runWorker = async () => {
+        while (true) {
+            const i = cursor++;
+            if (i >= tests.length) break;
 
-            // ── Pre-DNS check ──────────────────────────────────────────────────
-            const dnsIssue = await preDnsCheck(test.url);
-            if (dnsIssue) {
-                logTest(`[URL-TEST-${testId}] Pre-DNS check failed for ${test.url}: ${dnsIssue.errorType}`);
-                const dnsResult = {
-                    success: false, httpCode: 0,
-                    srcPort: targetPort,
-                    url: test.url, category: test.category,
-                    status: dnsIssue.status,
-                    errorType: dnsIssue.errorType,
-                    errorDescription: dnsIssue.errorDescription,
-                    error: dnsIssue.technicalDetail,
-                    likelyFirewallBlock: dnsIssue.likelyFirewallBlock,
-                    command: `nslookup -timeout=4 ${new URL(test.url).hostname}.`,
-                    reason: `${dnsIssue.errorType}: ${dnsIssue.errorDescription}`
-                };
-                results.push(dnsResult);
-                await addTestResult('url_filtering', test.category, dnsResult, testId, {
-                    url: test.url, error: dnsIssue.technicalDetail,
-                    errorType: dnsIssue.errorType, likelyFirewallBlock: dnsIssue.likelyFirewallBlock,
-                    command: dnsResult.command, srcPort: dnsResult.srcPort
-                }, runId);
-                continue;
-            }
-
-            const curlCommand = `curl -sSL --max-time 10 ${ifaceFlag} --local-port ${targetPort} -w '\n__HTTP__:%{http_code}\n__PORT__:%{local_port}' '${test.url}'`;
-            logTest(`[URL-TEST-${testId}] Executing URL test for ${test.url} (${test.category}): ${curlCommand}`);
+            const test = tests[i];
+            const testId = getNextTestId();
+            const targetPort = getPredictiveSourcePort('url_filtering', testId);
 
             try {
-                const { stdout, stderr } = await execPromise(curlCommand);
+                logTest(`[URL-BATCH-${runId}][URL-TEST-${testId}] [${i + 1}/${tests.length}] Testing: ${test.url} (${test.category}, Port ${targetPort})`);
 
-                const httpMatch = stdout.match(/__HTTP__:(\d+)/);
-                const portMatch = stdout.match(/__PORT__:(\d+)/);
-                const httpCode = httpMatch ? parseInt(httpMatch[1]) : (parseInt(stdout.trim().slice(-3)) || 0);
-                const srcPort = portMatch ? parseInt(portMatch[1]) : targetPort;
-                const executedCommand = `curl -sSL --max-time 10 ${ifaceFlag} --local-port ${srcPort} -w '\n__HTTP__:%{http_code}\n__PORT__:%{local_port}' '${test.url}'`;
-                const content = stdout.replace(/__HTTP__:\d+/g, '').replace(/__PORT__:\d+/g, '').toLowerCase();
+                // ── Pre-DNS check ──────────────────────────────────────────────────
+                const dnsIssue = await preDnsCheck(test.url);
+                if (dnsIssue) {
+                    logTest(`[URL-TEST-${testId}] Pre-DNS check failed for ${test.url}: ${dnsIssue.errorType}`);
+                    const dnsResult = {
+                        success: false, httpCode: 0,
+                        srcPort: targetPort,
+                        url: test.url, category: test.category,
+                        status: dnsIssue.status,
+                        errorType: dnsIssue.errorType,
+                        errorDescription: dnsIssue.errorDescription,
+                        error: dnsIssue.technicalDetail,
+                        likelyFirewallBlock: dnsIssue.likelyFirewallBlock,
+                        command: `nslookup -timeout=2 ${new URL(test.url).hostname}.`,
+                        reason: `${dnsIssue.errorType}: ${dnsIssue.errorDescription}`
+                    };
+                    results[i] = dnsResult;
+                    await addTestResult('url_filtering', test.category, dnsResult, testId, {
+                        url: test.url, error: dnsIssue.technicalDetail,
+                        errorType: dnsIssue.errorType, likelyFirewallBlock: dnsIssue.likelyFirewallBlock,
+                        command: dnsResult.command, srcPort: dnsResult.srcPort
+                    }, runId);
+                    continue;
+                }
 
-                logTest(`[URL-TEST-${testId}] HTTP response code: ${httpCode} (Port: ${srcPort})`);
+                const curlCommand = `curl -sSL --connect-timeout 3 --max-time 4 ${ifaceFlag} --local-port ${targetPort} -w '\n__HTTP__:%{http_code}\n__PORT__:%{local_port}' '${test.url}'`;
+                logTest(`[URL-TEST-${testId}] Executing URL test for ${test.url} (${test.category}): ${curlCommand}`);
 
-                const isTestPage = content.includes('pandb test page') ||
-                    content.includes('categorized as');
+                try {
+                    const { stdout } = await execPromise(curlCommand);
 
-                const isBlockPage = !isTestPage && (
-                    content.includes('palo alto networks') ||
-                    content.includes('access denied') ||
-                    content.includes('web-block-page'));
+                    const httpMatch = stdout.match(/__HTTP__:(\d+)/);
+                    const portMatch = stdout.match(/__PORT__:(\d+)/);
+                    const httpCode = httpMatch ? parseInt(httpMatch[1]) : (parseInt(stdout.trim().slice(-3)) || 0);
+                    const srcPort = portMatch ? parseInt(portMatch[1]) : targetPort;
+                    const executedCommand = `curl -sSL --connect-timeout 3 --max-time 4 ${ifaceFlag} --local-port ${srcPort} -w '\n__HTTP__:%{http_code}\n__PORT__:%{local_port}' '${test.url}'`;
+                    const content = stdout.replace(/__HTTP__:\d+/g, '').replace(/__PORT__:\d+/g, '').toLowerCase();
 
-                const status = (httpCode >= 200 && httpCode < 400 && !isBlockPage) || (httpCode === 404 && !isBlockPage) ? 'allowed' : 'blocked';
+                    logTest(`[URL-TEST-${testId}] HTTP response code: ${httpCode} (Port: ${srcPort})`);
 
-                const result = {
-                    success: status === 'allowed',
-                    httpCode,
-                    srcPort,
-                    status,
-                    url: test.url,
-                    category: test.category,
-                    blockPageDetected: isBlockPage,
-                    testPageDetected: isTestPage,
-                    testId,
-                    label: test.category || test.url,
-                    target: test.url,
-                    port: null,
-                    rate: null,
-                    timestamp: Date.now(),
-                    max_blackout_ms: 0,
-                    loss_pct: 0,
-                    source_port: srcPort,
-                    rate_pps: 0,
-                    reason: isTestPage ? 'Legitimate Palo Alto Test Page detected' :
-                        isBlockPage ? 'Security Block Page detected in response content' :
-                            (status === 'allowed') ? `Allowed (HTTP ${httpCode})` : `Blocked (HTTP ${httpCode})`
-                };
+                    const isTestPage = content.includes('pandb test page') ||
+                        content.includes('categorized as');
 
-                logTest(`[URL-TEST-${testId}] Final status: ${status} (HTTP ${httpCode}, Port ${srcPort})`);
+                    const isBlockPage = !isTestPage && (
+                        content.includes('palo alto networks') ||
+                        content.includes('access denied') ||
+                        content.includes('web-block-page'));
 
-                results.push(result);
-                await addTestResult('url_filtering', test.category, result, testId, {
-                    url: test.url,
-                    httpCode,
-                    srcPort,
-                    command: executedCommand,
-                    blockPageDetected: isBlockPage,
-                    testPageDetected: isTestPage
-                }, runId);
-            } catch (curlError: any) {
-                const exitCode = parseCurlExitCode(curlError.message);
-                const errInfo = getCurlErrorInfo(exitCode, curlError.message);
-                const srcPort = targetPort;
-                const curlCmd = `curl -sSL --max-time 10 ${ifaceFlag} --local-port ${targetPort} -w '\n__HTTP__:%{http_code}\n__PORT__:%{local_port}' '${test.url}'`;
+                    const status = (httpCode >= 200 && httpCode < 400 && !isBlockPage) || (httpCode === 404 && !isBlockPage) ? 'allowed' : 'blocked';
 
-                logTest(`[URL-TEST-${testId}] Final status: ${errInfo.status} (curl exit ${exitCode} — ${errInfo.errorType}, Port ${srcPort})`);
+                    const result = {
+                        success: status === 'allowed',
+                        httpCode,
+                        srcPort,
+                        status,
+                        url: test.url,
+                        category: test.category,
+                        blockPageDetected: isBlockPage,
+                        testPageDetected: isTestPage,
+                        testId,
+                        label: test.category || test.url,
+                        target: test.url,
+                        port: null,
+                        rate: null,
+                        timestamp: Date.now(),
+                        max_blackout_ms: 0,
+                        loss_pct: 0,
+                        source_port: srcPort,
+                        rate_pps: 0,
+                        reason: isTestPage ? 'Legitimate Palo Alto Test Page detected' :
+                            isBlockPage ? 'Security Block Page detected in response content' :
+                                (status === 'allowed') ? `Allowed (HTTP ${httpCode})` : `Blocked (HTTP ${httpCode})`
+                    };
+
+                    logTest(`[URL-TEST-${testId}] Final status: ${status} (HTTP ${httpCode}, Port ${srcPort})`);
+
+                    results[i] = result;
+                    await addTestResult('url_filtering', test.category, result, testId, {
+                        url: test.url,
+                        httpCode,
+                        srcPort,
+                        command: executedCommand,
+                        blockPageDetected: isBlockPage,
+                        testPageDetected: isTestPage
+                    }, runId);
+                } catch (curlError: any) {
+                    const exitCode = parseCurlExitCode(curlError.message);
+                    const errInfo = getCurlErrorInfo(exitCode, curlError.message);
+                    const srcPort = targetPort;
+                    const curlCmd = `curl -sSL --connect-timeout 3 --max-time 4 ${ifaceFlag} --local-port ${targetPort} -w '\n__HTTP__:%{http_code}\n__PORT__:%{local_port}' '${test.url}'`;
+
+                    logTest(`[URL-TEST-${testId}] Final status: ${errInfo.status} (curl exit ${exitCode} — ${errInfo.errorType}, Port ${srcPort})`);
+
+                    const result = {
+                        success: false,
+                        httpCode: 0,
+                        srcPort,
+                        status: errInfo.status,
+                        url: test.url,
+                        curlExitCode: exitCode,
+                        errorType: errInfo.errorType,
+                        errorDescription: errInfo.errorDescription,
+                        error: errInfo.technicalDetail,
+                        likelyFirewallBlock: errInfo.likelyFirewallBlock,
+                        command: curlCmd,
+                        reason: `${errInfo.errorType}: ${errInfo.errorDescription}`
+                    };
+
+                    results[i] = result;
+                    await addTestResult('url_filtering', test.category, result, testId, {
+                        url: test.url,
+                        error: errInfo.technicalDetail,
+                        errorType: errInfo.errorType,
+                        curlExitCode: exitCode,
+                        likelyFirewallBlock: errInfo.likelyFirewallBlock,
+                        command: curlCmd,
+                        srcPort
+                    }, runId);
+                }
+            } catch (e: any) {
+                logTest(`[URL-TEST-${testId}] Error: ${e.message}`);
 
                 const result = {
                     success: false,
-                    httpCode: 0,
-                    srcPort,
-                    status: errInfo.status,
+                    status: 'error',
                     url: test.url,
-                    curlExitCode: exitCode,
-                    errorType: errInfo.errorType,
-                    errorDescription: errInfo.errorDescription,
-                    error: errInfo.technicalDetail,
-                    likelyFirewallBlock: errInfo.likelyFirewallBlock,
-                    command: curlCmd,
-                    reason: `${errInfo.errorType}: ${errInfo.errorDescription}`
+                    category: test.category,
+                    error: e.message
                 };
-
-                results.push(result);
-                await addTestResult('url_filtering', test.category, result, testId, {
-                    url: test.url,
-                    error: errInfo.technicalDetail,
-                    errorType: errInfo.errorType,
-                    curlExitCode: exitCode,
-                    likelyFirewallBlock: errInfo.likelyFirewallBlock,
-                    command: curlCmd,
-                    srcPort
-                }, runId);
+                results[i] = result;
+                await addTestResult('url_filtering', test.category, result, testId, undefined, runId);
             }
-        } catch (e: any) {
-            logTest(`[URL-TEST-${testId}] Error: ${e.message}`);
-
-            const result = {
-                success: false,
-                status: 'error',
-                url: test.url,
-                category: test.category,
-                error: e.message
-            };
-            results.push(result);
-            // Needs generic logging even on outer catch
-            await addTestResult('url_filtering', test.category, result, testId, undefined, runId);
         }
-    }
+    };
+
+    await Promise.all(Array.from({ length: concurrency }, () => runWorker()));
 
     logTest(`[URL-BATCH-${runId}] Batch completed: ${results.length} tests executed`);
     await generateRunScore(runId, 'url', 'manual');
@@ -9956,12 +9983,15 @@ app.post('/api/security/dns-test', authenticateToken, async (req, res) => {
             // Parse output based on command type
             let resolvedIp = parseDnsOutput(stdout, commandType);
 
-            // If no IP found, try a second time (DNS can be flaky)
-            if (!resolvedIp) {
-                logTest(`[DNS-TEST-${testId}] No IP in first attempt, retrying after 500ms...`);
-                await wait(500);
+            // Only retry if the first attempt actually timed out (do not retry authoritative NXDOMAIN/NODATA/sinkhole)
+            const firstCombined = ((stdout || '') + (stderr || '')).toLowerCase();
+            const hadTimeout = firstCombined.includes('timed out') || firstCombined.includes('no servers could be reached');
+            if (!resolvedIp && hadTimeout) {
+                logTest(`[DNS-TEST-${testId}] DNS timeout on first attempt, retrying after 250ms...`);
+                await wait(250);
                 const result2 = await execPromise(dnsCommand);
                 stdout = result2.stdout;
+                stderr = result2.stderr;
                 logTest(`[DNS-TEST-${testId}] DNS command output (attempt 2):`, stdout || '(empty)');
                 resolvedIp = parseDnsOutput(stdout, commandType);
             }
@@ -10079,7 +10109,7 @@ app.post('/api/security/dns-test', authenticateToken, async (req, res) => {
     }
 });
 
-// API: DNS Security Batch Test
+// API: DNS Security Batch Test (parallel worker pool)
 app.post('/api/security/dns-test-batch', authenticateToken, async (req, res) => {
     const { tests } = req.body; // Array of { domain, testName }
 
@@ -10087,143 +10117,147 @@ app.post('/api/security/dns-test-batch', authenticateToken, async (req, res) => 
         return res.status(400).json({ error: 'Tests array is required' });
     }
 
-    const results = [];
+    const results: any[] = new Array(tests.length);
     const runId = `manual-dns-${Date.now()}`;
     const egress = getEgressConfig();
-
-    // Helper function to wait
+    const execPromise = promisify(exec);
     const wait = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
-    logTest(`[DNS-BATCH-${runId}] Starting batch test with ${tests.length} domains`);
+    logTest(`[DNS-BATCH-${runId}] Starting parallel batch test with ${tests.length} domains`);
 
-    for (let i = 0; i < tests.length; i++) {
-        const test = tests[i];
-        const testId = getNextTestId(); // Generate unique ID for each test
-        const dnsSrcPort = getPredictiveSourcePort('dns_security', testId);
+    let cursor = 0;
+    const concurrency = Math.min(8, tests.length);
 
-        logTest(`[DNS-BATCH-${runId}][DNS-TEST-${testId}] [${i + 1}/${tests.length}] Testing: ${test.domain} (${test.testName}, Port ${dnsSrcPort})`);
+    const runWorker = async () => {
+        while (true) {
+            const i = cursor++;
+            if (i >= tests.length) break;
 
-        try {
-            // exec already imported at top
-            // util.promisify already imported as promisify
-            const execPromise = promisify(exec);
+            const test = tests[i];
+            const testId = getNextTestId(); // Generate unique ID for each test
+            const dnsSrcPort = getPredictiveSourcePort('dns_security', testId);
 
-            // Get platform-specific DNS command
-            const { command: dnsCommand, type: commandType } = getDnsCommand(test.domain, dnsSrcPort, egress.ip);
+            logTest(`[DNS-BATCH-${runId}][DNS-TEST-${testId}] [${i + 1}/${tests.length}] Testing: ${test.domain} (${test.testName}, Port ${dnsSrcPort})`);
 
             try {
-                // First attempt
-                let { stdout, stderr } = await execPromise(dnsCommand);
+                // Get platform-specific DNS command
+                const { command: dnsCommand, type: commandType } = getDnsCommand(test.domain, dnsSrcPort, egress.ip);
 
-                logTest(`[DNS-TEST-${testId}] First query result: ${stdout.trim() || '(empty)'}`);
+                try {
+                    // First attempt
+                    let { stdout, stderr } = await execPromise(dnsCommand);
 
-                // If first attempt returns empty, retry after 1.5 seconds
-                if (!stdout.trim()) {
-                    logTest(`[DNS-TEST-${testId}] First query empty, retrying...`);
-                    await wait(1500);
-                    const retry = await execPromise(dnsCommand);
-                    stdout = retry.stdout;
-                    stderr = retry.stderr;
-                }
+                    logTest(`[DNS-TEST-${testId}] First query result: ${stdout.trim() || '(empty)'}`);
 
-                // Known sinkhole IPs and Keywords
-                const combinedOutput = (stdout + (stderr || '')).toLowerCase();
-                const sinkholeIPs = ['198.135.184.22', '72.5.65.111', '0.0.0.0', '127.0.0.1'];
+                    // Only retry if the first attempt actually timed out
+                    const firstCombined = ((stdout || '') + (stderr || '')).toLowerCase();
+                    const hadTimeout = firstCombined.includes('timed out') || firstCombined.includes('no servers could be reached');
+                    if (!stdout.trim() && hadTimeout) {
+                        logTest(`[DNS-TEST-${testId}] First query timed out, retrying...`);
+                        await wait(250);
+                        const retry = await execPromise(dnsCommand);
+                        stdout = retry.stdout;
+                        stderr = retry.stderr;
+                    }
 
-                const isSinkholed = sinkholeIPs.some(ip => combinedOutput.includes(ip)) ||
-                    combinedOutput.includes('sinkhole');
+                    // Known sinkhole IPs and Keywords
+                    const combinedOutput = (stdout + (stderr || '')).toLowerCase();
+                    const sinkholeIPs = ['198.135.184.22', '72.5.65.111', '0.0.0.0', '127.0.0.1'];
 
-                const isBlocked = !stdout.trim() ||
-                    combinedOutput.includes('can\'t find') ||
-                    combinedOutput.includes('not known') ||
-                    combinedOutput.includes('non-existent domain');
+                    const isSinkholed = sinkholeIPs.some(ip => combinedOutput.includes(ip)) ||
+                        combinedOutput.includes('sinkhole');
 
-                const status = isSinkholed ? 'sinkholed' : (isBlocked ? 'blocked' : 'resolved');
-                const resolvedIp = parseDnsOutput(stdout, commandType);
+                    const isBlocked = !stdout.trim() ||
+                        combinedOutput.includes('can\'t find') ||
+                        combinedOutput.includes('not known') ||
+                        combinedOutput.includes('non-existent domain');
 
-                logTest(`[DNS-TEST-${testId}] Final status: ${status} (isSinkholed=${isSinkholed}, isBlocked=${isBlocked})`);
+                    const status = isSinkholed ? 'sinkholed' : (isBlocked ? 'blocked' : 'resolved');
+                    const resolvedIp = parseDnsOutput(stdout, commandType);
 
-                const result = {
-                    id: testId,
-                    success: true,
-                    resolved: status === 'resolved',
-                    status,
-                    domain: test.domain,
-                    testName: test.testName,
-                    srcPort: dnsSrcPort,
-                    command: dnsCommand,
-                    output: stdout,
-                    resolvedIp,
-                    reason: status === 'sinkholed' ? 'Sinkhole IP/Keyword detected' :
-                        status === 'blocked' ? 'DNS Resolution failed/empty' : 'Normal resolution'
-                };
+                    logTest(`[DNS-TEST-${testId}] Final status: ${status} (isSinkholed=${isSinkholed}, isBlocked=${isBlocked})`);
 
-                const { previousStatus, slsDiagnostic } = await addTestResult('dns_security', test.testName, result, testId, {
-                    domain: test.domain, resolvedIp, srcPort: dnsSrcPort, command: dnsCommand, output: stdout, status
-                }, runId);
-
-                results.push({ ...result, previousStatus, slsDiagnostic });
-            } catch (dnsError: any) {
-                // Check if it's actually a sinkhole response masked as an error (e.g., nslookup SERVFAIL)
-                const combinedErrorOutput = ((dnsError.stdout || '') + (dnsError.stderr || '')).toLowerCase();
-
-                if (combinedErrorOutput.includes('sinkhole')) {
                     const result = {
                         id: testId,
                         success: true,
-                        status: 'sinkholed',
-                        resolved: false,
+                        resolved: status === 'resolved',
+                        status,
                         domain: test.domain,
                         testName: test.testName,
                         srcPort: dnsSrcPort,
                         command: dnsCommand,
-                        output: combinedErrorOutput,
-                        reason: 'Sinkhole keyword detected in error output'
+                        output: stdout,
+                        resolvedIp,
+                        reason: status === 'sinkholed' ? 'Sinkhole IP/Keyword detected' :
+                            status === 'blocked' ? 'DNS Resolution failed/empty' : 'Normal resolution'
                     };
-                    const { previousStatus, slsDiagnostic } = await addTestResult('dns_security', test.testName, result, testId, {
-                        domain: test.domain, srcPort: dnsSrcPort, command: dnsCommand, output: combinedErrorOutput, status: 'sinkholed'
-                    }, runId);
-                    results.push({ ...result, previousStatus, slsDiagnostic });
-                } else {
-                    const isCommandError = dnsError.message.includes('command not found') || dnsError.message.includes('not found');
-                    const result = {
-                        id: testId,
-                        success: false,
-                        resolved: false,
-                        status: isCommandError ? 'error' : 'blocked',
-                        domain: test.domain,
-                        testName: test.testName,
-                        srcPort: dnsSrcPort,
-                        command: dnsCommand,
-                        error: dnsError.message,
-                        reason: isCommandError ? 'DNS tool (dig/nslookup) not available' : `DNS Error: ${dnsError.message}`
-                    };
-                    const { previousStatus, slsDiagnostic } = await addTestResult('dns_security', test.testName, result, testId, {
-                        domain: test.domain, srcPort: dnsSrcPort, command: dnsCommand, error: dnsError.message, status: result.status
-                    }, runId);
-                    results.push({ ...result, previousStatus, slsDiagnostic });
-                }
-            }
-        } catch (e: any) {
-            const result = {
-                id: testId,
-                success: false,
-                status: 'error',
-                domain: test.domain,
-                testName: test.testName,
-                srcPort: dnsSrcPort,
-                error: e.message,
-                reason: `Execution Error: ${e.message}`
-            };
-            const { previousStatus, slsDiagnostic } = await addTestResult('dns_security', test.testName, result, testId, {
-                domain: test.domain, srcPort: dnsSrcPort, error: e.message
-            }, runId);
-            results.push({ ...result, previousStatus, slsDiagnostic });
-        }
 
-        // Add a small delay between tests to avoid triggering firewall flood protection
-        await wait(200);
-    }
+                    const { previousStatus, slsDiagnostic } = await addTestResult('dns_security', test.testName, result, testId, {
+                        domain: test.domain, resolvedIp, srcPort: dnsSrcPort, command: dnsCommand, output: stdout, status
+                    }, runId);
+
+                    results[i] = { ...result, previousStatus, slsDiagnostic };
+                } catch (dnsError: any) {
+                    // Check if it's actually a sinkhole response masked as an error (e.g., nslookup SERVFAIL)
+                    const combinedErrorOutput = ((dnsError.stdout || '') + (dnsError.stderr || '')).toLowerCase();
+
+                    if (combinedErrorOutput.includes('sinkhole')) {
+                        const result = {
+                            id: testId,
+                            success: true,
+                            status: 'sinkholed',
+                            resolved: false,
+                            domain: test.domain,
+                            testName: test.testName,
+                            srcPort: dnsSrcPort,
+                            command: dnsCommand,
+                            output: combinedErrorOutput,
+                            reason: 'Sinkhole keyword detected in error output'
+                        };
+                        const { previousStatus, slsDiagnostic } = await addTestResult('dns_security', test.testName, result, testId, {
+                            domain: test.domain, srcPort: dnsSrcPort, command: dnsCommand, output: combinedErrorOutput, status: 'sinkholed'
+                        }, runId);
+                        results[i] = { ...result, previousStatus, slsDiagnostic };
+                    } else {
+                        const isCommandError = dnsError.message.includes('command not found') || dnsError.message.includes('not found');
+                        const result = {
+                            id: testId,
+                            success: false,
+                            resolved: false,
+                            status: isCommandError ? 'error' : 'blocked',
+                            domain: test.domain,
+                            testName: test.testName,
+                            srcPort: dnsSrcPort,
+                            command: dnsCommand,
+                            error: dnsError.message,
+                            reason: isCommandError ? 'DNS tool (dig/nslookup) not available' : `DNS Error: ${dnsError.message}`
+                        };
+                        const { previousStatus, slsDiagnostic } = await addTestResult('dns_security', test.testName, result, testId, {
+                            domain: test.domain, srcPort: dnsSrcPort, command: dnsCommand, error: dnsError.message, status: result.status
+                        }, runId);
+                        results[i] = { ...result, previousStatus, slsDiagnostic };
+                    }
+                }
+            } catch (e: any) {
+                const result = {
+                    id: testId,
+                    success: false,
+                    status: 'error',
+                    domain: test.domain,
+                    testName: test.testName,
+                    srcPort: dnsSrcPort,
+                    error: e.message,
+                    reason: `Execution Error: ${e.message}`
+                };
+                const { previousStatus, slsDiagnostic } = await addTestResult('dns_security', test.testName, result, testId, {
+                    domain: test.domain, srcPort: dnsSrcPort, error: e.message
+                }, runId);
+                results[i] = { ...result, previousStatus, slsDiagnostic };
+            }
+        }
+    };
+
+    await Promise.all(Array.from({ length: concurrency }, () => runWorker()));
 
     await generateRunScore(runId, 'dns', 'manual');
 

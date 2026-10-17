@@ -72,24 +72,18 @@ def match_ip_list(ip_str, rule_ips, is_malicious=False):
     if ip_str == 'any':
         return True
 
-    resolved_ip_str = ip_str
+    for item in rule_ips:
+        if item in ['Worldwide Any IPv4', 'Worldwide Any IPv6', 'ADEM_Groups']:
+            return True
+        if item in ['panw-known-ip-list', 'panw-highrisk-ip-list', 'panw-bulletproof-ip-list'] and is_malicious:
+            return True
+
     try:
         ip = ipaddress.ip_address(ip_str)
     except Exception:
-        try:
-            resolved_ip_str = socket.gethostbyname(ip_str)
-            ip = ipaddress.ip_address(resolved_ip_str)
-        except Exception:
-            # If hostname cannot be resolved, match only if rule allows any/all
-            return any(item in ['any', 'Worldwide Any IPv4', 'Worldwide Any IPv6'] for item in rule_ips)
+        return False
 
     for item in rule_ips:
-        if item in ['panw-known-ip-list', 'panw-highrisk-ip-list', 'panw-bulletproof-ip-list']:
-            if is_malicious:
-                return True
-            continue
-        if item in ['Worldwide Any IPv4', 'Worldwide Any IPv6', 'ADEM_Groups']:
-            return True
         try:
             if '/' in item:
                 net = ipaddress.ip_network(item, strict=False)

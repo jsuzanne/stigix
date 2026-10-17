@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.0.38] - 2026-10-17
+
+### Performance & Optimization
+- **Fast URL Filtering & DNS Security Test Execution (`server.ts`, `test-logger.ts`, `scm_traffic_log_viewer.py`)**:
+  - **Non-Blocking Background SLS Enrichment**: Decoupled `enrichWithSLS()` inside `addTestResult()` so SCM/SLS traffic log correlation runs asynchronously in the background after returning the HTTP test verdict to the UI, eliminating the 10–15s synchronous wait per single test click.
+  - **Eliminated DNS Resolution Timeouts in SCM Rule Matcher (`scm_traffic_log_viewer.py`)**: Removed blocking `socket.gethostbyname()` calls in `match_ip_list()` and evaluated wildcard/EDL targets (`Worldwide Any IPv4`, `ADEM_Groups`, `panw-*-ip-list`) first so unresolvable or sinkholed DNS test domains never hang across security rules.
+  - **In-Memory `TestLogger` Result Cache (`test-logger.ts`)**: Added an in-memory `cachedResults` array to `TestLogger` so `getLatestStatus()`, `getResults()`, `getLatestVerdicts()`, and `getStats()` serve from memory instead of re-reading and parsing `test-results*.jsonl` from disk on every test or UI poll.
+  - **URL Test Acceleration & Parallel Batch Worker Pool (`server.ts`)**: Added a 60s hostname cache to `preDnsCheck()` with a 2s timeout, tightened `curl` timeouts (`--connect-timeout 3 --max-time 4`), and parallelized `/api/security/url-test-batch` with an 8-worker pool.
+  - **DNS Test Acceleration & Parallel Batch Worker Pool (`server.ts`)**: Reduced `nslookup` timeout from `5s` to `2s`, skipped redundant retry sleeps (`500ms`/`1500ms`) when the initial query already returned an authoritative `NXDOMAIN`/`SERVFAIL`/sinkhole/NODATA response, and parallelized `/api/security/dns-test-batch` with an 8-worker pool.
+
 ## [3.0.37] - 2026-10-17
 
 ### Fixed & Enhanced
