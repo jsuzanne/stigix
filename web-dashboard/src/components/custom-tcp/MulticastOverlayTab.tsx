@@ -148,15 +148,15 @@ const FALLBACK_PRESETS: MulticastApplicationPreset[] = [
 
 const PAYLOAD_FORMAT_LABELS: Record<MulticastPayloadFormat, { short: string; full: string }> = {
     'rtp-mpegts': {
-        short: 'RTP + MPEG-TS (0x47)',
+        short: 'RTP MPEG-TS',
         full: 'RFC 3550 RTP v2 (PT=33) + MPEG-TS 0x47 Sync (App-ID: rtp / mpeg-ts)',
     },
     'rtp-g711': {
-        short: 'RTP v2 G.711 PCMU',
+        short: 'RTP G.711',
         full: 'RFC 3550 RTP v2 (PT=0) PCMU Audio (App-ID: rtp-base)',
     },
     'raw-stgx': {
-        short: 'Raw STGX UDP (24B)',
+        short: 'Raw UDP',
         full: 'Raw STGX 24-Byte Sequence Header (Ultra-low overhead UDP)',
     },
 };
@@ -1001,171 +1001,160 @@ export const MulticastOverlayTab: React.FC<MulticastOverlayTabProps> = ({
     const verdictStyle = VERDICT_STYLES[overallVerdict] || VERDICT_STYLES.NO_TRAFFIC;
 
     return (
-        <div className="space-y-5">
-            {/* Standalone View Header when opened directly from Generate -> Multicast Traffic */}
+        <div className="space-y-4">
+            {/* Compact Standalone Header */}
             {isStandalone && (
-                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-1">
-                    <div>
-                        <div className="flex items-center gap-2">
-                            <span className="px-2 py-0.5 rounded-md bg-purple-500/15 border border-purple-500/30 text-purple-300 text-[10px] font-black uppercase tracking-wider">
-                                SD-WAN Overlay Validation
-                            </span>
-                            {isRunning && (
-                                <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 text-[10px] font-black uppercase">
-                                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                                    LIVE STREAMING
-                                </span>
-                            )}
-                        </div>
-                        <h1 className="text-xl font-black text-text-primary mt-1">
-                            Multicast Traffic Generator &amp; SLA Telemetry
+                <div className="flex items-center justify-between gap-4">
+                    <div className="flex items-center gap-2.5">
+                        <h1 className="text-lg font-bold text-text-primary tracking-tight">
+                            Multicast Studio
                         </h1>
-                        <p className="text-xs text-text-muted mt-0.5">
-                            Generate realistic 1-to-N UDP Multicast streams (RTP/MPEG-TS, ITCH Market Data, G.711 VoIP Paging) and audit IGMPv2/v3 &amp; PIM-SM/SSM replication across SD-WAN branches.
-                        </p>
+                        {isRunning && (
+                            <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 text-[10px] font-bold uppercase">
+                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                                Live
+                            </span>
+                        )}
                     </div>
                 </div>
             )}
 
             {/* Top Control Bar */}
-            <div className="bg-card border border-border rounded-xl p-4 shadow-sm flex flex-col xl:flex-row items-stretch xl:items-center justify-between gap-4">
-                <div className="flex flex-wrap items-center gap-2.5">
-                    <div className="flex items-center gap-2">
-                        <div className="w-9 h-9 rounded-lg bg-purple-500/10 border border-purple-500/25 flex items-center justify-center text-purple-400">
-                            <Radio className="w-5 h-5" />
-                        </div>
-                        <div>
-                            <div className="text-[10px] font-bold uppercase tracking-wider text-purple-400">
-                                IGMPv2/v3 &bull; PIM-SM / SSM Engine
-                            </div>
-                            <h3 className="text-sm font-bold text-text-primary">Multicast Stream Profiles</h3>
-                        </div>
+            <div className="bg-card border border-border rounded-xl p-3 shadow-sm flex flex-col xl:flex-row items-stretch xl:items-center justify-between gap-3">
+                <div className="flex flex-wrap items-center gap-2">
+                    <div className="w-8 h-8 rounded-lg bg-purple-500/10 border border-purple-500/25 flex items-center justify-center text-purple-400 shrink-0">
+                        <Radio className="w-4 h-4" />
                     </div>
 
-                    {/* Profile Selector */}
-                    <div className="flex flex-wrap items-center gap-2 ml-0 lg:ml-3">
-                        <StigixSelect
-                            value={selectedAppId}
-                            onChange={(val) => setSelectedAppId(val)}
-                            options={profiles.map((p) => ({
-                                value: p.id,
-                                label: p.name,
-                                sublabel: `${p.mode.toUpperCase()} ${p.group}:${p.port}`,
-                                badge: p.mode.toUpperCase(),
-                            }))}
-                            accent="purple"
-                            size="sm"
-                            className="min-w-[240px] max-w-full"
-                        />
+                    {/* Wide Profile Selector */}
+                    <StigixSelect
+                        value={selectedAppId}
+                        onChange={(val) => setSelectedAppId(val)}
+                        options={profiles.map((p) => ({
+                            value: p.id,
+                            label: p.name,
+                            sublabel: `${p.group}:${p.port} · ${formatBitsPerSec(p.rate.kbps)}`,
+                            badge: p.mode.toUpperCase(),
+                        }))}
+                        accent="purple"
+                        size="sm"
+                        minMenuWidth={420}
+                        className="min-w-[300px] sm:min-w-[340px] max-w-full"
+                    />
 
-                        {selectedProfile && (
-                            <>
-                                <button
-                                    onClick={() => openEditProfileModal(selectedProfile)}
-                                    className="p-2 rounded-lg bg-background hover:bg-card-hover border border-border text-text-muted hover:text-text-primary transition-colors"
-                                    title="Edit Multicast Profile & SLA Thresholds"
-                                >
-                                    <Edit2 className="w-3.5 h-3.5" />
-                                </button>
-                                <button
-                                    onClick={() => handleExportProfiles(selectedProfile.id)}
-                                    className="p-2 rounded-lg bg-background hover:bg-card-hover border border-border text-text-muted hover:text-text-primary transition-colors"
-                                    title={`Export Profile "${selectedProfile.name}" to JSON`}
-                                >
-                                    <Download className="w-3.5 h-3.5" />
-                                </button>
-                                <button
-                                    onClick={handleDeleteProfile}
-                                    className="p-2 rounded-lg bg-background hover:bg-rose-500/10 border border-border hover:border-rose-500/30 text-text-muted hover:text-rose-400 transition-colors"
-                                    title="Delete Multicast Profile"
-                                >
-                                    <Trash2 className="w-3.5 h-3.5" />
-                                </button>
-                            </>
-                        )}
-
-                        <button
-                            onClick={openNewProfileModal}
-                            className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-purple-600/15 hover:bg-purple-600/25 text-purple-300 border border-purple-500/30 text-xs font-bold transition-all"
-                        >
-                            <Plus className="w-3.5 h-3.5" /> New Profile
-                        </button>
-
-                        <button
-                            onClick={() => setPresetsModalOpen(true)}
-                            className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border border-amber-500/30 text-xs font-bold transition-all"
-                            title="Load 1-Click Industry Multicast Profile Preset"
-                        >
-                            <Sparkles className="w-3.5 h-3.5" /> Presets
-                        </button>
-
-                        <button
-                            onClick={() => setPrismaModalOpen(true)}
-                            className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 text-xs font-bold transition-all"
-                            title="Push Multicast Profile(s) to Prisma SD-WAN Custom Apps (STX_MC_*)"
-                        >
-                            <CloudUpload className="w-3.5 h-3.5" /> Push to Prisma
-                        </button>
-
+                    {selectedProfile && (
                         <div className="flex items-center gap-1">
                             <button
-                                onClick={() => handleExportProfiles()}
-                                className="flex items-center gap-1 px-2.5 py-2 rounded-lg bg-background hover:bg-card-hover border border-border text-text-secondary hover:text-text-primary text-xs font-bold transition-colors"
-                                title="Export All Multicast Profiles to JSON"
+                                onClick={() => openEditProfileModal(selectedProfile)}
+                                className="p-2 rounded-lg bg-background hover:bg-card-hover border border-border text-text-muted hover:text-text-primary transition-colors"
+                                title="Edit profile & SLA thresholds"
                             >
-                                <Download className="w-3.5 h-3.5" /> Export
+                                <Edit2 className="w-3.5 h-3.5" />
                             </button>
                             <button
-                                onClick={() => setImportModalOpen(true)}
-                                className="flex items-center gap-1 px-2.5 py-2 rounded-lg bg-background hover:bg-card-hover border border-border text-text-secondary hover:text-text-primary text-xs font-bold transition-colors"
-                                title="Import Multicast Profiles from JSON"
+                                onClick={handleDeleteProfile}
+                                className="p-2 rounded-lg bg-background hover:bg-rose-500/10 border border-border hover:border-rose-500/30 text-text-muted hover:text-rose-400 transition-colors"
+                                title="Delete profile"
                             >
-                                <Upload className="w-3.5 h-3.5" /> Import
+                                <Trash2 className="w-3.5 h-3.5" />
                             </button>
                         </div>
+                    )}
+
+                    <div className="h-4 w-px bg-border/70 mx-0.5 hidden sm:block" />
+
+                    <button
+                        onClick={openNewProfileModal}
+                        className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-background hover:bg-card-hover border border-border text-text-primary text-xs font-semibold transition-all"
+                    >
+                        <Plus className="w-3.5 h-3.5 text-purple-400" /> New
+                    </button>
+
+                    <button
+                        onClick={() => setPresetsModalOpen(true)}
+                        className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-background hover:bg-card-hover border border-border text-text-secondary hover:text-text-primary text-xs font-semibold transition-all"
+                        title="Load 1-Click Multicast Preset"
+                    >
+                        <Sparkles className="w-3.5 h-3.5 text-amber-400" /> Presets
+                    </button>
+
+                    <button
+                        onClick={() => setPrismaModalOpen(true)}
+                        className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-background hover:bg-card-hover border border-border text-text-secondary hover:text-text-primary text-xs font-semibold transition-all"
+                        title="Push Multicast Profile(s) to Prisma SD-WAN Custom Apps (STX_MC_*)"
+                    >
+                        <CloudUpload className="w-3.5 h-3.5 text-cyan-400" /> Prisma Sync
+                    </button>
+
+                    <div className="flex items-center gap-1">
+                        <button
+                            onClick={() => handleExportProfiles()}
+                            className="p-2 rounded-lg bg-background hover:bg-card-hover border border-border text-text-muted hover:text-text-primary transition-colors"
+                            title="Export Multicast Profiles to JSON"
+                        >
+                            <Download className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                            onClick={() => setImportModalOpen(true)}
+                            className="p-2 rounded-lg bg-background hover:bg-card-hover border border-border text-text-muted hover:text-text-primary transition-colors"
+                            title="Import Multicast Profiles from JSON"
+                        >
+                            <Upload className="w-3.5 h-3.5" />
+                        </button>
                     </div>
                 </div>
 
                 {/* Action Buttons */}
                 {selectedProfile && (
                     <div className="flex flex-wrap items-center gap-2">
-                        <div className={cn('px-2.5 py-1 rounded-md border text-[11px] font-black tracking-wider', verdictStyle.badge)}>
-                            OVERALL: {verdictStyle.label}
+                        <div
+                            className={cn(
+                                'px-2.5 py-1 rounded-md border text-[11px] font-bold tracking-wider cursor-default',
+                                verdictStyle.badge
+                            )}
+                            title={
+                                clusterStatus?.diagnostics && clusterStatus.diagnostics.length > 0
+                                    ? clusterStatus.diagnostics.join('\n')
+                                    : `Overall multicast SLA status: ${verdictStyle.label}`
+                            }
+                        >
+                            {verdictStyle.label}
                         </div>
 
                         <button
                             onClick={() => handleResetCounters()}
                             disabled={resetBusy}
-                            className="flex items-center gap-1.5 px-2.5 py-2 rounded-lg bg-background hover:bg-card-hover border border-border text-text-secondary hover:text-text-primary text-xs font-bold transition-all"
-                            title="Reset sequence & loss counters across all receivers without stopping the stream"
+                            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-background hover:bg-card-hover border border-border text-text-secondary hover:text-text-primary text-xs font-semibold transition-all"
+                            title="Reset sequence & loss counters across all receivers"
                         >
                             <RotateCcw className={cn('w-3.5 h-3.5 text-purple-400', resetBusy && 'animate-spin')} />
-                            Reset Counters
+                            Reset
                         </button>
 
                         <button
                             onClick={handleRunPreflight}
                             disabled={preflightBusy}
-                            className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-background hover:bg-card-hover border border-border text-text-primary text-xs font-bold transition-all"
+                            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-background hover:bg-card-hover border border-border text-text-secondary hover:text-text-primary text-xs font-semibold transition-all"
+                            title="Check interfaces, IGMP versions, and UDP ports across nodes"
                         >
-                            <ShieldCheck className="w-4 h-4 text-cyan-400" />
-                            Pre-Flight Check
+                            <ShieldCheck className="w-3.5 h-3.5 text-cyan-400" />
+                            Pre-Flight
                         </button>
 
                         {!isRunning ? (
                             <button
                                 onClick={handleStartStream}
                                 disabled={actionBusy}
-                                className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white text-xs font-bold shadow-sm transition-all"
+                                className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white text-xs font-bold shadow-sm transition-all"
                             >
                                 <Play className="w-3.5 h-3.5 fill-current" />
-                                Start Multicast Stream
+                                Start Stream
                             </button>
                         ) : (
                             <button
                                 onClick={handleStopStream}
                                 disabled={actionBusy}
-                                className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-rose-600 hover:bg-rose-500 disabled:opacity-50 text-white text-xs font-bold shadow-sm transition-all"
+                                className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-500 disabled:opacity-50 text-white text-xs font-bold shadow-sm transition-all"
                             >
                                 <Square className="w-3.5 h-3.5 fill-current" />
                                 Stop Stream
@@ -1175,245 +1164,163 @@ export const MulticastOverlayTab: React.FC<MulticastOverlayTabProps> = ({
                 )}
             </div>
 
-            {/* Diagnostic Hints Banner when issues or zero-replication detected */}
-            {clusterStatus && clusterStatus.diagnostics && clusterStatus.diagnostics.length > 0 && (
-                <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl p-3.5 flex items-start gap-3">
-                    <AlertTriangle className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
-                    <div className="space-y-1 text-xs">
-                        <div className="font-bold text-amber-300 uppercase tracking-wider text-[10px]">
-                            SD-WAN Multicast Replication &amp; Policy Diagnostics
-                        </div>
-                        <ul className="list-disc list-inside text-text-secondary space-y-0.5">
-                            {clusterStatus.diagnostics.map((d, idx) => (
-                                <li key={idx} className="font-mono text-[11px]">
-                                    {d}
-                                </li>
-                            ))}
-                        </ul>
-                    </div>
-                </div>
-            )}
-
-            {/* Main 1-to-N Architecture Overview Card */}
+            {/* Unified Compact Source & 1-to-N Replication Pipeline */}
             {selectedProfile && (
-                <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
-                    {/* Left: Multicast Source (Sender) Card */}
-                    <div className="lg:col-span-4 bg-card border border-border rounded-xl p-4 shadow-sm flex flex-col justify-between space-y-4">
-                        <div>
-                            <div className="flex items-center justify-between border-b border-border/60 pb-2.5 mb-3">
-                                <div className="flex items-center gap-2">
-                                    <Server className="w-4 h-4 text-blue-400" />
-                                    <span className="text-xs font-bold uppercase tracking-wider text-text-primary">
-                                        Multicast Source (Sender)
-                                    </span>
-                                </div>
-                                <div className="flex items-center gap-1.5">
-                                    <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-purple-500/15 text-purple-300 border border-purple-500/30">
-                                        {PAYLOAD_FORMAT_LABELS[selectedProfile.payloadFormat || 'raw-stgx']?.short || 'STGX'}
-                                    </span>
-                                    <span
-                                        className={cn(
-                                            'px-2 py-0.5 rounded text-[10px] font-bold uppercase border',
-                                            clusterStatus?.sender?.active
-                                                ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30'
-                                                : 'bg-slate-500/15 text-slate-400 border-slate-500/30'
-                                        )}
-                                    >
-                                        {clusterStatus?.sender?.active ? 'TX ACTIVE' : 'IDLE'}
-                                    </span>
-                                </div>
-                            </div>
-
-                            <div className="grid grid-cols-2 gap-2.5 text-xs">
-                                <div className="bg-background/60 border border-border/60 rounded-lg p-2.5">
-                                    <div className="text-[10px] text-text-muted uppercase">Source Node</div>
-                                    <div className="font-bold text-text-primary mt-0.5 flex items-center gap-1.5">
-                                        <span>{selectedProfile.senderNode}</span>
-                                        {clusterStatus?.sender?.interfaceName && (
-                                            <span className="text-[10px] font-mono text-blue-400">
-                                                ({clusterStatus.sender.interfaceName})
-                                            </span>
-                                        )}
-                                    </div>
-                                    <div className="text-[10px] font-mono text-text-muted">
-                                        IP: {clusterStatus?.sender?.interfaceIp || selectedProfile.senderInterfaceIp || 'auto'}
-                                    </div>
-                                </div>
-
-                                <div className="bg-background/60 border border-border/60 rounded-lg p-2.5">
-                                    <div className="text-[10px] text-text-muted uppercase">Group &amp; Mode</div>
-                                    <div className="font-mono font-bold text-purple-400 mt-0.5">
-                                        {selectedProfile.group}:{selectedProfile.port}
-                                    </div>
-                                    <div className="text-[10px] text-text-muted">
-                                        {selectedProfile.mode.toUpperCase()}
-                                        {selectedProfile.mode === 'ssm' && selectedProfile.ssmSource
-                                            ? ` (S=${selectedProfile.ssmSource})`
-                                            : ' (*,G Any-Source)'}
-                                    </div>
-                                </div>
-
-                                <div className="bg-background/60 border border-border/60 rounded-lg p-2.5">
-                                    <div className="text-[10px] text-text-muted uppercase">TX Bitrate / Target</div>
-                                    <div className="font-mono font-bold text-emerald-400 mt-0.5">
-                                        {formatBitsPerSec(clusterStatus?.sender?.txBitrateKbps || 0)}
-                                    </div>
-                                    <div className="text-[10px] text-text-muted">
-                                        Target: {formatBitsPerSec(selectedProfile.rate.kbps)} ({selectedProfile.rate.mode.toUpperCase()})
-                                    </div>
-                                </div>
-
-                                <div className="bg-background/60 border border-border/60 rounded-lg p-2.5">
-                                    <div className="text-[10px] text-text-muted uppercase">Packet Rate &amp; Frame</div>
-                                    <div className="font-mono font-bold text-text-primary mt-0.5">
-                                        {clusterStatus?.sender?.txPps ?? 0} pps
-                                    </div>
-                                    <div className="text-[10px] text-text-muted">
-                                        {selectedProfile.payloadBytes}B &bull; TTL {selectedProfile.ttl} &bull; DSCP {selectedProfile.dscp}
-                                    </div>
-                                </div>
-                            </div>
+                <div className="bg-card border border-border rounded-xl p-3.5 shadow-sm">
+                    {/* Compact Header Strip */}
+                    <div className="flex flex-wrap items-center justify-between gap-2 pb-2.5 mb-3 border-b border-border/60 text-xs">
+                        <div className="flex flex-wrap items-center gap-2">
+                            <span
+                                className={cn(
+                                    'inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[10px] font-bold uppercase border',
+                                    clusterStatus?.sender?.active
+                                        ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30'
+                                        : 'bg-slate-500/15 text-slate-400 border-slate-500/30'
+                                )}
+                            >
+                                {clusterStatus?.sender?.active && (
+                                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                                )}
+                                {clusterStatus?.sender?.active ? 'TX Active' : 'Idle'}
+                            </span>
+                            <span className="text-xs font-bold text-text-primary">
+                                1 &rarr; {selectedProfile.receivers.length} Replication Pipeline
+                            </span>
+                            <span className="px-1.5 py-0.5 rounded text-[10px] font-mono font-semibold bg-background border border-border text-text-secondary">
+                                {selectedProfile.mode.toUpperCase()}
+                                {selectedProfile.mode === 'ssm' && selectedProfile.ssmSource
+                                    ? ` · S=${selectedProfile.ssmSource}`
+                                    : ''}
+                            </span>
+                            <span className="px-1.5 py-0.5 rounded text-[10px] font-mono font-semibold bg-purple-500/10 text-purple-300 border border-purple-500/25">
+                                {PAYLOAD_FORMAT_LABELS[selectedProfile.payloadFormat || 'raw-stgx']?.short || 'Raw UDP'}
+                            </span>
                         </div>
 
-                        <div className="border-t border-border/60 pt-2.5 flex items-center justify-between text-[11px] text-text-muted font-mono">
-                            <span>
-                                Sent: <strong className="text-text-primary">{clusterStatus?.sender?.packetsSent ?? 0}</strong> pkts (
-                                {formatBytes(clusterStatus?.sender?.bytesSent ?? 0)})
+                        <div className="flex flex-wrap items-center gap-3 text-[11px] text-text-muted font-mono">
+                            <span title="Configured SLA thresholds for healthy multicast delivery">
+                                SLA: Loss &le;{selectedProfile.thresholds?.maxLossPct ?? 0.1}% &middot; Jitter &le;{selectedProfile.thresholds?.maxJitterMs ?? 30}ms &middot; Gap &le;{selectedProfile.thresholds?.maxGapMs ?? 3000}ms
                             </span>
+                            <span className="text-border">|</span>
                             <span>
-                                Run #{clusterStatus?.sender?.runId ?? 0} &bull; {clusterStatus?.sender?.uptimeSec ?? 0}s
+                                Sent <strong className="text-text-primary">{clusterStatus?.sender?.packetsSent ?? 0}</strong> pkts ({formatBytes(clusterStatus?.sender?.bytesSent ?? 0)}) &middot; {clusterStatus?.sender?.uptimeSec ?? 0}s
                             </span>
                         </div>
                     </div>
 
-                    {/* Right: 1-to-N Replication Summary & SLA Thresholds */}
-                    <div className="lg:col-span-8 bg-card border border-border rounded-xl p-4 shadow-sm flex flex-col justify-between">
-                        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border/60 pb-2.5 mb-3">
-                            <div className="flex items-center gap-2">
-                                <Network className="w-4 h-4 text-purple-400" />
-                                <span className="text-xs font-bold uppercase tracking-wider text-text-primary">
-                                    1 &rarr; {selectedProfile.receivers.length} Overlay Replication Tree ({selectedProfile.mode.toUpperCase()})
-                                </span>
+                    {/* Horizontal Flow: Source Metrics -> Arrow -> Receiver Nodes */}
+                    <div className="grid grid-cols-1 lg:grid-cols-12 gap-3 items-center">
+                        {/* Left: Compact Source (Sender) Strip */}
+                        <div className="lg:col-span-5 grid grid-cols-3 gap-2 text-xs">
+                            <div className="bg-background/60 border border-border/60 rounded-lg p-2.5 min-w-0">
+                                <div className="text-[10px] text-text-muted uppercase font-semibold">Source</div>
+                                <div className="font-bold text-text-primary mt-0.5 truncate flex items-center gap-1">
+                                    <span className="truncate">{selectedProfile.senderNode}</span>
+                                    {clusterStatus?.sender?.interfaceName && (
+                                        <span className="text-[10px] font-mono text-blue-400 shrink-0">
+                                            ({clusterStatus.sender.interfaceName})
+                                        </span>
+                                    )}
+                                </div>
+                                <div className="text-[10px] font-mono text-text-muted truncate">
+                                    {clusterStatus?.sender?.interfaceIp || selectedProfile.senderInterfaceIp || 'auto'}
+                                </div>
                             </div>
-                            <div className="flex flex-wrap items-center gap-2.5 text-[11px] text-text-muted font-mono">
-                                <span>
-                                    Loss Healthy: &le;{selectedProfile.thresholds?.maxLossPct ?? 0.1}%
-                                </span>
-                                <span>&bull;</span>
-                                <span>
-                                    Degraded: &le;{selectedProfile.thresholds?.degradedLossPct ?? 2.0}%
-                                </span>
-                                <span>&bull;</span>
-                                <span>
-                                    Jitter: &le;{selectedProfile.thresholds?.maxJitterMs ?? 30}ms
-                                </span>
-                                <span>&bull;</span>
-                                <span>
-                                    Dup Tol: &le;{selectedProfile.thresholds?.maxDuplicates ?? 5}
-                                </span>
-                                <span>&bull;</span>
-                                <span>
-                                    Gap: &le;{selectedProfile.thresholds?.maxGapMs ?? 3000}ms
-                                </span>
+
+                            <div className="bg-background/60 border border-border/60 rounded-lg p-2.5 min-w-0">
+                                <div className="text-[10px] text-text-muted uppercase font-semibold">Group</div>
+                                <div className="font-mono font-bold text-purple-400 mt-0.5 truncate">
+                                    {selectedProfile.group}:{selectedProfile.port}
+                                </div>
+                                <div className="text-[10px] font-mono text-text-muted truncate">
+                                    {selectedProfile.payloadBytes}B &middot; TTL {selectedProfile.ttl} &middot; {selectedProfile.dscp}
+                                </div>
+                            </div>
+
+                            <div className="bg-background/60 border border-border/60 rounded-lg p-2.5 min-w-0">
+                                <div className="text-[10px] text-text-muted uppercase font-semibold">TX Rate</div>
+                                <div className="font-mono font-bold text-emerald-400 mt-0.5 truncate">
+                                    {formatBitsPerSec(clusterStatus?.sender?.txBitrateKbps || 0)}
+                                </div>
+                                <div className="text-[10px] font-mono text-text-muted truncate">
+                                    {clusterStatus?.sender?.txPps ?? 0} pps &middot; Target {formatBitsPerSec(selectedProfile.rate.kbps)}
+                                </div>
                             </div>
                         </div>
 
-                        {/* Visual Fan-Out Flow */}
-                        <div className="flex flex-col md:flex-row items-center justify-between gap-4 py-2">
-                            <div className="px-3.5 py-2.5 rounded-xl bg-blue-500/10 border border-blue-500/30 text-center min-w-[140px]">
-                                <div className="text-[10px] font-bold uppercase text-blue-400">Source DR</div>
-                                <div className="text-sm font-black text-text-primary">{selectedProfile.senderNode}</div>
-                                <div className="text-[10px] font-mono text-text-muted mt-0.5">
-                                    TTL={selectedProfile.ttl} &bull; {selectedProfile.dscp}
-                                </div>
-                            </div>
-
-                            <div className="flex flex-col items-center text-purple-400">
-                                <div className="text-[10px] font-mono uppercase tracking-wider">
-                                    PIM-SM / IGMP ({selectedProfile.group})
-                                </div>
-                                <ArrowRight className="w-5 h-5 my-0.5" />
-                                <div className="text-[10px] font-mono text-text-muted">
-                                    {PAYLOAD_FORMAT_LABELS[selectedProfile.payloadFormat || 'raw-stgx']?.short || 'Raw STGX'} + Seq Trailer
-                                </div>
-                            </div>
-
-                            <div className="flex-1 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2.5 w-full">
-                                {(clusterStatus?.receivers || selectedProfile.receivers).map((r: any) => {
-                                    const verdict: MulticastHealthVerdict = r.verdict || 'NO_TRAFFIC';
-                                    const vStyle = VERDICT_STYLES[verdict] || VERDICT_STYLES.NO_TRAFFIC;
-                                    const joined = r.joined ?? false;
-                                    return (
-                                        <div
-                                            key={r.node}
-                                            className="p-2.5 rounded-lg bg-background/70 border border-border flex items-center justify-between gap-2"
-                                        >
-                                            <div className="min-w-0">
-                                                <div className="flex items-center gap-1.5">
-                                                    <span className="text-xs font-bold text-text-primary truncate">{r.node}</span>
-                                                    <span
-                                                        className={cn(
-                                                            'text-[9px] px-1.5 py-0.2 rounded font-bold border',
-                                                            r.expect === 'none'
-                                                                ? 'bg-amber-500/15 text-amber-300 border-amber-500/30'
-                                                                : 'bg-blue-500/15 text-blue-300 border-blue-500/30'
-                                                        )}
-                                                    >
-                                                        {r.expect === 'none' ? 'LEAK TEST' : 'RX'}
-                                                    </span>
-                                                </div>
-                                                <div className="text-[10px] font-mono text-text-muted mt-0.5">
-                                                    {joined ? `${formatBitsPerSec(r.rxBitrateKbps || 0)} • Loss ${(r.lossPct || 0).toFixed(2)}%` : 'IGMP Pruned / Left'}
-                                                </div>
-                                            </div>
-                                            <span className={cn('px-1.5 py-0.5 rounded text-[9px] font-black border shrink-0', vStyle.badge)}>
-                                                {vStyle.label}
-                                            </span>
-                                        </div>
-                                    );
-                                })}
-                            </div>
-                        </div>
-
-                        <div className="border-t border-border/60 pt-2.5 mt-2 flex flex-wrap items-center justify-between gap-2 text-[11px] text-text-muted">
-                            <span>
-                                Tip: Toggle individual branch receivers below with <strong>IGMP Join / Leave</strong> while the stream is active to validate <strong>Late-Join (S4)</strong> and <strong>IGMP Prune (S8)</strong>.
+                        {/* Middle: Compact Flow Connector */}
+                        <div className="lg:col-span-1 flex lg:flex-col items-center justify-center text-purple-400 py-1 lg:py-0">
+                            <ArrowRight className="w-4 h-4 hidden lg:block" />
+                            <span className="text-[9px] font-mono text-text-muted uppercase mt-0.5">
+                                {selectedProfile.mode.toUpperCase()}
                             </span>
+                        </div>
+
+                        {/* Right: Branch Receivers Fan-Out */}
+                        <div className="lg:col-span-6 grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-2">
+                            {(clusterStatus?.receivers || selectedProfile.receivers).map((r: any) => {
+                                const verdict: MulticastHealthVerdict = r.verdict || 'NO_TRAFFIC';
+                                const vStyle = VERDICT_STYLES[verdict] || VERDICT_STYLES.NO_TRAFFIC;
+                                const joined = r.joined ?? false;
+                                return (
+                                    <div
+                                        key={r.node}
+                                        className="p-2.5 rounded-lg bg-background/60 border border-border/70 flex items-center justify-between gap-2"
+                                        title={r.verdictReason || ''}
+                                    >
+                                        <div className="min-w-0">
+                                            <div className="flex items-center gap-1.5">
+                                                <span className="text-xs font-bold text-text-primary truncate">{r.node}</span>
+                                                {r.expect === 'none' && (
+                                                    <span className="text-[9px] px-1.5 py-0.2 rounded font-bold border bg-amber-500/15 text-amber-300 border-amber-500/30">
+                                                        Deny
+                                                    </span>
+                                                )}
+                                            </div>
+                                            <div className="text-[10px] font-mono text-text-muted mt-0.5 truncate">
+                                                {joined
+                                                    ? `${formatBitsPerSec(r.rxBitrateKbps || 0)} · Loss ${(r.lossPct || 0).toFixed(1)}%`
+                                                    : 'IGMP Left'}
+                                            </div>
+                                        </div>
+                                        <span className={cn('px-1.5 py-0.5 rounded text-[9px] font-bold border shrink-0', vStyle.badge)}>
+                                            {vStyle.label}
+                                        </span>
+                                    </div>
+                                );
+                            })}
                         </div>
                     </div>
                 </div>
             )}
 
-            {/* Live Receiver Matrix Table */}
+            {/* Live Receiver Telemetry Table */}
             {selectedProfile && (
                 <div className="bg-card border border-border rounded-xl overflow-hidden shadow-sm">
-                    <div className="px-4 py-3 border-b border-border flex items-center justify-between">
+                    <div className="px-4 py-2.5 border-b border-border flex items-center justify-between">
                         <div className="flex items-center gap-2">
                             <Activity className="w-4 h-4 text-emerald-400" />
                             <h4 className="text-xs font-bold uppercase tracking-wider text-text-primary">
-                                Live Multicast Receiver Telemetry Matrix
+                                Receiver Telemetry
                             </h4>
                         </div>
-                        <span className="text-[11px] text-text-muted font-mono">
-                            RFC 3550 Jitter &bull; 4096-Packet Bitmask Sequence Tracker
-                        </span>
                     </div>
 
                     <div className="overflow-x-auto">
                         <table className="w-full text-left border-collapse">
                             <thead>
                                 <tr className="border-b border-border bg-background/50 text-[10px] font-bold uppercase tracking-wider text-text-muted">
-                                    <th className="py-2.5 px-3">Receiver Node</th>
-                                    <th className="py-2.5 px-3">IGMP State</th>
-                                    <th className="py-2.5 px-3">Policy Mode</th>
-                                    <th className="py-2.5 px-3">RX Bitrate &amp; Trend</th>
+                                    <th className="py-2.5 px-3">Receiver</th>
+                                    <th className="py-2.5 px-3">IGMP</th>
+                                    <th className="py-2.5 px-3">Policy</th>
+                                    <th className="py-2.5 px-3">RX Bitrate</th>
                                     <th className="py-2.5 px-3">Packets (RX / Exp)</th>
-                                    <th className="py-2.5 px-3">Loss %</th>
-                                    <th className="py-2.5 px-3">Dup / Reorder</th>
-                                    <th className="py-2.5 px-3">Jitter / Max Gap</th>
+                                    <th className="py-2.5 px-3">Loss</th>
+                                    <th className="py-2.5 px-3">Dup / Reord</th>
+                                    <th className="py-2.5 px-3">Jitter / Gap</th>
                                     <th className="py-2.5 px-3">Join Latency</th>
-                                    <th className="py-2.5 px-3">Verdict</th>
-                                    <th className="py-2.5 px-3 text-right">IGMP Action</th>
+                                    <th className="py-2.5 px-3">Status</th>
+                                    <th className="py-2.5 px-3 text-right">Action</th>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-border/60 text-xs">
@@ -1422,40 +1329,42 @@ export const MulticastOverlayTab: React.FC<MulticastOverlayTabProps> = ({
                                     const kbpsHistory = (r.history || []).map((h) => h.kbps);
                                     return (
                                         <tr key={r.node} className="hover:bg-card-hover/40 transition-colors">
-                                            <td className="py-3 px-3 font-bold text-text-primary">
+                                            <td className="py-2.5 px-3 font-bold text-text-primary">
                                                 <div>{r.node}</div>
                                                 <div className="text-[10px] font-mono text-text-muted">
                                                     {r.interfaceName || 'auto'} ({r.interfaceIp || '0.0.0.0'})
                                                 </div>
                                             </td>
-                                            <td className="py-3 px-3">
-                                                <span
-                                                    className={cn(
-                                                        'inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold border',
-                                                        r.joined
-                                                            ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30'
-                                                            : 'bg-slate-500/15 text-slate-400 border-slate-500/30'
-                                                    )}
-                                                >
-                                                    {r.joined ? 'JOINED' : 'LEFT'}
-                                                </span>
-                                                <div className="text-[10px] font-mono text-text-muted mt-0.5">
-                                                    {r.igmpVersion || 'IGMPv2/v3'}
+                                            <td className="py-2.5 px-3">
+                                                <div className="flex items-center gap-1.5">
+                                                    <span
+                                                        className={cn(
+                                                            'inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold border',
+                                                            r.joined
+                                                                ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30'
+                                                                : 'bg-slate-500/15 text-slate-400 border-slate-500/30'
+                                                        )}
+                                                    >
+                                                        {r.joined ? 'JOINED' : 'LEFT'}
+                                                    </span>
+                                                    <span className="text-[10px] font-mono text-text-muted">
+                                                        {(r.igmpVersion || 'v3').replace(/\s*\(auto\)/i, '')}
+                                                    </span>
                                                 </div>
                                             </td>
-                                            <td className="py-3 px-3">
+                                            <td className="py-2.5 px-3">
                                                 <span
                                                     className={cn(
-                                                        'px-2 py-0.5 rounded text-[10px] font-bold border',
+                                                        'px-2 py-0.5 rounded text-[10px] font-semibold border',
                                                         r.expect === 'none'
                                                             ? 'bg-amber-500/15 text-amber-300 border-amber-500/30'
-                                                            : 'bg-blue-500/15 text-blue-300 border-blue-500/30'
+                                                            : 'bg-background text-text-secondary border-border'
                                                     )}
                                                 >
-                                                    {r.expect === 'none' ? 'EXPECT_NONE (Deny)' : 'EXPECT_TRAFFIC'}
+                                                    {r.expect === 'none' ? 'Deny (Leak Test)' : 'Receive'}
                                                 </span>
                                             </td>
-                                            <td className="py-3 px-3 font-mono">
+                                            <td className="py-2.5 px-3 font-mono">
                                                 <div className="flex items-center gap-2">
                                                     <div>
                                                         <div className="font-bold text-text-primary">
@@ -1468,15 +1377,15 @@ export const MulticastOverlayTab: React.FC<MulticastOverlayTabProps> = ({
                                                     )}
                                                 </div>
                                             </td>
-                                            <td className="py-3 px-3 font-mono">
+                                            <td className="py-2.5 px-3 font-mono">
                                                 <div className="text-text-primary font-bold">
                                                     {r.packetsReceived.toLocaleString()} / {r.packetsExpected.toLocaleString()}
                                                 </div>
                                                 <div className="text-[10px] text-text-muted">
-                                                    Seq: {r.firstSeq ?? '-'} &rarr; {r.highestSeq ?? '-'}
+                                                    Seq {r.firstSeq ?? '-'} &rarr; {r.highestSeq ?? '-'}
                                                 </div>
                                             </td>
-                                            <td className="py-3 px-3 font-mono">
+                                            <td className="py-2.5 px-3 font-mono">
                                                 <div
                                                     className={cn(
                                                         'font-bold',
@@ -1491,11 +1400,11 @@ export const MulticastOverlayTab: React.FC<MulticastOverlayTabProps> = ({
                                                 </div>
                                                 <div className="text-[10px] text-text-muted">{r.packetsLost} lost</div>
                                             </td>
-                                            <td className="py-3 px-3 font-mono text-[11px]">
-                                                <div>Dup: {r.duplicatePackets}</div>
-                                                <div className="text-text-muted">Reord: {r.reorderedPackets}</div>
+                                            <td className="py-2.5 px-3 font-mono text-[11px]">
+                                                <div>{r.duplicatePackets} dup</div>
+                                                <div className="text-text-muted">{r.reorderedPackets} reord</div>
                                             </td>
-                                            <td className="py-3 px-3 font-mono">
+                                            <td className="py-2.5 px-3 font-mono">
                                                 <div
                                                     className={cn(
                                                         'font-bold',
@@ -1504,26 +1413,28 @@ export const MulticastOverlayTab: React.FC<MulticastOverlayTabProps> = ({
                                                             : 'text-text-primary'
                                                     )}
                                                 >
-                                                    {r.jitterMs.toFixed(2)} ms
+                                                    {r.jitterMs.toFixed(1)} ms
                                                 </div>
-                                                <div className="text-[10px] text-text-muted">Gap: {r.maxGapMs} ms</div>
+                                                <div className="text-[10px] text-text-muted">Gap {r.maxGapMs} ms</div>
                                             </td>
-                                            <td className="py-3 px-3 font-mono">
+                                            <td className="py-2.5 px-3 font-mono">
                                                 {r.joinLatencyMs !== null && r.joinLatencyMs !== undefined ? (
                                                     <span className="text-cyan-400 font-bold">{r.joinLatencyMs} ms</span>
                                                 ) : (
                                                     <span className="text-text-muted">&mdash;</span>
                                                 )}
                                             </td>
-                                            <td className="py-3 px-3">
-                                                <span className={cn('px-2 py-0.5 rounded text-[10px] font-black border', vStyle.badge)}>
+                                            <td className="py-2.5 px-3">
+                                                <span className={cn('px-2 py-0.5 rounded text-[10px] font-bold border', vStyle.badge)}>
                                                     {vStyle.label}
                                                 </span>
-                                                <div className="text-[10px] text-text-muted mt-0.5 max-w-[190px] truncate" title={r.verdictReason}>
-                                                    {r.verdictReason}
-                                                </div>
+                                                {r.verdictReason && r.verdict !== 'HEALTHY' && (
+                                                    <div className="text-[10px] text-text-muted mt-0.5 max-w-[180px] truncate" title={r.verdictReason}>
+                                                        {r.verdictReason}
+                                                    </div>
+                                                )}
                                             </td>
-                                            <td className="py-3 px-3 text-right">
+                                            <td className="py-2.5 px-3 text-right">
                                                 <div className="flex items-center justify-end gap-1.5">
                                                     <button
                                                         onClick={() => handleResetCounters(r.node)}
@@ -1538,7 +1449,7 @@ export const MulticastOverlayTab: React.FC<MulticastOverlayTabProps> = ({
                                                             className="px-2.5 py-1 rounded bg-rose-500/15 hover:bg-rose-500/25 text-rose-300 border border-rose-500/30 text-[11px] font-bold transition-colors"
                                                             title="Send IGMP Leave (Prune branch from multicast tree)"
                                                         >
-                                                            IGMP Leave
+                                                            Leave
                                                         </button>
                                                     ) : (
                                                         <button
@@ -1546,7 +1457,7 @@ export const MulticastOverlayTab: React.FC<MulticastOverlayTabProps> = ({
                                                             className="px-2.5 py-1 rounded bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 border border-emerald-500/30 text-[11px] font-bold transition-colors"
                                                             title="Send IGMP Membership Report (Late-Join multicast tree)"
                                                         >
-                                                            IGMP Join
+                                                            Join
                                                         </button>
                                                     )}
                                                 </div>
