@@ -1476,10 +1476,15 @@ def build_full_topology(sdk: API, sites_data: dict, debug: bool = False, debug_t
                 for swi in swi_ids:
                     element_wan_if_ids.add(swi)
 
-                # LAN: used_for=lan OR used_for=private (DC), static IP
+                # LAN: used_for=lan OR used_for=private (DC), static IP (physical only, exclude loopbacks)
                 if used_for in ('lan', 'private') and ipv4_cfg.get('type') == 'static':
                     # Exclude overlay/circuit-linked interfaces
                     if used_for == 'private' and (swi_ids or intf.get('label_id') or intf.get('wan_network_id')):
+                        continue
+
+                    intf_type = (intf.get('type') or '').lower()
+                    intf_name_lower = (intf.get('name') or '').lower()
+                    if intf_type == 'loopback' or 'loopback' in intf_name_lower or intf_name_lower.startswith('lo'):
                         continue
 
                     static = ipv4_cfg.get('static_config') or {}
@@ -1496,6 +1501,9 @@ def build_full_topology(sdk: API, sites_data: dict, debug: bool = False, debug_t
                             iface_obj = ipaddress.IPv4Interface(f"{ip_raw}/{nm}")
 
                         intf_desc = get_interface_description(intf)
+                        if iface_obj.network.prefixlen == 32 or 'loopback' in (intf_desc or '').lower():
+                            continue
+
                         op_status = op_ip_map.get((el_id, intf.get('name')), {})
                         lan_interfaces.append({
                             'interface_name': intf.get('name'),

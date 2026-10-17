@@ -281,7 +281,7 @@ const ArchedBridgeEdge = ({
                     >
                         <div className={cn(
                             "px-2 py-0.5 rounded-full border shadow-xl backdrop-blur-md text-[9px] font-black uppercase tracking-tighter whitespace-nowrap",
-                            isMpls ? "bg-purple-500/10 border-purple-500/40 text-purple-400" : "bg-blue-500/10 border-blue-500/40 text-blue-400"
+                            isMpls ? "bg-purple-500/15 border-purple-500/45 text-purple-800 dark:text-purple-300" : "bg-blue-500/15 border-blue-500/45 text-blue-800 dark:text-blue-300"
                         )}>
                             {data?.circuit_label}
                         </div>
@@ -306,9 +306,9 @@ const Port = ({
 }) => {
     let bgClass = "bg-card border-border text-text-muted";
 
-    // Status color coding for port badges
-    if (status === 'up') bgClass = "bg-green-500/20 border-green-500/50 text-green-400";
-    if (status === 'down') bgClass = "bg-red-500/20 border-red-500/50 text-red-500";
+    // Status color coding for port badges (high contrast in both Light and Dark modes)
+    if (status === 'up') bgClass = "bg-green-500/20 border-green-600/55 dark:border-green-500/50 text-green-800 dark:text-green-400";
+    if (status === 'down') bgClass = "bg-red-500/20 border-red-600/55 dark:border-red-500/50 text-red-700 dark:text-red-500";
 
     return (
         <div className="flex flex-col items-center gap-1 relative z-20 group">
@@ -371,6 +371,58 @@ function isExactSiteMatch(siteName?: string | null, nodeName?: string | null): b
     return s1 === s2;
 }
 
+// Helper to filter out loopback / virtual / /32 interfaces on ION devices and keep only physical LAN interfaces
+function isPhysicalLanInterface(l: any): boolean {
+    if (!l || !l.ip) return false;
+    const name = String(l.interface_name || l.name || '').toLowerCase().trim();
+    const desc = String(l.interface_description || l.description || '').toLowerCase().trim();
+    const label = String(l.interface_label || '').toLowerCase().trim();
+    const type = String(l.type || '').toLowerCase().trim();
+    const net = String(l.network || l.ip || '').trim();
+    const cleanIp = String(l.ip).split('/')[0].trim();
+
+    if (
+        type === 'loopback' ||
+        name.includes('loopback') ||
+        name.startsWith('lo') ||
+        desc.includes('loopback') ||
+        label.includes('loopback') ||
+        net.endsWith('/32') ||
+        cleanIp.startsWith('20.0.') ||
+        cleanIp.startsWith('127.')
+    ) {
+        return false;
+    }
+    return true;
+}
+
+// Helper to filter out loopback / dummy / tunnel interfaces on VyOS routers and keep only physical interfaces
+function isPhysicalVyosInterface(iface: any): boolean {
+    if (!iface || !iface.name) return false;
+    const name = String(iface.name).toLowerCase().trim();
+    const desc = String(iface.description || '').toLowerCase().trim();
+    const type = String(iface.type || '').toLowerCase().trim();
+    const ipCidr = String(iface.ipCidr || iface.address?.[0] || iface.ip || '').trim();
+
+    if (
+        type === 'loopback' ||
+        type === 'dummy' ||
+        name === 'lo' ||
+        name.startsWith('lo') ||
+        name.startsWith('loopback') ||
+        name.startsWith('dum') ||
+        name.startsWith('vti') ||
+        name.startsWith('tun') ||
+        name.startsWith('wg') ||
+        desc.includes('loopback') ||
+        ipCidr.endsWith('/32') ||
+        ipCidr.startsWith('127.')
+    ) {
+        return false;
+    }
+    return true;
+}
+
 // --- Custom Site Node Component (The "Physical" Schematic) ---
 const SiteNode = ({ data }: any) => {
     const isHub = data.role === 'HUB';
@@ -382,15 +434,17 @@ const SiteNode = ({ data }: any) => {
         (d.wan_interfaces || []).map((w: any) => ({ ...w, devName: d.device_name }))
     );
 
-    const lanInterfaces = devices.flatMap((d: any) =>
-        (d.lan_interfaces || []).map((l: any) => ({ ...l, devName: d.device_name }))
-    );
+    const getPrimaryPhysicalLan = (dev: any) =>
+        (dev.lan_interfaces || []).find(isPhysicalLanInterface) ||
+        (dev.lan_interfaces || []).find((l: any) => l?.ip && !String(l.ip).startsWith('20.0.'));
 
-    // Aggregate ALL LAN subnets across ALL devices in this site
+    // Aggregate physical LAN subnets across all devices in this site (excluding loopbacks)
     const allLanSubnets = new Set<string>();
     devices.forEach((d: any) => {
-        d.lan_interfaces?.forEach((l: any) => {
-            if (l.ip) {
+        (d.lan_interfaces || []).filter(isPhysicalLanInterface).forEach((l: any) => {
+            if (l.network && String(l.network).includes('/') && !String(l.network).endsWith('/32')) {
+                allLanSubnets.add(String(l.network));
+            } else if (l.ip) {
                 const subnet = l.ip.includes('/') ? l.ip : l.ip.replace(/\.\d+$/, '.0/24');
                 allLanSubnets.add(subnet);
             }
@@ -437,7 +491,7 @@ const SiteNode = ({ data }: any) => {
         return { r, c };
     };
 
-    // Identify the primary shared LAN subnet (matching Port 3 of the IONs / LAN VyOS) vs secondary subnets (e.g. loopback 20.0.x.0/24)
+    // Identify the primary shared physical LAN subnet (matching Port 3 of the IONs / LAN VyOS)
     const matchedVyosLanSubnet = lanVyosRouters[0]?.resolutions?.[0]?.matchedNetwork;
     const primaryLanSubnet = (matchedVyosLanSubnet && uniqueSubeNets.includes(matchedVyosLanSubnet))
         ? matchedVyosLanSubnet
@@ -464,12 +518,12 @@ const SiteNode = ({ data }: any) => {
     // Extra vertical height in the Hub top section when the 2-tier [Stigix -> VyOS] -> [Shared LAN] hierarchy is displayed
     const hubExtraY = (isHub && hasLanVyos) ? 42 : 0;
 
-    // Render a secondary subnet pill (e.g., 20.0.1.0/24)
+    // Render any additional physical LAN subnet pill
     const renderSecondarySubnetPill = (subnet: string, sIdx: number) => (
         <div
             key={`sec-${sIdx}`}
-            className="bg-emerald-500/10 px-2.5 py-0.5 rounded-lg border border-emerald-500/25 text-[10px] font-mono font-bold text-emerald-400/80 shadow-sm h-[24px] flex items-center whitespace-nowrap"
-            title={`Secondary / Loopback Subnet: ${subnet}`}
+            className="bg-emerald-500/15 dark:bg-emerald-500/10 px-2.5 py-0.5 rounded-lg border border-emerald-600/40 dark:border-emerald-500/25 text-[10px] font-mono font-bold text-emerald-800 dark:text-emerald-400/80 shadow-sm h-[24px] flex items-center whitespace-nowrap"
+            title={`Physical LAN Subnet: ${subnet}`}
         >
             {subnet}
         </div>
@@ -482,18 +536,18 @@ const SiteNode = ({ data }: any) => {
         return (
             <div
                 className={cn(
-                    "bg-blue-600/20 px-2.5 py-1 rounded-xl border-2 border-blue-400 text-[10px] font-mono font-bold text-blue-200 shadow-lg shadow-blue-500/25 relative z-20 transition-all hover:scale-105 hover:bg-blue-500/30 hover:border-blue-300 flex items-center gap-1.5 cursor-default whitespace-nowrap",
+                    "bg-blue-500/15 dark:bg-blue-600/20 px-2.5 py-1 rounded-xl border-2 border-blue-500 dark:border-blue-400 text-[10px] font-mono font-bold text-blue-800 dark:text-blue-200 shadow-lg shadow-blue-500/20 dark:shadow-blue-500/25 relative z-20 transition-all hover:scale-105 hover:bg-blue-500/25 dark:hover:bg-blue-500/30 hover:border-blue-600 dark:hover:border-blue-300 flex items-center gap-1.5 cursor-default whitespace-nowrap",
                     compactForVyosChain ? "h-[28px]" : "h-[30px]"
                 )}
                 title={`⚡ Stigix SASE Agent: ${siteStigixNode.name || siteStigixNode.id}${stigixIp ? ` (${stigixIp})` : ''} • ${isStigixLeader ? 'LEADER' : 'PEER'}${hasLanVyos ? ` • Connected via ${lanVyosRouters[0]?.name || 'VyOS'}` : ''}`}
             >
                 <span className="relative flex h-2 w-2 shrink-0">
                     <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
-                    <span className="relative inline-flex rounded-full h-2 w-2 bg-blue-500"></span>
+                    <span className="relative inline-flex rounded-full h-2 w-2 bg-blue-600 dark:bg-blue-500"></span>
                 </span>
-                <Zap size={12} className="text-blue-300 shrink-0" />
-                <span className="font-black tracking-tight text-blue-100">STIGIX</span>
-                <span className="text-[8px] px-1.5 py-0.2 rounded bg-blue-400/25 border border-blue-300/40 text-blue-100 uppercase font-black tracking-wider">
+                <Zap size={12} className="text-blue-600 dark:text-blue-300 shrink-0" />
+                <span className="font-black tracking-tight text-blue-900 dark:text-blue-100">STIGIX</span>
+                <span className="text-[8px] px-1.5 py-0.2 rounded bg-blue-500/20 dark:bg-blue-400/25 border border-blue-600/40 dark:border-blue-300/40 text-blue-900 dark:text-blue-100 uppercase font-black tracking-wider">
                     {isStigixLeader ? 'LEADER' : 'PEER'}
                 </span>
             </div>
@@ -507,16 +561,16 @@ const SiteNode = ({ data }: any) => {
             return (
                 <div className="relative flex items-center justify-center">
                     <div
-                        className="bg-blue-600/20 px-3.5 py-1 rounded-xl border-2 border-blue-400 text-[11px] font-mono font-bold text-blue-200 shadow-lg shadow-blue-500/25 relative z-10 group transition-all hover:scale-105 hover:bg-blue-500/30 hover:border-blue-300 flex items-center gap-2 cursor-pointer h-[32px] whitespace-nowrap"
+                        className="bg-blue-500/15 dark:bg-blue-600/20 px-3.5 py-1 rounded-xl border-2 border-blue-500 dark:border-blue-400 text-[11px] font-mono font-bold text-blue-800 dark:text-blue-200 shadow-lg shadow-blue-500/20 dark:shadow-blue-500/25 relative z-10 group transition-all hover:scale-105 hover:bg-blue-500/25 dark:hover:bg-blue-500/30 hover:border-blue-600 dark:hover:border-blue-300 flex items-center gap-2 cursor-pointer h-[32px] whitespace-nowrap"
                         title={`⚡ Stigix SASE Agent: ${siteStigixNode.name || siteStigixNode.id} (${siteStigixNode.ip || siteStigixNode.ip_private}) • ${isStigixLeader ? 'LEADER' : 'PEER'}`}
                     >
                         <span className="relative flex h-2 w-2">
                             <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
-                            <span className="relative inline-flex rounded-full h-2 w-2 bg-blue-500"></span>
+                            <span className="relative inline-flex rounded-full h-2 w-2 bg-blue-600 dark:bg-blue-500"></span>
                         </span>
-                        <Zap size={13} className="text-blue-300" />
+                        <Zap size={13} className="text-blue-600 dark:text-blue-300" />
                         <span>{primaryLanSubnet}</span>
-                        <span className="text-[8px] px-1.5 py-0.5 rounded bg-blue-400/25 border border-blue-300/40 text-blue-100 uppercase font-black tracking-wider ml-0.5">
+                        <span className="text-[8px] px-1.5 py-0.5 rounded bg-blue-500/20 dark:bg-blue-400/25 border border-blue-600/40 dark:border-blue-300/40 text-blue-900 dark:text-blue-100 uppercase font-black tracking-wider ml-0.5">
                             {isStigixLeader ? 'LEADER' : 'PEER'}
                         </span>
                     </div>
@@ -534,15 +588,15 @@ const SiteNode = ({ data }: any) => {
             <div className="relative flex items-center justify-center">
                 <div
                     className={cn(
-                        "bg-emerald-500/15 px-3.5 py-1 rounded-xl border-2 border-emerald-500/45 text-[11px] font-mono font-black text-emerald-300 shadow-md shadow-emerald-500/15 relative z-10 transition-all hover:border-emerald-400 flex items-center gap-2 cursor-default whitespace-nowrap",
+                        "bg-emerald-500/15 px-3.5 py-1 rounded-xl border-2 border-emerald-600/55 dark:border-emerald-500/45 text-[11px] font-mono font-black text-emerald-800 dark:text-emerald-300 shadow-md shadow-emerald-500/15 relative z-10 transition-all hover:border-emerald-600 dark:hover:border-emerald-400 flex items-center gap-2 cursor-default whitespace-nowrap",
                         hasLanVyos ? "h-[30px]" : "h-[32px]"
                     )}
                     title={`Shared ION LAN Segment: ${primaryLanSubnet}${devices.length > 1 ? ` (${devices.map((d: any) => d.device_name).join(' + ')})` : ''}`}
                 >
-                    <span className="w-2 h-2 rounded-full bg-emerald-400 shadow-[0_0_6px_rgba(52,211,153,0.8)] shrink-0" />
+                    <span className="w-2 h-2 rounded-full bg-emerald-600 dark:bg-emerald-400 shadow-[0_0_6px_rgba(52,211,153,0.8)] shrink-0" />
                     <span>{primaryLanSubnet}</span>
                     {devices.length > 1 && (
-                        <span className="text-[8px] px-1.5 py-0.2 rounded bg-emerald-500/20 border border-emerald-400/35 text-emerald-200 uppercase font-black tracking-wider">
+                        <span className="text-[8px] px-1.5 py-0.2 rounded bg-emerald-600/20 dark:bg-emerald-500/20 border border-emerald-600/45 dark:border-emerald-400/35 text-emerald-900 dark:text-emerald-200 uppercase font-black tracking-wider">
                             LAN BUS
                         </span>
                     )}
@@ -572,7 +626,7 @@ const SiteNode = ({ data }: any) => {
                 {siteStigixNode && (
                     <div className="absolute right-full flex items-center">
                         {renderStigixBadge(true)}
-                        <div className="w-3.5 h-[2px] bg-gradient-to-r from-blue-400 to-amber-400 shadow-[0_0_6px_rgba(59,130,246,0.6)]" />
+                        <div className="w-3.5 h-[2px] bg-gradient-to-r from-blue-500 to-amber-500 dark:from-blue-400 dark:to-amber-400 shadow-[0_0_6px_rgba(59,130,246,0.6)]" />
                     </div>
                 )}
 
@@ -587,33 +641,33 @@ const SiteNode = ({ data }: any) => {
                     className={cn(
                         "px-3 py-1 rounded-xl border-2 text-[10px] font-mono font-black relative z-20 transition-all hover:scale-105 flex items-center gap-1.5 cursor-pointer h-[30px] shadow-md whitespace-nowrap",
                         hasShut || blockedCount > 0
-                            ? "bg-rose-500/20 border-rose-500/60 text-rose-200 hover:bg-rose-500/30 hover:border-rose-400 shadow-rose-500/20"
+                            ? "bg-rose-500/15 dark:bg-rose-500/20 border-rose-600/60 dark:border-rose-500/60 text-rose-800 dark:text-rose-200 hover:bg-rose-500/25 dark:hover:bg-rose-500/30 hover:border-rose-600 dark:hover:border-rose-400 shadow-rose-500/20"
                             : activeQos
-                                ? "bg-amber-500/25 border-amber-400/70 text-amber-100 hover:bg-amber-500/35 hover:border-amber-300 shadow-amber-500/20"
-                                : "bg-amber-500/15 border-amber-500/45 text-amber-300 hover:bg-amber-500/25 hover:border-amber-400/80 shadow-amber-500/15"
+                                ? "bg-amber-500/20 dark:bg-amber-500/25 border-amber-600/70 dark:border-amber-400/70 text-amber-950 dark:text-amber-100 hover:bg-amber-500/30 dark:hover:bg-amber-500/35 hover:border-amber-600 dark:hover:border-amber-300 shadow-amber-500/20"
+                                : "bg-amber-500/15 border-amber-600/55 dark:border-amber-500/45 text-amber-900 dark:text-amber-300 hover:bg-amber-500/25 hover:border-amber-600 dark:hover:border-amber-400/80 shadow-amber-500/15"
                     )}
                 >
                     <span className={cn(
                         "w-2 h-2 rounded-full shrink-0",
-                        hasShut ? "bg-rose-500 animate-pulse" : activeQos ? "bg-amber-400 animate-pulse" : "bg-emerald-400"
+                        hasShut ? "bg-rose-500 animate-pulse" : activeQos ? "bg-amber-500 dark:bg-amber-400 animate-pulse" : "bg-emerald-500 dark:bg-emerald-400"
                     )} />
-                    <Server size={11} className="text-amber-400 shrink-0" />
+                    <Server size={11} className="text-amber-600 dark:text-amber-400 shrink-0" />
                     <span className="tracking-wider uppercase">{lr.name || 'VyOS'}</span>
-                    <span className="text-[8.5px] px-1.5 py-0.2 rounded bg-amber-500/20 border border-amber-400/30 text-amber-200 font-bold">
+                    <span className="text-[8.5px] px-1.5 py-0.2 rounded bg-amber-600/20 dark:bg-amber-500/20 border border-amber-600/45 dark:border-amber-400/30 text-amber-950 dark:text-amber-200 font-bold">
                         {lr.lanInterfaceName || 'LAN'}{shortVyosIp ? ` (${shortVyosIp})` : ''}
                     </span>
                     {activeQos && (
-                        <span className="px-1.5 py-0.2 rounded bg-amber-500/35 border border-amber-300/60 text-[8.5px] text-amber-100 font-black">
+                        <span className="px-1.5 py-0.2 rounded bg-amber-600/25 dark:bg-amber-500/35 border border-amber-600/50 dark:border-amber-300/60 text-[8.5px] text-amber-950 dark:text-amber-100 font-black">
                             +{activeQos.latency || 0}ms{activeQos.loss ? ` ${activeQos.loss}%` : ''}
                         </span>
                     )}
                     {hasShut && (
-                        <span className="px-1.5 py-0.2 rounded bg-rose-500/35 border border-rose-400/60 text-[8.5px] text-rose-100 font-black">
+                        <span className="px-1.5 py-0.2 rounded bg-rose-600/25 dark:bg-rose-500/35 border border-rose-600/50 dark:border-rose-400/60 text-[8.5px] text-rose-900 dark:text-rose-100 font-black">
                             SHUT
                         </span>
                     )}
                     {blockedCount > 0 && !hasShut && (
-                        <span className="px-1.5 py-0.2 rounded bg-rose-500/35 border border-rose-400/60 text-[8.5px] text-rose-100 font-black">
+                        <span className="px-1.5 py-0.2 rounded bg-rose-600/25 dark:bg-rose-500/35 border border-rose-600/50 dark:border-rose-400/60 text-[8.5px] text-rose-900 dark:text-rose-100 font-black">
                             {blockedCount} BLK
                         </span>
                     )}
@@ -645,8 +699,8 @@ const SiteNode = ({ data }: any) => {
                                         isSelectedCircuit
                                             ? "ring-2 ring-blue-400 bg-blue-500/25 border-blue-400 shadow-lg shadow-blue-500/30 scale-105"
                                             : (w.wan_network?.toLowerCase().includes('mpls')
-                                                ? "bg-purple-500/10 border-purple-500/30 text-purple-400 hover:border-purple-400/60"
-                                                : "bg-blue-500/10 border-blue-500/30 text-blue-400 hover:border-blue-400/60")
+                                                ? "bg-purple-500/10 border-purple-500/35 text-purple-700 dark:text-purple-400 hover:border-purple-500 dark:hover:border-purple-400/60"
+                                                : "bg-blue-500/10 border-blue-500/35 text-blue-700 dark:text-blue-400 hover:border-blue-500 dark:hover:border-blue-400/60")
                                     )}
                                     title={`Click to inspect tunnels for ${w.circuit_label || w.name}`}
                                     onClick={(e) => {
@@ -817,8 +871,8 @@ const SiteNode = ({ data }: any) => {
                 {isGateway && (
                     <div className="flex flex-col items-center justify-center mb-5 relative z-10">
                         <div className="flex items-center gap-2 mb-1.5">
-                            <span className="px-2.5 py-0.5 rounded-full bg-amber-500/15 border border-amber-500/40 text-[9px] font-black uppercase tracking-widest text-amber-400 shadow-sm flex items-center gap-1.5">
-                                <GitBranch size={11} className="text-amber-400" />
+                            <span className="px-2.5 py-0.5 rounded-full bg-amber-500/15 border border-amber-500/40 text-[9px] font-black uppercase tracking-widest text-amber-800 dark:text-amber-300 shadow-sm flex items-center gap-1.5">
+                                <GitBranch size={11} className="text-amber-600 dark:text-amber-400" />
                                 Branch Gateway
                             </span>
                         </div>
@@ -846,7 +900,7 @@ const SiteNode = ({ data }: any) => {
                                 {/* HUB: LAN Port Top */}
                                 {isHub && (
                                     <div className="absolute -top-[10px] w-full flex justify-center z-20">
-                                        <Port num="3" label={shortIp(dev.lan_interfaces?.[0]?.ip)} status={getStatus(dev.lan_interfaces?.[0])} labelPosition="bottom" />
+                                        <Port num="3" label={shortIp(getPrimaryPhysicalLan(dev)?.ip)} status={getStatus(getPrimaryPhysicalLan(dev))} labelPosition="bottom" />
                                     </div>
                                 )}
 
@@ -889,7 +943,7 @@ const SiteNode = ({ data }: any) => {
                                 {/* SPOKE & GATEWAY: LAN Port Bottom */}
                                 {!isHub && (
                                     <div className="absolute -bottom-[10px] w-full flex justify-center z-20">
-                                        <Port num="3" label={shortIp(dev.lan_interfaces?.[0]?.ip)} status={getStatus(dev.lan_interfaces?.[0])} labelPosition="top" />
+                                        <Port num="3" label={shortIp(getPrimaryPhysicalLan(dev)?.ip)} status={getStatus(getPrimaryPhysicalLan(dev))} labelPosition="top" />
                                     </div>
                                 )}
                             </div>
@@ -950,8 +1004,8 @@ const SiteNode = ({ data }: any) => {
                                         isSelectedCircuit
                                             ? "ring-2 ring-blue-400 bg-blue-500/25 border-blue-400 shadow-lg shadow-blue-500/30 scale-105"
                                             : (w.wan_network?.toLowerCase().includes('mpls')
-                                                ? "bg-purple-500/10 border-purple-500/35 text-purple-400 hover:border-purple-400/60"
-                                                : "bg-blue-500/10 border-blue-500/35 text-blue-400 hover:border-blue-400/60")
+                                                ? "bg-purple-500/10 border-purple-500/35 text-purple-700 dark:text-purple-400 hover:border-purple-400/60"
+                                                : "bg-blue-500/10 border-blue-500/35 text-blue-700 dark:text-blue-400 hover:border-blue-400/60")
                                     )}
                                     title={`Click to inspect tunnels for ${w.circuit_label || w.name}`}
                                     onClick={(e) => {
@@ -1050,10 +1104,10 @@ const CloudNode = ({ data }: any) => {
                 <div className={cn(
                     "px-3 py-1 rounded-full text-[9px] font-mono font-bold border flex items-center gap-1.5 mt-0.5 shadow-sm",
                     isInternet
-                        ? (isSelected ? "bg-sky-500/30 border-sky-400 text-sky-200" : "bg-sky-500/15 border-sky-500/30 text-sky-300")
-                        : (isSelected ? "bg-purple-500/30 border-purple-400 text-purple-200" : "bg-purple-500/15 border-purple-500/30 text-purple-300")
+                        ? (isSelected ? "bg-sky-500/30 border-sky-400 text-sky-900 dark:text-sky-200" : "bg-sky-500/15 border-sky-500/30 text-sky-800 dark:text-sky-300")
+                        : (isSelected ? "bg-purple-500/30 border-purple-400 text-purple-900 dark:text-purple-200" : "bg-purple-500/15 border-purple-500/30 text-purple-800 dark:text-purple-300")
                 )}>
-                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 dark:bg-emerald-400 animate-pulse" />
                     <span>{tunnelsUp || 0} / {tunnelsTotal} Tunnels</span>
                 </div>
             )}
@@ -1086,8 +1140,8 @@ const VyOSRouterNode = ({ data }: any) => {
     const hubResolutions = resolutions.filter((r: any) => r.isHub);
     const spokeResolutions = resolutions.filter((r: any) => !r.isHub);
 
-    // Identify interfaces for this router
-    const allIfaces = router.interfaces || [];
+    // Identify physical interfaces for this router (exclude loopbacks/dummy/virtual /32)
+    const allIfaces = (router.interfaces || []).filter(isPhysicalVyosInterface);
 
     // Sorting comparator: Sort by connected site's horizontal X position (left to right), then INET before MPLS
     const sortIfacesBySite = (ifaceA: any, ifaceB: any) => {
@@ -1163,23 +1217,23 @@ const VyOSRouterNode = ({ data }: any) => {
                 />
 
                 <div className="flex items-center justify-between pb-1 border-b border-border/50">
-                    <span className="font-mono font-black text-amber-600 dark:text-amber-400 flex items-center gap-1.5">
+                    <span className="font-mono font-black text-amber-700 dark:text-amber-400 flex items-center gap-1.5">
                         <span className={cn("w-2.5 h-2.5 rounded-full", isConnected ? (isIfaceUp ? "bg-green-500 shadow-[0_0_6px_rgba(34,197,94,0.8)]" : "bg-red-500 shadow-[0_0_6px_rgba(239,68,68,0.8)]") : "bg-slate-400 dark:bg-slate-600")} />
                         {iface.name}
                     </span>
                     <div className="flex items-center gap-1">
                         {isBlocked && (
-                            <span className="text-[8px] font-black px-1.5 py-0.2 rounded bg-rose-500/20 text-rose-500 border border-rose-500/40 flex items-center gap-0.5 animate-pulse" title="Traffic to this endpoint is blocked by router-level blackhole rule">
+                            <span className="text-[8px] font-black px-1.5 py-0.2 rounded bg-rose-500/20 text-rose-700 dark:text-rose-400 border border-rose-500/40 flex items-center gap-0.5 animate-pulse" title="Traffic to this endpoint is blocked by router-level blackhole rule">
                                 <ShieldAlert size={9} /> DENIED
                             </span>
                         )}
                         {hasQos && (
-                            <span className="text-[8px] font-black px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-400 border border-amber-500/40">
+                            <span className="text-[8px] font-black px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-800 dark:text-amber-300 border border-amber-600/45 dark:border-amber-500/40">
                                 ⏱️ +{portQos.latency || 0}ms
                             </span>
                         )}
                         {isConnected && (
-                            <span className="text-[9px] font-black px-1.5 py-0.2 rounded bg-green-500/15 text-green-700 dark:text-green-300 border border-green-500/30 truncate max-w-[85px]">
+                            <span className="text-[9px] font-black px-1.5 py-0.2 rounded bg-green-500/15 text-green-800 dark:text-green-300 border border-green-600/35 dark:border-green-500/30 truncate max-w-[85px]">
                                 {matchedRes.prismaWan.siteName}
                             </span>
                         )}
@@ -1207,7 +1261,7 @@ const VyOSRouterNode = ({ data }: any) => {
             {/* TOP ROW: Hub-facing Physical Ports (Facing DCs at top) */}
             {displayTopIfaces.length > 0 && (
                 <div className="flex flex-col gap-2">
-                    <div className="flex items-center justify-between text-[10px] font-black text-amber-600 dark:text-amber-400/90 uppercase tracking-wider px-1">
+                    <div className="flex items-center justify-between text-[10px] font-black text-amber-700 dark:text-amber-400/90 uppercase tracking-wider px-1">
                         <span>▲ DC & Hub Uplinks ({displayTopIfaces.length})</span>
                         <span className="font-mono text-text-muted">Top Transit</span>
                     </div>
@@ -1230,11 +1284,11 @@ const VyOSRouterNode = ({ data }: any) => {
                                 "w-2.5 h-2.5 rounded-full",
                                 isOnline ? "bg-green-500 dark:bg-green-400 shadow-[0_0_8px_rgba(34,197,94,0.8)]" : "bg-red-500"
                             )} />
-                            <span className="text-[9px] font-bold text-green-600 dark:text-green-400 uppercase tracking-widest">
+                            <span className="text-[9px] font-bold text-green-700 dark:text-green-400 uppercase tracking-widest">
                                 {isOnline ? 'ONLINE' : 'OFFLINE'}
                             </span>
                         </div>
-                        <div className="text-xs text-amber-600 dark:text-amber-400 font-mono font-bold mt-0.5">
+                        <div className="text-xs text-amber-700 dark:text-amber-400 font-mono font-bold mt-0.5">
                             Mgmt IP: {router.host}
                         </div>
                     </div>
@@ -1252,8 +1306,8 @@ const VyOSRouterNode = ({ data }: any) => {
                             className={cn(
                                 "px-3 py-1.5 rounded-xl font-black text-[11px] flex items-center gap-1.5 border transition-all cursor-pointer shadow-sm",
                                 blockedCount > 0
-                                    ? "bg-rose-500/20 hover:bg-rose-500/30 text-rose-500 dark:text-rose-400 border-rose-500/50 shadow-rose-500/20 ring-1 ring-rose-500/40"
-                                    : "bg-amber-500/15 hover:bg-amber-500/25 text-amber-700 dark:text-amber-300 border-amber-500/40 hover:border-amber-400"
+                                    ? "bg-rose-500/20 hover:bg-rose-500/30 text-rose-700 dark:text-rose-400 border-rose-500/50 shadow-rose-500/20 ring-1 ring-rose-500/40"
+                                    : "bg-amber-500/15 hover:bg-amber-500/25 text-amber-800 dark:text-amber-300 border-amber-600/45 dark:border-amber-500/40 hover:border-amber-400"
                             )}
                             title="Manage router-level Allow/Deny traffic policies"
                         >
@@ -1272,7 +1326,7 @@ const VyOSRouterNode = ({ data }: any) => {
                     )}
 
                     <div className="text-right">
-                        <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-amber-500/15 border border-amber-500/40 text-amber-700 dark:text-amber-300 text-[10px] font-black uppercase tracking-wider">
+                        <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-amber-500/15 border border-amber-600/45 dark:border-amber-500/40 text-amber-800 dark:text-amber-300 text-[10px] font-black uppercase tracking-wider">
                             <span>{connectedCount} Circuits</span>
                         </div>
                         {router.location && (
@@ -1287,7 +1341,7 @@ const VyOSRouterNode = ({ data }: any) => {
             {/* BOTTOM ROW: Spoke-facing Physical Ports (Facing Branches at bottom) */}
             {displayBottomIfaces.length > 0 && (
                 <div className="flex flex-col gap-2">
-                    <div className="flex items-center justify-between text-[10px] font-black text-amber-600 dark:text-amber-400/90 uppercase tracking-wider px-1">
+                    <div className="flex items-center justify-between text-[10px] font-black text-amber-700 dark:text-amber-400/90 uppercase tracking-wider px-1">
                         <span>▼ Branch & Spoke Downlinks ({displayBottomIfaces.length})</span>
                         <span className="font-mono text-text-muted">Bottom Transit</span>
                     </div>
@@ -1328,14 +1382,14 @@ const VyOSLanRouterNode = ({ data }: any) => {
 
         const badgeClass =
             roleTone === 'emerald'
-                ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
+                ? 'bg-emerald-500/20 text-emerald-800 dark:text-emerald-300 border-emerald-600/45 dark:border-emerald-500/40'
                 : roleTone === 'cyan'
-                    ? 'bg-cyan-500/20 text-cyan-300 border-cyan-500/40'
+                    ? 'bg-cyan-500/20 text-cyan-800 dark:text-cyan-300 border-cyan-600/45 dark:border-cyan-500/40'
                     : roleTone === 'purple'
-                        ? 'bg-purple-500/20 text-purple-300 border-purple-500/40'
+                        ? 'bg-purple-500/20 text-purple-800 dark:text-purple-300 border-purple-600/45 dark:border-purple-500/40'
                         : roleTone === 'amber'
-                            ? 'bg-amber-500/20 text-amber-300 border-amber-500/40'
-                            : 'bg-blue-500/15 text-blue-300 border-blue-500/35';
+                            ? 'bg-amber-500/20 text-amber-800 dark:text-amber-300 border-amber-600/45 dark:border-amber-500/40'
+                            : 'bg-blue-500/15 text-blue-800 dark:text-blue-300 border-blue-600/40 dark:border-blue-500/35';
 
         return (
             <div
@@ -1359,7 +1413,7 @@ const VyOSLanRouterNode = ({ data }: any) => {
                 title={`${item.name} (${item.ipCidr || item.ip || '—'}) • ${isIonLan ? `Connected to ${siteName} Shared LAN` : (item.description || roleLabel)} — Click to configure QoS or Shut`}
             >
                 <div className="flex items-center justify-between pb-1 border-b border-border/50 gap-1.5">
-                    <span className="font-mono font-black text-amber-600 dark:text-amber-400 flex items-center gap-1.5">
+                    <span className="font-mono font-black text-amber-700 dark:text-amber-400 flex items-center gap-1.5">
                         <span className={cn(
                             "w-2 h-2 rounded-full",
                             isIfaceUp ? "bg-green-500 shadow-[0_0_6px_rgba(34,197,94,0.8)]" : "bg-red-500 shadow-[0_0_6px_rgba(239,68,68,0.8)]"
@@ -1368,12 +1422,12 @@ const VyOSLanRouterNode = ({ data }: any) => {
                     </span>
                     <div className="flex items-center gap-1">
                         {!isIfaceUp && (
-                            <span className="text-[8px] font-black px-1.5 py-0.2 rounded bg-rose-500/25 text-rose-400 border border-rose-500/40">
+                            <span className="text-[8px] font-black px-1.5 py-0.2 rounded bg-rose-500/25 text-rose-700 dark:text-rose-400 border border-rose-500/40">
                                 SHUT
                             </span>
                         )}
                         {hasQos && (
-                            <span className="text-[8px] font-black px-1.5 py-0.2 rounded bg-amber-500/25 text-amber-300 border border-amber-500/40">
+                            <span className="text-[8px] font-black px-1.5 py-0.2 rounded bg-amber-500/25 text-amber-800 dark:text-amber-300 border border-amber-600/45 dark:border-amber-500/40">
                                 ⏱️ +{portQos.latency || 0}ms{portQos.loss ? ` ${portQos.loss}%` : ''}
                             </span>
                         )}
@@ -1399,7 +1453,7 @@ const VyOSLanRouterNode = ({ data }: any) => {
         if (egressLinks.length === 0) return null;
         return (
             <div className="flex flex-col gap-1.5">
-                <div className="flex items-center justify-between text-[9px] font-black text-amber-600 dark:text-amber-400/90 uppercase tracking-wider px-1">
+                <div className="flex items-center justify-between text-[9px] font-black text-amber-700 dark:text-amber-400/90 uppercase tracking-wider px-1">
                     <span>{isAboveSite ? '▲ Egress / Transit / Local Subnets (Click to impair or shut)' : '▼ Egress / Transit / Local Subnets (Click to impair or shut)'}</span>
                     <span className="font-mono text-text-muted">{egressLinks.length} Ports</span>
                 </div>
@@ -1414,7 +1468,7 @@ const VyOSLanRouterNode = ({ data }: any) => {
         if (lanLinks.length === 0) return null;
         return (
             <div className="flex flex-col gap-1.5">
-                <div className="flex items-center justify-between text-[9px] font-black text-emerald-500 dark:text-emerald-400 uppercase tracking-wider px-1">
+                <div className="flex items-center justify-between text-[9px] font-black text-emerald-700 dark:text-emerald-400 uppercase tracking-wider px-1">
                     <span>{isAboveSite ? `▼ ${siteName} Shared LAN Downlink (ION Facing)` : `▲ ${siteName} Shared LAN Uplink (ION Facing)`}</span>
                     <span className="font-mono text-text-muted">{lanLinks.map((l: any) => l.ipCidr?.replace(/\.\d+\//, '.0/') || '').filter(Boolean)[0] || 'LAN Bus'}</span>
                 </div>
@@ -1451,11 +1505,11 @@ const VyOSLanRouterNode = ({ data }: any) => {
                                 "w-2 h-2 rounded-full",
                                 isOnline ? "bg-green-500 dark:bg-green-400 shadow-[0_0_8px_rgba(34,197,94,0.8)]" : "bg-red-500"
                             )} />
-                            <span className="px-2 py-0.5 rounded-md bg-emerald-500/15 border border-emerald-500/35 text-emerald-400 text-[9px] font-black uppercase tracking-wider">
+                            <span className="px-2 py-0.5 rounded-md bg-emerald-500/15 border border-emerald-600/40 dark:border-emerald-500/35 text-emerald-800 dark:text-emerald-400 text-[9px] font-black uppercase tracking-wider">
                                 {siteName} LAN Router
                             </span>
                         </div>
-                        <div className="text-[10px] text-amber-600 dark:text-amber-400 font-mono font-bold mt-0.5">
+                        <div className="text-[10px] text-amber-700 dark:text-amber-400 font-mono font-bold mt-0.5">
                             Mgmt IP: {router?.host || '—'} &bull; Click any port to inject Latency / Loss / Shut
                         </div>
                     </div>
@@ -2399,11 +2453,11 @@ function TopologyContent({ token, theme }: TopologyProps) {
                     resList.map((r) => (r.vyos?.interfaceName || '').toLowerCase()).filter(Boolean)
                 );
 
-                // Collect all non-loopback IPv4 interfaces on this VyOS router (ION LAN + Egress/NAT/BGP), excluding SSH MGMT
+                // Collect all physical IPv4 interfaces on this VyOS router (ION LAN + Egress/NAT/BGP), excluding loopbacks/dummy/virtual and SSH MGMT
                 const rawIfaces = new Map<string, any>();
                 const mgmtHost = (fromPayload?.host || '').trim();
                 (fromPayload?.interfaces || []).forEach((iface: any) => {
-                    if (!iface.name || iface.name.toLowerCase() === 'lo') return;
+                    if (!isPhysicalVyosInterface(iface)) return;
                     const ifLower = iface.name.toLowerCase();
                     const isMatchedLan = matchedLanIfNames.has(ifLower);
                     const descLower = (iface.description || '').toLowerCase();
@@ -2680,10 +2734,10 @@ function TopologyContent({ token, theme }: TopologyProps) {
             ) || 1;
             const circuitsWidth = numCircuits * 120 + Math.max(0, numCircuits - 1) * 16;
 
-            // Calculate Subnets required width (pills with integrated Stigix badge)
+            // Calculate Subnets required width (physical LAN interfaces only)
             const allSubnets = new Set<string>();
             (site.devices || []).forEach((d: any) => {
-                d.lan_interfaces?.forEach((l: any) => {
+                (d.lan_interfaces || []).filter(isPhysicalLanInterface).forEach((l: any) => {
                     if (l.ip) {
                         const subnet = l.ip.includes('/') ? l.ip : l.ip.replace(/\.\d+$/, '.0/24');
                         allSubnets.add(subnet);
