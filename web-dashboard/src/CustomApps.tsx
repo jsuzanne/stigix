@@ -97,6 +97,7 @@ export const CustomApps: React.FC<CustomAppsProps> = ({ token }) => {
     const [incomingSessions, setIncomingSessions] = useState<IncomingSessionState[]>([]);
     const [outgoingSessions, setOutgoingSessions] = useState<OutgoingSessionState[]>([]);
     const [sessionSearch, setSessionSearch] = useState<string>('');
+    const [sessionStateFilter, setSessionStateFilter] = useState<'all' | 'connected' | 'issues'>('all');
     const [isLoading, setIsLoading] = useState(false);
     const [isActionLoading, setIsActionLoading] = useState(false);
 
@@ -625,6 +626,8 @@ const secs = seconds % 60;
     }, [applications, allAppSummaries, metrics, incomingSessions, outgoingSessions, selectedAppId]);
 
     const filteredIncomingSessions = incomingSessions.filter(s => {
+        if (sessionStateFilter === 'connected' && s.state !== 'connected') return false;
+        if (sessionStateFilter === 'issues' && s.state === 'connected') return false;
         if (!sessionSearch.trim()) return true;
         const q = sessionSearch.toLowerCase().trim();
         const originName = (s.declaredSiteName && s.declaredSiteName !== 'Handshaking...') ? s.declaredSiteName : (s.declaredHostname || 'external client');
@@ -641,6 +644,8 @@ const secs = seconds % 60;
     });
 
     const filteredOutgoingSessions = outgoingSessions.filter(s => {
+        if (sessionStateFilter === 'connected' && s.state !== 'connected') return false;
+        if (sessionStateFilter === 'issues' && s.state === 'connected') return false;
         if (!sessionSearch.trim()) return true;
         const q = sessionSearch.toLowerCase().trim();
         return (
@@ -657,12 +662,12 @@ const secs = seconds % 60;
     }
 
     return (
-        <div className="p-6 max-w-[1700px] w-full mx-auto space-y-6 text-text-primary animate-fadeIn">
+        <div className="p-5 max-w-[1700px] w-full mx-auto space-y-4 text-text-primary animate-fadeIn">
             {/* Top Node Identity Bar */}
-            <div className="bg-card border border-border rounded-2xl p-5 flex flex-wrap items-center justify-between gap-4 shadow-sm">
-                <div className="flex flex-wrap items-center gap-4">
-                    <div className="p-3 bg-indigo-500/10 border border-indigo-500/20 rounded-xl text-indigo-600 dark:text-indigo-400">
-                        <Activity size={24} />
+            <div className="bg-card border border-border rounded-2xl px-4 py-3.5 flex flex-wrap items-center justify-between gap-4 shadow-sm">
+                <div className="flex flex-wrap items-center gap-3.5">
+                    <div className="p-2.5 bg-indigo-500/10 border border-indigo-500/20 rounded-xl text-indigo-600 dark:text-indigo-400">
+                        <Activity size={22} />
                     </div>
                     <div>
                         <div className="flex items-center gap-2">
@@ -992,16 +997,20 @@ const secs = seconds % 60;
                 </div>
             </div>
 
-            {/* Application Switcher Tab Bar (Uniform Width App Cards) */}
-            <div className="bg-card border border-border rounded-2xl p-4 space-y-3 shadow-sm">
-                <div className="flex items-center justify-between text-xs">
-                    <div className="flex items-center gap-2 text-text-primary font-semibold">
-                        <Layers size={16} className="text-indigo-500" />
-                        <span className="text-xs font-bold uppercase tracking-wider text-text-muted">Applications ({applications.length}):</span>
+            {/* Application Switcher Tab Bar (Compact Uniform App Cards) */}
+            <div className="bg-card border border-border rounded-2xl p-3 space-y-2 shadow-sm">
+                <div className="flex items-center justify-between text-xs px-0.5">
+                    <div className="flex items-center gap-1.5 text-text-primary font-semibold">
+                        <Layers size={14} className="text-indigo-500" />
+                        <span className="text-[11px] font-bold uppercase tracking-wider text-text-muted">Applications ({applications.length})</span>
                     </div>
-                    <span className="text-[11px] text-text-muted font-medium">Select an application to view live sessions, telemetry, and chaos injection controls</span>
+                    <div className="hidden sm:flex items-center gap-3 text-[10px] text-text-muted">
+                        <span className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-emerald-400" /> Listening</span>
+                        <span className="flex items-center gap-1"><ArrowDownRight size={10} className="text-emerald-400" /> RX In</span>
+                        <span className="flex items-center gap-1"><ArrowUpRight size={10} className="text-amber-400" /> TX Out</span>
+                    </div>
                 </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-2.5">
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-2">
                     {applications.map(app => {
                         const isSel = app.id === selectedAppId;
                         const sum = allAppSummaries[app.id];
@@ -1018,7 +1027,7 @@ const secs = seconds % 60;
                                 key={app.id}
                                 onClick={() => setSelectedAppId(app.id)}
                                 title={`${app.name} (Port ${app.listener?.port})`}
-                                className={`w-full min-w-0 h-[38px] px-3 rounded-xl border text-xs font-semibold flex items-center justify-between gap-2 transition-all cursor-pointer ${
+                                className={`w-full min-w-0 h-[34px] px-2.5 rounded-xl border text-xs font-semibold flex items-center justify-between gap-2 transition-all cursor-pointer ${
                                     isSel
                                         ? 'bg-indigo-600 border-indigo-600 text-white shadow-md shadow-indigo-600/20'
                                         : 'bg-card-secondary hover:bg-card-hover border-border text-text-secondary hover:text-text-primary'
@@ -1086,17 +1095,17 @@ const secs = seconds % 60;
             </div>
 
             {/* Application Toolbar & Primary Controls */}
-            <div className="bg-card border border-border rounded-2xl p-4 lg:p-5 shadow-sm">
-                <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3.5">
+            <div className="bg-card border border-border rounded-2xl px-4 py-3 shadow-sm">
+                <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
                     {/* Left: Active App Identity */}
                     <div className="flex items-center gap-3">
-                        <div className="p-2.5 bg-indigo-500/10 border border-indigo-500/20 rounded-xl text-indigo-600 dark:text-indigo-400">
-                            <Server size={20} />
+                        <div className="p-2 bg-indigo-500/10 border border-indigo-500/20 rounded-xl text-indigo-600 dark:text-indigo-400">
+                            <Server size={18} />
                         </div>
                         <div>
                             <div className="flex items-center gap-2 flex-wrap">
-                                <h2 className="text-base font-bold text-text-primary">{currentApp?.name}</h2>
-                                <span className="font-mono text-xs text-indigo-500 font-bold bg-indigo-500/10 border border-indigo-500/30 px-2 py-0.5 rounded-lg">
+                                <h2 className="text-sm font-bold text-text-primary">{currentApp?.name}</h2>
+                                <span className="font-mono text-[11px] text-indigo-500 font-bold bg-indigo-500/10 border border-indigo-500/30 px-2 py-0.5 rounded-lg">
                                     Port {currentApp?.listener?.port}
                                 </span>
                                 <span className={`font-mono text-[10px] font-black px-2 py-0.5 rounded-lg border uppercase tracking-wider ${
@@ -1111,7 +1120,7 @@ const secs = seconds % 60;
                                     return (
                                         <div
                                             title={health.reason}
-                                            className={`h-6 px-2 rounded-md text-[10px] font-black border flex items-center gap-1 cursor-help transition-all ${
+                                            className={`h-5 px-2 rounded-md text-[10px] font-black border flex items-center gap-1 cursor-help transition-all ${
                                                 health.color === 'emerald'
                                                     ? 'bg-emerald-500/10 border-emerald-500/40 text-emerald-600 dark:text-emerald-400'
                                                     : health.color === 'amber'
@@ -1125,14 +1134,14 @@ const secs = seconds % 60;
                                     );
                                 })()}
                                 {currentApp?.startup?.startClientWorkload && (
-                                    <span className="h-6 text-[10px] text-amber-500 bg-amber-500/10 border border-amber-500/30 px-2 rounded-md flex items-center gap-1 font-bold" title="Zero-Touch Auto-Start enabled: client workload starts automatically on sync and boot">
-                                        <Zap size={11} className="fill-amber-500" />
+                                    <span className="h-5 text-[10px] text-amber-500 bg-amber-500/10 border border-amber-500/30 px-2 rounded-md flex items-center gap-1 font-bold" title="Zero-Touch Auto-Start enabled: client workload starts automatically on sync and boot">
+                                        <Zap size={10} className="fill-amber-500" />
                                         <span>ZTP Auto-Start</span>
                                     </span>
                                 )}
                             </div>
                             <p className="text-[11px] text-text-muted mt-0.5">
-                                {currentApp?.peers?.length || 0} Target Peer(s) • Mode: <span className="capitalize">{currentApp?.clientDefaults?.mode?.replace(/_/g, ' ')}</span>
+                                {currentApp?.peers?.length || 0} Target Peer(s) • Client Mode: <span className="capitalize text-text-secondary font-medium">{currentApp?.clientDefaults?.mode?.replace(/_/g, ' ')}</span> • Server Behavior: <span className="capitalize text-text-secondary font-medium">{currentApp?.serverBehavior?.mode?.replace(/_/g, ' ') || 'echo'}</span>
                             </p>
                         </div>
                     </div>
@@ -1142,13 +1151,13 @@ const secs = seconds % 60;
                         <button
                             onClick={handleToggleListener}
                             disabled={isActionLoading}
-                            className={`h-[36px] px-3.5 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-2 transition-all shadow-sm cursor-pointer ${
+                            className={`h-[32px] px-3 py-1 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-all shadow-sm cursor-pointer ${
                                 metrics?.listenerState === 'listening'
                                     ? 'bg-card-secondary hover:bg-card-hover text-amber-600 dark:text-amber-400 border border-amber-500/30'
                                     : 'bg-indigo-600 hover:bg-indigo-500 text-white'
                             }`}
                         >
-                            <Server size={14} />
+                            <Server size={13} />
                             {metrics?.listenerState === 'listening' ? 'Stop Listener' : 'Start Listener'}
                         </button>
 
@@ -1156,34 +1165,34 @@ const secs = seconds % 60;
                             onClick={handleToggleClient}
                             disabled={isActionLoading}
                             title={!currentApp?.peers?.length ? 'No target peers configured — click to configure peers' : metrics?.clientWorkloadRunning ? 'Stop outgoing traffic generation' : 'Start outgoing traffic generation to configured targets'}
-                            className={`h-[36px] px-3.5 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-2 transition-all shadow-sm cursor-pointer ${
+                            className={`h-[32px] px-3 py-1 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-all shadow-sm cursor-pointer ${
                                 metrics?.clientWorkloadRunning
                                     ? 'bg-rose-500/10 hover:bg-rose-500/20 text-rose-600 dark:text-rose-400 border border-rose-500/40'
                                     : 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-emerald-600/20'
                             }`}
                         >
-                            {metrics?.clientWorkloadRunning ? <Square size={14} /> : <Play size={14} />}
+                            {metrics?.clientWorkloadRunning ? <Square size={13} /> : <Play size={13} />}
                             {metrics?.clientWorkloadRunning ? 'Stop Client' : 'Start Client'}
                         </button>
 
-                        <div className="h-5 w-px bg-border mx-1 hidden sm:block" />
+                        <div className="h-4 w-px bg-border mx-0.5 hidden sm:block" />
 
                         <button
                             onClick={() => {
                                 setEditingApp(currentApp || null);
                                 setIsWizardOpen(true);
                             }}
-                            className="h-[36px] px-3 py-1.5 bg-card-secondary hover:bg-card-hover text-text-primary border border-border rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-colors shadow-sm cursor-pointer"
+                            className="h-[32px] px-3 py-1 bg-card-secondary hover:bg-card-hover text-text-primary border border-border rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-colors shadow-sm cursor-pointer"
                         >
-                            <Edit3 size={14} /> Edit Profile
+                            <Edit3 size={13} /> Edit Profile
                         </button>
 
                         <button
                             onClick={() => setIsPrismaModalOpen(true)}
-                            className="h-[36px] px-3.5 py-1.5 bg-blue-500/10 hover:bg-blue-500/20 text-blue-600 dark:text-blue-400 border border-blue-500/30 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-colors shadow-sm cursor-pointer"
+                            className="h-[32px] px-3 py-1 bg-blue-500/10 hover:bg-blue-500/20 text-blue-600 dark:text-blue-400 border border-blue-500/30 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-colors shadow-sm cursor-pointer"
                             title="Push and register this custom application definition to Prisma SD-WAN via Cloud Controller API"
                         >
-                            <Cloud size={14} />
+                            <Cloud size={13} />
                             <span>Push to Prisma SD-WAN</span>
                         </button>
                     </div>
@@ -1210,12 +1219,12 @@ const secs = seconds % 60;
                     : 0);
 
                 return (
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3.5">
                         {/* 1. Incoming Sessions Card */}
-                        <div className="bg-card border border-border rounded-2xl p-5 shadow-sm hover:shadow-md transition-shadow flex flex-col justify-between">
+                        <div className="bg-card border border-border rounded-2xl p-4 shadow-sm hover:shadow-md transition-shadow flex flex-col justify-between">
                             <div className="h-5 flex items-center justify-between text-xs">
                                 <span className="font-semibold flex items-center gap-1.5 text-indigo-600 dark:text-indigo-400">
-                                    <ArrowDownRight size={16} /> Incoming Sessions
+                                    <ArrowDownRight size={15} /> Incoming Sessions
                                 </span>
                                 <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded ${
                                     metrics?.listenerState === 'listening' ? 'bg-emerald-500/10 text-emerald-500' : 'bg-zinc-500/10 text-text-muted'
@@ -1223,8 +1232,8 @@ const secs = seconds % 60;
                                     {metrics?.listenerState === 'listening' ? 'Listening' : 'Stopped'}
                                 </span>
                             </div>
-                            <div className="my-3 min-h-[54px] flex items-center justify-between">
-                                <div className="text-3xl font-black font-mono leading-none text-text-primary">
+                            <div className="my-2 min-h-[44px] flex items-center justify-between">
+                                <div className="text-2xl font-black font-mono leading-none text-text-primary">
                                     {incomingSessions.length} <span className="text-xs font-sans font-normal text-text-muted">active</span>
                                 </div>
                                 <div className="text-right text-[11px] font-mono space-y-0.5 leading-tight">
@@ -1237,7 +1246,7 @@ const secs = seconds % 60;
                                     )}
                                 </div>
                             </div>
-                            <div className="mt-auto text-[11px] text-text-muted flex items-center justify-between pt-2.5 border-t border-border">
+                            <div className="mt-auto text-[11px] text-text-muted flex items-center justify-between pt-2 border-t border-border">
                                 <span>Mode: <strong className="text-text-secondary capitalize">{currentApp?.serverBehavior?.mode ? currentApp.serverBehavior.mode.replace(/_/g, ' ') : 'echo'}</strong></span>
                                 <span>Handled: <strong className="text-text-secondary">{serverHandled}</strong> {liveServerTps > 0 && incomingSessions.length > 0 && <span className="text-indigo-500 font-mono text-[10px]">({liveServerTps} tps)</span>}</span>
                             </div>
@@ -1252,10 +1261,10 @@ const secs = seconds % 60;
                         </div>
 
                         {/* 2. Outgoing Sessions Card */}
-                        <div className="bg-card border border-border rounded-2xl p-5 shadow-sm hover:shadow-md transition-shadow flex flex-col justify-between">
+                        <div className="bg-card border border-border rounded-2xl p-4 shadow-sm hover:shadow-md transition-shadow flex flex-col justify-between">
                             <div className="h-5 flex items-center justify-between text-xs">
                                 <span className="font-semibold flex items-center gap-1.5 text-emerald-600 dark:text-emerald-400">
-                                    <ArrowUpRight size={16} /> Outgoing Sessions
+                                    <ArrowUpRight size={15} /> Outgoing Sessions
                                 </span>
                                 <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded ${
                                     metrics?.clientWorkloadRunning ? 'bg-emerald-500/10 text-emerald-500' : 'bg-zinc-500/10 text-text-muted'
@@ -1263,8 +1272,8 @@ const secs = seconds % 60;
                                     {metrics?.clientWorkloadRunning ? 'Transmitting' : 'Idle'}
                                 </span>
                             </div>
-                            <div className="my-3 min-h-[54px] flex items-center justify-between">
-                                <div className="text-3xl font-black font-mono leading-none text-text-primary">
+                            <div className="my-2 min-h-[44px] flex items-center justify-between">
+                                <div className="text-2xl font-black font-mono leading-none text-text-primary">
                                     {outgoingSessions.filter(s => s.state === 'connected').length} <span className="text-xs font-sans font-normal text-text-muted">active</span>
                                 </div>
                                 <div className="text-right text-[11px] font-mono space-y-0.5 leading-tight">
@@ -1277,7 +1286,7 @@ const secs = seconds % 60;
                                     )}
                                 </div>
                             </div>
-                            <div className="mt-auto text-[11px] text-text-muted flex items-center justify-between pt-2.5 border-t border-border">
+                            <div className="mt-auto text-[11px] text-text-muted flex items-center justify-between pt-2 border-t border-border">
                                 <span>Peers: <strong className="text-text-secondary font-medium">{currentApp?.peers?.length || 0} configured</strong></span>
                                 <span className="whitespace-nowrap">
                                     Replies: <strong className="text-text-secondary">{clientReplies}</strong>{' '}
@@ -1301,15 +1310,15 @@ const secs = seconds % 60;
                         </div>
 
                         {/* 3. Latency & Jitter Card */}
-                        <div className="bg-card border border-border rounded-2xl p-5 shadow-sm hover:shadow-md transition-shadow flex flex-col justify-between">
+                        <div className="bg-card border border-border rounded-2xl p-4 shadow-sm hover:shadow-md transition-shadow flex flex-col justify-between">
                             <div className="h-5 flex items-center justify-between text-xs">
                                 <span className="font-semibold flex items-center gap-1.5 text-amber-500">
-                                    <Zap size={16} /> App Latency (RTT)
+                                    <Zap size={15} /> App Latency (RTT)
                                 </span>
                                 <span className="font-mono text-[10px] text-text-muted">Live RTT</span>
                             </div>
-                            <div className="my-3 min-h-[54px] flex items-center justify-between">
-                                <div className="text-3xl font-black text-amber-500 font-mono leading-none">
+                            <div className="my-2 min-h-[44px] flex items-center justify-between">
+                                <div className="text-2xl font-black text-amber-500 font-mono leading-none">
                                     {metrics?.avgRttMs || 0} <span className="text-xs font-sans font-normal text-text-muted">ms avg</span>
                                 </div>
                                 <div className="text-right text-[11px] font-mono space-y-0.5 leading-tight">
@@ -1321,29 +1330,29 @@ const secs = seconds % 60;
                                     </div>
                                 </div>
                             </div>
-                            <div className="mt-auto text-[11px] text-text-muted flex items-center justify-between pt-2.5 border-t border-border">
+                            <div className="mt-auto text-[11px] text-text-muted flex items-center justify-between pt-2 border-t border-border">
                                 <span>Timeouts: <strong className={metrics?.totalTimeouts ? 'text-rose-500 font-bold' : 'text-text-secondary'}>{metrics?.totalTimeouts || 0}</strong></span>
                                 <span>Errors: <strong className={metrics?.totalErrors ? 'text-rose-500 font-bold' : 'text-text-secondary'}>{metrics?.totalErrors || 0}</strong></span>
                             </div>
                         </div>
 
                         {/* 4. Chaos & Stability Card */}
-                        <div className="bg-card border border-border rounded-2xl p-5 shadow-sm hover:shadow-md transition-shadow flex flex-col justify-between">
+                        <div className="bg-card border border-border rounded-2xl p-4 shadow-sm hover:shadow-md transition-shadow flex flex-col justify-between">
                             <div className="h-5 flex items-center justify-between text-xs">
                                 <span className="font-semibold flex items-center gap-1.5 text-cyan-500">
-                                    <Activity size={16} /> Stability & Failover
+                                    <Activity size={15} /> Stability & Failover
                                 </span>
                                 <span className="font-mono text-[10px] text-text-muted">Disruptions</span>
                             </div>
-                            <div className="my-3 min-h-[54px] flex items-center justify-between">
-                                <div className="text-3xl font-black text-text-primary font-mono leading-none">
+                            <div className="my-2 min-h-[44px] flex items-center justify-between">
+                                <div className="text-2xl font-black text-text-primary font-mono leading-none">
                                     {metrics?.totalReconnects || 0} <span className="text-xs font-sans font-normal text-text-muted">reconnects</span>
                                 </div>
                                 <div className="text-right text-[11px] font-mono space-y-0.5 leading-tight">
                                     <div className="text-text-muted">Drops: <span className={metrics?.totalSimulatedDrops ? 'text-rose-500 font-bold' : 'text-text-primary font-bold'}>{metrics?.totalSimulatedDrops || 0}</span></div>
                                 </div>
                             </div>
-                            <div className="mt-auto text-[11px] text-text-muted flex items-center justify-between pt-2.5 border-t border-border">
+                            <div className="mt-auto text-[11px] text-text-muted flex items-center justify-between pt-2 border-t border-border">
                                 <span>Keepalive: <strong className="text-text-secondary">Enabled</strong></span>
                                 <span>Backoff: <strong className="text-text-secondary">Jittered</strong></span>
                             </div>
@@ -1352,272 +1361,334 @@ const secs = seconds % 60;
                 );
             })()}
 
-            {/* REAL-TIME SESSION SEARCH & FILTER BAR */}
-            <div className="bg-card border border-border rounded-2xl p-3.5 flex flex-wrap items-center justify-between gap-3 shadow-sm">
-                <div className="relative flex-1 min-w-[280px]">
-                    <Search size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-text-muted" />
-                    <input
-                        type="text"
-                        value={sessionSearch}
-                        onChange={e => setSessionSearch(e.target.value)}
-                        placeholder="Filter sessions in real-time by origin, site, peer, IP, port, or state (e.g. DC1, BR5, connected, 8443)..."
-                        className="w-full pl-9 pr-8 py-2 bg-card-secondary/70 border border-border focus:border-indigo-500 rounded-xl text-xs text-text-primary placeholder:text-text-muted outline-none transition-all font-sans"
-                    />
-                    {sessionSearch && (
-                        <button
-                            onClick={() => setSessionSearch('')}
-                            className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 text-text-muted hover:text-text-primary rounded-md"
-                            title="Clear filter"
-                        >
-                            <X size={14} />
-                        </button>
-                    )}
-                </div>
-            </div>
+            {/* REAL-TIME SESSION SEARCH & STATE FILTER BAR */}
+            {(() => {
+                const allSessCount = incomingSessions.length + outgoingSessions.length;
+                const connectedCount = incomingSessions.filter(s => s.state === 'connected').length + outgoingSessions.filter(s => s.state === 'connected').length;
+                const issuesCount = allSessCount - connectedCount;
 
-            {/* LIVE TABLES SECTION */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                {/* 📥 INCOMING SESSIONS TABLE */}
-                <div className="bg-card border border-border rounded-2xl p-5 shadow-sm flex flex-col">
-                    <div className="flex items-center justify-between pb-4 border-b border-border">
-                        <div className="flex items-center gap-2.5">
-                            <div className="p-2 bg-indigo-500/10 border border-indigo-500/20 rounded-lg text-indigo-600 dark:text-indigo-400">
-                                <ArrowDownRight size={18} />
-                            </div>
-                            <div>
-                                <h3 className="text-sm font-bold text-text-primary">Incoming Sessions</h3>
-                                <p className="text-[11px] text-text-muted">Remote nodes connecting to local port {currentApp?.listener?.port}</p>
-                            </div>
-                        </div>
-                        <span className="text-xs bg-card-secondary border border-border px-3 py-1 rounded-xl text-indigo-600 dark:text-indigo-400 font-bold shadow-sm">
-                            {sessionSearch ? `${filteredIncomingSessions.length} / ${incomingSessions.length}` : `${incomingSessions.length}`} Connected
-                        </span>
-                    </div>
+                const incomingEmpty = incomingSessions.length === 0 && outgoingSessions.length > 0;
+                const outgoingEmpty = outgoingSessions.length === 0 && incomingSessions.length > 0;
+                const incomingColSpan = incomingEmpty ? 'lg:col-span-4' : outgoingEmpty ? 'lg:col-span-8' : 'lg:col-span-6';
+                const outgoingColSpan = incomingEmpty ? 'lg:col-span-8' : outgoingEmpty ? 'lg:col-span-4' : 'lg:col-span-6';
 
-                    <div className="overflow-x-auto mt-4 flex-1">
-                        {incomingSessions.length === 0 ? (
-                            <div className="py-14 text-center text-xs text-text-muted italic">
-                                No incoming sessions currently connected to this listener.
-                            </div>
-                        ) : filteredIncomingSessions.length === 0 ? (
-                            <div className="py-14 text-center text-xs text-text-muted italic">
-                                No incoming sessions match "{sessionSearch}".
-                            </div>
-                        ) : (
-                            <table className="w-full text-left text-xs border-collapse table-fixed">
-                                <thead>
-                                    <tr className="border-b border-border text-text-muted font-semibold text-[11px]">
-                                        <th className="pb-3 px-3 whitespace-nowrap w-[35%]">Declared Origin</th>
-                                        <th className="pb-3 px-3 whitespace-nowrap w-[25%]">State & Uptime</th>
-                                        <th className="pb-3 px-3 text-right whitespace-nowrap w-[40%]">Throughput (RX / TX)</th>
-                                    </tr>
-                                </thead>
-                                <tbody className="divide-y divide-border/60">
-                                    {filteredIncomingSessions.map(s => {
-                                        const isStigixPeer = Boolean((s.declaredSiteName && s.declaredSiteName !== 'Handshaking...') || s.declaredHostname || s.matchedPeerName);
-                                        const originLabel = isStigixPeer
-                                            ? ((s.declaredSiteName && s.declaredSiteName !== 'Handshaking...' ? s.declaredSiteName : (s.declaredHostname || s.matchedPeerName)) || s.sessionId)
-                                            : (s.state === 'handshaking' ? 'Handshaking...' : 'External Client');
-
-                                        return (
-                                            <tr
-                                                key={s.sessionId}
-                                                onClick={() => setDeepDiveSession({ ...s, isIncoming: true })}
-                                                className="hover:bg-card-secondary/70 cursor-pointer transition-colors group"
-                                                title="Click to open full Session Deep Dive"
-                                            >
-                                                <td className="py-2.5 px-3 whitespace-nowrap truncate">
-                                                    <div className="font-semibold text-text-primary truncate">
-                                                        {isStigixPeer ? (
-                                                            <span className="group-hover:text-indigo-500 transition-colors" title={`Hostname: ${s.declaredHostname || 'n/a'} | ID: ${s.sessionId}`}>
-                                                                {originLabel}
-                                                            </span>
-                                                        ) : (
-                                                            <span className="text-text-muted italic font-normal" title={`External TCP client connection | ID: ${s.sessionId}`}>
-                                                                {originLabel}
-                                                            </span>
-                                                        )}
-                                                    </div>
-                                                    <div className="font-mono text-text-muted text-[10px] mt-0.5 truncate">
-                                                        {s.remoteIp}:{s.remotePort}
-                                                    </div>
-                                                </td>
-                                                <td className="py-2.5 px-3 whitespace-nowrap">
-                                                    <div className="flex items-center gap-1.5 flex-wrap">
-                                                        <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider ${
-                                                            s.state === 'connected' ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30' :
-                                                            s.state === 'delayed' ? 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/30' : 'bg-card-secondary text-text-muted border border-border'
-                                                        }`}>
-                                                            {s.state}
-                                                        </span>
-                                                    </div>
-                                                    {(s.uptimeSec ?? 0) > 0 && (
-                                                        <div className="text-[10px] text-text-muted font-mono mt-0.5">
-                                                            {formatUptime(s.uptimeSec)}
-                                                        </div>
-                                                    )}
-                                                </td>
-                                                <td className="py-2.5 px-3 text-right font-mono text-[11px] whitespace-nowrap">
-                                                    <div>
-                                                        <span className="text-emerald-600 dark:text-emerald-400 font-bold">{formatBytes(s.bytesReceived)}</span> / <span className="text-indigo-600 dark:text-indigo-400 font-bold">{formatBytes(s.bytesSent)}</span>
-                                                    </div>
-                                                    {(s.rxBps ?? 0) > 0 && (
-                                                        <div className="text-[10px] text-emerald-500 font-bold tracking-tight mt-0.5">
-                                                            ⚡ {formatBitrate(s.rxBps)}
-                                                        </div>
-                                                    )}
-                                                </td>
-                                            </tr>
-                                        );
-                                    })}
-                                </tbody>
-                            </table>
-                        )}
-                    </div>
-                </div>
-
-                {/* 📤 OUTGOING SESSIONS TABLE */}
-                <div className="bg-card border border-border rounded-2xl p-5 shadow-sm flex flex-col">
-                    <div className="flex items-center justify-between pb-4 border-b border-border">
-                        <div className="flex items-center gap-2.5">
-                            <div className="p-2 bg-emerald-500/10 border border-emerald-500/20 rounded-lg text-emerald-600 dark:text-emerald-400">
-                                <ArrowUpRight size={18} />
-                            </div>
-                            <div>
-                                <h3 className="text-sm font-bold text-text-primary">Outgoing Sessions</h3>
-                                <p className="text-[11px] text-text-muted">Active streams opened from this node to remote peers</p>
-                            </div>
-                        </div>
-                        <span className="text-xs bg-card-secondary border border-border px-3 py-1 rounded-xl text-emerald-600 dark:text-emerald-400 font-bold shadow-sm">
-                            {sessionSearch ? `${filteredOutgoingSessions.length} / ${outgoingSessions.length}` : `${outgoingSessions.length}`} Targets
-                        </span>
-                    </div>
-
-                    <div className="overflow-x-auto mt-4 flex-1">
-                        {outgoingSessions.length === 0 ? (
-                            <div className="py-12 text-center text-xs text-text-muted">
-                                {metrics?.clientWorkloadRunning ? (
-                                    <div className="italic">Connecting to configured peers...</div>
-                                ) : (!currentApp?.peers || currentApp.peers.length === 0) ? (
-                                    <div className="space-y-3">
-                                        <p className="text-text-muted">No remote target peers configured for this application.</p>
-                                        <button
-                                            onClick={() => {
-                                                 setEditingApp(currentApp || null);
-                                                 setIsWizardOpen(true);
-                                            }}
-                                            className="px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-semibold inline-flex items-center gap-1.5 transition-colors shadow-sm cursor-pointer"
-                                        >
-                                            <Plus size={14} /> Add Target Peer
-                                        </button>
-                                    </div>
-                                ) : (
-                                    <div className="italic">Client is currently stopped. Click "Start Client" above.</div>
+                return (
+                    <>
+                        <div className="bg-card border border-border rounded-2xl px-3.5 py-2.5 flex flex-wrap items-center justify-between gap-3 shadow-sm">
+                            <div className="relative flex-1 min-w-[260px]">
+                                <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-text-muted" />
+                                <input
+                                    type="text"
+                                    value={sessionSearch}
+                                    onChange={e => setSessionSearch(e.target.value)}
+                                    placeholder="Filter sessions by origin, site, peer, IP, port, or state (e.g. DC1, BR5, connected)..."
+                                    className="w-full pl-8 pr-8 py-1.5 bg-card-secondary/70 border border-border focus:border-indigo-500 rounded-xl text-xs text-text-primary placeholder:text-text-muted outline-none transition-all font-sans"
+                                />
+                                {sessionSearch && (
+                                    <button
+                                        onClick={() => setSessionSearch('')}
+                                        className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 text-text-muted hover:text-text-primary rounded-md cursor-pointer"
+                                        title="Clear filter"
+                                    >
+                                        <X size={13} />
+                                    </button>
                                 )}
                             </div>
-                        ) : filteredOutgoingSessions.length === 0 ? (
-                            <div className="py-12 text-center text-xs text-text-muted italic">
-                                No outgoing sessions match "{sessionSearch}".
+
+                            <div className="flex items-center gap-1.5">
+                                <button
+                                    onClick={() => setSessionStateFilter('all')}
+                                    className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold transition-all cursor-pointer flex items-center gap-1.5 ${
+                                        sessionStateFilter === 'all'
+                                            ? 'bg-indigo-600 text-white shadow-sm'
+                                            : 'bg-card-secondary text-text-secondary hover:text-text-primary border border-border'
+                                    }`}
+                                >
+                                    <span>All</span>
+                                    <span className={`font-mono text-[10px] px-1 rounded ${sessionStateFilter === 'all' ? 'bg-white/20 text-white' : 'bg-card text-text-muted'}`}>{allSessCount}</span>
+                                </button>
+                                <button
+                                    onClick={() => setSessionStateFilter('connected')}
+                                    className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold transition-all cursor-pointer flex items-center gap-1.5 ${
+                                        sessionStateFilter === 'connected'
+                                            ? 'bg-emerald-600 text-white shadow-sm'
+                                            : 'bg-card-secondary text-text-secondary hover:text-text-primary border border-border'
+                                    }`}
+                                >
+                                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                                    <span>Connected</span>
+                                    <span className={`font-mono text-[10px] px-1 rounded ${sessionStateFilter === 'connected' ? 'bg-white/20 text-white' : 'bg-card text-text-muted'}`}>{connectedCount}</span>
+                                </button>
+                                <button
+                                    onClick={() => setSessionStateFilter('issues')}
+                                    className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold transition-all cursor-pointer flex items-center gap-1.5 ${
+                                        sessionStateFilter === 'issues'
+                                            ? 'bg-amber-600 text-white shadow-sm'
+                                            : 'bg-card-secondary text-text-secondary hover:text-text-primary border border-border'
+                                    }`}
+                                >
+                                    <span className={`w-1.5 h-1.5 rounded-full ${issuesCount > 0 ? 'bg-amber-400 animate-pulse' : 'bg-zinc-500'}`} />
+                                    <span>Paused / Retry</span>
+                                    <span className={`font-mono text-[10px] px-1 rounded ${sessionStateFilter === 'issues' ? 'bg-white/20 text-white' : 'bg-card text-text-muted'}`}>{issuesCount}</span>
+                                </button>
                             </div>
-                        ) : (
-                            <table className="w-full text-left text-xs border-collapse table-fixed">
-                                <thead>
-                                    <tr className="border-b border-border text-text-muted font-semibold text-[11px]">
-                                        <th className="pb-3 px-3 whitespace-nowrap w-[30%]">Target Peer</th>
-                                        <th className="pb-3 px-3 whitespace-nowrap w-[24%]">State & Uptime</th>
-                                        <th className="pb-3 px-3 whitespace-nowrap w-[46%]">
-                                            <div className="flex items-center justify-between">
-                                                <span className="text-text-muted">RTT Trend</span>
-                                                <span className="text-right">
-                                                    Latency <span className="text-[9px] font-normal text-text-muted opacity-75 font-sans">(avg / p50 / p95)</span>
-                                                </span>
+                        </div>
+
+                        {/* LIVE TABLES SECTION (Dynamic Asymmetric 12-Col Grid) */}
+                        <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
+                            {/* 📥 INCOMING SESSIONS TABLE */}
+                            <div className={`${incomingColSpan} bg-card border border-border rounded-2xl p-4 shadow-sm flex flex-col transition-all duration-300`}>
+                                <div className="flex items-center justify-between pb-3 border-b border-border">
+                                    <div className="flex items-center gap-2.5 min-w-0">
+                                        <div className="p-2 bg-indigo-500/10 border border-indigo-500/20 rounded-lg text-indigo-600 dark:text-indigo-400 shrink-0">
+                                            <ArrowDownRight size={16} />
+                                        </div>
+                                        <div className="min-w-0">
+                                            <h3 className="text-sm font-bold text-text-primary truncate">Incoming Sessions</h3>
+                                            <p className="text-[11px] text-text-muted truncate">Remote nodes connecting to local port {currentApp?.listener?.port}</p>
+                                        </div>
+                                    </div>
+                                    <span className="text-xs bg-card-secondary border border-border px-2.5 py-1 rounded-xl text-indigo-600 dark:text-indigo-400 font-bold shadow-sm shrink-0">
+                                        {(sessionSearch || sessionStateFilter !== 'all') ? `${filteredIncomingSessions.length} / ${incomingSessions.length}` : `${incomingSessions.length}`} Connected
+                                    </span>
+                                </div>
+
+                                <div className="overflow-x-auto mt-3 flex-1">
+                                    {incomingSessions.length === 0 ? (
+                                        <div className="py-10 px-4 text-center text-xs text-text-muted flex flex-col items-center justify-center gap-2">
+                                            <div className="w-8 h-8 rounded-full bg-indigo-500/5 border border-indigo-500/15 flex items-center justify-center text-indigo-400/60">
+                                                <ArrowDownRight size={15} />
                                             </div>
-                                        </th>
-                                    </tr>
-                                </thead>
-                                <tbody className="divide-y divide-border/60">
-                                    {filteredOutgoingSessions.map(s => {
-                                        const peerSessions = outgoingSessions.filter(x => x.peerId === s.peerId || x.peerName === s.peerName);
-                                        const sessionIndex = peerSessions.findIndex(x => x.sessionId === s.sessionId) + 1;
-                                        const streamBadge = peerSessions.length > 1 ? `#${sessionIndex}` : null;
-                                        return (
-                                            <tr
-                                                key={s.sessionId}
-                                                onClick={() => setDeepDiveSession({ ...s, isIncoming: false })}
-                                                className="hover:bg-card-secondary/70 cursor-pointer transition-colors group"
-                                                title="Click to open full Session Deep Dive"
-                                            >
-                                                <td className="py-2.5 px-3 whitespace-nowrap truncate">
-                                                    <div className="flex items-center gap-1.5 truncate">
-                                                        <span className="font-semibold text-text-primary group-hover:text-emerald-500 transition-colors truncate">{s.peerName}</span>
-                                                        {streamBadge && (
-                                                            <span className="px-1.5 py-0.2 bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border border-indigo-500/30 rounded text-[9px] font-mono font-bold shrink-0">
-                                                                {streamBadge}
-                                                            </span>
-                                                        )}
-                                                    </div>
-                                                    <div className="font-mono text-text-muted text-[10px] mt-0.5 truncate">
-                                                        {s.peerHost}:{s.peerPort}
-                                                    </div>
-                                                </td>
-                                                <td className="py-2.5 px-3 whitespace-nowrap">
-                                                    <div className="flex items-center gap-1.5 flex-wrap">
-                                                        <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider ${
-                                                            s.state === 'connected' ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30' :
-                                                            s.state === 'paused_offline' ? 'bg-purple-500/15 text-purple-700 dark:text-purple-300 border border-purple-500/30 font-mono' :
-                                                            s.state === 'reconnecting' ? 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/30 animate-pulse' :
-                                                            'bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/30'
-                                                        }`} title={s.state === 'paused_offline' ? (s.serverStatusReason || 'Remote server listener is stopped. Client is paused.') : undefined}>
-                                                            {s.state === 'paused_offline' ? '⏸️ PAUSED (Server Off)' : s.state}
-                                                        </span>
-                                                        {(s.reconnects ?? 0) > 0 && (
-                                                            <span className="text-[9px] text-amber-500 font-mono font-semibold" title={`${s.reconnects} reconnect(s)`}>
-                                                                • {s.reconnects} rec
-                                                            </span>
-                                                        )}
-                                                    </div>
-                                                    {(s.uptimeSec ?? 0) > 0 && (
-                                                        <div className="text-[10px] text-text-muted font-mono mt-0.5">
-                                                            {formatUptime(s.uptimeSec)}
-                                                        </div>
-                                                    )}
-                                                </td>
-                                                <td className="py-2.5 px-3 whitespace-nowrap">
-                                                    <div className="flex items-center justify-between gap-3">
-                                                        <div className="w-[52px] h-[20px] shrink-0 flex items-center justify-start">
-                                                            {s.rttMs.recentSamples && s.rttMs.recentSamples.length >= 2 ? (
-                                                                <MicroSparkline samples={s.rttMs.recentSamples} width={52} height={20} />
-                                                            ) : (
-                                                                <div className="w-full h-0.5 bg-border/30 rounded" />
-                                                            )}
-                                                        </div>
-                                                        <div className="text-right min-w-0">
-                                                            <div className="text-amber-500 dark:text-amber-400 font-bold whitespace-nowrap tabular-nums text-xs font-mono">
-                                                                {s.rttMs.avg > 0 ? `${s.rttMs.avg} / ${s.rttMs.p50} / ${s.rttMs.p95} ms` : '—'}
-                                                            </div>
-                                                            {s.rttMs.avg > 0 && (
-                                                                <div className="text-[10px] text-cyan-400 flex items-center justify-end gap-1.5 font-sans mt-0.5 whitespace-nowrap tabular-nums">
-                                                                    <span>Jitter: ±{s.rttMs.jitterMs ?? 0}ms</span>
-                                                                    {(s.txBps ?? 0) > 0 && (
-                                                                        <>
-                                                                            <span className="text-text-muted/60">•</span>
-                                                                            <span className="text-indigo-400 font-mono font-bold">{formatBitrate(s.txBps)}</span>
-                                                                        </>
+                                            <span className="italic">No incoming sessions connected to local port {currentApp?.listener?.port}.</span>
+                                            <span className="text-[10px] text-text-muted/70">Acting primarily as Client node or waiting for remote peers.</span>
+                                        </div>
+                                    ) : filteredIncomingSessions.length === 0 ? (
+                                        <div className="py-10 text-center text-xs text-text-muted italic">
+                                            No incoming sessions match current filter.
+                                        </div>
+                                    ) : (
+                                        <table className="w-full text-left text-xs border-collapse table-fixed">
+                                            <thead>
+                                                <tr className="border-b border-border text-text-muted font-semibold text-[11px]">
+                                                    <th className="pb-2.5 px-2.5 whitespace-nowrap w-[36%]">Declared Origin</th>
+                                                    <th className="pb-2.5 px-2.5 whitespace-nowrap w-[24%]">State & Uptime</th>
+                                                    <th className="pb-2.5 px-2.5 text-right whitespace-nowrap w-[40%]">Throughput (RX / TX)</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody className="divide-y divide-border/60">
+                                                {filteredIncomingSessions.map(s => {
+                                                    const isStigixPeer = Boolean((s.declaredSiteName && s.declaredSiteName !== 'Handshaking...') || s.declaredHostname || s.matchedPeerName);
+                                                    const originLabel = isStigixPeer
+                                                        ? ((s.declaredSiteName && s.declaredSiteName !== 'Handshaking...' ? s.declaredSiteName : (s.declaredHostname || s.matchedPeerName)) || s.sessionId)
+                                                        : (s.state === 'handshaking' ? 'Handshaking...' : 'External Client');
+
+                                                    return (
+                                                        <tr
+                                                            key={s.sessionId}
+                                                            onClick={() => setDeepDiveSession({ ...s, isIncoming: true })}
+                                                            className="hover:bg-card-secondary/70 cursor-pointer transition-colors group"
+                                                            title="Click to open full Session Deep Dive"
+                                                        >
+                                                            <td className="py-2.5 px-2.5 whitespace-nowrap truncate">
+                                                                <div className="font-semibold text-text-primary truncate">
+                                                                    {isStigixPeer ? (
+                                                                        <span className="group-hover:text-indigo-500 transition-colors" title={`Hostname: ${s.declaredHostname || 'n/a'} | ID: ${s.sessionId}`}>
+                                                                            {originLabel}
+                                                                        </span>
+                                                                    ) : (
+                                                                        <span className="text-text-muted italic font-normal" title={`External TCP client connection | ID: ${s.sessionId}`}>
+                                                                            {originLabel}
+                                                                        </span>
                                                                     )}
                                                                 </div>
-                                                            )}
+                                                                <div className="font-mono text-text-muted text-[10px] mt-0.5 truncate">
+                                                                    {s.remoteIp}:{s.remotePort}
+                                                                </div>
+                                                            </td>
+                                                            <td className="py-2.5 px-2.5 whitespace-nowrap">
+                                                                <div className="flex items-center gap-1.5 flex-wrap">
+                                                                    <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider ${
+                                                                        s.state === 'connected' ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30' :
+                                                                        s.state === 'delayed' ? 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/30' : 'bg-card-secondary text-text-muted border border-border'
+                                                                    }`}>
+                                                                        {s.state}
+                                                                    </span>
+                                                                </div>
+                                                                {(s.uptimeSec ?? 0) > 0 && (
+                                                                    <div className="text-[10px] text-text-muted font-mono mt-0.5">
+                                                                        {formatUptime(s.uptimeSec)}
+                                                                    </div>
+                                                                )}
+                                                            </td>
+                                                            <td className="py-2.5 px-2.5 text-right font-mono text-[11px] whitespace-nowrap">
+                                                                <div>
+                                                                    <span className="text-emerald-600 dark:text-emerald-400 font-bold">{formatBytes(s.bytesReceived)}</span> / <span className="text-indigo-600 dark:text-indigo-400 font-bold">{formatBytes(s.bytesSent)}</span>
+                                                                </div>
+                                                                {(s.rxBps ?? 0) > 0 && (
+                                                                    <div className="text-[10px] text-emerald-500 font-bold tracking-tight mt-0.5">
+                                                                        ⚡ {formatBitrate(s.rxBps)}
+                                                                    </div>
+                                                                )}
+                                                            </td>
+                                                        </tr>
+                                                    );
+                                                })}
+                                            </tbody>
+                                        </table>
+                                    )}
+                                </div>
+                            </div>
+
+                            {/* 📤 OUTGOING SESSIONS TABLE */}
+                            <div className={`${outgoingColSpan} bg-card border border-border rounded-2xl p-4 shadow-sm flex flex-col transition-all duration-300`}>
+                                <div className="flex items-center justify-between pb-3 border-b border-border">
+                                    <div className="flex items-center gap-2.5 min-w-0">
+                                        <div className="p-2 bg-emerald-500/10 border border-emerald-500/20 rounded-lg text-emerald-600 dark:text-emerald-400 shrink-0">
+                                            <ArrowUpRight size={16} />
+                                        </div>
+                                        <div className="min-w-0">
+                                            <h3 className="text-sm font-bold text-text-primary truncate">Outgoing Sessions</h3>
+                                            <p className="text-[11px] text-text-muted truncate">Active streams opened from this node to remote peers</p>
+                                        </div>
+                                    </div>
+                                    <span className="text-xs bg-card-secondary border border-border px-2.5 py-1 rounded-xl text-emerald-600 dark:text-emerald-400 font-bold shadow-sm shrink-0">
+                                        {(sessionSearch || sessionStateFilter !== 'all') ? `${filteredOutgoingSessions.length} / ${outgoingSessions.length}` : `${outgoingSessions.length}`} Targets
+                                    </span>
+                                </div>
+
+                                <div className="overflow-x-auto mt-3 flex-1">
+                                    {outgoingSessions.length === 0 ? (
+                                        <div className="py-10 text-center text-xs text-text-muted">
+                                            {metrics?.clientWorkloadRunning ? (
+                                                <div className="italic">Connecting to configured peers...</div>
+                                            ) : (!currentApp?.peers || currentApp.peers.length === 0) ? (
+                                                <div className="space-y-2.5">
+                                                    <p className="text-text-muted">No remote target peers configured for this application.</p>
+                                                    <button
+                                                        onClick={() => {
+                                                             setEditingApp(currentApp || null);
+                                                             setIsWizardOpen(true);
+                                                        }}
+                                                        className="px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-semibold inline-flex items-center gap-1.5 transition-colors shadow-sm cursor-pointer"
+                                                    >
+                                                        <Plus size={14} /> Add Target Peer
+                                                    </button>
+                                                </div>
+                                            ) : (
+                                                <div className="italic">Client is currently stopped. Click "Start Client" above.</div>
+                                            )}
+                                        </div>
+                                    ) : filteredOutgoingSessions.length === 0 ? (
+                                        <div className="py-10 text-center text-xs text-text-muted italic">
+                                            No outgoing sessions match current filter.
+                                        </div>
+                                    ) : (
+                                        <table className="w-full text-left text-xs border-collapse table-fixed">
+                                            <thead>
+                                                <tr className="border-b border-border text-text-muted font-semibold text-[11px]">
+                                                    <th className="pb-2.5 px-2.5 whitespace-nowrap w-[25%]">Target Peer</th>
+                                                    <th className="pb-2.5 px-2.5 whitespace-nowrap w-[21%]">State & Uptime</th>
+                                                    <th className="pb-2.5 px-2.5 text-right whitespace-nowrap w-[22%]">Throughput (TX / RX)</th>
+                                                    <th className="pb-2.5 px-2.5 whitespace-nowrap w-[32%]">
+                                                        <div className="flex items-center justify-between">
+                                                            <span className="text-text-muted">RTT Trend</span>
+                                                            <span className="text-right">
+                                                                Latency <span className="text-[9px] font-normal text-text-muted opacity-75 font-sans">(avg/p50/p95)</span>
+                                                            </span>
                                                         </div>
-                                                    </div>
-                                                </td>
-                                            </tr>
-                                        );
-                                    })}
-                                </tbody>
-                            </table>
-                        )}
-                    </div>
-                </div>
-            </div>
+                                                    </th>
+                                                </tr>
+                                            </thead>
+                                            <tbody className="divide-y divide-border/60">
+                                                {filteredOutgoingSessions.map(s => {
+                                                    const peerSessions = outgoingSessions.filter(x => x.peerId === s.peerId || x.peerName === s.peerName);
+                                                    const sessionIndex = peerSessions.findIndex(x => x.sessionId === s.sessionId) + 1;
+                                                    const streamBadge = peerSessions.length > 1 ? `#${sessionIndex}` : null;
+                                                    return (
+                                                        <tr
+                                                            key={s.sessionId}
+                                                            onClick={() => setDeepDiveSession({ ...s, isIncoming: false })}
+                                                            className="hover:bg-card-secondary/70 cursor-pointer transition-colors group"
+                                                            title="Click to open full Session Deep Dive"
+                                                        >
+                                                            <td className="py-2.5 px-2.5 whitespace-nowrap truncate">
+                                                                <div className="flex items-center gap-1.5 truncate">
+                                                                    <span className="font-semibold text-text-primary group-hover:text-emerald-500 transition-colors truncate">{s.peerName}</span>
+                                                                    {streamBadge && (
+                                                                        <span className="px-1.5 py-0.2 bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border border-indigo-500/30 rounded text-[9px] font-mono font-bold shrink-0">
+                                                                            {streamBadge}
+                                                                        </span>
+                                                                    )}
+                                                                </div>
+                                                                <div className="font-mono text-text-muted text-[10px] mt-0.5 truncate">
+                                                                    {s.peerHost}:{s.peerPort}
+                                                                </div>
+                                                            </td>
+                                                            <td className="py-2.5 px-2.5 whitespace-nowrap">
+                                                                <div className="flex items-center gap-1.5 flex-wrap">
+                                                                    <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider ${
+                                                                        s.state === 'connected' ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30' :
+                                                                        s.state === 'paused_offline' ? 'bg-purple-500/15 text-purple-700 dark:text-purple-300 border border-purple-500/30 font-mono' :
+                                                                        s.state === 'reconnecting' ? 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/30 animate-pulse' :
+                                                                        'bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/30'
+                                                                    }`} title={s.state === 'paused_offline' ? (s.serverStatusReason || 'Remote server listener is stopped. Client is paused.') : undefined}>
+                                                                        {s.state === 'paused_offline' ? '⏸️ PAUSED (Server Off)' : s.state}
+                                                                    </span>
+                                                                    {(s.reconnects ?? 0) > 0 && (
+                                                                        <span className="text-[9px] text-amber-500 font-mono font-semibold" title={`${s.reconnects} reconnect(s)`}>
+                                                                            • {s.reconnects} rec
+                                                                        </span>
+                                                                    )}
+                                                                </div>
+                                                                {(s.uptimeSec ?? 0) > 0 && (
+                                                                    <div className="text-[10px] text-text-muted font-mono mt-0.5">
+                                                                        {formatUptime(s.uptimeSec)}
+                                                                    </div>
+                                                                )}
+                                                            </td>
+                                                            <td className="py-2.5 px-2.5 text-right font-mono text-[11px] whitespace-nowrap">
+                                                                <div>
+                                                                    <span className="text-indigo-600 dark:text-indigo-400 font-bold">{formatBytes(s.bytesSent)}</span> / <span className="text-emerald-600 dark:text-emerald-400 font-bold">{formatBytes(s.bytesReceived)}</span>
+                                                                </div>
+                                                                {(s.txBps ?? 0) > 0 && (
+                                                                    <div className="text-[10px] text-indigo-400 font-bold tracking-tight mt-0.5">
+                                                                        ⚡ {formatBitrate(s.txBps)}
+                                                                    </div>
+                                                                )}
+                                                            </td>
+                                                            <td className="py-2.5 px-2.5 whitespace-nowrap">
+                                                                <div className="flex items-center justify-between gap-2.5">
+                                                                    <div className="w-[48px] h-[20px] shrink-0 flex items-center justify-start">
+                                                                        {s.rttMs.recentSamples && s.rttMs.recentSamples.length >= 2 ? (
+                                                                            <MicroSparkline samples={s.rttMs.recentSamples} width={48} height={20} />
+                                                                        ) : (
+                                                                            <div className="w-full h-0.5 bg-border/30 rounded" />
+                                                                        )}
+                                                                    </div>
+                                                                    <div className="text-right min-w-0">
+                                                                        <div className="text-amber-500 dark:text-amber-400 font-bold whitespace-nowrap tabular-nums text-xs font-mono">
+                                                                            {s.rttMs.avg > 0 ? `${s.rttMs.avg} / ${s.rttMs.p50} / ${s.rttMs.p95} ms` : '—'}
+                                                                        </div>
+                                                                        {s.rttMs.avg > 0 && (
+                                                                            <div className="text-[10px] text-cyan-400 flex items-center justify-end gap-1.5 font-sans mt-0.5 whitespace-nowrap tabular-nums">
+                                                                                <span>Jitter: ±{s.rttMs.jitterMs ?? 0}ms</span>
+                                                                            </div>
+                                                                        )}
+                                                                    </div>
+                                                                </div>
+                                                            </td>
+                                                        </tr>
+                                                    );
+                                                })}
+                                            </tbody>
+                                        </table>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+                    </>
+                );
+            })()}
 
             {/* Session Deep Dive Drawer (Side panel) */}
             <SessionDeepDiveDrawer
