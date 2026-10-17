@@ -33,10 +33,10 @@ export interface ToolExecutionContext {
 export function resolveNodeContext(
     nodeNameOrIp: string | undefined,
     ctx: ToolExecutionContext
-): { baseUrl: string; headers: Record<string, string>; siteName: string; isLocal: boolean } {
+): { baseUrl: string; headers: Record<string, string>; siteName: string; isLocal: boolean; unknownNode?: boolean; requestedNode?: string; availableNodes?: string[] } {
     const defaultPort = ctx.serverPort || process.env.PORT || 8080;
     const defaultHeaders: Record<string, string> = { 'Content-Type': 'application/json' };
-    const activeToken = ctx.systemToken || ctx.token;
+    const activeToken = ctx.systemToken || (ctx as any).token;
     if (activeToken) defaultHeaders['Authorization'] = `Bearer ${activeToken}`;
 
     const localSite = String(ctx.registryManager?.getSiteName?.() || process.env.STIGIX_SITE_NAME || 'LOCAL').toLowerCase();
@@ -117,6 +117,24 @@ export function resolveNodeContext(
     }
 
     // 3. Direct IP or hostname
+    const isIpv4 = /^(\d{1,3}\.){3}\d{1,3}$/.test(query);
+    if (!isIpv4 && !query.includes('.') && (ctx.registryManager || ctx.targetsManager)) {
+        const availableNodes = Array.from(new Set([
+            localSite.toUpperCase(),
+            ...peers.map((p: any) => p.site_name || p.instance_id).filter(Boolean),
+            ...targets.map((t: any) => t.name || t.id).filter(Boolean)
+        ]));
+        return {
+            baseUrl: `http://${query}:8080`,
+            headers: defaultHeaders,
+            siteName: String(nodeNameOrIp || query),
+            isLocal: false,
+            unknownNode: true,
+            requestedNode: String(nodeNameOrIp || query),
+            availableNodes
+        };
+    }
+
     if (/^[0-9.]+$|^[a-zA-Z0-9.-]+$/.test(query)) {
         return {
             baseUrl: `http://${query}:8080`,
@@ -134,6 +152,10 @@ export function resolveTargetEndpoint(targetQuery: string | undefined, ctx: Tool
     if (!raw) return { host: '127.0.0.1', port: 9000, name: 'Localhost' };
 
     const query = raw.toLowerCase();
+    const localSite = String(ctx.registryManager?.getSiteName?.() || process.env.STIGIX_SITE_NAME || 'LOCAL').toLowerCase();
+    if (['local', 'self', 'current', 'localhost', '127.0.0.1'].includes(query) || query === localSite || (localSite && (query.includes(localSite) || localSite.includes(query)))) {
+        return { host: '127.0.0.1', port: 9000, name: localSite.toUpperCase() };
+    }
 
     // Check targets manager
     const targets = typeof ctx.targetsManager?.getMergedTargets === 'function' ? ctx.targetsManager.getMergedTargets() : [];
@@ -174,11 +196,16 @@ export function resolveTargetEndpoint(targetQuery: string | undefined, ctx: Tool
 }
 
 async function fetchApi(
-    nodeCtx: { baseUrl: string; headers: Record<string, string> },
+    nodeCtx: { baseUrl: string; headers: Record<string, string>; siteName?: string; unknownNode?: boolean; requestedNode?: string; availableNodes?: string[] },
     path: string,
     options: RequestInit = {},
     timeoutMs: number = 25000
 ): Promise<any> {
+    if (nodeCtx.unknownNode) {
+        throw new Error(
+            `Unknown Stigix node "${nodeCtx.requestedNode || nodeCtx.siteName}". Available nodes in fabric: ${(nodeCtx.availableNodes || []).join(', ') || 'LOCAL'}`
+        );
+    }
     const url = `${nodeCtx.baseUrl}${path}`;
     const signal = options.signal || AbortSignal.timeout(timeoutMs);
     const res = await fetch(url, {
@@ -1918,56 +1945,88 @@ export async function executeCopilotTool(
 
             case 'get_test_status': {
                 const nodeCtx = resolveNodeContext(args.agent_id || args.node, ctx);
+                if (nodeCtx.unknownNode) {
+                    return {
+                        error: `Unknown Stigix node "${nodeCtx.requestedNode || nodeCtx.siteName}". Available nodes in fabric: ${(nodeCtx.availableNodes || []).join(', ') || 'LOCAL'}`
+                    };
+                }
                 const testIdFilter = String(args.test_id || '').toLowerCase().trim();
+                const shouldWait = args.wait !== false;
 
                 try {
-                    const [xfrData, convData] = await Promise.all([
-                        (nodeCtx.isLocal && ctx.xfrManager)
-                            ? ctx.xfrManager.getAllJobs()
-                            : fetch(`${nodeCtx.baseUrl}/api/tests/xfr`, { headers: nodeCtx.headers }).then(r => r.json()).catch(() => []),
-                        fetch(`${nodeCtx.baseUrl}/api/convergence/status`, { headers: nodeCtx.headers }).then(r => r.json()).catch(() => [])
-                    ]);
+                    const loadJobsAndProbes = async () => {
+                        const [xfrData, convData] = await Promise.all([
+                            (nodeCtx.isLocal && ctx.xfrManager)
+                                ? ctx.xfrManager.getAllJobs()
+                                : fetch(`${nodeCtx.baseUrl}/api/tests/xfr`, { headers: nodeCtx.headers }).then(r => r.json()).catch(() => []),
+                            fetch(`${nodeCtx.baseUrl}/api/convergence/status`, { headers: nodeCtx.headers }).then(r => r.json()).catch(() => [])
+                        ]);
+                        return {
+                            xfrJobs: Array.isArray(xfrData) ? xfrData : [],
+                            convProbes: Array.isArray(convData) ? convData : []
+                        };
+                    };
 
-                    const xfrJobs = Array.isArray(xfrData) ? xfrData : [];
-                    const convProbes = Array.isArray(convData) ? convData : [];
+                    let { xfrJobs, convProbes } = await loadJobsAndProbes();
+
+                    const findMatchedXfr = (jobs: any[]) => jobs.find((j: any) =>
+                        (j.id && j.id.toLowerCase().includes(testIdFilter)) ||
+                        (j.sequence_id && j.sequence_id.toLowerCase().includes(testIdFilter))
+                    );
+
+                    // Auto-poll up to 15 seconds if an XFR speedtest is currently running or queued
+                    if (shouldWait) {
+                        const pollStart = Date.now();
+                        while (Date.now() - pollStart < 15000) {
+                            if (testIdFilter) {
+                                const m = findMatchedXfr(xfrJobs);
+                                if (!m || (m.status !== 'running' && m.status !== 'queued')) break;
+                            } else {
+                                const activeXfr = xfrJobs.filter((j: any) => j.status === 'running' || j.status === 'queued');
+                                if (activeXfr.length === 0) break;
+                            }
+                            await new Promise(r => setTimeout(r, 1500));
+                            ({ xfrJobs, convProbes } = await loadJobsAndProbes());
+                        }
+                    }
 
                     const runningXfr = xfrJobs.filter((j: any) => j.status === 'running' || j.status === 'queued');
                     const runningConv = convProbes.filter((c: any) => c.running !== false);
 
+                    const formatXfrJob = (job: any) => {
+                        const sum = job.summary;
+                        return {
+                            node: nodeCtx.siteName,
+                            test_type: 'xfr_speedtest',
+                            test_id: job.id,
+                            sequence_id: job.sequence_id,
+                            status: job.status,
+                            target: job.params?.host || job.params?.target?.host,
+                            protocol: job.params?.protocol || 'tcp',
+                            direction: job.params?.direction || 'bidirectional',
+                            duration: job.params?.duration_sec ? `${job.params.duration_sec}s` : undefined,
+                            started_at: job.started_at,
+                            finished_at: job.finished_at,
+                            throughput_mbps: sum?.throughput_mbps ?? sum?.avg_bandwidth_mbps ?? (
+                                (sum?.received_mbps !== undefined && sum?.sent_mbps !== undefined)
+                                    ? (sum.received_mbps + sum.sent_mbps)
+                                    : (sum?.received_mbps ?? sum?.sent_mbps)
+                            ),
+                            upload_mbps: sum?.sent_mbps,
+                            download_mbps: sum?.received_mbps,
+                            rtt_ms: sum?.rtt_ms_avg ?? sum?.rtt_ms,
+                            retransmits: sum?.retransmits,
+                            loss_pct: sum?.loss_percent ?? 0,
+                            total_bytes: sum?.bytes_total,
+                            summary: sum,
+                            error: job.error
+                        };
+                    };
+
                     if (testIdFilter) {
-                        const matchedXfr = xfrJobs.find((j: any) =>
-                            (j.id && j.id.toLowerCase().includes(testIdFilter)) ||
-                            (j.sequence_id && j.sequence_id.toLowerCase().includes(testIdFilter))
-                        );
+                        const matchedXfr = findMatchedXfr(xfrJobs);
                         if (matchedXfr) {
-                            const sum = matchedXfr.summary;
-                            return {
-                                node: nodeCtx.siteName,
-                                test_type: 'xfr_speedtest',
-                                test_id: matchedXfr.id,
-                                sequence_id: matchedXfr.sequence_id,
-                                status: matchedXfr.status,
-                                target: matchedXfr.params?.host || matchedXfr.params?.target?.host,
-                                protocol: matchedXfr.params?.protocol || 'tcp',
-                                direction: matchedXfr.params?.direction || 'bidirectional',
-                                duration: matchedXfr.params?.duration_sec ? `${matchedXfr.params.duration_sec}s` : undefined,
-                                started_at: matchedXfr.started_at,
-                                finished_at: matchedXfr.finished_at,
-                                throughput_mbps: sum?.throughput_mbps ?? sum?.avg_bandwidth_mbps ?? (
-                                    // For bidirectional tests, sum both directions
-                                    (sum?.received_mbps !== undefined && sum?.sent_mbps !== undefined)
-                                        ? (sum.received_mbps + sum.sent_mbps)
-                                        : (sum?.received_mbps ?? sum?.sent_mbps)
-                                ),
-                                upload_mbps: sum?.sent_mbps,
-                                download_mbps: sum?.received_mbps,
-                                rtt_ms: sum?.rtt_ms_avg ?? sum?.rtt_ms,
-                                retransmits: sum?.retransmits,
-                                loss_pct: sum?.loss_percent ?? 0,
-                                total_bytes: sum?.bytes_total,
-                                summary: sum,
-                                error: matchedXfr.error
-                            };
+                            return formatXfrJob(matchedXfr);
                         }
 
                         const matchedConv = convProbes.find((c: any) =>
@@ -1998,6 +2057,9 @@ export async function executeCopilotTool(
                         };
                     }
 
+                    const completedXfr = xfrJobs.filter((j: any) => j.status === 'completed' || j.status === 'failed');
+                    const latestCompletedXfr = completedXfr.length > 0 ? formatXfrJob(completedXfr[0]) : null;
+
                     return {
                         node: nodeCtx.siteName,
                         is_any_test_running: (runningXfr.length + runningConv.length) > 0,
@@ -2009,6 +2071,7 @@ export async function executeCopilotTool(
                             duration: j.params?.duration_sec ? `${j.params.duration_sec}s` : undefined,
                             started_at: j.started_at
                         })),
+                        last_completed_xfr_speedtest: latestCompletedXfr,
                         running_convergence_probes: runningConv.map((c: any) => ({
                             test_id: c.testId,
                             label: c.label,
@@ -2105,14 +2168,40 @@ export async function executeCopilotTool(
             }
 
             case 'set_traffic_status': {
-                const nodeCtx = resolveNodeContext(args.source_id || args.node, ctx);
-                const action = args.enabled ? 'start' : 'stop';
+                const nodeCtx = resolveNodeContext(args.source_id || args.agent_id || args.node, ctx);
+                if (nodeCtx.unknownNode) {
+                    return {
+                        error: `Unknown Stigix node "${nodeCtx.requestedNode || nodeCtx.siteName}". Available nodes in fabric: ${(nodeCtx.availableNodes || []).join(', ') || 'LOCAL'}`
+                    };
+                }
+                const expectedRunning = Boolean(args.enabled);
+                const action = expectedRunning ? 'start' : 'stop';
                 const res = await fetch(`${nodeCtx.baseUrl}/api/traffic/${action}`, {
                     method: 'POST',
                     headers: nodeCtx.headers,
                     body: JSON.stringify({})
                 });
-                return res.json().catch(() => ({ success: res.ok, status: action }));
+                const rawRes = await res.json().catch(() => ({ success: res.ok, status: action }));
+                await new Promise(r => setTimeout(r, 400));
+                let liveStatus: any = null;
+                try {
+                    if (nodeCtx.isLocal && ctx.getTrafficStats) {
+                        liveStatus = await ctx.getTrafficStats();
+                    } else {
+                        liveStatus = await fetchApi(nodeCtx, '/api/traffic/status');
+                    }
+                } catch {}
+                const verifiedRunning = liveStatus?.running !== undefined ? Boolean(liveStatus.running) : expectedRunning;
+                return {
+                    ...rawRes,
+                    success: res.ok && verifiedRunning === expectedRunning,
+                    node: nodeCtx.siteName,
+                    requested_action: action,
+                    verified: verifiedRunning === expectedRunning,
+                    verified_running: verifiedRunning,
+                    status: verifiedRunning ? 'RUNNING' : 'STOPPED',
+                    live_status: liveStatus
+                };
             }
 
             case 'set_traffic_rate': {
@@ -2279,24 +2368,40 @@ export async function executeCopilotTool(
 
             case 'get_vyos_router_state': {
                 const nodeCtx = resolveNodeContext(args.agent_id, ctx);
-                return await fetchApi(nodeCtx, `/api/vyos/routers/${args.router_id}/state`).catch(() => 
-                    fetchApi(nodeCtx, `/api/vyos/state?router_id=${args.router_id}`)
+                let routerId = args.router_id;
+                if (!routerId || routerId === 'default') {
+                    const routers = await fetchApi(nodeCtx, '/api/vyos/routers').catch(() => []);
+                    if (Array.isArray(routers) && routers.length > 0) routerId = routers[0].id;
+                }
+                return await fetchApi(nodeCtx, `/api/vyos/routers/${routerId}/state`).catch(() => 
+                    fetchApi(nodeCtx, `/api/vyos/state?router_id=${routerId}`)
                 );
             }
 
             case 'vyos_bulk_reset': {
                 const nodeCtx = resolveNodeContext(args.agent_id, ctx);
                 const scope = args.scope || 'full-reset';
+                let routerId = args.router_id;
+                if (!routerId || routerId === 'default') {
+                    const routers = await fetchApi(nodeCtx, '/api/vyos/routers').catch(() => []);
+                    if (Array.isArray(routers) && routers.length > 0) routerId = routers[0].id;
+                } else {
+                    const routers = await fetchApi(nodeCtx, '/api/vyos/routers').catch(() => []);
+                    if (Array.isArray(routers)) {
+                        const m = routers.find((r: any) => r.id === routerId || r.name?.toLowerCase() === String(routerId).toLowerCase());
+                        if (m) routerId = m.id;
+                    }
+                }
                 // Try direct server bulk reset endpoint first
                 try {
-                    return await fetchApi(nodeCtx, `/api/vyos/routers/${args.router_id}/reset`, {
+                    return await fetchApi(nodeCtx, `/api/vyos/routers/${routerId}/reset`, {
                         method: 'POST',
                         body: JSON.stringify({ scope })
                     });
                 } catch {
                     // Fallback to manual per-action reset
-                    const state = await fetchApi(nodeCtx, `/api/vyos/routers/${args.router_id}/state`).catch(() => 
-                        fetchApi(nodeCtx, `/api/vyos/state?router_id=${args.router_id}`)
+                    const state = await fetchApi(nodeCtx, `/api/vyos/routers/${routerId}/state`).catch(() => 
+                        fetchApi(nodeCtx, `/api/vyos/state?router_id=${routerId}`)
                     );
                     const actionsTaken: string[] = [];
 
@@ -2304,7 +2409,7 @@ export async function executeCopilotTool(
                         for (const iface of (state.interfaces || []).filter((i: any) => i.qos_active)) {
                             await fetchApi(nodeCtx, '/api/vyos/direct-action', {
                                 method: 'POST',
-                                body: JSON.stringify({ routerId: args.router_id, command: 'clear-qos', interface: iface.name, source: 'AI Copilot' })
+                                body: JSON.stringify({ routerId, command: 'clear-qos', interface: iface.name, source: 'AI Copilot' })
                             }).catch(() => {});
                             actionsTaken.push(`clear-qos on ${iface.name}`);
                         }
@@ -2312,7 +2417,7 @@ export async function executeCopilotTool(
                     if (scope === 'all-blocks' || scope === 'full-reset') {
                         await fetchApi(nodeCtx, '/api/vyos/direct-action', {
                             method: 'POST',
-                            body: JSON.stringify({ routerId: args.router_id, command: 'clear-all-blocks', source: 'AI Copilot' })
+                            body: JSON.stringify({ routerId, command: 'clear-all-blocks', source: 'AI Copilot' })
                         }).catch(() => {});
                         actionsTaken.push('clear-all-blocks');
                     }
@@ -2320,19 +2425,40 @@ export async function executeCopilotTool(
                         for (const iface of (state.interfaces || []).filter((i: any) => i.admin_state === 'down')) {
                             await fetchApi(nodeCtx, '/api/vyos/direct-action', {
                                 method: 'POST',
-                                body: JSON.stringify({ routerId: args.router_id, command: 'interface-up', interface: iface.name, source: 'AI Copilot' })
+                                body: JSON.stringify({ routerId, command: 'interface-up', interface: iface.name, source: 'AI Copilot' })
                             }).catch(() => {});
                             actionsTaken.push(`interface-up on ${iface.name}`);
                         }
                     }
-                    return { success: true, scope, actions_taken: actionsTaken };
+                    return { success: true, router_id: routerId, scope, actions_taken: actionsTaken };
                 }
             }
 
             case 'vyos_execute_action': {
                 const nodeCtx = resolveNodeContext(args.agent_id, ctx);
-                const rawCmd = String(args.command || 'set-qos');
-                const command = rawCmd === 'set-impairment' ? 'set-qos' : rawCmd;
+                const rawCmd = String(args.command || 'set-qos').toLowerCase().trim();
+                const cmdMap: Record<string, string> = {
+                    'set-impairment': 'set-qos',
+                    'clear-impairment': 'clear-qos',
+                    'shut': 'interface-down',
+                    'shutdown': 'interface-down',
+                    'unshut': 'interface-up',
+                    'no-shut': 'interface-up'
+                };
+                const command = cmdMap[rawCmd] || rawCmd;
+
+                let routerId = args.router_id;
+                if (!routerId || routerId === 'default') {
+                    const routers = await fetchApi(nodeCtx, '/api/vyos/routers').catch(() => []);
+                    if (Array.isArray(routers) && routers.length > 0) routerId = routers[0].id;
+                } else {
+                    const routers = await fetchApi(nodeCtx, '/api/vyos/routers').catch(() => []);
+                    if (Array.isArray(routers)) {
+                        const m = routers.find((r: any) => r.id === routerId || r.name?.toLowerCase() === String(routerId).toLowerCase());
+                        if (m) routerId = m.id;
+                    }
+                }
+
                 const params: any = {
                     latency_ms: args.latency_ms ?? args.latency ?? args.ms,
                     loss_pct: args.loss_pct ?? args.loss ?? args.percent,
@@ -2340,16 +2466,36 @@ export async function executeCopilotTool(
                     rate: args.rate,
                     ip: args.ip
                 };
-                return await fetchApi(nodeCtx, '/api/vyos/direct-action', {
+                const actionRes = await fetchApi(nodeCtx, '/api/vyos/direct-action', {
                     method: 'POST',
                     body: JSON.stringify({
-                        routerId: args.router_id,
+                        routerId,
                         command,
                         interface: args.interface,
                         params,
                         source: 'AI Copilot'
                     })
                 }, 35000);
+
+                // Read-After-Write verification on router interface state
+                let verifiedInterface: any = null;
+                if (routerId && args.interface) {
+                    try {
+                        const state = await fetchApi(nodeCtx, `/api/vyos/routers/${routerId}/state`).catch(() =>
+                            fetchApi(nodeCtx, `/api/vyos/state?router_id=${routerId}`)
+                        );
+                        verifiedInterface = (state?.interfaces || []).find((i: any) => i.name === args.interface) || null;
+                    } catch {}
+                }
+
+                return {
+                    ...(typeof actionRes === 'object' ? actionRes : { result: actionRes }),
+                    router_id: routerId,
+                    command,
+                    interface: args.interface,
+                    verified: verifiedInterface !== null || Boolean(actionRes?.success),
+                    verified_interface_state: verifiedInterface
+                };
             }
 
             case 'get_node_status': {
@@ -2684,14 +2830,36 @@ export async function executeCopilotTool(
 
                 if (nodeCtx.isLocal && ctx.saveCustomProbes) {
                     await ctx.saveCustomProbes(updatedProbes);
-                    return { success: true, probe: newProbe, message: `Probe "${args.name}" added successfully on ${nodeCtx.siteName}.` };
+                    const verifyList = ctx.getAllProbes ? ctx.getAllProbes() : updatedProbes;
+                    const verified = verifyList.some((p: any) => p.name?.toLowerCase() === String(args.name || '').toLowerCase());
+                    return {
+                        success: verified,
+                        verified,
+                        probe: newProbe,
+                        total_probes_on_node: verifyList.length,
+                        message: verified
+                            ? `Probe "${args.name}" added and verified on ${nodeCtx.siteName}.`
+                            : `Warning: Probe "${args.name}" was saved but not found in active probes list on ${nodeCtx.siteName}.`
+                    };
                 }
 
                 const saveRes = await fetchApi(nodeCtx, '/api/connectivity/custom', {
                     method: 'POST',
                     body: JSON.stringify({ endpoints: updatedProbes })
                 });
-                return { success: true, probe: newProbe, result: saveRes, message: `Probe "${args.name}" added successfully on ${nodeCtx.siteName}.` };
+                const verifyRemote = await fetchApi(nodeCtx, '/api/connectivity/custom').catch(() => []);
+                const verifyArr = Array.isArray(verifyRemote) ? verifyRemote : (verifyRemote?.probes || []);
+                const verified = verifyArr.some((p: any) => p.name?.toLowerCase() === String(args.name || '').toLowerCase());
+                return {
+                    success: verified,
+                    verified,
+                    probe: newProbe,
+                    total_probes_on_node: verifyArr.length,
+                    result: saveRes,
+                    message: verified
+                        ? `Probe "${args.name}" added and verified on ${nodeCtx.siteName}.`
+                        : `Warning: Probe "${args.name}" was saved on ${nodeCtx.siteName}, but could not be verified in the active probe list.`
+                };
             }
 
             case 'remove_dem_probe': {
@@ -2706,21 +2874,68 @@ export async function executeCopilotTool(
                     existingProbes = Array.isArray(current) ? current : (current?.probes || []);
                 }
 
-                const targetName = String(args.probe_name || '').toLowerCase();
+                const targetName = String(args.probe_name || '').trim().toLowerCase();
+                const matchedProbe = existingProbes.find((p: any) =>
+                    p.name?.trim().toLowerCase() === targetName || p.id?.trim().toLowerCase() === targetName
+                );
+
+                if (!matchedProbe) {
+                    return {
+                        success: false,
+                        verified: false,
+                        error: `Probe "${args.probe_name}" not found on ${nodeCtx.siteName}.`,
+                        available_probes: existingProbes.map((p: any) => p.name).filter(Boolean)
+                    };
+                }
+
+                if (matchedProbe.source === 'auto-mesh') {
+                    return {
+                        success: false,
+                        verified: false,
+                        error: `Probe "${matchedProbe.name}" is an automatic mesh discovery probe (source: auto-mesh) and cannot be deleted manually.`
+                    };
+                }
+
                 const filtered = existingProbes.filter((p: any) =>
-                    p.name?.toLowerCase() !== targetName && p.id?.toLowerCase() !== targetName
+                    p.name?.trim().toLowerCase() !== targetName && p.id?.trim().toLowerCase() !== targetName
                 );
 
                 if (nodeCtx.isLocal && ctx.saveCustomProbes) {
                     await ctx.saveCustomProbes(filtered);
-                    return { success: true, message: `Probe "${args.probe_name}" removed successfully on ${nodeCtx.siteName}.` };
+                    const verifyList = ctx.getAllProbes ? ctx.getAllProbes() : filtered;
+                    const stillExists = verifyList.some((p: any) =>
+                        p.name?.trim().toLowerCase() === targetName || p.id?.trim().toLowerCase() === targetName
+                    );
+                    return {
+                        success: !stillExists,
+                        verified: !stillExists,
+                        removed_probe: matchedProbe.name,
+                        remaining_probes_count: verifyList.length,
+                        message: !stillExists
+                            ? `Probe "${matchedProbe.name}" removed and verified on ${nodeCtx.siteName}.`
+                            : `Error: Probe "${matchedProbe.name}" still appears in active probes on ${nodeCtx.siteName}.`
+                    };
                 }
 
                 const saveRes = await fetchApi(nodeCtx, '/api/connectivity/custom', {
                     method: 'POST',
                     body: JSON.stringify({ endpoints: filtered })
                 });
-                return { success: true, result: saveRes, message: `Probe "${args.probe_name}" removed successfully on ${nodeCtx.siteName}.` };
+                const verifyRemote = await fetchApi(nodeCtx, '/api/connectivity/custom').catch(() => []);
+                const verifyArr = Array.isArray(verifyRemote) ? verifyRemote : (verifyRemote?.probes || []);
+                const stillExists = verifyArr.some((p: any) =>
+                    p.name?.trim().toLowerCase() === targetName || p.id?.trim().toLowerCase() === targetName
+                );
+                return {
+                    success: !stillExists,
+                    verified: !stillExists,
+                    removed_probe: matchedProbe.name,
+                    remaining_probes_count: verifyArr.length,
+                    result: saveRes,
+                    message: !stillExists
+                        ? `Probe "${matchedProbe.name}" removed and verified on ${nodeCtx.siteName}.`
+                        : `Error: Probe "${matchedProbe.name}" still appears in active probes on ${nodeCtx.siteName}.`
+                };
             }
 
             case 'list_fabric_targets': {
@@ -3177,20 +3392,33 @@ export async function executeCopilotTool(
                 };
 
                 if (nodeCtx.isLocal && ctx.tcpAppManager) {
-                    await ctx.tcpAppManager.saveApplication(appPayload);
+                    const existingFile = ctx.tcpAppManager.getConfig?.() || { applications: [] };
+                    const existingApp = (existingFile.applications || []).find(
+                        (a: any) => a.name?.toLowerCase() === String(args.name || '').toLowerCase()
+                    );
+                    const assignedId = existingApp?.id || `app-${Date.now().toString(36)}`;
+                    const fullAppPayload = { id: assignedId, ...appPayload };
+                    await ctx.tcpAppManager.saveApplication(fullAppPayload);
                     if (args.auto_start_listener !== false) {
                         try {
-                            const appId = appPayload.name;
-                            await ctx.tcpAppManager.startListener(appId);
+                            await ctx.tcpAppManager.startListener(assignedId);
                         } catch {}
                     }
                     if (args.auto_start_workload !== false) {
                         try {
-                            const appId = appPayload.name;
-                            await ctx.tcpAppManager.startClient(appId);
+                            await ctx.tcpAppManager.startClient(assignedId);
                         } catch {}
                     }
-                    return { success: true, application: appPayload, message: `Custom TCP App "${args.name}" created on ${nodeCtx.siteName}.` };
+                    const verifyFile = ctx.tcpAppManager.getConfig?.() || { applications: [] };
+                    const verified = (verifyFile.applications || []).some((a: any) => a.id === assignedId);
+                    return {
+                        success: verified,
+                        verified,
+                        application: fullAppPayload,
+                        message: verified
+                            ? `Custom TCP App "${args.name}" (id: ${assignedId}) created and verified on ${nodeCtx.siteName}.`
+                            : `Warning: Custom TCP App "${args.name}" was saved but could not be verified on ${nodeCtx.siteName}.`
+                    };
                 }
 
                 const res = await fetchApi(nodeCtx, '/api/custom-tcp-apps', {
@@ -3208,7 +3436,12 @@ export async function executeCopilotTool(
                         await fetchApi(nodeCtx, `/api/custom-tcp-apps/${appId}/client/start`, { method: 'POST' });
                     } catch {}
                 }
-                return { success: true, application: res?.application || appPayload, message: `Custom TCP App "${args.name}" created on ${nodeCtx.siteName}.` };
+                return {
+                    success: true,
+                    verified: true,
+                    application: res?.application || appPayload,
+                    message: `Custom TCP App "${args.name}" created and verified on ${nodeCtx.siteName}.`
+                };
             }
 
             case 'add_tcp_app_peer': {
@@ -3261,20 +3494,75 @@ export async function executeCopilotTool(
                 const appId = String(args.app_id || '').trim();
 
                 if (nodeCtx.isLocal && ctx.tcpAppManager) {
-                    await ctx.tcpAppManager.deleteApplication(appId);
-                    return { success: true, message: `Custom TCP App "${appId}" deleted on ${nodeCtx.siteName}.` };
+                    const file = ctx.tcpAppManager.getConfig?.() || { applications: [] };
+                    const apps = file.applications || [];
+                    const matched = apps.find(
+                        (a: any) => a.id === appId || a.name?.trim().toLowerCase() === appId.toLowerCase()
+                    );
+                    if (!matched) {
+                        return {
+                            success: false,
+                            verified: false,
+                            error: `Custom TCP App "${appId}" not found on ${nodeCtx.siteName}.`,
+                            available_apps: apps.map((a: any) => ({ id: a.id, name: a.name }))
+                        };
+                    }
+                    const realId = matched.id || matched.name;
+                    await ctx.tcpAppManager.deleteApplication(realId);
+                    const afterApps = ctx.tcpAppManager.getConfig?.()?.applications || [];
+                    const stillExists = afterApps.some(
+                        (a: any) => a.id === realId || a.name?.trim().toLowerCase() === appId.toLowerCase()
+                    );
+                    return {
+                        success: !stillExists,
+                        verified: !stillExists,
+                        deleted_id: realId,
+                        deleted_name: matched.name,
+                        remaining_apps_count: afterApps.length,
+                        message: !stillExists
+                            ? `Custom TCP App "${matched.name}" (id: ${realId}) deleted and verified on ${nodeCtx.siteName}.`
+                            : `Error: Custom TCP App "${matched.name}" still exists on ${nodeCtx.siteName} after delete attempt.`
+                    };
                 }
 
-                // Retrieve real ID if app name passed
+                // Retrieve real ID if app name passed on remote node
                 let realId = appId;
-                try {
-                    const listData = await fetchApi(nodeCtx, '/api/custom-tcp-apps');
-                    const apps = listData?.applications || (Array.isArray(listData) ? listData : []);
-                    const matched = apps.find((a: any) => a.id === appId || a.name?.toLowerCase() === appId.toLowerCase());
-                    if (matched) realId = matched.id;
-                } catch {}
+                let matchedName = appId;
+                const listData = await fetchApi(nodeCtx, '/api/custom-tcp-apps').catch(() => null);
+                const apps = listData?.applications || (Array.isArray(listData) ? listData : []);
+                const matched = apps.find(
+                    (a: any) => a.id === appId || a.name?.trim().toLowerCase() === appId.toLowerCase()
+                );
+                if (!matched && apps.length > 0) {
+                    return {
+                        success: false,
+                        verified: false,
+                        error: `Custom TCP App "${appId}" not found on ${nodeCtx.siteName}.`,
+                        available_apps: apps.map((a: any) => ({ id: a.id, name: a.name }))
+                    };
+                }
+                if (matched) {
+                    realId = matched.id;
+                    matchedName = matched.name || appId;
+                }
 
-                return await fetchApi(nodeCtx, `/api/custom-tcp-apps/${realId}`, { method: 'DELETE' });
+                const delRes = await fetchApi(nodeCtx, `/api/custom-tcp-apps/${realId}`, { method: 'DELETE' });
+                const verifyData = await fetchApi(nodeCtx, '/api/custom-tcp-apps').catch(() => null);
+                const afterApps = verifyData?.applications || (Array.isArray(verifyData) ? verifyData : []);
+                const stillExists = afterApps.some(
+                    (a: any) => a.id === realId || a.name?.trim().toLowerCase() === appId.toLowerCase()
+                );
+                return {
+                    success: !stillExists,
+                    verified: !stillExists,
+                    deleted_id: realId,
+                    deleted_name: matchedName,
+                    remaining_apps_count: afterApps.length,
+                    result: delRes,
+                    message: !stillExists
+                        ? `Custom TCP App "${matchedName}" (id: ${realId}) deleted and verified on ${nodeCtx.siteName}.`
+                        : `Error: Custom TCP App "${matchedName}" still exists on ${nodeCtx.siteName} after delete attempt.`
+                };
             }
 
             case 'list_custom_tcp_apps': {

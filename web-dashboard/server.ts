@@ -4826,6 +4826,14 @@ const getFullEffectiveConnectivityProbes = () => {
                 const idx = deduplicated.indexOf(existing);
                 if (idx !== -1) deduplicated[idx] = probe;
                 seenTargets.set(key, probe);
+            } else if (
+                probe.source !== 'discovery' &&
+                probe.source !== 'auto-mesh' &&
+                existing.source !== 'discovery' &&
+                existing.source !== 'auto-mesh' &&
+                String(probe.name || '').trim().toLowerCase() !== String(existing.name || '').trim().toLowerCase()
+            ) {
+                deduplicated.push(probe);
             }
         }
     }

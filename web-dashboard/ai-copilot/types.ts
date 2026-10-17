@@ -39,6 +39,13 @@ export interface CopilotMessage {
     timestamp: number;
     model?: string;
     toolCalls?: CopilotToolCall[];
+    llmDurationMs?: number;
+    guardrailTriggered?: boolean;
+    usage?: {
+        inputTokens?: number;
+        outputTokens?: number;
+        totalTokens?: number;
+    };
 }
 
 export interface CopilotToolCall {

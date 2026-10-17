@@ -756,6 +756,70 @@ export class CopilotTestSuite {
             return { status: res.status, ok: true };
         });
 
+        // 44. Regression Test: remove_dem_probe on non-existent probe returns success: false
+        await this.runTest('44. Tool "remove_dem_probe" (Rejects non-existent probe without fake success)', async () => {
+            const res = await executeCopilotTool('remove_dem_probe', {
+                agent_id: this.host,
+                probe_name: 'FakeProbe_Does_Not_Exist_999'
+            }, remoteCtx);
+            if (res.success !== false || !res.error) {
+                throw new Error(`Expected success: false and error for non-existent probe, got: ${JSON.stringify(res)}`);
+            }
+            return { rejected: true, error: res.error };
+        });
+
+        // 45. Regression Test: Local Custom TCP App create & delete by name (ID resolution & verification)
+        await this.runTest('45. Tool "create/delete_custom_tcp_app" (Local name-to-ID resolution & verification)', async () => {
+            const appsStore: any[] = [];
+            const mockTcpMgr = {
+                getConfig: () => ({ applications: appsStore }),
+                saveApplication: async (app: any) => {
+                    const idx = appsStore.findIndex(a => a.id === app.id);
+                    if (idx >= 0) appsStore[idx] = app;
+                    else appsStore.push(app);
+                },
+                deleteApplication: async (id: string) => {
+                    // Real tcpAppManager only deletes by exact a.id === id!
+                    const idx = appsStore.findIndex(a => a.id === id);
+                    if (idx >= 0) appsStore.splice(idx, 1);
+                },
+                startListener: async () => {},
+                startClient: async () => {}
+            };
+            const localMockCtx: ToolExecutionContext = {
+                ...remoteCtx,
+                tcpAppManager: mockTcpMgr
+            };
+            const createRes = await executeCopilotTool('create_custom_tcp_app', {
+                agent_id: 'local',
+                name: 'YannTestApp',
+                port: 9876
+            }, localMockCtx);
+            if (!createRes.success || !createRes.verified || !createRes.application?.id) {
+                throw new Error(`Expected verified creation with generated id, got: ${JSON.stringify(createRes)}`);
+            }
+            // Now delete by NAME ('YannTestApp'), not ID
+            const delRes = await executeCopilotTool('delete_custom_tcp_app', {
+                agent_id: 'local',
+                app_id: 'YannTestApp'
+            }, localMockCtx);
+            if (!delRes.success || !delRes.verified || appsStore.length !== 0) {
+                throw new Error(`Expected verified deletion by name, got: ${JSON.stringify(delRes)} (remaining=${appsStore.length})`);
+            }
+            return { createdId: createRes.application.id, deletedVerified: delRes.verified };
+        });
+
+        // 46. Regression Test: Unknown node rejection (Anti-Hallucination)
+        await this.runTest('46. Unknown Node Rejection (Rejects unknown agent_id instead of falling back to local)', async () => {
+            const res = await executeCopilotTool('get_node_status', {
+                agent_id: 'DC99_NON_EXISTENT'
+            }, remoteCtx);
+            if (!res.error || (!res.error.includes('Unknown Stigix node') && !res.error.includes('Unknown target node'))) {
+                throw new Error(`Expected unknown node error, got: ${JSON.stringify(res)}`);
+            }
+            return { error: res.error };
+        });
+
         // Summary
         const passedCount = this.results.filter(r => r.passed).length;
         const totalCount = this.results.length;
