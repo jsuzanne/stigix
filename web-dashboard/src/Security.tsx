@@ -151,6 +151,7 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
     const [batchProcessingUrl, setBatchProcessingUrl] = useState(false);
     const [batchProcessingDns, setBatchProcessingDns] = useState(false);
     const [testing, setTesting] = useState<{ [key: string]: boolean }>({});
+    const [freshVerdicts, setFreshVerdicts] = useState<{ [key: string]: number }>({});
     const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null);
 
     // Collapsible sections & section filter tab
@@ -963,7 +964,13 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
     };
 
     const runURLTest = async (category: URLCategory) => {
-        setTesting({ ...testing, [`url-${category.id}`]: true });
+        const cardKey = `url-${category.id}`;
+        setTesting(prev => ({ ...prev, [cardKey]: true }));
+        setFreshVerdicts(prev => {
+            const next = { ...prev };
+            delete next[cardKey];
+            return next;
+        });
         try {
             const targetUrl = getTargetUrl(category.url);
             const res = await gFetch('/api/security/url-test', {
@@ -975,25 +982,29 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
             if (result.status) {
                 notifyStatusChange(category.name, result.status, result.previousStatus);
             }
-            await fetchResults();
-            await fetchConfig();
+            await Promise.all([fetchResults(), fetchLatestVerdicts(), fetchConfig()]);
+            setFreshVerdicts(prev => ({ ...prev, [cardKey]: Date.now() }));
         } catch (e) {
             console.error('URL test failed:', e);
         } finally {
-            setTesting({ ...testing, [`url-${category.id}`]: false });
+            setTesting(prev => ({ ...prev, [cardKey]: false }));
         }
     };
 
     const runURLBatchTest = async () => {
         if (!config || batchProcessingUrl) return;
         setBatchProcessingUrl(true);
+        const enabledCategories = securityProfile.url_filtering.items.filter(cat =>
+            config.url_filtering.enabled_categories.includes(cat.id)
+        );
+        setFreshVerdicts(prev => {
+            const next = { ...prev };
+            enabledCategories.forEach(cat => delete next[`url-${cat.id}`]);
+            return next;
+        });
         const activeProtocol = (config.url_filtering?.protocol || 'http').toUpperCase();
         showToast(`Running ${config.url_filtering.enabled_categories.length} URL filtering tests (${activeProtocol})...`, 'info');
         try {
-            const enabledCategories = securityProfile.url_filtering.items.filter(cat =>
-                config.url_filtering.enabled_categories.includes(cat.id)
-            );
-
             const tests = enabledCategories.map(cat => ({ url: getTargetUrl(cat.url), category: cat.name }));
 
             await gFetch('/api/security/url-test-batch', {
@@ -1001,8 +1012,13 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
                 headers: { ...authHeaders(), 'Content-Type': 'application/json' },
                 body: JSON.stringify({ tests })
             });
-            await fetchResults();
-            await fetchConfig();
+            await Promise.all([fetchResults(), fetchLatestVerdicts(), fetchConfig()]);
+            const now = Date.now();
+            setFreshVerdicts(prev => {
+                const next = { ...prev };
+                enabledCategories.forEach(cat => { next[`url-${cat.id}`] = now; });
+                return next;
+            });
             showToast(`URL filtering tests completed (${activeProtocol})!`, 'success');
         } catch (e) {
             console.error('Batch URL test failed:', e);
@@ -1013,7 +1029,13 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
     };
 
     const runDNSTest = async (test: DNSTestDomain) => {
-        setTesting({ ...testing, [`dns-${test.id}`]: true });
+        const cardKey = `dns-${test.id}`;
+        setTesting(prev => ({ ...prev, [cardKey]: true }));
+        setFreshVerdicts(prev => {
+            const next = { ...prev };
+            delete next[cardKey];
+            return next;
+        });
         try {
             const res = await gFetch('/api/security/dns-test', {
                 method: 'POST',
@@ -1024,24 +1046,28 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
             if (data.status) {
                 notifyStatusChange(test.name, data.status, data.previousStatus);
             }
-            await fetchResults();
-            await fetchConfig();
+            await Promise.all([fetchResults(), fetchLatestVerdicts(), fetchConfig()]);
+            setFreshVerdicts(prev => ({ ...prev, [cardKey]: Date.now() }));
         } catch (e) {
             console.error('DNS test failed:', e);
         } finally {
-            setTesting({ ...testing, [`dns-${test.id}`]: false });
+            setTesting(prev => ({ ...prev, [cardKey]: false }));
         }
     };
 
     const runDNSBatchTest = async () => {
         if (!config || batchProcessingDns) return;
         setBatchProcessingDns(true);
+        const enabledTests = securityProfile.dns_security.items.filter(test =>
+            config.dns_security.enabled_tests.includes(test.id)
+        );
+        setFreshVerdicts(prev => {
+            const next = { ...prev };
+            enabledTests.forEach(test => delete next[`dns-${test.id}`]);
+            return next;
+        });
         showToast(`Running ${config.dns_security.enabled_tests.length} DNS security tests...`, 'info');
         try {
-            const enabledTests = securityProfile.dns_security.items.filter(test =>
-                config.dns_security.enabled_tests.includes(test.id)
-            );
-
             const tests = enabledTests.map(test => ({ domain: test.domain, testName: test.name }));
 
             await gFetch('/api/security/dns-test-batch', {
@@ -1049,8 +1075,13 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
                 headers: { ...authHeaders(), 'Content-Type': 'application/json' },
                 body: JSON.stringify({ tests })
             });
-            await fetchResults();
-            await fetchConfig();
+            await Promise.all([fetchResults(), fetchLatestVerdicts(), fetchConfig()]);
+            const now = Date.now();
+            setFreshVerdicts(prev => {
+                const next = { ...prev };
+                enabledTests.forEach(test => { next[`dns-${test.id}`] = now; });
+                return next;
+            });
             showToast('DNS security tests completed!', 'success');
         } catch (e) {
             console.error('Batch DNS test failed:', e);
@@ -1067,7 +1098,13 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
     // Single source of truth for all test types.
 
     const runC2Test = async (scenario: C2Scenario) => {
-        setTesting(prev => ({ ...prev, [`c2-${scenario.id}`]: true }));
+        const cardKey = `c2-${scenario.id}`;
+        setTesting(prev => ({ ...prev, [cardKey]: true }));
+        setFreshVerdicts(prev => {
+            const next = { ...prev };
+            delete next[cardKey];
+            return next;
+        });
         try {
             const res = await gFetch('/api/security/c2-test', {
                 method: 'POST',
@@ -1084,23 +1121,29 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
                 const label = data.status === 'enforced' ? '✓ Blocked' : data.status === 'bypass' ? '⊗ Allowed' : '⚠ Inconclusive';
                 showToast(`${scenario.name}: ${label}`, data.status === 'enforced' ? 'success' : data.status === 'bypass' ? 'error' : 'info');
             }
-            await fetchResults();
+            await Promise.all([fetchResults(), fetchLatestVerdicts()]);
+            setFreshVerdicts(prev => ({ ...prev, [cardKey]: Date.now() }));
         } catch (e) {
             console.error('C2 test failed:', e);
             showToast('C2 test failed', 'error');
         } finally {
-            setTesting(prev => ({ ...prev, [`c2-${scenario.id}`]: false }));
+            setTesting(prev => ({ ...prev, [cardKey]: false }));
         }
     };
 
     const runC2BatchTest = async () => {
         if (batchProcessingC2 || c2SelectedScenarios.length === 0) return;
         setBatchProcessingC2(true);
+        const selectedScenarios = securityProfile.c2_scenarios
+            .filter(s => c2SelectedScenarios.includes(s.id))
+            .map(s => ({ scenarioId: s.id, scenarioName: s.name, attackType: s.attack_type, target: s.target }));
+        setFreshVerdicts(prev => {
+            const next = { ...prev };
+            selectedScenarios.forEach(s => delete next[`c2-${s.scenarioId}`]);
+            return next;
+        });
         showToast(`Running ${c2SelectedScenarios.length} C2 attack scenarios...`, 'info');
         try {
-            const selectedScenarios = securityProfile.c2_scenarios
-                .filter(s => c2SelectedScenarios.includes(s.id))
-                .map(s => ({ scenarioId: s.id, scenarioName: s.name, attackType: s.attack_type, target: s.target }));
             await gFetch('/api/security/c2-test-batch', {
                 method: 'POST',
                 headers: { ...authHeaders(), 'Content-Type': 'application/json' },
@@ -1108,7 +1151,13 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
             });
             // Poll for results after a delay (batch runs in background)
             setTimeout(async () => {
-                await fetchResults();
+                await Promise.all([fetchResults(), fetchLatestVerdicts()]);
+                const now = Date.now();
+                setFreshVerdicts(prev => {
+                    const next = { ...prev };
+                    selectedScenarios.forEach(s => { next[`c2-${s.scenarioId}`] = now; });
+                    return next;
+                });
                 showToast('C2 batch completed!', 'success');
                 setBatchProcessingC2(false);
             }, selectedScenarios.length * 4000 + 2000);
@@ -1136,7 +1185,13 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
 
     // ── AI Security Test Functions ────────────────────────────────────────────
     const runAITest = async (scenario: AISecurityScenario) => {
-        setTesting(prev => ({ ...prev, [`ai-${scenario.id}`]: true }));
+        const cardKey = `ai-${scenario.id}`;
+        setTesting(prev => ({ ...prev, [cardKey]: true }));
+        setFreshVerdicts(prev => {
+            const next = { ...prev };
+            delete next[cardKey];
+            return next;
+        });
         try {
             const res = await gFetch('/api/security/ai-test', {
                 method: 'POST',
@@ -1154,30 +1209,42 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
                 const label = s === 'enforced' ? '✓ Blocked' : s === 'bypass' ? '⊗ Allowed' : s === 'completed' ? '✓ Completed' : '⚠ Inconclusive';
                 showToast(`${scenario.name}: ${label}`, s === 'enforced' || s === 'completed' ? 'success' : s === 'bypass' ? 'error' : 'info');
             }
-            await fetchResults();
+            await Promise.all([fetchResults(), fetchLatestVerdicts()]);
+            setFreshVerdicts(prev => ({ ...prev, [cardKey]: Date.now() }));
         } catch (e) {
             console.error('AI test failed:', e);
             showToast('AI Security test failed', 'error');
         } finally {
-            setTesting(prev => ({ ...prev, [`ai-${scenario.id}`]: false }));
+            setTesting(prev => ({ ...prev, [cardKey]: false }));
         }
     };
 
     const runAIBatchTest = async () => {
         if (batchProcessingAI || aiSelectedScenarios.length === 0) return;
         setBatchProcessingAI(true);
+        const selectedScenarios = securityProfile.ai_security_scenarios
+            .filter(s => aiSelectedScenarios.includes(s.id))
+            .map(s => ({ scenarioId: s.id, scenarioName: s.name, attackType: s.attack_type, targets: s.targets }));
+        setFreshVerdicts(prev => {
+            const next = { ...prev };
+            selectedScenarios.forEach(s => delete next[`ai-${s.scenarioId}`]);
+            return next;
+        });
         showToast(`Running ${aiSelectedScenarios.length} AI Security scenarios...`, 'info');
         try {
-            const selectedScenarios = securityProfile.ai_security_scenarios
-                .filter(s => aiSelectedScenarios.includes(s.id))
-                .map(s => ({ scenarioId: s.id, scenarioName: s.name, attackType: s.attack_type, targets: s.targets }));
             await gFetch('/api/security/ai-test-batch', {
                 method: 'POST',
                 headers: { ...authHeaders(), 'Content-Type': 'application/json' },
                 body: JSON.stringify({ scenarios: selectedScenarios })
             });
             setTimeout(async () => {
-                await fetchResults();
+                await Promise.all([fetchResults(), fetchLatestVerdicts()]);
+                const now = Date.now();
+                setFreshVerdicts(prev => {
+                    const next = { ...prev };
+                    selectedScenarios.forEach(s => { next[`ai-${s.scenarioId}`] = now; });
+                    return next;
+                });
                 showToast('AI Security batch completed!', 'success');
                 setBatchProcessingAI(false);
             }, selectedScenarios.length * 6000 + 2000); // volume test takes longer
@@ -1216,15 +1283,27 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
         }
 
         setLoading(true);
+        setFreshVerdicts(prev => {
+            const next = { ...prev };
+            endpointsToTest.forEach(ep => delete next[`eicar-${ep}`]);
+            delete next['eicar-global'];
+            return next;
+        });
         showToast(`Running EICAR threat test to ${endpointsToTest.length} targets...`, 'info');
         try {
-            const res = await gFetch('/api/security/threat-test', {
+            await gFetch('/api/security/threat-test', {
                 method: 'POST',
                 headers: { ...authHeaders(), 'Content-Type': 'application/json' },
                 body: JSON.stringify({ endpoint: endpointsToTest })
             });
-            await fetchResults();
-            await fetchConfig();
+            await Promise.all([fetchResults(), fetchLatestVerdicts(), fetchConfig()]);
+            const now = Date.now();
+            setFreshVerdicts(prev => {
+                const next = { ...prev };
+                endpointsToTest.forEach(ep => { next[`eicar-${ep}`] = now; });
+                next['eicar-global'] = now;
+                return next;
+            });
             showToast('EICAR threat tests completed!', 'success');
 
             // Save endpoints to config for scheduled tests
@@ -1249,7 +1328,14 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
     const runSingleEicarTest = async (endpoint: string, e: React.MouseEvent) => {
         e.stopPropagation(); // prevent row selection toggle
         if (runningEicarTarget || loading) return;
+        const cardKey = `eicar-${endpoint}`;
         setRunningEicarTarget(endpoint);
+        setFreshVerdicts(prev => {
+            const next = { ...prev };
+            delete next[cardKey];
+            delete next['eicar-global'];
+            return next;
+        });
         showToast(`Running EICAR test on ${endpoint}...`, 'info');
         try {
             await gFetch('/api/security/threat-test', {
@@ -1257,8 +1343,13 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
                 headers: { ...authHeaders(), 'Content-Type': 'application/json' },
                 body: JSON.stringify({ endpoint: [endpoint] })
             });
-            await fetchResults();
-            await fetchConfig();
+            await Promise.all([fetchResults(), fetchLatestVerdicts(), fetchConfig()]);
+            const now = Date.now();
+            setFreshVerdicts(prev => ({
+                ...prev,
+                [cardKey]: now,
+                'eicar-global': now
+            }));
             showToast('EICAR test completed!', 'success');
         } catch (err) {
             console.error('Single EICAR test failed:', err);
@@ -1378,6 +1469,8 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
                 headers: authHeaders()
             });
             setTestResults([]);
+            setLatestVerdicts({});
+            setFreshVerdicts({});
         } catch (e) {
             console.error('Failed to clear history:', e);
         }
@@ -1393,6 +1486,8 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
             });
             const data = await res.json();
             if (data.success) {
+                setLatestVerdicts({});
+                setFreshVerdicts({});
                 await fetchConfig();
                 await fetchResults();
                 showToast('Statistics and history reset successfully', 'success');
@@ -1415,11 +1510,104 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
         link.click();
     };
 
-    const getStatusBadge = (result: any) => {
+    const getStatusBadge = (result: any, options?: { isFresh?: boolean; isTesting?: boolean; freshKey?: number }) => {
         if (!result) return null;
 
         const status = result.status || (result.success ? 'allowed' : 'blocked');
 
+        // Card-level badge with dull (previous/historical) vs solid vivid (freshly re-tested) states
+        if (options) {
+            const isFresh = Boolean(options.isFresh && !options.isTesting);
+            const dimClass = options.isTesting ? 'opacity-40' : 'opacity-55';
+            const titleText = options.isTesting
+                ? 'Re-running test...'
+                : isFresh
+                    ? 'Fresh test result (just executed)'
+                    : 'Previous test result — run test to refresh';
+
+            if (isFresh) {
+                if (status === 'blocked' || status === 'enforced') {
+                    return (
+                        <span key={options.freshKey} title={titleText} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-red-600 text-white border border-red-500 shadow-sm shadow-red-600/30 text-xs font-bold animate-in zoom-in-95 duration-200 whitespace-nowrap">
+                            <XCircle size={13} /> Blocked
+                        </span>
+                    );
+                } else if (status === 'sinkholed') {
+                    return (
+                        <span key={options.freshKey} title={titleText} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-amber-400 text-slate-950 border border-amber-300 shadow-sm shadow-amber-400/30 text-xs font-black animate-in zoom-in-95 duration-200 whitespace-nowrap">
+                            <AlertTriangle size={13} /> Sinkholed
+                        </span>
+                    );
+                } else if (status === 'allowed' || status === 'resolved' || status === 'bypass') {
+                    return (
+                        <span key={options.freshKey} title={titleText} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-emerald-600 text-white border border-emerald-500 shadow-sm shadow-emerald-600/30 text-xs font-bold animate-in zoom-in-95 duration-200 whitespace-nowrap">
+                            <CheckCircle size={13} /> Allowed
+                        </span>
+                    );
+                } else if (status === 'completed') {
+                    return (
+                        <span key={options.freshKey} title={titleText} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-cyan-600 text-white border border-cyan-500 shadow-sm text-xs font-bold animate-in zoom-in-95 duration-200 whitespace-nowrap">
+                            <CheckCircle size={13} /> Completed{result.reached_count != null ? ` ${result.reached_count}/${result.total_count}` : ''}
+                        </span>
+                    );
+                } else if (status === 'inconclusive' || status === 'unreachable' || status === 'error') {
+                    const label = status === 'inconclusive' ? 'Inconclusive' : status === 'unreachable' ? 'Unreachable' : 'Error';
+                    return (
+                        <span key={options.freshKey} title={titleText} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-orange-500 text-white border border-orange-400 shadow-sm text-xs font-bold animate-in zoom-in-95 duration-200 whitespace-nowrap">
+                            {status === 'error' ? <XCircle size={13} /> : <AlertTriangle size={13} />} {label}
+                        </span>
+                    );
+                } else {
+                    return (
+                        <span key={options.freshKey} title={titleText} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-slate-600 text-white border border-slate-500 text-xs font-bold animate-in zoom-in-95 duration-200 whitespace-nowrap">
+                            <Clock size={13} /> Unknown
+                        </span>
+                    );
+                }
+            }
+
+            // Dull / opaque badge for historical verdicts or while re-running
+            if (status === 'blocked' || status === 'enforced') {
+                return (
+                    <span title={titleText} className={cn("inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-red-500/10 text-red-400/75 border border-red-500/20 text-xs font-medium transition-opacity whitespace-nowrap", dimClass)}>
+                        <XCircle size={13} /> Blocked
+                    </span>
+                );
+            } else if (status === 'sinkholed') {
+                return (
+                    <span title={titleText} className={cn("inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-amber-500/10 text-amber-400/75 border border-amber-500/20 text-xs font-medium transition-opacity whitespace-nowrap", dimClass)}>
+                        <AlertTriangle size={13} /> Sinkholed
+                    </span>
+                );
+            } else if (status === 'allowed' || status === 'resolved' || status === 'bypass') {
+                return (
+                    <span title={titleText} className={cn("inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-emerald-500/10 text-emerald-400/75 border border-emerald-500/20 text-xs font-medium transition-opacity whitespace-nowrap", dimClass)}>
+                        <CheckCircle size={13} /> Allowed
+                    </span>
+                );
+            } else if (status === 'completed') {
+                return (
+                    <span title={titleText} className={cn("inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-cyan-500/10 text-cyan-400/75 border border-cyan-500/20 text-xs font-medium transition-opacity whitespace-nowrap", dimClass)}>
+                        <CheckCircle size={13} /> Completed{result.reached_count != null ? ` ${result.reached_count}/${result.total_count}` : ''}
+                    </span>
+                );
+            } else if (status === 'inconclusive' || status === 'unreachable' || status === 'error') {
+                const label = status === 'inconclusive' ? 'Inconclusive' : status === 'unreachable' ? 'Unreachable' : 'Error';
+                return (
+                    <span title={titleText} className={cn("inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-orange-500/10 text-orange-400/75 border border-orange-500/20 text-xs font-medium transition-opacity whitespace-nowrap", dimClass)}>
+                        {status === 'error' ? <XCircle size={13} /> : <AlertTriangle size={13} />} {label}
+                    </span>
+                );
+            } else {
+                return (
+                    <span title={titleText} className={cn("inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-card-secondary text-text-muted border border-border text-xs font-medium transition-opacity whitespace-nowrap", dimClass)}>
+                        <Clock size={13} /> Unknown
+                    </span>
+                );
+            }
+        }
+
+        // Standard badge for log tables and detail modals
         if (status === 'blocked' || status === 'enforced') {
             return <span className="flex items-center gap-1 text-red-400 text-sm"><XCircle size={14} /> Blocked</span>;
         } else if (status === 'sinkholed') {
@@ -1965,7 +2153,7 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
                                                     </div>
                                                 </div>
                                                 <div className="flex items-center gap-2">
-                                                    {lastResult && getStatusBadge(lastResult.result)}
+                                                    {lastResult && getStatusBadge(lastResult.result, { isFresh: !!freshVerdicts[`url-${category.id}`], isTesting: isTesting || (batchProcessingUrl && isEnabled), freshKey: freshVerdicts[`url-${category.id}`] })}
                                                     <div className="flex gap-1.5 ml-2 p-1 bg-card-secondary/50 rounded-lg border border-border/50">
                                                         <button
                                                             onClick={() => copyToClipboard(`curl -fsS --max-time 10 -o /dev/null -w '%{http_code}' '${targetUrl}'`)}
@@ -2151,7 +2339,7 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
                                                                 </div>
                                                             </div>
                                                             <div className="flex items-center gap-2">
-                                                                {lastResult && getStatusBadge(lastResult.result)}
+                                                                {lastResult && getStatusBadge(lastResult.result, { isFresh: !!freshVerdicts[`dns-${test.id}`], isTesting: isTesting || (batchProcessingDns && isEnabled), freshKey: freshVerdicts[`dns-${test.id}`] })}
                                                                 <div className="flex gap-1.5 ml-2 p-1 bg-card-secondary/50 rounded-lg border border-border/50">
                                                                     <button
                                                                         onClick={() => copyToClipboard(`nslookup -timeout=2 ${test.domain}`)}
@@ -2213,7 +2401,7 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
                                                                 </div>
                                                             </div>
                                                             <div className="flex items-center gap-2">
-                                                                {lastResult && getStatusBadge(lastResult.result)}
+                                                                {lastResult && getStatusBadge(lastResult.result, { isFresh: !!freshVerdicts[`dns-${test.id}`], isTesting: isTesting || (batchProcessingDns && isEnabled), freshKey: freshVerdicts[`dns-${test.id}`] })}
                                                                 <div className="flex gap-1.5 ml-2 p-1 bg-card-secondary/50 rounded-lg border border-border/50">
                                                                     <button
                                                                         onClick={() => copyToClipboard(`nslookup -timeout=2 ${test.domain}`)}
@@ -2424,7 +2612,7 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
                                                         )}
                                                     </div>
                                                     <div className="flex items-center gap-1.5 ml-2 border-l border-border/50 pl-3">
-                                                        {lastResult && getStatusBadge(lastResult.result)}
+                                                        {lastResult && getStatusBadge(lastResult.result, { isFresh: !!freshVerdicts[`eicar-${cloudEicarUrl}`], isTesting: runningEicarTarget === cloudEicarUrl || (loading && isSelected), freshKey: freshVerdicts[`eicar-${cloudEicarUrl}`] })}
                                                         {/* Status dot */}
                                                         {disabled ? (
                                                             <div className="w-1.5 h-1.5 rounded-full bg-amber-500 shrink-0" title="Key not configured" />
@@ -2501,7 +2689,7 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
                                                         <p className="text-[9px] text-text-muted font-mono mt-0.5 truncate">{ca.url}</p>
                                                     </div>
                                                     <div className="flex items-center gap-1.5 ml-2 border-l border-border/50 pl-3">
-                                                        {lastResult && getStatusBadge(lastResult.result)}
+                                                        {lastResult && getStatusBadge(lastResult.result, { isFresh: !!freshVerdicts[`eicar-${ca.url}`], isTesting: runningEicarTarget === ca.url || (loading && isSelected), freshKey: freshVerdicts[`eicar-${ca.url}`] })}
                                                         {/* Live server indicator */}
                                                         <div className="relative flex h-2 w-2 items-center justify-center shrink-0" title="Live Active Listener">
                                                             <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75" style={{ animationDuration: '3s' }}></span>
@@ -2560,7 +2748,7 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
                                                         <p className="text-[9px] text-text-muted font-mono mt-0.5 truncate">{url}</p>
                                                     </div>
                                                     <div className="flex items-center gap-1.5 ml-2 border-l border-border/50 pl-3">
-                                                        {lastResult && getStatusBadge(lastResult.result)}
+                                                        {lastResult && getStatusBadge(lastResult.result, { isFresh: !!freshVerdicts[`eicar-${url}`], isTesting: runningEicarTarget === url || (loading && isSelected), freshKey: freshVerdicts[`eicar-${url}`] })}
                                                         {/* Status dot */}
                                                         {status === 'loading' || status === undefined ? (
                                                             <div className="w-1.5 h-1.5 rounded-full bg-border animate-pulse shrink-0" title="Checking reachability..." />
@@ -2605,7 +2793,7 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
                                         <label className="text-[10px] font-black text-text-muted tracking-widest block">Custom Endpoint URL (Optional)</label>
                                         {customEicarUrl && (() => {
                                             const lastResult = getEicarResult(customEicarUrl);
-                                            return lastResult ? getStatusBadge(lastResult.result) : null;
+                                            return lastResult ? getStatusBadge(lastResult.result, { isFresh: !!freshVerdicts[`eicar-${customEicarUrl}`], isTesting: runningEicarTarget === customEicarUrl || loading, freshKey: freshVerdicts[`eicar-${customEicarUrl}`] }) : null;
                                         })()}
                                     </div>
                                     <input
@@ -2641,7 +2829,7 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
 
                                 {testResults.find(r => r.testType === 'threat_prevention' || r.testType === 'threat') && (
                                     <div className="mt-3">
-                                        {getStatusBadge(testResults.find(r => r.testType === 'threat_prevention' || r.testType === 'threat')?.result)}
+                                        {getStatusBadge(testResults.find(r => r.testType === 'threat_prevention' || r.testType === 'threat')?.result, { isFresh: !!freshVerdicts['eicar-global'], isTesting: loading || !!runningEicarTarget, freshKey: freshVerdicts['eicar-global'] })}
                                     </div>
                                 )}
                             </div>
@@ -2788,7 +2976,7 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
                                                         </div>
                                                     </div>
                                                     <div className="flex items-center gap-2">
-                                                        {lastResult && getStatusBadge(lastResult.result)}
+                                                        {lastResult && getStatusBadge(lastResult.result, { isFresh: !!freshVerdicts[`c2-${scenario.id}`], isTesting: isTesting || (batchProcessingC2 && isEnabled), freshKey: freshVerdicts[`c2-${scenario.id}`] })}
                                                         <div className="flex gap-1.5 ml-2 p-1 bg-card-secondary/50 rounded-lg border border-border/50">
                                                             <button
                                                                 onClick={() => copyToClipboard(scenario.cliHint)}
@@ -2991,7 +3179,7 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
                                                     {lastResult && (
                                                         <div className="mt-2 pt-2 border-t border-border/50 flex items-center justify-between">
                                                             <span className="text-[8px] text-text-muted">Last result:</span>
-                                                            <div className="scale-75 origin-right">{getStatusBadge(lastResult.result)}</div>
+                                                            <div className="scale-90 origin-right">{getStatusBadge(lastResult.result, { isFresh: !!freshVerdicts[`ai-${scenario.id}`], isTesting: isTesting || (batchProcessingAI && isEnabled), freshKey: freshVerdicts[`ai-${scenario.id}`] })}</div>
                                                         </div>
                                                     )}
                                                 </div>
