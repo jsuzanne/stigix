@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.0.36] - 2026-10-17
+
+### Added & Enhanced
+- **Security Testing UI — Fresh vs. Historical Verdict Badges (`Security.tsx`)**:
+  - Added visual state differentiation between historical test verdicts (`opacity-55` muted/outline badges on initial load or while re-testing) and freshly executed test verdicts (solid vivid badges: `bg-red-600 text-white` for `Blocked`, `bg-emerald-600 text-white` for `Allowed`, `bg-amber-400 text-slate-950` for `Sinkholed`) with a `zoom-in-95` entrance animation across URL Filtering, DNS Security, Threat Prevention (EICAR), C2 Attack Scenarios, and AI Security cards.
+  - Automatically refreshes `fetchLatestVerdicts()` alongside `fetchResults()` immediately after single or batch test completion so card badges update in real time.
+- **AI Copilot & FastMCP Composite SD-WAN / Security Tools (`ai-tools.ts`, `server.py`, `orchestrator.py`, `tools_manifest.yaml`)**:
+  - Added `run_automated_failover_test`, `get_failover_convergence_report`, and `get_security_audit_summary` tools across both embedded AI Copilot and FastMCP server.
+  - Enhanced `list_active_impairments` to inspect local VyOS instances when `vyos_targets` is empty, and added blocking `wait_seconds` support to `get_test_status`.
+
 ## [3.0.35] - 2026-10-17
 
 ### Added & Enhanced
