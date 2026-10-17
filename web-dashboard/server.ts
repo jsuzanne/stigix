@@ -16383,15 +16383,107 @@ app.post('/api/registry/join-with-token', async (req: any, res: any) => {
                 }
             }
 
+            const myIp = registryManager.getCurrentIp();
+            const effectiveSite = (req.body.site_name || payload.site_hint || registryManager.getSiteName() || os.hostname() || 'PEER').trim();
+            const myInstanceId = registryManager.getInstanceId() || `peer-${Math.random().toString(16).slice(2, 8)}`;
+
             if (!winningEndpoint) {
+                // If direct probes timed out and token carries a Cluster Realm, trigger Stateless Cloudflare Rendezvous (M6 Reverse-Dial)
+                if (payload.realm) {
+                    const registryUrl = (process.env.REGISTRY_URL || 'https://registry.stigix.io').replace(/\/$/, '');
+                    log('REGISTRY', `Direct LAN probes timed out; initiating Stateless Cloudflare Rendezvous for Realm ${payload.realm}...`, 'info');
+
+                    // Set cluster realm & site name in memory so fleet-tunnel accepts inbound Leader M6 dial
+                    process.env.STIGIX_CLUSTER_REALM = payload.realm;
+                    process.env.STIGIX_MAGIC_JOIN = 'true';
+                    if (effectiveSite) {
+                        registryManager.setSiteName(effectiveSite);
+                    }
+
+                    // Persist STIGIX_CLUSTER_REALM and STIGIX_MAGIC_JOIN to .env
+                    const envCandidates = [
+                        path.join(APP_CONFIG.configDir, '.env'),
+                        path.join(process.cwd(), 'config', '.env'),
+                        path.join(process.cwd(), '.env'),
+                        '/app/config/.env'
+                    ];
+                    for (const ep of envCandidates) {
+                        try {
+                            if (fs.existsSync(ep)) {
+                                let envContent = fs.readFileSync(ep, 'utf8');
+                                if (/^STIGIX_CLUSTER_REALM=/m.test(envContent)) {
+                                    envContent = envContent.replace(/^STIGIX_CLUSTER_REALM=.*/m, `STIGIX_CLUSTER_REALM=${payload.realm}`);
+                                } else {
+                                    envContent += `\nSTIGIX_CLUSTER_REALM=${payload.realm}\n`;
+                                }
+                                if (/^STIGIX_MAGIC_JOIN=/m.test(envContent)) {
+                                    envContent = envContent.replace(/^STIGIX_MAGIC_JOIN=.*/m, `STIGIX_MAGIC_JOIN=true`);
+                                } else {
+                                    envContent += `\nSTIGIX_MAGIC_JOIN=true\n`;
+                                }
+                                fs.writeFileSync(ep, envContent, 'utf8');
+                                break;
+                            }
+                        } catch { /* ignore */ }
+                    }
+
+                    // Gather all candidate IPv4s (detected public IP + non-internal interface IPs)
+                    const candidateIps = new Set<string>();
+                    if (myIp && myIp !== '127.0.0.1' && myIp !== '0.0.0.0') candidateIps.add(myIp);
+                    try {
+                        const nets = os.networkInterfaces();
+                        for (const name of Object.keys(nets)) {
+                            for (const net of nets[name] || []) {
+                                if (net.family === 'IPv4' && !net.internal && !net.address.startsWith('169.254.')) {
+                                    candidateIps.add(net.address);
+                                }
+                            }
+                        }
+                    } catch { /* ignore */ }
+
+                    const rendezvousRes = await fetch(`${registryUrl}/realms/${encodeURIComponent(payload.realm)}/register`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            instance_id: myInstanceId,
+                            site_name: effectiveSite,
+                            port: Number(process.env.PORT) || 8080,
+                            ips: Array.from(candidateIps)
+                        }),
+                        signal: AbortSignal.timeout(7000)
+                    });
+
+                    if (rendezvousRes.ok) {
+                        const tokenPrefix = rawToken.slice(0, 12) + '...';
+                        registryManager.saveClusterEnrollment({
+                            enrolled: true,
+                            tokenPrefix,
+                            leaderUrl: `rendezvous://${payload.realm}`,
+                            candidateEndpoints: endpoints,
+                            siteName: effectiveSite,
+                            nodeId: myInstanceId,
+                            enrolledAt: new Date().toISOString()
+                        });
+                        log('REGISTRY', `⚡ Stateless Cloudflare Rendezvous sent for Realm ${payload.realm} (IPs: ${Array.from(candidateIps).join(', ')}). Awaiting inbound M6 Leader dial.`);
+                        return res.json({
+                            status: 'ok',
+                            success: true,
+                            rendezvous: true,
+                            leader_url: endpoints[0] || `rendezvous://${payload.realm}`,
+                            site_name: effectiveSite,
+                            token_prefix: tokenPrefix,
+                            node_id: myInstanceId,
+                            message: `Stateless Rendezvous broadcast sent (Realm: ${payload.realm}). Leader will reverse-dial this Cloud peer momentarily.`
+                        });
+                    } else {
+                        log('REGISTRY', `Cloudflare Rendezvous returned HTTP ${rendezvousRes.status}; falling back to direct candidate endpoint`, 'warn');
+                    }
+                }
+
                 // Fallback to first endpoint in payload
                 winningEndpoint = endpoints[0].replace(/\/$/, '');
                 log('REGISTRY', `Direct probes timed out; falling back to candidate endpoint: ${winningEndpoint}`, 'warn');
             }
-
-            const myIp = registryManager.getCurrentIp();
-            const effectiveSite = (req.body.site_name || payload.site_hint || registryManager.getSiteName() || os.hostname() || 'PEER').trim();
-            const myInstanceId = registryManager.getInstanceId() || `peer-${Math.random().toString(16).slice(2, 8)}`;
 
             log('REGISTRY', `Redeeming join token with Leader ${winningEndpoint}...`);
             const redeemRes = await fetch(`${winningEndpoint}/api/fleet/join-redeem`, {
