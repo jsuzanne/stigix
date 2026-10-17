@@ -153,7 +153,8 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
     const [testing, setTesting] = useState<{ [key: string]: boolean }>({});
     const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null);
 
-    // Collapsible sections
+    // Collapsible sections & section filter tab
+    const [activeSectionTab, setActiveSectionTab] = useState<'all' | 'url' | 'dns' | 'threat' | 'c2' | 'ai' | 'edl' | 'results'>('all');
     const [urlExpanded, setUrlExpanded] = useState(true);
     const [dnsExpanded, setDnsExpanded] = useState(true);
     const [threatExpanded, setThreatExpanded] = useState(true);
@@ -161,6 +162,17 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
     const [aiExpanded, setAIExpanded] = useState(true);
     const [edlExpanded, setEdlExpanded] = useState(true);
     const [resultsExpanded, setResultsExpanded] = useState(true);
+
+    const selectSectionTab = (tab: 'all' | 'url' | 'dns' | 'threat' | 'c2' | 'ai' | 'edl' | 'results') => {
+        setActiveSectionTab(tab);
+        if (tab === 'url') setUrlExpanded(true);
+        else if (tab === 'dns') setDnsExpanded(true);
+        else if (tab === 'threat') setThreatExpanded(true);
+        else if (tab === 'c2') setC2Expanded(true);
+        else if (tab === 'ai') setAIExpanded(true);
+        else if (tab === 'edl') setEdlExpanded(true);
+        else if (tab === 'results') setResultsExpanded(true);
+    };
 
     // Security profile (catalogue loaded from API — source: config/security-profile.json)
     const [securityProfile, setSecurityProfile] = useState<{
@@ -315,6 +327,9 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
     const handleSelectSuggestion = (suggestion: any) => {
         setGlobalSearchQuery('');
         setIsGlobalSearchFocused(false);
+        if (activeSectionTab !== 'all' && activeSectionTab !== suggestion.type) {
+            setActiveSectionTab(suggestion.type);
+        }
 
         let elementId = '';
         if (suggestion.type === 'url') {
@@ -1493,23 +1508,79 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
                 </div>
             )}
 
-            {/* Header - Compact Horizontal Layout */}
+            {/* Header - Unified & Streamlined Horizontal Layout */}
             <div className="bg-gradient-to-r from-red-600/5 to-orange-600/5 border border-red-500/20 rounded-2xl p-4 shadow-sm flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4">
-                {/* Left: Title & Descriptions */}
+                {/* Left: Title, Subtitle & Catalogue Summary */}
                 <div className="flex items-center gap-3">
                     <div className="p-2.5 bg-red-600/10 rounded-xl border border-red-500/20 text-red-600 dark:text-red-400">
                         <Shield size={24} />
                     </div>
                     <div>
-                        <h2 className="text-xl font-black text-text-primary tracking-tight leading-none">Security Testing</h2>
+                        <div className="flex flex-wrap items-center gap-2.5">
+                            <h2 className="text-xl font-black text-text-primary tracking-tight leading-none">Security Testing</h2>
+                            <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-card/80 border border-border text-[10px] font-bold text-text-muted">
+                                <FileJson size={11} className="text-text-muted opacity-70" />
+                                {securityProfile.url_filtering.items.length} URL · {securityProfile.dns_security.items.length} DNS · {securityProfile.c2_scenarios.length} C2 · {securityProfile.ai_security_scenarios.length} AI
+                            </span>
+                        </div>
                         <p className="text-text-muted text-[11px] mt-1 font-medium">
-                            Test URL Filtering, DNS Security, and Threat Prevention (EICAR)
+                            Test URL Filtering, DNS Security, Threat Prevention (EICAR), C2 & AI Security
                         </p>
                     </div>
                 </div>
 
-                {/* Right: Badges & Health */}
-                <div className="flex flex-wrap items-center gap-3 w-full lg:w-auto overflow-hidden">
+                {/* Right: Profile Import/Export, Degraded Health Alert (if any) & Local Engine Toggle */}
+                <div className="flex flex-wrap items-center gap-2.5 w-full lg:w-auto">
+                    {/* Import / Export Profile */}
+                    <div className="flex items-center gap-1.5">
+                        <label
+                            htmlFor="security-profile-import"
+                            title="Import Security Profile JSON"
+                            className={`flex items-center gap-1.5 px-2.5 py-2 rounded-lg text-[10px] font-black uppercase tracking-wider border cursor-pointer transition-all select-none ${
+                                importingProfile
+                                    ? 'opacity-50 cursor-not-allowed bg-card-secondary border-border text-text-muted'
+                                    : 'bg-card/80 border-border text-text-secondary hover:text-text-primary hover:bg-card'
+                            }`}
+                        >
+                            <Upload size={12} />
+                            {importingProfile ? 'Importing…' : 'Import'}
+                        </label>
+                        <input
+                            id="security-profile-import"
+                            type="file"
+                            accept=".json,application/json"
+                            className="hidden"
+                            disabled={importingProfile}
+                            onChange={e => {
+                                const file = e.target.files?.[0];
+                                if (file) importProfile(file);
+                                e.target.value = '';
+                            }}
+                        />
+                        <button
+                            type="button"
+                            onClick={exportProfile}
+                            title="Export Security Profile JSON"
+                            className="flex items-center gap-1.5 px-2.5 py-2 rounded-lg text-[10px] font-black uppercase tracking-wider border bg-card/80 border-border text-text-secondary hover:text-text-primary hover:bg-card transition-all cursor-pointer"
+                        >
+                            <Download size={12} />
+                            Export
+                        </button>
+                    </div>
+
+                    {/* Only display System Health if degraded / missing tools */}
+                    {systemHealth && !systemHealth.ready && (
+                        <div className="rounded-lg px-3 py-2 flex items-center gap-2 border shadow-sm min-w-max bg-red-600/5 border-red-500/20">
+                            <XCircle size={14} className="text-red-500 flex-shrink-0" />
+                            <div>
+                                <div className="text-red-500 text-[10px] font-black tracking-widest leading-none">System Health: Degraded</div>
+                                <div className="text-text-muted text-[9px] mt-0.5 font-bold tracking-tight opacity-70 truncate max-w-[120px] hidden sm:block">
+                                    Missing: {Object.entries(systemHealth.commands).filter(([_, cmd]: any) => !cmd.available).map(([name]: any) => name).join(', ')}
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
                     <button
                         type="button"
                         onClick={toggleLocalSecurityEngine}
@@ -1551,41 +1622,6 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
                             </>
                         )}
                     </button>
-
-                    <div className="bg-amber-500/5 border border-amber-500/20 rounded-lg px-3 py-2 flex items-center gap-2 shadow-sm min-w-max">
-                        <AlertTriangle size={14} className="text-amber-500 flex-shrink-0" />
-                        <div>
-                            <p className="text-amber-600 dark:text-amber-400 text-[10px] font-black tracking-widest leading-none">Direct Policy Impact</p>
-                            <p className="text-text-muted text-[9px] mt-0.5 italic hidden sm:block">Triggers firewall alerts</p>
-                        </div>
-                    </div>
-
-                    {systemHealth && (
-                        <div className={`rounded-lg px-3 py-2 flex items-center gap-2 border shadow-sm min-w-max ${systemHealth.ready
-                            ? 'bg-green-600/5 border-green-500/20'
-                            : 'bg-red-600/5 border-red-500/20'
-                            }`}>
-                            {systemHealth.ready ? (
-                                <>
-                                    <CheckCircle size={14} className="text-green-600 dark:text-green-400 flex-shrink-0" />
-                                    <div>
-                                        <div className="text-green-600 dark:text-green-400 text-[10px] font-black tracking-widest leading-none">System Health: OK</div>
-                                        <div className="text-text-muted text-[9px] mt-0.5 font-bold tracking-tight opacity-70 hidden sm:block">Tools ready ({systemHealth.platform})</div>
-                                    </div>
-                                </>
-                            ) : (
-                                <>
-                                    <XCircle size={14} className="text-red-500 flex-shrink-0" />
-                                    <div>
-                                        <div className="text-red-500 text-[10px] font-black tracking-widest leading-none">System Health: Degraded</div>
-                                        <div className="text-text-muted text-[9px] mt-0.5 font-bold tracking-tight opacity-70 truncate max-w-[100px] hidden sm:block">
-                                            Missing: {Object.entries(systemHealth.commands).filter(([_, cmd]: any) => !cmd.available).map(([name]: any) => name).join(', ')}
-                                        </div>
-                                    </div>
-                                </>
-                            )}
-                        </div>
-                    )}
                 </div>
             </div>
 
@@ -1688,162 +1724,62 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
                 )}
             </div>
 
-            {/* Import / Export Security Profile */}
-            <div className="flex items-center justify-between bg-card-secondary border border-border rounded-xl px-4 py-3">
-                <div className="flex items-center gap-2">
-                    <FileJson size={15} className="text-text-muted" />
-                    <div>
-                        <span className="text-[11px] font-black text-text-primary tracking-tight">Security Profile</span>
-                        <span className="text-[10px] text-text-muted ml-2 font-medium">
-                            {securityProfile.url_filtering.items.length} URL · {securityProfile.dns_security.items.length} DNS · {securityProfile.c2_scenarios.length} C2 · {securityProfile.ai_security_scenarios.length} AI
-                        </span>
-                    </div>
-                </div>
-                <div className="flex items-center gap-2">
-                    {/* Import */}
-                    <label
-                        htmlFor="security-profile-import"
-                        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-black tracking-wide border cursor-pointer transition-all select-none
-                            ${ importingProfile
-                                ? 'opacity-50 cursor-not-allowed bg-card-secondary border-border text-text-muted'
-                                : 'bg-blue-600/10 border-blue-500/30 text-blue-600 dark:text-blue-400 hover:bg-blue-600/20 hover:border-blue-500/50'
-                            }`}
-                    >
-                        <Upload size={12} />
-                        {importingProfile ? 'Importing…' : 'Import'}
-                    </label>
-                    <input
-                        id="security-profile-import"
-                        type="file"
-                        accept=".json,application/json"
-                        className="hidden"
-                        disabled={importingProfile}
-                        onChange={e => {
-                            const file = e.target.files?.[0];
-                            if (file) importProfile(file);
-                            e.target.value = '';
-                        }}
-                    />
-                    {/* Export */}
-                    <button
-                        onClick={exportProfile}
-                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-black tracking-wide border bg-green-600/10 border-green-500/30 text-green-600 dark:text-green-400 hover:bg-green-600/20 hover:border-green-500/50 transition-all"
-                    >
-                        <Download size={12} />
-                        Export
-                    </button>
-                </div>
-            </div>
-
             <ScoreDashboard 
                 scores={scores} 
                 loading={scoresLoading} 
                 urlBaseline={urlBaseline} 
                 dnsBaseline={dnsBaseline} 
                 threatBaseline={threatBaseline} 
-                handleSetBaseline={handleSetBaseline} 
+                handleSetBaseline={handleSetBaseline}
+                statistics={config.statistics}
+                onResetCounters={resetCounters}
+                activeSection={activeSectionTab}
+                onSelectSection={(sec) => selectSectionTab(activeSectionTab === sec ? 'all' : sec)}
             />
 
-            {/* Statistics Dashboard */}
-            {config.statistics && (
-                <div className="flex flex-col gap-6">
-                    <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                            <h3 className="text-lg font-black text-text-primary tracking-tight">Security Efficacy</h3>
-                            <span className="px-2 py-0.5 rounded-full bg-blue-600/10 border border-blue-500/20 text-[9px] font-black text-blue-600 dark:text-blue-400 tracking-widest">Real-time stats</span>
-                        </div>
+            {/* Section Filter Tabs Bar */}
+            <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none">
+                {[
+                    { id: 'all' as const, label: 'All Sections', count: null },
+                    { id: 'url' as const, label: 'URL Filtering', count: `${config.url_filtering.enabled_categories.length}/${securityProfile.url_filtering.items.length}` },
+                    { id: 'dns' as const, label: 'DNS Security', count: `${config.dns_security.enabled_tests.length}/${securityProfile.dns_security.items.length}` },
+                    { id: 'threat' as const, label: 'Threat Prevention', count: null },
+                    { id: 'c2' as const, label: 'C2 Scenarios', count: `${c2SelectedScenarios.length}/${securityProfile.c2_scenarios.length}` },
+                    { id: 'ai' as const, label: 'AI Security', count: `${aiSelectedScenarios.length}/${securityProfile.ai_security_scenarios.length}` },
+                    { id: 'edl' as const, label: 'EDL Feeds', count: null },
+                    { id: 'results' as const, label: 'Test Log', count: totalResults > 0 ? String(totalResults) : null },
+                ].map((tab) => {
+                    const isActive = activeSectionTab === tab.id;
+                    return (
                         <button
-                            onClick={resetCounters}
-                            className="flex items-center gap-2 px-4 py-1.5 text-[10px] font-black tracking-widest text-red-600 hover:text-red-500 hover:bg-red-500/5 border border-red-500/20 rounded-lg transition-all shadow-sm"
+                            key={tab.id}
+                            type="button"
+                            onClick={() => selectSectionTab(tab.id)}
+                            className={cn(
+                                'px-3 py-1.5 rounded-xl text-[11px] font-black tracking-wide whitespace-nowrap border transition-all flex items-center gap-1.5 cursor-pointer',
+                                isActive
+                                    ? 'bg-blue-600 text-white border-blue-500 shadow-sm'
+                                    : 'bg-card hover:bg-card-secondary text-text-muted hover:text-text-primary border-border'
+                            )}
                         >
-                            <Trash2 size={14} />
-                            Reset Counters
+                            <span>{tab.label}</span>
+                            {tab.count && (
+                                <span
+                                    className={cn(
+                                        'text-[9px] px-1.5 py-0.2 rounded-full font-mono font-bold',
+                                        isActive ? 'bg-white/20 text-white' : 'bg-card-secondary text-text-muted'
+                                    )}
+                                >
+                                    {tab.count}
+                                </span>
+                            )}
                         </button>
-                    </div>
+                    );
+                })}
+            </div>
 
-                    <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                        <div className="bg-card border border-border p-5 rounded-xl shadow-sm hover:shadow-md transition-shadow">
-                            <div className="flex items-center justify-between mb-3 text-text-muted">
-                                <span className="text-[10px] font-black tracking-widest opacity-80">Total Tests</span>
-                                <div className="p-1.5 bg-blue-600/10 rounded-lg text-blue-600 dark:text-blue-400 border border-blue-500/20">
-                                    <Shield size={16} />
-                                </div>
-                            </div>
-                            <div className="text-3xl font-black text-text-primary tabular-nums tracking-tighter">{config.statistics.total_tests_run}</div>
-                            <div className="mt-2 text-[10px] font-medium text-text-muted flex items-center gap-1.5 tracking-widest">
-                                <Clock size={12} className="opacity-50" />
-                                Last: {config.statistics.last_test_time ? new Date(config.statistics.last_test_time).toLocaleTimeString() : 'Never'}
-                            </div>
-                        </div>
-
-                        <div className="bg-card border border-border p-5 rounded-xl shadow-sm hover:shadow-md transition-shadow">
-                            <div className="flex items-center justify-between mb-3 text-red-600 dark:text-red-400">
-                                <span className="text-[10px] font-black tracking-widest opacity-80">URL Filtering</span>
-                                <div className="p-1.5 bg-red-600/10 rounded-lg border border-red-500/20">
-                                    <Shield size={16} />
-                                </div>
-                            </div>
-                            <div className="flex items-center gap-4">
-                                <div>
-                                    <div className="text-3xl font-black text-red-600 dark:text-red-400 tabular-nums tracking-tighter">{config.statistics.url_tests_blocked}</div>
-                                    <div className="text-[10px] font-black text-text-muted uppercase tracking-widest opacity-60">Blocked</div>
-                                </div>
-                                <div className="w-px h-8 bg-border/50" />
-                                <div>
-                                    <div className="text-3xl font-black text-green-600 dark:text-green-400 tabular-nums tracking-tighter">{config.statistics.url_tests_allowed}</div>
-                                    <div className="text-[10px] font-black text-text-muted uppercase tracking-widest opacity-60">Allowed</div>
-                                </div>
-                            </div>
-                        </div>
-
-                        <div className="bg-card border border-border p-5 rounded-xl shadow-sm hover:shadow-md transition-shadow">
-                            <div className="flex items-center justify-between mb-3 text-orange-600 dark:text-orange-400">
-                                <span className="text-[10px] font-black tracking-widest opacity-80">DNS Protect</span>
-                                <div className="p-1.5 bg-orange-600/10 rounded-lg border border-orange-500/20">
-                                    <Shield size={16} />
-                                </div>
-                            </div>
-                            <div className="flex items-center gap-4">
-                                <div>
-                                    <div className="text-3xl font-black text-orange-600 dark:text-orange-400 tabular-nums tracking-tighter">{config.statistics.dns_tests_blocked}</div>
-                                    <div className="text-[10px] font-black text-text-muted uppercase tracking-widest opacity-60">Blocked</div>
-                                </div>
-                                <div className="w-px h-8 bg-border/50" />
-                                <div>
-                                    <div className="text-3xl font-black text-yellow-600 dark:text-yellow-400 tabular-nums tracking-tighter">{config.statistics.dns_tests_sinkholed || 0}</div>
-                                    <div className="text-[10px] font-black text-text-muted tracking-widest opacity-60">Sinkhole</div>
-                                </div>
-                                <div className="w-px h-8 bg-border/50" />
-                                <div>
-                                    <div className="text-3xl font-black text-green-600 dark:text-green-400 tabular-nums tracking-tighter">{config.statistics.dns_tests_allowed || 0}</div>
-                                    <div className="text-[10px] font-black text-text-muted uppercase tracking-widest opacity-60">Allowed</div>
-                                </div>
-                            </div>
-                        </div>
-
-                        <div className="bg-card border border-border p-5 rounded-xl shadow-sm hover:shadow-md transition-shadow">
-                            <div className="flex items-center justify-between mb-3 text-purple-600 dark:text-purple-400">
-                                <span className="text-[10px] font-black tracking-widest opacity-80">Threat Prev</span>
-                                <div className="p-1.5 bg-purple-600/10 rounded-lg border border-purple-500/20">
-                                    <Shield size={16} />
-                                </div>
-                            </div>
-                            <div className="flex items-center gap-4">
-                                <div>
-                                    <div className="text-3xl font-black text-purple-600 dark:text-purple-400 tabular-nums tracking-tighter">{config.statistics.threat_tests_blocked}</div>
-                                    <div className="text-[10px] font-black text-text-muted uppercase tracking-widest opacity-60">Blocked</div>
-                                </div>
-                                <div className="w-px h-8 bg-border/50" />
-                                <div>
-                                    <div className="text-3xl font-black text-green-600 dark:text-green-400 tabular-nums tracking-tighter">{config.statistics.threat_tests_allowed}</div>
-                                    <div className="text-[10px] font-black text-text-muted tracking-widest opacity-60">Allowed</div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            )}
             {/* URL Filtering */}
+            {(activeSectionTab === 'all' || activeSectionTab === 'url') && (
             <div className="bg-card border border-border rounded-xl overflow-hidden shadow-sm">
                 <button
                     onClick={() => setUrlExpanded(!urlExpanded)}
@@ -2069,8 +2005,10 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
                     );
                 })()}
             </div>
+            )}
 
             {/* DNS Security Tests */}
+            {(activeSectionTab === 'all' || activeSectionTab === 'dns') && (
             <div className="bg-card border border-border rounded-xl overflow-hidden shadow-sm">
                 <button
                     onClick={() => setDnsExpanded(!dnsExpanded)}
@@ -2318,8 +2256,10 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
                     );
                 })()}
             </div>
+            )}
 
             {/* Threat Prevention Tests */}
+            {(activeSectionTab === 'all' || activeSectionTab === 'threat') && (
             <div className="bg-card border border-border rounded-xl overflow-hidden shadow-sm">
                 <button
                     onClick={() => setThreatExpanded(!threatExpanded)}
@@ -2709,8 +2649,10 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
                     </div>
                 )}
             </div>
+            )}
 
             {/* C2 Attack Scenarios */}
+            {(activeSectionTab === 'all' || activeSectionTab === 'c2') && (
             <div className="bg-card border border-border rounded-xl overflow-hidden shadow-sm">
                 <button
                     onClick={() => setC2Expanded(!c2Expanded)}
@@ -2880,9 +2822,10 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
                     );
                 })()}
             </div>
+            )}
 
             {/* AI Security Tests */}
-
+            {(activeSectionTab === 'all' || activeSectionTab === 'ai') && (
             <div className="bg-card border border-border rounded-xl overflow-hidden shadow-sm">
                 <button
                     onClick={() => setAIExpanded(!aiExpanded)}
@@ -3066,9 +3009,10 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
                     );
                 })()}
             </div>
+            )}
 
             {/* EDL Lists (IP / URL / DNS) */}
-
+            {(activeSectionTab === 'all' || activeSectionTab === 'edl') && (
             <div className="bg-card border border-border rounded-xl overflow-hidden shadow-sm">
                 <button
                     onClick={() => setEdlExpanded(!edlExpanded)}
@@ -3316,8 +3260,10 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
                     </div>
                 )}
             </div>
+            )}
 
             {/* Test Results */}
+            {(activeSectionTab === 'all' || activeSectionTab === 'results') && (
             <div className="bg-card border border-border rounded-xl overflow-hidden shadow-sm">
                 <button
                     onClick={() => setResultsExpanded(!resultsExpanded)}
@@ -3532,6 +3478,7 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
                     </div>
                 )}
             </div>
+            )}
 
             {/* Detailed Log Viewer Modal */}
             {showDetailModal && selectedTest && (
