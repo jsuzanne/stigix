@@ -1052,9 +1052,102 @@ export const COPILOT_TOOLS: AnthropicToolDefinition[] = [
                 summary_only: {
                     type: 'boolean',
                     description: 'If true (default), strips heavy raw sample logs and returns clean metrics.'
+                },
+                test_id: {
+                    type: 'string',
+                    description: 'Optional test ID filter (e.g. "CONV-0022") to retrieve a single convergence test.'
                 }
             },
             required: ['agent_id']
+        }
+    },
+    {
+        name: 'get_convergence_report',
+        description: 'Get a detailed convergence/failover test report for a specific historical or just-completed CONV-* test (verdict, max_blackout_ms, max_blackout_s, avg_rtt_ms, min_rtt_ms, max_rtt_ms, avg_jitter_ms, peak_loss_pct, uplink/downlink loss, packets sent/received, egress_path, path_evolution). Pass test_id="latest" (or omit test_id) to inspect the most recent convergence test.',
+        input_schema: {
+            type: 'object',
+            properties: {
+                agent_id: {
+                    type: 'string',
+                    description: 'ID of the Stigix node.'
+                },
+                test_id: {
+                    type: 'string',
+                    description: 'Test ID to retrieve (e.g. "CONV-0022" or "latest"). Defaults to "latest".'
+                }
+            },
+            required: ['agent_id']
+        }
+    },
+    {
+        name: 'run_automated_failover_test',
+        description: 'Run a complete 3-phase SD-WAN failover/chaos test (Baseline -> Fault Injection -> Rollback & Recovery) in a single atomic call with guaranteed try/finally cleanup (never leaves an interface down, QoS active, or a CONV-* probe running). Supports any fault scenario: interface-down, set-impairment (latency/loss/rate), deny-traffic (IP blackhole), or vyos-scenario. Note: For custom interactive step-by-step tests, you can still use run_test(profile="conv") + get_test_status(wait_seconds) + vyos_execute_action + stop_test.',
+        input_schema: {
+            type: 'object',
+            properties: {
+                agent_id: {
+                    type: 'string',
+                    description: 'ID of the source Stigix node (e.g. "BR8").'
+                },
+                target: {
+                    type: 'string',
+                    description: 'Target peer name (e.g. "DC1") or IP address (e.g. "192.168.203.100").'
+                },
+                fault_type: {
+                    type: 'string',
+                    enum: ['interface-down', 'set-impairment', 'deny-traffic', 'vyos-scenario'],
+                    description: 'Type of fault to inject during Phase 2.'
+                },
+                router_id: {
+                    type: 'string',
+                    description: 'Optional VyOS router ID (auto-resolved if omitted).'
+                },
+                interface: {
+                    type: 'string',
+                    description: 'Target VyOS interface (e.g. "eth1", "eth2") for interface-down or set-impairment.'
+                },
+                latency_ms: {
+                    type: 'number',
+                    description: 'Injected latency in ms (for fault_type="set-impairment").'
+                },
+                loss_pct: {
+                    type: 'number',
+                    description: 'Injected packet loss % (for fault_type="set-impairment").'
+                },
+                rate_mbit: {
+                    type: 'number',
+                    description: 'Bandwidth rate limit in Mbps (for fault_type="set-impairment").'
+                },
+                blocked_ip: {
+                    type: 'string',
+                    description: 'IP or CIDR to blackhole (for fault_type="deny-traffic").'
+                },
+                scenario_id: {
+                    type: 'string',
+                    description: 'VyOS scenario ID or name (for fault_type="vyos-scenario").'
+                },
+                pps: {
+                    type: 'number',
+                    description: 'Convergence probe packet rate in PPS (default: 50).'
+                },
+                baseline_seconds: {
+                    type: 'number',
+                    description: 'Seconds to observe baseline before fault injection (default: 6, max: 20).'
+                },
+                fault_seconds: {
+                    type: 'number',
+                    description: 'Seconds to hold fault active and measure SD-WAN failover (default: 12, max: 30).'
+                },
+                recovery_seconds: {
+                    type: 'number',
+                    description: 'Seconds to observe recovery after rollback before stopping probe (default: 6, max: 20).'
+                },
+                auto_rollback: {
+                    type: 'boolean',
+                    description: 'If true (default), automatically rolls back the VyOS fault in a finally block before stopping the probe.'
+                }
+            },
+            required: ['target', 'fault_type']
         }
     },
     {
@@ -1094,13 +1187,18 @@ export const COPILOT_TOOLS: AnthropicToolDefinition[] = [
     },
     {
         name: 'run_security_url_batch',
-        description: 'Run a FULL batch URL filtering audit testing all enabled categories on a node.',
+        description: 'Run a FULL batch URL filtering audit testing all enabled categories on a node (or a specific list of category IDs). Returns total, blocked, allowed, and individual category results.',
         input_schema: {
             type: 'object',
             properties: {
                 agent_id: {
                     type: 'string',
                     description: 'ID of the Stigix node.'
+                },
+                categories: {
+                    type: 'array',
+                    items: { type: 'string' },
+                    description: 'Optional list of category IDs (e.g. ["malware", "phishing", "adult"]). If omitted, tests all categories enabled in the node security config.'
                 }
             },
             required: ['agent_id']
@@ -1108,13 +1206,60 @@ export const COPILOT_TOOLS: AnthropicToolDefinition[] = [
     },
     {
         name: 'run_security_dns_batch',
-        description: 'Run a FULL batch DNS security audit testing all enabled domains on a node.',
+        description: 'Run a FULL batch DNS security audit testing all enabled domains on a node (or a specific list of DNS test IDs). Returns total, blocked, sinkholed, allowed, and per-domain results.',
         input_schema: {
             type: 'object',
             properties: {
                 agent_id: {
                     type: 'string',
                     description: 'ID of the Stigix node.'
+                },
+                test_ids: {
+                    type: 'array',
+                    items: { type: 'string' },
+                    description: 'Optional list of DNS test IDs (e.g. ["malware", "phishing", "dns-tunneling"]). If omitted, tests all domains enabled in the node security config.'
+                }
+            },
+            required: ['agent_id']
+        }
+    },
+    {
+        name: 'run_security_c2_batch',
+        description: 'Run the C2 (Command & Control) attack simulation suite on a node (SQL Injection, DNS C2 Infiltration, Greyware DNS, Compromised DNS, Sliver C2 Beacon, EICAR over HTTPS, DNS Tunneling Burst). Returns enforced (blocked) vs bypass verdicts per scenario.',
+        input_schema: {
+            type: 'object',
+            properties: {
+                agent_id: {
+                    type: 'string',
+                    description: 'ID of the Stigix node.'
+                },
+                scenario_ids: {
+                    type: 'array',
+                    items: { type: 'string' },
+                    description: 'Optional list of C2 scenario IDs to run (e.g. ["sqli", "sliver-c2", "dns-tunneling-burst"]). If omitted, runs all C2 scenarios in the security profile.'
+                }
+            },
+            required: ['agent_id']
+        }
+    },
+    {
+        name: 'run_security_ai_batch',
+        description: 'Run the AI Security (AISA) attack simulation suite on a node (DLP Credit Card in Prompt, Prompt Injection / Jailbreak, Misfortune Cookie CVE-2014-9222, EICAR Malware Upload to AI App). Returns enforced (blocked) vs bypass verdicts per scenario.',
+        input_schema: {
+            type: 'object',
+            properties: {
+                agent_id: {
+                    type: 'string',
+                    description: 'ID of the Stigix node.'
+                },
+                scenario_ids: {
+                    type: 'array',
+                    items: { type: 'string' },
+                    description: 'Optional list of AI scenario IDs (e.g. ["dlp-credit-card", "prompt-injection", "misfortune-cookie", "eicar-upload"]).'
+                },
+                include_volume: {
+                    type: 'boolean',
+                    description: 'If true, also runs the 24-app AI Volume Traffic telemetry generator (default: false).'
                 }
             },
             required: ['agent_id']
@@ -1122,13 +1267,17 @@ export const COPILOT_TOOLS: AnthropicToolDefinition[] = [
     },
     {
         name: 'run_full_security_audit',
-        description: 'Run the COMPLETE security suite (URL batch + DNS batch + EICAR malware) in one command on a node.',
+        description: 'Run the COMPLETE security suite (URL Filtering batch + DNS Security batch + EICAR Threat Prevention + optional C2 & AI Security suites) on a node and return aggregated enforcement scores.',
         input_schema: {
             type: 'object',
             properties: {
                 agent_id: {
                     type: 'string',
                     description: 'ID of the Stigix node.'
+                },
+                include_c2_and_ai: {
+                    type: 'boolean',
+                    description: 'If true, also includes C2 and AI Security attack scenarios in the audit (default: false).'
                 }
             },
             required: ['agent_id']
@@ -3047,10 +3196,14 @@ export async function executeCopilotTool(
                 const nodeCtx = resolveNodeContext(args.agent_id || args.node, ctx);
                 const limit = Number(args.limit) || 10;
                 const summaryOnly = args.summary_only !== false;
+                const filterTestId = args.test_id ? String(args.test_id).trim().toLowerCase() : null;
                 const history = await fetchApi(nodeCtx, `/api/convergence/history`).catch(() => []);
                 const arr = Array.isArray(history) ? history : ((history as any)?.results || []);
+                const filtered = filterTestId
+                    ? arr.filter((r: any) => [r.testId, r.id, r.sequence_id].some(v => v && String(v).toLowerCase() === filterTestId))
+                    : arr;
                 // Sort strictly newest first (descending sequence_id or timestamp)
-                const sorted = [...arr].sort((a: any, b: any) => {
+                const sorted = [...filtered].sort((a: any, b: any) => {
                     const idA = a.testId || a.id || a.sequence_id || '';
                     const idB = b.testId || b.id || b.sequence_id || '';
                     if (idA && idB) return idB.localeCompare(idA, undefined, { numeric: true });
@@ -3077,6 +3230,229 @@ export async function executeCopilotTool(
                     total_records: arr.length,
                     count: cleanedHistory.length,
                     recent_history: cleanedHistory
+                };
+            }
+
+            case 'get_convergence_report': {
+                const nodeCtx = resolveNodeContext(args.agent_id || args.node, ctx);
+                const requestedId = args.test_id ? String(args.test_id).trim() : 'latest';
+                const [historyRaw, liveStatus] = await Promise.all([
+                    fetchApi(nodeCtx, `/api/convergence/history`).catch(() => []),
+                    fetchApi(nodeCtx, `/api/convergence/status`).catch(() => null)
+                ]);
+                const arr = Array.isArray(historyRaw) ? historyRaw : ((historyRaw as any)?.results || []);
+                const sorted = [...arr].sort((a: any, b: any) => {
+                    const idA = a.testId || a.id || a.sequence_id || '';
+                    const idB = b.testId || b.id || b.sequence_id || '';
+                    if (idA && idB) return idB.localeCompare(idA, undefined, { numeric: true });
+                    const dateA = new Date(a.timestamp || a.started_at || 0).getTime();
+                    const dateB = new Date(b.timestamp || b.started_at || 0).getTime();
+                    return dateB - dateA;
+                });
+
+                let record: any = null;
+                if (requestedId.toLowerCase() === 'latest') {
+                    if (liveStatus && liveStatus.running && liveStatus.metrics) {
+                        record = { ...liveStatus.metrics, testId: liveStatus.metrics.test_id || liveStatus.testId || 'LIVE', running: true };
+                    } else {
+                        record = sorted[0] || null;
+                    }
+                } else {
+                    record = sorted.find((r: any) =>
+                        [r.testId, r.id, r.sequence_id].some(v => v && String(v).toLowerCase() === requestedId.toLowerCase())
+                    ) || null;
+                    if (!record && liveStatus?.metrics && String(liveStatus.metrics.test_id || '').toLowerCase() === requestedId.toLowerCase()) {
+                        record = { ...liveStatus.metrics, running: Boolean(liveStatus.running) };
+                    }
+                }
+
+                if (!record) {
+                    return {
+                        node: nodeCtx.siteName,
+                        found: false,
+                        requested_test_id: requestedId,
+                        error: `No convergence test report found matching "${requestedId}" on node ${nodeCtx.siteName}.`
+                    };
+                }
+
+                const maxBlackoutMs = Number(record.max_blackout_ms ?? record.blackout_ms ?? 0);
+                const lossPct = Number(record.loss_pct ?? 0);
+                const verdict = record.verdict || (maxBlackoutMs === 0 && lossPct < 0.1 ? 'ZERO_LOSS' : maxBlackoutMs < 1000 ? 'SUB_SECOND_FAILOVER' : maxBlackoutMs < 5000 ? 'DEGRADED_FAILOVER' : 'OUTAGE_DETECTED');
+
+                return {
+                    node: nodeCtx.siteName,
+                    found: true,
+                    test_id: record.testId || record.test_id || record.id || record.sequence_id,
+                    running: Boolean(record.running),
+                    verdict,
+                    target: record.target || record.label,
+                    rate_pps: record.rate_pps || record.rate,
+                    duration_s: record.duration_s || record.elapsed_s,
+                    timestamp: record.timestamp || record.started_at,
+                    metrics: {
+                        max_blackout_ms: maxBlackoutMs,
+                        max_blackout_s: Number((maxBlackoutMs / 1000).toFixed(3)),
+                        packets_sent: record.sent ?? record.packets_sent,
+                        packets_received: record.received ?? record.packets_received,
+                        loss_pct: lossPct,
+                        peak_loss_pct: record.peak_loss_pct ?? lossPct,
+                        uplink_loss_pct: record.uplink_loss_pct ?? 0,
+                        downlink_loss_pct: record.downlink_loss_pct ?? 0,
+                        avg_rtt_ms: record.avg_rtt_ms ?? record.rtt_ms,
+                        min_rtt_ms: record.min_rtt_ms,
+                        max_rtt_ms: record.max_rtt_ms,
+                        avg_jitter_ms: record.avg_jitter_ms ?? record.jitter_ms
+                    },
+                    egress_path: record.egress_path || null,
+                    path_evolution: record.path_evolution || [],
+                    events: record.events || []
+                };
+            }
+
+            case 'run_automated_failover_test': {
+                const nodeCtx = resolveNodeContext(args.agent_id, ctx);
+                const baselineSec = Math.min(Math.max(Number(args.baseline_seconds) || 6, 3), 20);
+                const faultSec = Math.min(Math.max(Number(args.fault_seconds) || 12, 5), 30);
+                const recoverySec = Math.min(Math.max(Number(args.recovery_seconds) || 6, 3), 20);
+                const pps = Number(args.pps) || 50;
+                const autoRollback = args.auto_rollback !== false;
+                const faultType = String(args.fault_type || 'interface-down');
+
+                let probeStarted = false;
+                let faultInjected = false;
+                let rollbackCompleted = false;
+                let probeStopped = false;
+                let resolvedRouterId = args.router_id;
+                let phase1Baseline: any = null;
+                let phase2DuringFault: any = null;
+                let injectionResult: any = null;
+                let rollbackResult: any = null;
+                let startedTestId: string | undefined;
+
+                try {
+                    // Phase 1: Start convergence probe & observe baseline
+                    const startRes = await executeToolCall('run_test', {
+                        agent_id: nodeCtx.siteName,
+                        profile: 'conv',
+                        target: args.target,
+                        pps
+                    }, ctx);
+                    if (startRes?.error) {
+                        return { error: `Failed to start convergence probe: ${startRes.error}`, details: startRes };
+                    }
+                    probeStarted = true;
+                    startedTestId = startRes?.test_id || startRes?.testId;
+
+                    phase1Baseline = await executeToolCall('get_test_status', {
+                        agent_id: nodeCtx.siteName,
+                        profile: 'conv',
+                        wait_seconds: baselineSec
+                    }, ctx);
+                    if (!startedTestId && phase1Baseline?.metrics?.test_id) {
+                        startedTestId = phase1Baseline.metrics.test_id;
+                    }
+
+                    // Phase 2: Inject requested VyOS fault
+                    if (faultType === 'vyos-scenario') {
+                        injectionResult = await executeToolCall('vyos_run_scenario', {
+                            agent_id: nodeCtx.siteName,
+                            scenario_id: args.scenario_id || '1'
+                        }, ctx);
+                        faultInjected = !injectionResult?.error;
+                    } else {
+                        const actionMap: Record<string, string> = {
+                            'interface-down': 'interface-down',
+                            'set-impairment': 'set-impairment',
+                            'deny-traffic': 'deny-traffic'
+                        };
+                        const actionName = actionMap[faultType] || 'interface-down';
+                        injectionResult = await executeToolCall('vyos_execute_action', {
+                            agent_id: nodeCtx.siteName,
+                            router_id: resolvedRouterId,
+                            action: actionName,
+                            interface: args.interface || 'eth1',
+                            latency: args.latency_ms,
+                            loss: args.loss_pct,
+                            rate: args.rate_mbit,
+                            ip: args.blocked_ip
+                        }, ctx);
+                        if (injectionResult?.router_id) resolvedRouterId = injectionResult.router_id;
+                        faultInjected = !injectionResult?.error;
+                    }
+
+                    // Observe SD-WAN failover while fault is active
+                    phase2DuringFault = await executeToolCall('get_test_status', {
+                        agent_id: nodeCtx.siteName,
+                        profile: 'conv',
+                        wait_seconds: faultSec
+                    }, ctx);
+                } finally {
+                    // Guaranteed cleanup: 1. Rollback VyOS fault if injected
+                    if (faultInjected && autoRollback && faultType !== 'vyos-scenario') {
+                        try {
+                            const rollbackAction = faultType === 'interface-down'
+                                ? 'interface-up'
+                                : faultType === 'set-impairment'
+                                    ? 'clear-impairment'
+                                    : 'allow-traffic';
+                            rollbackResult = await executeToolCall('vyos_execute_action', {
+                                agent_id: nodeCtx.siteName,
+                                router_id: resolvedRouterId,
+                                action: rollbackAction,
+                                interface: args.interface || 'eth1',
+                                ip: args.blocked_ip
+                            }, ctx);
+                            rollbackCompleted = !rollbackResult?.error;
+                        } catch (rbErr: any) {
+                            rollbackResult = { error: rbErr.message };
+                        }
+                        // Observe recovery window before stopping probe
+                        await new Promise(resolve => setTimeout(resolve, recoverySec * 1000));
+                    }
+
+                    // Guaranteed cleanup: 2. Always stop convergence probe
+                    if (probeStarted) {
+                        try {
+                            await executeToolCall('stop_test', {
+                                agent_id: nodeCtx.siteName,
+                                profile: 'conv'
+                            }, ctx);
+                            probeStopped = true;
+                        } catch {}
+                    }
+                }
+
+                // Fetch final convergence report
+                const finalReport = await executeToolCall('get_convergence_report', {
+                    agent_id: nodeCtx.siteName,
+                    test_id: startedTestId || 'latest'
+                }, ctx);
+
+                return {
+                    node: nodeCtx.siteName,
+                    target: args.target,
+                    test_id: finalReport?.test_id || startedTestId,
+                    fault_scenario: {
+                        fault_type: faultType,
+                        router_id: resolvedRouterId,
+                        interface: args.interface || (faultType !== 'deny-traffic' && faultType !== 'vyos-scenario' ? 'eth1' : undefined),
+                        latency_ms: args.latency_ms,
+                        loss_pct: args.loss_pct,
+                        rate_mbit: args.rate_mbit,
+                        blocked_ip: args.blocked_ip,
+                        scenario_id: args.scenario_id
+                    },
+                    lifecycle: {
+                        probe_started: probeStarted,
+                        fault_injected: faultInjected,
+                        rollback_completed: rollbackCompleted,
+                        probe_stopped: probeStopped
+                    },
+                    phase_1_baseline: phase1Baseline?.metrics || phase1Baseline,
+                    phase_2_during_fault: phase2DuringFault?.metrics || phase2DuringFault,
+                    injection_result: injectionResult,
+                    rollback_result: rollbackResult,
+                    final_convergence_report: finalReport
                 };
             }
 
@@ -3199,28 +3575,290 @@ export async function executeCopilotTool(
                 };
             }
 
-
             case 'run_security_url_batch': {
                 const nodeCtx = resolveNodeContext(args.agent_id, ctx);
-                return await fetchApi(nodeCtx, '/api/security/url-batch', { method: 'POST' }, 35000);
+                const [secConfig, secProfile] = await Promise.all([
+                    fetchApi(nodeCtx, '/api/security/config').catch(() => ({})),
+                    fetchApi(nodeCtx, '/api/security/profile').catch(() => ({}))
+                ]);
+                const profileCats: any[] = Array.isArray(secProfile?.url_categories) ? secProfile.url_categories : [];
+                const requestedCats: string[] | null = Array.isArray(args.categories) && args.categories.length > 0
+                    ? args.categories.map((c: string) => String(c).toLowerCase())
+                    : null;
+                const enabledCats: string[] = Array.isArray(secConfig?.url_filtering?.enabled_categories)
+                    ? secConfig.url_filtering.enabled_categories.map((c: string) => String(c).toLowerCase())
+                    : [];
+
+                const selected = profileCats.filter((cat: any) => {
+                    const id = String(cat.id || '').toLowerCase();
+                    const name = String(cat.name || '').toLowerCase();
+                    if (requestedCats) {
+                        return requestedCats.some(rc => id === rc || name.includes(rc));
+                    }
+                    return enabledCats.length > 0 ? enabledCats.includes(id) : true;
+                });
+
+                const tests = (selected.length > 0 ? selected : profileCats).map((cat: any) => ({
+                    url: (Array.isArray(cat.urls) && cat.urls[0]) || cat.url || `https://urlfiltering.paloaltonetworks.com/test-${cat.id}`,
+                    category: cat.name || cat.id
+                }));
+
+                if (tests.length === 0) {
+                    return { error: 'No URL categories found in security profile.' };
+                }
+
+                const batchRes = await fetchApi(nodeCtx, '/api/security/url-test-batch', {
+                    method: 'POST',
+                    body: JSON.stringify({ tests })
+                }, 90000);
+                const results: any[] = Array.isArray(batchRes?.results) ? batchRes.results : [];
+                const blockedCount = results.filter(r => r.status === 'blocked').length;
+                const allowedCount = results.filter(r => r.status === 'allowed').length;
+                const errorCount = results.length - blockedCount - allowedCount;
+
+                return {
+                    node: nodeCtx.siteName,
+                    total_tested: results.length,
+                    blocked_count: blockedCount,
+                    allowed_count: allowedCount,
+                    error_count: errorCount,
+                    enforcement_rate_pct: results.length > 0 ? Math.round((blockedCount / results.length) * 100) : 0,
+                    results: results.map(r => ({
+                        category: r.category,
+                        url: r.url,
+                        status: r.status,
+                        http_code: r.httpCode,
+                        reason: r.reason
+                    }))
+                };
             }
 
             case 'run_security_dns_batch': {
                 const nodeCtx = resolveNodeContext(args.agent_id, ctx);
-                return await fetchApi(nodeCtx, '/api/security/dns-batch', { method: 'POST' }, 35000);
+                const [secConfig, secProfile] = await Promise.all([
+                    fetchApi(nodeCtx, '/api/security/config').catch(() => ({})),
+                    fetchApi(nodeCtx, '/api/security/profile').catch(() => ({}))
+                ]);
+                const profileDns: any[] = Array.isArray(secProfile?.dns_tests) ? secProfile.dns_tests : [];
+                const requestedIds: string[] | null = Array.isArray(args.test_ids) && args.test_ids.length > 0
+                    ? args.test_ids.map((id: string) => String(id).toLowerCase())
+                    : null;
+                const enabledIds: string[] = Array.isArray(secConfig?.dns_security?.enabled_tests)
+                    ? secConfig.dns_security.enabled_tests.map((id: string) => String(id).toLowerCase())
+                    : [];
+
+                const selected = profileDns.filter((dt: any) => {
+                    const id = String(dt.id || '').toLowerCase();
+                    const name = String(dt.name || '').toLowerCase();
+                    if (requestedIds) {
+                        return requestedIds.some(ri => id === ri || name.includes(ri));
+                    }
+                    return enabledIds.length > 0 ? enabledIds.includes(id) : true;
+                });
+
+                const tests = (selected.length > 0 ? selected : profileDns).map((dt: any) => ({
+                    domain: dt.domain,
+                    testName: dt.name || dt.id
+                }));
+
+                if (tests.length === 0) {
+                    return { error: 'No DNS tests found in security profile.' };
+                }
+
+                const batchRes = await fetchApi(nodeCtx, '/api/security/dns-test-batch', {
+                    method: 'POST',
+                    body: JSON.stringify({ tests })
+                }, 90000);
+                const results: any[] = Array.isArray(batchRes?.results) ? batchRes.results : [];
+                const sinkholedCount = results.filter(r => r.status === 'sinkholed').length;
+                const blockedCount = results.filter(r => r.status === 'blocked').length;
+                const resolvedCount = results.filter(r => r.status === 'resolved').length;
+                const enforcedTotal = sinkholedCount + blockedCount;
+
+                return {
+                    node: nodeCtx.siteName,
+                    total_tested: results.length,
+                    enforced_count: enforcedTotal,
+                    sinkholed_count: sinkholedCount,
+                    blocked_count: blockedCount,
+                    resolved_count: resolvedCount,
+                    enforcement_rate_pct: results.length > 0 ? Math.round((enforcedTotal / results.length) * 100) : 0,
+                    results: results.map(r => ({
+                        test_name: r.testName,
+                        domain: r.domain,
+                        status: r.status,
+                        resolved_ip: r.resolvedIp,
+                        reason: r.reason
+                    }))
+                };
+            }
+
+            case 'run_security_c2_batch': {
+                const nodeCtx = resolveNodeContext(args.agent_id, ctx);
+                const secProfile = await fetchApi(nodeCtx, '/api/security/profile').catch(() => ({}));
+                const c2Scenarios: any[] = Array.isArray(secProfile?.c2_scenarios) ? secProfile.c2_scenarios : [];
+                const requestedIds: string[] | null = Array.isArray(args.scenario_ids) && args.scenario_ids.length > 0
+                    ? args.scenario_ids.map((s: string) => String(s).toLowerCase())
+                    : null;
+
+                const selected = requestedIds
+                    ? c2Scenarios.filter((s: any) => requestedIds.some(ri => String(s.id || '').toLowerCase() === ri || String(s.name || '').toLowerCase().includes(ri)))
+                    : c2Scenarios;
+
+                if (selected.length === 0) {
+                    return { error: 'No matching C2 scenarios found in security profile.' };
+                }
+
+                const results: any[] = [];
+                for (const s of selected) {
+                    try {
+                        const r = await fetchApi(nodeCtx, '/api/security/c2-test', {
+                            method: 'POST',
+                            body: JSON.stringify({
+                                scenarioId: s.id,
+                                scenarioName: s.name,
+                                attackType: s.attack_type,
+                                target: s.target
+                            })
+                        }, 35000);
+                        results.push({
+                            scenario_id: s.id,
+                            scenario_name: s.name,
+                            attack_type: s.attack_type,
+                            target: s.target,
+                            verdict: r.status,
+                            reason: r.verdict_reason || r.reason
+                        });
+                    } catch (e: any) {
+                        results.push({
+                            scenario_id: s.id,
+                            scenario_name: s.name,
+                            attack_type: s.attack_type,
+                            target: s.target,
+                            verdict: 'error',
+                            error: e.message
+                        });
+                    }
+                }
+
+                const enforcedCount = results.filter(r => r.verdict === 'enforced').length;
+                const bypassCount = results.filter(r => r.verdict === 'bypass').length;
+                const inconclusiveCount = results.length - enforcedCount - bypassCount;
+
+                return {
+                    node: nodeCtx.siteName,
+                    total_scenarios: results.length,
+                    enforced_count: enforcedCount,
+                    bypass_count: bypassCount,
+                    inconclusive_count: inconclusiveCount,
+                    enforcement_rate_pct: results.length > 0 ? Math.round((enforcedCount / results.length) * 100) : 0,
+                    results
+                };
+            }
+
+            case 'run_security_ai_batch': {
+                const nodeCtx = resolveNodeContext(args.agent_id, ctx);
+                const secProfile = await fetchApi(nodeCtx, '/api/security/profile').catch(() => ({}));
+                const aiScenarios: any[] = Array.isArray(secProfile?.ai_security_scenarios) ? secProfile.ai_security_scenarios : [];
+                const includeVolume = Boolean(args.include_volume);
+                const requestedIds: string[] | null = Array.isArray(args.scenario_ids) && args.scenario_ids.length > 0
+                    ? args.scenario_ids.map((s: string) => String(s).toLowerCase())
+                    : null;
+
+                const selected = aiScenarios.filter((s: any) => {
+                    if (requestedIds) {
+                        return requestedIds.some(ri => String(s.id || '').toLowerCase() === ri || String(s.name || '').toLowerCase().includes(ri));
+                    }
+                    if (!includeVolume && s.attack_type === 'volume_traffic') return false;
+                    return true;
+                });
+
+                if (selected.length === 0) {
+                    return { error: 'No matching AI security scenarios found in security profile.' };
+                }
+
+                const results: any[] = [];
+                for (const s of selected) {
+                    try {
+                        if (s.attack_type === 'volume_traffic') {
+                            const r = await fetchApi(nodeCtx, '/api/security/ai-volume-test', {
+                                method: 'POST',
+                                body: JSON.stringify({ apps: s.targets || [] })
+                            }, 35000);
+                            results.push({
+                                scenario_id: s.id,
+                                scenario_name: s.name,
+                                attack_type: s.attack_type,
+                                verdict: 'completed',
+                                reason: r.message || 'AI volume traffic started'
+                            });
+                        } else {
+                            const r = await fetchApi(nodeCtx, '/api/security/ai-test', {
+                                method: 'POST',
+                                body: JSON.stringify({
+                                    scenarioId: s.id,
+                                    scenarioName: s.name,
+                                    attackType: s.attack_type,
+                                    targets: s.targets || []
+                                })
+                            }, 35000);
+                            results.push({
+                                scenario_id: s.id,
+                                scenario_name: s.name,
+                                attack_type: s.attack_type,
+                                verdict: r.status,
+                                reason: r.verdict_reason || r.reason,
+                                app_results: r.app_results
+                            });
+                        }
+                    } catch (e: any) {
+                        results.push({
+                            scenario_id: s.id,
+                            scenario_name: s.name,
+                            attack_type: s.attack_type,
+                            verdict: 'error',
+                            error: e.message
+                        });
+                    }
+                }
+
+                const securityScenarios = results.filter(r => r.attack_type !== 'volume_traffic');
+                const enforcedCount = securityScenarios.filter(r => r.verdict === 'enforced').length;
+                const bypassCount = securityScenarios.filter(r => r.verdict === 'bypass').length;
+                const inconclusiveCount = securityScenarios.length - enforcedCount - bypassCount;
+
+                return {
+                    node: nodeCtx.siteName,
+                    total_scenarios: results.length,
+                    enforced_count: enforcedCount,
+                    bypass_count: bypassCount,
+                    inconclusive_count: inconclusiveCount,
+                    enforcement_rate_pct: securityScenarios.length > 0 ? Math.round((enforcedCount / securityScenarios.length) * 100) : 0,
+                    results
+                };
             }
 
             case 'run_full_security_audit': {
                 const nodeCtx = resolveNodeContext(args.agent_id, ctx);
-                const [urlBatch, dnsBatch, eicar] = await Promise.all([
-                    fetchApi(nodeCtx, '/api/security/url-batch', { method: 'POST' }, 35000).catch(e => ({ error: e.message })),
-                    fetchApi(nodeCtx, '/api/security/dns-batch', { method: 'POST' }, 35000).catch(e => ({ error: e.message })),
-                    fetchApi(nodeCtx, '/api/security/threat-test', {
-                        method: 'POST',
-                        body: JSON.stringify({ scenarioId: 'STIGIX-EICAR-01', testName: 'EICAR Audit' })
-                    }, 35000).catch(e => ({ error: e.message }))
+                const includeC2 = Boolean(args.include_c2);
+                const includeAi = Boolean(args.include_ai);
+
+                const [urlBatch, dnsBatch, eicar, c2Batch, aiBatch] = await Promise.all([
+                    executeToolCall('run_security_url_batch', { agent_id: nodeCtx.siteName }, ctx).catch(e => ({ error: e.message })),
+                    executeToolCall('run_security_dns_batch', { agent_id: nodeCtx.siteName }, ctx).catch(e => ({ error: e.message })),
+                    executeToolCall('run_eicar_test', { agent_id: nodeCtx.siteName }, ctx).catch(e => ({ error: e.message })),
+                    includeC2 ? executeToolCall('run_security_c2_batch', { agent_id: nodeCtx.siteName }, ctx).catch(e => ({ error: e.message })) : Promise.resolve(undefined),
+                    includeAi ? executeToolCall('run_security_ai_batch', { agent_id: nodeCtx.siteName }, ctx).catch(e => ({ error: e.message })) : Promise.resolve(undefined)
                 ]);
-                return { url_batch: urlBatch, dns_batch: dnsBatch, threat_eicar: eicar };
+
+                return {
+                    node: nodeCtx.siteName,
+                    url_filtering: urlBatch,
+                    dns_security: dnsBatch,
+                    threat_eicar: eicar,
+                    ...(includeC2 ? { c2_scenarios: c2Batch } : {}),
+                    ...(includeAi ? { ai_security: aiBatch } : {})
+                };
             }
 
             case 'run_eicar_test': {
