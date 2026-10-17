@@ -662,7 +662,7 @@ const secs = seconds % 60;
     }
 
     return (
-        <div className="p-5 max-w-[1700px] w-full mx-auto space-y-4 text-text-primary animate-fadeIn">
+        <div className="w-full space-y-4 pb-8 text-text-primary animate-fadeIn">
             {/* Top Node Identity Bar */}
             <div className="bg-card border border-border rounded-2xl px-4 py-3.5 flex flex-wrap items-center justify-between gap-4 shadow-sm">
                 <div className="flex flex-wrap items-center gap-3.5">

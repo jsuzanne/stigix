@@ -3,7 +3,7 @@ import { Layers } from 'lucide-react';
 
 export const CustomAppsSkeleton: React.FC = () => {
     return (
-        <div className="p-6 max-w-[1700px] w-full mx-auto space-y-6 animate-in fade-in duration-300">
+        <div className="w-full space-y-4 pb-8 animate-in fade-in duration-300">
             {/* Top Node Identity Bar */}
             <div className="bg-card border border-border rounded-2xl p-5 flex justify-between items-center shimmer">
                 <div className="flex items-center gap-4">

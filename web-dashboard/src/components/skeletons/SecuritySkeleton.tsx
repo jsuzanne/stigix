@@ -3,7 +3,7 @@ import { Shield } from 'lucide-react';
 
 export const SecuritySkeleton: React.FC = () => {
     return (
-        <div className="space-y-6 max-w-7xl mx-auto pb-12 animate-in fade-in duration-300">
+        <div className="w-full space-y-5 pb-12 animate-in fade-in duration-300">
             {/* Header Skeleton */}
             <div className="bg-card border border-border rounded-2xl p-4 flex justify-between items-center shimmer">
                 <div className="flex items-center gap-3">

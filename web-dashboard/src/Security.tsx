@@ -1494,7 +1494,7 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
     const advancedDNSTests = securityProfile.dns_security.items.filter(t => t.category === 'advanced');
 
     return (
-        <div className="space-y-6 max-w-7xl mx-auto pb-12">
+        <div className="w-full space-y-5 pb-12">
             {/* Toast Notification */}
             {toast && (
                 <div className={`fixed top-4 right-4 z-50 px-6 py-3 rounded-xl shadow-2xl flex items-center gap-3 animate-in fade-in slide-in-from-top-4 duration-300 border border-white/10 ${toast.type === 'success' ? 'bg-green-600/90 text-white' :
@@ -1928,7 +1928,7 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
                             </div>
 
                             {visibleCats.length > 0 ? (
-                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 max-h-96 overflow-y-auto pr-2 scrollbar-thin scrollbar-thumb-border">
+                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-3 max-h-96 overflow-y-auto pr-2 scrollbar-thin scrollbar-thumb-border">
                                     {visibleCats.map(category => {
                                         const isEnabled = config.url_filtering.enabled_categories.includes(category.id);
                                         const isTesting = testing[`url-${category.id}`];
@@ -2119,7 +2119,7 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
                                     {visibleBasicDNS.length > 0 && (
                                         <div>
                                             <h4 className="text-[10px] font-black text-text-muted tracking-[0.2em] mb-4 border-l-2 border-blue-600 dark:border-blue-400 pl-2">Critical DNS Threats</h4>
-                                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 max-h-80 overflow-y-auto pr-2 scrollbar-thin scrollbar-thumb-border">
+                                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 max-h-80 overflow-y-auto pr-2 scrollbar-thin scrollbar-thumb-border">
                                                 {visibleBasicDNS.map(test => {
                                                     const isEnabled = config.dns_security.enabled_tests.includes(test.id);
                                                     const isTesting = testing[`dns-${test.id}`];
@@ -2181,7 +2181,7 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
                                     {visibleAdvancedDNS.length > 0 && (
                                         <div>
                                             <h4 className="text-[10px] font-black text-text-muted tracking-[0.2em] mb-4 border-l-2 border-purple-600 dark:border-purple-400 pl-2">Advanced DNS Security</h4>
-                                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 max-h-80 overflow-y-auto pr-2 scrollbar-thin scrollbar-thumb-border">
+                                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 max-h-80 overflow-y-auto pr-2 scrollbar-thin scrollbar-thumb-border">
                                                 {visibleAdvancedDNS.map(test => {
                                                     const isEnabled = config.dns_security.enabled_tests.includes(test.id);
                                                     const isTesting = testing[`dns-${test.id}`];
@@ -2371,7 +2371,7 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
                                         </div>
                                     </div>
                                     
-                                    <div className="flex flex-col gap-2 max-h-[350px] overflow-y-auto pr-1">
+                                    <div className="grid grid-cols-1 lg:grid-cols-2 2xl:grid-cols-3 gap-2.5 max-h-[350px] overflow-y-auto pr-1">
                                         {/* Cloudflare Worker Target */}
                                         {(eicarFilter === 'all' || eicarFilter === 'cloud') && cloudEicarUrl && (() => {
                                             const isSelected = selectedEicarTargets.includes(cloudEicarUrl);
@@ -2754,7 +2754,7 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
                             <div>
                                 <h4 className="text-[10px] font-black text-text-muted tracking-[0.2em] mb-4 border-l-2 border-purple-600 dark:border-purple-400 pl-2">Attack Simulation Scenarios</h4>
                                 {visibleScenarios.length > 0 ? (
-                                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
                                         {visibleScenarios.map(scenario => {
                                             const isEnabled = c2SelectedScenarios.includes(scenario.id);
                                             const isTesting = testing[`c2-${scenario.id}`];
@@ -2926,7 +2926,7 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
                             <div>
                                 <h4 className="text-[10px] font-black text-text-muted tracking-[0.2em] mb-4 border-l-2 border-cyan-600 dark:border-cyan-400 pl-2">AI Security Attack Scenarios</h4>
                                 {visibleScenarios.length > 0 ? (
-                                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
                                         {visibleScenarios.map(scenario => {
                                             const isEnabled = aiSelectedScenarios.includes(scenario.id);
                                             const isTesting = testing[`ai-${scenario.id}`];
