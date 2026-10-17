@@ -13307,7 +13307,18 @@ done
 NOW=$(date +%s000 2>/dev/null || date +%s)
 if [ "$HEALTHY" -eq 1 ]; then
     echo "[$(date -u)] [UPDATER] 🚀 Upgrade successfully finalized!" >> "$LOG_FILE"
-    echo "[$(date -u)] [UPDATER] 🧹 Auto-pruning old dangling images to reclaim disk space..." >> "$LOG_FILE"
+    echo "[$(date -u)] [UPDATER] 🧹 Auto-pruning obsolete Stigix tags & dangling images to reclaim disk space..." >> "$LOG_FILE"
+    ACTIVE_IMG=$(docker inspect -f '{{.Image}}' stigix 2>/dev/null || docker image inspect -f '{{.Id}}' "${pullImage}" 2>/dev/null || true)
+    for img in $(docker images jsuzanne/stigix --format '{{.Repository}}:{{.Tag}}' 2>/dev/null); do
+        if [ "$img" != "<none>:<none>" ] && [ "$img" != "${pullImage}" ] && [ "$img" != "${channelImage}" ]; then
+            IMG_ID=$(docker image inspect -f '{{.Id}}' "$img" 2>/dev/null || true)
+            if [ -z "$ACTIVE_IMG" ] || [ "$IMG_ID" != "$ACTIVE_IMG" ] || [ "$img" != "${channelImage}" ]; then
+                (docker rmi "$img" 2>&1 || true) | while IFS= read -r line; do
+                    echo "[$(date -u)] [PRUNE] $line" >> "$LOG_FILE"
+                done
+            fi
+        fi
+    done
     (docker image prune -f 2>&1 || true) | while IFS= read -r line; do
         echo "[$(date -u)] [PRUNE] $line" >> "$LOG_FILE"
     done
@@ -13376,12 +13387,70 @@ app.post('/api/admin/maintenance/prune', authenticateToken, async (req, res) => 
 
     try {
         const execPromise = promisify(exec);
+        const { channel, fullImage } = await detectLocalDockerChannel();
+        const versionPaths = [
+            path.join(__dirname, 'VERSION'),
+            path.join(__dirname, '..', 'VERSION'),
+            path.resolve(process.cwd(), 'VERSION'),
+            '/app/VERSION'
+        ];
+        let currentVersion = '';
+        for (const vPath of versionPaths) {
+            if (fs.existsSync(vPath)) {
+                currentVersion = fs.readFileSync(vPath, 'utf8').trim();
+                break;
+            }
+        }
+        const keepTags = new Set<string>([
+            fullImage,
+            `jsuzanne/stigix:${channel}`,
+            ...(currentVersion ? [`jsuzanne/stigix:${currentVersion}`] : []),
+            'jsuzanne/stigix:latest'
+        ]);
+
+        let activeImgId = '';
+        try {
+            const { stdout: idOut } = await execPromise(`docker inspect -f '{{.Image}}' stigix 2>/dev/null || docker inspect -f '{{.Image}}' $(hostname) 2>/dev/null || true`);
+            activeImgId = idOut.trim();
+            const { stdout: cfgOut } = await execPromise(`docker inspect -f '{{.Config.Image}}' stigix 2>/dev/null || docker inspect -f '{{.Config.Image}}' $(hostname) 2>/dev/null || true`);
+            if (cfgOut.trim()) keepTags.add(cfgOut.trim());
+        } catch {}
+
+        const removedTags: string[] = [];
+        try {
+            const { stdout: imgsOut } = await execPromise(`docker images jsuzanne/stigix --format '{{.Repository}}:{{.Tag}}|{{.ID}}'`);
+            const lines = imgsOut.trim().split('\n').filter(Boolean);
+            for (const line of lines) {
+                const [repoTag, shortId] = line.split('|');
+                if (!repoTag || repoTag === '<none>:<none>' || keepTags.has(repoTag)) continue;
+                let fullId = '';
+                try {
+                    const { stdout: inspectId } = await execPromise(`docker image inspect -f '{{.Id}}' "${repoTag}" 2>/dev/null || true`);
+                    fullId = inspectId.trim();
+                } catch {}
+                if (!activeImgId || fullId !== activeImgId || !keepTags.has(repoTag)) {
+                    try {
+                        await execPromise(`docker rmi "${repoTag}"`);
+                        removedTags.push(repoTag);
+                    } catch {}
+                }
+            }
+        } catch {}
+
         const { stdout, stderr } = await execPromise('docker image prune -f');
-        const output = ((stdout || '') + (stderr ? `\n${stderr}` : '')).trim();
-        log('MAINTENANCE', `Docker image prune executed: ${output || "no dangling images removed"}`);
+        const pruneOut = ((stdout || '') + (stderr ? `\n${stderr}` : '')).trim();
+        const summaryParts = [];
+        if (removedTags.length > 0) summaryParts.push(`Removed ${removedTags.length} old Stigix image tag(s): ${removedTags.join(', ')}`);
+        if (pruneOut) summaryParts.push(pruneOut);
+        const output = summaryParts.join('\n');
+
+        log('MAINTENANCE', `Docker image prune executed: ${output || "no unused images removed"}`);
         return res.json({ 
             success: true, 
-            message: 'Unused dangling Docker images pruned successfully.', 
+            message: removedTags.length > 0
+                ? `Pruned ${removedTags.length} old Stigix image(s) and dangling layers.`
+                : 'Unused dangling Docker images pruned successfully.', 
+            removedTags,
             output 
         });
     } catch (err: any) {
