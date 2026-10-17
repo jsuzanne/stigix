@@ -14014,7 +14014,8 @@ log('REGISTRY', `🏠 Local Registry Server mounted at /api/registry (Dynamic Mo
 
 // --- Stigix Fleet Telemetry Provider (Phase 3A) ---
 const collectFleetTelemetrySummary = async () => {
-    let probesGlobalHealth = 0;
+    const probesPaused = !isConnectivityMonitorActive;
+    let probesGlobalHealth: number | undefined = undefined;
     let probesTotal = 0;
     let probesPassing = 0;
     let failingProbes: Array<{ name: string; type: string; target: string; error: string; reliability: number }> = [];
@@ -14033,32 +14034,34 @@ const collectFleetTelemetrySummary = async () => {
         const activeProbeIds = allProbes.filter((p: any) => p.enabled !== false).map((p: any) => p.name.toLowerCase().replace(/\s+/g, '-'));
         probesTotal = activeProbeIds.length;
 
-        let globalScoreTypes: string[] | undefined;
-        try {
-            if (fs.existsSync(UI_CONFIG_FILE)) {
-                const uiCfg = JSON.parse(fs.readFileSync(UI_CONFIG_FILE, 'utf8'));
-                if (Array.isArray(uiCfg.globalScoreTypes) && uiCfg.globalScoreTypes.length > 0) {
-                    globalScoreTypes = uiCfg.globalScoreTypes;
+        if (!probesPaused && probesTotal > 0) {
+            let globalScoreTypes: string[] | undefined;
+            try {
+                if (fs.existsSync(UI_CONFIG_FILE)) {
+                    const uiCfg = JSON.parse(fs.readFileSync(UI_CONFIG_FILE, 'utf8'));
+                    if (Array.isArray(uiCfg.globalScoreTypes) && uiCfg.globalScoreTypes.length > 0) {
+                        globalScoreTypes = uiCfg.globalScoreTypes;
+                    }
                 }
-            }
-        } catch {}
+            } catch {}
 
-        const stats = await connectivityLogger.getStats({ timeRange: '1h', activeProbeIds, globalScoreTypes });
-        if (stats && typeof stats.globalHealth === 'number') {
-            probesGlobalHealth = stats.globalHealth;
-        }
-        if (stats && stats.flakyEndpoints) {
-            const downCount = stats.flakyEndpoints.filter((f: any) => f.isDown).length;
-            probesPassing = Math.max(0, probesTotal - downCount);
-            failingProbes = stats.flakyEndpoints.slice(0, 6).map((f: any) => ({
-                name: f.name || f.id,
-                type: (f.type || 'HTTP').toUpperCase(),
-                target: f.target || '',
-                error: f.lastError || (f.isDown ? 'Probe Down (100% loss)' : 'Unstable / High Latency'),
-                reliability: f.reliability ?? 0
-            }));
-        } else {
-            probesPassing = probesTotal;
+            const stats = await connectivityLogger.getStats({ timeRange: '1h', activeProbeIds, globalScoreTypes });
+            if (stats && typeof stats.globalHealth === 'number' && (stats.totalChecks ?? 0) > 0) {
+                probesGlobalHealth = stats.globalHealth;
+            }
+            if (stats && stats.flakyEndpoints) {
+                const downCount = stats.flakyEndpoints.filter((f: any) => f.isDown).length;
+                probesPassing = Math.max(0, probesTotal - downCount);
+                failingProbes = stats.flakyEndpoints.slice(0, 6).map((f: any) => ({
+                    name: f.name || f.id,
+                    type: (f.type || 'HTTP').toUpperCase(),
+                    target: f.target || '',
+                    error: f.lastError || (f.isDown ? 'Probe Down (100% loss)' : 'Unstable / High Latency'),
+                    reliability: f.reliability ?? 0
+                }));
+            } else {
+                probesPassing = probesTotal;
+            }
         }
     } catch (e) {
         log('REGISTRY', `Telemetry probe calculation error: ${e}`, 'warn');
@@ -14196,6 +14199,7 @@ const collectFleetTelemetrySummary = async () => {
     }
 
     return {
+        probes_paused: probesPaused,
         probes_global_health: probesGlobalHealth,
         probes_total: probesTotal,
         probes_passing: probesPassing,

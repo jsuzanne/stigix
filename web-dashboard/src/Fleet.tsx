@@ -54,6 +54,7 @@ interface PeerInstance {
         [key: string]: any;
     };
     summary?: {
+        probes_paused?: boolean;
         probes_global_health?: number; // 0-100 Global Experience score
         probes_total?: number;
         probes_passing?: number;
@@ -103,11 +104,23 @@ const CAPABILITIES_CONFIG = [
 ];
 
 // Mini Badge for Global Experience Score (in Table only)
-function ScoreMiniBadge({ score, isStale, isOnline }: { score?: number | null; isStale?: boolean; isOnline?: boolean }) {
+function ScoreMiniBadge({ score, isStale, isOnline, isPaused }: { score?: number | null; isStale?: boolean; isOnline?: boolean; isPaused?: boolean }) {
     if (isStale || !isOnline) {
         return (
             <span className="px-2.5 py-1 rounded-md text-xs font-mono font-bold bg-card-secondary text-text-muted border border-border whitespace-nowrap">
                 — Offline
+            </span>
+        );
+    }
+
+    if (isPaused) {
+        return (
+            <span
+                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-mono font-bold bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/25 whitespace-nowrap"
+                title="Local DEM probe execution is paused on this node (Standby mode)"
+            >
+                <span>⏸</span>
+                <span className="text-[10px] uppercase tracking-wider">Standby</span>
             </span>
         );
     }
@@ -639,6 +652,7 @@ export default function Fleet({ token, onNavigate: _onNavigate }: FleetProps) {
                                                     score={peer.summary?.probes_global_health} 
                                                     isStale={peer.is_stale}
                                                     isOnline={peer.status === 'online'}
+                                                    isPaused={peer.summary?.probes_paused}
                                                 />
                                             </td>
 
@@ -646,6 +660,15 @@ export default function Fleet({ token, onNavigate: _onNavigate }: FleetProps) {
                                             <td className="px-6 py-3">
                                                 {peer.is_stale || peer.summary?.probes_total === undefined ? (
                                                     <span className="text-xs text-text-muted font-mono">—</span>
+                                                ) : peer.summary.probes_paused ? (
+                                                    <div
+                                                        className="text-xs font-mono text-text-muted cursor-help whitespace-nowrap"
+                                                        title={`Local DEM probe execution is paused on this node (${peer.summary.probes_total} catalog probes synced)`}
+                                                    >
+                                                        <span className="text-amber-500/80 mr-1">⏸</span>
+                                                        <span>Paused</span>
+                                                        <span className="ml-1 opacity-60">({peer.summary.probes_total})</span>
+                                                    </div>
                                                 ) : (() => {
                                                     const total = peer.summary.probes_total;
                                                     const passing = peer.summary.probes_passing ?? total;
@@ -978,9 +1001,15 @@ export default function Fleet({ token, onNavigate: _onNavigate }: FleetProps) {
                                 <div>
                                     <div className="text-[11px] uppercase tracking-wider text-text-muted font-bold">Global Exp.</div>
                                     <div className="mt-1 font-mono text-sm font-bold flex items-baseline gap-1 whitespace-nowrap">
-                                        <span className={`text-base font-black ${scoreColor}`}>{score ?? '—'}</span>
-                                        <span className="text-xs text-text-muted">/100</span>
-                                        <span className={`text-[10px] font-bold uppercase ${scoreColor}`}>· {label}</span>
+                                        {selectedPeer.summary?.probes_paused ? (
+                                            <span className="text-amber-600 dark:text-amber-400 text-xs font-bold uppercase tracking-wider">⏸ Standby</span>
+                                        ) : (
+                                            <>
+                                                <span className={`text-base font-black ${scoreColor}`}>{score ?? '—'}</span>
+                                                <span className="text-xs text-text-muted">/100</span>
+                                                <span className={`text-[10px] font-bold uppercase ${scoreColor}`}>· {label}</span>
+                                            </>
+                                        )}
                                     </div>
                                 </div>
                                 <div>
@@ -1047,19 +1076,30 @@ export default function Fleet({ token, onNavigate: _onNavigate }: FleetProps) {
                                     <h3 className="text-xs uppercase font-mono tracking-wider text-text-muted font-bold">
                                         Connectivity Probes
                                     </h3>
-                                    <div className="text-xs font-mono">
-                                        <span className="text-text-muted">Total: </span>
-                                        <span className="font-bold text-text">{selectedPeer.summary?.probes_total ?? 0}</span>
-                                        <span className="text-text-muted"> | Passing: </span>
-                                        <span className="font-bold text-emerald-400">{selectedPeer.summary?.probes_passing ?? 0}</span>
-                                        <span className="text-text-muted"> | Failing: </span>
-                                        <span className={`font-bold ${(selectedPeer.summary?.probes_total ?? 0) - (selectedPeer.summary?.probes_passing ?? 0) > 0 ? 'text-amber-600 dark:text-amber-400' : 'text-text-muted'}`}>
-                                            {Math.max(0, (selectedPeer.summary?.probes_total ?? 0) - (selectedPeer.summary?.probes_passing ?? 0))}
-                                        </span>
-                                    </div>
+                                    {selectedPeer.summary?.probes_paused ? (
+                                        <div className="text-xs font-mono text-amber-600 dark:text-amber-400">
+                                            ⏸ Standby ({selectedPeer.summary?.probes_total ?? 0} catalog probes)
+                                        </div>
+                                    ) : (
+                                        <div className="text-xs font-mono">
+                                            <span className="text-text-muted">Total: </span>
+                                            <span className="font-bold text-text">{selectedPeer.summary?.probes_total ?? 0}</span>
+                                            <span className="text-text-muted"> | Passing: </span>
+                                            <span className="font-bold text-emerald-400">{selectedPeer.summary?.probes_passing ?? 0}</span>
+                                            <span className="text-text-muted"> | Failing: </span>
+                                            <span className={`font-bold ${(selectedPeer.summary?.probes_total ?? 0) - (selectedPeer.summary?.probes_passing ?? 0) > 0 ? 'text-amber-600 dark:text-amber-400' : 'text-text-muted'}`}>
+                                                {Math.max(0, (selectedPeer.summary?.probes_total ?? 0) - (selectedPeer.summary?.probes_passing ?? 0))}
+                                            </span>
+                                        </div>
+                                    )}
                                 </div>
 
-                                {selectedPeer.summary?.failing_probes && selectedPeer.summary.failing_probes.length > 0 ? (
+                                {selectedPeer.summary?.probes_paused ? (
+                                    <div className="p-3 rounded-xl bg-amber-500/5 border border-amber-500/20 text-xs font-mono text-amber-600 dark:text-amber-400 flex items-center gap-2">
+                                        <span>⏸</span>
+                                        <span>Local probe execution is paused on this node. Catalog changes remain synced across the fleet.</span>
+                                    </div>
+                                ) : selectedPeer.summary?.failing_probes && selectedPeer.summary.failing_probes.length > 0 ? (
                                     <div className="space-y-1.5">
                                         {selectedPeer.summary.failing_probes.map((p, idx) => (
                                             <div key={idx} className="p-2.5 rounded-xl bg-amber-500/5 border border-amber-500/20 text-xs font-mono flex items-center justify-between">
