@@ -746,7 +746,7 @@ const SiteNode = ({ data }: any) => {
                                         <path
                                             key={wan.name}
                                             d={isHub
-                                                ? `M ${portX} ${350 + hubExtraY} L ${blockX} ${420 + hubExtraY}` // Hub: Bottom Port down to Circuit Block
+                                                ? `M ${portX} ${362 + hubExtraY} L ${blockX} ${432 + hubExtraY}` // Hub: Bottom Port down to Circuit Block
                                                 : `M ${portX} 18 L ${blockX} -20`  // Spoke: Top Port up to Circuit Block
                                             }
                                             stroke={isMpls ? "rgba(168, 85, 247, 0.4)" : "rgba(59, 130, 246, 0.4)"}
@@ -762,8 +762,8 @@ const SiteNode = ({ data }: any) => {
                                 {isHub ? (
                                     <path
                                         d={deviceCount === 1
-                                            ? `M 0 ${95 + hubExtraY} L 0 ${110 + hubExtraY}`
-                                            : `M 0 ${95 + hubExtraY} L 0 ${102 + hubExtraY} M 0 ${102 + hubExtraY} L ${devX} ${102 + hubExtraY} L ${devX} ${110 + hubExtraY}`
+                                            ? `M 0 ${98 + hubExtraY} L 0 ${126 + hubExtraY}`
+                                            : `M 0 ${98 + hubExtraY} L 0 ${113 + hubExtraY} M 0 ${113 + hubExtraY} L ${devX} ${113 + hubExtraY} L ${devX} ${126 + hubExtraY}`
                                         }
                                         stroke="rgba(52, 211, 153, 0.65)"
                                         strokeWidth="2.5"
@@ -793,7 +793,7 @@ const SiteNode = ({ data }: any) => {
 
                 {/* Hub-Specific: Shared LAN Bus at bottom, wired up to VyOS, wired to Stigix */}
                 {isHub && (
-                    <div className="flex flex-col items-center justify-end mb-6 relative z-10">
+                    <div className="flex flex-col items-center justify-end mb-9 relative z-10">
                         <div className="absolute inset-x-0 -top-6 flex justify-center w-full z-0 overflow-hidden pointer-events-none">
                             <div className="text-[72px] font-black text-white/[0.02] select-none uppercase tracking-[0.2em] whitespace-nowrap px-6">{data.name}</div>
                         </div>
@@ -1311,7 +1311,7 @@ const VyOSLanRouterNode = ({ data }: any) => {
         onOpenRouterControl
     } = data;
 
-    const isOnline = router?.status === 'up';
+    const isOnline = router?.status !== 'down' && router?.status !== 'unreachable' && router?.status !== 'error';
     const blackholeBlocks: Array<{ prefix: string }> = Array.isArray(router?.blackholeBlocks) ? router.blackholeBlocks : [];
     const blockedCount = blackholeBlocks.length;
 
@@ -2740,7 +2740,7 @@ function TopologyContent({ token, theme }: TopologyProps) {
                 // or below Spokes (anchored by top edge [0.5, 0]) so multi-interface cards never overlap the Site card
                 if (topologyViewMode === 'underlay' && siteLanRouters.length > 0) {
                     const isHubRole = role === 'HUB';
-                    const lanY = isHubRole ? yPos - 335 : yPos + 335;
+                    const lanY = isHubRole ? yPos - 342 : yPos + 335;
                     const LAN_ROUTER_STEP = 610;
                     siteLanRouters.forEach((lr: any, lrIdx: number) => {
                         const offsetX = (lrIdx - (siteLanRouters.length - 1) / 2) * LAN_ROUTER_STEP;
