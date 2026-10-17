@@ -242,7 +242,7 @@ export const COPILOT_TOOLS: AnthropicToolDefinition[] = [
     // -----------------------------------------------------------------------------
     {
         name: 'list_endpoints',
-        description: 'List available Stigix endpoints (Fabric nodes and Internet targets) discovered across the SD-WAN mesh.',
+        description: 'List all discovered Stigix SD-WAN mesh peers (Fabric nodes like DC1, BR1, BR8 with their private/public IPs and roles) and Internet targets. ALWAYS call this tool first when resolving peer names to IP addresses or verifying which nodes exist in the fabric.',
         input_schema: {
             type: 'object',
             properties: {
@@ -620,7 +620,7 @@ export const COPILOT_TOOLS: AnthropicToolDefinition[] = [
     },
     {
         name: 'vyos_execute_action',
-        description: 'Execute an ad-hoc VyOS network action on a router interface ("interface-down", "interface-up", "set-impairment", "clear-qos", "deny-traffic", "allow-traffic", "clear-all-blocks"). SAFETY PRECONDITIONS — before calling this tool you MUST have: (1) called list_vyos_routers to identify the correct agent_id and router_id; (2) called get_vyos_interfaces to list all available interfaces and confirm the target interface name; (3) presented the planned action (node, router, interface, command) to the user and received their explicit confirmation. Never execute interface-down, set-impairment, deny-traffic or any destructive action without completing all three steps.',
+        description: 'Execute an ad-hoc VyOS network action on a router interface ("interface-down", "interface-up", "set-impairment", "clear-qos", "deny-traffic", "allow-traffic", "clear-all-blocks") with automatic read-after-write state verification. If the user prompt ALREADY explicitly asks to cut an interface, restore it, or inject a specific QoS impairment (e.g. "Ajoute 120ms sur eth1" or "Coupe eth1"), that prompt serves as explicit confirmation and you should execute it directly after verifying the interface name. Only ask for confirmation first if you are proposing an unrequested destructive change.',
         input_schema: {
             type: 'object',
             properties: {
@@ -764,7 +764,7 @@ export const COPILOT_TOOLS: AnthropicToolDefinition[] = [
     },
     {
         name: 'get_dem_summary',
-        description: 'Get a summary of Digital Experience Monitoring (DEM) health score and probe statuses on a node.',
+        description: 'Get the LIVE Digital Experience Monitoring (DEM) health score AND the live status, RTT latency, and score of all active DEM probes on a node. PREFER THIS TOOL over list_dem_probes whenever checking probe health, status, or latency.',
         input_schema: {
             type: 'object',
             properties: {
@@ -778,7 +778,7 @@ export const COPILOT_TOOLS: AnthropicToolDefinition[] = [
     },
     {
         name: 'get_probe_details',
-        description: 'Get detailed performance metrics for a specific DEM probe (score, RTT, reachability).',
+        description: 'Get detailed live performance metrics for a specific DEM probe by name (score, RTT in ms, reachability status).',
         input_schema: {
             type: 'object',
             properties: {
@@ -796,7 +796,7 @@ export const COPILOT_TOOLS: AnthropicToolDefinition[] = [
     },
     {
         name: 'list_dem_probes',
-        description: 'List all configured DEM synthetic probes on a specific node.',
+        description: 'List static custom DEM synthetic probe configurations on a specific node (without live RTT or health scores). Use get_dem_summary or get_probe_details if you need live status, RTT, or scores.',
         input_schema: {
             type: 'object',
             properties: {
@@ -938,7 +938,7 @@ export const COPILOT_TOOLS: AnthropicToolDefinition[] = [
     },
     {
         name: 'list_fabric_targets',
-        description: 'List all manually configured Stigix peer/fabric targets on a specific node.',
+        description: 'List manually configured static target entries on a specific node (/api/targets). To discover SD-WAN mesh peers across the fabric (DC1, BR1, BR8, etc.), prefer list_endpoints.',
         input_schema: {
             type: 'object',
             properties: {
@@ -1081,7 +1081,7 @@ export const COPILOT_TOOLS: AnthropicToolDefinition[] = [
     },
     {
         name: 'list_active_impairments',
-        description: 'Audit and list all active network impairments (injected latency, loss, throttling, disabled interfaces) currently running on VyOS routers across the fabric.',
+        description: 'Audit and list all active network impairments across VyOS routers (both local node and remote peers): injected QoS latency/loss/rate-limiting (qos_active), administratively down interfaces (admin_state=down), and static IP blackhole routes (tag 999). ALWAYS call this when checking if any impairments, QoS rules, or link cuts are active.',
         input_schema: {
             type: 'object',
             properties: {

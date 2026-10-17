@@ -172,13 +172,142 @@ Drives a real multi-turn conversation over `POST /api/copilot/chat` (SSE) and cr
 
 ---
 
+### 5.3 Tier 3 — Interactive Copy-Paste Manual Test Playbook (Live UI Validation)
+The following prompts are designed to be **copied and pasted directly** in sequence into the Stigix Copilot chat panel (e.g., on **BR8**) to validate multi-turn memory, tool execution, anti-hallucination guardrails, and Read-After-Write verification.
+
+#### Playbook A — Discovery, Health & Anti-Hallucination Trap (3 Turns)
+1. **Turn A1 (Fabric & Local Health)**:
+   ```text
+   Liste tous les nœuds du fabric SD-WAN, donne-moi le statut complet de ce nœud local ainsi que son score de santé DEM.
+   ```
+   - *Expected Tools*: `list_endpoints`, `get_node_status`, `get_dem_summary`
+   - *Expected Result*: Exact list of active peers (`DC1`, `BR1`, `BR2`, `BR5`, `BR8`) and real DEM health score.
+2. **Turn A2 (Ghost Node Trap — Anti-Hallucination)**:
+   ```text
+   Quel est le statut du générateur de trafic, l'utilisation CPU et le score DEM sur le nœud DC99 ?
+   ```
+   - *Expected Tools*: `get_node_status` / `get_traffic_stats` (returns `Unknown Stigix node "DC99"`)
+   - *Expected Result*: Copilot explicitly refuses to invent metrics and states that `DC99` does not exist in the fabric.
+3. **Turn A3 (Ghost Probe Deletion Trap)**:
+   ```text
+   Supprime la sonde DEM nommée "Sonde_Fantome_999" et confirme-moi qu'elle est bien supprimée.
+   ```
+   - *Expected Tools*: `remove_dem_probe` (returns `success: false`)
+   - *Expected Result*: Copilot reports that `Sonde_Fantome_999` does not exist and does **not** display a fake `✅ Sonde supprimée`.
+
+---
+
+#### Playbook B — DEM Probe Full Lifecycle & Multi-Turn Memory (4 Turns)
+1. **Turn B1 (Create Custom Probe)**:
+   ```text
+   Ajoute une sonde DEM nommée "Test_Cloudflare_DNS" qui cible https://1.1.1.1 avec un intervalle de 10 secondes.
+   ```
+   - *Expected Tools*: `add_dem_probe` (`verified: true`)
+2. **Turn B2 (Verify Live Execution)**:
+   ```text
+   Force l'exécution immédiate des sondes DEM et donne-moi les détails (latence RTT et score) de la sonde "Test_Cloudflare_DNS".
+   ```
+   - *Expected Tools*: `run_dem_probes_now`, `get_probe_details`
+3. **Turn B3 (Remove Using Contextual Pronoun)**:
+   ```text
+   Supprime-la maintenant.
+   ```
+   - *Expected Tools*: `remove_dem_probe` (`probe_name: "Test_Cloudflare_DNS"`, `verified: true`)
+4. **Turn B4 (Follow-Up Verification Challenge)**:
+   ```text
+   Tu es sûr qu'elle n'est plus dans la liste des sondes actives ? Vérifie.
+   ```
+   - *Expected Tools*: `get_dem_summary` or `list_dem_probes` (must execute a read tool, never answer from memory alone).
+
+---
+
+#### Playbook C — Traffic Generator & Custom TCP Application Lifecycle (4 Turns)
+1. **Turn C1 (Stop Web Traffic Generator)**:
+   ```text
+   Arrête le générateur de trafic applicatif sur ce nœud et vérifie qu'il est bien arrêté.
+   ```
+   - *Expected Tools*: `set_traffic_status` (`action: "stop"`, `verified: true`, `actual_running: false`)
+2. **Turn C2 (Restart & Tune Rate)**:
+   ```text
+   Relance le générateur de trafic et règle la vitesse en mode rapide (intervalle de 0.5 seconde).
+   ```
+   - *Expected Tools*: `set_traffic_status` (`action: "start"`, `verified: true`), `set_traffic_rate` (`rate: 0.5`)
+3. **Turn C3 (Create East-West Custom TCP App)**:
+   ```text
+   Crée une application TCP custom nommée "App_POS_Caisse" sur le port 9443 avec le profil "pos" et vérifie qu'elle apparaît bien dans la liste.
+   ```
+   - *Expected Tools*: `create_custom_tcp_app` (`verified: true`)
+4. **Turn C4 (Delete Custom TCP App by Name Only)**:
+   ```text
+   Supprime l'application TCP custom "App_POS_Caisse" et confirme qu'elle n'existe plus.
+   ```
+   - *Expected Tools*: `delete_custom_tcp_app` (resolves name `App_POS_Caisse` $\rightarrow$ internal ID `app-...`, `verified: true`).
+
+---
+
+#### Playbook D — XFR Speedtest & Path Trace Toward DC1 (2 Turns)
+1. **Turn D1 (XFR Speedtest with Auto-Polling)**:
+   ```text
+   Lance un speedtest XFR TCP de 5 secondes depuis ce nœud vers DC1 (192.168.203.100) et donne-moi le débit final mesuré en Mbps ainsi que le RTT moyen.
+   ```
+   - *Expected Tools*: `run_test` (`profile: "xfr"`) $\rightarrow$ `get_test_status` (auto-waits until `status: "completed"` in a single call).
+2. **Turn D2 (Underlay/Overlay Path Trace)**:
+   ```text
+   Fais un traceroute (path trace) vers 192.168.203.100 (DC1) et résume les sauts intermédiaires et leurs latences.
+   ```
+   - *Expected Tools*: `run_path_trace` (`target: "192.168.203.100"`).
+
+---
+
+#### Playbook E — VyOS Impairment, Audit & SD-WAN Convergence Test (4 Turns)
+1. **Turn E1 (Inspect VyOS Interfaces & Inject Latency)**:
+   ```text
+   Affiche l'état des interfaces du routeur VyOS local, puis ajoute 120ms de latence sur l'interface eth1 (WAN1) et vérifie que la règle QoS est active.
+   ```
+   - *Expected Tools*: `get_vyos_router_state` (or `get_vyos_interfaces`) $\rightarrow$ `vyos_execute_action` (`action: "set-impairment"`, `interface: "eth1"`, `latency: 120`, returns `verified_interface_state`).
+2. **Turn E2 (Audit Active Impairments Across Fabric)**:
+   ```text
+   Vérifie s'il y a des dégradations réseau (impairments QoS, interfaces coupées ou blackholes) actives sur le nœud.
+   ```
+   - *Expected Tools*: `list_active_impairments` (must detect `+120ms latency` on `eth1` of `vyosrouter` on `BR8`).
+3. **Turn E3 (Clear Impairment & Verify Clean State)**:
+   ```text
+   Supprime toutes les dégradations QoS sur le routeur VyOS et re-vérifie avec list_active_impairments que tout est propre.
+   ```
+   - *Expected Tools*: `vyos_bulk_reset` (`reset_type: "all-qos"`) or `vyos_execute_action` (`action: "clear-qos"`) $\rightarrow$ `list_active_impairments` (`total_impairments: 0`).
+4. **Turn E4 (Multi-Phase SD-WAN Failover / Convergence Test with `wait_seconds`)**:
+   ```text
+   Exécute un test de convergence SD-WAN complet vers DC1 (192.168.203.100) :
+   1. Démarre une sonde de convergence (profile "conv", 50 pps) vers 192.168.203.100.
+   2. Appelle get_test_status avec wait_seconds=10 pour mesurer la latence RTT et la perte de référence (baseline).
+   3. Coupe l'interface eth1 sur vyosrouter (interface-down), puis appelle get_test_status avec wait_seconds=15 pour observer la bascule.
+   4. Réactive l'interface eth1 (interface-up), attends 10 secondes via get_test_status(wait_seconds=10), puis arrête le test avec stop_test et présente le bilan complet (blackout en ms, perte de paquets et RTT avant/pendant/après).
+   ```
+   - *Expected Tools*: `run_test` (`conv`) $\rightarrow$ `get_test_status` (`wait_seconds: 10`) $\rightarrow$ `vyos_execute_action` (`interface-down`) $\rightarrow$ `get_test_status` (`wait_seconds: 15`) $\rightarrow$ `vyos_execute_action` (`interface-up`) $\rightarrow$ `get_test_status` (`wait_seconds: 10`) $\rightarrow$ `stop_test`.
+
+---
+
+#### Playbook F — SASE Security Audit (2 Turns)
+1. **Turn F1 (Full Security Audit)**:
+   ```text
+   Lance un audit de sécurité SASE complet (URL Filtering, DNS Security et test EICAR) sur ce nœud et affiche le tableau des scores de blocage.
+   ```
+   - *Expected Tools*: `run_full_security_audit` $\rightarrow$ `get_security_results_stats`.
+2. **Turn F2 (Inspect Individual Verdicts)**:
+   ```text
+   Montre-moi les 10 derniers résultats détaillés des tests de sécurité exécutés sur ce nœud.
+   ```
+   - *Expected Tools*: `list_security_results` (`limit: 10`).
+
+---
+
 ## 6. Execution Guide & CLI Commands
 
-### 6.1 Running Tier 1 (50 Tool Contracts)
+### 6.1 Running Tier 1 (51 Tool Contracts)
 ```bash
 # Run against local node (default http://localhost:8080) or remote lab node (e.g. BR8)
 cd web-dashboard
-STIGIX_URL=http://192.168.123.102:8080 npx tsx tests/test-copilot-suite.ts
+npx tsx tests/test-copilot-suite.ts --host=http://192.168.123.102:8080
 ```
 
 ### 6.2 Running Tier 2 (6 Multi-Turn Ground-Truth E2E Scenarios)
@@ -195,7 +324,7 @@ STIGIX_URL=http://192.168.123.102:8080 SCENARIO=4 npx tsx tests/test-copilot-rel
 
 | Suite | Scope | Result | Execution Time |
 | :--- | :--- | :---: | :---: |
-| `test-copilot-suite.ts` | 50 Tool Contracts + 3 Anti-Hallucination Regressions | **50 / 50 PASS (100%)** | `20.3s` |
+| `test-copilot-suite.ts` | 51 Tool Contracts + 4 Anti-Hallucination & Wait Regressions | **51 / 51 PASS (100%)** | `30.3s` |
 | `test-copilot-reliability.ts` | 6 Multi-Turn Conversational + REST Ground-Truth Scenarios | **6 / 6 PASS (100%)** | `75.1s` |
 
 ---
@@ -208,8 +337,39 @@ STIGIX_URL=http://192.168.123.102:8080 SCENARIO=4 npx tsx tests/test-copilot-rel
 
 ---
 
+## 8. Audit of Existing MCP & Copilot Tool Descriptions (LLM Disambiguation)
+
+Analysis of live Copilot sessions (`sess-44dede11` on `BR8`) and comparison between `web-dashboard/ai-copilot/ai-tools.ts` (81 tools) and `mcp-server/src/server.py` (89 tools) identified **5 tool clusters** where terse or overlapping descriptions cause the LLM to pick the wrong tool or hesitate:
+
+| Tool Cluster | Current Ambiguity / LLM Pitfall | Description Enhancement Implemented / Recommended |
+| :--- | :--- | :--- |
+| **1. DEM Probes**<br/>`get_dem_summary` vs `list_dem_probes` vs `get_probe_details` | `list_dem_probes` only returns static definitions (`/api/connectivity/custom`) without live RTT or health scores, whereas `get_dem_summary` returns both the global `health_score` and live enriched metrics (`status`, `score`, `latency_ms`) for all probes. | Explicitly label `get_dem_summary` as the **primary tool for live DEM health, probe statuses, and RTT**, and label `list_dem_probes` as static configuration listing only. |
+| **2. Mesh & Target Discovery**<br/>`list_endpoints` vs `list_fabric_targets` vs `list_controller_peers` | The LLM sometimes calls `list_fabric_targets` (static manual entries) instead of `list_endpoints` (live Cloudflare/Mesh autodiscovered SD-WAN peers + IPs). | Instruct the LLM in `list_endpoints` to **always call `list_endpoints` first** when resolving peer names (`DC1`, `BR1`, `BR8`) to private/public IPs. |
+| **3. VyOS Safety Preconditions**<br/>`vyos_execute_action` | The previous description mandated a rigid 3-step confirmation pause even when the user's prompt *already* explicitly ordered the action (e.g., *"Coupe eth1 pendant 15s puis réactive-la"*), breaking automated multi-step failover tests. | Clarify that **when the user prompt explicitly specifies the router/interface and impairment/shutdown**, that prompt serves as explicit confirmation and the tool can execute immediately after verifying interface state. |
+| **4. VyOS Impairment Auditing**<br/>`list_active_impairments` vs `get_vyos_router_state` | `list_active_impairments` previously skipped the local node when `agent_id` was omitted and missed `qos_active` / `admin_state` / `blackholes`. | Updated `list_active_impairments` handler and description to explicitly cover local + remote VyOS `qos_active`, `admin_state`, and tag-999 IP `blackholes`. |
+| **5. Security Option Lookups**<br/>`get_security_test_options` vs `get_security_test_options_dynamic` vs `get_security_config` | Three near-identical read tools confuse the LLM when inspecting testable URL/DNS categories. | Mark `get_security_test_options` as the canonical lookup before `run_security_probe`, and mark `get_security_test_options_dynamic` as a legacy alias. |
+
+---
+
+## 9. Roadmap of Missing MCP & Copilot Tools for SD-WAN / SASE Validation
+
+Comparing the Stigix V3 backend capabilities (`web-dashboard/server.ts`) with the currently exposed MCP/Copilot tools highlights **6 high-value missing tools** that will significantly streamline automated PoC testing:
+
+| Priority | Proposed Tool Name | Underlying Stigix V3 REST Endpoint(s) | Why It Is Needed for Testing |
+| :---: | :--- | :--- | :--- |
+| **P0** | **`run_automated_failover_test`** | `POST /api/convergence/start` + `POST /api/vyos/action` + `POST /api/convergence/stop` | **Single-call atomic SD-WAN chaos test**: starts a `CONV-*` probe, measures baseline for $N$ seconds, injects a VyOS fault (`interface-down` or `set-impairment`), waits $M$ seconds for SD-WAN failover, **automatically rolls back the VyOS fault in a `finally` block**, stops the probe, and returns the complete before/during/after convergence report (`blackout_ms`, `peak_loss_pct`, `verdict`). Prevents orphaned probes or interfaces left shut down if a chat session is interrupted. |
+| **P1** | **`run_security_c2_test`** & **`run_security_c2_batch`** | `POST /api/security/c2-test`<br/>`POST /api/security/c2-test-batch` | Stigix V3 includes a Command & Control (C2) security testing engine, referenced in the Copilot system prompt, but currently has no tool to trigger C2 single or batch validation tests. |
+| **P1** | **`run_security_ai_test`** & **`run_security_ai_batch`** | `POST /api/security/ai-test`<br/>`POST /api/security/ai-test-batch` | Stigix V3 includes a GenAI / LLM Security (Prompt Injection & DLP) test engine (`/api/security/ai-test`), but no MCP/Copilot tool currently exposes it. |
+| **P1** | **`get_convergence_report`** | `GET /api/convergence/history` + SVG/KPI report builder | Already present in Python FastMCP (`mcp-server/src/server.py`), missing in TypeScript In-App Copilot (`ai-tools.ts`). Retrieves detailed time-series KPIs (uplink vs downlink loss, blackout duration, egress path transition) for a specific `CONV-XXXX` test ID. |
+| **P2** | **`compare_security_baseline`** | `GET /api/security/scores/baseline`<br/>`POST /api/security/scores/baseline`<br/>`GET /api/security/scores/diff` | Allows an engineer to snapshot SASE security posture before a Prisma Access policy change and compute the exact delta (`diff`) afterward. |
+| **P2** | **`control_iot_simulation`** & **`get_iot_stats`** | `GET /api/iot/devices`, `POST /api/iot/start-batch`, `POST /api/iot/stop-batch`, `POST /api/iot/bad-behavior`, `GET /api/iot/stats` | Exposes the Stigix IoT Device & Bad-Behavior anomaly simulator to the Copilot for IoT Security PoCs. |
+
+---
+
 ## 📜 Revision History
 
 | Date | Stigix Version | Author / Trigger | Summary of Changes |
 |---|---|---|---|
 | 2026-10-17 | `v3.0.33` | Stigix Core Team | Initial PRD & Automated Validation Test Plan for AI Copilot reliability, anti-hallucination guardrails, and Ground-Truth E2E testing |
+| 2026-10-17 | `v3.0.33` | Stigix Core Team | Added Tier 3 copy-paste manual test playbook (Playbooks A–F), existing MCP tool description audit (Section 8), and roadmap of missing MCP/Copilot testing tools (Section 9) |
+
