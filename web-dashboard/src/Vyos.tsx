@@ -1303,9 +1303,9 @@ export default function Vyos(props: VyosProps) {
                         {view === 'routers' && (
                             <button
                                 onClick={() => setShowAddModal(true)}
-                                className="flex items-center gap-2 px-6 py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-lg font-bold transition-all shadow-lg shadow-blue-900/20"
+                                className="flex items-center gap-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-bold transition-all shadow-lg shadow-blue-900/20"
                             >
-                                <Wifi size={18} /> Discover Router
+                                <Plus size={18} /> Add Router
                             </button>
                         )}
                     </div>
@@ -1317,53 +1317,49 @@ export default function Vyos(props: VyosProps) {
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 animate-in slide-in-from-bottom-4 duration-300">
                     {routers.map((router) => (
                         <div key={router.id} className="bg-card border border-border rounded-2xl overflow-hidden group hover:border-blue-500/30 transition-all flex flex-col shadow-sm hover:shadow-md">
-                            <div className="p-6 border-b border-border/50 flex items-start justify-between bg-card-secondary/30">
-                                <div className="flex items-center gap-4">
-                                    <div className={`p-3 rounded-xl ${router.status === 'online' ? 'bg-green-500/5' : 'bg-red-500/5'} border border-transparent group-hover:border-border transition-colors`}>
-                                        <Server size={22} className={router.status === 'online' ? 'text-green-500' : 'text-red-500'} />
+                            <div className="p-4 border-b border-border/50 flex items-center justify-between bg-card-secondary/30 gap-3">
+                                <div className="flex items-center gap-3 min-w-0">
+                                    <div className={`p-2.5 rounded-xl shrink-0 ${router.status === 'online' ? 'bg-green-500/5' : 'bg-red-500/5'} border border-transparent group-hover:border-border transition-colors`}>
+                                        <Server size={20} className={router.status === 'online' ? 'text-green-500' : 'text-red-500'} />
                                     </div>
-                                    <div>
-                                        <h4 className="font-bold text-text-primary tracking-tight text-lg">{router.name}</h4>
+                                    <div className="min-w-0">
                                         <div className="flex items-center gap-2">
+                                            <h4 className="font-bold text-text-primary tracking-tight text-base truncate">{router.name}</h4>
+                                            {router.version && (
+                                                <span className="text-[9px] text-text-muted font-mono bg-card-secondary px-1.5 py-0.5 rounded border border-border/50 shrink-0">
+                                                    v{router.version}
+                                                </span>
+                                            )}
+                                        </div>
+                                        <div className="flex items-center gap-2 mt-0.5 flex-wrap">
                                             <span className="text-[10px] text-text-muted font-mono bg-card-secondary px-1.5 py-0.5 rounded border border-border/50">{router.host}</span>
                                             {router.location && (
-                                                <span className="text-[9px] text-text-secondary font-bold uppercase flex items-center gap-1">
-                                                    <MapPin size={8} /> {router.location}
+                                                <span className="text-[9px] text-text-secondary font-bold uppercase flex items-center gap-1 truncate">
+                                                    <MapPin size={8} className="shrink-0" /> {router.location}
                                                 </span>
                                             )}
                                         </div>
                                     </div>
                                 </div>
-                                <div className="flex flex-col items-end gap-2">
-                                    <div className={`px-2 py-0.5 rounded text-[9px] font-black tracking-tighter border ${router.status === 'online' ? 'bg-green-500/10 text-green-600 dark:text-green-400 border-green-500/20' : 'bg-red-500/10 text-red-600 dark:text-red-400 border-red-500/20'}`}>
+                                <div className="flex flex-col items-end gap-1 shrink-0">
+                                    <div className={`px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-wider border ${router.status === 'online' ? 'bg-green-500/10 text-green-600 dark:text-green-400 border-green-500/20' : 'bg-red-500/10 text-red-600 dark:text-red-400 border-red-500/20'}`}>
                                         {router.status}
                                     </div>
-                                    {/* Last Seen Indicator */}
                                     {router.lastSeen && (
-                                        <div className="flex items-center gap-1.5 text-[9px] text-text-muted">
-                                            <Clock size={10} />
-                                            <span>
-                                                Checked {Math.floor((Date.now() - router.lastSeen) / 60000)}m ago
-                                            </span>
+                                        <div className="flex items-center gap-1 text-[9px] text-text-muted">
+                                            <Clock size={9} />
+                                            <span>{Math.floor((Date.now() - router.lastSeen) / 60000)}m ago</span>
                                         </div>
                                     )}
-
-                                    {/* Offline Warning */}
                                     {router.status === 'offline' && router.lastSeen && (Date.now() - router.lastSeen) > 300000 && (
-                                        <div className="text-[9px] text-red-500 dark:text-red-400 bg-red-500/10 px-2 py-1 rounded border border-red-500/20 animate-pulse">
-                                            ⚠️ Offline for {Math.floor((Date.now() - router.lastSeen) / 60000)}m
+                                        <div className="text-[9px] text-red-500 dark:text-red-400 bg-red-500/10 px-1.5 py-0.5 rounded border border-red-500/20 animate-pulse">
+                                            ⚠️ Offline {Math.floor((Date.now() - router.lastSeen) / 60000)}m
                                         </div>
                                     )}
-                                    <div className="text-[10px] text-text-muted font-mono font-bold uppercase">ID: {router.id}</div>
                                 </div>
                             </div>
 
-                            <div className="p-6 flex-1 space-y-5">
-                                <div className="flex items-center justify-between">
-                                    <span className="text-[10px] text-text-muted uppercase font-black tracking-widest pl-1">VyOS Node Info</span>
-                                    <span className="text-[10px] text-text-secondary font-mono bg-card-secondary px-2 py-0.5 rounded border border-border/50">v{router.version}</span>
-                                </div>
-
+                            <div className="p-4 flex-1 space-y-3">
                                 {/* Active Deny Routes (Blackhole tag 999) */}
                                 {(() => {
                                     const activeBlocks: { prefix: string; description?: string }[] =
@@ -1371,7 +1367,7 @@ export default function Vyos(props: VyosProps) {
                                     if (!activeBlocks || activeBlocks.length === 0) return null;
                                     const isClearingAll = unblockingKey === `${router.id}:all`;
                                     return (
-                                        <div className="p-3 bg-red-500/10 border border-red-500/30 rounded-xl space-y-2 animate-in fade-in duration-200">
+                                        <div className="p-2.5 bg-red-500/10 border border-red-500/30 rounded-xl space-y-2 animate-in fade-in duration-200">
                                             <div className="flex items-center justify-between">
                                                 <div className="flex items-center gap-1.5">
                                                     <Ban size={12} className="text-red-400 shrink-0" />
@@ -1395,7 +1391,7 @@ export default function Vyos(props: VyosProps) {
                                                     return (
                                                         <span
                                                             key={`${b.prefix}-${i}`}
-                                                            className="inline-flex items-center gap-1.5 font-mono text-[10px] font-bold text-red-300 bg-card/80 px-2 py-1 rounded-lg border border-red-500/30 shadow-sm"
+                                                            className="inline-flex items-center gap-1.5 font-mono text-[10px] font-bold text-red-300 bg-card/80 px-2 py-0.5 rounded-lg border border-red-500/30 shadow-sm"
                                                             title={b.description || 'Blackhole static route (tag 999)'}
                                                         >
                                                             <span>{b.prefix}</span>
@@ -1415,34 +1411,32 @@ export default function Vyos(props: VyosProps) {
                                     );
                                 })()}
 
-                                <div className="space-y-3">
-                                    <div className="flex items-center justify-between text-[10px] mb-1">
-                                        <span className="text-text-muted uppercase font-black tracking-widest pl-1">Network Interfaces</span>
-                                        <span className="text-blue-500 font-black">{router.interfaces.length} DETECTED</span>
+                                <div className="space-y-2">
+                                    <div className="flex items-center justify-between text-[10px] px-1">
+                                        <span className="text-text-muted uppercase font-black tracking-widest">Interfaces</span>
+                                        <span className="text-blue-500 font-bold">{router.interfaces.length}</span>
                                     </div>
-                                    <div className="space-y-2 max-h-[550px] overflow-y-auto pr-2 custom-scrollbar group/list">
+                                    <div className="space-y-1.5 max-h-[420px] overflow-y-auto pr-1 custom-scrollbar group/list">
                                         {router.interfaces.map((iface) => (
-                                            <div key={iface.name} className="flex flex-col p-3 bg-card-secondary/50 border border-border/50 rounded-xl hover:border-blue-500/30 transition-all group/iface">
-                                                <div className="flex items-center justify-between mb-1">
-                                                    <div className="flex items-center gap-2">
-                                                        <div className={cn(
-                                                            "w-1.5 h-1.5 rounded-full",
-                                                            iface.status === 'up' ? "bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.4)]" : "bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.4)]"
-                                                        )} />
-                                                        <span className="text-[11px] text-text-primary font-extrabold uppercase tracking-tight">{iface.name}</span>
-                                                        {iface.qos && ((iface.qos.latency && iface.qos.latency > 0) || (iface.qos.loss && iface.qos.loss > 0)) && (
-                                                            <span className="text-[9px] font-mono font-bold px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-400 border border-amber-500/30">
-                                                                +{iface.qos.latency || 0}ms{iface.qos.loss ? ` ${iface.qos.loss}% loss` : ''}
-                                                            </span>
-                                                        )}
-                                                    </div>
-                                                    <span className="text-[10px] text-text-muted font-mono bg-card px-1.5 py-0.5 rounded border border-border/50">{iface.address?.[0] || 'no-ip'}</span>
+                                            <div key={iface.name} className="flex items-center justify-between gap-2 px-3 py-1.5 bg-card-secondary/50 border border-border/50 rounded-lg hover:border-blue-500/30 transition-all group/iface">
+                                                <div className="flex items-center gap-2 min-w-0 flex-1">
+                                                    <div className={cn(
+                                                        "w-1.5 h-1.5 rounded-full shrink-0",
+                                                        iface.status === 'up' ? "bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.4)]" : "bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.4)]"
+                                                    )} />
+                                                    <span className="text-[11px] text-text-primary font-extrabold uppercase tracking-tight font-mono min-w-[42px] shrink-0">{iface.name}</span>
+                                                    {iface.description && (
+                                                        <span className="text-[10px] text-blue-500 dark:text-blue-400 font-bold uppercase tracking-tight truncate" title={iface.description}>
+                                                            {iface.description}
+                                                        </span>
+                                                    )}
+                                                    {iface.qos && ((iface.qos.latency && iface.qos.latency > 0) || (iface.qos.loss && iface.qos.loss > 0)) && (
+                                                        <span className="text-[9px] font-mono font-bold px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-400 border border-amber-500/30 shrink-0">
+                                                            +{iface.qos.latency || 0}ms{iface.qos.loss ? ` ${iface.qos.loss}% loss` : ''}
+                                                        </span>
+                                                    )}
                                                 </div>
-                                                {iface.description && (
-                                                    <div className="text-[10px] text-blue-500 font-bold uppercase tracking-tighter pl-3.5">
-                                                        {iface.description}
-                                                    </div>
-                                                )}
+                                                <span className="text-[10px] text-text-muted font-mono bg-card px-1.5 py-0.5 rounded border border-border/50 shrink-0">{iface.address?.[0] || 'no-ip'}</span>
                                             </div>
                                         ))}
                                     </div>
@@ -1565,17 +1559,17 @@ export default function Vyos(props: VyosProps) {
                     {routers.length === 0 && (
                         <div className="col-span-full py-20 flex flex-col items-center justify-center bg-card border border-dashed border-border rounded-3xl text-text-muted shadow-inner">
                             <Monitor size={64} className="mb-6 opacity-10" />
-                            <p className="text-lg font-bold uppercase tracking-[0.2em] opacity-40">Tactical Node Map Empty</p>
-                            <p className="text-sm mt-2 opacity-30">Initiate router discovery to begin impairment testing.</p>
+                            <p className="text-lg font-bold uppercase tracking-[0.2em] opacity-40">No Routers Configured</p>
+                            <p className="text-sm mt-2 opacity-30">Add a VyOS router to begin impairment testing.</p>
                         </div>
                     )}
                 </div>
             )}
 
             {view === 'sequences' && (
-                <div className="space-y-4 max-w-5xl mx-auto">
+                <div className="space-y-4 w-full">
                     {/* Sequences Toolbar */}
-                    <div className="flex flex-col sm:flex-row gap-4 items-center mb-6 animate-in fade-in duration-300">
+                    <div className="flex flex-col sm:flex-row gap-4 items-center mb-4 animate-in fade-in duration-300">
                         <div className="relative flex-1 w-full">
                             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-text-muted" size={18} />
                             <input
@@ -1596,12 +1590,11 @@ export default function Vyos(props: VyosProps) {
                         </div>
                     </div>
 
-
-                    {/* Sequences Table — flat, one row per sequence, click to edit */}
+                    {/* Sequences Table — flat, single-line rows, click to edit */}
                     <div className="bg-card border border-border rounded-2xl overflow-hidden shadow-sm animate-in slide-in-from-bottom-4 duration-300">
-                        {/* Table Header: Run | Name+badge | Command | Router | Interface | Params | Status | LastRun | Actions */}
-                        <div className="grid items-center gap-2 px-3 py-2 border-b border-border bg-card-secondary/60 text-[9px] font-black text-text-muted uppercase tracking-widest"
-                            style={{ gridTemplateColumns: '68px 1fr 110px 100px 120px 140px 44px 60px 80px' }}>
+                        {/* Table Header: Run | Name | Router | Command | Interface | Params | On | Last | Actions */}
+                        <div className="grid items-center gap-3 px-4 py-2.5 border-b border-border bg-card-secondary/60 text-[9px] font-black text-text-muted uppercase tracking-widest"
+                            style={{ gridTemplateColumns: '72px minmax(180px, 1.4fr) 110px 120px minmax(150px, 1fr) minmax(160px, 1fr) 44px 64px 60px' }}>
                             <div />
                             <div className="cursor-pointer hover:text-text-primary flex items-center gap-1 select-none transition-colors" onClick={() => handleSort('name')}>
                                 Name {sequenceSort === 'name' && (sequenceSortDir === 'asc' ? <ChevronUp size={12} /> : <ChevronDown size={12} />)}
@@ -1645,8 +1638,8 @@ export default function Vyos(props: VyosProps) {
                                 return (
                                     <div key={seq.id} className={cn('border-l-2 transition-colors', rowAccent, isRunning ? 'bg-blue-500/5' : 'hover:bg-card-secondary/25')}>
                                         <div
-                                            className="grid items-center gap-2 px-3 py-2 cursor-pointer select-none"
-                                            style={{ gridTemplateColumns: '68px 1fr 110px 100px 120px 140px 44px 60px 80px' }}
+                                            className="grid items-center gap-3 px-4 py-2 cursor-pointer select-none"
+                                            style={{ gridTemplateColumns: '72px minmax(180px, 1.4fr) 110px 120px minmax(150px, 1fr) minmax(160px, 1fr) 44px 64px 60px' }}
                                             onClick={() => openSeqModal(seq)}
                                             title="Click to edit"
                                         >
@@ -1656,7 +1649,7 @@ export default function Vyos(props: VyosProps) {
                                                     onClick={() => seq.executionMode === 'STEP_BY_STEP' ? setView('timeline') : runSequence(seq.id)}
                                                     disabled={activeExecution !== null || runningSeqId !== null}
                                                     className={cn(
-                                                        'flex items-center gap-1 px-2.5 py-1.5 rounded-lg font-bold text-[10px] border transition-all disabled:opacity-30 shadow-sm active:scale-95 whitespace-nowrap',
+                                                        'flex items-center gap-1 px-2.5 py-1 rounded-lg font-bold text-[10px] border transition-all disabled:opacity-30 shadow-sm active:scale-95 whitespace-nowrap',
                                                         isRunning ? 'bg-card-secondary text-text-muted border-border/50'
                                                             : seq.executionMode === 'STEP_BY_STEP' ? 'bg-blue-500/10 hover:bg-blue-600 text-blue-600 dark:text-blue-400 hover:text-white border-blue-500/25 hover:border-blue-500'
                                                                 : seq.executionMode === 'BATCH' ? 'bg-amber-500/10 hover:bg-amber-500 text-amber-600 dark:text-amber-400 hover:text-white border-amber-500/25 hover:border-amber-500'
@@ -1668,62 +1661,62 @@ export default function Vyos(props: VyosProps) {
                                                 </button>
                                             </div>
 
-                                            {/* Name + mode badge */}
-                                            <div className="min-w-0">
-                                                <span className="text-[11px] font-semibold text-text-primary truncate block leading-tight">{seq.name}</span>
-                                                <div className="flex items-center gap-1 mt-0.5">
-                                                    <span className={cn(
-                                                        'text-[8px] font-black px-1 py-0.5 rounded border leading-none',
-                                                        seq.executionMode === 'STEP_BY_STEP' ? 'bg-purple-500/10 text-purple-400 border-purple-500/20'
-                                                            : seq.executionMode === 'BATCH' ? 'bg-amber-500/10 text-amber-400 border-amber-500/20'
-                                                                : seq.cycle_duration > 0 ? 'bg-blue-500/10 text-blue-400 border-blue-500/20'
-                                                                    : 'bg-card-secondary text-text-muted border-border'
-                                                    )}>
-                                                        {seq.executionMode === 'STEP_BY_STEP' ? 'STEP' : seq.executionMode === 'BATCH' ? '1-SHOT BATCH' : seq.cycle_duration > 0 ? `${seq.cycle_duration}M` : 'MANUAL'}
+                                            {/* Name + inline contextual badges (no stacked MANUAL row) */}
+                                            <div className="flex items-center gap-1.5 min-w-0">
+                                                <span className="text-xs font-semibold text-text-primary truncate">{seq.name}</span>
+                                                {seq.actions.length > 1 && (
+                                                    <span className="text-[9px] font-bold text-text-muted bg-card-secondary border border-border/50 px-1.5 py-0.5 rounded shrink-0">
+                                                        {seq.actions.length} steps
                                                     </span>
-                                                    {seq.actions.length > 1 && <span className="text-[8px] font-bold text-text-muted/80 bg-card-secondary px-1 py-0.5 rounded">{seq.actions.length} actions</span>}
-                                                    {isRunning && <span className="text-[8px] font-black text-blue-400 animate-pulse">● RUNNING</span>}
-                                                </div>
+                                                )}
+                                                {seq.executionMode !== 'STEP_BY_STEP' && seq.executionMode !== 'BATCH' && seq.cycle_duration > 0 && (
+                                                    <span className="text-[9px] font-mono font-bold bg-blue-500/10 text-blue-400 border border-blue-500/20 px-1.5 py-0.5 rounded shrink-0" title="Auto-restore timer">
+                                                        ⏱ {seq.cycle_duration}m
+                                                    </span>
+                                                )}
+                                                {isRunning && (
+                                                    <span className="text-[9px] font-black text-blue-400 animate-pulse shrink-0">● RUNNING</span>
+                                                )}
                                             </div>
 
                                             {/* Router */}
-                                            <div className="text-[10px] font-mono text-text-secondary truncate">
+                                            <div className="text-[11px] font-mono text-text-secondary truncate">
                                                 {faRouter?.name || <span className="opacity-25">—</span>}
                                             </div>
 
                                             {/* Command */}
-                                            <div className="flex items-center gap-1 min-w-0">
-                                                {fa ? <>{getCommandIcon(fa.command, 11)}<span className="text-[10px] font-semibold text-text-primary truncate">{getCommandDisplayName(fa.command)}</span></> : <span className="opacity-25 text-[10px]">—</span>}
+                                            <div className="flex items-center gap-1.5 min-w-0">
+                                                {fa ? <>{getCommandIcon(fa.command, 12)}<span className="text-[11px] font-semibold text-text-primary truncate">{getCommandDisplayName(fa.command)}</span></> : <span className="opacity-25 text-[10px]">—</span>}
                                             </div>
 
                                             {/* Interface */}
-                                            <div className="text-[10px] font-mono text-text-muted truncate" title={faIfaceDesc || undefined}>
+                                            <div className="flex items-center gap-1.5 min-w-0" title={faIfaceDesc ? `${fa?.interface} (${faIfaceDesc})` : undefined}>
                                                 {needsIface && fa?.interface ? (
                                                     <>
-                                                        {fa.interface}
-                                                        {faIfaceDesc && <span className="text-[8px] text-text-muted/60 ml-1 font-sans">({faIfaceDesc})</span>}
+                                                        <span className="text-[11px] font-mono font-semibold text-text-primary shrink-0">{fa.interface}</span>
+                                                        {faIfaceDesc && <span className="text-[10px] text-blue-500/80 dark:text-blue-400/80 font-medium truncate">{faIfaceDesc}</span>}
                                                     </>
                                                 ) : (
-                                                    <span className="opacity-25">—</span>
+                                                    <span className="opacity-25 text-[10px]">—</span>
                                                 )}
                                             </div>
 
                                             {/* Params */}
-                                            <div className="flex items-center gap-1 flex-wrap min-w-0" title={allIps.length > 1 ? allIps.join(', ') : undefined}>
+                                            <div className="flex items-center gap-1 flex-wrap min-w-0" title={allIps.length > 0 ? allIps.join(', ') : undefined}>
                                                 {allIps.length > 0 && (
                                                     <>
-                                                        <span className="text-[9px] font-mono bg-red-500/10 text-red-400 border border-red-500/20 px-1 py-0.5 rounded truncate max-w-[105px]">{allIps[0]}</span>
+                                                        <span className="text-[10px] font-mono bg-red-500/10 text-red-400 border border-red-500/20 px-1.5 py-0.5 rounded truncate max-w-[140px]">{allIps[0]}</span>
                                                         {allIps.length > 1 && (
-                                                            <span className="text-[8px] font-black bg-red-500/20 text-red-300 border border-red-500/30 px-1 py-0.5 rounded">+{allIps.length - 1}</span>
+                                                            <span className="text-[9px] font-black bg-red-500/20 text-red-300 border border-red-500/30 px-1 py-0.5 rounded shrink-0">+{allIps.length - 1}</span>
                                                         )}
                                                     </>
                                                 )}
                                                 {isQos && <>
-                                                    {fa?.parameters?.latency ? <span className="text-[9px] font-mono bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 px-1 py-0.5 rounded">{fa.parameters.latency}ms</span> : null}
-                                                    {fa?.parameters?.loss ? <span className="text-[9px] font-mono bg-orange-500/10 text-orange-400 border border-orange-500/20 px-1 py-0.5 rounded">{fa.parameters.loss}%</span> : null}
-                                                    {fa?.parameters?.rate ? <span className="text-[9px] font-mono bg-purple-500/10 text-purple-400 border border-purple-500/20 px-1 py-0.5 rounded">{fa.parameters.rate}</span> : null}
+                                                    {fa?.parameters?.latency ? <span className="text-[10px] font-mono bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 px-1.5 py-0.5 rounded">{fa.parameters.latency}ms</span> : null}
+                                                    {fa?.parameters?.loss ? <span className="text-[10px] font-mono bg-orange-500/10 text-orange-400 border border-orange-500/20 px-1.5 py-0.5 rounded">{fa.parameters.loss}%</span> : null}
+                                                    {fa?.parameters?.rate ? <span className="text-[10px] font-mono bg-purple-500/10 text-purple-400 border border-purple-500/20 px-1.5 py-0.5 rounded">{fa.parameters.rate}</span> : null}
                                                 </>}
-                                                {!needsIp && !isQos && <span className="opacity-25 text-[9px]">—</span>}
+                                                {!needsIp && !isQos && <span className="opacity-25 text-[10px]">—</span>}
                                             </div>
 
                                             {/* Enable toggle */}
@@ -1738,14 +1731,14 @@ export default function Vyos(props: VyosProps) {
                                             </div>
 
                                             {/* Last run */}
-                                            <div className="text-[9px] text-text-muted font-mono">
+                                            <div className="text-[10px] text-text-muted font-mono">
                                                 {seq.lastRun ? new Date(seq.lastRun).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Ready'}
                                             </div>
 
                                             {/* Controls */}
-                                            <div className="flex items-center justify-end gap-0.5" onClick={e => e.stopPropagation()}>
-                                                <button onClick={() => cloneReverseSequence(seq)} className="p-1 text-text-muted hover:text-green-400 hover:bg-green-500/10 rounded transition-all" title="Clone reverse"><RefreshCw size={11} /></button>
-                                                <button onClick={() => deleteSequence(seq.id)} className="p-1 text-text-muted hover:text-red-400 hover:bg-red-500/10 rounded transition-all" title="Delete"><Trash2 size={11} /></button>
+                                            <div className="flex items-center justify-end gap-1" onClick={e => e.stopPropagation()}>
+                                                <button onClick={() => cloneReverseSequence(seq)} className="p-1 text-text-muted hover:text-green-400 hover:bg-green-500/10 rounded transition-all" title="Clone reverse"><RefreshCw size={12} /></button>
+                                                <button onClick={() => deleteSequence(seq.id)} className="p-1 text-text-muted hover:text-red-400 hover:bg-red-500/10 rounded transition-all" title="Delete"><Trash2 size={12} /></button>
                                             </div>
                                         </div>
 
@@ -2232,23 +2225,23 @@ export default function Vyos(props: VyosProps) {
             {showAddModal && (
                 <div className="fixed inset-0 bg-black/80 backdrop-blur-md z-[110] flex items-center justify-center p-4">
                     <div className="bg-card border border-border w-full max-w-xl rounded-2xl shadow-2xl animate-in zoom-in-95 duration-200 overflow-hidden flex flex-col max-h-[90vh]">
-                        <div className="p-8 border-b border-border flex items-center justify-between bg-card/80 sticky top-0 z-10">
-                            <h3 className="text-2xl font-black text-text-primary flex items-center gap-3 capitalize">
-                                <Globe size={28} className="text-blue-500" /> Add vyos router
+                        <div className="px-6 py-5 border-b border-border flex items-center justify-between bg-card/80 sticky top-0 z-10">
+                            <h3 className="text-lg font-bold text-text-primary flex items-center gap-2.5">
+                                <Plus size={20} className="text-blue-500" /> Add VyOS Router
                             </h3>
-                            <button onClick={() => { setShowAddModal(false); resetDiscovery(); }} className="text-text-muted hover:text-text-primary transition-all bg-card-secondary p-2 rounded-full border border-border/50">
-                                <XCircle size={24} />
+                            <button onClick={() => { setShowAddModal(false); resetDiscovery(); }} className="text-text-muted hover:text-text-primary transition-all bg-card-secondary p-1.5 rounded-full border border-border/50">
+                                <XCircle size={20} />
                             </button>
                         </div>
 
-                        <div className="p-8 space-y-8 overflow-y-auto custom-scrollbar">
+                        <div className="p-6 space-y-6 overflow-y-auto custom-scrollbar">
                             {!discoveryResult ? (
                                 <>
-                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                                        <div className="space-y-3">
-                                            <label className="text-[10px] font-black uppercase tracking-[0.2em] pl-1 flex justify-between items-center pr-2">
-                                                <div className="flex items-center gap-2 text-text-muted">
-                                                    <ExternalLink size={10} /> Node IPv4/FQDN Address
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                        <div className="space-y-2">
+                                            <label className="text-[10px] font-black uppercase tracking-wider pl-1 flex justify-between items-center pr-2">
+                                                <div className="flex items-center gap-1.5 text-text-muted">
+                                                    <ExternalLink size={10} /> Router IP / FQDN
                                                 </div>
                                                 {discoveryHost && !isValidIpOrFqdn(discoveryHost) && (
                                                     <span className="text-red-500 flex items-center gap-1 font-bold">
@@ -2261,107 +2254,90 @@ export default function Vyos(props: VyosProps) {
                                                 placeholder="e.g. 192.168.122.64 or router.example.com"
                                                 value={discoveryHost}
                                                 onChange={(e) => setDiscoveryHost(e.target.value)}
-                                                className={`w-full bg-card-secondary border rounded-xl px-5 py-4 text-text-primary focus:outline-none focus:ring-2 font-mono text-sm shadow-inner transition-all ${discoveryHost && !isValidIpOrFqdn(discoveryHost)
+                                                className={`w-full bg-card-secondary border rounded-xl px-4 py-3 text-text-primary focus:outline-none focus:ring-2 font-mono text-sm shadow-inner transition-all ${discoveryHost && !isValidIpOrFqdn(discoveryHost)
                                                     ? 'border-red-500/50 focus:ring-red-500/50'
                                                     : 'border-border focus:ring-blue-500/50'
                                                     }`}
                                             />
                                         </div>
-                                        <div className="space-y-3">
-                                            <label className="text-[10px] font-black text-text-muted uppercase tracking-[0.2em] pl-1 flex items-center gap-2">
+                                        <div className="space-y-2">
+                                            <label className="text-[10px] font-black text-text-muted uppercase tracking-wider pl-1 flex items-center gap-1.5">
                                                 <Zap size={10} /> HTTPS API Key
                                             </label>
                                             <input
                                                 type="password"
-                                                placeholder="VyOS Secret Radius"
+                                                placeholder="VyOS HTTPS API Key"
                                                 value={discoveryKey}
                                                 onChange={(e) => setDiscoveryKey(e.target.value)}
-                                                className="w-full bg-card-secondary border border-border rounded-xl px-5 py-4 text-text-primary focus:outline-none focus:ring-2 focus:ring-blue-500/50 font-mono text-sm shadow-inner transition-all"
+                                                className="w-full bg-card-secondary border border-border rounded-xl px-4 py-3 text-text-primary focus:outline-none focus:ring-2 focus:ring-blue-500/50 font-mono text-sm shadow-inner transition-all"
                                             />
                                         </div>
                                     </div>
 
-                                    <div className="space-y-3">
-                                        <label className="text-[10px] font-black text-text-muted uppercase tracking-[0.2em] pl-1 flex items-center gap-2">
-                                            <MapPin size={10} /> Physical Location (Optional)
+                                    <div className="space-y-2">
+                                        <label className="text-[10px] font-black text-text-muted uppercase tracking-wider pl-1 flex items-center gap-1.5">
+                                            <MapPin size={10} /> Location / Label (Optional)
                                         </label>
                                         <input
                                             type="text"
-                                            placeholder="e.g. Paris Edge-Point A"
+                                            placeholder="e.g. DC1 Underlay"
                                             value={discoveryLocation}
                                             onChange={(e) => setDiscoveryLocation(e.target.value)}
-                                            className="w-full bg-card-secondary border border-border rounded-xl px-5 py-4 text-text-primary focus:outline-none focus:ring-1 focus:ring-blue-500/50 uppercase tracking-tight font-black text-xs transition-all"
+                                            className="w-full bg-card-secondary border border-border rounded-xl px-4 py-3 text-text-primary focus:outline-none focus:ring-1 focus:ring-blue-500/50 uppercase tracking-tight font-bold text-xs transition-all"
                                         />
                                     </div>
 
                                     {error && (
-                                        <div className="p-4 bg-red-500/10 border border-red-500/20 rounded-xl flex items-center gap-4 text-red-600 dark:text-red-400 text-xs font-black uppercase tracking-tight animate-pulse shadow-sm">
-                                            <AlertCircle size={20} />
+                                        <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-xl flex items-center gap-3 text-red-600 dark:text-red-400 text-xs font-bold">
+                                            <AlertCircle size={18} />
                                             {error}
                                         </div>
                                     )}
 
-                                    <div className="p-6 bg-blue-600/5 border border-blue-500/20 rounded-2xl">
-                                        <div className="flex items-start gap-4">
-                                            <Info size={20} className="text-blue-500 dark:text-blue-400 shrink-0 mt-0.5" />
-                                            <p className="text-[10px] leading-relaxed text-text-muted font-medium"> Discovery will execute <code className="text-blue-600 dark:text-blue-300 bg-blue-500/10 dark:bg-blue-900/30 px-1 py-0.5 rounded">get-info</code> via the VyOS controller script to extract hardware, software, and interface metadata. Ensure the HTTPS API is enabled on the target router.</p>
+                                    <div className="p-4 bg-blue-600/5 border border-blue-500/20 rounded-xl">
+                                        <div className="flex items-start gap-3">
+                                            <Info size={16} className="text-blue-500 dark:text-blue-400 shrink-0 mt-0.5" />
+                                            <p className="text-[11px] leading-relaxed text-text-muted">Connects to the router via the VyOS HTTPS API (<code className="text-blue-600 dark:text-blue-300 bg-blue-500/10 px-1 py-0.5 rounded">get-info</code>) to retrieve hostname, version, and network interfaces.</p>
                                         </div>
                                     </div>
                                 </>
                             ) : (
-                                <div className="animate-in slide-in-from-right-8 duration-500 space-y-8 pb-4">
-                                    <div className="p-8 bg-green-500/10 border border-green-500/20 rounded-3xl relative overflow-hidden group">
-                                        <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity">
-                                            <CheckCircle size={120} />
-                                        </div>
-                                        <div className="flex items-center gap-4 mb-8">
-                                            <div className="p-3 bg-green-500/20 rounded-2xl border border-green-500/30">
-                                                <Server size={32} className="text-green-600 dark:text-green-400" />
+                                <div className="animate-in slide-in-from-right-8 duration-500 space-y-5 pb-2">
+                                    <div className="p-5 bg-green-500/10 border border-green-500/20 rounded-2xl flex items-center justify-between">
+                                        <div className="flex items-center gap-3">
+                                            <div className="p-2.5 bg-green-500/20 rounded-xl border border-green-500/30">
+                                                <Server size={24} className="text-green-600 dark:text-green-400" />
                                             </div>
                                             <div>
-                                                <h4 className="text-2xl font-black text-text-primary uppercase tracking-tighter">{discoveryResult.name}</h4>
-                                                <div className="flex items-center gap-3">
-                                                    <span className="text-xs text-green-600 dark:text-green-400 font-black tracking-widest uppercase">Verified Connection</span>
-                                                    <div className="w-1 h-1 bg-green-900 dark:bg-green-700 rounded-full" />
-                                                    <span className="text-xs text-text-secondary font-mono bg-card-secondary px-2 py-0.5 rounded border border-border/50">ID: {discoveryResult.id}</span>
+                                                <div className="flex items-center gap-2">
+                                                    <h4 className="text-lg font-bold text-text-primary">{discoveryResult.name}</h4>
+                                                    <span className="text-[10px] text-text-secondary font-mono bg-card-secondary px-1.5 py-0.5 rounded border border-border/50">v{discoveryResult.version}</span>
                                                 </div>
+                                                <span className="text-xs text-text-muted font-mono">{discoveryResult.host}</span>
                                             </div>
                                         </div>
-
-                                        <div className="grid grid-cols-2 gap-8 relative z-10">
-                                            <div className="bg-card-secondary/50 p-5 rounded-2xl border border-border/50">
-                                                <span className="text-[10px] text-text-muted block uppercase font-black tracking-[0.2em] mb-2">Hardware Node</span>
-                                                <span className="text-text-primary font-black uppercase text-sm tracking-tight">{discoveryResult.host}</span>
-                                            </div>
-                                            <div className="bg-card-secondary/50 p-5 rounded-2xl border border-border/50">
-                                                <span className="text-[10px] text-text-muted block uppercase font-black tracking-[0.2em] mb-2">VyOS Kernel</span>
-                                                <span className="text-text-primary font-black uppercase text-sm tracking-tight">Version {discoveryResult.version}</span>
-                                            </div>
-                                        </div>
+                                        <span className="text-[10px] text-green-600 dark:text-green-400 font-bold uppercase tracking-wider bg-green-500/10 px-2.5 py-1 rounded-lg border border-green-500/20">Connected</span>
                                     </div>
 
-                                    <div className="space-y-4">
+                                    <div className="space-y-2">
                                         <div className="flex items-center justify-between px-1">
-                                            <span className="text-[11px] font-black text-text-muted uppercase tracking-[0.3em]">Extracted Interfaces</span>
-                                            <span className="text-[11px] font-black text-blue-500">{discoveryResult.interfaces?.length} PATHS FOUND</span>
+                                            <span className="text-[10px] font-black text-text-muted uppercase tracking-widest">Interfaces</span>
+                                            <span className="text-[10px] font-bold text-blue-500">{discoveryResult.interfaces?.length}</span>
                                         </div>
-                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                        <div className="space-y-1.5 max-h-[260px] overflow-y-auto pr-1 custom-scrollbar">
                                             {discoveryResult.interfaces?.map(iface => (
-                                                <div key={iface.name} className="flex flex-col p-4 bg-card-secondary/50 rounded-2xl border border-border/50 hover:border-blue-500/20 transition-all">
-                                                    <div className="flex items-center justify-between mb-2">
-                                                        <div className="flex items-center gap-2">
-                                                            <div className={cn(
-                                                                "w-1.5 h-1.5 rounded-full",
-                                                                iface.status === 'up' ? "bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.4)]" : "bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.4)]"
-                                                            )} />
-                                                            <span className="font-black text-text-primary uppercase tracking-tighter text-sm">{iface.name}</span>
-                                                        </div>
-                                                        <Wifi size={14} className="text-text-muted/30" />
+                                                <div key={iface.name} className="flex items-center justify-between gap-2 px-3 py-1.5 bg-card-secondary/50 rounded-lg border border-border/50">
+                                                    <div className="flex items-center gap-2 min-w-0">
+                                                        <div className={cn(
+                                                            "w-1.5 h-1.5 rounded-full shrink-0",
+                                                            iface.status === 'up' ? "bg-green-500" : "bg-red-500"
+                                                        )} />
+                                                        <span className="font-bold text-text-primary uppercase font-mono text-xs min-w-[42px]">{iface.name}</span>
+                                                        {iface.description && (
+                                                            <span className="text-[10px] text-blue-500 dark:text-blue-400 font-bold uppercase truncate">{iface.description}</span>
+                                                        )}
                                                     </div>
-                                                    <div className="text-[10px] text-text-muted font-mono bg-card px-2 py-1 rounded inline-block w-fit mb-2 border border-border/50">{iface.address?.[0] || 'DHCP/NO-IP'}</div>
-                                                    {iface.description && (
-                                                        <div className="text-[9px] text-blue-600 dark:text-blue-400 font-medium bg-blue-500/5 p-2 rounded-lg italic pl-3.5">"{iface.description}"</div>
-                                                    )}
+                                                    <span className="text-[10px] text-text-muted font-mono bg-card px-1.5 py-0.5 rounded border border-border/50 shrink-0">{iface.address?.[0] || 'no-ip'}</span>
                                                 </div>
                                             ))}
                                         </div>
@@ -2370,27 +2346,27 @@ export default function Vyos(props: VyosProps) {
                             )}
                         </div>
 
-                        <div className="p-8 border-t border-border bg-card/80 backdrop-blur-md flex gap-4 sticky bottom-0">
+                        <div className="px-6 py-4 border-t border-border bg-card/80 backdrop-blur-md flex gap-3 sticky bottom-0">
                             <button
                                 onClick={() => { setShowAddModal(false); resetDiscovery(); }}
-                                className="flex-1 px-6 py-4 rounded-2xl bg-card-secondary hover:bg-card-hover text-text-muted font-black transition-all text-xs uppercase tracking-[0.3em] border border-border/50 shadow-inner"
+                                className="flex-1 px-4 py-2.5 rounded-xl bg-card-secondary hover:bg-card-hover text-text-muted font-bold transition-all text-xs border border-border/50"
                             >
-                                ABORT
+                                Cancel
                             </button>
                             {!discoveryResult ? (
                                 <button
                                     onClick={startDiscovery}
                                     disabled={discovering || !discoveryHost || !isValidIpOrFqdn(discoveryHost) || !discoveryKey}
-                                    className="flex-2 px-10 py-4 rounded-2xl bg-blue-600 hover:bg-blue-500 text-white font-black transition-all shadow-xl shadow-blue-900/40 text-xs uppercase tracking-[0.3em] disabled:opacity-20 flex items-center justify-center gap-3 active:scale-95"
+                                    className="flex-2 px-6 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold transition-all shadow-lg shadow-blue-900/30 text-xs disabled:opacity-30 flex items-center justify-center gap-2 active:scale-95"
                                 >
-                                    {discovering ? <RefreshCw size={20} className="animate-spin" /> : <><Globe size={20} /> INITIATE SCAN</>}
+                                    {discovering ? <RefreshCw size={16} className="animate-spin" /> : <><Zap size={16} /> Connect &amp; Fetch Info</>}
                                 </button>
                             ) : (
                                 <button
                                     onClick={saveRouter}
-                                    className="flex-2 px-10 py-4 rounded-2xl bg-green-600 hover:bg-green-500 text-white font-black transition-all shadow-xl shadow-green-900/40 text-xs uppercase tracking-[0.3em] flex items-center justify-center gap-3 active:scale-95 animate-in slide-in-from-bottom-2"
+                                    className="flex-2 px-6 py-2.5 rounded-xl bg-green-600 hover:bg-green-500 text-white font-bold transition-all shadow-lg shadow-green-900/30 text-xs flex items-center justify-center gap-2 active:scale-95"
                                 >
-                                    <CheckCircle size={20} /> AUTHORIZE & DEPLOY
+                                    <CheckCircle size={16} /> Save Router
                                 </button>
                             )}
                         </div>
