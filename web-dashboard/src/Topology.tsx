@@ -1228,14 +1228,14 @@ const SasePopNode = ({ data, selected }: any) => {
 
     return (
         <div className={cn(
-            "px-5 py-4 rounded-3xl border-2 transition-all shadow-xl backdrop-blur-2xl flex flex-col items-center gap-2.5 w-[330px] max-w-[330px] cursor-pointer hover:scale-105 duration-200 select-none",
+            "px-7 py-6 rounded-[32px] border-2 transition-all shadow-2xl backdrop-blur-2xl flex flex-col items-center gap-3.5 w-[480px] max-w-[480px] cursor-pointer hover:scale-105 duration-200 select-none",
             isPrisma
                 ? (isHealthy 
-                    ? "bg-white/95 dark:bg-purple-950/40 border-purple-300 dark:border-purple-500/50 shadow-purple-500/10 dark:shadow-purple-500/25 hover:border-purple-500" 
-                    : "bg-white/90 dark:bg-purple-950/20 border-purple-200 dark:border-purple-500/30")
+                    ? "bg-white/95 dark:bg-purple-950/45 border-purple-300 dark:border-purple-500/55 shadow-purple-500/15 dark:shadow-purple-500/30 hover:border-purple-500" 
+                    : "bg-white/90 dark:bg-purple-950/25 border-purple-200 dark:border-purple-500/35")
                 : (isHealthy 
-                    ? "bg-white/95 dark:bg-blue-950/40 border-blue-300 dark:border-blue-500/50 shadow-blue-500/10 dark:shadow-blue-500/25 hover:border-blue-500" 
-                    : "bg-white/90 dark:bg-rose-950/30 border-rose-300 dark:border-rose-500/40 shadow-rose-500/10"),
+                    ? "bg-white/95 dark:bg-blue-950/45 border-blue-300 dark:border-blue-500/55 shadow-blue-500/15 dark:shadow-blue-500/30 hover:border-blue-500" 
+                    : "bg-white/90 dark:bg-rose-950/35 border-rose-300 dark:border-rose-500/45 shadow-rose-500/15"),
             selected && (isPrisma 
                 ? "ring-4 ring-purple-400 dark:ring-purple-400 shadow-purple-500/40 dark:shadow-purple-500/60" 
                 : "ring-4 ring-blue-400 dark:ring-blue-400 shadow-blue-500/40 dark:shadow-blue-500/60")
@@ -1244,52 +1244,52 @@ const SasePopNode = ({ data, selected }: any) => {
             <Handle type="target" position={Position.Bottom} id="target-bottom" className="!opacity-0" />
 
             {/* Provider & Health Header */}
-            <div className="flex items-center justify-between w-full gap-2">
-                <div className="flex items-center gap-1.5">
+            <div className="flex items-center justify-between w-full gap-3">
+                <div className="flex items-center gap-2">
                     {isPrisma ? (
-                        <span className="px-2.5 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider border bg-purple-100 text-purple-700 border-purple-300/80 dark:bg-purple-500/20 dark:text-purple-300 dark:border-purple-500/30 flex items-center gap-1.5 shadow-sm">
-                            <span className="w-1.5 h-1.5 rounded-full bg-orange-500 inline-block" />
-                            Palo Alto &bull; Prisma
+                        <span className="px-3 py-1 rounded-full text-[11px] font-black uppercase tracking-wider border bg-purple-100 text-purple-700 border-purple-300/80 dark:bg-purple-500/20 dark:text-purple-300 dark:border-purple-500/30 flex items-center gap-2 shadow-sm">
+                            <span className="w-2 h-2 rounded-full bg-orange-500 inline-block" />
+                            Palo Alto &bull; Prisma Access
                         </span>
                     ) : (
-                        <span className="px-2.5 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider border bg-blue-100 text-blue-700 border-blue-300/80 dark:bg-blue-500/20 dark:text-blue-300 dark:border-blue-500/30 flex items-center gap-1.5 shadow-sm">
-                            <span className="w-1.5 h-1.5 rounded-full bg-cyan-500 inline-block" />
-                            Zscaler &bull; ZIA
+                        <span className="px-3 py-1 rounded-full text-[11px] font-black uppercase tracking-wider border bg-blue-100 text-blue-700 border-blue-300/80 dark:bg-blue-500/20 dark:text-blue-300 dark:border-blue-500/30 flex items-center gap-2 shadow-sm">
+                            <span className="w-2 h-2 rounded-full bg-cyan-500 inline-block" />
+                            Zscaler &bull; ZIA Cloud
                         </span>
                     )}
                 </div>
-                <div className="flex items-center gap-1.5">
-                    <span className={cn("w-2 h-2 rounded-full", isHealthy ? "bg-emerald-500 animate-pulse" : "bg-rose-500")} />
-                    <span className="text-[10px] font-mono font-bold text-slate-600 dark:text-text-muted">
+                <div className="flex items-center gap-2 bg-slate-100/80 dark:bg-white/5 px-2.5 py-1 rounded-full border border-slate-200/70 dark:border-white/10">
+                    <span className={cn("w-2.5 h-2.5 rounded-full", isHealthy ? "bg-emerald-500 animate-pulse" : "bg-rose-500")} />
+                    <span className="text-xs font-mono font-bold text-slate-700 dark:text-slate-200">
                         {data.tunnels_up || 0}/{data.tunnels_total || 0} Up
                     </span>
                 </div>
             </div>
 
             {/* Center Icon & Title with Official Logos */}
-            <div className="flex items-center gap-3 w-full my-0.5">
+            <div className="flex items-center gap-4 w-full my-1">
                 <div className={cn(
-                    "p-2 rounded-2xl shrink-0 flex items-center justify-center border shadow-sm transition-colors",
+                    "p-3 rounded-2xl shrink-0 flex items-center justify-center border shadow-md transition-colors",
                     isPrisma 
                         ? "bg-purple-50/90 border-purple-200 text-purple-600 dark:bg-white/10 dark:border-purple-500/30 dark:shadow-purple-900/50" 
                         : "bg-blue-50/90 border-blue-200 text-blue-600 dark:bg-white/10 dark:border-blue-500/30 dark:shadow-blue-900/50"
                 )}>
                     {isPrisma ? (
-                        <img src="/prisma-access.png" alt="Prisma Access" className="w-8 h-8 object-contain filter drop-shadow-sm" />
+                        <img src="/prisma-access.png" alt="Prisma Access" className="w-12 h-12 object-contain filter drop-shadow-sm" />
                     ) : (
-                        <img src="/zscaler-logo.png" alt="Zscaler" className="w-8 h-8 object-contain rounded-lg filter drop-shadow-sm" />
+                        <img src="/zscaler-logo.png" alt="Zscaler" className="w-12 h-12 object-contain rounded-xl filter drop-shadow-sm" />
                     )}
                 </div>
                 <div className="min-w-0 flex-1">
-                    <div className="text-sm font-black text-slate-900 dark:text-text-primary tracking-tight truncate leading-tight">
+                    <div className="text-base font-black text-slate-900 dark:text-text-primary tracking-tight truncate leading-snug" title={data.name}>
                         {data.short_name || data.name}
                     </div>
                     {data.spn_name ? (
-                        <div className="text-[10px] text-slate-500 dark:text-text-muted font-mono truncate font-medium">
+                        <div className="text-xs text-slate-500 dark:text-text-muted font-mono truncate font-semibold mt-0.5">
                             SPN: {data.spn_name}
                         </div>
                     ) : (
-                        <div className="text-[10px] text-slate-500 dark:text-text-muted font-mono truncate font-medium">
+                        <div className="text-xs text-slate-500 dark:text-text-muted font-mono truncate font-semibold mt-0.5">
                             Region: {data.region || 'global'}
                         </div>
                     )}
@@ -1297,17 +1297,17 @@ const SasePopNode = ({ data, selected }: any) => {
             </div>
 
             {/* IP & Telemetry Footer */}
-            <div className="w-full pt-2 border-t border-slate-200 dark:border-border/60 flex items-center justify-between text-[10px] font-mono">
-                <div className="flex items-center gap-1 text-purple-700 dark:text-cyan-400 font-bold truncate">
-                    <span className="text-slate-400 dark:text-slate-400 text-[9px] font-semibold">GW:</span>
+            <div className="w-full pt-3 border-t border-slate-200 dark:border-border/60 flex items-center justify-between text-xs font-mono">
+                <div className="flex items-center gap-1.5 text-purple-700 dark:text-cyan-400 font-bold truncate">
+                    <span className="text-slate-400 dark:text-slate-400 text-[11px] font-semibold">GW:</span>
                     <span className="truncate">{data.primary_peer_ip || 'Anycast'}</span>
                 </div>
                 {data.liveliness_probe_ip ? (
-                    <div className="text-slate-500 dark:text-text-muted text-[9px] shrink-0 font-medium" title="Liveliness ICMP probe">
+                    <div className="text-slate-500 dark:text-text-muted text-[11px] shrink-0 font-medium" title="Liveliness ICMP probe">
                         Probe: {data.liveliness_probe_ip}
                     </div>
                 ) : (
-                    <div className="text-slate-500 dark:text-text-muted text-[9px] shrink-0 font-medium">
+                    <div className="text-slate-500 dark:text-text-muted text-[11px] shrink-0 font-medium">
                         {data.connected_sites?.length || 0} Sites
                     </div>
                 )}
@@ -2255,56 +2255,47 @@ function TopologyContent({ token, theme }: TopologyProps) {
             const zscalerPops = rawPops.filter((p: any) => p.provider === 'Zscaler' || p.id.includes('zscaler'));
             const otherPops = rawPops.filter((p: any) => !prismaPops.includes(p) && !zscalerPops.includes(p));
 
-            const POP_STEP = 420;
-            const CARD_WIDTH = 330;
-            const CLUSTER_GAP = 280;
+            const POP_STEP = 560;
+            const CARD_WIDTH = 480;
+            const CLUSTER_GAP = 220;
             const MIN_CENTER_DIST = CARD_WIDTH + CLUSTER_GAP;
+
+            // Compute raw horizontal positions and re-center the entire POP tier around x = 0
+            const popEntries: { pop: any; rawX: number; cluster: string }[] = [];
 
             // Left wing: Prisma Access (Palo Alto Networks)
             prismaPops.forEach((pop: any, idx: number) => {
                 const offsetFromRight = (prismaPops.length - 1 - idx) * POP_STEP;
-                const x = -(MIN_CENTER_DIST / 2) - offsetFromRight;
-                newNodes.push({
-                    id: `cloud:${pop.id}`,
-                    type: 'sasePop',
-                    position: { x, y: CLOUD_Y },
-                    origin: [0.5, 0.5],
-                    data: {
-                        ...pop,
-                        isSasePop: true,
-                        cluster: 'prisma'
-                    }
-                });
+                const rawX = -(MIN_CENTER_DIST / 2) - offsetFromRight;
+                popEntries.push({ pop, rawX, cluster: 'prisma' });
             });
 
             // Right wing: Zscaler
             zscalerPops.forEach((pop: any, idx: number) => {
-                const x = (MIN_CENTER_DIST / 2) + idx * POP_STEP;
-                newNodes.push({
-                    id: `cloud:${pop.id}`,
-                    type: 'sasePop',
-                    position: { x, y: CLOUD_Y },
-                    origin: [0.5, 0.5],
-                    data: {
-                        ...pop,
-                        isSasePop: true,
-                        cluster: 'zscaler'
-                    }
-                });
+                const rawX = (MIN_CENTER_DIST / 2) + idx * POP_STEP;
+                popEntries.push({ pop, rawX, cluster: 'zscaler' });
             });
 
             // Other providers (if any)
             otherPops.forEach((pop: any, idx: number) => {
-                const x = (MIN_CENTER_DIST / 2) + (zscalerPops.length + idx) * POP_STEP;
+                const rawX = (MIN_CENTER_DIST / 2) + (zscalerPops.length + idx) * POP_STEP;
+                popEntries.push({ pop, rawX, cluster: 'other' });
+            });
+
+            const minPopX = popEntries.length > 0 ? Math.min(...popEntries.map(e => e.rawX)) : 0;
+            const maxPopX = popEntries.length > 0 ? Math.max(...popEntries.map(e => e.rawX)) : 0;
+            const centerShift = (minPopX + maxPopX) / 2;
+
+            popEntries.forEach(({ pop, rawX, cluster }) => {
                 newNodes.push({
                     id: `cloud:${pop.id}`,
                     type: 'sasePop',
-                    position: { x, y: CLOUD_Y },
+                    position: { x: rawX - centerShift, y: CLOUD_Y },
                     origin: [0.5, 0.5],
                     data: {
                         ...pop,
                         isSasePop: true,
-                        cluster: 'other'
+                        cluster
                     }
                 });
             });
@@ -2377,7 +2368,10 @@ function TopologyContent({ token, theme }: TopologyProps) {
             let minLeftX = Math.min(0, ...hubLeftEdges, ...spokeLeftEdges);
 
             if (topologyViewMode === 'sase') {
-                minLeftX = Math.min(minLeftX, -760);
+                const saseLeftEdges = newNodes
+                    .filter((n: any) => n.type === 'sasePop')
+                    .map((n: any) => n.position.x - 240);
+                minLeftX = Math.min(minLeftX, -900, ...saseLeftEdges);
             } else if (topologyViewMode === 'physical') {
                 minLeftX = Math.min(minLeftX, -380);
             }

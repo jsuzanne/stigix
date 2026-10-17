@@ -4,15 +4,16 @@ import {
     X,
     ChevronRight,
     CornerDownLeft,
-    Sparkles,
     UserPlus,
     Bot,
     Sun,
-    Moon
+    Moon,
+    Star
 } from 'lucide-react';
 import { STIGIX_NAVIGATION_DOMAINS } from '../../config/navigationConfig';
 import type { NavItemConfig } from '../../config/navigationConfig';
 import { cn } from '../../lib/utils';
+import { loadSavedFavorites, FAVORITES_STORAGE_KEY } from './SidebarRail';
 
 export interface SearchPaletteModalProps {
     isOpen: boolean;
@@ -33,6 +34,7 @@ export interface SearchPaletteModalProps {
 interface PaletteItem {
     id: string;
     subTab?: string;
+    itemKey: string;
     label: string;
     domainId: string;
     domainLabel: string;
@@ -59,8 +61,31 @@ export const SearchPaletteModal: React.FC<SearchPaletteModalProps> = ({
     const [query, setQuery] = useState('');
     const [selectedCategory, setSelectedCategory] = useState<string>('all');
     const [selectedIndex, setSelectedIndex] = useState(0);
+    const [favorites, setFavorites] = useState<string[]>(() => loadSavedFavorites());
     const inputRef = useRef<HTMLInputElement>(null);
     const listRef = useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+        if (isOpen) {
+            setFavorites(loadSavedFavorites());
+        }
+    }, [isOpen]);
+
+    const toggleFavorite = (e: React.MouseEvent, itemKey: string) => {
+        e.stopPropagation();
+        setFavorites((prev) => {
+            const next = prev.includes(itemKey)
+                ? prev.filter((k) => k !== itemKey)
+                : [...prev, itemKey];
+            try {
+                localStorage.setItem(FAVORITES_STORAGE_KEY, JSON.stringify(next));
+                window.dispatchEvent(new CustomEvent('stigix-favorites-updated', { detail: next }));
+            } catch {
+                // ignore storage errors
+            }
+            return next;
+        });
+    };
 
     // Build the master searchable items index
     const allItems = useMemo<PaletteItem[]>(() => {
@@ -77,6 +102,7 @@ export const SearchPaletteModal: React.FC<SearchPaletteModalProps> = ({
                 items.push({
                     id: item.id,
                     subTab: item.subTab,
+                    itemKey: item.subTab ? `${item.id}:${item.subTab}` : item.id,
                     label: item.label,
                     domainId: domain.id,
                     domainLabel: domain.label,
@@ -92,6 +118,7 @@ export const SearchPaletteModal: React.FC<SearchPaletteModalProps> = ({
         if (isLeader && onOpenMagicJoin) {
             items.push({
                 id: 'action-magic-join',
+                itemKey: 'action-magic-join',
                 label: 'Magic Join — Add Remote Node',
                 domainId: 'actions',
                 domainLabel: 'Quick Action',
@@ -107,6 +134,7 @@ export const SearchPaletteModal: React.FC<SearchPaletteModalProps> = ({
         if (features.copilot_enabled && onToggleCopilot) {
             items.push({
                 id: 'action-copilot',
+                itemKey: 'action-copilot',
                 label: 'Stigix AI Copilot Assistant',
                 domainId: 'actions',
                 domainLabel: 'Quick Action',
@@ -122,6 +150,7 @@ export const SearchPaletteModal: React.FC<SearchPaletteModalProps> = ({
         if (onToggleTheme) {
             items.push({
                 id: 'action-theme',
+                itemKey: 'action-theme',
                 label: theme === 'dark' ? 'Switch to Light Mode' : 'Switch to Dark Mode',
                 domainId: 'actions',
                 domainLabel: 'Quick Action',
@@ -139,7 +168,7 @@ export const SearchPaletteModal: React.FC<SearchPaletteModalProps> = ({
     const filteredItems = useMemo(() => {
         const cleanQuery = query.trim().toLowerCase();
 
-        return allItems.filter((item) => {
+        const matches = allItems.filter((item) => {
             // Category filter
             if (selectedCategory !== 'all' && item.domainId !== selectedCategory) {
                 return false;
@@ -156,7 +185,17 @@ export const SearchPaletteModal: React.FC<SearchPaletteModalProps> = ({
 
             return labelMatch || domainMatch || descMatch || groupMatch || keywordMatch;
         });
-    }, [allItems, selectedCategory, query]);
+
+        if (!cleanQuery) {
+            return [...matches].sort((a, b) => {
+                const aFav = favorites.includes(a.itemKey) ? 0 : 1;
+                const bFav = favorites.includes(b.itemKey) ? 0 : 1;
+                return aFav - bFav;
+            });
+        }
+
+        return matches;
+    }, [allItems, selectedCategory, query, favorites]);
 
     // Reset selection index when filter changes
     useEffect(() => {
@@ -313,6 +352,7 @@ export const SearchPaletteModal: React.FC<SearchPaletteModalProps> = ({
                     ) : (
                         filteredItems.map((item, index) => {
                             const isSelected = index === selectedIndex;
+                            const isFav = favorites.includes(item.itemKey);
                             const Icon = item.icon;
 
                             return (
@@ -321,7 +361,7 @@ export const SearchPaletteModal: React.FC<SearchPaletteModalProps> = ({
                                     onClick={() => executeItem(item)}
                                     onMouseEnter={() => setSelectedIndex(index)}
                                     className={cn(
-                                        "w-full text-left p-2.5 rounded-xl flex items-center justify-between gap-3 transition-all duration-100 cursor-pointer border",
+                                        "group w-full text-left p-2.5 rounded-xl flex items-center justify-between gap-3 transition-all duration-100 cursor-pointer border",
                                         isSelected
                                             ? "bg-blue-50 dark:bg-blue-600/15 border-blue-200 dark:border-blue-500/40 text-blue-900 dark:text-white shadow-sm"
                                             : "bg-transparent border-transparent hover:bg-slate-100/70 dark:hover:bg-[#161f36]/60 text-slate-700 dark:text-text-secondary"
@@ -360,8 +400,24 @@ export const SearchPaletteModal: React.FC<SearchPaletteModalProps> = ({
                                         </div>
                                     </div>
 
-                                    {/* Domain / Action Badge */}
+                                    {/* Domain / Action Badge & Favorite Toggle */}
                                     <div className="flex items-center gap-2 shrink-0">
+                                        {!item.action && (
+                                            <button
+                                                type="button"
+                                                onClick={(e) => toggleFavorite(e, item.itemKey)}
+                                                title={isFav ? 'Unpin from sidebar rail' : 'Pin shortcut to sidebar rail'}
+                                                className={cn(
+                                                    "p-1 rounded-md transition-all cursor-pointer",
+                                                    isFav
+                                                        ? "text-amber-500 dark:text-amber-400 opacity-100 hover:bg-amber-500/10"
+                                                        : "text-slate-400 dark:text-text-muted/40 opacity-0 group-hover:opacity-100 hover:text-amber-500 dark:hover:text-amber-400 hover:bg-slate-200/60 dark:hover:bg-[#1e293b]"
+                                                )}
+                                            >
+                                                <Star size={13} className={cn(isFav && "fill-amber-400 text-amber-400")} />
+                                            </button>
+                                        )}
+
                                         <span className={cn(
                                             "text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded-md border",
                                             item.badgeColor || getDomainBadgeStyle(item.domainId)
