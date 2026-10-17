@@ -1,9 +1,26 @@
-import React, { useState, useEffect, useRef } from 'react';
-import type { NavDomainConfig } from '../../config/navigationConfig';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import type { NavDomainConfig, NavItemConfig } from '../../config/navigationConfig';
 import { STIGIX_NAVIGATION_DOMAINS } from '../../config/navigationConfig';
 import { cn } from '../../lib/utils';
-import { Bot, User, Sun, Moon, UserPlus, Key, LogOut, Search } from 'lucide-react';
-import { SidebarFlyout } from './SidebarFlyout';
+import { Bot, User, Sun, Moon, UserPlus, Key, LogOut, Search, Star } from 'lucide-react';
+import { SidebarFlyout, getNavItemKey } from './SidebarFlyout';
+
+export const FAVORITES_STORAGE_KEY = 'stigix_nav_favorites';
+const DEFAULT_FAVORITES = ['vyos', 'topology'];
+
+export function loadSavedFavorites(): string[] {
+    try {
+        const raw = localStorage.getItem(FAVORITES_STORAGE_KEY);
+        if (raw === null) {
+            localStorage.setItem(FAVORITES_STORAGE_KEY, JSON.stringify(DEFAULT_FAVORITES));
+            return DEFAULT_FAVORITES;
+        }
+        const parsed = JSON.parse(raw);
+        return Array.isArray(parsed) ? parsed.filter((x): x is string => typeof x === 'string') : [];
+    } catch {
+        return DEFAULT_FAVORITES;
+    }
+}
 
 interface SidebarRailProps {
     activeView: string;
@@ -50,8 +67,52 @@ export const SidebarRail: React.FC<SidebarRailProps> = ({
     const [activeDomain, setActiveDomain] = useState<NavDomainConfig | null>(null);
     const [isPinned, setIsPinned] = useState(false);
     const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
+    const [favorites, setFavorites] = useState<string[]>(() => loadSavedFavorites());
     const hoverTimeoutRef = useRef<any>(null);
     const containerRef = useRef<HTMLDivElement>(null);
+
+    const handleToggleFavorite = useCallback((itemKey: string) => {
+        setFavorites(prev => {
+            const next = prev.includes(itemKey)
+                ? prev.filter(k => k !== itemKey)
+                : [...prev, itemKey];
+            try {
+                localStorage.setItem(FAVORITES_STORAGE_KEY, JSON.stringify(next));
+                window.dispatchEvent(new CustomEvent('stigix-favorites-updated', { detail: next }));
+            } catch {}
+            return next;
+        });
+    }, []);
+
+    useEffect(() => {
+        const handleExternalSync = (e: Event) => {
+            const custom = e as CustomEvent<string[]>;
+            if (Array.isArray(custom.detail)) {
+                setFavorites(custom.detail);
+            } else {
+                setFavorites(loadSavedFavorites());
+            }
+        };
+        window.addEventListener('stigix-favorites-updated', handleExternalSync);
+        return () => window.removeEventListener('stigix-favorites-updated', handleExternalSync);
+    }, []);
+
+    // Resolve favorited NavItemConfig entries respecting leaderOnly and feature flags
+    const favoriteItems = useMemo(() => {
+        const itemMap = new Map<string, NavItemConfig>();
+        STIGIX_NAVIGATION_DOMAINS.forEach(domain => {
+            domain.items.forEach(item => {
+                if (item.leaderOnly && !isLeader) return;
+                if (item.featureFlag === 'xfr_enabled' && !features.xfr_enabled) return;
+                if (item.featureFlag === 'pcap_enabled' && !features.pcap_enabled) return;
+                if (item.featureFlag === 'copilot_enabled' && !features.copilot_enabled) return;
+                itemMap.set(getNavItemKey(item), item);
+            });
+        });
+        return favorites
+            .map(key => itemMap.get(key))
+            .filter((item): item is NavItemConfig => Boolean(item));
+    }, [favorites, isLeader, features]);
 
     // Cancel pending close
     const cancelCloseTimer = () => {
@@ -136,7 +197,7 @@ export const SidebarRail: React.FC<SidebarRailProps> = ({
 
 
                 {/* Primary Functional Domains (SCM Navigation) */}
-                <div className="flex-1 w-full flex flex-col items-center gap-2">
+                <div className="flex-1 w-full flex flex-col items-center gap-2 overflow-y-auto scrollbar-none">
                     {STIGIX_NAVIGATION_DOMAINS.map((domain) => {
                         const Icon = domain.icon;
 
@@ -232,6 +293,70 @@ export const SidebarRail: React.FC<SidebarRailProps> = ({
                         </React.Fragment>
                         );
                     })}
+
+                    {/* Pinned Favorites / Quick Shortcuts */}
+                    {favoriteItems.length > 0 && (
+                        <>
+                            <div className="w-6 h-[1px] bg-amber-500/30 dark:bg-amber-500/25 my-1 shrink-0" />
+                            <div className="flex flex-col items-center gap-1.5 w-full">
+                                {favoriteItems.map((item) => {
+                                    const FavIcon = item.icon;
+                                    const itemKey = getNavItemKey(item);
+                                    const isFavActive = item.subTab
+                                        ? (activeView === item.id && activeSubTab === item.subTab)
+                                        : (activeView === item.id);
+                                    const isFavRunning = item.runningKey ? activeTasks[item.runningKey] : false;
+
+                                    return (
+                                        <div key={`fav-${itemKey}`} className="relative group/fav flex items-center justify-center">
+                                            <button
+                                                onClick={() => {
+                                                    cancelCloseTimer();
+                                                    setActiveDomain(null);
+                                                    setIsPinned(false);
+                                                    onNavigate(item.id, item.subTab);
+                                                }}
+                                                onContextMenu={(e) => {
+                                                    e.preventDefault();
+                                                    handleToggleFavorite(itemKey);
+                                                }}
+                                                title={`${item.label} (Right-click to unpin)`}
+                                                className={cn(
+                                                    "w-9 h-9 rounded-xl flex items-center justify-center transition-all duration-150 relative cursor-pointer border",
+                                                    isFavActive
+                                                        ? "bg-amber-500/15 dark:bg-amber-500/20 text-amber-600 dark:text-amber-400 border-amber-400/50 dark:border-amber-500/40 shadow-sm shadow-amber-500/10"
+                                                        : "bg-slate-50/60 dark:bg-[#111827]/70 text-slate-500 dark:text-text-muted border-slate-200/70 dark:border-[#1e293b]/70 hover:text-amber-600 dark:hover:text-amber-400 hover:border-amber-400/40 hover:bg-amber-500/10"
+                                                )}
+                                            >
+                                                <FavIcon size={16} className="transition-transform group-hover/fav:scale-110" />
+
+                                                {/* Small Star Badge */}
+                                                <Star
+                                                    size={7}
+                                                    className="absolute bottom-1 right-1 text-amber-400 fill-amber-400 opacity-80"
+                                                />
+
+                                                {/* Running Background Task Pulse Dot */}
+                                                {isFavRunning && (
+                                                    <div className="absolute top-1 right-1 flex items-center justify-center">
+                                                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping opacity-75 absolute" />
+                                                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shadow-[0_0_6px_rgba(52,211,153,0.9)]" />
+                                                    </div>
+                                                )}
+                                            </button>
+
+                                            {!isFlyoutOpen && (
+                                                <div className="absolute left-full ml-2 px-2.5 py-1 bg-slate-900 dark:bg-[#0f172a] text-white text-[11px] font-bold rounded-lg border border-slate-700 dark:border-[#1e293b] shadow-2xl opacity-0 scale-95 pointer-events-none group-hover/fav:opacity-100 group-hover/fav:scale-100 transition-all z-50 whitespace-nowrap flex items-center gap-1.5">
+                                                    <Star size={10} className="text-amber-400 fill-amber-400 shrink-0" />
+                                                    <span>{item.label}</span>
+                                                </div>
+                                            )}
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        </>
+                    )}
                 </div>
 
                 <div className="w-6 h-[1px] bg-slate-200 dark:bg-[#1e293b]/70 my-1" />
@@ -372,6 +497,8 @@ export const SidebarRail: React.FC<SidebarRailProps> = ({
                 isLeader={isLeader}
                 features={features}
                 activeTasks={activeTasks}
+                favorites={favorites}
+                onToggleFavorite={handleToggleFavorite}
             />
         </div>
     );

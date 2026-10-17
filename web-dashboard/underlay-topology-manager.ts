@@ -57,6 +57,7 @@ export type VyosInterfaceEndpoint = {
 export type UnderlayResolution = {
     id: string;
     status: UnderlayResolutionStatus;
+    scope?: 'wan' | 'lan';
     prismaWan: PrismaWanEndpoint;
     vyos?: VyosInterfaceEndpoint;
     candidates?: VyosInterfaceEndpoint[];
@@ -90,8 +91,10 @@ export type UnderlayPayload = {
         noMatch: number;
         ambiguous: number;
         wanIpUnavailable: number;
+        lanMatched?: number;
     };
     resolutions: UnderlayResolution[];
+    lanResolutions?: UnderlayResolution[];
     routers?: UnderlayRouterSummary[];
 };
 
@@ -361,8 +364,9 @@ export class UnderlayTopologyManager {
                 };
             }
 
-            // Collect all WAN interfaces from all sites/devices
+            // Collect all WAN and LAN interfaces from all sites/devices
             const allWanInterfaces: any[] = [];
+            const allLanInterfaces: any[] = [];
             const sites: any[] = topologyData?.sites || [];
             for (const site of sites) {
                 for (const device of (site.devices || [])) {
@@ -375,10 +379,29 @@ export class UnderlayTopologyManager {
                             site_name: wan.site_name || site.site_name,
                         });
                     }
+                    for (const lan of (device.lan_interfaces || [])) {
+                        const cleanIp = lan.ip ? String(lan.ip).split('/')[0] : null;
+                        const prefix = (lan.network && String(lan.network).includes('/'))
+                            ? String(lan.network).split('/')[1]
+                            : (lan.ip && String(lan.ip).includes('/') ? String(lan.ip).split('/')[1] : '24');
+                        allLanInterfaces.push({
+                            element_id: device.device_id,
+                            element_name: device.device_name,
+                            site_id: site.site_id,
+                            site_name: site.site_name,
+                            wan_if_id: lan.interface_name ? `lan:${lan.interface_name}` : undefined,
+                            name: lan.interface_label || (lan.interface_name ? `Port ${lan.interface_name} (LAN)` : 'LAN'),
+                            wan_ip_cidr: cleanIp ? `${cleanIp}/${prefix}` : null,
+                            wan_ip_only: cleanIp,
+                            wan_network_cidr: lan.network || (cleanIp ? `${cleanIp.replace(/\.\d+$/, '.0')}/${prefix}` : null),
+                            wan_network: lan.used_for === 'private' ? 'DC LAN (Private)' : 'Site LAN',
+                            wan_ip_type: 'static_with_cidr',
+                        });
+                    }
                 }
             }
 
-            log('UNDERLAY', `Resolving ${allWanInterfaces.length} WAN interfaces against ${inventory.length} VyOS endpoints`);
+            log('UNDERLAY', `Resolving ${allWanInterfaces.length} WAN and ${allLanInterfaces.length} LAN interfaces against ${inventory.length} VyOS endpoints`);
 
             const resolutions: UnderlayResolution[] = [];
             let matched = 0, noMatch = 0, ambiguous = 0, wanIpUnavailable = 0;
@@ -387,6 +410,7 @@ export class UnderlayTopologyManager {
                 const wan = allWanInterfaces[i];
                 const id = `${wan.site_id || 'unknown'}-${wan.element_id || 'unknown'}-${wan.wan_if_id || i}`;
                 const resolution = this.resolveOne(wan, inventory, id);
+                resolution.scope = 'wan';
                 resolutions.push(resolution);
 
                 switch (resolution.status) {
@@ -394,6 +418,18 @@ export class UnderlayTopologyManager {
                     case 'no_match': noMatch++; break;
                     case 'ambiguous': ambiguous++; break;
                     case 'wan_ip_unavailable': wanIpUnavailable++; break;
+                }
+            }
+
+            // Resolve LAN interfaces (only keep matched LAN VyOS routers for peripheral display)
+            const lanResolutions: UnderlayResolution[] = [];
+            for (let i = 0; i < allLanInterfaces.length; i++) {
+                const lan = allLanInterfaces[i];
+                const id = `lan-${lan.site_id || 'unknown'}-${lan.element_id || 'unknown'}-${lan.wan_if_id || i}`;
+                const resolution = this.resolveOne(lan, inventory, id);
+                if (resolution.status === 'matched') {
+                    resolution.scope = 'lan';
+                    lanResolutions.push(resolution);
                 }
             }
 
@@ -420,7 +456,7 @@ export class UnderlayTopologyManager {
                 safeRouters = [];
             }
 
-            log('UNDERLAY', `Resolution complete: ${matched} matched, ${noMatch} no-match, ${ambiguous} ambiguous, ${wanIpUnavailable} wan-ip-unavailable out of ${allWanInterfaces.length} WAN interfaces`);
+            log('UNDERLAY', `Resolution complete: ${matched} WAN matched, ${lanResolutions.length} LAN matched, ${noMatch} no-match, ${ambiguous} ambiguous, ${wanIpUnavailable} wan-ip-unavailable`);
 
             return {
                 available: true,
@@ -431,8 +467,10 @@ export class UnderlayTopologyManager {
                     noMatch,
                     ambiguous,
                     wanIpUnavailable,
+                    lanMatched: lanResolutions.length,
                 },
                 resolutions,
+                lanResolutions,
                 routers: safeRouters,
             };
 

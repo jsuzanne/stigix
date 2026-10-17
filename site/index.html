@@ -6,8 +6,8 @@
 
   <!-- ── Primary SEO ── -->
   <title>Stigix – Open-Source SASE & SD-WAN Validation Platform</title>
-  <meta name="description" content="Stigix is an open-source SASE and SD-WAN validation platform for network engineers. Generate realistic SaaS and East-West custom TCP traffic, orchestrate zero-touch multi-node mesh provisioning, run active DEM performance probes, execute automated security tests, measure failover convergence, automate VyOS routers, simulate voice and IoT devices, and visualize Prisma SD-WAN overlay topology — in labs, demos, and field POCs.">
-  <meta name="keywords" content="SD-WAN, SASE, network validation, traffic generator, custom TCP applications, global provisioning, zero touch provisioning, security policy testing, failover testing, DEM performance probes, digital experience monitoring, URL filtering, DNS security, IoT simulation, voice simulation, Prisma SD-WAN, overlay topology, VyOS automation, open source, Docker, network engineer, lab tool, POC, convergence testing">
+  <meta name="description" content="Stigix is an open-source SASE and SD-WAN validation platform for network engineers. Generate realistic SaaS, Custom TCP, and Multicast (IGMPv3/PIM) traffic, inspect packets with Web Wireshark and Stateful PCAP Replay, run DEM probes, validate security policies, measure sub-second failover, and orchestrate zero-touch multi-node labs.">
+  <meta name="keywords" content="SD-WAN, SASE, network validation, traffic generator, multicast testing, IGMPv3, PIM-SM, packet capture, PCAP replay, custom TCP applications, global provisioning, zero touch provisioning, security policy testing, failover testing, DEM performance probes, IoT simulation, voice simulation, Prisma SD-WAN, VyOS automation, open source, Docker">
   <meta name="author" content="jsuzanne">
   <meta name="robots" content="index, follow">
   <link rel="canonical" href="https://stigix.io/">
@@ -16,8 +16,8 @@
   <meta property="og:type" content="website">
   <meta property="og:url" content="https://stigix.io/">
   <meta property="og:title" content="Stigix – Open-Source SASE / SD-WAN Validation Platform">
-  <meta property="og:description" content="Generate realistic SaaS & Custom TCP traffic, orchestrate zero-touch mesh provisioning, run active DEM performance probes, automate VyOS routers, test security policies, validate failover, simulate IoT & voice — in labs and field POCs.">
-  <meta property="og:image" content="https://stigix.io/assets/screenshots/dashboard.png">
+  <meta property="og:description" content="Generate realistic SaaS, Custom TCP & Multicast traffic, replay stateful PCAPs, inspect live packets, measure SD-WAN failover, and orchestrate multi-branch labs.">
+  <meta property="og:image" content="https://stigix.io/assets/screenshots/home-command-center.png">
   <meta property="og:image:width" content="1280">
   <meta property="og:image:height" content="720">
   <meta property="og:site_name" content="Stigix">
@@ -25,8 +25,8 @@
   <!-- ── Twitter / X card ── -->
   <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:title" content="Stigix – Open-Source SASE / SD-WAN Validation Platform">
-  <meta name="twitter:description" content="Generate realistic SaaS & Custom TCP traffic, orchestrate zero-touch mesh provisioning, run active DEM performance probes, automate VyOS routers, test security policies, simulate IoT & voice — built for network engineers.">
-  <meta name="twitter:image" content="https://stigix.io/assets/screenshots/dashboard.png">
+  <meta name="twitter:description" content="Generate realistic SaaS, Custom TCP & Multicast traffic, replay stateful PCAPs, inspect live packets, measure SD-WAN failover, and orchestrate multi-branch labs.">
+  <meta name="twitter:image" content="https://stigix.io/assets/screenshots/home-command-center.png">
 
   <!-- ── JSON-LD Structured Data (Google rich results) ── -->
   <script type="application/ld+json">
@@ -36,10 +36,10 @@
     "name": "Stigix",
     "applicationCategory": "NetworkingApplication",
     "operatingSystem": "Linux, macOS, Windows",
-    "description": "Open-source SASE and SD-WAN validation platform for network engineers. Generates realistic SaaS and East-West custom TCP line-of-business traffic, orchestrates zero-touch multi-node mesh provisioning, runs active DEM performance probes, executes automated security tests, measures failover convergence, automates VyOS routers, simulates voice and IoT devices, and visualizes Prisma SD-WAN overlay topology — in labs, demos, and POC environments.",
+    "description": "Open-source SASE and SD-WAN validation platform for network engineers. Generates SaaS, Custom TCP, and Multicast (IGMPv3/PIM) traffic, replays stateful PCAPs, captures live packets, runs DEM probes, validates SASE security policies, measures failover convergence, automates VyOS routers, and orchestrates multi-node mesh labs.",
     "url": "https://stigix.io/",
     "downloadUrl": "https://github.com/jsuzanne/stigix",
-    "softwareVersion": "2.0.82",
+    "softwareVersion": "3.0.34",
     "license": "https://github.com/jsuzanne/stigix/blob/main/LICENSE",
     "author": {
       "@type": "Person",
@@ -51,7 +51,7 @@
       "price": "0",
       "priceCurrency": "USD"
     },
-    "keywords": "SD-WAN, SASE, network validation, traffic generation, custom TCP apps, global provisioning, zero touch provisioning, DEM probes, digital experience monitoring, security testing, failover, VyOS automation, overlay topology, Docker, open source",
+    "keywords": "SD-WAN, SASE, network validation, traffic generation, multicast overlay, IGMPv3, packet capture, PCAP replay, custom TCP apps, global provisioning, DEM probes, security testing, failover, VyOS automation, Docker, open source",
     "codeRepository": "https://github.com/jsuzanne/stigix"
   }
   </script>
@@ -117,7 +117,7 @@
         <span class="hero__badge-dot" aria-hidden="true"></span>
         Open-source · MIT · Multi-Node Mesh &amp; V3 Engine
       </div>
-      <span class="hero__version">current: jsuzanne/stigix:latest &nbsp;·&nbsp; <a href="https://github.com/jsuzanne/stigix/releases" target="_blank" rel="noopener noreferrer" style="color:var(--teal);text-decoration:none;">v3.0.0</a></span>
+      <span class="hero__version">current: jsuzanne/stigix:latest &nbsp;·&nbsp; <a href="https://github.com/jsuzanne/stigix/releases" target="_blank" rel="noopener noreferrer" style="color:var(--teal);text-decoration:none;">v3.0.34</a></span>
     </div>
 
     <h1 class="hero__headline">
@@ -128,7 +128,7 @@
     <div class="hero__body">
       <div class="hero__left">
         <p class="hero__desc">
-          Stigix generates realistic SaaS and East-West custom TCP enterprise traffic, orchestrates zero-touch multi-node mesh provisioning, runs active DEM performance probes, executes automated security tests, measures failover convergence, automates VyOS routers, simulates voice and IoT devices, and visualizes Prisma SD-WAN overlay topology — in labs, demos, and POC environments.
+          Generate realistic SaaS, East-West Custom TCP, and Enterprise Multicast (IGMPv3/PIM) traffic. Replay stateful PCAPs, inspect live packets in the browser, measure sub-second failover convergence, automate VyOS underlay routers, and orchestrate multi-branch labs from a single container.
         </p>
         <div class="hero__actions">
           <a href="https://github.com/jsuzanne/stigix" target="_blank" rel="noopener noreferrer"
@@ -141,21 +141,21 @@
           </a>
         </div>
         <div class="hero__facts">
-          <span class="hero__fact"><span class="hero__fact-dot"></span>Stigix v3: SCM Vertical Rail &amp; Command Center</span>
-          <span class="hero__fact"><span class="hero__fact-dot"></span>Runs on Docker — AMD64 &amp; ARM64 Multi-Arch</span>
-          <span class="hero__fact"><span class="hero__fact-dot"></span>Zero-Touch Magic Join Mesh &amp; Fleet Orchestration</span>
-          <span class="hero__fact"><span class="hero__fact-dot"></span>Stateful PCAP Replay &amp; SASE Verdicts</span>
+          <span class="hero__fact"><span class="hero__fact-dot"></span>Stigix v3: SCM Vertical Rail &amp; 3-Column Command Center</span>
+          <span class="hero__fact"><span class="hero__fact-dot"></span>SD-WAN Multicast Overlay (IGMPv3 / PIM-SM) &amp; Custom TCP</span>
+          <span class="hero__fact"><span class="hero__fact-dot"></span>Live Web Wireshark Capture &amp; Stateful L7 PCAP Replay</span>
+          <span class="hero__fact"><span class="hero__fact-dot"></span>Zero-Touch Magic Join Mesh &amp; 1-Click Fleet Upgrades</span>
         </div>
       </div>
 
-      <div class="hero__screen" role="img" aria-label="Stigix dashboard screenshot">
+      <div class="hero__screen" role="img" aria-label="Stigix Command Center screenshot">
         <div class="hero__screen-bar">
           <span class="hero__screen-dot"></span>
           <span class="hero__screen-dot"></span>
           <span class="hero__screen-dot"></span>
-          <span class="hero__screen-url">localhost:8080 — Stigix Dashboard</span>
+          <span class="hero__screen-url">localhost:8080/#/home — Stigix Command Center</span>
         </div>
-        <img src="assets/screenshots/dashboard.png" alt="Stigix real-time dashboard" loading="eager">
+        <img src="assets/screenshots/home-command-center.png" alt="Stigix V3 Home Command Center" loading="eager">
       </div>
     </div><!-- /.hero__body -->
 
@@ -179,7 +179,7 @@
     <div class="arch__header">
       <span class="label">How It Works</span>
       <h2 class="arch__title">Distributed Multi-Node Architecture</h2>
-      <p class="arch__sub">Stigix deploys seamlessly across Datacenters, Branch sites, and Cloud instances. A Leader node orchestrates Central Global Provisioning, while every peer acts concurrently as a traffic sender, custom TCP host listener, and SLA responder.</p>
+      <p class="arch__sub">Stigix deploys seamlessly across Datacenters, Branch sites, and Cloud instances. A Leader node orchestrates Central Global Provisioning, while every peer acts concurrently as a traffic sender, custom TCP/Multicast listener, and SLA responder.</p>
     </div>
     <div class="arch__frame">
       <img src="assets/hero-banner.png" alt="Stigix SD-WAN / SASE Validation Platform Architecture — Branch Site, SD-WAN & SASE Fabric, Datacenter & Cloud Target" loading="lazy" />
@@ -200,23 +200,22 @@
           "I built this after years of writing <strong>one-off scripts</strong> for SD-WAN POCs and never finding a single lab platform that matched what I see in the field."
         </blockquote>
         <p class="why__body">
-          The pattern was always the same: a new POC, a new set of one-off scripts to simulate SaaS traffic, test URL filtering, or measure failover convergence. Nothing reusable. Nothing that handled both the traffic side and the security validation side in the same tool.
+          Every new POC used to mean another set of throwaway scripts to generate SaaS traffic, validate URL/DNS security, or time tunnel convergence. Nothing reusable, and nothing that correlated underlay router impairments with overlay application telemetry.
         </p>
         <p class="why__body">
-          Stigix was built to change that — a single platform for generating realistic application traffic, running security policy tests, simulating voice and IoT devices, measuring SD-WAN convergence time, and giving you a real-time view of what's happening across the network.
+          Stigix brings everything into one container: realistic North-South and East-West traffic generation, multicast overlay validation, live packet inspection, security policy testing, and sub-second failover measurement.
         </p>
       </div>
 
       <div class="why__problems">
         <p class="why__problems-title">Problems it solves</p>
         <ul class="why__list">
-          <li>No realistic SaaS & custom line-of-business TCP traffic for SD-WAN path steering</li>
-          <li>No single tool combining URL filtering, DNS security, and threat prevention validation</li>
-          <li>No zero-touch multi-branch lab orchestration with centralized configuration push</li>
-          <li>No precise failover convergence measurement with microsecond timing in a lab</li>
-          <li>IoT and voice simulation requiring custom scripting every time</li>
-          <li>No link between physical router impairments, underlay topology, and traffic observation</li>
-          <li>No zero-config multi-node setup for branch/hub lab scenarios</li>
+          <li>No realistic SaaS, Custom TCP, or Multicast traffic for SD-WAN path steering</li>
+          <li>No single tool combining URL filtering, DNS security, C2, and PCAP replay</li>
+          <li>No zero-touch multi-branch orchestration with centralized configuration sync</li>
+          <li>No sub-second failover convergence curves with automated PoC report cards</li>
+          <li>No native browser packet capture or correlation between VyOS underlay and SD-WAN overlay</li>
+          <li>Voice RTP and Layer-2/3 IoT device simulation requiring custom scripts every time</li>
         </ul>
       </div>
 
@@ -228,7 +227,7 @@
 
 
 <!-- ══════════════════════════════════════════════════════════
-     CAPABILITIES — datasheet / spec table
+     CAPABILITIES — concise 10-row datasheet
 ══════════════════════════════════════════════════════════ -->
 <section class="caps" id="capabilities">
   <div class="wrap">
@@ -238,7 +237,7 @@
         <h2 class="caps__title">Core capabilities</h2>
       </div>
       <div class="caps__header-note">
-        Each capability is independently usable and seamlessly integrated into the unified dashboard, CLI, and central provisioning engine.
+        10 integrated validation engines controlled from a unified UI, interactive CLI, and central mesh controller.
       </div>
     </div>
   </div>
@@ -251,316 +250,193 @@
       <div class="caps__col" role="columnheader">Key specs</div>
     </div>
 
-    <!-- 0. Command Center & SCM Navigation -->
+    <!-- 1. Command Center & SCM Navigation -->
     <div class="caps__row" role="row">
       <div class="caps__col" role="cell">
         <div class="caps__col-name">Command Center &amp; SCM Rail</div>
         <div class="caps__col-category">user experience</div>
       </div>
       <div class="caps__col" role="cell">
-        <div class="caps__col-desc">Palo Alto Strata Cloud Manager (SCM)-inspired vertical rail shell with 384px flyout menus, URL hash deep linking, and real-time engine activity indicators. Executive Command Center home overview tracking all 5 simulation engines, cluster health, public IP geolocation, and 1-click diagnostics.</div>
+        <div class="caps__col-desc">Strata Cloud Manager (SCM)-inspired vertical navigation across 6 operational domains with hash deep-linking and Light/Dark themes. The 3-column Home Command Center displays real-time health, active simulation engines, and cluster connectivity at a glance.</div>
       </div>
       <div class="caps__col" role="cell">
         <div class="caps__col-tags">
+          <span class="tag">3-Col Cockpit</span>
           <span class="tag">SCM Rail</span>
-          <span class="tag">Command Center</span>
           <span class="tag">Deep-Linking</span>
           <span class="tag">Dark/Light</span>
         </div>
       </div>
     </div>
 
-    <!-- 1. SaaS Traffic Generation -->
+    <!-- 2. SaaS Traffic & Digital Experience (DEM) -->
     <div class="caps__row" role="row">
       <div class="caps__col" role="cell">
-        <div class="caps__col-name">SaaS Traffic Generation</div>
-        <div class="caps__col-category">traffic control</div>
+        <div class="caps__col-name">SaaS Traffic &amp; Digital Experience</div>
+        <div class="caps__col-category">traffic · dem monitoring</div>
       </div>
       <div class="caps__col" role="cell">
-        <div class="caps__col-desc">67 pre-configured SaaS applications including Google Workspace, Microsoft 365, Salesforce, and Zoom. Authentic HTTP/S requests with proper User-Agent headers and Referers. Weighted distribution per application group with live rate control from the dashboard.</div>
+        <div class="caps__col-desc">Generates weighted HTTP/S traffic across 68 enterprise SaaS apps (M365, Salesforce, Google, Zoom) alongside continuous HTTP, ICMP, DNS, and TCP synthetic probes. Tracks DNS/TCP/TLS/TTFB latency breakdowns with a sub-200ms in-memory ring buffer and 7-day JSONL history.</div>
       </div>
       <div class="caps__col" role="cell">
         <div class="caps__col-tags">
-          <span class="tag">67 apps</span>
-          <span class="tag">HTTP/S</span>
-          <span class="tag">Weighted</span>
-          <span class="tag">Rate slider</span>
-        </div>
-      </div>
-    </div>
-
-    <!-- 2. Digital Experience / Performance -->
-    <div class="caps__row" role="row">
-      <div class="caps__col" role="cell">
-        <div class="caps__col-name">Digital Experience</div>
-        <div class="caps__col-category">performance monitoring</div>
-      </div>
-      <div class="caps__col" role="cell">
-        <div class="caps__col-desc">Synthetic connectivity probes (HTTP, ICMP, TCP) with per-site latency tracking and endpoint health monitoring. Real-time log streaming via WebSocket. Live statistics dashboard with success/failure rates, latency metrics, and bandwidth tracking. Export results in JSON, CSV, or JSONL. 7-day persistent JSONL storage with auto-rotation.</div>
-      </div>
-      <div class="caps__col" role="cell">
-        <div class="caps__col-tags">
+          <span class="tag">68 SaaS Apps</span>
           <span class="tag">HTTP/ICMP/TCP</span>
-          <span class="tag">WebSocket</span>
-          <span class="tag">JSON/CSV</span>
-          <span class="tag">7-day log</span>
+          <span class="tag">TTFB Breakdown</span>
+          <span class="tag">Standby Mode</span>
         </div>
       </div>
     </div>
 
-    <!-- 3. Security Validation -->
+    <!-- 3. Custom TCP Inter-Site Applications -->
     <div class="caps__row" role="row">
       <div class="caps__col" role="cell">
-        <div class="caps__col-name">Security Validation</div>
-        <div class="caps__col-category">security</div>
+        <div class="caps__col-name">Custom TCP Applications</div>
+        <div class="caps__col-category">east-west · application chaos</div>
       </div>
       <div class="caps__col" role="cell">
-        <div class="caps__col-desc">URL filtering validation across 66 categories (malware, phishing, gambling, adult content). DNS security tests against 24 domains including DGA and C2 patterns. EICAR-based IPS/threat prevention validation. <strong style="color:var(--white)">7 real-traffic C2 attack simulations</strong> (SQL Injection, DNS C2, Greyware DNS, Sliver C2 Emulation, EICAR over HTTPS, DNS Tunneling) with enforced/bypass/inconclusive verdicts. EDL lists with sequential or random execution. Scheduled testing with persistent result history and export.</div>
+        <div class="caps__col-desc">Dual-role East-West TCP listeners and client workload generators with 8 server chaos modes (echo, fixed/jittered delay, looping degradation, drops, TCP RST, app errors). Isolates Network RTT vs Server Response Time ($p50/p95$) and syncs custom AppDefs to Prisma SD-WAN in 1 click.</div>
       </div>
       <div class="caps__col" role="cell">
         <div class="caps__col-tags">
-          <span class="tag">66 URL cats</span>
-          <span class="tag">DNS security</span>
-          <span class="tag">EICAR/IPS</span>
-          <span class="tag">7 C2 attacks</span>
-          <span class="tag">EDL support</span>
+          <span class="tag">East-West TCP</span>
+          <span class="tag">8 Chaos Modes</span>
+          <span class="tag">RTT vs SRT</span>
+          <span class="tag">Prisma AppDef Sync</span>
         </div>
       </div>
     </div>
 
-    <!-- 4. AI Security (AISA) -->
+    <!-- 4. SD-WAN Multicast Overlay -->
     <div class="caps__row" role="row">
       <div class="caps__col" role="cell">
-        <div class="caps__col-name">AI Security <span class="tag" style="margin-left:6px;background:rgba(251,191,36,0.12);border-color:rgba(251,191,36,0.35);color:#fbbf24;font-size:0.58rem;vertical-align:middle;">BETA</span></div>
-        <div class="caps__col-category">security · AI</div>
+        <div class="caps__col-name">SD-WAN Multicast Overlay <span class="tag" style="margin-left:6px;background:rgba(24,201,174,0.1);border-color:rgba(24,201,174,0.3);color:var(--teal);font-size:0.56rem;vertical-align:middle;">NEW</span></div>
+        <div class="caps__col-category">multicast · igmpv3 / pim-sm</div>
       </div>
       <div class="caps__col" role="cell">
-        <div class="caps__col-desc">5 Palo Alto AI Security simulation scenarios targeting live AI applications (ChatGPT, Grok, Gemini, Perplexity): DLP data exfiltration, Prompt Injection, CVE-2014-9222 exploit simulation, EICAR upload, and AI volume traffic across 24 AI apps. Dedicated AISA scheduler.</div>
+        <div class="caps__col-desc">Validates end-to-end multicast replication across SD-WAN overlays with real IGMPv3/v2 Membership Reports, configurable TTL and DSCP marking (EF/AF41/CS4), and multi-group RTP/UDP streams. Correlates sender emission rates with receiver sequence gap detection, RFC 3550 jitter, and blackhole diagnostics.</div>
       </div>
       <div class="caps__col" role="cell">
         <div class="caps__col-tags">
-          <span class="tag">5 scenarios</span>
-          <span class="tag">ChatGPT / Grok</span>
-          <span class="tag">Gemini / Perplexity</span>
-          <span class="tag">DLP · Prompt Inj.</span>
+          <span class="tag">IGMPv3 / PIM-SM</span>
+          <span class="tag">Multi-Group</span>
+          <span class="tag">DSCP / TTL</span>
+          <span class="tag">Gap &amp; Jitter Audit</span>
         </div>
       </div>
     </div>
 
-    <!-- 5. IoT Simulation -->
+    <!-- 5. Live Packet Capture & Stateful PCAP Replay -->
     <div class="caps__row" role="row">
       <div class="caps__col" role="cell">
-        <div class="caps__col-name">IoT Simulation</div>
-        <div class="caps__col-category">protocol simulation</div>
+        <div class="caps__col-name">Live Capture &amp; PCAP Replay <span class="tag" style="margin-left:6px;background:rgba(24,201,174,0.1);border-color:rgba(24,201,174,0.3);color:var(--teal);font-size:0.56rem;vertical-align:middle;">NEW</span></div>
+        <div class="caps__col-category">web wireshark · sase l7 replay</div>
       </div>
       <div class="caps__col" role="cell">
-        <div class="caps__col-desc">Layer-2/3 device simulation with Scapy-based DHCP and ARP, placing virtual devices directly on the wire. Simulates cameras, sensors, industrial controllers, and Raspberry Pi profiles. Attack mode: DNS flood, C2 beacon, port scan, data exfiltration. Import directly from <strong style="color:var(--white)">Palo Alto IoT Security CSV</strong> or <strong style="color:var(--white)">Vulnerability Report CSV</strong> (CVE-based Danger Score, APT attribution, ICS-CERT detection). FIFO concurrency scheduler supports 100+ simultaneous devices.</div>
+        <div class="caps__col-desc">Built-in 3-pane Web Wireshark inspector (Packet List, L2–L7 Protocol Tree, synchronized Hex/ASCII dump) with 1-click BPF filter chips and <code style="font-family:var(--mono);font-size:0.8em;color:var(--teal)">.pcap</code> export. Pair with the Stateful PCAP Replay engine to replay <code style="font-family:var(--mono);font-size:0.8em;color:var(--teal)">.pcap/.zip</code> captures across SASE and audit enforcement verdicts (Bypass, TCP RST, Block Page).</div>
       </div>
       <div class="caps__col" role="cell">
         <div class="caps__col-tags">
-          <span class="tag">DHCP/ARP</span>
-          <span class="tag">Layer-2/3</span>
-          <span class="tag">Attack mode</span>
-          <span class="tag">100+ devices</span>
-          <span class="tag">CSV import</span>
-        </div>
-      </div>
-    </div>
-
-    <!-- 6. Voice Simulation -->
-    <div class="caps__row" role="row">
-      <div class="caps__col" role="cell">
-        <div class="caps__col-name">Voice Simulation</div>
-        <div class="caps__col-category">protocol simulation</div>
-      </div>
-      <div class="caps__col" role="cell">
-        <div class="caps__col-desc">Scapy-based RTP packet forging to simulate real-time voice calls using G.711 and G.729 codecs. QoS analytics and MOS score estimation. Tests QoS policy prioritization and jitter behavior across SD-WAN paths. Built-in voice echo target active on all instances.</div>
-      </div>
-      <div class="caps__col" role="cell">
-        <div class="caps__col-tags">
-          <span class="tag">RTP</span>
-          <span class="tag">G.711/G.729</span>
-          <span class="tag">MOS score</span>
-          <span class="tag">Scapy</span>
-        </div>
-      </div>
-    </div>
-
-    <!-- 7. Failover Monitoring -->
-    <div class="caps__row" role="row">
-      <div class="caps__col" role="cell">
-        <div class="caps__col-name">Failover Monitoring <span class="tag" style="margin-left:6px;background:rgba(24,201,174,0.1);border-color:rgba(24,201,174,0.3);color:var(--teal);font-size:0.56rem;vertical-align:middle;">Oct 2026</span></div>
-        <div class="caps__col-category">network testing · convergence</div>
-      </div>
-      <div class="caps__col" role="cell">
-        <div class="caps__col-desc">High-precision UDP probing (up to 1000 PPS) to measure SD-WAN &amp; SASE failover convergence with sub-second accuracy. Features real-time 500ms reactive telemetry, historical RTT, Jitter, and Loss spike curves with adaptive Y-scaling, interactive timeline scrubbing, SCM multi-path sequence tracking, and 1-click HD PoC card export.</div>
-      </div>
-      <div class="caps__col" role="cell">
-        <div class="caps__col-tags">
-          <span class="tag">500ms Real-Time</span>
-          <span class="tag">UDP Probes</span>
-          <span class="tag">Historical Curves</span>
-          <span class="tag">PoC Card Export</span>
-          <span class="tag">Multi-Path Tracking</span>
-        </div>
-      </div>
-    </div>
-
-    <!-- 8. Multi-Mode Topology & VyOS Control -->
-    <div class="caps__row" role="row">
-      <div class="caps__col" role="cell">
-        <div class="caps__col-name">Multi-Mode Topology &amp; VyOS Control <span class="tag" style="margin-left:6px;background:rgba(24,201,174,0.1);border-color:rgba(24,201,174,0.3);color:var(--teal);font-size:0.56rem;vertical-align:middle;">Oct 2026</span></div>
-        <div class="caps__col-category">orchestration · chaos · topology</div>
-      </div>
-      <div class="caps__col" role="cell">
-        <div class="caps__col-desc">Interactive topology canvas with 4 dedicated view modes: <strong>WAN Transport</strong> (physical links), <strong>SD-WAN Mesh</strong> (overlay tunnels), <strong>SASE Fabric</strong> (Prisma Access &amp; Zscaler ServiceLinks), and <strong>VyOS Underlay</strong> (router chassis with 1:1 port cabling). Features instant transport filtering, carrier telemetry drawers, responsive viewport auto-fit, and direct VyOS API port toggling and Netem impairment injection.</div>
-      </div>
-      <div class="caps__col" role="cell">
-        <div class="caps__col-tags">
-          <span class="tag">4 View Modes</span>
-          <span class="tag">Carrier Telemetry</span>
-          <span class="tag">SASE Fabric</span>
-          <span class="tag">Physical Underlay</span>
-          <span class="tag">VyOS API</span>
-        </div>
-      </div>
-    </div>
-
-    <!-- 9. Custom TCP Inter-Site Applications -->
-    <div class="caps__row" role="row">
-      <div class="caps__col" role="cell">
-        <div class="caps__col-name">Custom TCP Applications <span class="tag" style="margin-left:6px;background:rgba(24,201,174,0.1);border-color:rgba(24,201,174,0.3);color:var(--teal);font-size:0.56rem;vertical-align:middle;">Sep 2026</span></div>
-        <div class="caps__col-category">traffic simulation · East-West</div>
-      </div>
-      <div class="caps__col" role="cell">
-        <div class="caps__col-desc">Multi-application East-West workload simulation with dual host TCP listeners and outbound client workload generators. Includes <strong style="color:var(--white)">8 server response simulation modes</strong> (Echo, ACK, fixed delay, jittered delay, looping degradation, drop response, connection resets, application error codes), 5 client workload modes, rolling RTT percentiles ($p50/p95/\text{avg}$), state persistence across reboots, and an interactive 4-step wizard with port availability check.</div>
-      </div>
-      <div class="caps__col" role="cell">
-        <div class="caps__col-tags">
-          <span class="tag">East-West</span>
-          <span class="tag">Dual-Role</span>
-          <span class="tag">8 Chaos modes</span>
-          <span class="tag">p50/p95 RTT</span>
-          <span class="tag">State persistence</span>
-        </div>
-      </div>
-    </div>
-
-    <!-- 10. Stateful PCAP Replay Engine -->
-    <div class="caps__row" role="row">
-      <div class="caps__col" role="cell">
-        <div class="caps__col-name">Stateful PCAP Replay <span class="tag" style="margin-left:6px;background:rgba(24,201,174,0.1);border-color:rgba(24,201,174,0.3);color:var(--teal);font-size:0.56rem;vertical-align:middle;">Oct 2026</span></div>
-        <div class="caps__col-category">security · sase validation · l7 replay</div>
-      </div>
-      <div class="caps__col" role="cell">
-        <div class="caps__col-desc">Ingests standard <code style="font-family:var(--mono);font-size:0.8em;color:var(--teal)">.pcap</code>, <code style="font-family:var(--mono);font-size:0.8em;color:var(--teal)">.pcapng</code>, and encrypted <code style="font-family:var(--mono);font-size:0.8em;color:var(--teal)">.zip</code> archives with automatic malware password recovery. Replays stateful bidirectional TCP and UDP application steps across SD-WAN overlays and Prisma SASE with automated credential scrubbing, fleet-wide mesh auto-sync, Wireshark-style Hex Dump inspection, and real-time security enforcement verdicts (Bypass, TCP RST, Silent Drop, Block Page).</div>
-      </div>
-      <div class="caps__col" role="cell">
-        <div class="caps__col-tags">
-          <span class="tag">Stateful L7</span>
+          <span class="tag">3-Pane Wireshark</span>
+          <span class="tag">BPF Filters</span>
+          <span class="tag">Stateful L7 Replay</span>
           <span class="tag">SASE Verdicts</span>
-          <span class="tag">ZIP Ingestion</span>
-          <span class="tag">Hex Dump</span>
-          <span class="tag">Mesh Auto-Sync</span>
         </div>
       </div>
     </div>
 
-    <!-- 11. Central Global Provisioning -->
+    <!-- 6. Security, C2 & AI Threat Validation -->
     <div class="caps__row" role="row">
       <div class="caps__col" role="cell">
-        <div class="caps__col-name">Central Global Provisioning <span class="tag" style="margin-left:6px;background:rgba(24,201,174,0.1);border-color:rgba(24,201,174,0.3);color:var(--teal);font-size:0.56rem;vertical-align:middle;">Sep 2026</span></div>
-        <div class="caps__col-category">orchestration · multi-node</div>
+        <div class="caps__col-name">Security, C2 &amp; AI Validation</div>
+        <div class="caps__col-category">url · dns · ips · aisa beta</div>
       </div>
       <div class="caps__col" role="cell">
-        <div class="caps__col-desc">Centralized pull-mode distribution (<code style="font-family:var(--mono);font-size:0.8em;color:var(--teal)">30s</code> cycle) of 8 configuration bundles (Applications, Synthetic Probes, SLA, Security Policies, Voice, IoT, Prisma SD-WAN, and Custom TCP Apps) from the Leader to all registered branch peers. Zero-downtime hot reloading, revision tracking, local site overrides, and one-click rollbacks.</div>
+        <div class="caps__col-desc">Audits 70 URL categories, 24 malicious DNS patterns (DGA/tunneling), EICAR threat prevention, EDL feeds, and 7 real-traffic C2 attack scenarios (SQLi, Sliver C2, DNS C2). Includes AI Security (<span style="font-family:var(--mono);font-size:0.72rem;color:#fbbf24;">BETA</span>) scenarios testing DLP exfiltration and prompt injection against live AI platforms.</div>
       </div>
       <div class="caps__col" role="cell">
         <div class="caps__col-tags">
-          <span class="tag">8 Bundles</span>
-          <span class="tag">30s Pull Sync</span>
-          <span class="tag">Hot-Reload</span>
-          <span class="tag">Rollback</span>
-          <span class="tag">Leader-Branch</span>
+          <span class="tag">70 URL Cats</span>
+          <span class="tag">DNS &amp; EICAR</span>
+          <span class="tag">7 C2 Attacks</span>
+          <span class="tag">AI DLP (Beta)</span>
         </div>
       </div>
     </div>
 
-    <!-- 12. Zero-Touch Peer Onboarding & Direct Controller -->
+    <!-- 7. Voice (VoIP) & IoT Simulation -->
     <div class="caps__row" role="row">
       <div class="caps__col" role="cell">
-        <div class="caps__col-name">Zero-Touch Peer Onboarding <span class="tag" style="margin-left:6px;background:rgba(24,201,174,0.1);border-color:rgba(24,201,174,0.3);color:var(--teal);font-size:0.56rem;vertical-align:middle;">Sep 2026</span></div>
-        <div class="caps__col-category">operations · mesh</div>
+        <div class="caps__col-name">Voice (VoIP) &amp; IoT Simulation</div>
+        <div class="caps__col-category">rtp mos · layer-2/3 scapy</div>
       </div>
       <div class="caps__col" role="cell">
-        <div class="caps__col-desc">Single-command onboarding (<code style="font-family:var(--mono);font-size:0.8em;color:var(--teal)">curl ... | sudo bash -s -- --controller &lt;URL&gt;</code>) to instantly join remote Linux nodes, branch servers, and Raspberry Pis to a central Stigix Leader. Dynamic target synthesis automatically exposes learned peers across the mesh with self-filtering and heartbeat monitoring — zero external dependencies.</div>
+        <div class="caps__col-desc">Forges real-time G.711/G.729 RTP voice streams across WAN peers with live MOS scoring, jitter, and DSCP verification. Simulates 100+ Layer-2/3 IoT devices on the wire via Scapy DHCP/ARP with Palo Alto IoT CSV import and active threat modes (port scan, DNS flood, C2 beacon).</div>
       </div>
       <div class="caps__col" role="cell">
         <div class="caps__col-tags">
-          <span class="tag">1-Line Onboard</span>
-          <span class="tag">Direct Controller</span>
-          <span class="tag">Target Synthesis</span>
-          <span class="tag">No-Cloudflare</span>
+          <span class="tag">RTP G.711/G.729</span>
+          <span class="tag">MOS Score</span>
+          <span class="tag">L2/L3 DHCP/ARP</span>
+          <span class="tag">100+ IoT Devices</span>
         </div>
       </div>
     </div>
 
-    <!-- 13. Fleet Remote View & Gateway Proxy -->
+    <!-- 8. Failover Convergence & Bandwidth (XFR) -->
     <div class="caps__row" role="row">
       <div class="caps__col" role="cell">
-        <div class="caps__col-name">Fleet Gateway &amp; Remote View <span class="tag" style="margin-left:6px;background:rgba(24,201,174,0.1);border-color:rgba(24,201,174,0.3);color:var(--teal);font-size:0.56rem;vertical-align:middle;">Sep 2026</span></div>
-        <div class="caps__col-category">multi-site · control plane</div>
+        <div class="caps__col-name">Failover Lab &amp; Bandwidth (XFR)</div>
+        <div class="caps__col-category">convergence · throughput</div>
       </div>
       <div class="caps__col" role="cell">
-        <div class="caps__col-desc">Centralized single-pane-of-glass observability and control across all distributed edge nodes directly from the Leader dashboard. Multiplexes API traffic over persistent WebSocket reverse tunnels (traversing NAT/CGNAT/firewalls with zero inbound ports) and Leader outbound dialing for external Cloud VMs (Hetzner, AWS, Home LAN) with instant bidirectional provisioning push/pull.</div>
+        <div class="caps__col-desc">Measures SD-WAN tunnel failover with sub-second UDP probing (up to 1000 PPS), interactive RTT/loss spike curves, SCM path sequence tracking, and 1-click HD PoC card export. Built-in XFR multi-stream TCP/UDP speedtest engine with historical throughput, RTT, and retransmit time-series charts.</div>
       </div>
       <div class="caps__col" role="cell">
         <div class="caps__col-tags">
-          <span class="tag">Single Pane of Glass</span>
-          <span class="tag">WebSocket Reverse Tunnel</span>
-          <span class="tag">Context Switcher</span>
-          <span class="tag">Zero-Inbound Multi-Cloud</span>
-          <span class="tag">Global Provisioning</span>
+          <span class="tag">1000 PPS UDP</span>
+          <span class="tag">PoC Card Export</span>
+          <span class="tag">Multi-Stream XFR</span>
+          <span class="tag">Throughput Charts</span>
         </div>
       </div>
     </div>
 
-    <!-- 14. Stigix CLI -->
+    <!-- 9. Multi-Mode Topology & VyOS Control -->
     <div class="caps__row" role="row">
       <div class="caps__col" role="cell">
-        <div class="caps__col-name">Stigix CLI</div>
-        <div class="caps__col-category">operations</div>
+        <div class="caps__col-name">Topology &amp; VyOS Chaos Control</div>
+        <div class="caps__col-category">underlay · overlay · netem</div>
       </div>
       <div class="caps__col" role="cell">
-        <div class="caps__col-desc">Interactive terminal console built into the container. Supports <code style="font-family:var(--mono);font-size:0.8em;color:var(--teal)">auth login</code>, <code style="font-family:var(--mono);font-size:0.8em;color:var(--teal)">status</code>, <code style="font-family:var(--mono);font-size:0.8em;color:var(--teal)">tcp-app</code>, <code style="font-family:var(--mono);font-size:0.8em;color:var(--teal)">provision</code>, and <code style="font-family:var(--mono);font-size:0.8em;color:var(--teal)">controller</code>. Persistent command history file for scripting and audit. Tab-completion for all parameters.</div>
+        <div class="caps__col-desc">Interactive topology canvas with 4 synchronized views: WAN Transport, SD-WAN Mesh, SASE Fabric, and VyOS Physical Underlay with 1:1 port cabling. Trigger 1-click router port Shut/No-Shut, QoS policies, and automated multi-step Netem latency/jitter/loss sequences via the VyOS API.</div>
       </div>
       <div class="caps__col" role="cell">
         <div class="caps__col-tags">
-          <span class="tag">Interactive</span>
-          <span class="tag">tcp-app</span>
-          <span class="tag">provision</span>
-          <span class="tag">controller</span>
-          <span class="tag">Tab-complete</span>
+          <span class="tag">4 Topology Views</span>
+          <span class="tag">VyOS Chassis</span>
+          <span class="tag">Netem Sequences</span>
+          <span class="tag">1-Click Port Shut</span>
         </div>
       </div>
     </div>
 
-    <!-- 15. MCP Server & Executive Reporting -->
+    <!-- 10. Zero-Touch Fleet Mesh, CLI & FastMCP -->
     <div class="caps__row" role="row">
       <div class="caps__col" role="cell">
-        <div class="caps__col-name">MCP Server &amp; Reports</div>
-        <div class="caps__col-category">operations · AI · reporting</div>
+        <div class="caps__col-name">Fleet Mesh, CLI &amp; FastMCP AI</div>
+        <div class="caps__col-category">provisioning · cli · 89 mcp tools</div>
       </div>
       <div class="caps__col" role="cell">
-        <div class="caps__col-desc">Model Context Protocol (FastMCP) server exposing 79 automated network and security diagnostic tools to AI engines (Claude Desktop). Enables autonomous end-to-end SD-WAN failover analysis, DEM latency investigations, security posture diffs, and the <strong style="color:var(--white)">automated generation of executive whitepapers and technical audit reports</strong> (PDF / DOCX / Markdown) &mdash; <a href="reports.html" style="color:var(--teal);text-decoration:underline;font-weight:600;">Browse Sample Reports &rarr;</a></div>
+        <div class="caps__col-desc">Onboard remote branch nodes in seconds via Magic Join tokens (<code style="font-family:var(--mono);font-size:0.8em;color:var(--teal)">STX-...</code>), sync 8 config bundles from the Leader, proxy any branch UI via Remote View, and trigger 1-click Fleet Remote Upgrades. Includes an interactive CLI and a FastMCP server exposing <strong style="color:var(--white)">89 tools</strong> to Claude Desktop for autonomous testing and <a href="reports.html" style="color:var(--teal);text-decoration:underline;font-weight:600;">executive report generation &rarr;</a></div>
       </div>
       <div class="caps__col" role="cell">
         <div class="caps__col-tags">
-          <span class="tag">FastMCP (79 tools)</span>
+          <span class="tag">Magic Join Token</span>
+          <span class="tag">8 Config Bundles</span>
+          <span class="tag">Remote View</span>
+          <span class="tag">FastMCP (89 tools)</span>
           <a href="reports.html" class="tag" style="background:rgba(20,184,166,0.15);border-color:rgba(20,184,166,0.4);color:var(--teal);text-decoration:none;font-weight:700;">Sample Reports &rarr;</a>
-          <span class="tag">Whitepapers</span>
-          <span class="tag">Claude Desktop</span>
-          <span class="tag">SSE (3100)</span>
         </div>
       </div>
     </div>
@@ -572,7 +448,7 @@
 
 
 <!-- ══════════════════════════════════════════════════════════
-     USE CASES
+     USE CASES — 6 high-impact cards
 ══════════════════════════════════════════════════════════ -->
 <section class="usecases" id="use-cases">
   <div class="wrap">
@@ -585,62 +461,38 @@
 
       <article class="usecase" role="listitem">
         <div class="usecase__num">01</div>
-        <h3 class="usecase__title">SD-WAN Policy &amp; SLA Steering Validation</h3>
-        <p class="usecase__desc">Generate weighted SaaS and line-of-business traffic across specific interfaces and verify that application steering rules behave as intended. Confirm that video, voice, and critical SaaS flows follow the expected path based on policy — before and after configuration changes.</p>
+        <h3 class="usecase__title">SD-WAN Policy &amp; Sub-Second Failover</h3>
+        <p class="usecase__desc">Generate weighted SaaS traffic across WAN circuits, inject deterministic VyOS underlay latency or link failures, and measure exact tunnel switchover times with 1000 PPS UDP probes and exportable PoC report cards.</p>
       </article>
 
       <article class="usecase" role="listitem">
         <div class="usecase__num">02</div>
-        <h3 class="usecase__title">East-West Custom Application Emulation</h3>
-        <p class="usecase__desc">Replicate line-of-business ERP (SAP/Oracle), POS checkout systems, database replication, and industrial SCADA protocols across SD-WAN overlays. Inject realistic server processing latencies, socket resets, and application-level errors to observe and validate dynamic path selection under real application stress.</p>
+        <h3 class="usecase__title">East-West Custom TCP &amp; Multicast Overlay</h3>
+        <p class="usecase__desc">Emulate ERP/POS/SCADA TCP workloads with 8 server degradation modes to prove Network RTT vs Server Response Time isolation, or validate IGMPv3 &amp; PIM-SM multicast replication and DSCP preservation across SD-WAN branches.</p>
       </article>
 
       <article class="usecase" role="listitem">
         <div class="usecase__num">03</div>
-        <h3 class="usecase__title">Zero-Touch Multi-Branch Lab Automation</h3>
-        <p class="usecase__desc">Deploy and centrally orchestrate a multi-site SD-WAN testbed across 10+ branch locations from a single Leader node. Onboard remote Linux boxes in 30 seconds with 1-line curl commands, and distribute standardized test suites, custom applications, and security policies across the entire mesh with Global Provisioning.</p>
+        <h3 class="usecase__title">Underlay vs. Overlay Root-Cause Correlation</h3>
+        <p class="usecase__desc">Compare logical SD-WAN overlay tunnels and SASE ServiceLinks against physical VyOS router ports on a single canvas. Inspect live wire packets in the browser with Web Wireshark to isolate transport vs policy issues.</p>
       </article>
 
       <article class="usecase" role="listitem">
         <div class="usecase__num">04</div>
-        <h3 class="usecase__title">Chaos Engineering &amp; Dynamic SLA Failover</h3>
-        <p class="usecase__desc">Inject deterministic or looping application degradations (e.g. alternating 60s normal phase with 60s slow 1500ms latency or packet drops) to force SD-WAN controllers to trigger application-aware SLA failovers. Measure failover times with microsecond-accurate UDP probes without physical cable pulling.</p>
+        <h3 class="usecase__title">SASE Security, PCAP Replay &amp; Threat Testing</h3>
+        <p class="usecase__desc">Validate URL filtering, DNS sinkholing, EICAR, C2 beacons, and AI DLP policies, or replay real-world <code style="font-family:var(--mono);font-size:0.82em;color:var(--teal)">.pcap/.zip</code> attack captures across SASE to verify firewall enforcement verdicts in real time.</p>
       </article>
 
       <article class="usecase" role="listitem">
         <div class="usecase__num">05</div>
-        <h3 class="usecase__title">Underlay vs. Overlay Root-Cause Correlation</h3>
-        <p class="usecase__desc">Visually compare logical SD-WAN overlay tunnels (Active/Backup/Down) with physical VyOS router chassis ports. Trace packet paths, compare transit subnets and circuit IDs with one click, and pinpoint whether an application outage originates from an underlay link impairment or an overlay policy misconfiguration.</p>
+        <h3 class="usecase__title">Voice QoS &amp; Layer-2/3 IoT Segmentation</h3>
+        <p class="usecase__desc">Stream G.711/G.729 RTP calls between branches to benchmark MOS scores under congestion, while placing 100+ virtual IoT devices on the LAN via Scapy DHCP/ARP to validate device profiling and micro-segmentation.</p>
       </article>
 
       <article class="usecase" role="listitem">
         <div class="usecase__num">06</div>
-        <h3 class="usecase__title">Security Policy &amp; Threat Testing</h3>
-        <p class="usecase__desc">Validate URL filtering categories, DNS security, and IPS policies against real test destinations. Run scheduled security test cycles and capture results persistently. Confirm that blocking and alerting rules fire correctly before go-live or after a policy change.</p>
-      </article>
-
-      <article class="usecase" role="listitem">
-        <div class="usecase__num">07</div>
-        <h3 class="usecase__title">IoT Micro-Segmentation &amp; Attack Simulation</h3>
-        <p class="usecase__desc">Simulate realistic IoT device presence at Layer 2/3 and validate that DHCP profiling, micro-segmentation, and traffic classification work correctly. Test threat prevention detection against active IoT attack vectors (DNS Flood, C2 Beacon, Port Scan, Data Exfiltration).</p>
-      </article>
-
-      <article class="usecase" role="listitem">
-        <div class="usecase__num">08</div>
-        <h3 class="usecase__title">Voice QoS &amp; Sub-Second Failover Timing</h3>
-        <p class="usecase__desc">Measure exact tunnel transition times during link failure or SD-WAN path change events. Use VyOS network impairment orchestration to induce failures on demand and capture convergence timing with high-precision UDP probes at up to 1000 PPS alongside RTP voice simulation and MOS scoring.</p>
-      </article>
-
-      <article class="usecase" role="listitem">
-        <div class="usecase__num">09</div>
-        <h3 class="usecase__title">AI Security Validation <span style="font-family:var(--mono);font-size:0.6rem;font-weight:600;color:#fbbf24;background:rgba(251,191,36,0.1);border:1px solid rgba(251,191,36,0.3);padding:2px 6px;border-radius:3px;vertical-align:middle;letter-spacing:0.08em;">BETA</span></h3>
-        <p class="usecase__desc">Simulate DLP exfiltration, Prompt Injection, exploit attempts, and EICAR uploads against live AI platforms (ChatGPT, Grok, Gemini, Perplexity). Validate that AI Security policies detect and block sensitive data leaving through AI chat interfaces — a rapidly growing attack vector in enterprise environments.</p>
-      </article>
-
-      <article class="usecase" role="listitem">
-        <div class="usecase__num">10</div>
-        <h3 class="usecase__title">Demo &amp; Presales POC Enrichment</h3>
-        <p class="usecase__desc">Build repeatable, visually compelling demo environments for customer presentations and partner enablement sessions. Feed SASE and SD-WAN dashboards with realistic multi-application traffic and security event telemetry without requiring access to production environments.</p>
+        <h3 class="usecase__title">Zero-Touch Multi-Branch POC Automation</h3>
+        <p class="usecase__desc">Join 10+ branch nodes to a central Leader with a single token command, distribute standardized test bundles globally, switch UI context to any remote branch over NAT, and generate executive PDF reports via FastMCP.</p>
       </article>
 
     </div>
@@ -660,21 +512,20 @@
     </div>
 
     <div class="gallery__tabs" role="tablist">
-      <button class="gallery__tab active" data-tab="dashboard" role="tab" aria-selected="true" id="tab-btn-dashboard">Dashboard</button>
+      <button class="gallery__tab active" data-tab="dashboard" role="tab" aria-selected="true" id="tab-btn-dashboard">Command Center</button>
+      <button class="gallery__tab" data-tab="multicast" role="tab" aria-selected="false" id="tab-btn-multicast">Multicast</button>
+      <button class="gallery__tab" data-tab="pcap" role="tab" aria-selected="false" id="tab-btn-pcap">PCAP &amp; Capture</button>
       <button class="gallery__tab" data-tab="security" role="tab" aria-selected="false" id="tab-btn-security">Security</button>
       <button class="gallery__tab" data-tab="performance" role="tab" aria-selected="false" id="tab-btn-performance">Performance</button>
-      <button class="gallery__tab" data-tab="iot" role="tab" aria-selected="false" id="tab-btn-iot">IoT</button>
       <button class="gallery__tab" data-tab="voice" role="tab" aria-selected="false" id="tab-btn-voice">Voice</button>
       <button class="gallery__tab" data-tab="failover" role="tab" aria-selected="false" id="tab-btn-failover">Failover</button>
-      <button class="gallery__tab" data-tab="xfr" role="tab" aria-selected="false" id="tab-btn-xfr">Bandwidth (XFR)</button>
+      <button class="gallery__tab" data-tab="xfr" role="tab" aria-selected="false" id="tab-btn-xfr">Bandwidth</button>
       <button class="gallery__tab" data-tab="vyos" role="tab" aria-selected="false" id="tab-btn-vyos">VyOS</button>
       <button class="gallery__tab" data-tab="topology" role="tab" aria-selected="false" id="tab-btn-topology">Topology</button>
       <button class="gallery__tab" data-tab="customapps" role="tab" aria-selected="false" id="tab-btn-customapps">Custom Apps</button>
-      <button class="gallery__tab" data-tab="apistudio" role="tab" aria-selected="false" id="tab-btn-apistudio">API Studio</button>
-      <button class="gallery__tab" data-tab="mcpserver" role="tab" aria-selected="false" id="tab-btn-mcpserver">MCP Server</button>
+      <button class="gallery__tab" data-tab="iot" role="tab" aria-selected="false" id="tab-btn-iot">IoT</button>
       <button class="gallery__tab" data-tab="remoteview" role="tab" aria-selected="false" id="tab-btn-remoteview">Remote View</button>
       <button class="gallery__tab" data-tab="cli" role="tab" aria-selected="false" id="tab-btn-cli">CLI Console</button>
-      <button class="gallery__tab" data-tab="statistics" role="tab" aria-selected="false" id="tab-btn-statistics">Live Events</button>
     </div>
 
     <div class="gallery__panel active" id="tab-dashboard">
@@ -684,7 +535,7 @@
             <span class="gallery__bar-dot"></span>
             <span class="gallery__bar-dot"></span>
             <span class="gallery__bar-dot"></span>
-            <span class="gallery__bar-label">Dashboard — Traffic Volume &amp; Global Configuration</span>
+            <span class="gallery__bar-label">Command Center — 3-Column Executive Cockpit &amp; SCM Rail</span>
           </div>
           <div class="gallery__bar-right">
             <div class="gallery__dots">
@@ -700,9 +551,13 @@
         <div class="gallery__slider">
           <button class="gallery__nav-btn gallery__nav-btn--prev" aria-label="Previous screenshot">&#8249;</button>
           <button class="gallery__nav-btn gallery__nav-btn--next" aria-label="Next screenshot">&#8250;</button>
-          <div class="gallery__slide active" data-label="Dashboard — Traffic Volume &amp; Application Performance">
+          <div class="gallery__slide active" data-label="Command Center — 3-Column Executive Cockpit &amp; SCM Rail">
+            <img src="assets/screenshots/home-command-center.png" alt="Stigix V3 Home Command Center 3-Column Cockpit" loading="lazy">
+            <div class="gallery__caption"><strong>Home Command Center:</strong> 3-column executive cockpit displaying active simulation engines, DEM &amp; Security posture scores, mesh cluster health, and SCM vertical rail navigation.</div>
+          </div>
+          <div class="gallery__slide" data-label="Dashboard — SaaS Traffic Volume &amp; Application Performance">
             <img src="assets/screenshots/dashboard.png" alt="Stigix Real-Time Traffic Volume and Application Performance" loading="lazy">
-            <div class="gallery__caption"><strong>Traffic Volume &amp; Application Performance:</strong> Real-time traffic volume chart, per-application request metrics, average latency, TTFB, and success rates across enterprise SaaS targets.</div>
+            <div class="gallery__caption"><strong>Traffic Volume &amp; Application Performance:</strong> Real-time traffic volume chart, per-application request metrics, average latency, TTFB, and success rates across 68 enterprise SaaS targets.</div>
           </div>
           <div class="gallery__slide" data-label="Dashboard — Traffic Distribution Weights &amp; Application Profiles">
             <img src="assets/screenshots/configuration.png" alt="Configuration Traffic Distribution Weights" loading="lazy">
@@ -714,11 +569,71 @@
           </div>
           <div class="gallery__slide" data-label="Dashboard — Central Global Provisioning (Leader / Peer Mesh)">
             <img src="assets/screenshots/config-leader.png" alt="Central Global Provisioning Leader Peer Mesh" loading="lazy">
-            <div class="gallery__caption"><strong>Central Global Provisioning:</strong> Zero-touch multi-node cluster topology with automatic application catalogue &amp; probe sync across peers.</div>
+            <div class="gallery__caption"><strong>Central Global Provisioning:</strong> Zero-touch multi-node cluster topology with automatic application catalog &amp; probe sync across peers.</div>
           </div>
-          <div class="gallery__slide" data-label="Dashboard — State Persistence Across Reboots">
-            <img src="assets/screenshots/config-persistence.png" alt="State Persistence Across Reboots" loading="lazy">
-            <div class="gallery__caption"><strong>System State Persistence:</strong> Preserves background traffic generators, DEM probes, and custom TCP app sessions across container reboots.</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="gallery__panel" id="tab-multicast">
+      <div class="gallery__frame">
+        <div class="gallery__bar">
+          <div class="gallery__bar-left">
+            <span class="gallery__bar-dot"></span>
+            <span class="gallery__bar-dot"></span>
+            <span class="gallery__bar-dot"></span>
+            <span class="gallery__bar-label">Multicast Studio — End-to-End IGMPv3 &amp; PIM-SM Overlay Validation</span>
+          </div>
+          <div class="gallery__bar-right">
+            <div class="gallery__dots">
+              <button class="gallery__dot active" aria-label="Slide 1"></button>
+              <button class="gallery__dot" aria-label="Slide 2"></button>
+            </div>
+            <span class="gallery__counter">1 / 2</span>
+          </div>
+        </div>
+        <div class="gallery__slider">
+          <button class="gallery__nav-btn gallery__nav-btn--prev" aria-label="Previous screenshot">&#8249;</button>
+          <button class="gallery__nav-btn gallery__nav-btn--next" aria-label="Next screenshot">&#8250;</button>
+          <div class="gallery__slide active" data-label="Multicast Studio — End-to-End IGMPv3 &amp; PIM-SM Overlay Validation">
+            <img src="assets/screenshots/multicast-studio-live.png" alt="SD-WAN Multicast Studio Live Replication Pipeline" loading="lazy">
+            <div class="gallery__caption"><strong>Multicast Studio Replication Pipeline:</strong> Live ASM 239.1.1.100:5004 stream from DC1-Ubuntu to BR5-Ubuntu with IGMPv3 Join Latency (325 ms), 100% packet delivery, RFC 3550 jitter, and DSCP EF verification.</div>
+          </div>
+          <div class="gallery__slide" data-label="Multicast Studio — SLA Thresholds, Jitter Spikes &amp; Gap Detection">
+            <img src="assets/screenshots/multicast-degraded.png" alt="Multicast Degraded Stream Jitter and Sequence Gap Detection" loading="lazy">
+            <div class="gallery__caption"><strong>Degraded SLA &amp; Jitter Spike Detection:</strong> Real-time detection when inter-arrival jitter (97.0 ms &gt; 30 ms SLA) or sequence gaps occur across the SD-WAN overlay tunnel.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="gallery__panel" id="tab-pcap">
+      <div class="gallery__frame">
+        <div class="gallery__bar">
+          <div class="gallery__bar-left">
+            <span class="gallery__bar-dot"></span>
+            <span class="gallery__bar-dot"></span>
+            <span class="gallery__bar-dot"></span>
+            <span class="gallery__bar-label">Live Packet Capture — 3-Pane Web Wireshark Inspector</span>
+          </div>
+          <div class="gallery__bar-right">
+            <div class="gallery__dots">
+              <button class="gallery__dot active" aria-label="Slide 1"></button>
+              <button class="gallery__dot" aria-label="Slide 2"></button>
+            </div>
+            <span class="gallery__counter">1 / 2</span>
+          </div>
+        </div>
+        <div class="gallery__slider">
+          <button class="gallery__nav-btn gallery__nav-btn--prev" aria-label="Previous screenshot">&#8249;</button>
+          <button class="gallery__nav-btn gallery__nav-btn--next" aria-label="Next screenshot">&#8250;</button>
+          <div class="gallery__slide active" data-label="Live Packet Capture — 3-Pane Web Wireshark Inspector">
+            <img src="assets/screenshots/packet-capture.png" alt="Stigix Live Packet Capture Web Wireshark" loading="lazy">
+            <div class="gallery__caption"><strong>Web Wireshark Packet Inspector:</strong> Live 3-pane browser capture (Packet List, expandable L2–L7 Protocol Tree, synchronized Hex/ASCII dump) with 1-click BPF filter chips and .pcap download.</div>
+          </div>
+          <div class="gallery__slide" data-label="Stateful PCAP Replay — L7 Payload Replay &amp; SASE Verdicts">
+            <img src="assets/screenshots/pcap-replay.png" alt="Stigix Stateful PCAP Replay Engine" loading="lazy">
+            <div class="gallery__caption"><strong>Stateful L7 PCAP Replay:</strong> Ingests .pcap/.pcapng/.zip captures, extracts bidirectional TCP/UDP application payloads, replays them across SASE, and audits real-time enforcement verdicts (Bypass, TCP RST, Block Page).</div>
           </div>
         </div>
       </div>
@@ -818,48 +733,6 @@
       </div>
     </div>
 
-    <div class="gallery__panel" id="tab-iot">
-      <div class="gallery__frame">
-        <div class="gallery__bar">
-          <div class="gallery__bar-left">
-            <span class="gallery__bar-dot"></span>
-            <span class="gallery__bar-dot"></span>
-            <span class="gallery__bar-dot"></span>
-            <span class="gallery__bar-label">IoT — Fleet Simulation &amp; Real-Time Monitoring</span>
-          </div>
-          <div class="gallery__bar-right">
-            <div class="gallery__dots">
-              <button class="gallery__dot active" aria-label="Slide 1"></button>
-              <button class="gallery__dot" aria-label="Slide 2"></button>
-              <button class="gallery__dot" aria-label="Slide 3"></button>
-              <button class="gallery__dot" aria-label="Slide 4"></button>
-            </div>
-            <span class="gallery__counter">1 / 4</span>
-          </div>
-        </div>
-        <div class="gallery__slider">
-          <button class="gallery__nav-btn gallery__nav-btn--prev" aria-label="Previous screenshot">&#8249;</button>
-          <button class="gallery__nav-btn gallery__nav-btn--next" aria-label="Next screenshot">&#8250;</button>
-          <div class="gallery__slide active" data-label="IoT — Fleet Simulation &amp; Real-Time Monitoring">
-            <img src="assets/screenshots/iot.png" alt="IoT Simulation Active Devices" loading="lazy">
-            <div class="gallery__caption"><strong>IoT Simulation Engine:</strong> Real Layer-2/3 device simulation with DHCP/ARP presence, stateful packet generation, and attack modes.</div>
-          </div>
-          <div class="gallery__slide" data-label="IoT — Device Fleet Overview &amp; Hardware Profiles">
-            <img src="assets/screenshots/iot-fleet.png" alt="IoT Device Fleet Overview" loading="lazy">
-            <div class="gallery__caption"><strong>Fleet Management:</strong> Configurable device profiles (cameras, medical sensors, streaming devices) with custom MAC addresses and vendors.</div>
-          </div>
-          <div class="gallery__slide" data-label="IoT — Real-Time Log Analysis &amp; Threat Detection">
-            <img src="assets/screenshots/iot-logs.png" alt="IoT Device Real-time Logs Analysis" loading="lazy">
-            <div class="gallery__caption"><strong>Real-Time Device Logs:</strong> Live traffic monitoring, DNS security events, and anomaly detection per emulated device.</div>
-          </div>
-          <div class="gallery__slide" data-label="IoT — Device Configuration &amp; Attack Mode Settings">
-            <img src="assets/screenshots/iot-edit.png" alt="IoT Device Configuration Modal" loading="lazy">
-            <div class="gallery__caption"><strong>Profile Editor:</strong> Customize IP assignments, protocol behaviors, port scanning, C2 beacon intervals, and DNS floods.</div>
-          </div>
-        </div>
-      </div>
-    </div>
-
     <div class="gallery__panel" id="tab-voice">
       <div class="gallery__frame">
         <div class="gallery__bar">
@@ -867,7 +740,7 @@
             <span class="gallery__bar-dot"></span>
             <span class="gallery__bar-dot"></span>
             <span class="gallery__bar-dot"></span>
-            <span class="gallery__bar-label">Voice — VoIP RTP Simulation Dashboard</span>
+            <span class="gallery__bar-label">Voice — VoIP RTP Simulation &amp; Unified QoS Table</span>
           </div>
           <div class="gallery__bar-right">
             <div class="gallery__dots">
@@ -881,9 +754,9 @@
         <div class="gallery__slider">
           <button class="gallery__nav-btn gallery__nav-btn--prev" aria-label="Previous screenshot">&#8249;</button>
           <button class="gallery__nav-btn gallery__nav-btn--next" aria-label="Next screenshot">&#8250;</button>
-          <div class="gallery__slide active" data-label="Voice — VoIP RTP Simulation Dashboard">
-            <img src="assets/screenshots/voice.png" alt="Voice Simulation Dashboard" loading="lazy">
-            <div class="gallery__caption"><strong>VoIP Simulation Dashboard:</strong> Multi-codec RTP generation (G.711 PCMA/PCMU, G.729) with concurrent call generation across WAN peers.</div>
+          <div class="gallery__slide active" data-label="Voice — VoIP RTP Simulation &amp; Unified QoS Table">
+            <img src="assets/screenshots/voice.png" alt="Voice Simulation V3 Dashboard" loading="lazy">
+            <div class="gallery__caption"><strong>VoIP Simulation Cockpit:</strong> Compact 5-KPI summary strip, inline Call Profile bar (G.711/G.729, concurrent calls, interval), and unified Target Configuration &amp; Live QoS table.</div>
           </div>
           <div class="gallery__slide" data-label="Voice — Per-Target QoS Statistics (MOS, Jitter, RTT, Loss)">
             <img src="assets/screenshots/voice-qos.png" alt="VoIP Per-Target QoS Statistics" loading="lazy">
@@ -941,7 +814,7 @@
             <span class="gallery__bar-dot"></span>
             <span class="gallery__bar-dot"></span>
             <span class="gallery__bar-dot"></span>
-            <span class="gallery__bar-label">Bandwidth (XFR) — WAN Throughput &amp; Speed Testing</span>
+            <span class="gallery__bar-label">Bandwidth (XFR) — WAN Throughput &amp; Historical Time-Series</span>
           </div>
           <div class="gallery__bar-right">
             <div class="gallery__dots">
@@ -955,17 +828,17 @@
         <div class="gallery__slider">
           <button class="gallery__nav-btn gallery__nav-btn--prev" aria-label="Previous screenshot">&#8249;</button>
           <button class="gallery__nav-btn gallery__nav-btn--next" aria-label="Next screenshot">&#8250;</button>
-          <div class="gallery__slide active" data-label="Bandwidth (XFR) — WAN Throughput &amp; Speed Testing">
+          <div class="gallery__slide active" data-label="Bandwidth (XFR) — Historical Throughput, RTT &amp; Retransmits Chart">
+            <img src="assets/screenshots/xfr-results.png" alt="Bandwidth Test Details with Historical Time-Series Chart" loading="lazy">
+            <div class="gallery__caption"><strong>Historical Throughput &amp; RTT Time-Series:</strong> Inspect per-test download/upload bitrates, TCP retransmits, and synchronized historical throughput &amp; latency evolution across runs.</div>
+          </div>
+          <div class="gallery__slide" data-label="Bandwidth (XFR) — WAN Throughput &amp; Speed Testing">
             <img src="assets/screenshots/xfr.png" alt="Bandwidth Test XFR Dashboard" loading="lazy">
-            <div class="gallery__caption"><strong>Bandwidth Testing Engine:</strong> Multi-stream TCP throughput testing against Stigix appliances and public targets.</div>
+            <div class="gallery__caption"><strong>Bandwidth Testing Engine:</strong> Multi-stream TCP and UDP throughput testing against Stigix mesh peers and public speedtest targets.</div>
           </div>
           <div class="gallery__slide" data-label="Bandwidth (XFR) — Test Parameters &amp; Configuration Modal">
             <img src="assets/screenshots/xfr-modal.png" alt="Bandwidth Test Configuration Modal" loading="lazy">
-            <div class="gallery__caption"><strong>Stream Configuration:</strong> Customize duration, parallel TCP streams, congestion control algorithms (Cubic/BBR), and port ranges.</div>
-          </div>
-          <div class="gallery__slide" data-label="Bandwidth (XFR) — Throughput &amp; TCP Retransmits Results">
-            <img src="assets/screenshots/xfr-results.png" alt="Bandwidth Test Results and TCP Retransmits" loading="lazy">
-            <div class="gallery__caption"><strong>Diagnostics &amp; TCP Window Analysis:</strong> Total data transferred, upload/download bitrates, TCP retransmits, and average RTT latency.</div>
+            <div class="gallery__caption"><strong>Stream Configuration:</strong> Customize duration, parallel TCP streams, target bitrate caps, and port ranges.</div>
           </div>
         </div>
       </div>
@@ -978,7 +851,7 @@
             <span class="gallery__bar-dot"></span>
             <span class="gallery__bar-dot"></span>
             <span class="gallery__bar-dot"></span>
-            <span class="gallery__bar-label">VyOS Control — Router Discovery &amp; Status</span>
+            <span class="gallery__bar-label">VyOS Control — Router Fleet &amp; Impairment Automation</span>
           </div>
           <div class="gallery__bar-right">
             <div class="gallery__dots">
@@ -992,9 +865,9 @@
         <div class="gallery__slider">
           <button class="gallery__nav-btn gallery__nav-btn--prev" aria-label="Previous screenshot">&#8249;</button>
           <button class="gallery__nav-btn gallery__nav-btn--next" aria-label="Next screenshot">&#8250;</button>
-          <div class="gallery__slide active" data-label="VyOS Control — Router Discovery &amp; Status">
-            <img src="assets/screenshots/vyos.png" alt="VyOS Control Routers Dashboard" loading="lazy">
-            <div class="gallery__caption"><strong>Router Discovery &amp; Health:</strong> Multi-router status, online reachability, API latency, and management interface status.</div>
+          <div class="gallery__slide active" data-label="VyOS Control — Router Fleet &amp; Direct Interface Actions">
+            <img src="assets/screenshots/vyos.png" alt="VyOS Control V3 Routers Dashboard" loading="lazy">
+            <div class="gallery__caption"><strong>Router Fleet &amp; Interface Control:</strong> Multi-router status cards with single-line interface mapping, live netem/QoS badges, and 1-click Shut, Delay, Loss, Rate, and Clear actions.</div>
           </div>
           <div class="gallery__slide" data-label="VyOS Control — Sequence Timelines &amp; Impairment Actions">
             <img src="assets/screenshots/vyos-timeline.png" alt="VyOS Sequence Timelines and Actions" loading="lazy">
@@ -1015,7 +888,7 @@
             <span class="gallery__bar-dot"></span>
             <span class="gallery__bar-dot"></span>
             <span class="gallery__bar-dot"></span>
-            <span class="gallery__bar-label">Topology — Physical Underlay Chassis &amp; Cabling</span>
+            <span class="gallery__bar-label">Topology — WAN Transport Dual-Carrier Underlay Map</span>
           </div>
           <div class="gallery__bar-right">
             <div class="gallery__dots">
@@ -1023,28 +896,33 @@
               <button class="gallery__dot" aria-label="Slide 2"></button>
               <button class="gallery__dot" aria-label="Slide 3"></button>
               <button class="gallery__dot" aria-label="Slide 4"></button>
+              <button class="gallery__dot" aria-label="Slide 5"></button>
             </div>
-            <span class="gallery__counter">1 / 4</span>
+            <span class="gallery__counter">1 / 5</span>
           </div>
         </div>
         <div class="gallery__slider">
           <button class="gallery__nav-btn gallery__nav-btn--prev" aria-label="Previous screenshot">&#8249;</button>
           <button class="gallery__nav-btn gallery__nav-btn--next" aria-label="Next screenshot">&#8250;</button>
-          <div class="gallery__slide active" data-label="Topology — Physical Underlay Chassis &amp; Cabling">
+          <div class="gallery__slide active" data-label="Topology — WAN Transport Dual-Carrier Underlay Map">
+            <img src="assets/screenshots/topology-wan-transport.png" alt="WAN Transport Topology 11 Sites Internet and MPLS" loading="lazy">
+            <div class="gallery__caption"><strong>WAN Transport Topology:</strong> End-to-end view across 11 sites (5 Data Centers / Cloud Hubs, 1 Branch Gateway, 5 Branches) mapped through Public Internet and Private MPLS carrier clouds.</div>
+          </div>
+          <div class="gallery__slide" data-label="Topology — SASE Security Fabric (Prisma Access &amp; Zscaler ZIA)">
+            <img src="assets/screenshots/topology-sase-fabric.png" alt="SASE Security Fabric Prisma Access and Zscaler ZIA Tunnels" loading="lazy">
+            <div class="gallery__caption"><strong>SASE Security Fabric:</strong> Live IPSec ServiceLink tunnel health from all branch sites to Prisma Access SPNs (Ireland, France South) and Zscaler Internet Access (ZIA Cloud).</div>
+          </div>
+          <div class="gallery__slide" data-label="Topology — SD-WAN Overlay Mesh (Active, Standby &amp; Down)">
+            <img src="assets/screenshots/topology-sdwan-overlay.png" alt="Logical SD-WAN Overlay Mesh View" loading="lazy">
+            <div class="gallery__caption"><strong>SD-WAN Overlay Mesh:</strong> Real-time state of every Hub-to-Spoke VPN tunnel across Internet and MPLS circuits (Active UP, Inactive Standby, and Down paths).</div>
+          </div>
+          <div class="gallery__slide" data-label="Topology — Site Overlay Focus &amp; Interactive VPN Inspection">
+            <img src="assets/screenshots/topology-site-focus.png" alt="Site Overlay Focus BR1 Tunnel Inspection" loading="lazy">
+            <div class="gallery__caption"><strong>Site Overlay Focus:</strong> Click any site or hover any tunnel to isolate branch paths and inspect source/destination WAN IPs, circuit types, and VPN session IDs.</div>
+          </div>
+          <div class="gallery__slide" data-label="Topology — VyOS Ports &amp; Physical Underlay Cabling">
             <img src="assets/screenshots/topology.png" alt="Underlay Topology with VyOS Router Chassis" loading="lazy">
-            <div class="gallery__caption"><strong>Physical Underlay Canvas:</strong> Interactive topology with VyOS router chassis, DC/Hub uplinks, Branch downlinks, and direct port cable lines.</div>
-          </div>
-          <div class="gallery__slide" data-label="Topology — VyOS Underlay Transit &amp; Port Correlation">
-            <img src="assets/screenshots/topology-underlay-chassis.png" alt="VyOS Underlay Transit Hub and Spoke Circuits" loading="lazy">
-            <div class="gallery__caption"><strong>Underlay Transit Circuits:</strong> Real-time VyOS router port mappings correlating DC/Hub uplinks and Branch/Spoke downlinks with circuit IDs.</div>
-          </div>
-          <div class="gallery__slide" data-label="Topology — SD-WAN Mesh Overlay &amp; SASE Fabric">
-            <img src="assets/screenshots/topology-overlay.png" alt="Logical SD-WAN Overlay Mesh View" loading="lazy">
-            <div class="gallery__caption"><strong>SD-WAN Mesh &amp; SASE Fabric:</strong> 4 dedicated views (WAN Transport, SD-WAN Overlay, SASE Fabric, VyOS Underlay) with interactive carrier inspection and tunnel drawers.</div>
-          </div>
-          <div class="gallery__slide" data-label="Topology — WAN Link Details &amp; Direct Impairments">
-            <img src="assets/screenshots/topology-link.png" alt="WAN Link Details Modal" loading="lazy">
-            <div class="gallery__caption"><strong>Interactive Link Controls:</strong> One-click interface Shut/No-Shut, QoS injection, and netem latency/loss injection per link.</div>
+            <div class="gallery__caption"><strong>VyOS Physical Underlay Chassis:</strong> Correlate SD-WAN ION WAN interfaces directly against physical VyOS router ports (eth0–eth13) with 1-click impairment injection.</div>
           </div>
         </div>
       </div>
@@ -1097,58 +975,43 @@
       </div>
     </div>
 
-    <div class="gallery__panel" id="tab-apistudio">
+    <div class="gallery__panel" id="tab-iot">
       <div class="gallery__frame">
         <div class="gallery__bar">
           <div class="gallery__bar-left">
             <span class="gallery__bar-dot"></span>
             <span class="gallery__bar-dot"></span>
             <span class="gallery__bar-dot"></span>
-            <span class="gallery__bar-label">API Studio — Live Telemetry &amp; Request Inspector</span>
-          </div>
-          <div class="gallery__bar-right">
-            <div class="gallery__dots">
-              <button class="gallery__dot active" aria-label="Slide 1"></button>
-            </div>
-            <span class="gallery__counter">1 / 1</span>
-          </div>
-        </div>
-        <div class="gallery__slider">
-          <div class="gallery__slide active" data-label="API Studio — Live Telemetry &amp; Request Inspector">
-            <img src="assets/screenshots/api-studio.png" alt="Stigix API Studio with live telemetry and API inspector" loading="lazy">
-            <div class="gallery__caption"><strong>Unified Observability:</strong> Real-time API telemetry across Node.js &amp; Python engines. Live call inspector with status filtering (2xx/4xx/5xx), payload inspection, and interactive request composer with preconfigured presets.</div>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <div class="gallery__panel" id="tab-mcpserver">
-      <div class="gallery__frame">
-        <div class="gallery__bar">
-          <div class="gallery__bar-left">
-            <span class="gallery__bar-dot"></span>
-            <span class="gallery__bar-dot"></span>
-            <span class="gallery__bar-dot"></span>
-            <span class="gallery__bar-label">MCP Server — FastMCP Tools &amp; Executive Report Generation</span>
+            <span class="gallery__bar-label">IoT — Fleet Simulation &amp; Real-Time Monitoring</span>
           </div>
           <div class="gallery__bar-right">
             <div class="gallery__dots">
               <button class="gallery__dot active" aria-label="Slide 1"></button>
               <button class="gallery__dot" aria-label="Slide 2"></button>
+              <button class="gallery__dot" aria-label="Slide 3"></button>
+              <button class="gallery__dot" aria-label="Slide 4"></button>
             </div>
-            <span class="gallery__counter">1 / 2</span>
+            <span class="gallery__counter">1 / 4</span>
           </div>
         </div>
         <div class="gallery__slider">
           <button class="gallery__nav-btn gallery__nav-btn--prev" aria-label="Previous screenshot">&#8249;</button>
           <button class="gallery__nav-btn gallery__nav-btn--next" aria-label="Next screenshot">&#8250;</button>
-          <div class="gallery__slide active" data-label="MCP Server — FastMCP Tools &amp; Executive Report Generation">
-            <img src="assets/screenshots/mcp-server.png" alt="Model Context Protocol FastMCP Server Status" loading="lazy">
-            <div class="gallery__caption"><strong>Model Context Protocol (FastMCP) Service:</strong> Built-in SSE transport server exposing 79 validation and diagnostic tools to Claude Desktop for end-to-end testing and automated whitepaper/report generation.</div>
+          <div class="gallery__slide active" data-label="IoT — Fleet Simulation &amp; Real-Time Monitoring">
+            <img src="assets/screenshots/iot.png" alt="IoT Simulation Active Devices" loading="lazy">
+            <div class="gallery__caption"><strong>IoT Simulation Engine:</strong> Real Layer-2/3 device simulation with DHCP/ARP presence, stateful packet generation, and attack modes.</div>
           </div>
-          <div class="gallery__slide" data-label="MCP Server — Live Interaction Audit &amp; Tool History">
-            <img src="assets/screenshots/mcp-history.png" alt="MCP Server Live Interactions History" loading="lazy">
-            <div class="gallery__caption"><strong>Live Interaction Audit:</strong> Real-time log of AI tool executions, response durations, and parameter inspection.</div>
+          <div class="gallery__slide" data-label="IoT — Device Fleet Overview &amp; Hardware Profiles">
+            <img src="assets/screenshots/iot-fleet.png" alt="IoT Device Fleet Overview" loading="lazy">
+            <div class="gallery__caption"><strong>Fleet Management:</strong> Configurable device profiles (cameras, medical sensors, streaming devices) with custom MAC addresses and vendors.</div>
+          </div>
+          <div class="gallery__slide" data-label="IoT — Real-Time Log Analysis &amp; Threat Detection">
+            <img src="assets/screenshots/iot-logs.png" alt="IoT Device Real-time Logs Analysis" loading="lazy">
+            <div class="gallery__caption"><strong>Real-Time Device Logs:</strong> Live traffic monitoring, DNS security events, and anomaly detection per emulated device.</div>
+          </div>
+          <div class="gallery__slide" data-label="IoT — Device Configuration &amp; Attack Mode Settings">
+            <img src="assets/screenshots/iot-edit.png" alt="IoT Device Configuration Modal" loading="lazy">
+            <div class="gallery__caption"><strong>Profile Editor:</strong> Customize IP assignments, protocol behaviors, port scanning, C2 beacon intervals, and DNS floods.</div>
           </div>
         </div>
       </div>
@@ -1215,7 +1078,7 @@
           </div>
           <div class="gallery__slide" data-label="CLI — Active SaaS Applications Traffic Statistics">
             <img src="assets/screenshots/cli-traffic-stats.png" alt="CLI Active SaaS Applications Statistics" loading="lazy">
-            <div class="gallery__caption"><strong>Active Applications Traffic Matrix:</strong> Real-time request volume, error tracking, and 100% success rate breakdown across 67 active SaaS enterprise endpoints (Microsoft 365, Salesforce, Google Workspace, Zoom).</div>
+            <div class="gallery__caption"><strong>Active Applications Traffic Matrix:</strong> Real-time request volume, error tracking, and 100% success rate breakdown across 68 active SaaS enterprise endpoints (Microsoft 365, Salesforce, Google Workspace, Zoom).</div>
           </div>
           <div class="gallery__slide" data-label="CLI — Synthetic DEM Probes &amp; Health Scoring">
             <img src="assets/screenshots/cli-probes-dem.png" alt="CLI Synthetic Monitoring DEM Probes" loading="lazy">
@@ -1228,31 +1091,6 @@
           <div class="gallery__slide" data-label="CLI — VoIP QoS Telemetry &amp; MOS Call History">
             <img src="assets/screenshots/cli-voice-qos.png" alt="CLI Voice QoS and MOS Call History" loading="lazy">
             <div class="gallery__caption"><strong>VoIP QoS &amp; MOS Call History:</strong> Real-time voice simulation telemetry with global MOS score (4.39 EXCELLENT), jitter, packet loss, per-target breakdowns (DC1, BR1, Hetzner), and active call event history.</div>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <div class="gallery__panel" id="tab-statistics">
-      <div class="gallery__frame">
-        <div class="gallery__bar">
-          <div class="gallery__bar-left">
-            <span class="gallery__bar-dot"></span>
-            <span class="gallery__bar-dot"></span>
-            <span class="gallery__bar-dot"></span>
-            <span class="gallery__bar-label">Live Events — Real-Time System Log Streaming</span>
-          </div>
-          <div class="gallery__bar-right">
-            <div class="gallery__dots">
-              <button class="gallery__dot active" aria-label="Slide 1"></button>
-            </div>
-            <span class="gallery__counter">1 / 1</span>
-          </div>
-        </div>
-        <div class="gallery__slider">
-          <div class="gallery__slide active" data-label="Live Events — Real-Time System Log Streaming">
-            <img src="assets/screenshots/statistics.png" alt="Stigix Live Events Streaming Log" loading="lazy">
-            <div class="gallery__caption"><strong>Real-Time System Log Stream:</strong> High-throughput WebSocket event streaming capturing background daemon operations, probe runs, voice RTP commands, and diagnostics.</div>
           </div>
         </div>
       </div>
@@ -1276,13 +1114,36 @@
         <p style="font-size:0.92rem;color:var(--muted);margin-top:8px;max-width:680px;line-height:1.6;">Real-world SASE &amp; SD-WAN validation studies produced from live lab scenarios orchestrated by Stigix and analyzed with AI assistants via FastMCP.</p>
       </div>
       <a href="reports.html" class="btn btn--outline" id="home-view-all-reports-btn" style="align-self:flex-start;">
-        Browse All Reports (10) &rarr;
+        Browse All Reports (11) &rarr;
       </a>
     </div>
 
     <div class="home-reports__grid">
 
-      <!-- Report 1 -->
+      <!-- Report 1: Multicast Overlay Whitepaper -->
+      <article class="home-report-card">
+        <div class="home-report-card__header">
+          <span class="home-report-badge home-report-badge--white-paper">White Paper</span>
+          <span class="home-report-card__date">2026-10-16</span>
+        </div>
+        <h3 class="home-report-card__title">Validating Enterprise Multicast Over SD-WAN Overlays</h3>
+        <p class="home-report-card__desc">
+          End-to-end IGMPv3 and PIM-SM/SSM multicast validation between Datacenter DC1 and Branch BR8 over Prisma SD-WAN, covering DSCP preservation, WAN impairment resilience, and blackhole diagnostics.
+        </p>
+        <ul class="home-report-card__highlights">
+          <li>Simultaneous 239.1.1.x streams with 100% delivery &amp; sub-ms RFC 3550 jitter</li>
+          <li>DSCP EF / AF41 / CS4 preservation across encrypted SD-WAN tunnels</li>
+          <li>Instant blackhole detection when IGMPv3 joins or PIM RP trees fail</li>
+        </ul>
+        <div class="home-report-card__footer">
+          <a href="reports.html?id=whitepaper-sdwan-multicast-validation" style="font-size:0.84rem;font-weight:600;color:var(--teal);text-decoration:none;">Read Abstract &rarr;</a>
+          <div class="home-report-card__actions">
+            <a href="reports/WHITEPAPER_SDWAN_MULTICAST_VALIDATION.pdf" target="_blank" rel="noopener noreferrer" class="btn btn--primary" style="padding:6px 14px;font-size:0.78rem;">Download PDF (1.63 MB)</a>
+          </div>
+        </div>
+      </article>
+
+      <!-- Report 2 -->
       <article class="home-report-card">
         <div class="home-report-card__header">
           <span class="home-report-badge home-report-badge--white-paper">White Paper</span>
@@ -1305,7 +1166,7 @@
         </div>
       </article>
 
-      <!-- Report 2 -->
+      <!-- Report 3 -->
       <article class="home-report-card">
         <div class="home-report-card__header">
           <span class="home-report-badge home-report-badge--white-paper">White Paper</span>
@@ -1328,36 +1189,13 @@
         </div>
       </article>
 
-      <!-- Report 3 -->
-      <article class="home-report-card">
-        <div class="home-report-card__header">
-          <span class="home-report-badge home-report-badge--lab-benchmark">Lab Benchmark</span>
-          <span class="home-report-card__date">2026-09-24</span>
-        </div>
-        <h3 class="home-report-card__title">SD-WAN Multi-Circuit Failover Audit</h3>
-        <p class="home-report-card__desc">
-          Live failover benchmark between branch office BR8 and datacenter DC1 measuring sub-second packet loss and active path evolution during induced WAN circuit impairments.
-        </p>
-        <ul class="home-report-card__highlights">
-          <li>Sub-second packet loss measurement during active link disruption</li>
-          <li>Path evolution telemetry: BR8-INET2 &rarr; DC1-INET &rarr; BR8-INET1</li>
-          <li>Full flow session continuity audit with 79 MCP diagnostic tools</li>
-        </ul>
-        <div class="home-report-card__footer">
-          <a href="reports.html?id=sdwan-resilience-br8-dc1" style="font-size:0.84rem;font-weight:600;color:var(--teal);text-decoration:none;">Read Abstract &rarr;</a>
-          <div class="home-report-card__actions">
-            <a href="reports/SDWAN_Resilience_Report_BR8_DC1.pdf" target="_blank" rel="noopener noreferrer" class="btn btn--primary" style="padding:6px 14px;font-size:0.78rem;">Download PDF (79 KB)</a>
-          </div>
-        </div>
-      </article>
-
     </div>
 
     <!-- Bottom CTA banner -->
     <div class="home-reports__cta">
       <div>
         <strong style="color:var(--white);font-size:0.95rem;display:block;margin-bottom:4px;">AI-Assisted Lab Orchestration &amp; Reporting</strong>
-        <span style="color:var(--muted);font-size:0.82rem;line-height:1.5;display:block;">Stigix exposes 79 network diagnostic and chaos impairment tools over FastMCP &mdash; enabling AI engines (like Claude Desktop) to autonomously execute test plans, analyze convergence curves, and draft executive-ready reports.</span>
+        <span style="color:var(--muted);font-size:0.82rem;line-height:1.5;display:block;">Stigix exposes 89 network diagnostic and chaos impairment tools over FastMCP &mdash; enabling AI engines (like Claude Desktop) to autonomously execute test plans, analyze convergence curves, and draft executive-ready reports.</span>
       </div>
       <a href="reports.html" class="btn btn--outline" style="white-space:nowrap;">View All Sample Reports &rarr;</a>
     </div>
@@ -1408,17 +1246,14 @@
           <span class="terminal__out ok">✅ Dashboard active → http://localhost:8080</span>
         </div>
         <div class="terminal__line" style="margin-top: 14px;">
-          <span class="terminal__comment"># 2. Zero-Touch Remote Branch Peer Onboarding (Points to Leader)</span>
+          <span class="terminal__comment"># 2. Zero-Touch Remote Branch Onboarding (via Magic Join Token or --controller)</span>
         </div>
         <div class="terminal__line">
           <span class="terminal__prompt">$</span>
-          <span class="terminal__cmd">curl -fsSL https://raw.githubusercontent.com/jsuzanne/stigix/main/install.sh | sudo bash -s -- --controller http://192.168.203.100:8080</span>
+          <span class="terminal__cmd">curl -fsSL https://raw.githubusercontent.com/jsuzanne/stigix/main/install.sh | sudo bash -s -- --join STX-eyJ1cmwiOiJodHRwOi8vMTkyLjE2OC4yMDMuMTAwOjgwODAifQ</span>
         </div>
         <div class="terminal__line" style="margin-top: 8px;">
-          <span class="terminal__out ok">✅ Registered to Leader [192.168.203.100:8080]. Direct Mode active.</span>
-        </div>
-        <div class="terminal__line">
-          <span class="terminal__out ok">✅ Pulling Central Global Provisioning bundles (rev-1.json)...</span>
+          <span class="terminal__out ok">✅ Registered to Leader [192.168.203.100:8080]. Syncing 8 Global Provisioning bundles...</span>
         </div>
         <div class="terminal__line" style="margin-top: 14px;">
           <span class="terminal__comment"># 3. Manual Compose Install</span>
@@ -1435,7 +1270,7 @@
       <div class="qs-note__icon">⚡</div>
       <div class="qs-note__body">
         <strong>Distributed Mesh: Every Stigix instance is both a Sender and a Responder.</strong>
-        Once deployed, the instance immediately starts generating traffic <em>and</em> listening as a custom TCP application server, HTTP echo, bandwidth speedtest, voice echo, and SLA probe target. Deploy on a branch node, a hub, or a cloud VM: all instances are auto-discovered and synchronized via the Central Global Provisioning engine.
+        Once deployed, the instance immediately starts generating traffic <em>and</em> listening as a custom TCP application server, multicast IGMPv3/UDP receiver, HTTP echo, bandwidth speedtest, voice echo, and SLA probe target.
       </div>
     </div>
 
@@ -1443,7 +1278,7 @@
     <div class="quickstart__platforms">
       <div class="platform">
         <span class="platform__os">Linux</span>
-        <div><strong>Docker Engine</strong> · x86 / ARM64 servers, VMs, Raspberry Pi, or any Docker-capable appliance — including routers, switches, and access points that support container workloads. Host network mode for full Layer-2/3.</div>
+        <div><strong>Docker Engine</strong> · x86 / ARM64 servers, VMs, Raspberry Pi, or any Docker-capable appliance. Host network mode for full Layer-2/3 and IGMPv3/Scapy support.</div>
       </div>
       <div class="platform">
         <span class="platform__os">macOS</span>
@@ -1469,7 +1304,7 @@
     <div class="quickstart__header">
       <span class="label">Operations &amp; Automation</span>
       <h2 class="quickstart__title">Control and verify with the built-in CLI</h2>
-      <p class="quickstart__sub">Stigix ships a fully interactive terminal console inside the container with support for Custom Apps, Global Provisioning, DEM probes, and Controller mesh management.</p>
+      <p class="quickstart__sub">Stigix ships a fully interactive terminal console inside the container with support for Custom Apps, Multicast, Global Provisioning, DEM probes, and Controller mesh management.</p>
     </div>
 
     <div class="terminal" role="region" aria-label="Stigix CLI demo">
@@ -1555,6 +1390,12 @@
         <span class="doc-link__arr">→</span>
       </a>
 
+      <a href="https://github.com/jsuzanne/stigix/blob/main/docs/MULTICAST_TESTING_GUIDE.md" target="_blank" rel="noopener noreferrer" class="doc-link" id="docs-multicast-link">
+        <span class="doc-link__ico">📡</span>
+        <div class="doc-link__text"><strong>Multicast Overlay Guide</strong><span>IGMPv3, PIM-SM &amp; DSCP validation</span></div>
+        <span class="doc-link__arr">→</span>
+      </a>
+
       <a href="https://github.com/jsuzanne/stigix/blob/main/docs/PCAP_REPLAY_USER_GUIDE.md" target="_blank" rel="noopener noreferrer" class="doc-link" id="docs-pcap-replay-link">
         <span class="doc-link__ico">📦</span>
         <div class="doc-link__text"><strong>Stateful PCAP Replay Guide</strong><span>L7 Replay &amp; SASE verdicts</span></div>
@@ -1569,7 +1410,7 @@
 
       <a href="https://github.com/jsuzanne/stigix/blob/main/docs/GLOBAL_PROVISIONING_AND_PEER_ONBOARDING.md" target="_blank" rel="noopener noreferrer" class="doc-link" id="docs-provisioning-link">
         <span class="doc-link__ico">🌐</span>
-        <div class="doc-link__text"><strong>Global Provisioning</strong><span>Leader sync, zero-touch onboard</span></div>
+        <div class="doc-link__text"><strong>Global Provisioning</strong><span>Leader sync, Magic Join tokens</span></div>
         <span class="doc-link__arr">→</span>
       </a>
 
@@ -1587,7 +1428,7 @@
 
       <a href="https://github.com/jsuzanne/stigix/blob/main/docs/SECURITY_TESTING.md" target="_blank" rel="noopener noreferrer" class="doc-link" id="docs-security-link">
         <span class="doc-link__ico">🛡️</span>
-        <div class="doc-link__text"><strong>Security Testing</strong><span>URL, DNS, threat prevention</span></div>
+        <div class="doc-link__text"><strong>Security Testing</strong><span>URL, DNS, C2 &amp; threat prevention</span></div>
         <span class="doc-link__arr">→</span>
       </a>
 
@@ -1623,7 +1464,7 @@
 
       <a href="https://github.com/jsuzanne/stigix/blob/main/docs/MCP_SERVER.md" target="_blank" rel="noopener noreferrer" class="doc-link" id="docs-mcp-link">
         <span class="doc-link__ico">🧠</span>
-        <div class="doc-link__text"><strong>MCP Server</strong><span>Model Context Protocol AI control</span></div>
+        <div class="doc-link__text"><strong>FastMCP Server</strong><span>89 AI tools for Claude Desktop</span></div>
         <span class="doc-link__arr">→</span>
       </a>
 
@@ -1633,21 +1474,9 @@
         <span class="doc-link__arr">→</span>
       </a>
 
-      <a href="https://github.com/jsuzanne/stigix/blob/main/docs/CUSTOM_TCP_APPS.md" target="_blank" rel="noopener noreferrer" class="doc-link" id="docs-custom-tcp-spec-link">
-        <span class="doc-link__ico">⚙️</span>
-        <div class="doc-link__text"><strong>Custom TCP Architecture</strong><span>Binary framing & protocol spec</span></div>
-        <span class="doc-link__arr">→</span>
-      </a>
-
-      <a href="https://github.com/jsuzanne/stigix/blob/main/docs/PRIVATE_DEPLOYMENT_TOPOLOGIES.md" target="_blank" rel="noopener noreferrer" class="doc-link" id="docs-topologies-link">
-        <span class="doc-link__ico">🛡️</span>
-        <div class="doc-link__text"><strong>Deployment Topologies</strong><span>LAN, NAT, Multi-Cloud Reverse Tunnels</span></div>
-        <span class="doc-link__arr">→</span>
-      </a>
-
       <a href="https://github.com/jsuzanne/stigix/blob/main/CHANGELOG.md" target="_blank" rel="noopener noreferrer" class="doc-link" id="docs-changelog-link">
         <span class="doc-link__ico">📋</span>
-        <div class="doc-link__text"><strong>Changelog</strong><span>Full release history</span></div>
+        <div class="doc-link__text"><strong>Changelog</strong><span>Full v3.0.34 release history</span></div>
         <span class="doc-link__arr">→</span>
       </a>
 
@@ -1675,7 +1504,7 @@
       </ul>
     </div>
     <p class="footer__note" id="footer-last-updated" style="margin-top:12px;padding-top:12px;border-top:1px solid var(--stroke);font-family:var(--mono);font-size:0.72rem;color:var(--muted);">
-      Site last updated: <strong id="footer-date" style="color:var(--mid)">2026-10-11</strong> &nbsp;&middot;&nbsp; Covers release <a href="https://github.com/jsuzanne/stigix/releases" target="_blank" rel="noopener noreferrer" style="color:var(--teal);">v3.0.0</a> &nbsp;&middot;&nbsp; <a href="https://github.com/jsuzanne/stigix/blob/main/CHANGELOG.md" target="_blank" rel="noopener noreferrer" style="color:var(--teal);">View changelog &rarr;</a>
+      Site last updated: <strong id="footer-date" style="color:var(--mid)">2026-10-17</strong> &nbsp;&middot;&nbsp; Covers release <a href="https://github.com/jsuzanne/stigix/releases" target="_blank" rel="noopener noreferrer" style="color:var(--teal);">v3.0.34</a> &nbsp;&middot;&nbsp; <a href="https://github.com/jsuzanne/stigix/blob/main/CHANGELOG.md" target="_blank" rel="noopener noreferrer" style="color:var(--teal);">View changelog &rarr;</a>
     </p>
     <script>var d=new Date(document.lastModified);if(d.getFullYear()>2000){document.getElementById('footer-date').textContent=d.toISOString().slice(0,10);}</script>
     <p class="footer__note" id="footer-disclaimer">

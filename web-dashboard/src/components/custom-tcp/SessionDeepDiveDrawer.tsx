@@ -271,59 +271,97 @@ export const SessionDeepDiveDrawer: React.FC<SessionDeepDiveDrawerProps> = ({
                                             <span className="font-bold text-text-primary flex items-center gap-1.5">
                                                 <BarChart3 size={15} /> Real-Time RTT Waveform (Last 20 ticks)
                                             </span>
-                                            <span className="text-text-muted font-mono text-[11px]">
-                                                {hoveredSampleIndex !== null && recentSamples[hoveredSampleIndex] !== undefined
-                                                    ? `Tick #${hoveredSampleIndex + 1}: ${recentSamples[hoveredSampleIndex]} ms`
-                                                    : `Avg: ${rttStats?.avg || 0} ms`}
-                                            </span>
+                                            <div className="flex items-center gap-3 text-[11px] font-mono">
+                                                <span className="flex items-center gap-1 text-text-muted">
+                                                    <span className="w-2.5 h-0.5 border-t border-dashed border-amber-500 inline-block" />
+                                                    P50 ({rttStats?.p50 || 0} ms)
+                                                </span>
+                                                <span className="text-cyan-500 font-bold">
+                                                    {hoveredSampleIndex !== null && recentSamples[hoveredSampleIndex] !== undefined
+                                                        ? `Tick #${hoveredSampleIndex + 1}: ${recentSamples[hoveredSampleIndex]} ms`
+                                                        : `Avg: ${rttStats?.avg || 0} ms`}
+                                                </span>
+                                            </div>
                                         </div>
 
-                                        {recentSamples.length >= 2 ? (
-                                            <div className="h-32 w-full relative pt-4 pb-2">
-                                                {/* Chart SVG */}
-                                                <svg className="w-full h-full overflow-visible" viewBox="0 0 500 100" preserveAspectRatio="none">
-                                                    {(() => {
-                                                        const min = Math.min(...recentSamples);
-                                                        const max = Math.max(...recentSamples);
-                                                        const range = max - min === 0 ? 1 : max - min;
+                                        {recentSamples.length >= 2 ? (() => {
+                                            const min = Math.min(...recentSamples);
+                                            const max = Math.max(...recentSamples);
+                                            const p50 = rttStats?.p50 ?? Math.round((min + max) / 2);
+                                            const range = max - min === 0 ? 1 : max - min;
 
-                                                        const pts = recentSamples.map((v: number, i: number) => ({
-                                                            x: (i / (recentSamples.length - 1)) * 500,
-                                                            y: 100 - ((v - min) / range) * 85 - 5,
-                                                            val: v
-                                                        }));
+                                            const getY = (val: number) => 92 - ((val - min) / range) * 78;
+                                            const p50Y = Math.min(92, Math.max(14, getY(p50)));
 
-                                                        const pathStr = pts.reduce((acc: string, p: { x: number; y: number }, i: number) => i === 0 ? `M ${p.x} ${p.y}` : `${acc} L ${p.x} ${p.y}`, '');
-                                                        const areaStr = `${pathStr} L 500 100 L 0 100 Z`;
+                                            const pts = recentSamples.map((v: number, i: number) => ({
+                                                x: (i / (recentSamples.length - 1)) * 500,
+                                                y: getY(v),
+                                                val: v
+                                            }));
 
-                                                        return (
-                                                            <>
-                                                                <defs>
-                                                                    <linearGradient id="drawer-chart-grad" x1="0" y1="0" x2="0" y2="1">
-                                                                        <stop offset="0%" stopColor="#06b6d4" stopOpacity="0.4" />
-                                                                        <stop offset="100%" stopColor="#06b6d4" stopOpacity="0.0" />
-                                                                    </linearGradient>
-                                                                </defs>
-                                                                <path d={areaStr} fill="url(#drawer-chart-grad)" />
-                                                                <path d={pathStr} fill="none" stroke="#06b6d4" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
-                                                                {pts.map((p: { x: number; y: number }, i: number) => (
-                                                                    <circle
-                                                                        key={i}
-                                                                        cx={p.x}
-                                                                        cy={p.y}
-                                                                        r={hoveredSampleIndex === i ? 5 : 2.5}
-                                                                        fill={hoveredSampleIndex === i ? '#f59e0b' : '#06b6d4'}
-                                                                        className="cursor-pointer transition-all"
-                                                                        onMouseEnter={() => setHoveredSampleIndex(i)}
-                                                                        onMouseLeave={() => setHoveredSampleIndex(null)}
-                                                                    />
-                                                                ))}
-                                                            </>
-                                                        );
-                                                    })()}
-                                                </svg>
-                                            </div>
-                                        ) : (
+                                            const pathStr = pts.reduce((acc: string, p: { x: number; y: number }, i: number) => i === 0 ? `M ${p.x} ${p.y}` : `${acc} L ${p.x} ${p.y}`, '');
+                                            const areaStr = `${pathStr} L 500 100 L 0 100 Z`;
+
+                                            const activeIdx = hoveredSampleIndex !== null && pts[hoveredSampleIndex] ? hoveredSampleIndex : pts.length - 1;
+                                            const activePt = pts[activeIdx];
+
+                                            return (
+                                                <div className="flex items-stretch gap-2.5 pt-2 pb-1">
+                                                    {/* Y-Axis Scale Labels */}
+                                                    <div className="flex flex-col justify-between text-[10px] font-mono text-right shrink-0 w-12 py-1 select-none">
+                                                        <span className="text-rose-500/90 font-bold leading-none" title="Window Peak (Max)">{max} ms</span>
+                                                        <span className="text-amber-500/90 font-semibold leading-none" title="Median (P50)">{p50} ms</span>
+                                                        <span className="text-emerald-500/90 font-bold leading-none" title="Window Floor (Min)">{min} ms</span>
+                                                    </div>
+
+                                                    {/* Chart SVG Container */}
+                                                    <div className="h-32 flex-1 relative">
+                                                        <svg className="w-full h-full overflow-visible" viewBox="0 0 500 100" preserveAspectRatio="none">
+                                                            <defs>
+                                                                <linearGradient id="drawer-chart-grad" x1="0" y1="0" x2="0" y2="1">
+                                                                    <stop offset="0%" stopColor="#06b6d4" stopOpacity="0.38" />
+                                                                    <stop offset="100%" stopColor="#06b6d4" stopOpacity="0.0" />
+                                                                </linearGradient>
+                                                            </defs>
+                                                            {/* Top Max & Bottom Min subtle grid lines */}
+                                                            <line x1="0" y1="14" x2="500" y2="14" stroke="currentColor" className="text-border/60" strokeWidth="1" strokeDasharray="3 3" />
+                                                            <line x1="0" y1="92" x2="500" y2="92" stroke="currentColor" className="text-border/60" strokeWidth="1" strokeDasharray="3 3" />
+                                                            {/* P50 Reference Line */}
+                                                            <line x1="0" y1={p50Y} x2="500" y2={p50Y} stroke="#f59e0b" strokeOpacity="0.55" strokeWidth="1.2" strokeDasharray="4 4" />
+
+                                                            <path d={areaStr} fill="url(#drawer-chart-grad)" />
+                                                            <path d={pathStr} fill="none" stroke="#06b6d4" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+                                                            {pts.map((p: { x: number; y: number; val: number }, i: number) => (
+                                                                <circle
+                                                                    key={i}
+                                                                    cx={p.x}
+                                                                    cy={p.y}
+                                                                    r={hoveredSampleIndex === i ? 5 : 2.5}
+                                                                    fill={hoveredSampleIndex === i ? '#f59e0b' : '#06b6d4'}
+                                                                    className="cursor-pointer transition-all"
+                                                                    onMouseEnter={() => setHoveredSampleIndex(i)}
+                                                                    onMouseLeave={() => setHoveredSampleIndex(null)}
+                                                                />
+                                                            ))}
+                                                        </svg>
+
+                                                        {/* Floating Callout Badge for Hovered / Latest Point */}
+                                                        {activePt && (
+                                                            <div
+                                                                style={{
+                                                                    left: `${(activePt.x / 500) * 100}%`,
+                                                                    top: `${Math.max(0, (activePt.y / 100) * 100 - 22)}%`
+                                                                }}
+                                                                className="absolute -translate-x-1/2 pointer-events-none px-1.5 py-0.5 rounded bg-card border border-border shadow-md text-[10px] font-mono font-bold text-text-primary whitespace-nowrap"
+                                                            >
+                                                                {hoveredSampleIndex !== null ? `#${activeIdx + 1}: ` : 'Last: '}
+                                                                <span className={hoveredSampleIndex !== null ? 'text-amber-500' : 'text-cyan-500'}>{activePt.val} ms</span>
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            );
+                                        })() : (
                                             <div className="h-28 flex items-center justify-center text-xs text-text-muted italic">
                                                 Awaiting rolling workload data points...
                                             </div>

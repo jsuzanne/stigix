@@ -134,7 +134,7 @@ export const STIGIX_NAVIGATION_DOMAINS: NavDomainConfig[] = [
         items: [
             {
                 id: 'performance',
-                label: 'Digital Experience (DEM)',
+                label: 'Digital Experience',
                 icon: LineChart,
                 route: '#/validate/dem',
                 description: 'Synthetic path probes, SLAs and user digital experience monitoring',

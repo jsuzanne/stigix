@@ -424,6 +424,7 @@ export class LocalRegistryServer {
         });
 
         const scoresWithValues = enrichedInstances
+            .filter(i => !i.is_stale && i.status === 'online' && !i.summary?.probes_paused)
             .map(i => i.summary?.probes_global_health)
             .filter((s): s is number => typeof s === 'number' && !isNaN(s));
             

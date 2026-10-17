@@ -882,7 +882,20 @@ export class FleetTunnelManager {
             return true;
         });
 
-        // 1. Clean up dialed sockets for targets that are no longer candidates (e.g. removed or now connected inbound)
+        const isPrivateOrLocalIp = (ipStr: string): boolean => {
+            const clean = (ipStr || '').trim().toLowerCase();
+            if (!clean || clean === 'localhost' || clean.endsWith('.local') ||
+                clean.startsWith('127.') || clean.startsWith('10.') ||
+                clean.startsWith('192.168.') || clean.startsWith('169.254.')) {
+                return true;
+            }
+            if (/^172\.(1[6-9]|2[0-9]|3[0-1])\./.test(clean)) {
+                return true;
+            }
+            return false;
+        };
+
+        // 1. Clean up dialed sockets for targets that are no longer candidates or disconnected > 2 min (refreshes 24h JWT)
         const now = Date.now();
         for (const [targetKey, socket] of this.outboundDialedSockets) {
             const stillTarget = externalTargets.some(t => {
@@ -893,9 +906,10 @@ export class FleetTunnelManager {
             const isActivelyConnected = Array.from(this.activeTunnels.values()).some(e => e.socket === socket && (e.socket as any).connected);
             const dialedAt = this.rendezvousDialTimestamps.get(targetKey) || 0;
             const isRecentDial = (now - dialedAt) < 60000;
+            const isStaleDisconnected = !isActivelyConnected && !(socket as any).connected && (now - dialedAt) > 120000;
 
-            if (!stillTarget && !isActivelyConnected && !isRecentDial) {
-                log('TUNNEL', `[M6 DIAL] Closing dialed connection for target no longer needing dial: ${targetKey}`);
+            if ((!stillTarget && !isActivelyConnected && !isRecentDial) || isStaleDisconnected) {
+                log('TUNNEL', `[M6 DIAL] Closing stale/removed dialed socket for ${targetKey} (stillTarget=${stillTarget}, connected=${isActivelyConnected})`);
                 socket.disconnect();
                 this.outboundDialedSockets.delete(targetKey);
                 this.rendezvousDialTimestamps.delete(targetKey);
@@ -910,12 +924,15 @@ export class FleetTunnelManager {
         }
 
         for (const target of externalTargets) {
+            const host = target.host.trim();
+            const isPublicHost = !isPrivateOrLocalIp(host);
             // Enterprise SD-WAN Policy:
-            // Do NOT proactively reverse-dial targets classified as BRANCH or auto-onboarded magic-join spokes
-            // unless explicitly tagged for outbound dialing (e.g. cloud, vps, dial_outbound: true).
-            // Branch CPEs always initiate inbound reverse tunnels towards the Leader.
+            // Do NOT proactively reverse-dial targets classified as private LAN BRANCH or auto-onboarded magic-join spokes
+            // unless explicitly tagged for outbound dialing (e.g. cloud, vps, dial_outbound: true) or reachable via public IP.
+            // Private LAN Branch CPEs always initiate inbound reverse tunnels towards the Leader.
             const tags = Array.isArray(target.tags) ? target.tags : [];
             const isCloudOrHub = Boolean(
+                isPublicHost ||
                 target.is_cloud ||
                 target.role === 'cloud' ||
                 target.role === 'hub' ||
@@ -929,7 +946,6 @@ export class FleetTunnelManager {
                 continue;
             }
 
-            const host = target.host.trim();
             const port = target.ports?.dashboard || 8080;
             const targetKey = `${host.toLowerCase()}:${port}`;
 
@@ -984,6 +1000,20 @@ export class FleetTunnelManager {
             // Persist winning target host in TargetsManager
             if (this.targetsManager && typeof this.targetsManager.createTarget === 'function') {
                 try {
+                    const cleanHost = (host || '').trim().toLowerCase();
+                    const isPublicPeer = Boolean(
+                        cleanHost &&
+                        cleanHost !== 'localhost' &&
+                        !cleanHost.startsWith('127.') &&
+                        !cleanHost.startsWith('10.') &&
+                        !cleanHost.startsWith('192.168.') &&
+                        !cleanHost.startsWith('169.254.') &&
+                        !/^172\.(1[6-9]|2[0-9]|3[0-1])\./.test(cleanHost)
+                    );
+                    const baseTags = isPublicPeer
+                        ? ['magic-join', 'cloudflare-rendezvous', 'cloud']
+                        : ['magic-join', 'cloudflare-rendezvous'];
+
                     const existingTargets = this.targetsManager.loadTargets();
                     const existing = existingTargets.find((t: any) => t.label === targetSiteName || t.name === targetSiteName || t.host === host);
                     if (!existing) {
@@ -993,23 +1023,33 @@ export class FleetTunnelManager {
                             ports: { dashboard: port, http: 8082 },
                             enabled: true,
                             protocol: 'http',
+                             ...(isPublicPeer ? { dial_outbound: true } : {}),
                             capabilities: { voice: true, convergence: true, custom_app: true, xfr: true, security: true, connectivity: true },
-                            tags: ['magic-join', 'cloudflare-rendezvous'],
+                            tags: baseTags,
                             comments: `Auto-enrolled via Cloudflare Rendezvous on ${new Date().toISOString()}`,
                             meta: { registry: true, magic_join: true, last_seen: new Date().toISOString() }
-                        });
+                        } as any);
                         log('RENDEZVOUS', `🎯 Target auto-provisioned for ${targetSiteName} (${host}:${port})`);
-                    } else if (existing.host !== host || existing.ports?.dashboard !== port || (existing.ports?.http && existing.ports.http === 8080) || !existing.enabled || !existing.meta?.registry) {
-                        const effectiveHttp = (existing.ports?.http && existing.ports.http !== 8080 && existing.ports.http !== 80) ? existing.ports.http : 8082;
-                        this.targetsManager.updateTarget(existing.id, { 
-                            ...existing, 
-                            name: targetSiteName, 
-                            host: host, 
-                            ports: { ...(existing.ports || {}), dashboard: port, http: effectiveHttp },
-                            enabled: true,
-                            meta: { ...(existing.meta || {}), registry: true, magic_join: true, last_seen: new Date().toISOString() }
-                        });
-                        log('RENDEZVOUS', `🎯 Updated target ${targetSiteName} with winning host (${host}:${port}), enabled state and learned tag`);
+                    } else {
+                        const existingTags = Array.isArray(existing.tags) ? existing.tags : [];
+                        const mergedTags = isPublicPeer && !existingTags.includes('cloud')
+                            ? Array.from(new Set([...existingTags, 'cloud']))
+                            : existingTags;
+                        const needsTagUpgrade = isPublicPeer && (!existingTags.includes('cloud') || !existing.dial_outbound);
+                        if (existing.host !== host || existing.ports?.dashboard !== port || (existing.ports?.http && existing.ports.http === 8080) || !existing.enabled || !existing.meta?.registry || needsTagUpgrade) {
+                            const effectiveHttp = (existing.ports?.http && existing.ports.http !== 8080 && existing.ports.http !== 80) ? existing.ports.http : 8082;
+                            this.targetsManager.updateTarget(existing.id, { 
+                                ...existing, 
+                                name: targetSiteName, 
+                                host: host, 
+                                tags: mergedTags,
+                                ...(isPublicPeer ? { dial_outbound: true } : {}),
+                                ports: { ...(existing.ports || {}), dashboard: port, http: effectiveHttp },
+                                enabled: true,
+                                meta: { ...(existing.meta || {}), registry: true, magic_join: true, last_seen: new Date().toISOString() }
+                            } as any);
+                            log('RENDEZVOUS', `🎯 Updated target ${targetSiteName} with winning host (${host}:${port}), enabled state and learned tag`);
+                        }
                     }
                 } catch {}
             }
@@ -1159,9 +1199,19 @@ export class FleetTunnelManager {
                         return;
                     }
 
+                    try {
+                        res.socket?.setKeepAlive(true, 30000);
+                    } catch {}
+
                     log('RENDEZVOUS', `⚡ Cloudflare SSE Push channel CONNECTED for realm ${realmHash.slice(0, 8)}... (0 CPU, 0 polling)`);
                     this.syncEphemeralPeersFromCloudflare();
                     let buffer = '';
+
+                    // Periodically refresh the SSE stream every 15 minutes so Cloudflare edge isolate rotations
+                    // never leave a half-open idle socket (consumes 0 KV and only 96 reqs/day out of 100k free quota)
+                    const streamRefreshTimer = setTimeout(() => {
+                        scheduleRetry(1000);
+                    }, 15 * 60 * 1000);
 
                     res.on('data', (chunk: Buffer) => {
                         buffer += chunk.toString('utf8');
@@ -1183,7 +1233,12 @@ export class FleetTunnelManager {
                     });
 
                     res.on('end', () => {
+                        clearTimeout(streamRefreshTimer);
                         scheduleRetry(5000);
+                    });
+
+                    res.on('close', () => {
+                        clearTimeout(streamRefreshTimer);
                     });
                 });
 

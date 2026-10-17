@@ -1268,22 +1268,36 @@ export const CustomAppWizardModal: React.FC<CustomAppWizardModalProps> = ({
 
                     <div className="flex items-center gap-2">
                         {step < 4 ? (
-                            <button
-                                type="button"
-                                onClick={() => {
-                                    if (step === 3) runValidation();
-                                    setStep(prev => Math.min(4, prev + 1) as any);
-                                }}
-                                className="px-5 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-semibold transition-colors shadow-sm"
-                            >
-                                Next Step
-                            </button>
+                            <>
+                                {editingApp && (
+                                    <button
+                                        type="button"
+                                        onClick={handleFinish}
+                                        disabled={isSaving || !formData.name.trim()}
+                                        className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-colors shadow-sm cursor-pointer"
+                                        title="Save changes immediately without stepping through all tabs"
+                                    >
+                                        {isSaving ? <RefreshCw size={13} className="animate-spin" /> : <CheckCircle2 size={13} />}
+                                        <span>Save Changes</span>
+                                    </button>
+                                )}
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        if (step === 3) runValidation();
+                                        setStep(prev => Math.min(4, prev + 1) as any);
+                                    }}
+                                    className="px-5 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-semibold transition-colors shadow-sm cursor-pointer"
+                                >
+                                    Next Step
+                                </button>
+                            </>
                         ) : (
                             <button
                                 type="button"
                                 onClick={handleFinish}
                                 disabled={isSaving || validationErrors.length > 0}
-                                className="px-6 py-2 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white rounded-xl text-xs font-semibold flex items-center gap-2 transition-colors shadow-sm"
+                                className="px-6 py-2 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white rounded-xl text-xs font-semibold flex items-center gap-2 transition-colors shadow-sm cursor-pointer"
                             >
                                 {isSaving ? <RefreshCw size={14} className="animate-spin" /> : <CheckCircle2 size={14} />}
                                 {editingApp ? 'Save Changes' : 'Create Application'}

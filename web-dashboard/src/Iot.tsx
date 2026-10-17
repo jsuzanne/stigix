@@ -87,8 +87,10 @@ export default function Iot({ token }: IotProps) {
     const [iotHealth, setIotHealth] = useState<any>(null);
     const [trafficRate, setTrafficRate] = useState<{ pps: number; ppm: number; bps: number; activeDevices: number } | null>(null);
     const sliderDebounce = useRef<ReturnType<typeof setTimeout> | null>(null);
-    // State filter
+    // State filter & sorting
     const [stateFilter, setStateFilter] = useState<'ALL' | 'ACTIVE' | 'QUEUED' | 'IDLE' | 'STOPPED'>('ALL');
+    const [sortBy, setSortBy] = useState<'index' | 'danger' | 'packets' | 'name'>('index');
+    const [onlyRiskOrAttack, setOnlyRiskOrAttack] = useState(false);
 
     // Format elapsed seconds as "2m 14s" or "45s"
     const [now, setNow] = useState(() => Date.now());
@@ -444,18 +446,39 @@ export default function Iot({ token }: IotProps) {
         }
     };
 
+    const isDeviceRiskyOrAttacking = (d: IoTDevice) => {
+        const meta = (d as any)._vuln_meta;
+        const hasVuln = !!(meta && ((meta.danger_score || 0) > 0 || (meta.cve_count || 0) > 0));
+        const hasAttack = !!(d.security?.bad_behavior && (d.security?.behavior_type?.length || 0) > 0);
+        return hasVuln || hasAttack;
+    };
+
+    const riskyOrAttackingCount = Array.isArray(devices) ? devices.filter(isDeviceRiskyOrAttacking).length : 0;
+
     const filteredDevices = Array.isArray(devices) ? devices.filter(d => {
         const query = (searchQuery || '').toLowerCase();
         const name = (d.name || '').toLowerCase();
         const vendor = (d.vendor || '').toLowerCase();
         const id = (d.id || '').toLowerCase();
         const mac = (d.mac || '').toLowerCase();
-        const textMatch = name.includes(query) || vendor.includes(query) || id.includes(query) || mac.includes(query);
+        const ip = (d.status?.stats?.current_ip || d.ip_start || '').toLowerCase();
+        const textMatch = name.includes(query) || vendor.includes(query) || id.includes(query) || mac.includes(query) || ip.includes(query);
         const ds = (d as any).deviceState || 'STOPPED';
         const stateMatch = stateFilter === 'ALL' || ds === stateFilter;
-        return textMatch && stateMatch;
-    // Always sort by original sequence index (#1, #2, … #N) so the order stays stable across all filters
-    }).sort((a, b) => devices.indexOf(a) - devices.indexOf(b)) : [];
+        const riskMatch = !onlyRiskOrAttack || isDeviceRiskyOrAttacking(d);
+        return textMatch && stateMatch && riskMatch;
+    }).sort((a, b) => {
+        if (sortBy === 'danger') {
+            const diff = ((b as any)._vuln_meta?.danger_score || 0) - ((a as any)._vuln_meta?.danger_score || 0);
+            if (diff !== 0) return diff;
+        } else if (sortBy === 'packets') {
+            const diff = (b.status?.stats?.packets_sent || 0) - (a.status?.stats?.packets_sent || 0);
+            if (diff !== 0) return diff;
+        } else if (sortBy === 'name') {
+            return (a.name || '').localeCompare(b.name || '');
+        }
+        return devices.indexOf(a) - devices.indexOf(b);
+    }) : [];
 
     const getDeviceIcon = (type: string, size: number = 20) => {
         const t = (type || '').toLowerCase();
@@ -491,7 +514,7 @@ export default function Iot({ token }: IotProps) {
     };
 
     return (
-        <div className="space-y-6 animate-in fade-in duration-500 pb-12">
+        <div className="space-y-4 animate-in fade-in duration-500 pb-12">
             {/* Daemon crash alert */}
             {daemonFailed && (
                 <div className="flex items-center gap-3 bg-red-500/10 border border-red-500/30 rounded-2xl px-5 py-4">
@@ -506,179 +529,120 @@ export default function Iot({ token }: IotProps) {
                 </div>
             )}
 
-            {/* ── Concurrency Control Panel — compact single row ──────── */}
-            <div className={cn(
-                "bg-card border rounded-2xl px-5 py-3 shadow-sm",
-                iotSettings.active > 80 ? "border-red-500/40" : "border-border"
-            )}>
-                <div className="flex items-center gap-3 flex-wrap">
-                    {/* Label */}
-                    <div className="flex items-center gap-1.5 shrink-0">
-                        <Gauge size={13} className="text-blue-400" />
-                        <span className="text-[10px] font-black text-text-primary uppercase tracking-widest">IoT</span>
-                    </div>
-                    <div className="h-3.5 w-px bg-border shrink-0" />
-                    {/* Slider */}
-                    <div className="flex items-center gap-2 flex-1 min-w-[180px]">
-                        <span className="text-[10px] text-text-muted whitespace-nowrap shrink-0">Max:</span>
-                        <input
-                            type="range" min={1} max={Math.max(devices.length, sliderValue, 163)}
-                            value={sliderValue}
-                            onChange={e => handleSliderChange(Number(e.target.value))}
-                            className="flex-1 accent-blue-500 h-1 rounded-full cursor-pointer"
-                        />
-                        <span className="text-sm font-black text-blue-400 w-7 text-right shrink-0">{sliderValue}</span>
-                    </div>
-                    <div className="h-3.5 w-px bg-border shrink-0" />
-                    {/* State counts */}
-                    <div className="flex items-center gap-3 shrink-0 text-[11px]">
-                        <span className="flex items-center gap-1.5">
-                            <div className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                            <span className="text-text-muted">Active: <span className="font-black text-emerald-400">{iotSettings.active}</span></span>
-                        </span>
-                        <span className="flex items-center gap-1.5">
-                            <div className="w-1.5 h-1.5 rounded-full bg-amber-500" />
-                            <span className="text-text-muted">Queued: <span className="font-black text-amber-400">{iotSettings.queued}</span></span>
-                        </span>
-                        <span className="flex items-center gap-1.5">
-                            <div className="w-1.5 h-1.5 rounded-full bg-blue-500" />
-                            <span className="text-text-muted">Idle: <span className="font-black text-blue-400">{iotSettings.idle}</span></span>
-                        </span>
-                    </div>
-                    {/* Inline health metrics */}
-                    {iotHealth && (
-                        <>
-                            <div className="h-3.5 w-px bg-border shrink-0" />
-                            <div className="flex items-center gap-2.5 shrink-0 flex-wrap">
-                                <span className={cn("text-[10px] font-bold", iotHealth.containerCpuPercent > 80 ? 'text-red-400' : 'text-text-muted')}>
-                                    CPU <span className="font-black">{iotHealth.containerCpuPercent}%</span>
-                                </span>
-                                <span className={cn("text-[10px] font-bold", iotHealth.udpReceiveErrorsDelta > 20 ? 'text-red-400' : 'text-text-muted')}>
-                                    UDP <span className="font-black">+{iotHealth.udpReceiveErrorsDelta}</span>
-                                </span>
-                                <span className={cn("text-[10px] font-bold", iotHealth.pythonProcessesStateD >= 2 ? 'text-red-400' : 'text-text-muted')}>
-                                    D-state <span className="font-black">{iotHealth.pythonProcessesStateD}</span>
-                                </span>
-                                {trafficRate && trafficRate.activeDevices > 0 && (
-                                    <span className="text-[10px] font-bold text-blue-400 flex items-center gap-1">
-                                        <TrendingUp size={9} />
-                                        <span className="font-black">{trafficRate.pps} pps</span>
-                                        <span className="text-text-muted/50">·</span>
-                                        <span className="font-black">{trafficRate.ppm.toLocaleString()} ppm</span>
-                                    </span>
-                                )}
-                                <span className={cn(
-                                    "px-2 py-0.5 rounded-full text-[9px] font-black border flex items-center gap-1",
-                                    getRiskColor(iotHealth.voipRiskLevel).text,
-                                    getRiskColor(iotHealth.voipRiskLevel).bg,
-                                    getRiskColor(iotHealth.voipRiskLevel).border
-                                )}>
-                                    <div className={cn("w-1 h-1 rounded-full animate-pulse", getRiskColor(iotHealth.voipRiskLevel).dot)} />
-                                    {iotHealth.voipRiskLevel}
-                                </span>
-                            </div>
-                        </>
-                    )}
-                </div>
-                {/* Recommendation banner */}
-                {iotHealth?.recommendation && (
-                    <p className={cn("text-[9px] mt-2 font-medium", getRiskColor(iotHealth.voipRiskLevel).text)}>
-                        {iotHealth.recommendation}
-                    </p>
-                )}
-            </div>
-            {/* Header section */}
-            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                <div className="flex items-center gap-4 min-w-0 flex-shrink">
-                    <div className="bg-blue-600/20 p-3 rounded-2xl flex-shrink-0">
-                        <Cpu className="text-blue-400" size={32} />
+            {/* ── Row 1: Unified Top Header ───────────────────────────────────── */}
+            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 bg-card border border-border p-5 rounded-2xl shadow-sm">
+                <div className="flex items-center gap-3.5 min-w-0">
+                    <div className="bg-blue-600/15 p-2.5 rounded-xl border border-blue-500/20 shrink-0">
+                        <Cpu className="text-blue-400" size={24} />
                     </div>
                     <div className="min-w-0">
-                        <h2 className="text-2xl font-bold text-text-primary flex items-center gap-2">
-                            IoT Device Simulation
-                        </h2>
-                        <div className="flex items-center gap-3 flex-wrap">
-                            <p className="text-text-muted text-sm whitespace-nowrap">Scale your branch with realistic IoT traffic patterns per vendor.</p>
-                            <span className="text-text-muted/30">|</span>
-                            <a
-                                href="https://raw.githubusercontent.com/jsuzanne/stigix/main/sample%20config/iot-devices.json"
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="text-blue-400 hover:text-blue-300 text-xs font-bold transition-colors flex items-center gap-1 whitespace-nowrap"
-                                title="Download Full IoT Sample Configuration"
-                            >
-                                <ExternalLink size={12} /> Download Sample
-                            </a>
-                            <span className="text-text-muted/30">|</span>
-                            <a
-                                href="https://github.com/jsuzanne/stigix/blob/main/docs/IOT_DEVICE_GENERATOR.md"
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="text-blue-400 hover:text-blue-300 text-xs font-bold transition-colors flex items-center gap-1 whitespace-nowrap"
-                                title="Python Script Generator"
-                            >
-                                <ExternalLink size={12} /> Python Generator
-                            </a>
-                            <span className="text-text-muted/30">|</span>
-                            <a
-                                href="https://github.com/jsuzanne/stigix/blob/main/docs/IOT_LLM_GENERATION.md"
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="text-blue-400 hover:text-blue-300 text-xs font-bold transition-colors flex items-center gap-1 whitespace-nowrap"
-                                title="LLM-based Generation"
-                            >
-                                <ExternalLink size={12} /> Llm Guide
-                            </a>
+                        <div className="flex items-center gap-2.5 flex-wrap">
+                            <h2 className="text-xl font-bold text-text-primary tracking-tight">
+                                IoT Device Simulation
+                            </h2>
+                            {/* Inline Engine Telemetry Pill */}
+                            {iotHealth && (
+                                <div className="flex items-center gap-2 px-2.5 py-1 rounded-lg bg-card-secondary border border-border text-[10px]">
+                                    <span className={cn("font-bold", iotHealth.containerCpuPercent > 80 ? 'text-red-400' : 'text-text-muted')}>
+                                        CPU <span className="font-black text-text-primary">{iotHealth.containerCpuPercent}%</span>
+                                    </span>
+                                    {iotHealth.udpReceiveErrorsDelta > 0 && (
+                                        <>
+                                            <span className="text-border">·</span>
+                                            <span className={cn("font-bold", iotHealth.udpReceiveErrorsDelta > 20 ? 'text-red-400' : 'text-amber-400')}>
+                                                UDP +{iotHealth.udpReceiveErrorsDelta}
+                                            </span>
+                                        </>
+                                    )}
+                                    {iotHealth.pythonProcessesStateD > 0 && (
+                                        <>
+                                            <span className="text-border">·</span>
+                                            <span className={cn("font-bold", iotHealth.pythonProcessesStateD >= 2 ? 'text-red-400' : 'text-amber-400')}>
+                                                D-state {iotHealth.pythonProcessesStateD}
+                                            </span>
+                                        </>
+                                    )}
+                                    {trafficRate && trafficRate.activeDevices > 0 && (
+                                        <>
+                                            <span className="text-border">·</span>
+                                            <span className="font-bold text-blue-400 flex items-center gap-1">
+                                                <TrendingUp size={10} />
+                                                <span className="font-black">{trafficRate.pps} pps</span>
+                                                <span className="text-text-muted/50">/</span>
+                                                <span className="font-black">{trafficRate.ppm.toLocaleString()} ppm</span>
+                                            </span>
+                                        </>
+                                    )}
+                                    <span className={cn(
+                                        "px-1.5 py-0.5 rounded text-[9px] font-black border flex items-center gap-1",
+                                        getRiskColor(iotHealth.voipRiskLevel).text,
+                                        getRiskColor(iotHealth.voipRiskLevel).bg,
+                                        getRiskColor(iotHealth.voipRiskLevel).border
+                                    )} title={iotHealth.recommendation || 'VoIP/System contention risk level'}>
+                                        <div className={cn("w-1 h-1 rounded-full animate-pulse", getRiskColor(iotHealth.voipRiskLevel).dot)} />
+                                        {iotHealth.voipRiskLevel}
+                                    </span>
+                                </div>
+                            )}
                         </div>
+                        <p className="text-text-muted text-xs mt-0.5 truncate">
+                            Scale your branch with realistic vendor traffic patterns &amp; threat emulation
+                            {iotHealth?.recommendation && (
+                                <span className={cn("ml-2 font-semibold", getRiskColor(iotHealth.voipRiskLevel).text)}>
+                                    • {iotHealth.recommendation}
+                                </span>
+                            )}
+                        </p>
                     </div>
                 </div>
 
-                <div className="flex items-center gap-3 flex-shrink-0">
+                {/* Right Actions */}
+                <div className="flex items-center gap-2.5 flex-wrap shrink-0">
                     {selectedIds.length > 0 && (
-                        <div className="flex items-center gap-2 bg-blue-600/10 px-4 py-2 rounded-xl border border-blue-500/30 animate-in slide-in-from-right duration-300">
-                            <span className="text-sm font-bold text-blue-400 whitespace-nowrap">{selectedIds.length} selected</span>
-                            <div className="w-px h-5 bg-blue-500/30 mx-1" />
+                        <div className="flex items-center gap-1.5 bg-blue-600/10 px-3 py-1.5 rounded-xl border border-blue-500/30 animate-in slide-in-from-right duration-200">
+                            <span className="text-xs font-bold text-blue-400 whitespace-nowrap">{selectedIds.length} selected</span>
+                            <div className="w-px h-4 bg-blue-500/30 mx-0.5" />
                             <button
                                 onClick={handleBulkStart}
-                                className="flex items-center gap-1.5 text-sm font-bold text-green-400 hover:text-green-300 transition-colors whitespace-nowrap px-2 py-1 rounded-lg hover:bg-green-500/10"
+                                className="flex items-center gap-1 text-xs font-bold text-emerald-400 hover:text-emerald-300 transition-colors whitespace-nowrap px-2 py-1 rounded-lg hover:bg-emerald-500/10"
                             >
-                                <Play size={14} /> Start
+                                <Play size={12} /> Start
                             </button>
                             <button
                                 onClick={handleBulkStop}
-                                className="flex items-center gap-1.5 text-sm font-bold text-red-400 hover:text-red-300 transition-colors whitespace-nowrap px-2 py-1 rounded-lg hover:bg-red-500/10"
+                                className="flex items-center gap-1 text-xs font-bold text-red-400 hover:text-red-300 transition-colors whitespace-nowrap px-2 py-1 rounded-lg hover:bg-red-500/10"
                             >
-                                <Square size={14} /> Stop
+                                <Square size={12} /> Stop
                             </button>
                         </div>
                     )}
 
                     <button
                         onClick={handleExportJson}
-                        className="flex items-center gap-2 bg-card-secondary hover:bg-card-hover text-text-secondary px-4 py-2.5 rounded-xl text-sm font-bold transition-all border border-border"
+                        className="flex items-center gap-1.5 bg-card-secondary hover:bg-card-hover text-text-secondary hover:text-text-primary px-3 py-2 rounded-xl text-xs font-bold transition-all border border-border"
                         title="Export JSON Configuration"
                     >
-                        <ArrowUpRight size={18} /> Export Json
+                        <ArrowUpRight size={14} /> Export
                     </button>
 
                     <div className="relative" ref={importDropdownRef}>
                         <button
                             onClick={() => setShowImportDropdown(!showImportDropdown)}
                             className={cn(
-                                "flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold transition-all border",
-                                showImportDropdown ? "bg-blue-600 border-blue-500 text-white shadow-lg shadow-blue-900/20" : "bg-card-secondary hover:bg-card-hover text-text-secondary border-border"
+                                "flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold transition-all border",
+                                showImportDropdown ? "bg-blue-600 border-blue-500 text-white shadow-lg shadow-blue-900/20" : "bg-card-secondary hover:bg-card-hover text-text-secondary hover:text-text-primary border-border"
                             )}
-                            title="Import Configurations or Assets"
+                            title="Import Configurations, CSV Assets, or Sample Templates"
                         >
-                            <DownloadCloud size={18} /> Import <ChevronDown size={14} className={cn("transition-transform duration-200", showImportDropdown && "rotate-180")} />
+                            <DownloadCloud size={14} /> Import <ChevronDown size={13} className={cn("transition-transform duration-200", showImportDropdown && "rotate-180")} />
                         </button>
                         
                         {showImportDropdown && (
                             <div className="absolute right-0 mt-2 w-72 bg-card border border-border rounded-2xl shadow-2xl z-50 p-2 animate-in fade-in slide-in-from-top-2 duration-200">
-                                <label className="flex flex-col gap-1 p-3 hover:bg-blue-600/10 rounded-xl cursor-pointer group transition-colors">
+                                <label className="flex flex-col gap-1 p-2.5 hover:bg-blue-600/10 rounded-xl cursor-pointer group transition-colors">
                                     <div className="flex items-center gap-2 text-blue-400">
-                                        <FileJson size={18} />
-                                        <span className="text-sm font-bold">Stigix JSON Config</span>
+                                        <FileJson size={16} />
+                                        <span className="text-xs font-bold">Stigix JSON Config</span>
                                     </div>
                                     <p className="text-[10px] text-text-muted leading-relaxed">Restore a full IoT simulation environment from a previously exported .json file.</p>
                                     <input type="file" accept=".json" className="hidden" onChange={(e) => { setShowImportDropdown(false); handleImportJson(e); }} />
@@ -688,11 +652,11 @@ export default function Iot({ token }: IotProps) {
                                 
                                 <button
                                     onClick={() => { setShowImportDropdown(false); setPrismaFile(null); setPrismaResult(null); setShowPrismaModal(true); }}
-                                    className="w-full flex flex-col gap-1 p-3 hover:bg-purple-500/10 rounded-xl text-left group transition-colors"
+                                    className="w-full flex flex-col gap-1 p-2.5 hover:bg-purple-500/10 rounded-xl text-left group transition-colors"
                                 >
                                     <div className="flex items-center gap-2 text-purple-400">
-                                        <FileSpreadsheet size={18} />
-                                        <span className="text-sm font-bold">Device Security Assets</span>
+                                        <FileSpreadsheet size={16} />
+                                        <span className="text-xs font-bold">Device Security Assets (CSV)</span>
                                     </div>
                                     <p className="text-[10px] text-text-muted leading-relaxed">Import devices from a Palo Alto IoT Security CSV report (Inventory Export).</p>
                                 </button>
@@ -701,269 +665,531 @@ export default function Iot({ token }: IotProps) {
 
                                 <button
                                     onClick={() => { setShowImportDropdown(false); setVulnFile(null); setVulnResult(null); setShowVulnModal(true); }}
-                                    className="w-full flex flex-col gap-1 p-3 hover:bg-orange-500/10 rounded-xl text-left group transition-colors"
+                                    className="w-full flex flex-col gap-1 p-2.5 hover:bg-orange-500/10 rounded-xl text-left group transition-colors"
                                 >
                                     <div className="flex items-center gap-2 text-orange-400">
-                                        <AlertTriangle size={18} />
-                                        <span className="text-sm font-bold">Vulnerability Report</span>
+                                        <AlertTriangle size={16} />
+                                        <span className="text-xs font-bold">Vulnerability Report (CSV)</span>
                                     </div>
-                                    <p className="text-[10px] text-text-muted leading-relaxed">Import from a Palo Alto CVE/Vulnerability export — aggregates by device, ranks by danger score (CVEs + APT groups + ICS-CERT).</p>
+                                    <p className="text-[10px] text-text-muted leading-relaxed">Import from a Palo Alto CVE/Vulnerability export — aggregates by device &amp; danger score.</p>
                                 </button>
+
+                                <div className="h-px bg-border my-1.5 mx-2" />
+                                <div className="px-2.5 py-1.5 flex items-center justify-between gap-2 text-[10px] text-text-muted">
+                                    <a
+                                        href="https://raw.githubusercontent.com/jsuzanne/stigix/main/sample%20config/iot-devices.json"
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="text-blue-400 hover:underline flex items-center gap-1 font-bold"
+                                    >
+                                        <ExternalLink size={10} /> Sample JSON
+                                    </a>
+                                    <span>·</span>
+                                    <a
+                                        href="https://github.com/jsuzanne/stigix/blob/main/docs/IOT_DEVICE_GENERATOR.md"
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="text-blue-400 hover:underline flex items-center gap-1 font-bold"
+                                    >
+                                        <ExternalLink size={10} /> Python Gen
+                                    </a>
+                                    <span>·</span>
+                                    <a
+                                        href="https://github.com/jsuzanne/stigix/blob/main/docs/IOT_LLM_GENERATION.md"
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="text-blue-400 hover:underline flex items-center gap-1 font-bold"
+                                    >
+                                        <ExternalLink size={10} /> LLM Guide
+                                    </a>
+                                </div>
                             </div>
                         )}
                     </div>
 
                     <button
                         onClick={() => { setEditingDevice({ enabled: true, protocols: ['dhcp', 'arp', 'http'], traffic_interval: 60 }); setShowAddModal(true); }}
-                        className="flex items-center gap-2 bg-blue-600 hover:bg-blue-500 text-white px-4 py-2.5 rounded-xl text-sm font-bold transition-all shadow-lg shadow-blue-900/20"
+                        className="flex items-center gap-1.5 bg-blue-600 hover:bg-blue-500 text-white px-3.5 py-2 rounded-xl text-xs font-bold transition-all shadow-lg shadow-blue-900/20"
                     >
-                        <Plus size={18} /> Add Device
+                        <Plus size={15} /> Add Device
                     </button>
                 </div>
             </div>
 
-            {/* Filters Bar */}
-            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-card-secondary p-4 rounded-2xl border border-border shadow-sm">
-                <div className="flex flex-col md:flex-row items-center gap-3 w-full md:w-auto">
-                    <div className="relative w-full md:w-80">
-                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-text-muted" size={16} />
+            {/* ── Row 2: Unified Control, Concurrency & Filter Bar ────────────── */}
+            <div className={cn(
+                "flex flex-col xl:flex-row xl:items-center justify-between gap-3 bg-card border px-4 py-3 rounded-2xl shadow-sm",
+                iotSettings.active > 80 ? "border-red-500/40" : "border-border"
+            )}>
+                {/* Left: Search + Concurrency Slider */}
+                <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 flex-1 min-w-0">
+                    <div className="relative w-full sm:w-64 shrink-0">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-text-muted" size={14} />
                         <input
                             type="text"
-                            placeholder="Filter by Name, Vendor, ID, MAC..."
-                            className="bg-card border-border text-foreground pl-10 pr-4 py-2 rounded-xl text-sm w-full focus:ring-1 focus:ring-blue-500 transition-all border outline-none"
+                            placeholder="Search name, vendor, IP, MAC..."
+                            className="bg-card-secondary border-border text-foreground pl-8 pr-7 py-1.5 rounded-xl text-xs w-full focus:ring-1 focus:ring-blue-500 transition-all border outline-none"
                             value={searchQuery}
                             onChange={(e) => setSearchQuery(e.target.value)}
                         />
+                        {searchQuery && (
+                            <button
+                                onClick={() => setSearchQuery('')}
+                                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-text-muted hover:text-text-primary"
+                            >
+                                <X size={12} />
+                            </button>
+                        )}
                     </div>
-                    <div className="flex items-center gap-2 w-full md:w-auto">
-                        {/* Global Bad Behavior Toggle */}
-                        <button
-                            id="bad-behavior-toggle"
-                            onClick={toggleBadBehavior}
-                            title={badBehaviorEnabled
-                                ? 'Attacks active — click to stop all bad behavior (Clean Mode)'
-                                : 'No attacks — click to enable bad behavior on all configured devices'}
-                            className={`flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-bold border transition-all ${
-                                badBehaviorEnabled
-                                    ? 'bg-red-500/10 border-red-500/40 text-red-400 hover:bg-red-500/20 animate-pulse'
-                                    : 'bg-card-secondary border-border text-text-muted hover:text-text-secondary hover:bg-card-hover'
-                            }`}
-                        >
-                            <span>{badBehaviorEnabled ? '💀' : '🛡️'}</span>
-                            <span>{badBehaviorEnabled ? 'Attacks ON' : 'Clean'}</span>
-                        </button>
 
-                        <button
-                            onClick={handleSelectAll}
-                            className="flex-1 md:flex-none flex items-center justify-center gap-2 px-4 py-2 bg-card-secondary hover:bg-card-hover text-text-secondary hover:text-text-primary rounded-xl text-xs font-bold transition-all border border-border"
-                        >
-                            {selectedIds.length === filteredDevices.length && filteredDevices.length > 0 ? <CheckSquare size={16} className="text-blue-500" /> : <SquareIcon size={16} />}
-                            Select All
-                        </button>
+                    {/* Concurrency Slider Pill */}
+                    <div className="flex items-center gap-2 bg-card-secondary border border-border rounded-xl px-3 py-1.5 min-w-[200px] max-w-xs flex-1">
+                        <Gauge size={13} className="text-blue-400 shrink-0" />
+                        <span className="text-[10px] font-bold text-text-muted whitespace-nowrap shrink-0">Max Active:</span>
+                        <input
+                            type="range" min={1} max={Math.max(devices.length, sliderValue, 163)}
+                            value={sliderValue}
+                            onChange={e => handleSliderChange(Number(e.target.value))}
+                            className="flex-1 accent-blue-500 h-1 rounded-full cursor-pointer min-w-[60px]"
+                            title={`Max concurrent active devices: ${sliderValue}`}
+                        />
+                        <span className="text-xs font-black text-blue-400 w-6 text-right shrink-0">{sliderValue}</span>
+                    </div>
 
-                        <div className="flex bg-card-secondary rounded-xl p-1 border border-border">
-                            <button
-                                onClick={() => setIsCompact(false)}
-                                className={cn("p-1.5 rounded-lg transition-all", !isCompact ? "bg-blue-600 text-white shadow-lg" : "text-text-muted hover:text-text-secondary")}
-                            >
-                                <LayoutGrid size={16} />
-                            </button>
-                            <button
-                                onClick={() => setIsCompact(true)}
-                                className={cn("p-1.5 rounded-lg transition-all", isCompact ? "bg-blue-600 text-white shadow-lg" : "text-text-muted hover:text-text-secondary")}
-                            >
-                                <List size={16} />
-                            </button>
-                        </div>
+                    {/* State Filter Pills (single source of truth for state counts + filtering) */}
+                    <div className="flex items-center gap-1 flex-wrap">
+                        {(['ALL', 'ACTIVE', 'QUEUED', 'IDLE', 'STOPPED'] as const).map(s => {
+                            const count = s === 'ALL' ? devices.length
+                                : s === 'ACTIVE'  ? devices.filter(d => (d as any).deviceState === 'ACTIVE').length
+                                : s === 'QUEUED'  ? devices.filter(d => (d as any).deviceState === 'QUEUED').length
+                                : s === 'IDLE'    ? devices.filter(d => (d as any).deviceState === 'IDLE').length
+                                : devices.filter(d => !(d as any).deviceState || (d as any).deviceState === 'STOPPED').length;
+                            const dot = s === 'ACTIVE' ? 'bg-emerald-500' : s === 'QUEUED' ? 'bg-amber-500' : s === 'IDLE' ? 'bg-blue-500' : s === 'STOPPED' ? 'bg-zinc-500' : 'bg-blue-500';
+                            const active = stateFilter === s;
+                            const activeStyle = s === 'ACTIVE'  ? 'bg-emerald-500/15 border-emerald-500/40 text-emerald-400'
+                                : s === 'QUEUED'  ? 'bg-amber-500/15 border-amber-500/40 text-amber-400'
+                                : s === 'IDLE'    ? 'bg-blue-500/15 border-blue-500/40 text-blue-400'
+                                : s === 'STOPPED' ? 'bg-zinc-500/15 border-zinc-500/40 text-zinc-400'
+                                : 'bg-blue-600/20 border-blue-500/50 text-blue-300';
+                            const label = s === 'ALL' ? 'All' : s === 'STOPPED' ? 'Off' : s.charAt(0) + s.slice(1).toLowerCase();
+                            return (
+                                <button
+                                    key={s}
+                                    onClick={() => setStateFilter(s)}
+                                    className={cn(
+                                        "flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[10px] font-black border transition-all",
+                                        active ? activeStyle : 'bg-card-secondary border-border text-text-muted hover:text-text-secondary hover:bg-card-hover'
+                                    )}
+                                >
+                                    {s !== 'ALL' && <div className={cn('w-1.5 h-1.5 rounded-full', dot)} />}
+                                    {label} <span className="opacity-65">({count})</span>
+                                </button>
+                            );
+                        })}
                     </div>
                 </div>
 
-                {/* State filter pills — clickable, double as count badges */}
-                <div className="flex items-center gap-1.5 flex-wrap">
-                    {(['ALL', 'ACTIVE', 'QUEUED', 'IDLE', 'STOPPED'] as const).map(s => {
-                        const count = s === 'ALL' ? devices.length
-                            : s === 'ACTIVE'  ? devices.filter(d => (d as any).deviceState === 'ACTIVE').length
-                            : s === 'QUEUED'  ? devices.filter(d => (d as any).deviceState === 'QUEUED').length
-                            : s === 'IDLE'    ? devices.filter(d => (d as any).deviceState === 'IDLE').length
-                            : devices.filter(d => !(d as any).deviceState || (d as any).deviceState === 'STOPPED').length;
-                        const dot = s === 'ACTIVE' ? 'bg-emerald-500' : s === 'QUEUED' ? 'bg-amber-500' : s === 'IDLE' ? 'bg-blue-500' : s === 'STOPPED' ? 'bg-zinc-500' : 'bg-blue-500';
-                        const active = stateFilter === s;
-                        const activeStyle = s === 'ACTIVE'  ? 'bg-emerald-500/15 border-emerald-500/40 text-emerald-400'
-                            : s === 'QUEUED'  ? 'bg-amber-500/15 border-amber-500/40 text-amber-400'
-                            : s === 'IDLE'    ? 'bg-blue-500/15 border-blue-500/40 text-blue-400'
-                            : s === 'STOPPED' ? 'bg-zinc-500/15 border-zinc-500/40 text-zinc-400'
-                            : 'bg-blue-600/20 border-blue-500/50 text-blue-300';
-                        return (
-                            <button
-                                key={s}
-                                onClick={() => setStateFilter(s)}
-                                className={cn(
-                                    "flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[10px] font-black border transition-all",
-                                    active ? activeStyle : 'bg-card-secondary border-border text-text-muted hover:text-text-secondary hover:bg-card-hover'
-                                )}
-                            >
-                                {s !== 'ALL' && <div className={cn('w-1.5 h-1.5 rounded-full', dot)} />}
-                                {s === 'ALL' ? 'All' : s.charAt(0) + s.slice(1).toLowerCase()} <span className="opacity-60">({count})</span>
-                            </button>
-                        );
-                    })}
+                {/* Right: Attacks Toggle, Risk Filter, Sort, Select All, View Mode */}
+                <div className="flex items-center gap-2 flex-wrap justify-end shrink-0">
+                    {/* Global Bad Behavior Toggle */}
+                    <button
+                        id="bad-behavior-toggle"
+                        onClick={toggleBadBehavior}
+                        title={badBehaviorEnabled
+                            ? 'Attacks active — click to stop all bad behavior (Clean Mode)'
+                            : 'No attacks — click to enable bad behavior on all configured devices'}
+                        className={cn(
+                            "flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-[11px] font-bold border transition-all",
+                            badBehaviorEnabled
+                                ? 'bg-red-500/10 border-red-500/40 text-red-400 hover:bg-red-500/20'
+                                : 'bg-card-secondary border-border text-text-muted hover:text-text-secondary hover:bg-card-hover'
+                        )}
+                    >
+                        <span>{badBehaviorEnabled ? '💀' : '🛡️'}</span>
+                        <span>{badBehaviorEnabled ? 'Attacks ON' : 'Clean'}</span>
+                    </button>
+
+                    {/* Vulnerable / Attacking Quick Filter */}
+                    {riskyOrAttackingCount > 0 && (
+                        <button
+                            onClick={() => setOnlyRiskOrAttack(!onlyRiskOrAttack)}
+                            title="Filter devices with CVEs/Danger Score or active attack behaviors"
+                            className={cn(
+                                "flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-[11px] font-bold border transition-all",
+                                onlyRiskOrAttack
+                                    ? "bg-orange-500/15 border-orange-500/40 text-orange-400"
+                                    : "bg-card-secondary border-border text-text-muted hover:text-text-secondary hover:bg-card-hover"
+                            )}
+                        >
+                            <AlertTriangle size={12} className={onlyRiskOrAttack ? "text-orange-400" : "text-text-muted"} />
+                            <span>Risk/Attack ({riskyOrAttackingCount})</span>
+                        </button>
+                    )}
+
+                    {/* Sort Selector */}
+                    <div className="flex items-center gap-1 bg-card-secondary border border-border rounded-xl px-2.5 py-1">
+                        <span className="text-[10px] font-bold text-text-muted">Sort:</span>
+                        <select
+                            value={sortBy}
+                            onChange={(e) => setSortBy(e.target.value as any)}
+                            className="bg-transparent text-[11px] font-bold text-text-primary outline-none cursor-pointer"
+                        >
+                            <option value="index" className="bg-card text-text-primary">#ID</option>
+                            <option value="danger" className="bg-card text-text-primary">Danger Score</option>
+                            <option value="packets" className="bg-card text-text-primary">Packets</option>
+                            <option value="name" className="bg-card text-text-primary">Name</option>
+                        </select>
+                    </div>
+
+                    {/* Select All */}
+                    <button
+                        onClick={handleSelectAll}
+                        className="flex items-center justify-center gap-1.5 px-2.5 py-1.5 bg-card-secondary hover:bg-card-hover text-text-secondary hover:text-text-primary rounded-xl text-[11px] font-bold transition-all border border-border"
+                        title="Select / Deselect All Filtered Devices"
+                    >
+                        {selectedIds.length === filteredDevices.length && filteredDevices.length > 0 ? <CheckSquare size={14} className="text-blue-500" /> : <SquareIcon size={14} />}
+                        <span className="hidden sm:inline">All</span>
+                    </button>
+
+                    {/* View Switcher */}
+                    <div className="flex bg-card-secondary rounded-xl p-0.5 border border-border">
+                        <button
+                            onClick={() => setIsCompact(false)}
+                            className={cn("p-1.5 rounded-lg transition-all", !isCompact ? "bg-blue-600 text-white shadow-sm" : "text-text-muted hover:text-text-secondary")}
+                            title="Grid View"
+                        >
+                            <LayoutGrid size={14} />
+                        </button>
+                        <button
+                            onClick={() => setIsCompact(true)}
+                            className={cn("p-1.5 rounded-lg transition-all", isCompact ? "bg-blue-600 text-white shadow-sm" : "text-text-muted hover:text-text-secondary")}
+                            title="High-Density List View"
+                        >
+                            <List size={14} />
+                        </button>
+                    </div>
                 </div>
             </div>
 
-            {/* Devices Grid */}
+            {/* ── Devices List / Grid ─────────────────────────────────────────── */}
             {loading && devices.length === 0 ? (
                 <IotSkeleton />
-            ) : (
-                <div className={cn(
-                    "grid gap-6",
-                    isCompact ? "grid-cols-1" : "grid-cols-1 md:grid-cols-2 lg:grid-cols-3"
-                )}>
-                    {filteredDevices.map(device => (
-                        <div
-                            key={device.id}
-                            className={cn(
-                                "relative bg-card border transition-all duration-300 overflow-hidden group shadow-sm hover:shadow-md",
-                                isCompact ? "rounded-2xl" : "rounded-3xl",
-                                device.running ? "border-blue-500/30 shadow-blue-500/5 ring-1 ring-blue-500/10" : "border-border",
-                                selectedIds.includes(device.id) ? "ring-2 ring-blue-600" : ""
-                            )}
-                        >
-                            {/* Selection Checkbox (overlay) */}
-                            <button
-                                onClick={() => setSelectedIds(prev => prev.includes(device.id) ? prev.filter(i => i !== device.id) : [...prev, device.id])}
+            ) : isCompact ? (
+                /* ── High-Density List View ──────────────────────────────────── */
+                <div className="space-y-1.5">
+                    {filteredDevices.map(device => {
+                        const seqNum = devices.findIndex(d => d.id === device.id) + 1;
+                        const state = (device as any).deviceState || 'STOPPED';
+                        const timing = (device as any).timing;
+                        const meta = (device as any)._vuln_meta;
+                        const isSelected = selectedIds.includes(device.id);
+                        const cum = timing?.cumulative;
+                        const totalCum = cum ? (cum.active || 0) + (cum.idle || 0) + (cum.queued || 0) : 0;
+                        const pctA = totalCum > 0 ? Math.round(((cum.active || 0) / totalCum) * 100) : 0;
+                        const pctQ = totalCum > 0 ? Math.round(((cum.queued || 0) / totalCum) * 100) : 0;
+                        const pctI = totalCum > 0 ? Math.max(0, 100 - pctA - pctQ) : 0;
+
+                        const formatMs = (ms: number) => {
+                            if (!ms) return '0s';
+                            const s = Math.floor(ms / 1000);
+                            if (s < 60) return `${s}s`;
+                            const m = Math.floor(s / 60);
+                            return `${m}m ${s % 60}s`;
+                        };
+
+                        return (
+                            <div
+                                key={device.id}
                                 className={cn(
-                                    "absolute z-10 p-1 rounded-lg bg-background/60 backdrop-blur-sm border border-border text-text-primary transition-opacity",
-                                    isCompact ? "right-2 top-1/2 -translate-y-1/2 opacity-100" : "top-4 left-4 opacity-0 group-hover:opacity-100"
+                                    "bg-card border rounded-xl px-3.5 py-2.5 flex items-center gap-3 transition-all hover:bg-card-secondary/40 group",
+                                    device.running ? "border-blue-500/25" : "border-border",
+                                    isSelected && "ring-1 ring-blue-500 border-blue-500/50 bg-blue-500/5"
                                 )}
                             >
-                                {selectedIds.includes(device.id) ? <CheckSquare size={16} className="text-blue-500" /> : <SquareIcon size={16} />}
-                            </button>
+                                {/* Checkbox */}
+                                <button
+                                    onClick={() => setSelectedIds(prev => prev.includes(device.id) ? prev.filter(i => i !== device.id) : [...prev, device.id])}
+                                    className="text-text-muted hover:text-text-primary shrink-0"
+                                >
+                                    {isSelected ? <CheckSquare size={15} className="text-blue-500" /> : <SquareIcon size={15} />}
+                                </button>
 
-                            <div className={cn("p-6", isCompact ? "flex items-center justify-between gap-6" : "")}>
-                                <div className={cn("flex items-start gap-4", isCompact ? "w-1/4" : "mb-4")}>
+                                {/* Icon + #ID + Name + Vendor */}
+                                <div className="flex items-center gap-2.5 w-52 lg:w-64 shrink-0 min-w-0">
                                     <div className={cn(
-                                        "rounded-2xl transition-all duration-300 shrink-0 flex items-center justify-center",
-                                        device.running ? "bg-blue-600 text-white shadow-lg shadow-blue-600/20" : "bg-card-secondary text-text-muted border border-border",
-                                        isCompact ? "w-10 h-10" : "w-14 h-14"
+                                        "w-8 h-8 rounded-lg shrink-0 flex items-center justify-center transition-colors",
+                                        device.running ? "bg-blue-600 text-white shadow-sm shadow-blue-600/20" : "bg-card-secondary text-text-muted border border-border"
                                     )}>
-                                        {getDeviceIcon(device.type, isCompact ? 16 : 24)}
+                                        {getDeviceIcon(device.type, 15)}
                                     </div>
-                                    <div className="truncate flex-1">
-                                        <div className="flex items-center gap-2">
-                                            <span className="text-[11px] font-mono font-bold text-text-muted/60">#{devices.findIndex(d => d.id === device.id) + 1}</span>
-                                            <h3 className={cn("font-bold text-text-primary transition-colors tracking-tight truncate", isCompact ? "text-sm" : "text-base group-hover:text-blue-500")}>{device.name}</h3>
+                                    <div className="min-w-0 flex-1">
+                                        <div className="flex items-center gap-1.5">
+                                            <span className="text-[10px] font-mono font-bold text-text-muted/60 shrink-0">#{seqNum}</span>
+                                            <h3 className="text-xs font-bold text-text-primary truncate">{device.name}</h3>
                                         </div>
-                                        <div className="flex items-center gap-1.5 flex-wrap mt-0.5">
-                                            <p className="text-[10px] text-text-muted font-bold uppercase tracking-widest truncate">{device.vendor} • {device.type}</p>
-                                            {(device as any).deviceState && getStateBadge((device as any).deviceState)}
-                                        </div>
+                                        <p className="text-[9px] text-text-muted font-bold uppercase tracking-wider truncate">
+                                            {device.vendor} • {device.type}
+                                        </p>
                                     </div>
                                 </div>
 
-                                {/* Stats & IP - Compact Alignment */}
-                                <div className={cn("flex items-center gap-8", isCompact ? "flex-1" : "mb-6")}>
-                                    <div className={cn(
-                                        "grid gap-4 bg-card-secondary p-3 rounded-2xl border border-border shadow-sm",
-                                        isCompact ? "grid-cols-3 flex-1" : "grid-cols-2 w-full"
-                                    )}>
-                                        <div className="space-y-0.5">
-                                            <div className="text-[9px] font-bold text-text-muted uppercase tracking-widest flex items-center gap-1.5">
-                                                <Activity size={9} /> Packets
-                                            </div>
-                                            <div className={cn("font-mono font-bold text-foreground", isCompact ? "text-sm" : "text-lg")}>
-                                                {device.status?.stats?.packets_sent?.toLocaleString() || '0'}
-                                            </div>
-                                        </div>
-                                        <div className="space-y-0.5">
-                                            <div className="text-[9px] font-bold text-text-muted uppercase tracking-widest flex items-center gap-1.5">
-                                                <Wifi size={9} /> IP
-                                            </div>
-                                            <div className={cn("font-mono font-black", isCompact ? "text-xs" : "text-sm", device.status?.stats?.current_ip ? "text-blue-400" : "text-text-muted")}>
-                                                {device.status?.stats?.current_ip || '---.---.---.---'}
-                                            </div>
-                                        </div>
-                                        {isCompact && (
-                                            <div className="space-y-0.5">
-                                                <div className="text-[9px] font-bold text-text-muted uppercase tracking-widest flex items-center gap-1.5">
-                                                    <Clock size={9} /> Uptime
-                                                </div>
-                                                <div className="text-xs font-mono font-bold text-text-secondary">
-                                                    {device.status?.stats?.uptime_seconds ? `${Math.floor(device.status.stats.uptime_seconds / 60)}m` : '-'}
-                                                </div>
-                                            </div>
+                                {/* State + Mini Timing Cycle Bar */}
+                                <div className="w-28 shrink-0 flex flex-col gap-1">
+                                    <div className="flex items-center gap-1.5">
+                                        {getStateBadge(state)}
+                                        {timing && (
+                                            <span className="text-[9px] font-mono text-text-muted">
+                                                {state === 'ACTIVE' && timing.activatedAt ? fmtElapsed(timing.activatedAt) :
+                                                 state === 'IDLE' && timing.idledAt ? `${fmtRemain(timing.idledAt, timing.cycleSeconds || 60)}` :
+                                                 state === 'QUEUED' && timing.queuePosition ? `#${timing.queuePosition}` : ''}
+                                            </span>
                                         )}
                                     </div>
-
-                                    {!isCompact && (
-                                        <div className="hidden lg:block shrink-0 text-right">
-                                            <div className={cn(
-                                                "px-2.5 py-1 rounded-full text-[10px] font-black tracking-widest border",
-                                                (device as any).deviceState === 'ACTIVE' ? "bg-green-500/10 text-green-600 dark:text-green-400 border-green-500/20" :
-                                                (device as any).deviceState === 'QUEUED' ? "bg-amber-500/10 text-amber-400 border-amber-500/20" :
-                                                (device as any).deviceState === 'IDLE'   ? "bg-blue-500/10 text-blue-400 border-blue-500/20" :
-                                                "bg-card-secondary text-text-muted border-border"
-                                            )}>
-                                                {(device as any).deviceState === 'ACTIVE' ? 'Running' :
-                                                 (device as any).deviceState === 'QUEUED' ? 'Queued' :
-                                                 (device as any).deviceState === 'IDLE'   ? 'Idle' : 'Stopped'}
-                                            </div>
-                                            {/* Timing info below the badge */}
-                                            {(device as any).timing && (() => {
-                                                const t = (device as any).timing;
-                                                const state = (device as any).deviceState;
-                                                if (state === 'ACTIVE' && t.activatedAt)
-                                                    return <div className="text-[9px] text-green-500/70 font-mono mt-1">{fmtElapsed(t.activatedAt)}</div>;
-                                                if (state === 'IDLE' && t.idledAt)
-                                                    return <div className="text-[9px] text-blue-400/70 font-mono mt-1">{fmtRemain(t.idledAt, t.cycleSeconds || 60)} left</div>;
-                                                if (state === 'QUEUED' && t.queuePosition)
-                                                    return <div className="text-[9px] text-amber-400/70 font-mono mt-1">#{t.queuePosition}</div>;
-                                                return null;
-                                            })()}
+                                    {totalCum > 0 && (
+                                        <div
+                                            className="w-20 h-1 rounded-full overflow-hidden flex bg-card-secondary cursor-help opacity-75 hover:opacity-100"
+                                            title={`Active: ${formatMs(cum.active)} · Queued: ${formatMs(cum.queued)} · Idle: ${formatMs(cum.idle)}`}
+                                        >
+                                            {pctA > 0 && <div style={{ width: `${pctA}%` }} className="bg-emerald-500" />}
+                                            {pctQ > 0 && <div style={{ width: `${pctQ}%` }} className="bg-amber-500" />}
+                                            {pctI > 0 && <div style={{ width: `${pctI}%` }} className="bg-blue-500" />}
                                         </div>
                                     )}
                                 </div>
 
-                                {/* Meta Info (Hidden in compact) */}
-                                {!isCompact && (
-                                    <div className="space-y-3 mb-6 px-1">
-                                        <div className="flex items-center justify-between text-[11px]">
-                                            <span className="text-text-muted flex items-center gap-1.5">
-                                                <Shield size={12} /> MAC Address
+                                {/* IP + MAC */}
+                                <div className="w-36 shrink-0 hidden sm:block">
+                                    <div className={cn("text-xs font-mono font-black", device.status?.stats?.current_ip ? "text-blue-400" : "text-text-muted")}>
+                                        {device.status?.stats?.current_ip || '---.---.---.---'}
+                                    </div>
+                                    <div className="text-[9px] font-mono text-text-muted truncate" title={`MAC: ${device.mac}`}>
+                                        {device.mac}
+                                    </div>
+                                </div>
+
+                                {/* Packets + Uptime/Interval */}
+                                <div className="w-24 shrink-0 hidden md:block">
+                                    <div className="text-xs font-mono font-bold text-foreground">
+                                        {(device.status?.stats?.packets_sent || 0).toLocaleString()} <span className="text-[9px] font-normal text-text-muted">pkts</span>
+                                    </div>
+                                    <div className="text-[9px] font-mono text-text-muted">
+                                        {device.status?.stats?.uptime_seconds ? `up ${Math.floor(device.status.stats.uptime_seconds / 60)}m` : `int ${device.traffic_interval}s`}
+                                    </div>
+                                </div>
+
+                                {/* Threat Intel + Attack Badges + Protocols */}
+                                <div className="flex-1 min-w-0 hidden lg:flex items-center gap-1.5 flex-wrap">
+                                    {meta && (
+                                        <>
+                                            <span className="bg-orange-500/15 text-orange-400 text-[8px] font-black px-1.5 py-0.5 rounded border border-orange-500/30 uppercase tracking-tight" title={`${meta.cve_count || 0} CVEs · Max CVSS ${meta.max_cvss || 0}`}>
+                                                Score {meta.danger_score}
                                             </span>
-                                            <span className="text-text-primary font-mono font-bold">{device.mac}</span>
+                                            {meta.critical_cves > 0 && (
+                                                <span className="bg-red-500/15 text-red-400 text-[8px] font-black px-1.5 py-0.5 rounded border border-red-500/25 uppercase tracking-tight">
+                                                    {meta.critical_cves} Crit
+                                                </span>
+                                            )}
+                                            {meta.has_ics_cert && (
+                                                <span className="bg-yellow-500/15 text-yellow-400 text-[8px] font-black px-1.5 py-0.5 rounded border border-yellow-500/25 uppercase tracking-tight">
+                                                    ⚠ ICS
+                                                </span>
+                                            )}
+                                        </>
+                                    )}
+                                    {device.security?.bad_behavior && (device.security.behavior_type || []).slice(0, 2).map(bt => (
+                                        <span key={bt} className="bg-red-500/10 text-red-400 text-[8px] font-black px-1.5 py-0.5 rounded border border-red-500/20 uppercase tracking-tight">
+                                            {bt.replace(/_/g, ' ')}
+                                        </span>
+                                    ))}
+                                    {device.security?.bad_behavior && (device.security.behavior_type || []).length > 2 && (
+                                        <span className="text-[8px] font-bold text-red-400">+{(device.security.behavior_type || []).length - 2}</span>
+                                    )}
+                                    {device.protocols.slice(0, 4).map(p => (
+                                        <span key={p} className="bg-card-secondary text-[8px] font-black px-1.5 py-0.5 rounded border border-border text-text-muted uppercase tracking-tight">
+                                            {p}
+                                        </span>
+                                    ))}
+                                    {device.protocols.length > 4 && (
+                                        <span className="text-[8px] font-bold text-text-muted">+{device.protocols.length - 4}</span>
+                                    )}
+                                </div>
+
+                                {/* Actions */}
+                                <div className="flex items-center gap-1.5 shrink-0 ml-auto">
+                                    <button
+                                        onClick={() => toggleDevice(device.id, state)}
+                                        className={cn(
+                                            "p-1.5 rounded-lg transition-all border",
+                                            state === 'QUEUED'
+                                                ? "bg-amber-500/10 hover:bg-amber-500/20 text-amber-500 border-amber-500/20"
+                                                : state === 'ACTIVE' || state === 'IDLE'
+                                                    ? "bg-red-500/10 hover:bg-red-500/20 text-red-500 border-red-500/20"
+                                                    : "bg-blue-600 hover:bg-blue-500 text-white border-transparent shadow-sm"
+                                        )}
+                                        title={state === 'QUEUED' ? "Remove from Queue" : state === 'ACTIVE' || state === 'IDLE' ? "Shut Down" : "Start"}
+                                    >
+                                        <Power size={14} />
+                                    </button>
+                                    <button
+                                        onClick={() => { setEditingDevice(device); setShowAddModal(true); }}
+                                        className="p-1.5 rounded-lg bg-card-secondary hover:bg-card-hover text-text-muted hover:text-text-primary transition-all border border-border"
+                                        title="Edit Device"
+                                    >
+                                        <Edit2 size={14} />
+                                    </button>
+                                    <button
+                                        onClick={() => setActiveLogDevice(device)}
+                                        disabled={!device.running}
+                                        className={cn(
+                                            "p-1.5 rounded-lg transition-all border disabled:opacity-30",
+                                            device.running ? "bg-card-secondary hover:bg-card-hover text-blue-400 border-border" : "bg-card-secondary/50 text-text-muted border-transparent"
+                                        )}
+                                        title="View Live Logs"
+                                    >
+                                        <Terminal size={14} />
+                                    </button>
+                                    <button
+                                        onClick={() => handleDelete(device.id)}
+                                        disabled={device.running}
+                                        className="p-1.5 rounded-lg bg-card-secondary hover:bg-red-500/20 text-text-muted hover:text-red-400 transition-all border border-border disabled:opacity-30"
+                                        title="Remove Device"
+                                    >
+                                        <Trash2 size={14} />
+                                    </button>
+                                </div>
+                            </div>
+                        );
+                    })}
+
+                    {filteredDevices.length === 0 && (
+                        <div className="py-16 flex flex-col items-center justify-center bg-card-secondary border border-dashed border-border rounded-2xl">
+                            <Cpu size={40} className="text-text-muted mb-3 opacity-20" />
+                            <p className="text-text-secondary font-medium text-sm">No IoT devices match your filters.</p>
+                            <p className="text-text-muted text-xs mt-1">Try adjusting your search or state filter.</p>
+                        </div>
+                    )}
+                </div>
+            ) : (
+                /* ── Compact & Balanced Grid View ────────────────────────────── */
+                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                    {filteredDevices.map(device => {
+                        const seqNum = devices.findIndex(d => d.id === device.id) + 1;
+                        const state = (device as any).deviceState || 'STOPPED';
+                        const timing = (device as any).timing;
+                        const isSelected = selectedIds.includes(device.id);
+
+                        return (
+                            <div
+                                key={device.id}
+                                className={cn(
+                                    "relative bg-card border rounded-2xl p-4 flex flex-col transition-all duration-200 overflow-hidden group shadow-sm hover:shadow-md",
+                                    device.running ? "border-blue-500/30 ring-1 ring-blue-500/10" : "border-border",
+                                    isSelected && "ring-2 ring-blue-600"
+                                )}
+                            >
+                                {/* Card Top Header */}
+                                <div className="flex items-start justify-between gap-3 mb-3">
+                                    <div className="flex items-center gap-3 min-w-0">
+                                        <div className={cn(
+                                            "w-11 h-11 rounded-xl shrink-0 flex items-center justify-center transition-all",
+                                            device.running ? "bg-blue-600 text-white shadow-md shadow-blue-600/20" : "bg-card-secondary text-text-muted border border-border"
+                                        )}>
+                                            {getDeviceIcon(device.type, 20)}
                                         </div>
-                                        <div className="flex items-center justify-between text-[11px]">
-                                            <span className="text-text-muted flex items-center gap-1.5">
-                                                <Clock size={12} /> Interval
-                                            </span>
-                                            <span className="text-text-primary font-bold">{device.traffic_interval}s</span>
+                                        <div className="min-w-0">
+                                            <div className="flex items-center gap-1.5">
+                                                <span className="text-[10px] font-mono font-bold text-text-muted/60">#{seqNum}</span>
+                                                <h3 className="text-sm font-bold text-text-primary group-hover:text-blue-400 transition-colors truncate">
+                                                    {device.name}
+                                                </h3>
+                                            </div>
+                                            <p className="text-[9px] text-text-muted font-bold uppercase tracking-wider truncate mt-0.5">
+                                                {device.vendor} • {device.type}
+                                            </p>
                                         </div>
                                     </div>
-                                )}
 
-                                {/* Description + Vulnerability threat intel panel (non-compact only) */}
-                                {!isCompact && device.description && (() => {
+                                    {/* Right: State Badge + Timing + Checkbox */}
+                                    <div className="flex items-center gap-2 shrink-0">
+                                        <div className="text-right">
+                                            {getStateBadge(state)}
+                                            {timing && (() => {
+                                                if (state === 'ACTIVE' && timing.activatedAt)
+                                                    return <div className="text-[9px] text-emerald-400/80 font-mono mt-0.5">{fmtElapsed(timing.activatedAt)}</div>;
+                                                if (state === 'IDLE' && timing.idledAt)
+                                                    return <div className="text-[9px] text-blue-400/80 font-mono mt-0.5">{fmtRemain(timing.idledAt, timing.cycleSeconds || 60)} left</div>;
+                                                if (state === 'QUEUED' && timing.queuePosition)
+                                                    return <div className="text-[9px] text-amber-400/80 font-mono mt-0.5">#{timing.queuePosition}</div>;
+                                                return null;
+                                            })()}
+                                        </div>
+                                        <button
+                                            onClick={() => setSelectedIds(prev => prev.includes(device.id) ? prev.filter(i => i !== device.id) : [...prev, device.id])}
+                                            className="p-1 rounded-lg text-text-muted hover:text-text-primary transition-colors"
+                                        >
+                                            {isSelected ? <CheckSquare size={15} className="text-blue-500" /> : <SquareIcon size={15} />}
+                                        </button>
+                                    </div>
+                                </div>
+
+                                {/* Compact 4-Cell Telemetry Strip (IP, MAC, Packets, Interval) */}
+                                <div className="grid grid-cols-2 gap-2 bg-card-secondary/70 p-2.5 rounded-xl border border-border mb-3">
+                                    <div>
+                                        <div className="text-[8px] font-bold text-text-muted uppercase tracking-wider flex items-center gap-1">
+                                            <Wifi size={9} /> IP Address
+                                        </div>
+                                        <div className={cn("text-xs font-mono font-black mt-0.5", device.status?.stats?.current_ip ? "text-blue-400" : "text-text-muted")}>
+                                            {device.status?.stats?.current_ip || '---.---.---.---'}
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <div className="text-[8px] font-bold text-text-muted uppercase tracking-wider flex items-center gap-1">
+                                            <Activity size={9} /> Packets Sent
+                                        </div>
+                                        <div className="text-xs font-mono font-bold text-foreground mt-0.5">
+                                            {device.status?.stats?.packets_sent?.toLocaleString() || '0'}
+                                        </div>
+                                    </div>
+                                    <div className="pt-1.5 border-t border-border/50">
+                                        <div className="text-[8px] font-bold text-text-muted uppercase tracking-wider flex items-center gap-1">
+                                            <Shield size={9} /> MAC
+                                        </div>
+                                        <div className="text-[10px] font-mono font-bold text-text-secondary mt-0.5 truncate">
+                                            {device.mac}
+                                        </div>
+                                    </div>
+                                    <div className="pt-1.5 border-t border-border/50">
+                                        <div className="text-[8px] font-bold text-text-muted uppercase tracking-wider flex items-center gap-1">
+                                            <Clock size={9} /> Cycle / Uptime
+                                        </div>
+                                        <div className="text-[10px] font-mono font-bold text-text-secondary mt-0.5">
+                                            {device.traffic_interval}s {device.status?.stats?.uptime_seconds ? `· up ${Math.floor(device.status.stats.uptime_seconds / 60)}m` : ''}
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* Description + Vulnerability Threat Intel Panel */}
+                                {device.description && (() => {
                                     const meta = (device as any)._vuln_meta;
                                     const parts = device.description.split(' | ');
                                     return (
-                                        <div className="mb-4 space-y-2">
+                                        <div className="mb-3 space-y-2">
                                             {meta ? (() => {
                                                 const devKey = device.id || device.name;
                                                 const isExpanded = !!expandedThreats[devKey];
                                                 return (
-                                                    <div className="bg-card-secondary/40 border border-orange-500/20 rounded-xl p-2.5 transition-all">
-                                                        {/* Compact Header Summary Row */}
+                                                    <div className="bg-card-secondary/40 border border-orange-500/20 rounded-xl p-2 transition-all">
                                                         <div 
                                                             className="flex items-center justify-between gap-1.5 cursor-pointer select-none group/threat"
                                                             onClick={() => toggleThreat(devKey)}
                                                             title="Click to expand/collapse threat intelligence details"
                                                         >
                                                             <div className="flex items-center gap-1.5 flex-wrap">
-                                                                <span className="bg-orange-500/15 text-orange-400 text-[9px] font-black px-2 py-0.5 rounded border border-orange-500/30 uppercase tracking-tight">
+                                                                <span className="bg-orange-500/15 text-orange-400 text-[9px] font-black px-1.5 py-0.5 rounded border border-orange-500/30 uppercase tracking-tight">
                                                                     Score {meta.danger_score}
                                                                 </span>
                                                                 {meta.critical_cves > 0 && (
-                                                                    <span className="bg-red-500/15 text-red-400 text-[9px] font-black px-2 py-0.5 rounded border border-red-500/25 uppercase tracking-tight">
+                                                                    <span className="bg-red-500/15 text-red-400 text-[9px] font-black px-1.5 py-0.5 rounded border border-red-500/25 uppercase tracking-tight">
                                                                         {meta.critical_cves} Critical
                                                                     </span>
                                                                 )}
@@ -979,34 +1205,33 @@ export default function Iot({ token }: IotProps) {
                                                                 className="flex items-center gap-1 text-[9px] font-bold text-text-muted group-hover/threat:text-orange-400 transition-colors px-1 py-0.5"
                                                             >
                                                                 <span>{isExpanded ? 'Hide' : 'Details'}</span>
-                                                                <ChevronDown size={12} className={cn("transition-transform duration-200", isExpanded && "rotate-180")} />
+                                                                <ChevronDown size={11} className={cn("transition-transform duration-200", isExpanded && "rotate-180")} />
                                                             </button>
                                                         </div>
 
-                                                        {/* Expandable Detailed Intel */}
                                                         {isExpanded && (
-                                                            <div className="mt-2.5 pt-2 border-t border-border/40 space-y-2 animate-in fade-in duration-150">
+                                                            <div className="mt-2 pt-2 border-t border-border/40 space-y-1.5 animate-in fade-in duration-150">
                                                                 <div className="flex items-center gap-1.5 flex-wrap">
-                                                                    <span className="bg-card-secondary text-text-muted text-[9px] font-bold px-2 py-0.5 rounded border border-border uppercase tracking-tight">
+                                                                    <span className="bg-card-secondary text-text-muted text-[8px] font-bold px-1.5 py-0.5 rounded border border-border uppercase">
                                                                         {meta.cve_count} CVEs
                                                                     </span>
                                                                     {meta.high_cves > 0 && (
-                                                                        <span className="bg-orange-500/15 text-orange-400 text-[9px] font-bold px-2 py-0.5 rounded border border-orange-500/25 uppercase tracking-tight">
+                                                                        <span className="bg-orange-500/15 text-orange-400 text-[8px] font-bold px-1.5 py-0.5 rounded border border-orange-500/25 uppercase">
                                                                             {meta.high_cves} High
                                                                         </span>
                                                                     )}
                                                                     {meta.max_cvss > 0 && (
-                                                                        <span className="bg-card-secondary text-text-secondary text-[9px] font-bold px-2 py-0.5 rounded border border-border uppercase tracking-tight">
+                                                                        <span className="bg-card-secondary text-text-secondary text-[8px] font-bold px-1.5 py-0.5 rounded border border-border uppercase">
                                                                             CVSS {meta.max_cvss.toFixed(1)}
                                                                         </span>
                                                                     )}
                                                                     {meta.apt_groups?.length > 0 && (
-                                                                        <span className="bg-purple-500/15 text-purple-400 text-[9px] font-bold px-2 py-0.5 rounded border border-purple-500/25 uppercase tracking-tight">
+                                                                        <span className="bg-purple-500/15 text-purple-400 text-[8px] font-bold px-1.5 py-0.5 rounded border border-purple-500/25 uppercase">
                                                                             {meta.apt_groups.length} APT
                                                                         </span>
                                                                     )}
                                                                     {meta.has_ics_cert && (
-                                                                        <span className="bg-yellow-500/15 text-yellow-400 text-[9px] font-black px-2 py-0.5 rounded border border-yellow-500/25 uppercase tracking-tight">
+                                                                        <span className="bg-yellow-500/15 text-yellow-400 text-[8px] font-black px-1.5 py-0.5 rounded border border-yellow-500/25 uppercase">
                                                                             ⚠ ICS-CERT
                                                                         </span>
                                                                     )}
@@ -1040,144 +1265,119 @@ export default function Iot({ token }: IotProps) {
                                                     </div>
                                                 );
                                             })() : parts.length > 1 ? (
-                                                <div className="flex flex-wrap gap-1 px-1">
+                                                <div className="flex flex-wrap gap-1">
                                                     {parts.map((p, i) => (
-                                                        <span key={i} className="text-[9px] text-text-muted bg-card-secondary px-2 py-0.5 rounded border border-border">
+                                                        <span key={i} className="text-[8px] text-text-muted bg-card-secondary px-1.5 py-0.5 rounded border border-border">
                                                             {p}
                                                         </span>
                                                     ))}
                                                 </div>
                                             ) : (
-                                                <p className="text-[10px] text-text-muted leading-relaxed px-1 italic">{device.description}</p>
+                                                <p className="text-[10px] text-text-muted leading-relaxed italic line-clamp-2">{device.description}</p>
                                             )}
                                         </div>
                                     );
                                 })()}
 
-                                {!isCompact && (
-                                    <div className="flex items-center gap-1.5 flex-wrap mb-2 min-h-[22px]">
-                                        {device.security?.bad_behavior && (device.security.behavior_type || []).map(bt => (
-                                            <span key={bt} className="bg-red-500/10 text-red-400 text-[8px] font-black px-1.5 py-0.5 rounded border border-red-500/20 uppercase tracking-tight">
-                                                {bt.replace(/_/g, ' ')}
-                                            </span>
-                                        ))}
-                                    </div>
-                                )}
-
-                                {/* Protocols Icons (Dense in compact) */}
-                                <div className={cn("flex flex-wrap gap-1.5", isCompact ? "w-1/5" : "mb-6")}>
-                                    {device.protocols.slice(0, isCompact ? 4 : 10).map(p => (
+                                {/* Attack Behavior & Protocol Tags */}
+                                <div className="flex items-center gap-1 flex-wrap mb-3">
+                                    {device.security?.bad_behavior && (device.security.behavior_type || []).map(bt => (
+                                        <span key={bt} className="bg-red-500/10 text-red-400 text-[8px] font-black px-1.5 py-0.5 rounded border border-red-500/20 uppercase tracking-tight">
+                                            {bt.replace(/_/g, ' ')}
+                                        </span>
+                                    ))}
+                                    {device.protocols.slice(0, 8).map(p => (
                                         <span key={p} className="bg-card-secondary text-[8px] font-black px-1.5 py-0.5 rounded border border-border text-text-muted uppercase tracking-tight">
                                             {p}
                                         </span>
                                     ))}
-                                    {isCompact && device.protocols.length > 4 && (
-                                        <span className="text-[8px] font-bold text-text-muted">+{device.protocols.length - 4}</span>
-                                    )}
                                 </div>
 
-                                {/* Actions */}
-                                <div className={cn("flex items-center", isCompact ? "gap-3 w-auto justify-end mr-12" : "gap-2")}>
+                                {/* Compact Card Footer Actions (pinned to bottom via mt-auto) */}
+                                <div className="mt-auto pt-2.5 border-t border-border/50 flex items-center gap-1.5">
                                     <button
-                                        onClick={() => toggleDevice(device.id, (device as any).deviceState)}
+                                        onClick={() => toggleDevice(device.id, state)}
                                         className={cn(
-                                            "flex items-center justify-center transition-all border",
-                                            isCompact ? "p-2 rounded-xl" : "flex-1 py-3.5 rounded-2xl text-sm font-black",
-                                            (device as any).deviceState === 'QUEUED'
+                                            "flex-1 py-2 rounded-xl text-xs font-black flex items-center justify-center gap-1.5 transition-all border",
+                                            state === 'QUEUED'
                                                 ? "bg-amber-500/10 hover:bg-amber-500/20 text-amber-500 border-amber-500/20"
-                                                : (device as any).deviceState === 'ACTIVE' || (device as any).deviceState === 'IDLE'
+                                                : state === 'ACTIVE' || state === 'IDLE'
                                                     ? "bg-red-500/10 hover:bg-red-500/20 text-red-500 border-red-500/20"
-                                                    : "bg-blue-600 hover:bg-blue-500 text-white border-transparent shadow-lg shadow-blue-900/40"
+                                                    : "bg-blue-600 hover:bg-blue-500 text-white border-transparent shadow-md shadow-blue-900/30"
                                         )}
-                                        title={
-                                            (device as any).deviceState === 'QUEUED' ? "Remove from Queue" :
-                                            (device as any).deviceState === 'ACTIVE' || (device as any).deviceState === 'IDLE' ? "Shut Down" :
-                                            "Start"
-                                        }
                                     >
-                                        <Power size={18} />
-                                        {!isCompact && <span className="ml-2 tracking-widest">
-                                            {(device as any).deviceState === 'QUEUED' ? 'Dequeue' :
-                                             (device as any).deviceState === 'ACTIVE' || (device as any).deviceState === 'IDLE' ? 'Shut' :
-                                             'Start'}
-                                        </span>}
+                                        <Power size={14} />
+                                        <span className="tracking-wider">
+                                            {state === 'QUEUED' ? 'Dequeue' : state === 'ACTIVE' || state === 'IDLE' ? 'Shut' : 'Start'}
+                                        </span>
                                     </button>
 
                                     <button
                                         onClick={() => { setEditingDevice(device); setShowAddModal(true); }}
-                                        className={cn(
-                                            "bg-card-secondary hover:bg-card-hover text-text-muted hover:text-text-primary transition-all border border-border",
-                                            isCompact ? "p-2 rounded-xl" : "p-3 rounded-2xl"
-                                        )}
+                                        className="p-2 rounded-xl bg-card-secondary hover:bg-card-hover text-text-muted hover:text-text-primary transition-all border border-border"
                                         title="Edit Device"
                                     >
-                                        <Edit2 size={18} />
+                                        <Edit2 size={14} />
                                     </button>
 
                                     <button
                                         onClick={() => setActiveLogDevice(device)}
                                         disabled={!device.running}
                                         className={cn(
-                                            "flex items-center justify-center p-2 rounded-xl transition-all border disabled:opacity-30",
-                                            device.running ? "bg-card-secondary hover:bg-card-hover text-blue-500 border-border shadow-sm" : "bg-card-secondary/50 text-text-muted border-transparent"
+                                            "p-2 rounded-xl transition-all border disabled:opacity-30",
+                                            device.running ? "bg-card-secondary hover:bg-card-hover text-blue-400 border-border shadow-sm" : "bg-card-secondary/50 text-text-muted border-transparent"
                                         )}
                                         title="View Live Logs"
                                     >
-                                        <Terminal size={18} />
+                                        <Terminal size={14} />
                                     </button>
 
-                                    {!isCompact && (
-                                        <button
-                                            onClick={() => handleDelete(device.id)}
-                                            disabled={device.running}
-                                            className="p-3 bg-card-secondary hover:bg-red-500/20 text-text-muted hover:text-red-500 rounded-2xl transition-all border border-border disabled:opacity-30"
-                                            title="Remove Device"
-                                        >
-                                            <Trash2 size={18} />
-                                        </button>
-                                    )}
-                                </div>
-                            </div>
-
-                            {/* Cumulative Timing Bar */}
-                            {(() => {
-                                const t = (device as any).timing?.cumulative;
-                                if (!t) return device.running ? <div className="absolute bottom-0 left-0 right-0 h-1 bg-blue-500/50 animate-pulse" /> : null;
-                                
-                                const total = (t.active || 0) + (t.idle || 0) + (t.queued || 0);
-                                if (total === 0) return device.running ? <div className="absolute bottom-0 left-0 right-0 h-1 bg-blue-500/50 animate-pulse" /> : null;
-                                
-                                const pctA = Math.round(((t.active || 0) / total) * 100);
-                                const pctQ = Math.round(((t.queued || 0) / total) * 100);
-                                const pctI = 100 - pctA - pctQ;
-                                
-                                const formatMs = (ms: number) => {
-                                    if (!ms) return '0s';
-                                    const s = Math.floor(ms / 1000);
-                                    if (s < 60) return `${s}s`;
-                                    const m = Math.floor(s / 60);
-                                    return `${m}m ${s % 60}s`;
-                                };
-
-                                return (
-                                    <div 
-                                        className="absolute bottom-0 left-0 right-0 h-1.5 flex group/timing cursor-help opacity-80 hover:opacity-100 transition-opacity"
-                                        title={`Cumulative Time:\n🟩 Active: ${formatMs(t.active)}\n🟧 Queued: ${formatMs(t.queued)}\n🟦 Idle: ${formatMs(t.idle)}`}
+                                    <button
+                                        onClick={() => handleDelete(device.id)}
+                                        disabled={device.running}
+                                        className="p-2 bg-card-secondary hover:bg-red-500/20 text-text-muted hover:text-red-400 rounded-xl transition-all border border-border disabled:opacity-30"
+                                        title="Remove Device"
                                     >
-                                        {pctA > 0 && <div style={{ width: `${pctA}%` }} className="bg-emerald-500 transition-all" />}
-                                        {pctQ > 0 && <div style={{ width: `${pctQ}%` }} className="bg-amber-500 transition-all" />}
-                                        {pctI > 0 && <div style={{ width: `${pctI}%` }} className="bg-blue-500 transition-all" />}
-                                    </div>
-                                );
-                            })()}
-                        </div>
-                    ))}
+                                        <Trash2 size={14} />
+                                    </button>
+                                </div>
+
+                                {/* Subtle Cumulative Timing Bar */}
+                                {(() => {
+                                    const t = timing?.cumulative;
+                                    if (!t) return device.running ? <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-500/50 animate-pulse" /> : null;
+                                    const total = (t.active || 0) + (t.idle || 0) + (t.queued || 0);
+                                    if (total === 0) return device.running ? <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-500/50 animate-pulse" /> : null;
+                                    const pctA = Math.round(((t.active || 0) / total) * 100);
+                                    const pctQ = Math.round(((t.queued || 0) / total) * 100);
+                                    const pctI = 100 - pctA - pctQ;
+                                    const formatMs = (ms: number) => {
+                                        if (!ms) return '0s';
+                                        const s = Math.floor(ms / 1000);
+                                        if (s < 60) return `${s}s`;
+                                        const m = Math.floor(s / 60);
+                                        return `${m}m ${s % 60}s`;
+                                    };
+                                    return (
+                                        <div 
+                                            className="absolute bottom-0 left-0 right-0 h-1 flex cursor-help opacity-60 hover:opacity-100 transition-opacity"
+                                            title={`Cumulative Time:\n🟩 Active: ${formatMs(t.active)}\n🟧 Queued: ${formatMs(t.queued)}\n🟦 Idle: ${formatMs(t.idle)}`}
+                                        >
+                                            {pctA > 0 && <div style={{ width: `${pctA}%` }} className="bg-emerald-500 transition-all" />}
+                                            {pctQ > 0 && <div style={{ width: `${pctQ}%` }} className="bg-amber-500 transition-all" />}
+                                            {pctI > 0 && <div style={{ width: `${pctI}%` }} className="bg-blue-500 transition-all" />}
+                                        </div>
+                                    );
+                                })()}
+                            </div>
+                        );
+                    })}
 
                     {filteredDevices.length === 0 && (
-                        <div className="col-span-full py-20 flex flex-col items-center justify-center bg-card-secondary border border-dashed border-border rounded-3xl">
-                            <Cpu size={48} className="text-text-muted mb-4 opacity-20" />
-                            <p className="text-text-secondary font-medium">No IoT devices found.</p>
-                            <p className="text-text-muted text-sm mt-1">Try adjusting your filters or add a new device.</p>
+                        <div className="col-span-full py-16 flex flex-col items-center justify-center bg-card-secondary border border-dashed border-border rounded-2xl">
+                            <Cpu size={40} className="text-text-muted mb-3 opacity-20" />
+                            <p className="text-text-secondary font-medium text-sm">No IoT devices match your filters.</p>
+                            <p className="text-text-muted text-xs mt-1">Try adjusting your search or state filter.</p>
                         </div>
                     )}
                 </div>

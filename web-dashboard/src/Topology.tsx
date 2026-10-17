@@ -106,6 +106,7 @@ type UnderlayResolutionStatus = 'matched' | 'no_match' | 'ambiguous' | 'wan_ip_u
 type UnderlayResolution = {
     id: string;
     status: UnderlayResolutionStatus;
+    scope?: 'wan' | 'lan';
     prismaWan: {
         elementId: string; elementName?: string; siteId?: string; siteName?: string;
         interfaceId?: string; interfaceName?: string; ipCidr?: string | null;
@@ -150,8 +151,10 @@ type UnderlayPayload = {
         noMatch: number;
         ambiguous: number;
         wanIpUnavailable: number;
+        lanMatched?: number;
     };
     resolutions: UnderlayResolution[];
+    lanResolutions?: UnderlayResolution[];
     routers?: UnderlayRouterSummary[];
 };
 
@@ -278,7 +281,7 @@ const ArchedBridgeEdge = ({
                     >
                         <div className={cn(
                             "px-2 py-0.5 rounded-full border shadow-xl backdrop-blur-md text-[9px] font-black uppercase tracking-tighter whitespace-nowrap",
-                            isMpls ? "bg-purple-500/10 border-purple-500/40 text-purple-400" : "bg-blue-500/10 border-blue-500/40 text-blue-400"
+                            isMpls ? "bg-purple-500/15 border-purple-500/45 text-purple-800 dark:text-purple-300" : "bg-blue-500/15 border-blue-500/45 text-blue-800 dark:text-blue-300"
                         )}>
                             {data?.circuit_label}
                         </div>
@@ -303,9 +306,9 @@ const Port = ({
 }) => {
     let bgClass = "bg-card border-border text-text-muted";
 
-    // Status color coding for port badges
-    if (status === 'up') bgClass = "bg-green-500/20 border-green-500/50 text-green-400";
-    if (status === 'down') bgClass = "bg-red-500/20 border-red-500/50 text-red-500";
+    // Status color coding for port badges (high contrast in both Light and Dark modes)
+    if (status === 'up') bgClass = "bg-green-500/20 border-green-600/55 dark:border-green-500/50 text-green-800 dark:text-green-400";
+    if (status === 'down') bgClass = "bg-red-500/20 border-red-600/55 dark:border-red-500/50 text-red-700 dark:text-red-500";
 
     return (
         <div className="flex flex-col items-center gap-1 relative z-20 group">
@@ -368,6 +371,58 @@ function isExactSiteMatch(siteName?: string | null, nodeName?: string | null): b
     return s1 === s2;
 }
 
+// Helper to filter out loopback / virtual / /32 interfaces on ION devices and keep only physical LAN interfaces
+function isPhysicalLanInterface(l: any): boolean {
+    if (!l || !l.ip) return false;
+    const name = String(l.interface_name || l.name || '').toLowerCase().trim();
+    const desc = String(l.interface_description || l.description || '').toLowerCase().trim();
+    const label = String(l.interface_label || '').toLowerCase().trim();
+    const type = String(l.type || '').toLowerCase().trim();
+    const net = String(l.network || l.ip || '').trim();
+    const cleanIp = String(l.ip).split('/')[0].trim();
+
+    if (
+        type === 'loopback' ||
+        name.includes('loopback') ||
+        name.startsWith('lo') ||
+        desc.includes('loopback') ||
+        label.includes('loopback') ||
+        net.endsWith('/32') ||
+        cleanIp.startsWith('20.0.') ||
+        cleanIp.startsWith('127.')
+    ) {
+        return false;
+    }
+    return true;
+}
+
+// Helper to filter out loopback / dummy / tunnel interfaces on VyOS routers and keep only physical interfaces
+function isPhysicalVyosInterface(iface: any): boolean {
+    if (!iface || !iface.name) return false;
+    const name = String(iface.name).toLowerCase().trim();
+    const desc = String(iface.description || '').toLowerCase().trim();
+    const type = String(iface.type || '').toLowerCase().trim();
+    const ipCidr = String(iface.ipCidr || iface.address?.[0] || iface.ip || '').trim();
+
+    if (
+        type === 'loopback' ||
+        type === 'dummy' ||
+        name === 'lo' ||
+        name.startsWith('lo') ||
+        name.startsWith('loopback') ||
+        name.startsWith('dum') ||
+        name.startsWith('vti') ||
+        name.startsWith('tun') ||
+        name.startsWith('wg') ||
+        desc.includes('loopback') ||
+        ipCidr.endsWith('/32') ||
+        ipCidr.startsWith('127.')
+    ) {
+        return false;
+    }
+    return true;
+}
+
 // --- Custom Site Node Component (The "Physical" Schematic) ---
 const SiteNode = ({ data }: any) => {
     const isHub = data.role === 'HUB';
@@ -379,15 +434,17 @@ const SiteNode = ({ data }: any) => {
         (d.wan_interfaces || []).map((w: any) => ({ ...w, devName: d.device_name }))
     );
 
-    const lanInterfaces = devices.flatMap((d: any) =>
-        (d.lan_interfaces || []).map((l: any) => ({ ...l, devName: d.device_name }))
-    );
+    const getPrimaryPhysicalLan = (dev: any) =>
+        (dev.lan_interfaces || []).find(isPhysicalLanInterface) ||
+        (dev.lan_interfaces || []).find((l: any) => l?.ip && !String(l.ip).startsWith('20.0.'));
 
-    // Aggregate ALL LAN subnets across ALL devices in this site
+    // Aggregate physical LAN subnets across all devices in this site (excluding loopbacks)
     const allLanSubnets = new Set<string>();
     devices.forEach((d: any) => {
-        d.lan_interfaces?.forEach((l: any) => {
-            if (l.ip) {
+        (d.lan_interfaces || []).filter(isPhysicalLanInterface).forEach((l: any) => {
+            if (l.network && String(l.network).includes('/') && !String(l.network).endsWith('/32')) {
+                allLanSubnets.add(String(l.network));
+            } else if (l.ip) {
                 const subnet = l.ip.includes('/') ? l.ip : l.ip.replace(/\.\d+$/, '.0/24');
                 allLanSubnets.add(subnet);
             }
@@ -416,6 +473,8 @@ const SiteNode = ({ data }: any) => {
     const underlayMode = data.underlayMode as ('off' | 'badges') | undefined;
     const underlayResolutionMap = data.underlayResolutionMap as Map<string, any> | undefined;
     const onInspectUnderlayCircuit = data.onInspectUnderlayCircuit as ((r: any) => void) | undefined;
+    const lanVyosRouters = (data.lanVyosRouters as any[]) || [];
+    const onInspectLanVyos = data.onInspectLanVyos as ((r: any) => void) | undefined;
 
     const getUnderlayBadge = (wan: any) => {
         if (underlayMode !== 'badges' || !underlayResolutionMap) return null;
@@ -432,44 +491,190 @@ const SiteNode = ({ data }: any) => {
         return { r, c };
     };
 
-    // Subnet Pill Renderer: highlights the subnet hosting a Stigix node in high-tech Blue with Stigix symbol
-    const renderSubnetPill = (subnet: string, sIdx: number) => {
-        const stigixNode = fleetNodes.find((n: any) => {
-            if (isIpInSubnet(n.ip, subnet) || isIpInSubnet(n.ip_private, subnet)) return true;
-            if (isExactSiteMatch(data.name, n.name || n.id || n.site)) {
-                const hasDirectIpMatch = uniqueSubeNets.some(s => isIpInSubnet(n.ip, s) || isIpInSubnet(n.ip_private, s));
-                if (!hasDirectIpMatch && sIdx === 0) return true;
-            }
-            return false;
-        });
+    // Identify the primary shared physical LAN subnet (matching Port 3 of the IONs / LAN VyOS)
+    const matchedVyosLanSubnet = lanVyosRouters[0]?.resolutions?.[0]?.matchedNetwork;
+    const primaryLanSubnet = (matchedVyosLanSubnet && uniqueSubeNets.includes(matchedVyosLanSubnet))
+        ? matchedVyosLanSubnet
+        : (uniqueSubeNets[0] || "192.168.201.0/24");
+    const secondarySubnets = uniqueSubeNets.filter((s) => s !== primaryLanSubnet);
+    const hasLanVyos = lanVyosRouters.length > 0;
 
-        if (stigixNode) {
-            const isLeader = Boolean(stigixNode.is_leader || stigixNode.role === 'LEADER' || (stigixNode.id && stigixNode.id.toLowerCase().includes('dc1') && !stigixNode.id.toLowerCase().includes('dc2')));
+    // Resolve Stigix SASE Agent for this site (either directly on ION LAN, or behind LAN VyOS, or matched by site name)
+    const siteStigixNode = fleetNodes.find((n: any) => {
+        if (uniqueSubeNets.some((s) => isIpInSubnet(n.ip, s) || isIpInSubnet(n.ip_private, s))) return true;
+        if (lanVyosRouters.some((lr: any) => (lr.interfaceItems || []).some((it: any) => isIpInSubnet(n.ip, it.ipCidr) || isIpInSubnet(n.ip_private, it.ipCidr)))) return true;
+        if (isExactSiteMatch(data.name, n.name || n.id || n.site)) return true;
+        return false;
+    });
+
+    const isStigixLeader = Boolean(
+        siteStigixNode && (
+            siteStigixNode.is_leader ||
+            siteStigixNode.role === 'LEADER' ||
+            (siteStigixNode.id && siteStigixNode.id.toLowerCase().includes('dc1') && !siteStigixNode.id.toLowerCase().includes('dc2'))
+        )
+    );
+
+    // Extra vertical height in the Hub top section when the 2-tier [Stigix -> VyOS] -> [Shared LAN] hierarchy is displayed
+    const hubExtraY = (isHub && hasLanVyos) ? 42 : 0;
+
+    // Render any additional physical LAN subnet pill
+    const renderSecondarySubnetPill = (subnet: string, sIdx: number) => (
+        <div
+            key={`sec-${sIdx}`}
+            className="bg-emerald-500/15 dark:bg-emerald-500/10 px-2.5 py-0.5 rounded-lg border border-emerald-600/40 dark:border-emerald-500/25 text-[10px] font-mono font-bold text-emerald-800 dark:text-emerald-400/80 shadow-sm h-[24px] flex items-center whitespace-nowrap"
+            title={`Physical LAN Subnet: ${subnet}`}
+        >
+            {subnet}
+        </div>
+    );
+
+    // Render the Stigix Probe badge (either wired to the LAN VyOS router, or integrated on the LAN bus when no VyOS is present)
+    const renderStigixBadge = (compactForVyosChain = false) => {
+        if (!siteStigixNode) return null;
+        const stigixIp = siteStigixNode.ip_private || siteStigixNode.ip || '';
+        return (
+            <div
+                className={cn(
+                    "bg-blue-500/15 dark:bg-blue-600/20 px-2.5 py-1 rounded-xl border-2 border-blue-500 dark:border-blue-400 text-[10px] font-mono font-bold text-blue-800 dark:text-blue-200 shadow-lg shadow-blue-500/20 dark:shadow-blue-500/25 relative z-20 transition-all hover:scale-105 hover:bg-blue-500/25 dark:hover:bg-blue-500/30 hover:border-blue-600 dark:hover:border-blue-300 flex items-center gap-1.5 cursor-default whitespace-nowrap",
+                    compactForVyosChain ? "h-[28px]" : "h-[30px]"
+                )}
+                title={`⚡ Stigix SASE Agent: ${siteStigixNode.name || siteStigixNode.id}${stigixIp ? ` (${stigixIp})` : ''} • ${isStigixLeader ? 'LEADER' : 'PEER'}${hasLanVyos ? ` • Connected via ${lanVyosRouters[0]?.name || 'VyOS'}` : ''}`}
+            >
+                <span className="relative flex h-2 w-2 shrink-0">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
+                    <span className="relative inline-flex rounded-full h-2 w-2 bg-blue-600 dark:bg-blue-500"></span>
+                </span>
+                <Zap size={12} className="text-blue-600 dark:text-blue-300 shrink-0" />
+                <span className="font-black tracking-tight text-blue-900 dark:text-blue-100">STIGIX</span>
+                <span className="text-[8px] px-1.5 py-0.2 rounded bg-blue-500/20 dark:bg-blue-400/25 border border-blue-600/40 dark:border-blue-300/40 text-blue-900 dark:text-blue-100 uppercase font-black tracking-wider">
+                    {isStigixLeader ? 'LEADER' : 'PEER'}
+                </span>
+            </div>
+        );
+    };
+
+    // Render the Primary Shared LAN Bus pill (always centered at X=0 so DC1-R2 and DC1-R1 Port 3 wires land directly on it)
+    const renderPrimaryLanBus = () => {
+        // If there is NO LAN VyOS on this site and Stigix is present, highlight the LAN pill with the Stigix badge
+        if (!hasLanVyos && siteStigixNode) {
             return (
-                <div
-                    key={sIdx}
-                    className="bg-blue-600/20 px-3.5 py-1 rounded-xl border-2 border-blue-400 text-[11px] font-mono font-bold text-blue-200 shadow-lg shadow-blue-500/25 relative z-10 group transition-all hover:scale-105 hover:bg-blue-500/30 hover:border-blue-300 flex items-center gap-2 cursor-pointer h-[32px]"
-                    title={`⚡ Stigix SASE Agent: ${stigixNode.name || stigixNode.id} (${stigixNode.ip || stigixNode.ip_private}) • ${isLeader ? 'LEADER' : 'PEER'}`}
-                >
-                    <span className="relative flex h-2 w-2">
-                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
-                        <span className="relative inline-flex rounded-full h-2 w-2 bg-blue-500"></span>
-                    </span>
-                    <Zap size={13} className="text-blue-300" />
-                    <span>{subnet}</span>
-                    <span className="text-[8px] px-1.5 py-0.5 rounded bg-blue-400/25 border border-blue-300/40 text-blue-100 uppercase font-black tracking-wider ml-0.5">
-                        {isLeader ? 'LEADER' : 'PEER'}
-                    </span>
+                <div className="relative flex items-center justify-center">
+                    <div
+                        className="bg-blue-500/15 dark:bg-blue-600/20 px-3.5 py-1 rounded-xl border-2 border-blue-500 dark:border-blue-400 text-[11px] font-mono font-bold text-blue-800 dark:text-blue-200 shadow-lg shadow-blue-500/20 dark:shadow-blue-500/25 relative z-10 group transition-all hover:scale-105 hover:bg-blue-500/25 dark:hover:bg-blue-500/30 hover:border-blue-600 dark:hover:border-blue-300 flex items-center gap-2 cursor-pointer h-[32px] whitespace-nowrap"
+                        title={`⚡ Stigix SASE Agent: ${siteStigixNode.name || siteStigixNode.id} (${siteStigixNode.ip || siteStigixNode.ip_private}) • ${isStigixLeader ? 'LEADER' : 'PEER'}`}
+                    >
+                        <span className="relative flex h-2 w-2">
+                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
+                            <span className="relative inline-flex rounded-full h-2 w-2 bg-blue-600 dark:bg-blue-500"></span>
+                        </span>
+                        <Zap size={13} className="text-blue-600 dark:text-blue-300" />
+                        <span>{primaryLanSubnet}</span>
+                        <span className="text-[8px] px-1.5 py-0.5 rounded bg-blue-500/20 dark:bg-blue-400/25 border border-blue-600/40 dark:border-blue-300/40 text-blue-900 dark:text-blue-100 uppercase font-black tracking-wider ml-0.5">
+                            {isStigixLeader ? 'LEADER' : 'PEER'}
+                        </span>
+                    </div>
+                    {secondarySubnets.length > 0 && (
+                        <div className="absolute left-full ml-2 flex items-center gap-1.5">
+                            {secondarySubnets.map((subnet, sIdx) => renderSecondarySubnetPill(subnet, sIdx))}
+                        </div>
+                    )}
                 </div>
             );
         }
 
+        // Shared ION LAN Bus (e.g. 192.168.201.0/24 shared by DC1-R2 & DC1-R1, connected to VyOS)
         return (
-            <div
-                key={sIdx}
-                className="bg-green-500/10 px-3 py-1 rounded-xl border border-green-500/30 text-[11px] font-mono font-bold text-green-400 shadow-md shadow-green-500/10 relative z-10 group transition-all hover:scale-105 hover:bg-green-500/20 hover:border-green-500 h-[30px] flex items-center cursor-default"
-            >
-                {subnet}
+            <div className="relative flex items-center justify-center">
+                <div
+                    className={cn(
+                        "bg-emerald-500/15 px-3.5 py-1 rounded-xl border-2 border-emerald-600/55 dark:border-emerald-500/45 text-[11px] font-mono font-black text-emerald-800 dark:text-emerald-300 shadow-md shadow-emerald-500/15 relative z-10 transition-all hover:border-emerald-600 dark:hover:border-emerald-400 flex items-center gap-2 cursor-default whitespace-nowrap",
+                        hasLanVyos ? "h-[30px]" : "h-[32px]"
+                    )}
+                    title={`Shared ION LAN Segment: ${primaryLanSubnet}${devices.length > 1 ? ` (${devices.map((d: any) => d.device_name).join(' + ')})` : ''}`}
+                >
+                    <span className="w-2 h-2 rounded-full bg-emerald-600 dark:bg-emerald-400 shadow-[0_0_6px_rgba(52,211,153,0.8)] shrink-0" />
+                    <span>{primaryLanSubnet}</span>
+                    {devices.length > 1 && (
+                        <span className="text-[8px] px-1.5 py-0.2 rounded bg-emerald-600/20 dark:bg-emerald-500/20 border border-emerald-600/45 dark:border-emerald-400/35 text-emerald-900 dark:text-emerald-200 uppercase font-black tracking-wider">
+                            LAN BUS
+                        </span>
+                    )}
+                </div>
+                {secondarySubnets.length > 0 && (
+                    <div className="absolute left-full ml-2 flex items-center gap-1.5">
+                        {secondarySubnets.map((subnet, sIdx) => renderSecondarySubnetPill(subnet, sIdx))}
+                    </div>
+                )}
+            </div>
+        );
+    };
+
+    // Discreet LAN VyOS Badge Renderer: centered on the LAN bus, with Stigix wired directly into the VyOS badge
+    const renderLanVyosChain = () => {
+        if (!hasLanVyos) return null;
+        const lr = lanVyosRouters[0];
+        const hasShut = Boolean(lr.hasShut);
+        const activeQos = lr.primaryQos;
+        const blockedCount = lr.blockedCount || 0;
+        const hasImpairment = hasShut || Boolean(activeQos) || blockedCount > 0;
+        const shortVyosIp = lr.lanIp ? lr.lanIp.split('/')[0].replace(/^\d+\.\d+\./, '.') : '';
+
+        return (
+            <div className="relative flex items-center justify-center">
+                {/* Stigix Agent wired horizontally into the left of the VyOS LAN router */}
+                {siteStigixNode && (
+                    <div className="absolute right-full flex items-center">
+                        {renderStigixBadge(true)}
+                        <div className="w-3.5 h-[2px] bg-gradient-to-r from-blue-500 to-amber-500 dark:from-blue-400 dark:to-amber-400 shadow-[0_0_6px_rgba(59,130,246,0.6)]" />
+                    </div>
+                )}
+
+                <div
+                    onClick={(e) => {
+                        e.stopPropagation();
+                        if (onInspectLanVyos && lr.defaultResolution) {
+                            onInspectLanVyos(lr.defaultResolution);
+                        }
+                    }}
+                    title={`VyOS LAN Router: ${lr.name} (${lr.lanInterfaceName || 'LAN'} • ${lr.lanIp || ''}) — Connected to ${primaryLanSubnet} — Click to inject Egress/LAN latency, packet loss, shut port, or filter traffic`}
+                    className={cn(
+                        "px-3 py-1 rounded-xl border-2 text-[10px] font-mono font-black relative z-20 transition-all hover:scale-105 flex items-center gap-1.5 cursor-pointer h-[30px] shadow-md whitespace-nowrap",
+                        hasShut || blockedCount > 0
+                            ? "bg-rose-500/15 dark:bg-rose-500/20 border-rose-600/60 dark:border-rose-500/60 text-rose-800 dark:text-rose-200 hover:bg-rose-500/25 dark:hover:bg-rose-500/30 hover:border-rose-600 dark:hover:border-rose-400 shadow-rose-500/20"
+                            : activeQos
+                                ? "bg-amber-500/20 dark:bg-amber-500/25 border-amber-600/70 dark:border-amber-400/70 text-amber-950 dark:text-amber-100 hover:bg-amber-500/30 dark:hover:bg-amber-500/35 hover:border-amber-600 dark:hover:border-amber-300 shadow-amber-500/20"
+                                : "bg-amber-500/15 border-amber-600/55 dark:border-amber-500/45 text-amber-900 dark:text-amber-300 hover:bg-amber-500/25 hover:border-amber-600 dark:hover:border-amber-400/80 shadow-amber-500/15"
+                    )}
+                >
+                    <span className={cn(
+                        "w-2 h-2 rounded-full shrink-0",
+                        hasShut ? "bg-rose-500 animate-pulse" : activeQos ? "bg-amber-500 dark:bg-amber-400 animate-pulse" : "bg-emerald-500 dark:bg-emerald-400"
+                    )} />
+                    <Server size={11} className="text-amber-600 dark:text-amber-400 shrink-0" />
+                    <span className="tracking-wider uppercase">{lr.name || 'VyOS'}</span>
+                    <span className="text-[8.5px] px-1.5 py-0.2 rounded bg-amber-600/20 dark:bg-amber-500/20 border border-amber-600/45 dark:border-amber-400/30 text-amber-950 dark:text-amber-200 font-bold">
+                        {lr.lanInterfaceName || 'LAN'}{shortVyosIp ? ` (${shortVyosIp})` : ''}
+                    </span>
+                    {activeQos && (
+                        <span className="px-1.5 py-0.2 rounded bg-amber-600/25 dark:bg-amber-500/35 border border-amber-600/50 dark:border-amber-300/60 text-[8.5px] text-amber-950 dark:text-amber-100 font-black">
+                            +{activeQos.latency || 0}ms{activeQos.loss ? ` ${activeQos.loss}%` : ''}
+                        </span>
+                    )}
+                    {hasShut && (
+                        <span className="px-1.5 py-0.2 rounded bg-rose-600/25 dark:bg-rose-500/35 border border-rose-600/50 dark:border-rose-400/60 text-[8.5px] text-rose-900 dark:text-rose-100 font-black">
+                            SHUT
+                        </span>
+                    )}
+                    {blockedCount > 0 && !hasShut && (
+                        <span className="px-1.5 py-0.2 rounded bg-rose-600/25 dark:bg-rose-500/35 border border-rose-600/50 dark:border-rose-400/60 text-[8.5px] text-rose-900 dark:text-rose-100 font-black">
+                            {blockedCount} BLK
+                        </span>
+                    )}
+                    {!hasImpairment && (
+                        <span className="text-[8px] opacity-60 hidden group-hover:inline">⚙</span>
+                    )}
+                </div>
             </div>
         );
     };
@@ -494,8 +699,8 @@ const SiteNode = ({ data }: any) => {
                                         isSelectedCircuit
                                             ? "ring-2 ring-blue-400 bg-blue-500/25 border-blue-400 shadow-lg shadow-blue-500/30 scale-105"
                                             : (w.wan_network?.toLowerCase().includes('mpls')
-                                                ? "bg-purple-500/10 border-purple-500/30 text-purple-400 hover:border-purple-400/60"
-                                                : "bg-blue-500/10 border-blue-500/30 text-blue-400 hover:border-blue-400/60")
+                                                ? "bg-purple-500/10 border-purple-500/35 text-purple-700 dark:text-purple-400 hover:border-purple-500 dark:hover:border-purple-400/60"
+                                                : "bg-blue-500/10 border-blue-500/35 text-blue-700 dark:text-blue-400 hover:border-blue-500 dark:hover:border-blue-400/60")
                                     )}
                                     title={`Click to inspect tunnels for ${w.circuit_label || w.name}`}
                                     onClick={(e) => {
@@ -565,6 +770,13 @@ const SiteNode = ({ data }: any) => {
                         ? "border-blue-500/30 shadow-blue-500/5 shadow-[0_0_50px_-12px_rgba(59,130,246,0.15)] w-full"
                         : "border-border shadow-black/40 shadow-[0_40px_100px_-20px_rgba(0,0,0,0.5)] w-full"
             )}>
+                {/* Peripheral LAN Handle (Top for Hub, Bottom for Spoke/Gateway) */}
+                <Handle
+                    type="source"
+                    position={isHub ? Position.Top : Position.Bottom}
+                    id="lan-periphery"
+                    className="!w-3 !h-1.5 !opacity-0"
+                />
 
                 {/* SVG Layer for ALL internal wiring (1:1 Exact Math Coordinates) */}
                 <svg className="absolute top-0 left-1/2 overflow-visible z-0" width="1" height="1">
@@ -588,7 +800,7 @@ const SiteNode = ({ data }: any) => {
                                         <path
                                             key={wan.name}
                                             d={isHub
-                                                ? `M ${portX} 350 L ${blockX} 420` // Hub: Bottom Port down to Circuit Block
+                                                ? `M ${portX} ${362 + hubExtraY} L ${blockX} ${432 + hubExtraY}` // Hub: Bottom Port down to Circuit Block
                                                 : `M ${portX} 18 L ${blockX} -20`  // Spoke: Top Port up to Circuit Block
                                             }
                                             stroke={isMpls ? "rgba(168, 85, 247, 0.4)" : "rgba(59, 130, 246, 0.4)"}
@@ -600,30 +812,28 @@ const SiteNode = ({ data }: any) => {
                                     );
                                 })}
 
-                                {/* LAN Wiring */}
+                                {/* LAN Wiring: Port 3 of each ION -> Centered Shared LAN Bus (192.168.201.0/24) */}
                                 {isHub ? (
-                                    // Hub: Shared LAN Block (top Y=95) down to LAN Port 3 (Y=110)
                                     <path
                                         d={deviceCount === 1
-                                            ? `M 0 95 L 0 110`
-                                            : `M 0 95 L 0 102 M 0 102 L ${devX} 102 L ${devX} 110`
+                                            ? `M 0 ${98 + hubExtraY} L 0 ${126 + hubExtraY}`
+                                            : `M 0 ${98 + hubExtraY} L 0 ${113 + hubExtraY} M 0 ${113 + hubExtraY} L ${devX} ${113 + hubExtraY} L ${devX} ${126 + hubExtraY}`
                                         }
-                                        stroke="rgba(34, 197, 94, 0.45)"
-                                        strokeWidth="2"
+                                        stroke="rgba(52, 211, 153, 0.65)"
+                                        strokeWidth="2.5"
                                         fill="none"
                                         strokeLinejoin="round"
                                         strokeLinecap="round"
                                         strokeDasharray="4 4"
                                     />
                                 ) : (
-                                    // Spoke & Gateway: LAN Port 3 (Y=248) down to Shared LAN Box (Y=274)
                                     <path
                                         d={deviceCount === 1
                                             ? `M 0 248 L 0 274`
                                             : `M ${devX} 248 L ${devX} 262 L 0 262 M 0 262 L 0 274`
                                         }
-                                        stroke={isGateway ? "rgba(245, 158, 11, 0.45)" : "rgba(34, 197, 94, 0.45)"}
-                                        strokeWidth="2"
+                                        stroke={isGateway ? "rgba(245, 158, 11, 0.55)" : "rgba(52, 211, 153, 0.65)"}
+                                        strokeWidth="2.5"
                                         fill="none"
                                         strokeLinejoin="round"
                                         strokeLinecap="round"
@@ -635,16 +845,25 @@ const SiteNode = ({ data }: any) => {
                     })}
                 </svg>
 
-                {/* Hub-Specific: Shared LAN Block at the Top */}
+                {/* Hub-Specific: Shared LAN Bus at bottom, wired up to VyOS, wired to Stigix */}
                 {isHub && (
-                    <div className="flex flex-col items-center justify-end mb-6 relative z-10">
+                    <div className="flex flex-col items-center justify-end mb-9 relative z-10">
                         <div className="absolute inset-x-0 -top-6 flex justify-center w-full z-0 overflow-hidden pointer-events-none">
                             <div className="text-[72px] font-black text-white/[0.02] select-none uppercase tracking-[0.2em] whitespace-nowrap px-6">{data.name}</div>
                         </div>
                         <div className="text-[20px] font-black text-text-primary uppercase tracking-[0.4em] opacity-85 mb-3 drop-shadow-lg relative z-10">{data.name}</div>
-                        <div className="flex gap-2.5 items-center justify-center flex-wrap max-w-full">
-                            {uniqueSubeNets.map((subnet, sIdx) => renderSubnetPill(subnet, sIdx))}
-                        </div>
+                        {hasLanVyos ? (
+                            <div className="flex flex-col items-center w-full">
+                                {renderLanVyosChain()}
+                                {/* Vertical wire connecting VyOS LAN interface down to Shared ION LAN Bus */}
+                                <div className="w-[2px] h-3 bg-gradient-to-b from-amber-400/90 to-emerald-400/90 shadow-[0_0_6px_rgba(52,211,153,0.6)]" />
+                                {renderPrimaryLanBus()}
+                            </div>
+                        ) : (
+                            <div className="flex items-center justify-center w-full">
+                                {renderPrimaryLanBus()}
+                            </div>
+                        )}
                     </div>
                 )}
 
@@ -652,8 +871,8 @@ const SiteNode = ({ data }: any) => {
                 {isGateway && (
                     <div className="flex flex-col items-center justify-center mb-5 relative z-10">
                         <div className="flex items-center gap-2 mb-1.5">
-                            <span className="px-2.5 py-0.5 rounded-full bg-amber-500/15 border border-amber-500/40 text-[9px] font-black uppercase tracking-widest text-amber-400 shadow-sm flex items-center gap-1.5">
-                                <GitBranch size={11} className="text-amber-400" />
+                            <span className="px-2.5 py-0.5 rounded-full bg-amber-500/15 border border-amber-500/40 text-[9px] font-black uppercase tracking-widest text-amber-800 dark:text-amber-300 shadow-sm flex items-center gap-1.5">
+                                <GitBranch size={11} className="text-amber-600 dark:text-amber-400" />
                                 Branch Gateway
                             </span>
                         </div>
@@ -681,7 +900,7 @@ const SiteNode = ({ data }: any) => {
                                 {/* HUB: LAN Port Top */}
                                 {isHub && (
                                     <div className="absolute -top-[10px] w-full flex justify-center z-20">
-                                        <Port num="3" label={shortIp(dev.lan_interfaces?.[0]?.ip)} status={getStatus(dev.lan_interfaces?.[0])} labelPosition="bottom" />
+                                        <Port num="3" label={shortIp(getPrimaryPhysicalLan(dev)?.ip)} status={getStatus(getPrimaryPhysicalLan(dev))} labelPosition="bottom" />
                                     </div>
                                 )}
 
@@ -724,7 +943,7 @@ const SiteNode = ({ data }: any) => {
                                 {/* SPOKE & GATEWAY: LAN Port Bottom */}
                                 {!isHub && (
                                     <div className="absolute -bottom-[10px] w-full flex justify-center z-20">
-                                        <Port num="3" label={shortIp(dev.lan_interfaces?.[0]?.ip)} status={getStatus(dev.lan_interfaces?.[0])} labelPosition="top" />
+                                        <Port num="3" label={shortIp(getPrimaryPhysicalLan(dev)?.ip)} status={getStatus(getPrimaryPhysicalLan(dev))} labelPosition="top" />
                                     </div>
                                 )}
                             </div>
@@ -732,12 +951,20 @@ const SiteNode = ({ data }: any) => {
                     ))}
                 </div>
 
-                {/* Spoke-Specific: Shared LAN Block at the Bottom */}
+                {/* Spoke-Specific: Shared LAN Bus at top of footer, wired down to VyOS & Stigix */}
                 {!isHub && !isGateway && (
                     <div className="flex flex-col items-center relative z-20 w-full mb-2">
-                        <div className="flex gap-2.5 items-center justify-center flex-wrap max-w-full">
-                            {uniqueSubeNets.map((subnet, sIdx) => renderSubnetPill(subnet, sIdx))}
-                        </div>
+                        {hasLanVyos ? (
+                            <div className="flex flex-col items-center w-full">
+                                {renderPrimaryLanBus()}
+                                <div className="w-[2px] h-3 bg-gradient-to-b from-emerald-400/90 to-amber-400/90 shadow-[0_0_6px_rgba(52,211,153,0.6)]" />
+                                {renderLanVyosChain()}
+                            </div>
+                        ) : (
+                            <div className="flex items-center justify-center w-full">
+                                {renderPrimaryLanBus()}
+                            </div>
+                        )}
                         <div className="absolute inset-x-0 -bottom-6 flex justify-center w-full z-0 overflow-hidden pointer-events-none">
                             <div className="text-[72px] font-black text-white/[0.02] select-none uppercase tracking-[0.2em] whitespace-nowrap px-6">{data.name}</div>
                         </div>
@@ -748,9 +975,17 @@ const SiteNode = ({ data }: any) => {
                 {/* Gateway-Specific: LAN Subnets at the Bottom */}
                 {isGateway && (
                     <div className="flex flex-col items-center relative z-20 w-full mb-1">
-                        <div className="flex gap-2.5 items-center justify-center flex-wrap max-w-full">
-                            {uniqueSubeNets.map((subnet, sIdx) => renderSubnetPill(subnet, sIdx))}
-                        </div>
+                        {hasLanVyos ? (
+                            <div className="flex flex-col items-center w-full">
+                                {renderPrimaryLanBus()}
+                                <div className="w-[2px] h-3 bg-gradient-to-b from-emerald-400/90 to-amber-400/90 shadow-[0_0_6px_rgba(52,211,153,0.6)]" />
+                                {renderLanVyosChain()}
+                            </div>
+                        ) : (
+                            <div className="flex items-center justify-center w-full">
+                                {renderPrimaryLanBus()}
+                            </div>
+                        )}
                     </div>
                 )}
             </div>
@@ -769,8 +1004,8 @@ const SiteNode = ({ data }: any) => {
                                         isSelectedCircuit
                                             ? "ring-2 ring-blue-400 bg-blue-500/25 border-blue-400 shadow-lg shadow-blue-500/30 scale-105"
                                             : (w.wan_network?.toLowerCase().includes('mpls')
-                                                ? "bg-purple-500/10 border-purple-500/35 text-purple-400 hover:border-purple-400/60"
-                                                : "bg-blue-500/10 border-blue-500/35 text-blue-400 hover:border-blue-400/60")
+                                                ? "bg-purple-500/10 border-purple-500/35 text-purple-700 dark:text-purple-400 hover:border-purple-400/60"
+                                                : "bg-blue-500/10 border-blue-500/35 text-blue-700 dark:text-blue-400 hover:border-blue-400/60")
                                     )}
                                     title={`Click to inspect tunnels for ${w.circuit_label || w.name}`}
                                     onClick={(e) => {
@@ -869,10 +1104,10 @@ const CloudNode = ({ data }: any) => {
                 <div className={cn(
                     "px-3 py-1 rounded-full text-[9px] font-mono font-bold border flex items-center gap-1.5 mt-0.5 shadow-sm",
                     isInternet
-                        ? (isSelected ? "bg-sky-500/30 border-sky-400 text-sky-200" : "bg-sky-500/15 border-sky-500/30 text-sky-300")
-                        : (isSelected ? "bg-purple-500/30 border-purple-400 text-purple-200" : "bg-purple-500/15 border-purple-500/30 text-purple-300")
+                        ? (isSelected ? "bg-sky-500/30 border-sky-400 text-sky-900 dark:text-sky-200" : "bg-sky-500/15 border-sky-500/30 text-sky-800 dark:text-sky-300")
+                        : (isSelected ? "bg-purple-500/30 border-purple-400 text-purple-900 dark:text-purple-200" : "bg-purple-500/15 border-purple-500/30 text-purple-800 dark:text-purple-300")
                 )}>
-                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 dark:bg-emerald-400 animate-pulse" />
                     <span>{tunnelsUp || 0} / {tunnelsTotal} Tunnels</span>
                 </div>
             )}
@@ -905,8 +1140,8 @@ const VyOSRouterNode = ({ data }: any) => {
     const hubResolutions = resolutions.filter((r: any) => r.isHub);
     const spokeResolutions = resolutions.filter((r: any) => !r.isHub);
 
-    // Identify interfaces for this router
-    const allIfaces = router.interfaces || [];
+    // Identify physical interfaces for this router (exclude loopbacks/dummy/virtual /32)
+    const allIfaces = (router.interfaces || []).filter(isPhysicalVyosInterface);
 
     // Sorting comparator: Sort by connected site's horizontal X position (left to right), then INET before MPLS
     const sortIfacesBySite = (ifaceA: any, ifaceB: any) => {
@@ -982,23 +1217,23 @@ const VyOSRouterNode = ({ data }: any) => {
                 />
 
                 <div className="flex items-center justify-between pb-1 border-b border-border/50">
-                    <span className="font-mono font-black text-amber-600 dark:text-amber-400 flex items-center gap-1.5">
+                    <span className="font-mono font-black text-amber-700 dark:text-amber-400 flex items-center gap-1.5">
                         <span className={cn("w-2.5 h-2.5 rounded-full", isConnected ? (isIfaceUp ? "bg-green-500 shadow-[0_0_6px_rgba(34,197,94,0.8)]" : "bg-red-500 shadow-[0_0_6px_rgba(239,68,68,0.8)]") : "bg-slate-400 dark:bg-slate-600")} />
                         {iface.name}
                     </span>
                     <div className="flex items-center gap-1">
                         {isBlocked && (
-                            <span className="text-[8px] font-black px-1.5 py-0.2 rounded bg-rose-500/20 text-rose-500 border border-rose-500/40 flex items-center gap-0.5 animate-pulse" title="Traffic to this endpoint is blocked by router-level blackhole rule">
+                            <span className="text-[8px] font-black px-1.5 py-0.2 rounded bg-rose-500/20 text-rose-700 dark:text-rose-400 border border-rose-500/40 flex items-center gap-0.5 animate-pulse" title="Traffic to this endpoint is blocked by router-level blackhole rule">
                                 <ShieldAlert size={9} /> DENIED
                             </span>
                         )}
                         {hasQos && (
-                            <span className="text-[8px] font-black px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-400 border border-amber-500/40">
+                            <span className="text-[8px] font-black px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-800 dark:text-amber-300 border border-amber-600/45 dark:border-amber-500/40">
                                 ⏱️ +{portQos.latency || 0}ms
                             </span>
                         )}
                         {isConnected && (
-                            <span className="text-[9px] font-black px-1.5 py-0.2 rounded bg-green-500/15 text-green-700 dark:text-green-300 border border-green-500/30 truncate max-w-[85px]">
+                            <span className="text-[9px] font-black px-1.5 py-0.2 rounded bg-green-500/15 text-green-800 dark:text-green-300 border border-green-600/35 dark:border-green-500/30 truncate max-w-[85px]">
                                 {matchedRes.prismaWan.siteName}
                             </span>
                         )}
@@ -1026,7 +1261,7 @@ const VyOSRouterNode = ({ data }: any) => {
             {/* TOP ROW: Hub-facing Physical Ports (Facing DCs at top) */}
             {displayTopIfaces.length > 0 && (
                 <div className="flex flex-col gap-2">
-                    <div className="flex items-center justify-between text-[10px] font-black text-amber-600 dark:text-amber-400/90 uppercase tracking-wider px-1">
+                    <div className="flex items-center justify-between text-[10px] font-black text-amber-700 dark:text-amber-400/90 uppercase tracking-wider px-1">
                         <span>▲ DC & Hub Uplinks ({displayTopIfaces.length})</span>
                         <span className="font-mono text-text-muted">Top Transit</span>
                     </div>
@@ -1049,11 +1284,11 @@ const VyOSRouterNode = ({ data }: any) => {
                                 "w-2.5 h-2.5 rounded-full",
                                 isOnline ? "bg-green-500 dark:bg-green-400 shadow-[0_0_8px_rgba(34,197,94,0.8)]" : "bg-red-500"
                             )} />
-                            <span className="text-[9px] font-bold text-green-600 dark:text-green-400 uppercase tracking-widest">
+                            <span className="text-[9px] font-bold text-green-700 dark:text-green-400 uppercase tracking-widest">
                                 {isOnline ? 'ONLINE' : 'OFFLINE'}
                             </span>
                         </div>
-                        <div className="text-xs text-amber-600 dark:text-amber-400 font-mono font-bold mt-0.5">
+                        <div className="text-xs text-amber-700 dark:text-amber-400 font-mono font-bold mt-0.5">
                             Mgmt IP: {router.host}
                         </div>
                     </div>
@@ -1071,8 +1306,8 @@ const VyOSRouterNode = ({ data }: any) => {
                             className={cn(
                                 "px-3 py-1.5 rounded-xl font-black text-[11px] flex items-center gap-1.5 border transition-all cursor-pointer shadow-sm",
                                 blockedCount > 0
-                                    ? "bg-rose-500/20 hover:bg-rose-500/30 text-rose-500 dark:text-rose-400 border-rose-500/50 shadow-rose-500/20 ring-1 ring-rose-500/40"
-                                    : "bg-amber-500/15 hover:bg-amber-500/25 text-amber-700 dark:text-amber-300 border-amber-500/40 hover:border-amber-400"
+                                    ? "bg-rose-500/20 hover:bg-rose-500/30 text-rose-700 dark:text-rose-400 border-rose-500/50 shadow-rose-500/20 ring-1 ring-rose-500/40"
+                                    : "bg-amber-500/15 hover:bg-amber-500/25 text-amber-800 dark:text-amber-300 border-amber-600/45 dark:border-amber-500/40 hover:border-amber-400"
                             )}
                             title="Manage router-level Allow/Deny traffic policies"
                         >
@@ -1091,7 +1326,7 @@ const VyOSRouterNode = ({ data }: any) => {
                     )}
 
                     <div className="text-right">
-                        <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-amber-500/15 border border-amber-500/40 text-amber-700 dark:text-amber-300 text-[10px] font-black uppercase tracking-wider">
+                        <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-amber-500/15 border border-amber-600/45 dark:border-amber-500/40 text-amber-800 dark:text-amber-300 text-[10px] font-black uppercase tracking-wider">
                             <span>{connectedCount} Circuits</span>
                         </div>
                         {router.location && (
@@ -1106,7 +1341,7 @@ const VyOSRouterNode = ({ data }: any) => {
             {/* BOTTOM ROW: Spoke-facing Physical Ports (Facing Branches at bottom) */}
             {displayBottomIfaces.length > 0 && (
                 <div className="flex flex-col gap-2">
-                    <div className="flex items-center justify-between text-[10px] font-black text-amber-600 dark:text-amber-400/90 uppercase tracking-wider px-1">
+                    <div className="flex items-center justify-between text-[10px] font-black text-amber-700 dark:text-amber-400/90 uppercase tracking-wider px-1">
                         <span>▼ Branch & Spoke Downlinks ({displayBottomIfaces.length})</span>
                         <span className="font-mono text-text-muted">Bottom Transit</span>
                     </div>
@@ -1115,6 +1350,205 @@ const VyOSRouterNode = ({ data }: any) => {
                     </div>
                 </div>
             )}
+        </div>
+    );
+};
+
+// --- Peripheral LAN VyOS Router Node (Positioned above DC/Hub LAN or below Branch/Spoke LAN in Underlay mode) ---
+const VyOSLanRouterNode = ({ data }: any) => {
+    const {
+        router,
+        siteName,
+        isAboveSite = false,
+        interfaceItems = [],
+        onSelectResolution,
+        onOpenRouterControl
+    } = data;
+
+    const isOnline = router?.status !== 'down' && router?.status !== 'unreachable' && router?.status !== 'error';
+    const blackholeBlocks: Array<{ prefix: string }> = Array.isArray(router?.blackholeBlocks) ? router.blackholeBlocks : [];
+    const blockedCount = blackholeBlocks.length;
+
+    const lanLinks = interfaceItems.filter((it: any) => Boolean(it.isIonLan));
+    const egressLinks = interfaceItems.filter((it: any) => !it.isIonLan);
+
+    const renderInterfaceChip = (item: any) => {
+        const isIfaceUp = item.status !== 'down';
+        const portQos = normalizeQos(item.qos);
+        const hasQos = !!portQos;
+        const isIonLan = Boolean(item.isIonLan);
+        const roleLabel = item.roleLabel || (isIonLan ? `${siteName} LAN` : 'EGRESS / NAT');
+        const roleTone = item.roleTone || (isIonLan ? 'emerald' : 'blue');
+
+        const badgeClass =
+            roleTone === 'emerald'
+                ? 'bg-emerald-500/20 text-emerald-800 dark:text-emerald-300 border-emerald-600/45 dark:border-emerald-500/40'
+                : roleTone === 'cyan'
+                    ? 'bg-cyan-500/20 text-cyan-800 dark:text-cyan-300 border-cyan-600/45 dark:border-cyan-500/40'
+                    : roleTone === 'purple'
+                        ? 'bg-purple-500/20 text-purple-800 dark:text-purple-300 border-purple-600/45 dark:border-purple-500/40'
+                        : roleTone === 'amber'
+                            ? 'bg-amber-500/20 text-amber-800 dark:text-amber-300 border-amber-600/45 dark:border-amber-500/40'
+                            : 'bg-blue-500/15 text-blue-800 dark:text-blue-300 border-blue-600/40 dark:border-blue-500/35';
+
+        return (
+            <div
+                key={item.name}
+                onClick={(e) => {
+                    e.stopPropagation();
+                    if (onSelectResolution && item.resolution) {
+                        onSelectResolution(item.resolution);
+                    }
+                }}
+                className={cn(
+                    "relative px-3 py-2 rounded-xl border text-[11px] transition-all flex flex-col justify-between min-w-[160px] flex-1 gap-1 shadow-sm cursor-pointer",
+                    !isIfaceUp
+                        ? "bg-rose-950/25 border-rose-500/60 hover:border-rose-400 shadow-rose-500/10"
+                        : hasQos
+                            ? "bg-amber-500/15 border-amber-400/70 hover:border-amber-300 shadow-amber-500/15 ring-1 ring-amber-500/30"
+                            : isIonLan
+                                ? "bg-emerald-500/10 border-emerald-500/45 hover:border-emerald-400 hover:bg-emerald-500/15 shadow-emerald-500/10"
+                                : "bg-card border-amber-500/35 hover:border-amber-400 hover:bg-card-secondary/70 shadow-amber-500/10"
+                )}
+                title={`${item.name} (${item.ipCidr || item.ip || '—'}) • ${isIonLan ? `Connected to ${siteName} Shared LAN` : (item.description || roleLabel)} — Click to configure QoS or Shut`}
+            >
+                <div className="flex items-center justify-between pb-1 border-b border-border/50 gap-1.5">
+                    <span className="font-mono font-black text-amber-700 dark:text-amber-400 flex items-center gap-1.5">
+                        <span className={cn(
+                            "w-2 h-2 rounded-full",
+                            isIfaceUp ? "bg-green-500 shadow-[0_0_6px_rgba(34,197,94,0.8)]" : "bg-red-500 shadow-[0_0_6px_rgba(239,68,68,0.8)]"
+                        )} />
+                        {item.name}
+                    </span>
+                    <div className="flex items-center gap-1">
+                        {!isIfaceUp && (
+                            <span className="text-[8px] font-black px-1.5 py-0.2 rounded bg-rose-500/25 text-rose-700 dark:text-rose-400 border border-rose-500/40">
+                                SHUT
+                            </span>
+                        )}
+                        {hasQos && (
+                            <span className="text-[8px] font-black px-1.5 py-0.2 rounded bg-amber-500/25 text-amber-800 dark:text-amber-300 border border-amber-600/45 dark:border-amber-500/40">
+                                ⏱️ +{portQos.latency || 0}ms{portQos.loss ? ` ${portQos.loss}%` : ''}
+                            </span>
+                        )}
+                        <span className={cn("text-[8px] font-black px-1.5 py-0.2 rounded border uppercase whitespace-nowrap", badgeClass)}>
+                            {roleLabel}
+                        </span>
+                    </div>
+                </div>
+
+                <div className="flex items-center justify-between gap-2">
+                    <span className="font-mono text-text-primary font-black text-[11px] whitespace-nowrap tracking-tight">
+                        {item.ipCidr || item.ip || '—'}
+                    </span>
+                    <span className="text-[9px] text-text-muted truncate font-mono max-w-[140px]" title={item.description || roleLabel}>
+                        {item.description || (isIonLan ? `Shared LAN (${siteName})` : roleLabel)}
+                    </span>
+                </div>
+            </div>
+        );
+    };
+
+    const renderEgressSection = () => {
+        if (egressLinks.length === 0) return null;
+        return (
+            <div className="flex flex-col gap-1.5">
+                <div className="flex items-center justify-between text-[9px] font-black text-amber-700 dark:text-amber-400/90 uppercase tracking-wider px-1">
+                    <span>{isAboveSite ? '▲ Egress / Transit / Local Subnets (Click to impair or shut)' : '▼ Egress / Transit / Local Subnets (Click to impair or shut)'}</span>
+                    <span className="font-mono text-text-muted">{egressLinks.length} Ports</span>
+                </div>
+                <div className="grid grid-cols-3 gap-2">
+                    {egressLinks.map(renderInterfaceChip)}
+                </div>
+            </div>
+        );
+    };
+
+    const renderLanDownlinkSection = () => {
+        if (lanLinks.length === 0) return null;
+        return (
+            <div className="flex flex-col gap-1.5">
+                <div className="flex items-center justify-between text-[9px] font-black text-emerald-700 dark:text-emerald-400 uppercase tracking-wider px-1">
+                    <span>{isAboveSite ? `▼ ${siteName} Shared LAN Downlink (ION Facing)` : `▲ ${siteName} Shared LAN Uplink (ION Facing)`}</span>
+                    <span className="font-mono text-text-muted">{lanLinks.map((l: any) => l.ipCidr?.replace(/\.\d+\//, '.0/') || '').filter(Boolean)[0] || 'LAN Bus'}</span>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                    {lanLinks.map(renderInterfaceChip)}
+                </div>
+            </div>
+        );
+    };
+
+    return (
+        <div className="bg-card/95 backdrop-blur-2xl border-2 border-emerald-500/45 hover:border-amber-400 rounded-[26px] p-4 shadow-2xl shadow-emerald-500/10 dark:shadow-amber-500/15 transition-all group relative flex flex-col gap-3 w-[580px] max-w-[600px]">
+            {/* Target Handle facing the Site's LAN block (Bottom if router is above a Hub, Top if router is below a Spoke) */}
+            <Handle
+                type="target"
+                position={isAboveSite ? Position.Bottom : Position.Top}
+                id="lan-link"
+                className="!w-4 !h-2 !bg-emerald-500 dark:!bg-emerald-400 !border !border-card !rounded-sm"
+            />
+
+            {/* When above a Hub (DC1/DC2): Egress/Subnets on top (outer), Chassis in middle, ION LAN on bottom (facing DC) */}
+            {isAboveSite ? renderEgressSection() : renderLanDownlinkSection()}
+
+            {/* Center Banner: VyOS LAN Router Identity & Traffic Control */}
+            <div className="flex items-center justify-between gap-4 px-3.5 py-2.5 bg-card-secondary/80 border border-amber-500/30 rounded-2xl shadow-inner">
+                <div className="flex items-center gap-3">
+                    <div className="p-2 bg-gradient-to-br from-amber-500 to-orange-600 rounded-xl text-white dark:text-slate-950 shadow-md shadow-amber-500/30 font-black">
+                        <Server size={17} />
+                    </div>
+                    <div>
+                        <div className="flex items-center gap-2">
+                            <span className="text-xs font-black text-text-primary tracking-tight uppercase">{router?.name || 'VyOS-LAN'}</span>
+                            <span className={cn(
+                                "w-2 h-2 rounded-full",
+                                isOnline ? "bg-green-500 dark:bg-green-400 shadow-[0_0_8px_rgba(34,197,94,0.8)]" : "bg-red-500"
+                            )} />
+                            <span className="px-2 py-0.5 rounded-md bg-emerald-500/15 border border-emerald-600/40 dark:border-emerald-500/35 text-emerald-800 dark:text-emerald-400 text-[9px] font-black uppercase tracking-wider">
+                                {siteName} LAN Router
+                            </span>
+                        </div>
+                        <div className="text-[10px] text-amber-700 dark:text-amber-400 font-mono font-bold mt-0.5">
+                            Mgmt IP: {router?.host || '—'} &bull; Click any port to inject Latency / Loss / Shut
+                        </div>
+                    </div>
+                </div>
+
+                <div className="flex items-center gap-2">
+                    {onOpenRouterControl && (
+                        <button
+                            type="button"
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                onOpenRouterControl(router);
+                            }}
+                            className={cn(
+                                "px-2.5 py-1.5 rounded-xl font-black text-[10px] flex items-center gap-1.5 border transition-all cursor-pointer shadow-sm",
+                                blockedCount > 0
+                                    ? "bg-rose-500/20 hover:bg-rose-500/30 text-rose-500 dark:text-rose-400 border-rose-500/50 shadow-rose-500/20 ring-1 ring-rose-500/40"
+                                    : "bg-amber-500/15 hover:bg-amber-500/25 text-amber-700 dark:text-amber-300 border-amber-500/40 hover:border-amber-400"
+                            )}
+                            title="Manage router-level Allow/Deny traffic policies"
+                        >
+                            {blockedCount > 0 ? (
+                                <>
+                                    <ShieldAlert size={13} className="text-rose-500 animate-pulse" />
+                                    <span>{blockedCount} BLOCKED</span>
+                                </>
+                            ) : (
+                                <>
+                                    <Shield size={13} />
+                                    <span>TRAFFIC CONTROL</span>
+                                </>
+                            )}
+                        </button>
+                    )}
+                </div>
+            </div>
+
+            {/* When above a Hub (DC1/DC2): ION LAN on bottom right at the green LAN cable handle */}
+            {isAboveSite ? renderLanDownlinkSection() : renderEgressSection()}
         </div>
     );
 };
@@ -1228,14 +1662,14 @@ const SasePopNode = ({ data, selected }: any) => {
 
     return (
         <div className={cn(
-            "px-5 py-4 rounded-3xl border-2 transition-all shadow-xl backdrop-blur-2xl flex flex-col items-center gap-2.5 w-[330px] max-w-[330px] cursor-pointer hover:scale-105 duration-200 select-none",
+            "px-7 py-6 rounded-[32px] border-2 transition-all shadow-2xl backdrop-blur-2xl flex flex-col items-center gap-3.5 w-[480px] max-w-[480px] cursor-pointer hover:scale-105 duration-200 select-none",
             isPrisma
                 ? (isHealthy 
-                    ? "bg-white/95 dark:bg-purple-950/40 border-purple-300 dark:border-purple-500/50 shadow-purple-500/10 dark:shadow-purple-500/25 hover:border-purple-500" 
-                    : "bg-white/90 dark:bg-purple-950/20 border-purple-200 dark:border-purple-500/30")
+                    ? "bg-white/95 dark:bg-purple-950/45 border-purple-300 dark:border-purple-500/55 shadow-purple-500/15 dark:shadow-purple-500/30 hover:border-purple-500" 
+                    : "bg-white/90 dark:bg-purple-950/25 border-purple-200 dark:border-purple-500/35")
                 : (isHealthy 
-                    ? "bg-white/95 dark:bg-blue-950/40 border-blue-300 dark:border-blue-500/50 shadow-blue-500/10 dark:shadow-blue-500/25 hover:border-blue-500" 
-                    : "bg-white/90 dark:bg-rose-950/30 border-rose-300 dark:border-rose-500/40 shadow-rose-500/10"),
+                    ? "bg-white/95 dark:bg-blue-950/45 border-blue-300 dark:border-blue-500/55 shadow-blue-500/15 dark:shadow-blue-500/30 hover:border-blue-500" 
+                    : "bg-white/90 dark:bg-rose-950/35 border-rose-300 dark:border-rose-500/45 shadow-rose-500/15"),
             selected && (isPrisma 
                 ? "ring-4 ring-purple-400 dark:ring-purple-400 shadow-purple-500/40 dark:shadow-purple-500/60" 
                 : "ring-4 ring-blue-400 dark:ring-blue-400 shadow-blue-500/40 dark:shadow-blue-500/60")
@@ -1244,52 +1678,52 @@ const SasePopNode = ({ data, selected }: any) => {
             <Handle type="target" position={Position.Bottom} id="target-bottom" className="!opacity-0" />
 
             {/* Provider & Health Header */}
-            <div className="flex items-center justify-between w-full gap-2">
-                <div className="flex items-center gap-1.5">
+            <div className="flex items-center justify-between w-full gap-3">
+                <div className="flex items-center gap-2">
                     {isPrisma ? (
-                        <span className="px-2.5 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider border bg-purple-100 text-purple-700 border-purple-300/80 dark:bg-purple-500/20 dark:text-purple-300 dark:border-purple-500/30 flex items-center gap-1.5 shadow-sm">
-                            <span className="w-1.5 h-1.5 rounded-full bg-orange-500 inline-block" />
-                            Palo Alto &bull; Prisma
+                        <span className="px-3 py-1 rounded-full text-[11px] font-black uppercase tracking-wider border bg-purple-100 text-purple-700 border-purple-300/80 dark:bg-purple-500/20 dark:text-purple-300 dark:border-purple-500/30 flex items-center gap-2 shadow-sm">
+                            <span className="w-2 h-2 rounded-full bg-orange-500 inline-block" />
+                            Palo Alto &bull; Prisma Access
                         </span>
                     ) : (
-                        <span className="px-2.5 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider border bg-blue-100 text-blue-700 border-blue-300/80 dark:bg-blue-500/20 dark:text-blue-300 dark:border-blue-500/30 flex items-center gap-1.5 shadow-sm">
-                            <span className="w-1.5 h-1.5 rounded-full bg-cyan-500 inline-block" />
-                            Zscaler &bull; ZIA
+                        <span className="px-3 py-1 rounded-full text-[11px] font-black uppercase tracking-wider border bg-blue-100 text-blue-700 border-blue-300/80 dark:bg-blue-500/20 dark:text-blue-300 dark:border-blue-500/30 flex items-center gap-2 shadow-sm">
+                            <span className="w-2 h-2 rounded-full bg-cyan-500 inline-block" />
+                            Zscaler &bull; ZIA Cloud
                         </span>
                     )}
                 </div>
-                <div className="flex items-center gap-1.5">
-                    <span className={cn("w-2 h-2 rounded-full", isHealthy ? "bg-emerald-500 animate-pulse" : "bg-rose-500")} />
-                    <span className="text-[10px] font-mono font-bold text-slate-600 dark:text-text-muted">
+                <div className="flex items-center gap-2 bg-slate-100/80 dark:bg-white/5 px-2.5 py-1 rounded-full border border-slate-200/70 dark:border-white/10">
+                    <span className={cn("w-2.5 h-2.5 rounded-full", isHealthy ? "bg-emerald-500 animate-pulse" : "bg-rose-500")} />
+                    <span className="text-xs font-mono font-bold text-slate-700 dark:text-slate-200">
                         {data.tunnels_up || 0}/{data.tunnels_total || 0} Up
                     </span>
                 </div>
             </div>
 
             {/* Center Icon & Title with Official Logos */}
-            <div className="flex items-center gap-3 w-full my-0.5">
+            <div className="flex items-center gap-4 w-full my-1">
                 <div className={cn(
-                    "p-2 rounded-2xl shrink-0 flex items-center justify-center border shadow-sm transition-colors",
+                    "p-3 rounded-2xl shrink-0 flex items-center justify-center border shadow-md transition-colors",
                     isPrisma 
                         ? "bg-purple-50/90 border-purple-200 text-purple-600 dark:bg-white/10 dark:border-purple-500/30 dark:shadow-purple-900/50" 
                         : "bg-blue-50/90 border-blue-200 text-blue-600 dark:bg-white/10 dark:border-blue-500/30 dark:shadow-blue-900/50"
                 )}>
                     {isPrisma ? (
-                        <img src="/prisma-access.png" alt="Prisma Access" className="w-8 h-8 object-contain filter drop-shadow-sm" />
+                        <img src="/prisma-access.png" alt="Prisma Access" className="w-12 h-12 object-contain filter drop-shadow-sm" />
                     ) : (
-                        <img src="/zscaler-logo.png" alt="Zscaler" className="w-8 h-8 object-contain rounded-lg filter drop-shadow-sm" />
+                        <img src="/zscaler-logo.png" alt="Zscaler" className="w-12 h-12 object-contain rounded-xl filter drop-shadow-sm" />
                     )}
                 </div>
                 <div className="min-w-0 flex-1">
-                    <div className="text-sm font-black text-slate-900 dark:text-text-primary tracking-tight truncate leading-tight">
+                    <div className="text-base font-black text-slate-900 dark:text-text-primary tracking-tight truncate leading-snug" title={data.name}>
                         {data.short_name || data.name}
                     </div>
                     {data.spn_name ? (
-                        <div className="text-[10px] text-slate-500 dark:text-text-muted font-mono truncate font-medium">
+                        <div className="text-xs text-slate-500 dark:text-text-muted font-mono truncate font-semibold mt-0.5">
                             SPN: {data.spn_name}
                         </div>
                     ) : (
-                        <div className="text-[10px] text-slate-500 dark:text-text-muted font-mono truncate font-medium">
+                        <div className="text-xs text-slate-500 dark:text-text-muted font-mono truncate font-semibold mt-0.5">
                             Region: {data.region || 'global'}
                         </div>
                     )}
@@ -1297,17 +1731,17 @@ const SasePopNode = ({ data, selected }: any) => {
             </div>
 
             {/* IP & Telemetry Footer */}
-            <div className="w-full pt-2 border-t border-slate-200 dark:border-border/60 flex items-center justify-between text-[10px] font-mono">
-                <div className="flex items-center gap-1 text-purple-700 dark:text-cyan-400 font-bold truncate">
-                    <span className="text-slate-400 dark:text-slate-400 text-[9px] font-semibold">GW:</span>
+            <div className="w-full pt-3 border-t border-slate-200 dark:border-border/60 flex items-center justify-between text-xs font-mono">
+                <div className="flex items-center gap-1.5 text-purple-700 dark:text-cyan-400 font-bold truncate">
+                    <span className="text-slate-400 dark:text-slate-400 text-[11px] font-semibold">GW:</span>
                     <span className="truncate">{data.primary_peer_ip || 'Anycast'}</span>
                 </div>
                 {data.liveliness_probe_ip ? (
-                    <div className="text-slate-500 dark:text-text-muted text-[9px] shrink-0 font-medium" title="Liveliness ICMP probe">
+                    <div className="text-slate-500 dark:text-text-muted text-[11px] shrink-0 font-medium" title="Liveliness ICMP probe">
                         Probe: {data.liveliness_probe_ip}
                     </div>
                 ) : (
-                    <div className="text-slate-500 dark:text-text-muted text-[9px] shrink-0 font-medium">
+                    <div className="text-slate-500 dark:text-text-muted text-[11px] shrink-0 font-medium">
                         {data.connected_sites?.length || 0} Sites
                     </div>
                 )}
@@ -1320,6 +1754,7 @@ const nodeTypes = {
     site: SiteNode,
     cloud: CloudNode,
     vyosRouter: VyOSRouterNode,
+    vyosLanRouter: VyOSLanRouterNode,
     underlayGateway: UnderlayGatewayNode,
     sasePop: SasePopNode,
 };
@@ -1483,8 +1918,9 @@ function TopologyContent({ token, theme }: TopologyProps) {
         if (ifObj?.status) {
             return ifObj.status.toLowerCase() === 'down' ? 'down' : 'up';
         }
-        // Check resolutions
-        const resObj = (underlayData?.resolutions || []).find(r => 
+        // Check resolutions (WAN + LAN)
+        const allRes = [...(underlayData?.resolutions || []), ...(underlayData?.lanResolutions || [])];
+        const resObj = allRes.find(r => 
             r.vyos?.routerName.toLowerCase() === routerName.toLowerCase() && 
             r.vyos?.interfaceName.toLowerCase() === ifaceName.toLowerCase()
         );
@@ -1511,8 +1947,9 @@ function TopologyContent({ token, theme }: TopologyProps) {
             const norm = normalizeQos(ifObj.qos);
             if (norm) return norm;
         }
-        // Check resolutions
-        const resObj = (underlayData?.resolutions || []).find(r => 
+        // Check resolutions (WAN + LAN)
+        const allRes = [...(underlayData?.resolutions || []), ...(underlayData?.lanResolutions || [])];
+        const resObj = allRes.find(r => 
             r.vyos?.routerName.toLowerCase() === routerName.toLowerCase() && 
             r.vyos?.interfaceName.toLowerCase() === ifaceName.toLowerCase()
         );
@@ -1980,6 +2417,221 @@ function TopologyContent({ token, theme }: TopologyProps) {
         return role === 'HUB' || (isBG && effectiveBgAsHub);
     }, [siteHubStatus, effectiveBgAsHub]);
 
+    // Build a lookup: siteName → LAN-connected VyOS routers with all their IPv4 interfaces (ION LAN + Egress/NAT/BGP)
+    const siteLanVyosMap = useMemo(() => {
+        const map = new Map<string, any[]>();
+        if (!underlayData?.lanResolutions) return map;
+
+        const allRouters = underlayData.routers || [];
+        const matchedLanResolutions = underlayData.lanResolutions.filter(
+            (r) => r.status === 'matched' && r.vyos?.routerName && r.prismaWan?.siteName
+        );
+
+        // Group by siteName -> routerName
+        const bySite = new Map<string, Map<string, UnderlayResolution[]>>();
+        matchedLanResolutions.forEach((res) => {
+            const sName = res.prismaWan.siteName;
+            const rName = res.vyos?.routerName;
+            if (!sName || !rName) return;
+            if (!bySite.has(sName)) bySite.set(sName, new Map());
+            const rMap = bySite.get(sName)!;
+            if (!rMap.has(rName)) rMap.set(rName, []);
+            rMap.get(rName)!.push(res);
+        });
+
+        bySite.forEach((rMap, siteName) => {
+            const siteRouters: any[] = [];
+            rMap.forEach((resList, routerName) => {
+                const primaryLanRes = resList[0];
+                const fromPayload = allRouters.find(
+                    (r) =>
+                        (r.name && r.name.toLowerCase() === routerName.toLowerCase()) ||
+                        (r.id && r.id.toLowerCase() === routerName.toLowerCase())
+                );
+
+                const matchedLanIfNames = new Set(
+                    resList.map((r) => (r.vyos?.interfaceName || '').toLowerCase()).filter(Boolean)
+                );
+
+                // Collect all physical IPv4 interfaces on this VyOS router (ION LAN + Egress/NAT/BGP), excluding loopbacks/dummy/virtual and SSH MGMT
+                const rawIfaces = new Map<string, any>();
+                const mgmtHost = (fromPayload?.host || '').trim();
+                (fromPayload?.interfaces || []).forEach((iface: any) => {
+                    if (!isPhysicalVyosInterface(iface)) return;
+                    const ifLower = iface.name.toLowerCase();
+                    const isMatchedLan = matchedLanIfNames.has(ifLower);
+                    const descLower = (iface.description || '').toLowerCase();
+                    const ifaceIp = iface.ip || (iface.ipCidr ? iface.ipCidr.split('/')[0] : (iface.address?.[0] ? iface.address[0].split('/')[0] : ''));
+                    // Filter out dedicated SSH management port (unless it is somehow the matched ION LAN interface)
+                    if (!isMatchedLan && (descLower.includes('mgmt') || descLower.includes('management') || (mgmtHost && ifaceIp === mgmtHost) || (ifLower === 'eth0' && ifaceIp.startsWith('192.168.122.')))) {
+                        return;
+                    }
+                    const hasIp = Boolean(iface.ip || iface.ipCidr || (Array.isArray(iface.address) && iface.address.length > 0));
+                    if (!hasIp && !isMatchedLan) return;
+                    rawIfaces.set(iface.name, { ...iface });
+                });
+
+                // Ensure all matched LAN interfaces are present
+                resList.forEach((res) => {
+                    const ifName = res.vyos?.interfaceName;
+                    if (!ifName) return;
+                    const existing = rawIfaces.get(ifName) || {};
+                    const ipCidr = res.vyos?.ipCidr || res.vyos?.ip || existing.ipCidr || existing.address?.[0];
+                    rawIfaces.set(ifName, {
+                        ...existing,
+                        name: ifName,
+                        type: existing.type || 'ethernet',
+                        description: existing.description || res.vyos?.description,
+                        ipCidr,
+                        ip: res.vyos?.ip || existing.ip || (ipCidr ? ipCidr.split('/')[0] : undefined),
+                        network: res.vyos?.network || existing.network,
+                        status: res.vyos?.status || existing.status || 'up',
+                        qos: res.vyos?.qos || existing.qos || null,
+                    });
+                });
+
+                // Sort interfaces so ION-connected LAN interfaces appear first, then Egress/NAT interfaces by name
+                const sortedIfaces = Array.from(rawIfaces.values()).sort((a, b) => {
+                    const aIsLan = matchedLanIfNames.has(a.name.toLowerCase()) ? 0 : 1;
+                    const bIsLan = matchedLanIfNames.has(b.name.toLowerCase()) ? 0 : 1;
+                    if (aIsLan !== bIsLan) return aIsLan - bIsLan;
+                    return a.name.localeCompare(b.name);
+                });
+
+                const inferInterfaceRole = (iface: any, isIonLan: boolean, ipStr: string) => {
+                    if (isIonLan) return { roleLabel: `${siteName} LAN`, roleTone: 'emerald' };
+                    const desc = (iface.description || '').toLowerCase();
+                    if (desc.includes('internet') || desc.includes('wan') || desc.includes('nat') || desc.includes('exit')) {
+                        return { roleLabel: 'INTERNET EXIT', roleTone: 'cyan' };
+                    }
+                    if (desc.includes('stigix')) {
+                        return { roleLabel: '⚡ STIGIX LAN', roleTone: 'amber' };
+                    }
+                    if (desc.includes('mpls') || desc.includes('dci') || desc.includes('interco') || ipStr.startsWith('10.200.')) {
+                        return { roleLabel: 'DCI / MPLS', roleTone: 'purple' };
+                    }
+                    if (desc.includes('app') || desc.includes('srv') || desc.includes('server') || ipStr.startsWith('20.0.')) {
+                        return { roleLabel: 'APP SUBNET', roleTone: 'amber' };
+                    }
+                    if (ipStr.startsWith('192.168.')) {
+                        return { roleLabel: '⚡ STIGIX / LAN', roleTone: 'amber' };
+                    }
+                    return { roleLabel: 'EGRESS / NAT', roleTone: 'blue' };
+                };
+
+                const interfaceItems = sortedIfaces.map((iface: any) => {
+                    const ifName = iface.name;
+                    const matchedRes = resList.find((r) => r.vyos?.interfaceName.toLowerCase() === ifName.toLowerCase());
+                    const isIonLan = Boolean(matchedRes);
+                    const ipCidr = iface.ipCidr || (Array.isArray(iface.address) ? iface.address[0] : undefined) || matchedRes?.vyos?.ipCidr || '';
+                    const ip = iface.ip || (ipCidr ? ipCidr.split('/')[0] : undefined) || matchedRes?.vyos?.ip || '';
+                    const liveStatus = getVyosInterfaceStatus(routerName, ifName);
+                    const liveQos = getVyosInterfaceQos(routerName, ifName);
+                    const normQos = normalizeQos(liveQos);
+                    const { roleLabel, roleTone } = inferInterfaceRole(iface, isIonLan, ip);
+
+                    const resolution: UnderlayResolution = matchedRes
+                        ? {
+                              ...matchedRes,
+                              scope: 'lan',
+                              vyos: matchedRes.vyos
+                                  ? {
+                                        ...matchedRes.vyos,
+                                        status: liveStatus,
+                                        qos: liveQos,
+                                    }
+                                  : undefined,
+                          }
+                        : {
+                              id: `${primaryLanRes.id}:${ifName}`,
+                              prismaWan: {
+                                  siteId: primaryLanRes.prismaWan.siteId,
+                                  siteName: primaryLanRes.prismaWan.siteName,
+                                  elementId: primaryLanRes.prismaWan.elementId,
+                                  elementName: primaryLanRes.prismaWan.elementName,
+                                  interfaceId: `${primaryLanRes.prismaWan.interfaceId}:${ifName}`,
+                                  interfaceName: `${ifName} (${roleLabel})`,
+                                  linkType: 'LAN-EGRESS',
+                                  ip: ip || null,
+                                  ipCidr: ipCidr || null,
+                                  network: iface.network || ipCidr || null,
+                              },
+                              status: 'matched',
+                              scope: 'lan',
+                              matchedNetwork: iface.network || ipCidr || primaryLanRes.matchedNetwork,
+                              vyos: {
+                                  routerId: fromPayload?.id || primaryLanRes.vyos?.routerId || routerName,
+                                  routerName: routerName,
+                                  location: fromPayload?.location || primaryLanRes.vyos?.location,
+                                  interfaceName: ifName,
+                                  ip: ip || '',
+                                  ipCidr: ipCidr || '',
+                                  network: iface.network || ipCidr || '',
+                                  status: liveStatus,
+                                  description: iface.description || roleLabel,
+                                  qos: liveQos,
+                              },
+                              diagnostic: `VyOS router ${routerName} interface ${ifName} (${iface.description || roleLabel}) on ${siteName} LAN periphery.`,
+                          };
+
+                    return {
+                        name: ifName,
+                        ifName,
+                        ip,
+                        ipCidr,
+                        description: iface.description,
+                        status: liveStatus,
+                        isDown: liveStatus === 'down',
+                        qos: normQos || liveQos,
+                        hasQos: Boolean(normQos),
+                        isIonLan,
+                        isLanLink: isIonLan,
+                        roleLabel,
+                        roleTone,
+                        resolution,
+                    };
+                });
+
+                const hasShut = interfaceItems.some((item) => item.status === 'down');
+                const qosItem = interfaceItems.find((item) => Boolean(normalizeQos(item.qos)));
+                const primaryQos = qosItem ? normalizeQos(qosItem.qos) : null;
+                const blackholeBlocks = Array.isArray(fromPayload?.blackholeBlocks) ? fromPayload.blackholeBlocks : [];
+                const blockedCount = blackholeBlocks.length;
+
+                const routerObj = {
+                    id: fromPayload?.id || routerName,
+                    name: routerName,
+                    host: fromPayload?.host || primaryLanRes.vyos?.routerId || '—',
+                    location: fromPayload?.location || `${siteName} LAN Periphery`,
+                    status: fromPayload?.status || 'up',
+                    blackholeBlocks,
+                    interfaces: sortedIfaces,
+                };
+
+                siteRouters.push({
+                    name: routerName,
+                    routerName,
+                    id: routerObj.id,
+                    router: routerObj,
+                    resolutions: resList,
+                    lanInterfaceName: primaryLanRes.vyos?.interfaceName || interfaceItems[0]?.name || 'eth',
+                    lanIp: primaryLanRes.vyos?.ipCidr || primaryLanRes.vyos?.ip || interfaceItems[0]?.ipCidr || '—',
+                    hasShut,
+                    primaryQos,
+                    blockedCount,
+                    interfaceItems,
+                    defaultResolution: interfaceItems[0]?.resolution || primaryLanRes,
+                });
+            });
+
+            if (siteRouters.length > 0) {
+                map.set(siteName, siteRouters);
+            }
+        });
+
+        return map;
+    }, [underlayData, getVyosInterfaceStatus, getVyosInterfaceQos]);
+
     const processTopology = useCallback((data: any) => {
         if (!data.sites) return;
 
@@ -2082,10 +2734,10 @@ function TopologyContent({ token, theme }: TopologyProps) {
             ) || 1;
             const circuitsWidth = numCircuits * 120 + Math.max(0, numCircuits - 1) * 16;
 
-            // Calculate Subnets required width (pills with integrated Stigix badge)
+            // Calculate Subnets required width (physical LAN interfaces only)
             const allSubnets = new Set<string>();
             (site.devices || []).forEach((d: any) => {
-                d.lan_interfaces?.forEach((l: any) => {
+                (d.lan_interfaces || []).filter(isPhysicalLanInterface).forEach((l: any) => {
                     if (l.ip) {
                         const subnet = l.ip.includes('/') ? l.ip : l.ip.replace(/\.\d+$/, '.0/24');
                         allSubnets.add(subnet);
@@ -2097,8 +2749,10 @@ function TopologyContent({ token, theme }: TopologyProps) {
 
             const isBG = site.branch_gateway === true || site.branch_gateway === 'true';
             const extraGwWidth = (isBG && bgLayout !== 'top' && hasPureHubs) ? 160 : 0;
+            const hasLanVyos = (siteLanVyosMap.get(site.site_name) || []).length > 0;
+            const lanVyosMinWidth = (topologyViewMode === 'underlay' && hasLanVyos) ? 500 : 0;
 
-            const contentWidth = Math.max(devicesWidth, circuitsWidth, subnetsWidth) + extraGwWidth;
+            const contentWidth = Math.max(devicesWidth, circuitsWidth, subnetsWidth, lanVyosMinWidth) + extraGwWidth;
             return Math.max(340, contentWidth + 96);
         };
 
@@ -2116,6 +2770,8 @@ function TopologyContent({ token, theme }: TopologyProps) {
                 sitePositions.set(site.site_id, x);
                 sitePositions.set(site.site_name, x);
 
+                const siteLanRouters = siteLanVyosMap.get(site.site_name) || [];
+
                 newNodes.push({
                     id: `site:${site.site_id}`,
                     type: 'site',
@@ -2128,9 +2784,38 @@ function TopologyContent({ token, theme }: TopologyProps) {
                         fleetNodes,
                         underlayMode: topologyViewMode === 'underlay' ? 'badges' : 'off',
                         underlayResolutionMap,
-                        onInspectUnderlayCircuit: (res: any) => setUnderlayDrawerResolution(res)
+                        onInspectUnderlayCircuit: (res: any) => setUnderlayDrawerResolution(res),
+                        lanVyosRouters: siteLanRouters,
+                        onInspectLanVyos: (res: any) => setUnderlayDrawerResolution(res)
                     },
                 });
+
+                // In Underlay Mode, place peripheral LAN VyOS router(s) above Hubs (anchored by bottom edge [0.5, 1])
+                // or below Spokes (anchored by top edge [0.5, 0]) so multi-interface cards never overlap the Site card
+                if (topologyViewMode === 'underlay' && siteLanRouters.length > 0) {
+                    const isHubRole = role === 'HUB';
+                    const lanY = isHubRole ? yPos - 342 : yPos + 335;
+                    const LAN_ROUTER_STEP = 610;
+                    siteLanRouters.forEach((lr: any, lrIdx: number) => {
+                        const offsetX = (lrIdx - (siteLanRouters.length - 1) / 2) * LAN_ROUTER_STEP;
+                        newNodes.push({
+                            id: `vyos-lan:${site.site_id}:${lr.name}`,
+                            type: 'vyosLanRouter',
+                            position: { x: x + offsetX, y: lanY },
+                            origin: isHubRole ? [0.5, 1] : [0.5, 0],
+                            data: {
+                                router: lr.router,
+                                siteId: site.site_id,
+                                siteName: site.site_name,
+                                isAboveSite: isHubRole,
+                                interfaceItems: lr.interfaceItems,
+                                resolutions: lr.interfaceItems.map((it: any) => it.resolution),
+                                onSelectResolution: (res: any) => setUnderlayDrawerResolution(res),
+                                onOpenRouterControl: (routerObj: any) => setSelectedRouterForTrafficControl(routerObj)
+                            }
+                        });
+                    });
+                }
             });
         };
 
@@ -2255,56 +2940,47 @@ function TopologyContent({ token, theme }: TopologyProps) {
             const zscalerPops = rawPops.filter((p: any) => p.provider === 'Zscaler' || p.id.includes('zscaler'));
             const otherPops = rawPops.filter((p: any) => !prismaPops.includes(p) && !zscalerPops.includes(p));
 
-            const POP_STEP = 420;
-            const CARD_WIDTH = 330;
-            const CLUSTER_GAP = 280;
+            const POP_STEP = 560;
+            const CARD_WIDTH = 480;
+            const CLUSTER_GAP = 220;
             const MIN_CENTER_DIST = CARD_WIDTH + CLUSTER_GAP;
+
+            // Compute raw horizontal positions and re-center the entire POP tier around x = 0
+            const popEntries: { pop: any; rawX: number; cluster: string }[] = [];
 
             // Left wing: Prisma Access (Palo Alto Networks)
             prismaPops.forEach((pop: any, idx: number) => {
                 const offsetFromRight = (prismaPops.length - 1 - idx) * POP_STEP;
-                const x = -(MIN_CENTER_DIST / 2) - offsetFromRight;
-                newNodes.push({
-                    id: `cloud:${pop.id}`,
-                    type: 'sasePop',
-                    position: { x, y: CLOUD_Y },
-                    origin: [0.5, 0.5],
-                    data: {
-                        ...pop,
-                        isSasePop: true,
-                        cluster: 'prisma'
-                    }
-                });
+                const rawX = -(MIN_CENTER_DIST / 2) - offsetFromRight;
+                popEntries.push({ pop, rawX, cluster: 'prisma' });
             });
 
             // Right wing: Zscaler
             zscalerPops.forEach((pop: any, idx: number) => {
-                const x = (MIN_CENTER_DIST / 2) + idx * POP_STEP;
-                newNodes.push({
-                    id: `cloud:${pop.id}`,
-                    type: 'sasePop',
-                    position: { x, y: CLOUD_Y },
-                    origin: [0.5, 0.5],
-                    data: {
-                        ...pop,
-                        isSasePop: true,
-                        cluster: 'zscaler'
-                    }
-                });
+                const rawX = (MIN_CENTER_DIST / 2) + idx * POP_STEP;
+                popEntries.push({ pop, rawX, cluster: 'zscaler' });
             });
 
             // Other providers (if any)
             otherPops.forEach((pop: any, idx: number) => {
-                const x = (MIN_CENTER_DIST / 2) + (zscalerPops.length + idx) * POP_STEP;
+                const rawX = (MIN_CENTER_DIST / 2) + (zscalerPops.length + idx) * POP_STEP;
+                popEntries.push({ pop, rawX, cluster: 'other' });
+            });
+
+            const minPopX = popEntries.length > 0 ? Math.min(...popEntries.map(e => e.rawX)) : 0;
+            const maxPopX = popEntries.length > 0 ? Math.max(...popEntries.map(e => e.rawX)) : 0;
+            const centerShift = (minPopX + maxPopX) / 2;
+
+            popEntries.forEach(({ pop, rawX, cluster }) => {
                 newNodes.push({
                     id: `cloud:${pop.id}`,
                     type: 'sasePop',
-                    position: { x, y: CLOUD_Y },
+                    position: { x: rawX - centerShift, y: CLOUD_Y },
                     origin: [0.5, 0.5],
                     data: {
                         ...pop,
                         isSasePop: true,
-                        cluster: 'other'
+                        cluster
                     }
                 });
             });
@@ -2377,7 +3053,10 @@ function TopologyContent({ token, theme }: TopologyProps) {
             let minLeftX = Math.min(0, ...hubLeftEdges, ...spokeLeftEdges);
 
             if (topologyViewMode === 'sase') {
-                minLeftX = Math.min(minLeftX, -760);
+                const saseLeftEdges = newNodes
+                    .filter((n: any) => n.type === 'sasePop')
+                    .map((n: any) => n.position.x - 240);
+                minLeftX = Math.min(minLeftX, -900, ...saseLeftEdges);
             } else if (topologyViewMode === 'physical') {
                 minLeftX = Math.min(minLeftX, -380);
             }
@@ -2391,6 +3070,8 @@ function TopologyContent({ token, theme }: TopologyProps) {
                 sitePositions.set(gw.site_id, gwX);
                 sitePositions.set(gw.site_name, gwX);
 
+                const gwLanRouters = siteLanVyosMap.get(gw.site_name) || [];
+
                 newNodes.push({
                     id: `site:${gw.site_id}`,
                     type: 'site',
@@ -2403,9 +3084,34 @@ function TopologyContent({ token, theme }: TopologyProps) {
                         fleetNodes,
                         underlayMode: topologyViewMode === 'underlay' ? 'badges' : 'off',
                         underlayResolutionMap,
-                        onInspectUnderlayCircuit: (res: any) => setUnderlayDrawerResolution(res)
+                        onInspectUnderlayCircuit: (res: any) => setUnderlayDrawerResolution(res),
+                        lanVyosRouters: gwLanRouters,
+                        onInspectLanVyos: (res: any) => setUnderlayDrawerResolution(res)
                     },
                 });
+
+                if (topologyViewMode === 'underlay' && gwLanRouters.length > 0) {
+                    const LAN_ROUTER_STEP = 610;
+                    gwLanRouters.forEach((lr: any, lrIdx: number) => {
+                        const offsetX = (lrIdx - (gwLanRouters.length - 1) / 2) * LAN_ROUTER_STEP;
+                        newNodes.push({
+                            id: `vyos-lan:${gw.site_id}:${lr.name}`,
+                            type: 'vyosLanRouter',
+                            position: { x: gwX + offsetX, y: gwY + 310 },
+                            origin: [0.5, 0],
+                            data: {
+                                router: lr.router,
+                                siteId: gw.site_id,
+                                siteName: gw.site_name,
+                                isAboveSite: false,
+                                interfaceItems: lr.interfaceItems,
+                                resolutions: lr.interfaceItems.map((it: any) => it.resolution),
+                                onSelectResolution: (res: any) => setUnderlayDrawerResolution(res),
+                                onOpenRouterControl: (routerObj: any) => setSelectedRouterForTrafficControl(routerObj)
+                            }
+                        });
+                    });
+                }
             });
         }
 
@@ -2586,6 +3292,35 @@ function TopologyContent({ token, theme }: TopologyProps) {
                         });
                     });
                 });
+
+                // Also draw peripheral LAN cables from Site LAN block to any matched LAN VyOS router
+                const siteLanRouters = siteLanVyosMap.get(site.site_name) || [];
+                siteLanRouters.forEach((lr: any) => {
+                    const lanNodeId = `vyos-lan:${site.site_id}:${lr.name}`;
+                    const isLanLinkDown = lr.interfaceItems.some((it: any) => it.isIonLan && it.status === 'down');
+                    const hasLanQos = lr.interfaceItems.some((it: any) => Boolean(normalizeQos(it.qos)));
+                    newEdges.push({
+                        id: `underlay-edge:lan:${site.site_id}:${lr.name}`,
+                        type: 'site',
+                        source: `site:${site.site_id}`,
+                        target: lanNodeId,
+                        sourceHandle: 'lan-periphery',
+                        targetHandle: 'lan-link',
+                        animated: !isLanLinkDown,
+                        style: {
+                            stroke: isLanLinkDown ? '#ef4444' : (hasLanQos ? '#f59e0b' : '#10b981'),
+                            strokeWidth: 3,
+                            strokeDasharray: isLanLinkDown ? '4 4' : undefined
+                        },
+                        data: {
+                            site_name: site.site_name,
+                            hideLabel: true,
+                            resolution: lr.defaultResolution,
+                            isUnderlayEdge: true,
+                            isLanPeripheryEdge: true
+                        }
+                    });
+                });
             });
         } else if (topologyViewMode === 'sase') {
             // mode SASE: Draw ServiceLink IPsec tunnels from Branches to SASE PoPs
@@ -2713,7 +3448,7 @@ function TopologyContent({ token, theme }: TopologyProps) {
 
         setNodes(newNodes);
         setEdges(newEdges);
-    }, [logicalViewSiteId, selectedNetwork, setNodes, setEdges, visibleSiteIds, isHubLike, siteHubStatus, topologyViewMode, underlayData, fleetNodes, pathFilter, bgLayout, showBranchMesh, hasPureHubs, effectiveBgAsHub, getVyosInterfaceStatus]);
+    }, [logicalViewSiteId, selectedNetwork, setNodes, setEdges, visibleSiteIds, isHubLike, siteHubStatus, topologyViewMode, underlayData, fleetNodes, pathFilter, bgLayout, showBranchMesh, hasPureHubs, effectiveBgAsHub, getVyosInterfaceStatus, siteLanVyosMap]);
 
     const fetchTopology = useCallback(async () => {
         setLoading(true);
@@ -2803,7 +3538,7 @@ function TopologyContent({ token, theme }: TopologyProps) {
         setHoveredEdge(null);
         if (node.type === 'underlayGateway' && nodeData?.resolution) {
             setUnderlayDrawerResolution(nodeData.resolution);
-        } else if (node.type === 'vyosRouter' && Array.isArray(nodeData?.resolutions) && nodeData.resolutions.length > 0) {
+        } else if ((node.type === 'vyosRouter' || node.type === 'vyosLanRouter') && Array.isArray(nodeData?.resolutions) && nodeData.resolutions.length > 0) {
             setUnderlayDrawerResolution(nodeData.resolutions[0]);
         }
     }, [topologyViewMode]);
@@ -2923,6 +3658,64 @@ function TopologyContent({ token, theme }: TopologyProps) {
         return m;
     }, [underlayData]);
 
+    const searchScope = useMemo(() => {
+        const cleanSearch = searchQuery.trim().toLowerCase();
+        if (!cleanSearch) return null;
+
+        const directMatchNodeIds = new Set<string>();
+        const connectedNodeIds = new Set<string>();
+        const matchedEdgeIds = new Set<string>();
+
+        // 1. Identify directly matching nodes
+        nodes.forEach(n => {
+            const nData = n.data as any;
+            const isMatch = Boolean(
+                (nData?.name && String(nData.name).toLowerCase().includes(cleanSearch)) ||
+                (nData?.site_name && String(nData.site_name).toLowerCase().includes(cleanSearch)) ||
+                (nData?.id && String(nData.id).toLowerCase().includes(cleanSearch)) ||
+                (nData?.site_id && String(nData.site_id).toLowerCase().includes(cleanSearch)) ||
+                (n.id && n.id.toLowerCase().includes(cleanSearch)) ||
+                (Array.isArray(nData?.devices) && nData.devices.some((d: any) =>
+                    (d.device_name && String(d.device_name).toLowerCase().includes(cleanSearch)) ||
+                    (Array.isArray(d.wan_interfaces) && d.wan_interfaces.some((w: any) =>
+                        (w.name && String(w.name).toLowerCase().includes(cleanSearch)) ||
+                        (w.ip && String(w.ip).toLowerCase().includes(cleanSearch))
+                    ))
+                )) ||
+                (Array.isArray(nData?.interfaces) && nData.interfaces.some((iface: any) =>
+                    (iface.name && String(iface.name).toLowerCase().includes(cleanSearch)) ||
+                    (Array.isArray(iface.address) && iface.address.some((addr: string) => String(addr).toLowerCase().includes(cleanSearch)))
+                ))
+            );
+            if (isMatch) {
+                directMatchNodeIds.add(n.id);
+            }
+        });
+
+        // 2. Identify matching and 1-hop connected edges and their neighbor nodes
+        edges.forEach(e => {
+            const eData = e.data as any;
+            const isConnectedToDirect = directMatchNodeIds.has(e.source) || directMatchNodeIds.has(e.target);
+            const isEdgeDirectMatch = Boolean(
+                (e.id && e.id.toLowerCase().includes(cleanSearch)) ||
+                (eData?.sourceSiteId && String(eData.sourceSiteId).toLowerCase().includes(cleanSearch)) ||
+                (eData?.peer_site_id && String(eData.peer_site_id).toLowerCase().includes(cleanSearch)) ||
+                (eData?.site_name && String(eData.site_name).toLowerCase().includes(cleanSearch)) ||
+                (eData?.peer_site_name && String(eData.peer_site_name).toLowerCase().includes(cleanSearch)) ||
+                (eData?.ip && String(eData.ip).toLowerCase().includes(cleanSearch)) ||
+                (eData?.interface_ip && String(eData.interface_ip).toLowerCase().includes(cleanSearch))
+            );
+
+            if (isConnectedToDirect || isEdgeDirectMatch) {
+                matchedEdgeIds.add(e.id);
+                if (e.source) connectedNodeIds.add(e.source);
+                if (e.target) connectedNodeIds.add(e.target);
+            }
+        });
+
+        return { directMatchNodeIds, connectedNodeIds, matchedEdgeIds };
+    }, [searchQuery, nodes, edges]);
+
     const filteredNodes = useMemo(() => {
         const modeNodes = nodes.filter(n => {
             if (topologyViewMode === 'overlay') {
@@ -2935,7 +3728,7 @@ function TopologyContent({ token, theme }: TopologyProps) {
                 return n.type === 'site' || n.type === 'sasePop';
             }
             if (topologyViewMode === 'underlay') {
-                return n.type === 'site' || n.type === 'vyosRouter' || n.type === 'underlayGateway' || n.id === 'cloud:EXTERNAL';
+                return n.type === 'site' || n.type === 'vyosRouter' || n.type === 'vyosLanRouter' || n.type === 'underlayGateway' || n.id === 'cloud:EXTERNAL';
             }
             return true;
         });
@@ -2950,15 +3743,31 @@ function TopologyContent({ token, theme }: TopologyProps) {
                         ...nodeData,
                         underlayMode,
                         underlayResolutionMap,
+                        lanVyosRouters: siteLanVyosMap.get(nodeData.site_name || nodeData.name) || [],
+                        onInspectLanVyos: (resolution: UnderlayResolution) => {
+                            setUnderlayDrawerResolution(resolution);
+                        },
                         onInspectUnderlayCircuit: (resolution: UnderlayResolution) => {
-                            setUnderlayPanelResolution(resolution);
-                            setShowUnderlayPanel(true);
+                            setUnderlayDrawerResolution(resolution);
                         },
                         selectedCircuitKey: selectedCircuit?.circuitKey,
                         onSelectCircuit: handleSelectCircuit,
                     }
                 }
-                : n;
+                : (n.type === 'vyosLanRouter')
+                    ? (() => {
+                        const siteEntry = (siteLanVyosMap.get(nodeData.siteName) || []).find((entry: any) => entry.routerName === nodeData.routerName);
+                        return siteEntry ? {
+                            ...n,
+                            data: {
+                                ...nodeData,
+                                router: siteEntry.router,
+                                resolutions: siteEntry.resolutions,
+                                interfaceItems: siteEntry.interfaceItems,
+                            }
+                        } : n;
+                    })()
+                    : n;
 
             let nodeOpacity: number | undefined = undefined;
             let nodeFilter: string | undefined = undefined;
@@ -3009,9 +3818,17 @@ function TopologyContent({ token, theme }: TopologyProps) {
                 }
             }
 
-            if (searchQuery) {
-                const matches = nodeData.name?.toLowerCase().includes(searchQuery.toLowerCase());
-                nodeOpacity = matches ? (nodeOpacity ?? 1) : 0.15;
+            if (searchScope) {
+                const isDirect = searchScope.directMatchNodeIds.has(n.id);
+                const isConnected = searchScope.connectedNodeIds.has(n.id);
+                if (isDirect) {
+                    nodeOpacity = 1;
+                } else if (isConnected) {
+                    nodeOpacity = 0.95;
+                } else {
+                    nodeOpacity = 0.12;
+                    nodeFilter = 'grayscale(0.85)';
+                }
             }
 
             if (nodeOpacity !== undefined || nodeFilter !== undefined) {
@@ -3028,7 +3845,7 @@ function TopologyContent({ token, theme }: TopologyProps) {
 
             return enriched;
         });
-    }, [nodes, topologyViewMode, searchQuery, underlayMode, underlayResolutionMap, underlayData, selectedCircuit, handleSelectCircuit, logicalViewSiteId]);
+    }, [nodes, topologyViewMode, searchScope, underlayMode, underlayResolutionMap, siteLanVyosMap, underlayData, selectedCircuit, handleSelectCircuit, logicalViewSiteId]);
 
 
     const filteredEdges = useMemo(() => {
@@ -3216,17 +4033,21 @@ function TopologyContent({ token, theme }: TopologyProps) {
                 }
             }
 
-            if (searchQuery) {
-                const nodeMatch = currentEdge.id.toLowerCase().includes(searchQuery.toLowerCase());
+            if (searchScope) {
+                const isEdgeMatch = searchScope.matchedEdgeIds.has(currentEdge.id);
                 return {
                     ...currentEdge,
-                    style: { ...currentEdge.style, opacity: nodeMatch ? (currentEdge.style?.opacity ?? 1) : 0.1 }
+                    style: {
+                        ...currentEdge.style,
+                        opacity: isEdgeMatch ? (currentEdge.style?.opacity ?? 1) : 0.08,
+                        pointerEvents: isEdgeMatch ? ('auto' as const) : ('none' as const)
+                    }
                 };
             }
 
             return currentEdge;
         });
-    }, [edges, topologyViewMode, searchQuery, selectedObject, saseTunnelTypeFilter, selectedCircuit, overlayTunnelStateFilter, logicalViewSiteId, isDark]);
+    }, [edges, topologyViewMode, searchScope, selectedObject, saseTunnelTypeFilter, selectedCircuit, overlayTunnelStateFilter, logicalViewSiteId, isDark]);
 
     const handleFitView = useCallback(() => {
         fitView({ padding: 0.12, duration: 450, minZoom: 0.12 });
@@ -4036,20 +4857,57 @@ function TopologyContent({ token, theme }: TopologyProps) {
 
                         {/* Middle-Left Compact Search Widget */}
                         <Panel position="top-left" className="!top-1/2 -translate-y-1/2 !left-4 mt-20">
-                            <div className="bg-card/90 backdrop-blur-md border border-border p-1.5 rounded-2xl shadow-2xl flex flex-col items-center gap-3 group transition-all duration-300 hover:p-2">
-                                <div className="p-2.5 bg-card-secondary rounded-xl text-text-muted group-hover:bg-blue-500 group-hover:text-white transition-all shadow-inner">
-                                    <Search size={18} />
+                            <div className={cn(
+                                "bg-card/90 backdrop-blur-md border border-border p-1.5 rounded-2xl shadow-2xl flex flex-col gap-2 transition-all duration-300",
+                                searchQuery ? "w-60 p-2.5 ring-1 ring-blue-500/40" : "group hover:p-2 items-center"
+                            )}>
+                                <div className="flex items-center gap-2 w-full">
+                                    <div className={cn(
+                                        "p-2 rounded-xl transition-all shadow-inner shrink-0",
+                                        searchQuery ? "bg-blue-500 text-white" : "bg-card-secondary text-text-muted group-hover:bg-blue-500 group-hover:text-white"
+                                    )}>
+                                        <Search size={16} />
+                                    </div>
+                                    <div className={cn(
+                                        "flex items-center gap-1.5 overflow-hidden transition-all duration-300 flex-1",
+                                        searchQuery ? "w-full" : "w-10 group-hover:w-44"
+                                    )}>
+                                        <input
+                                            type="text"
+                                            placeholder="Filter nodes & peers..."
+                                            value={searchQuery}
+                                            onChange={(e) => setSearchQuery(e.target.value)}
+                                            onKeyDown={(e) => {
+                                                if (e.key === 'Enter' && searchScope && searchScope.directMatchNodeIds.size === 1) {
+                                                    const targetId = Array.from(searchScope.directMatchNodeIds)[0];
+                                                    fitView({
+                                                        nodes: [{ id: targetId }],
+                                                        duration: 500,
+                                                        padding: 0.4
+                                                    });
+                                                }
+                                            }}
+                                            className="bg-transparent border-none text-[11px] font-bold py-1 px-1 focus:outline-none placeholder:text-text-muted/50 w-full text-text-primary"
+                                        />
+                                        {searchQuery && (
+                                            <button
+                                                onClick={() => setSearchQuery('')}
+                                                className="text-text-muted hover:text-text-primary p-1 rounded-md hover:bg-card-secondary transition-colors"
+                                                title="Clear search"
+                                            >
+                                                <X size={13} />
+                                            </button>
+                                        )}
+                                    </div>
                                 </div>
-                                <div className="flex flex-col gap-2 overflow-hidden w-10 group-hover:w-48 transition-all duration-500 ease-in-out">
-                                    <input
-                                        type="text"
-                                        placeholder="Filter nodes..."
-                                        value={searchQuery}
-                                        onChange={(e) => setSearchQuery(e.target.value)}
-                                        className="bg-transparent border-none text-[11px] font-bold py-1 px-1 focus:outline-none placeholder:text-text-muted/50 w-full"
-                                    />
-                                    <div className="h-px bg-gradient-to-r from-blue-500/50 to-transparent w-full scale-x-0 group-hover:scale-x-100 transition-transform origin-left duration-500" />
-                                </div>
+                                {searchQuery && searchScope && (
+                                    <div className="text-[9px] font-semibold text-text-muted px-1 pt-1 border-t border-border/50 flex items-center justify-between w-full">
+                                        <span className="text-text-primary">{searchScope.directMatchNodeIds.size} match{searchScope.directMatchNodeIds.size !== 1 ? 'es' : ''}</span>
+                                        <span className="text-blue-500 dark:text-blue-400">
+                                            +{Math.max(0, searchScope.connectedNodeIds.size - searchScope.directMatchNodeIds.size)} peer{Math.max(0, searchScope.connectedNodeIds.size - searchScope.directMatchNodeIds.size) !== 1 ? 's' : ''} visible
+                                        </span>
+                                    </div>
+                                )}
                             </div>
                         </Panel>
 
@@ -6593,7 +7451,16 @@ function TopologyContent({ token, theme }: TopologyProps) {
             )}
 
             {/* Interactive Physical Link Trace Inspector (Compact Centered Action Modal) */}
-            {underlayDrawerResolution && (
+            {underlayDrawerResolution && (() => {
+                const isLanScope = underlayDrawerResolution.scope === 'lan';
+                const lanRouterEntry = isLanScope && underlayDrawerResolution.vyos?.routerName
+                    ? (siteLanVyosMap.get(underlayDrawerResolution.prismaWan.siteName || '') || []).find(
+                        (e: any) => e.routerName === underlayDrawerResolution.vyos?.routerName || e.name === underlayDrawerResolution.vyos?.routerName
+                    )
+                    : null;
+                const availableInterfaces = lanRouterEntry?.interfaceItems || [];
+
+                return (
                 <div 
                     className="fixed inset-0 z-[80] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-in fade-in duration-200"
                     onClick={() => setUnderlayDrawerResolution(null)}
@@ -6606,19 +7473,19 @@ function TopologyContent({ token, theme }: TopologyProps) {
                         <div className="flex items-center justify-between pb-3 border-b border-border/70">
                             <div className="flex items-center gap-2.5 min-w-0">
                                 <div className="p-2 rounded-xl bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30 flex-shrink-0">
-                                    <Activity size={18} />
+                                    {isLanScope ? <Router size={18} /> : <Activity size={18} />}
                                 </div>
                                 <div className="min-w-0">
                                     <div className="flex items-center gap-2">
                                         <h3 className="text-sm font-black uppercase text-text-primary tracking-wider">
-                                            WAN Link Details
+                                            {isLanScope ? 'LAN / Egress VyOS Control' : 'WAN Link Details'}
                                         </h3>
                                         {underlayDrawerResolution.status === 'matched' ? (
                                             <span 
                                                 className="text-[9px] font-black px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 inline-flex items-center gap-1"
-                                                title={`Subnet Correlated: ${underlayDrawerResolution.matchedNetwork || ''} (Prisma WAN and VyOS share the same transit subnet)`}
+                                                title={`Subnet Correlated: ${underlayDrawerResolution.matchedNetwork || ''}`}
                                             >
-                                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" /> LINK CONNECTED
+                                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" /> {isLanScope ? 'LAN ATTACHED' : 'LINK CONNECTED'}
                                             </span>
                                         ) : (
                                             <span className="text-[9px] font-black px-2 py-0.5 rounded-full bg-card-secondary text-text-muted border border-border">
@@ -6626,7 +7493,7 @@ function TopologyContent({ token, theme }: TopologyProps) {
                                             </span>
                                         )}
                                     </div>
-                                    <p className="text-[11px] text-text-muted font-mono truncate max-w-[320px] mt-0.5">
+                                    <p className="text-[11px] text-text-muted font-mono truncate max-w-[340px] mt-0.5">
                                         {underlayDrawerResolution.prismaWan.siteName} ({underlayDrawerResolution.prismaWan.interfaceName}) ⟷ {underlayDrawerResolution.vyos?.routerName || 'External WAN'}{underlayDrawerResolution.vyos ? ` (${underlayDrawerResolution.vyos.interfaceName})` : ''}
                                     </p>
                                 </div>
@@ -6639,6 +7506,53 @@ function TopologyContent({ token, theme }: TopologyProps) {
                                 <X size={18} />
                             </button>
                         </div>
+
+                        {/* Interface Switcher Pill Bar for LAN VyOS Routers (ION LAN port + Egress/NAT/BGP ports) */}
+                        {isLanScope && availableInterfaces.length > 1 && (
+                            <div className="space-y-1.5">
+                                <div className="flex items-center justify-between text-[10px] font-bold uppercase tracking-wider text-text-muted">
+                                    <span>Select Interface on {underlayDrawerResolution.vyos?.routerName} (LAN or Egress / NAT):</span>
+                                    <span className="text-[9px] font-mono text-amber-500">{availableInterfaces.length} ports</span>
+                                </div>
+                                <div className="flex flex-wrap gap-1.5">
+                                    {availableInterfaces.map((item: any) => {
+                                        const isSelected = underlayDrawerResolution.vyos?.interfaceName === item.ifName;
+                                        return (
+                                            <button
+                                                key={item.ifName}
+                                                onClick={() => setUnderlayDrawerResolution(item.resolution)}
+                                                className={cn(
+                                                    "px-2.5 py-1.5 rounded-xl border text-[10px] font-mono transition-all cursor-pointer flex items-center gap-1.5",
+                                                    isSelected
+                                                        ? "bg-amber-500/20 border-amber-500 text-amber-600 dark:text-amber-300 font-black shadow-sm"
+                                                        : "bg-card-secondary/60 border-border/70 text-text-secondary hover:border-amber-500/40 hover:text-text-primary"
+                                                )}
+                                            >
+                                                <span className={cn(
+                                                    "w-1.5 h-1.5 rounded-full flex-shrink-0",
+                                                    item.isDown ? "bg-rose-500" : item.hasQos ? "bg-amber-500 animate-pulse" : "bg-emerald-500"
+                                                )} />
+                                                <span className="font-bold">{item.ifName}</span>
+                                                <span className={cn(
+                                                    "text-[8px] font-black uppercase px-1 py-0.2 rounded border",
+                                                    item.isLanLink
+                                                        ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border-emerald-500/30"
+                                                        : "bg-sky-500/15 text-sky-600 dark:text-sky-400 border-sky-500/30"
+                                                )}>
+                                                    {item.roleLabel}
+                                                </span>
+                                                <span className="text-[9px] text-text-muted">{item.ipCidr.split('/')[0]}</span>
+                                                {item.hasQos && (
+                                                    <span className="text-[8px] font-black text-amber-500">
+                                                        {item.qos.latency ? `+${item.qos.latency}ms` : ''}{item.qos.loss ? ` ${item.qos.loss}%` : ''}
+                                                    </span>
+                                                )}
+                                            </button>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+                        )}
 
                         {/* Top: Interactive Action Controls (Immediate access under user focus!) */}
                         {renderVyosControls(underlayDrawerResolution)}
@@ -6657,12 +7571,12 @@ function TopologyContent({ token, theme }: TopologyProps) {
                                 </div>
                                 <div className="text-[11px] font-mono space-y-1.5 pt-1">
                                     <div className="flex justify-between items-center">
-                                        <span className="text-text-muted">Circuit:</span>
+                                        <span className="text-text-muted">{isLanScope ? 'ION Port:' : 'Circuit:'}</span>
                                         <strong className="text-text-primary truncate max-w-[120px]">{underlayDrawerResolution.prismaWan.interfaceName}</strong>
                                     </div>
                                     <div className="flex justify-between items-center">
                                         <span className="text-text-muted">Type:</span>
-                                        <strong className="text-blue-600 dark:text-blue-400 uppercase">{underlayDrawerResolution.prismaWan.linkType || 'WAN'}</strong>
+                                        <strong className="text-blue-600 dark:text-blue-400 uppercase">{underlayDrawerResolution.prismaWan.linkType || (isLanScope ? 'LAN' : 'WAN')}</strong>
                                     </div>
                                     <div className="flex justify-between items-center">
                                         <span className="text-text-muted">ION IP:</span>
@@ -6687,7 +7601,7 @@ function TopologyContent({ token, theme }: TopologyProps) {
                                         <strong className="text-text-primary">{underlayDrawerResolution.vyos?.interfaceName || '—'}</strong>
                                     </div>
                                     <div className="flex justify-between items-center">
-                                        <span className="text-text-muted">Next-Hop:</span>
+                                        <span className="text-text-muted">{isLanScope ? 'VyOS IP:' : 'Next-Hop:'}</span>
                                         <strong className="text-emerald-600 dark:text-emerald-400">{underlayDrawerResolution.vyos?.ipCidr || underlayDrawerResolution.vyos?.ip || '—'}</strong>
                                     </div>
                                     <div className="flex justify-between items-center">
@@ -6713,7 +7627,7 @@ function TopologyContent({ token, theme }: TopologyProps) {
                         {/* Bottom: Transit Subnet Banner */}
                         <div className="flex items-center justify-between px-4 py-2.5 rounded-xl bg-card-secondary/70 border border-amber-500/30 font-mono text-[11px] shadow-sm">
                             <span className="text-[10px] font-black uppercase tracking-wider text-amber-600 dark:text-amber-400">
-                                Transit Subnet:
+                                {isLanScope ? 'Interface Subnet:' : 'Transit Subnet:'}
                             </span>
                             <span className="px-2.5 py-0.5 rounded-md bg-amber-500/20 text-amber-700 dark:text-amber-300 font-bold border border-amber-500/30">
                                 {underlayDrawerResolution.matchedNetwork || underlayDrawerResolution.vyos?.network || '—'}
@@ -6721,7 +7635,8 @@ function TopologyContent({ token, theme }: TopologyProps) {
                         </div>
                     </div>
                 </div>
-            )}
+                );
+            })()}
 
             {/* Interactive Netem QoS Modal */}
             {showNetemModal && netemTarget && (

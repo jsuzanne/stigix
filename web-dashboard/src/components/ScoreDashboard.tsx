@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { RefreshCw, Activity, GitCommit, Shield, ArrowUpRight, ArrowDownRight } from 'lucide-react';
+import { RefreshCw, Activity, GitCommit, Shield, ArrowUpRight, ArrowDownRight, Trash2, Clock, Pin } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
 
 export interface ScoreDashboardProps {
@@ -9,9 +9,34 @@ export interface ScoreDashboardProps {
     dnsBaseline: any;
     threatBaseline: any;
     handleSetBaseline: (runId: string, type: 'url' | 'dns' | 'threat') => void;
+    statistics?: {
+        total_tests_run: number;
+        url_tests_blocked: number;
+        url_tests_allowed: number;
+        dns_tests_blocked: number;
+        dns_tests_sinkholed?: number;
+        dns_tests_allowed?: number;
+        threat_tests_blocked: number;
+        threat_tests_allowed: number;
+        last_test_time: number | string | null;
+    };
+    onResetCounters?: () => void;
+    activeSection?: string;
+    onSelectSection?: (section: 'url' | 'dns' | 'threat') => void;
 }
 
-export const ScoreDashboard = ({ scores, loading, urlBaseline, dnsBaseline, threatBaseline, handleSetBaseline }: ScoreDashboardProps) => {
+export const ScoreDashboard = ({
+    scores,
+    loading,
+    urlBaseline,
+    dnsBaseline,
+    threatBaseline,
+    handleSetBaseline,
+    statistics,
+    onResetCounters,
+    activeSection,
+    onSelectSection,
+}: ScoreDashboardProps) => {
     const [timeRange, setTimeRange] = useState<'1h' | '6h' | '24h' | 'all'>('24h');
     const [changesOnly, setChangesOnly] = useState(false);
 
@@ -155,11 +180,82 @@ export const ScoreDashboard = ({ scores, loading, urlBaseline, dnsBaseline, thre
         );
     };
 
+    const renderCounters = (type: 'url' | 'dns' | 'threat') => {
+        if (!statistics) return null;
+        if (type === 'url') {
+            return (
+                <div className="flex items-center gap-3 bg-background/60 border border-border/60 rounded-lg px-2.5 py-1.5">
+                    <div className="text-right">
+                        <div className="text-sm font-black text-red-500 tabular-nums leading-none">{statistics.url_tests_blocked}</div>
+                        <div className="text-[8px] font-black text-text-muted uppercase tracking-wider opacity-60 mt-0.5">Blocked</div>
+                    </div>
+                    <div className="w-px h-5 bg-border/60" />
+                    <div className="text-right">
+                        <div className="text-sm font-black text-green-500 tabular-nums leading-none">{statistics.url_tests_allowed}</div>
+                        <div className="text-[8px] font-black text-text-muted uppercase tracking-wider opacity-60 mt-0.5">Allowed</div>
+                    </div>
+                </div>
+            );
+        }
+        if (type === 'dns') {
+            return (
+                <div className="flex items-center gap-2.5 bg-background/60 border border-border/60 rounded-lg px-2.5 py-1.5">
+                    <div className="text-right">
+                        <div className="text-sm font-black text-orange-500 tabular-nums leading-none">{statistics.dns_tests_blocked}</div>
+                        <div className="text-[8px] font-black text-text-muted uppercase tracking-wider opacity-60 mt-0.5">Blocked</div>
+                    </div>
+                    <div className="w-px h-5 bg-border/60" />
+                    <div className="text-right">
+                        <div className="text-sm font-black text-yellow-500 tabular-nums leading-none">{statistics.dns_tests_sinkholed || 0}</div>
+                        <div className="text-[8px] font-black text-text-muted uppercase tracking-wider opacity-60 mt-0.5">Sinkhole</div>
+                    </div>
+                    <div className="w-px h-5 bg-border/60" />
+                    <div className="text-right">
+                        <div className="text-sm font-black text-green-500 tabular-nums leading-none">{statistics.dns_tests_allowed || 0}</div>
+                        <div className="text-[8px] font-black text-text-muted uppercase tracking-wider opacity-60 mt-0.5">Allowed</div>
+                    </div>
+                </div>
+            );
+        }
+        return (
+            <div className="flex items-center gap-3 bg-background/60 border border-border/60 rounded-lg px-2.5 py-1.5">
+                <div className="text-right">
+                    <div className="text-sm font-black text-purple-500 tabular-nums leading-none">{statistics.threat_tests_blocked}</div>
+                    <div className="text-[8px] font-black text-text-muted uppercase tracking-wider opacity-60 mt-0.5">Blocked</div>
+                </div>
+                <div className="w-px h-5 bg-border/60" />
+                <div className="text-right">
+                    <div className="text-sm font-black text-green-500 tabular-nums leading-none">{statistics.threat_tests_allowed}</div>
+                    <div className="text-[8px] font-black text-text-muted uppercase tracking-wider opacity-60 mt-0.5">Allowed</div>
+                </div>
+            </div>
+        );
+    };
+
     const renderGauge = (type: 'url' | 'dns' | 'threat', entry: any, baseline: any, minScore: number | null, maxScore: number | null) => {
+        const isSelected = activeSection === type;
+        const title = type === 'url' ? 'URL Filter' : type === 'dns' ? 'DNS Security' : 'Threat Prevention';
+        const description = type === 'url'
+            ? 'Weighted % of malicious URL categories correctly blocked by firewall'
+            : type === 'dns'
+                ? 'Weighted % of malicious DNS domains correctly blocked or sinkholed'
+                : 'Weighted % of EICAR files correctly blocked across all targets';
+
         if (!entry) return (
-            <div className="flex flex-col items-center justify-center p-6 bg-card border border-border rounded-xl">
-                <Shield size={24} className="text-text-muted mb-2 opacity-50" />
-                <span className="text-xs text-text-muted font-bold tracking-widest uppercase">No {type.toUpperCase()} Data</span>
+            <div
+                onClick={() => onSelectSection?.(type)}
+                className={`flex flex-col justify-between gap-3 p-4 bg-card border rounded-xl transition-all ${
+                    onSelectSection ? 'cursor-pointer hover:border-blue-500/40' : ''
+                } ${isSelected ? 'border-blue-500 ring-1 ring-blue-500/20' : 'border-border'}`}
+            >
+                <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                        <Shield size={16} className="text-text-muted opacity-50" />
+                        <span className="text-[11px] text-text-primary font-black tracking-widest uppercase">{title}</span>
+                    </div>
+                    {renderCounters(type)}
+                </div>
+                <div className="text-xs text-text-muted font-bold tracking-widest uppercase opacity-50 py-2">No Score History Yet</div>
             </div>
         );
 
@@ -167,89 +263,136 @@ export const ScoreDashboard = ({ scores, loading, urlBaseline, dnsBaseline, thre
         const color = score >= 90 ? 'text-green-500' : score >= 70 ? 'text-yellow-500' : 'text-red-500';
 
         return (
-            <div className="flex flex-col gap-4 bg-card border border-border p-5 rounded-xl shadow-sm relative overflow-hidden group">
-                <div className="absolute top-0 right-0 p-4 opacity-5 pointer-events-none transition-all group-hover:scale-110 group-hover:opacity-10">
-                    <Shield size={100} />
-                </div>
-                
-                <div className="flex items-center justify-between z-10">
-                    <div className="flex flex-col gap-0.5">
-                        <div className="flex items-center gap-2">
-                            <div className={`p-1.5 rounded-lg border ${score >= 90 ? 'bg-green-500/10 border-green-500/20 text-green-500' : 'bg-blue-500/10 border-blue-500/20 text-blue-500'}`}>
-                                <Activity size={14} />
-                            </div>
-                            <h3 className="text-[11px] font-black tracking-widest text-text-primary uppercase">{type === 'url' ? 'URL Filter' : type === 'dns' ? 'DNS Security' : 'Threat Prevention'}</h3>
-                        </div>
-                        <p className="text-[9px] text-text-muted opacity-60 leading-tight pl-0.5">
-                            {type === 'url'
-                                ? 'Weighted % of malicious URL categories correctly blocked by firewall'
-                                : type === 'dns'
-                                    ? 'Weighted % of malicious DNS domains correctly blocked or sinkholed'
-                                    : 'Weighted % of EICAR files correctly blocked across all targets'}
-                        </p>
-                    </div>
+            <div
+                onClick={() => onSelectSection?.(type)}
+                className={`flex flex-col justify-between gap-3 bg-card border p-4 rounded-xl shadow-sm relative overflow-hidden group transition-all ${
+                    onSelectSection ? 'cursor-pointer hover:border-blue-500/40 hover:shadow-md' : ''
+                } ${isSelected ? 'border-blue-500 ring-1 ring-blue-500/25' : 'border-border'}`}
+            >
+                <div className="absolute top-0 right-0 p-3 opacity-5 pointer-events-none transition-all group-hover:scale-110 group-hover:opacity-10">
+                    <Shield size={84} />
                 </div>
 
-                <div className="flex items-end gap-3 z-10">
-                    <div className={`text-4xl font-black tabular-nums tracking-tighter ${color} drop-shadow-md`}>
-                        {score.toFixed(1)} <span className="text-sm font-bold opacity-50 relative -top-3 left-0">/ 100</span>
-                    </div>
-                    {entry.delta !== null && entry.delta !== undefined && entry.delta !== 0 && (
-                        <div className={`flex items-center text-[10px] font-bold pb-1.5 ${entry.delta > 0 ? 'text-green-500' : 'text-red-500'}`}>
-                            {entry.delta > 0 ? <ArrowUpRight size={12} className="mr-0.5" /> : <ArrowDownRight size={12} className="mr-0.5" />}
-                            {Math.abs(entry.delta)}
+                {/* Top Row: Title + Info Tooltip */}
+                <div className="flex items-center justify-between z-10">
+                    <div className="flex items-center gap-2">
+                        <div className={`p-1.5 rounded-lg border ${score >= 90 ? 'bg-green-500/10 border-green-500/20 text-green-500' : 'bg-blue-500/10 border-blue-500/20 text-blue-500'}`}>
+                            <Activity size={13} />
                         </div>
+                        <h3 className="text-[11px] font-black tracking-widest text-text-primary uppercase">{title}</h3>
+                        <span
+                            className="text-text-muted opacity-40 hover:opacity-80 cursor-help text-[10px]"
+                            title={description}
+                            onClick={(e) => e.stopPropagation()}
+                        >
+                            ⓘ
+                        </span>
+                    </div>
+                    {isSelected && (
+                        <span className="text-[9px] font-black uppercase tracking-widest px-1.5 py-0.5 rounded bg-blue-500/10 text-blue-400 border border-blue-500/20">
+                            Filtered
+                        </span>
                     )}
                 </div>
 
-                {/* Min / Max range */}
-                {minScore !== null && maxScore !== null && (
-                    <div className="flex items-center gap-1.5 text-[9px] font-bold text-text-muted z-10 -mt-2">
-                        <span className="text-red-400 opacity-70">MIN {minScore.toFixed(1)}</span>
-                        <span className="opacity-30">↔</span>
-                        <span className="text-green-400 opacity-70">MAX {maxScore.toFixed(1)}</span>
-                        <span className="opacity-30 ml-1">over loaded history</span>
-                    </div>
-                )}
-
-                <div className="flex flex-col gap-2 z-10">
-                    <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-1 group/baseline relative">
-                            <span className="text-[10px] text-text-muted font-bold tracking-widest">BASELINE:</span>
-                            <span className="text-text-muted opacity-40 cursor-help text-[9px]" title="Pin a reference run taken when your policy is in a known-good state. The Gap Alerts section will highlight any category that regressed since that snapshot — useful for detecting accidental rule changes.">ⓘ</span>
+                {/* Middle Row: Score on Left, Live Counters on Right */}
+                <div className="flex items-center justify-between gap-2 z-10 my-0.5">
+                    <div className="flex items-end gap-2">
+                        <div className={`text-3xl font-black tabular-nums tracking-tighter ${color} drop-shadow-sm leading-none`}>
+                            {score.toFixed(1)} <span className="text-xs font-bold opacity-50">/ 100</span>
                         </div>
-                        {baseline ? (
-                            <span className="text-[10px] font-black tabular-nums text-text-primary">
-                                {baseline.scores[type]} <span className="text-text-muted font-normal">({new Date(baseline.timestamp).toLocaleDateString()})</span>
-                            </span>
-                        ) : (
-                            <span className="text-[10px] font-bold text-yellow-500">Not Set</span>
+                        {entry.delta !== null && entry.delta !== undefined && entry.delta !== 0 && (
+                            <div className={`flex items-center text-[10px] font-bold pb-0.5 ${entry.delta > 0 ? 'text-green-500' : 'text-red-500'}`}>
+                                {entry.delta > 0 ? <ArrowUpRight size={12} className="mr-0.5" /> : <ArrowDownRight size={12} className="mr-0.5" />}
+                                {Math.abs(entry.delta)}
+                            </div>
                         )}
                     </div>
-                    
-                    <button 
-                        onClick={() => handleSetBaseline(entry.runId, type)}
-                        className={`text-[9px] font-black tracking-widest w-full py-1.5 rounded-md border transition-all ${
-                            entry.isBaseline ? 'bg-blue-500/10 border-blue-500/20 text-blue-500 cursor-default' : 'bg-card hover:bg-hover border-border text-text-muted hover:text-text-primary'
-                        }`}
-                        disabled={entry.isBaseline}
-                    >
-                        {entry.isBaseline ? 'CURRENT BASELINE' : 'SET AS BASELINE'}
-                    </button>
+                    {renderCounters(type)}
+                </div>
+
+                {/* Compact Footer Row: Min/Max on Left, Baseline Action on Right */}
+                <div className="flex items-center justify-between pt-2.5 border-t border-border/50 z-10 text-[9px] font-bold">
+                    {minScore !== null && maxScore !== null ? (
+                        <div className="flex items-center gap-1 text-text-muted">
+                            <span className="text-red-400/80">MIN {minScore.toFixed(1)}</span>
+                            <span className="opacity-30">↔</span>
+                            <span className="text-green-400/80">MAX {maxScore.toFixed(1)}</span>
+                        </div>
+                    ) : (
+                        <span className="text-text-muted opacity-40">—</span>
+                    )}
+
+                    <div className="flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
+                        {baseline && !entry.isBaseline && (
+                            <span
+                                className="text-text-muted opacity-75 tabular-nums"
+                                title={`Baseline set on ${new Date(baseline.timestamp).toLocaleDateString()}`}
+                            >
+                                Base: <strong className="text-text-primary">{baseline.scores[type]}</strong>
+                            </span>
+                        )}
+                        <button
+                            type="button"
+                            onClick={() => handleSetBaseline(entry.runId, type)}
+                            disabled={entry.isBaseline}
+                            title={
+                                entry.isBaseline
+                                    ? `Current run is pinned as baseline (${new Date(entry.timestamp).toLocaleDateString()})`
+                                    : 'Pin this run as reference baseline to detect policy regressions'
+                            }
+                            className={`flex items-center gap-1 px-2 py-0.5 rounded border text-[9px] font-black tracking-wider uppercase transition-all ${
+                                entry.isBaseline
+                                    ? 'bg-blue-500/10 border-blue-500/25 text-blue-400 cursor-default'
+                                    : 'bg-card-secondary hover:bg-hover border-border text-text-muted hover:text-text-primary cursor-pointer'
+                            }`}
+                        >
+                            <Pin size={9} className={entry.isBaseline ? 'fill-current' : ''} />
+                            {entry.isBaseline ? `Baseline (${baseline?.scores?.[type] ?? score.toFixed(1)})` : baseline ? 'Update' : 'Set Baseline'}
+                        </button>
+                    </div>
                 </div>
             </div>
         );
     };
 
     return (
-        <div className="flex flex-col gap-6 w-full animate-fade-in mb-6">
-            <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                    <h2 className="text-xl font-black text-text-primary tracking-tight">Security Posture Score</h2>
+        <div className="flex flex-col gap-4 w-full animate-fade-in mb-2">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="flex items-center gap-2.5">
+                    <h2 className="text-lg font-black text-text-primary tracking-tight">Security Posture & Efficacy</h2>
+                    {onSelectSection && (
+                        <span className="text-[10px] text-text-muted font-medium hidden sm:inline">
+                            · Click a card to filter section
+                        </span>
+                    )}
                 </div>
+                {statistics && (
+                    <div className="flex items-center gap-3 text-[11px]">
+                        <div className="flex items-center gap-2 bg-card border border-border rounded-lg px-2.5 py-1 text-text-muted font-bold">
+                            <span>Total Tests: <strong className="text-text-primary tabular-nums">{statistics.total_tests_run}</strong></span>
+                            <span className="opacity-30">·</span>
+                            <span className="flex items-center gap-1 text-[10px]">
+                                <Clock size={11} className="opacity-60" />
+                                {statistics.last_test_time ? new Date(statistics.last_test_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Never'}
+                            </span>
+                        </div>
+                        {onResetCounters && (
+                            <button
+                                type="button"
+                                onClick={onResetCounters}
+                                title="Reset Blocked/Allowed counters"
+                                className="flex items-center gap-1.5 px-2.5 py-1 text-[10px] font-black tracking-wider uppercase text-red-500 hover:bg-red-500/10 border border-red-500/20 rounded-lg transition-all cursor-pointer"
+                            >
+                                <Trash2 size={12} />
+                                Reset Counters
+                            </button>
+                        )}
+                    </div>
+                )}
             </div>
 
-            <div className="flex flex-col gap-6 w-full">
+            <div className="flex flex-col gap-4 w-full">
                 {/* Gauges — Top row, horizontal */}
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4 w-full">
                     {renderGauge('url', latestUrlScore, urlBaseline, minUrlScore, maxUrlScore)}

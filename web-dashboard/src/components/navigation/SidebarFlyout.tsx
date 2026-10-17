@@ -1,7 +1,11 @@
 import React, { useRef } from 'react';
-import type { NavDomainConfig } from '../../config/navigationConfig';
+import type { NavDomainConfig, NavItemConfig } from '../../config/navigationConfig';
 import { cn } from '../../lib/utils';
-import { ChevronRight } from 'lucide-react';
+import { ChevronRight, Star } from 'lucide-react';
+
+export function getNavItemKey(item: { id: string; subTab?: string }): string {
+    return item.subTab ? `${item.id}:${item.subTab}` : item.id;
+}
 
 interface SidebarFlyoutProps {
     domain: NavDomainConfig | null;
@@ -20,6 +24,8 @@ interface SidebarFlyoutProps {
         copilot_enabled?: boolean;
     };
     activeTasks?: Record<string, boolean>;
+    favorites?: string[];
+    onToggleFavorite?: (itemKey: string) => void;
 }
 
 export const SidebarFlyout: React.FC<SidebarFlyoutProps> = ({
@@ -34,14 +40,16 @@ export const SidebarFlyout: React.FC<SidebarFlyoutProps> = ({
     onNavigate,
     isLeader,
     features,
-    activeTasks = {}
+    activeTasks = {},
+    favorites = [],
+    onToggleFavorite
 }) => {
     const flyoutRef = useRef<HTMLDivElement>(null);
 
     if (!isOpen || !domain) return null;
 
     // Filter items based on leaderOnly and feature flags
-    const visibleItems = domain.items.filter(item => {
+    const visibleItems = domain.items.filter((item: NavItemConfig) => {
         if (item.leaderOnly && !isLeader) return false;
         if (item.featureFlag === 'xfr_enabled' && !features.xfr_enabled) return false;
         if (item.featureFlag === 'pcap_enabled' && !features.pcap_enabled) return false;
@@ -106,6 +114,8 @@ export const SidebarFlyout: React.FC<SidebarFlyoutProps> = ({
 
                     const isRunning = item.runningKey ? activeTasks[item.runningKey] : false;
                     const Icon = item.icon;
+                    const itemKey = getNavItemKey(item);
+                    const isFavorite = favorites.includes(itemKey);
 
                     const renderGroupHeader = item.group && item.group !== lastGroup;
                     if (item.group) lastGroup = item.group;
@@ -118,11 +128,20 @@ export const SidebarFlyout: React.FC<SidebarFlyoutProps> = ({
                                 </div>
                             )}
 
-                            <button
+                            <div
                                 onClick={(e) => {
                                     e.stopPropagation();
                                     onNavigate(item.id, item.subTab);
                                     onClose();
+                                }}
+                                role="button"
+                                tabIndex={0}
+                                onKeyDown={(e) => {
+                                    if (e.key === 'Enter' || e.key === ' ') {
+                                        e.preventDefault();
+                                        onNavigate(item.id, item.subTab);
+                                        onClose();
+                                    }
                                 }}
                                 className={cn(
                                     "w-full text-left p-2.5 rounded-xl flex items-start gap-3 transition-all duration-150 group relative cursor-pointer border",
@@ -171,11 +190,31 @@ export const SidebarFlyout: React.FC<SidebarFlyoutProps> = ({
                                     )}
                                 </div>
 
-                                <ChevronRight size={13} className={cn(
-                                    "text-slate-400 dark:text-text-muted/40 transition-transform mt-1 opacity-0 group-hover:opacity-100 group-hover:translate-x-0.5",
-                                    isItemActive && "opacity-100 text-blue-600 dark:text-blue-400"
-                                )} />
-                            </button>
+                                <div className="flex items-center gap-1 mt-0.5 shrink-0">
+                                    {onToggleFavorite && (
+                                        <button
+                                            type="button"
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                onToggleFavorite(itemKey);
+                                            }}
+                                            title={isFavorite ? "Unpin from sidebar favorites" : "Pin to sidebar favorites"}
+                                            className={cn(
+                                                "p-1 rounded-lg transition-all cursor-pointer",
+                                                isFavorite
+                                                    ? "opacity-100 text-amber-400 hover:bg-amber-500/15"
+                                                    : "opacity-0 group-hover:opacity-100 text-slate-400 dark:text-text-muted/50 hover:text-amber-400 hover:bg-amber-500/10"
+                                            )}
+                                        >
+                                            <Star size={13} className={cn(isFavorite && "fill-amber-400")} />
+                                        </button>
+                                    )}
+                                    <ChevronRight size={13} className={cn(
+                                        "text-slate-400 dark:text-text-muted/40 transition-transform opacity-0 group-hover:opacity-100 group-hover:translate-x-0.5",
+                                        isItemActive && "opacity-100 text-blue-600 dark:text-blue-400"
+                                    )} />
+                                </div>
+                            </div>
                         </React.Fragment>
                     );
                 })}
@@ -183,7 +222,10 @@ export const SidebarFlyout: React.FC<SidebarFlyoutProps> = ({
 
             {/* Footer Tip */}
             <div className="pt-3 mt-2 border-t border-slate-200 dark:border-[#1e293b]/70 px-2 text-[10px] text-slate-400 dark:text-text-muted/60 flex items-center justify-between">
-                <span>Stigix Platform</span>
+                <span className="flex items-center gap-1">
+                    <Star size={10} className="text-amber-400 fill-amber-400" />
+                    <span>Click ★ to pin shortcuts to rail</span>
+                </span>
                 <span className="font-mono">v3.0.0</span>
             </div>
         </div>

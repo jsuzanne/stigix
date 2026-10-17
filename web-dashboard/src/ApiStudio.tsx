@@ -18,7 +18,7 @@ export const ApiStudio: React.FC<ApiStudioProps> = ({ token }) => {
     };
 
     return (
-        <div className="flex flex-col h-[calc(100vh-5rem)] p-4 md:p-6 space-y-4 max-w-[1700px] mx-auto w-full">
+        <div className="flex flex-col h-[calc(100vh-5rem)] pb-4 space-y-4 w-full">
             {/* Header / Sub-tab Switcher */}
             <div className="flex flex-wrap items-center justify-between gap-4 bg-card/60 backdrop-blur border border-border p-4 rounded-xl shadow-sm">
                 <div className="flex items-center space-x-3">

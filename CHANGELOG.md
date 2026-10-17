@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.0.35] - 2026-10-17
+
+### Added & Enhanced
+- **Peripheral LAN VyOS Routers & Shared HA LAN Bus Architecture (`Topology.tsx`, `underlay-topology-manager.ts`, `getflow.py`)**:
+  - **Shared HA LAN Bus & Chain (WAN Transport & SASE Views)**: Structured DC/Hub and Branch/Spoke LAN topology as a vertical chain (`ION Port 3` ➔ `Shared LAN Bus 192.168.X.0/24` ➔ `VyOS-LAN Router` ➔ `⚡ Stigix Node`), with detached crossbar labels for multi-ION clusters (`DC1-R1` / `DC1-R2`).
+  - **Peripheral LAN VyOS Nodes (Underlay View)**: Added dedicated peripheral `VyOSLanRouterNode` cards positioned above Hub DCs and below Spoke Branches (`±470px` offset with zero overlap), separating **ION-Facing Shared LAN** ports from **Egress / Internet Exit / Transit / Local Subnets** (`INTERNET EXIT`, `⚡ STIGIX LAN`, `DCI / MPLS`, `APP SUBNET`) with 1-click Latency, Loss, Jitter, and Port Shut controls.
+  - **Physical-Only Interface Filtering**: Filtered out SD-WAN loopback interfaces (`20.0.1.0/24`, `20.0.2.0/24`), `lo`/`dummy` interfaces, and `/32` host addresses across both topology builder (`getflow.py`) and React Flow nodes (`Topology.tsx`).
+  - **High-Contrast Light Mode Palette**: Upgraded all emerald (LAN) and amber (VyOS / Stigix / QoS) badges, ports, and edge labels to deep high-contrast foreground tokens (`text-emerald-800`, `text-amber-900`) in Light Mode.
+- **Full-Width Layout Harmonization & Multi-Column Responsive Grids (`CustomApps.tsx`, `Security.tsx`, `Settings.tsx`, `ApiPlayground.tsx`, `ApiLogInspector.tsx`)**:
+  - Removed artificial `max-w-7xl` / `max-w-[1600px]` containers across Custom Applications, Security Engine, Settings, and API Studio so all modules fill ultra-wide screens consistently while preserving readable multi-column card and form grids (`xl:grid-cols-3`, `2xl:grid-cols-4`).
+- **IoT Traffic Studio Ergonomic Overhaul & Pinned Sidebar Favorites (`App.tsx`, `SidebarRail.tsx`, `navigationConfig.ts`)**:
+  - Redesigned the IoT Traffic Studio header and control bars with a high-density list view, column sorting, and risk-level filtering.
+  - Added user-customizable pinned favorites directly on the collapsed/expanded `SidebarRail` and simplified the `Digital Experience` navigation label.
+- **Automated Docker Image Tag Pruning & Fleet Resiliency (`server.ts`, `fleet-tunnel.ts`)**:
+  - Added automatic cleanup of obsolete `jsuzanne/stigix` image tags after container upgrades, plus automatic cloud peer dialing, M6 JWT refresh, and Web UI Cloudflare Rendezvous fallback.
+
 ## [3.0.34] - 2026-10-16
 
 ### Added & Enhanced

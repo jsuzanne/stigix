@@ -71,6 +71,7 @@ export interface RegistryInstance {
 }
 
 export interface RegistryInstanceSummary {
+    probes_paused?: boolean;
     probes_global_health?: number; // 0-100 Global Experience score
     probes_total?: number;
     probes_passing?: number;

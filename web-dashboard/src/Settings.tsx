@@ -4086,7 +4086,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                         </div>
 
                         {/* ── Traffic Distribution Overview ─────────────────────────────── */}
-                        <div className="max-w-7xl mx-auto">
+                        <div className="w-full">
                         {(() => {
                             const APP_COLORS = [
                                 '#3b82f6', '#8b5cf6', '#10b981', '#f59e0b', '#ef4444',
@@ -4203,7 +4203,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                         })()}
                         </div>
 
-                        <div className="max-w-7xl mx-auto space-y-3">
+                        <div className="w-full space-y-3">
                             {categories.map(category => {
                                 const categoryWeight = category.apps.reduce((s, a) => s + a.weight, 0);
                                 const categoryPercent = Math.round((categoryWeight / GLOBAL_TOTAL) * 100);

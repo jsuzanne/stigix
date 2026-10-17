@@ -13307,7 +13307,18 @@ done
 NOW=$(date +%s000 2>/dev/null || date +%s)
 if [ "$HEALTHY" -eq 1 ]; then
     echo "[$(date -u)] [UPDATER] 🚀 Upgrade successfully finalized!" >> "$LOG_FILE"
-    echo "[$(date -u)] [UPDATER] 🧹 Auto-pruning old dangling images to reclaim disk space..." >> "$LOG_FILE"
+    echo "[$(date -u)] [UPDATER] 🧹 Auto-pruning obsolete Stigix tags & dangling images to reclaim disk space..." >> "$LOG_FILE"
+    ACTIVE_IMG=$(docker inspect -f '{{.Image}}' stigix 2>/dev/null || docker image inspect -f '{{.Id}}' "${pullImage}" 2>/dev/null || true)
+    for img in $(docker images jsuzanne/stigix --format '{{.Repository}}:{{.Tag}}' 2>/dev/null); do
+        if [ "$img" != "<none>:<none>" ] && [ "$img" != "${pullImage}" ] && [ "$img" != "${channelImage}" ]; then
+            IMG_ID=$(docker image inspect -f '{{.Id}}' "$img" 2>/dev/null || true)
+            if [ -z "$ACTIVE_IMG" ] || [ "$IMG_ID" != "$ACTIVE_IMG" ] || [ "$img" != "${channelImage}" ]; then
+                (docker rmi "$img" 2>&1 || true) | while IFS= read -r line; do
+                    echo "[$(date -u)] [PRUNE] $line" >> "$LOG_FILE"
+                done
+            fi
+        fi
+    done
     (docker image prune -f 2>&1 || true) | while IFS= read -r line; do
         echo "[$(date -u)] [PRUNE] $line" >> "$LOG_FILE"
     done
@@ -13376,12 +13387,70 @@ app.post('/api/admin/maintenance/prune', authenticateToken, async (req, res) => 
 
     try {
         const execPromise = promisify(exec);
+        const { channel, fullImage } = await detectLocalDockerChannel();
+        const versionPaths = [
+            path.join(__dirname, 'VERSION'),
+            path.join(__dirname, '..', 'VERSION'),
+            path.resolve(process.cwd(), 'VERSION'),
+            '/app/VERSION'
+        ];
+        let currentVersion = '';
+        for (const vPath of versionPaths) {
+            if (fs.existsSync(vPath)) {
+                currentVersion = fs.readFileSync(vPath, 'utf8').trim();
+                break;
+            }
+        }
+        const keepTags = new Set<string>([
+            fullImage,
+            `jsuzanne/stigix:${channel}`,
+            ...(currentVersion ? [`jsuzanne/stigix:${currentVersion}`] : []),
+            'jsuzanne/stigix:latest'
+        ]);
+
+        let activeImgId = '';
+        try {
+            const { stdout: idOut } = await execPromise(`docker inspect -f '{{.Image}}' stigix 2>/dev/null || docker inspect -f '{{.Image}}' $(hostname) 2>/dev/null || true`);
+            activeImgId = idOut.trim();
+            const { stdout: cfgOut } = await execPromise(`docker inspect -f '{{.Config.Image}}' stigix 2>/dev/null || docker inspect -f '{{.Config.Image}}' $(hostname) 2>/dev/null || true`);
+            if (cfgOut.trim()) keepTags.add(cfgOut.trim());
+        } catch {}
+
+        const removedTags: string[] = [];
+        try {
+            const { stdout: imgsOut } = await execPromise(`docker images jsuzanne/stigix --format '{{.Repository}}:{{.Tag}}|{{.ID}}'`);
+            const lines = imgsOut.trim().split('\n').filter(Boolean);
+            for (const line of lines) {
+                const [repoTag, shortId] = line.split('|');
+                if (!repoTag || repoTag === '<none>:<none>' || keepTags.has(repoTag)) continue;
+                let fullId = '';
+                try {
+                    const { stdout: inspectId } = await execPromise(`docker image inspect -f '{{.Id}}' "${repoTag}" 2>/dev/null || true`);
+                    fullId = inspectId.trim();
+                } catch {}
+                if (!activeImgId || fullId !== activeImgId || !keepTags.has(repoTag)) {
+                    try {
+                        await execPromise(`docker rmi "${repoTag}"`);
+                        removedTags.push(repoTag);
+                    } catch {}
+                }
+            }
+        } catch {}
+
         const { stdout, stderr } = await execPromise('docker image prune -f');
-        const output = ((stdout || '') + (stderr ? `\n${stderr}` : '')).trim();
-        log('MAINTENANCE', `Docker image prune executed: ${output || "no dangling images removed"}`);
+        const pruneOut = ((stdout || '') + (stderr ? `\n${stderr}` : '')).trim();
+        const summaryParts = [];
+        if (removedTags.length > 0) summaryParts.push(`Removed ${removedTags.length} old Stigix image tag(s): ${removedTags.join(', ')}`);
+        if (pruneOut) summaryParts.push(pruneOut);
+        const output = summaryParts.join('\n');
+
+        log('MAINTENANCE', `Docker image prune executed: ${output || "no unused images removed"}`);
         return res.json({ 
             success: true, 
-            message: 'Unused dangling Docker images pruned successfully.', 
+            message: removedTags.length > 0
+                ? `Pruned ${removedTags.length} old Stigix image(s) and dangling layers.`
+                : 'Unused dangling Docker images pruned successfully.', 
+            removedTags,
             output 
         });
     } catch (err: any) {
@@ -13945,7 +14014,8 @@ log('REGISTRY', `🏠 Local Registry Server mounted at /api/registry (Dynamic Mo
 
 // --- Stigix Fleet Telemetry Provider (Phase 3A) ---
 const collectFleetTelemetrySummary = async () => {
-    let probesGlobalHealth = 0;
+    const probesPaused = !isConnectivityMonitorActive;
+    let probesGlobalHealth: number | undefined = undefined;
     let probesTotal = 0;
     let probesPassing = 0;
     let failingProbes: Array<{ name: string; type: string; target: string; error: string; reliability: number }> = [];
@@ -13964,32 +14034,34 @@ const collectFleetTelemetrySummary = async () => {
         const activeProbeIds = allProbes.filter((p: any) => p.enabled !== false).map((p: any) => p.name.toLowerCase().replace(/\s+/g, '-'));
         probesTotal = activeProbeIds.length;
 
-        let globalScoreTypes: string[] | undefined;
-        try {
-            if (fs.existsSync(UI_CONFIG_FILE)) {
-                const uiCfg = JSON.parse(fs.readFileSync(UI_CONFIG_FILE, 'utf8'));
-                if (Array.isArray(uiCfg.globalScoreTypes) && uiCfg.globalScoreTypes.length > 0) {
-                    globalScoreTypes = uiCfg.globalScoreTypes;
+        if (!probesPaused && probesTotal > 0) {
+            let globalScoreTypes: string[] | undefined;
+            try {
+                if (fs.existsSync(UI_CONFIG_FILE)) {
+                    const uiCfg = JSON.parse(fs.readFileSync(UI_CONFIG_FILE, 'utf8'));
+                    if (Array.isArray(uiCfg.globalScoreTypes) && uiCfg.globalScoreTypes.length > 0) {
+                        globalScoreTypes = uiCfg.globalScoreTypes;
+                    }
                 }
-            }
-        } catch {}
+            } catch {}
 
-        const stats = await connectivityLogger.getStats({ timeRange: '1h', activeProbeIds, globalScoreTypes });
-        if (stats && typeof stats.globalHealth === 'number') {
-            probesGlobalHealth = stats.globalHealth;
-        }
-        if (stats && stats.flakyEndpoints) {
-            const downCount = stats.flakyEndpoints.filter((f: any) => f.isDown).length;
-            probesPassing = Math.max(0, probesTotal - downCount);
-            failingProbes = stats.flakyEndpoints.slice(0, 6).map((f: any) => ({
-                name: f.name || f.id,
-                type: (f.type || 'HTTP').toUpperCase(),
-                target: f.target || '',
-                error: f.lastError || (f.isDown ? 'Probe Down (100% loss)' : 'Unstable / High Latency'),
-                reliability: f.reliability ?? 0
-            }));
-        } else {
-            probesPassing = probesTotal;
+            const stats = await connectivityLogger.getStats({ timeRange: '1h', activeProbeIds, globalScoreTypes });
+            if (stats && typeof stats.globalHealth === 'number' && (stats.totalChecks ?? 0) > 0) {
+                probesGlobalHealth = stats.globalHealth;
+            }
+            if (stats && stats.flakyEndpoints) {
+                const downCount = stats.flakyEndpoints.filter((f: any) => f.isDown).length;
+                probesPassing = Math.max(0, probesTotal - downCount);
+                failingProbes = stats.flakyEndpoints.slice(0, 6).map((f: any) => ({
+                    name: f.name || f.id,
+                    type: (f.type || 'HTTP').toUpperCase(),
+                    target: f.target || '',
+                    error: f.lastError || (f.isDown ? 'Probe Down (100% loss)' : 'Unstable / High Latency'),
+                    reliability: f.reliability ?? 0
+                }));
+            } else {
+                probesPassing = probesTotal;
+            }
         }
     } catch (e) {
         log('REGISTRY', `Telemetry probe calculation error: ${e}`, 'warn');
@@ -14127,6 +14199,7 @@ const collectFleetTelemetrySummary = async () => {
     }
 
     return {
+        probes_paused: probesPaused,
         probes_global_health: probesGlobalHealth,
         probes_total: probesTotal,
         probes_passing: probesPassing,
@@ -16383,15 +16456,107 @@ app.post('/api/registry/join-with-token', async (req: any, res: any) => {
                 }
             }
 
+            const myIp = registryManager.getCurrentIp();
+            const effectiveSite = (req.body.site_name || payload.site_hint || registryManager.getSiteName() || os.hostname() || 'PEER').trim();
+            const myInstanceId = registryManager.getInstanceId() || `peer-${Math.random().toString(16).slice(2, 8)}`;
+
             if (!winningEndpoint) {
+                // If direct probes timed out and token carries a Cluster Realm, trigger Stateless Cloudflare Rendezvous (M6 Reverse-Dial)
+                if (payload.realm) {
+                    const registryUrl = (process.env.REGISTRY_URL || 'https://registry.stigix.io').replace(/\/$/, '');
+                    log('REGISTRY', `Direct LAN probes timed out; initiating Stateless Cloudflare Rendezvous for Realm ${payload.realm}...`, 'info');
+
+                    // Set cluster realm & site name in memory so fleet-tunnel accepts inbound Leader M6 dial
+                    process.env.STIGIX_CLUSTER_REALM = payload.realm;
+                    process.env.STIGIX_MAGIC_JOIN = 'true';
+                    if (effectiveSite) {
+                        registryManager.setSiteName(effectiveSite);
+                    }
+
+                    // Persist STIGIX_CLUSTER_REALM and STIGIX_MAGIC_JOIN to .env
+                    const envCandidates = [
+                        path.join(APP_CONFIG.configDir, '.env'),
+                        path.join(process.cwd(), 'config', '.env'),
+                        path.join(process.cwd(), '.env'),
+                        '/app/config/.env'
+                    ];
+                    for (const ep of envCandidates) {
+                        try {
+                            if (fs.existsSync(ep)) {
+                                let envContent = fs.readFileSync(ep, 'utf8');
+                                if (/^STIGIX_CLUSTER_REALM=/m.test(envContent)) {
+                                    envContent = envContent.replace(/^STIGIX_CLUSTER_REALM=.*/m, `STIGIX_CLUSTER_REALM=${payload.realm}`);
+                                } else {
+                                    envContent += `\nSTIGIX_CLUSTER_REALM=${payload.realm}\n`;
+                                }
+                                if (/^STIGIX_MAGIC_JOIN=/m.test(envContent)) {
+                                    envContent = envContent.replace(/^STIGIX_MAGIC_JOIN=.*/m, `STIGIX_MAGIC_JOIN=true`);
+                                } else {
+                                    envContent += `\nSTIGIX_MAGIC_JOIN=true\n`;
+                                }
+                                fs.writeFileSync(ep, envContent, 'utf8');
+                                break;
+                            }
+                        } catch { /* ignore */ }
+                    }
+
+                    // Gather all candidate IPv4s (detected public IP + non-internal interface IPs)
+                    const candidateIps = new Set<string>();
+                    if (myIp && myIp !== '127.0.0.1' && myIp !== '0.0.0.0') candidateIps.add(myIp);
+                    try {
+                        const nets = os.networkInterfaces();
+                        for (const name of Object.keys(nets)) {
+                            for (const net of nets[name] || []) {
+                                if (net.family === 'IPv4' && !net.internal && !net.address.startsWith('169.254.')) {
+                                    candidateIps.add(net.address);
+                                }
+                            }
+                        }
+                    } catch { /* ignore */ }
+
+                    const rendezvousRes = await fetch(`${registryUrl}/realms/${encodeURIComponent(payload.realm)}/register`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            instance_id: myInstanceId,
+                            site_name: effectiveSite,
+                            port: Number(process.env.PORT) || 8080,
+                            ips: Array.from(candidateIps)
+                        }),
+                        signal: AbortSignal.timeout(7000)
+                    });
+
+                    if (rendezvousRes.ok) {
+                        const tokenPrefix = rawToken.slice(0, 12) + '...';
+                        registryManager.saveClusterEnrollment({
+                            enrolled: true,
+                            tokenPrefix,
+                            leaderUrl: `rendezvous://${payload.realm}`,
+                            candidateEndpoints: endpoints,
+                            siteName: effectiveSite,
+                            nodeId: myInstanceId,
+                            enrolledAt: new Date().toISOString()
+                        });
+                        log('REGISTRY', `⚡ Stateless Cloudflare Rendezvous sent for Realm ${payload.realm} (IPs: ${Array.from(candidateIps).join(', ')}). Awaiting inbound M6 Leader dial.`);
+                        return res.json({
+                            status: 'ok',
+                            success: true,
+                            rendezvous: true,
+                            leader_url: endpoints[0] || `rendezvous://${payload.realm}`,
+                            site_name: effectiveSite,
+                            token_prefix: tokenPrefix,
+                            node_id: myInstanceId,
+                            message: `Stateless Rendezvous broadcast sent (Realm: ${payload.realm}). Leader will reverse-dial this Cloud peer momentarily.`
+                        });
+                    } else {
+                        log('REGISTRY', `Cloudflare Rendezvous returned HTTP ${rendezvousRes.status}; falling back to direct candidate endpoint`, 'warn');
+                    }
+                }
+
                 // Fallback to first endpoint in payload
                 winningEndpoint = endpoints[0].replace(/\/$/, '');
                 log('REGISTRY', `Direct probes timed out; falling back to candidate endpoint: ${winningEndpoint}`, 'warn');
             }
-
-            const myIp = registryManager.getCurrentIp();
-            const effectiveSite = (req.body.site_name || payload.site_hint || registryManager.getSiteName() || os.hostname() || 'PEER').trim();
-            const myInstanceId = registryManager.getInstanceId() || `peer-${Math.random().toString(16).slice(2, 8)}`;
 
             log('REGISTRY', `Redeeming join token with Leader ${winningEndpoint}...`);
             const redeemRes = await fetch(`${winningEndpoint}/api/fleet/join-redeem`, {

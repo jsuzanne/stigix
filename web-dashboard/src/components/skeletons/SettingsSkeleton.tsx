@@ -3,7 +3,7 @@ import { Settings as SettingsIcon } from 'lucide-react';
 
 export const SettingsSkeleton: React.FC = () => {
     return (
-        <div className="space-y-6 max-w-7xl mx-auto pb-12 animate-in fade-in duration-300">
+        <div className="w-full space-y-6 pb-12 animate-in fade-in duration-300">
             {/* Header */}
             <div className="bg-card border border-border rounded-2xl p-4 flex items-center justify-between shimmer">
                 <div className="flex items-center gap-3">
