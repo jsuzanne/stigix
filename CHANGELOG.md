@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.0.48] - 2026-10-18
+
+### Changed & Simplified
+- **Simplified SD-WAN Overlay Tunnel Inspector Widget (`web-dashboard/src/Topology.tsx`)**:
+  - Removed internal CGNAT Shim IPs (`Shim: 100.64.x.x`) from both Source and Peer endpoint boxes in the overlay tunnel card, preserving focus on the physical WAN IP, site/device names, and VEP ID with 1-click `Copy ION CLI` (`dump vpn status VpnID=<vep_id>`).
+  - Removed redundant `All Circuit Tunnels` button from the bottom of the card (circuits and their tunnel drawers remain directly accessible by clicking physical circuit badges on canvas).
+  - Removed misleading `Trace Path` button from the overlay tunnel inspector card (host/container ICMP traceroutes do not represent SD-WAN underlay paths and no ION on-demand underlay traceroute API exists).
+
 ## [3.0.47] - 2026-10-18
 
 ### Fixed & Enhanced

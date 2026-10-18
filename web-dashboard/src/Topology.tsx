@@ -5480,8 +5480,6 @@ function TopologyContent({ token, theme }: TopologyProps) {
 
                                 const localVepId = inspectedLink.local_vep_id || null;
                                 const peerVepId = inspectedLink.peer_vep_id || null;
-                                const localShimIp = inspectedLink.local_shim_ip || null;
-                                const peerShimIp = inspectedLink.peer_shim_ip || null;
 
                                 const localIonCli = localVepId ? `dump vpn status VpnID=${localVepId}` : null;
                                 const peerIonCli = peerVepId ? `dump vpn status VpnID=${peerVepId}` : null;
@@ -5603,15 +5601,8 @@ function TopologyContent({ token, theme }: TopologyProps) {
                                                 <div className="text-[10px] text-text-muted truncate font-mono" title={inspectedLink.sourceCircuitLabel || inspectedLink.sourceCircuitName}>
                                                     WAN: <span className="text-cyan-400 font-bold">{inspectedLink.sourceCircuitLabel || inspectedLink.sourceCircuitName || 'WAN'}</span>
                                                 </div>
-                                                <div className="flex items-center justify-between gap-1 text-[10px] text-text-secondary font-mono pt-1 border-t border-border/30">
-                                                    <span className="truncate" title={inspectedLink.debug_source_ip || inspectedLink.ip}>
-                                                        IP: <span className="text-emerald-400 font-bold">{inspectedLink.debug_source_ip || inspectedLink.ip || inspectedLink.interface_ip || 'N/A'}</span>
-                                                    </span>
-                                                    {localShimIp && (
-                                                        <span className="text-[9px] text-text-muted truncate shrink-0" title={`Local Tunnel Shim IP: ${localShimIp}`}>
-                                                            Shim: <span className="text-sky-300">{localShimIp}</span>
-                                                        </span>
-                                                    )}
+                                                <div className="text-[10px] text-text-secondary font-mono pt-1 border-t border-border/30 truncate" title={inspectedLink.debug_source_ip || inspectedLink.ip}>
+                                                    IP: <span className="text-emerald-400 font-bold">{inspectedLink.debug_source_ip || inspectedLink.ip || inspectedLink.interface_ip || 'N/A'}</span>
                                                 </div>
                                                 {localVepId && (
                                                     <div className="mt-1 pt-1 border-t border-border/30 flex items-center justify-between gap-1">
@@ -5654,15 +5645,8 @@ function TopologyContent({ token, theme }: TopologyProps) {
                                                 <div className="text-[10px] text-text-muted truncate font-mono" title={inspectedLink.peer_wan_interface}>
                                                     WAN: <span className="text-purple-400 font-bold">{inspectedLink.peer_wan_interface || 'WAN'}</span>
                                                 </div>
-                                                <div className="flex items-center justify-between gap-1 text-[10px] text-text-secondary font-mono pt-1 border-t border-border/30">
-                                                    <span className="truncate" title={inspectedLink.debug_peer_ip}>
-                                                        IP: <span className="text-purple-400 font-bold">{resolveWanIp(inspectedLink.peer_site_name || inspectedLink.peerSite, inspectedLink.peer_device_name || inspectedLink.peerDevice, inspectedLink.peer_wan_interface || inspectedLink.destCircuit, inspectedLink.debug_peer_ip)}</span>
-                                                    </span>
-                                                    {peerShimIp && (
-                                                        <span className="text-[9px] text-text-muted truncate shrink-0" title={`Peer Tunnel Shim IP: ${peerShimIp}`}>
-                                                            Shim: <span className="text-purple-300">{peerShimIp}</span>
-                                                        </span>
-                                                    )}
+                                                <div className="text-[10px] text-text-secondary font-mono pt-1 border-t border-border/30 truncate" title={inspectedLink.debug_peer_ip}>
+                                                    IP: <span className="text-purple-400 font-bold">{resolveWanIp(inspectedLink.peer_site_name || inspectedLink.peerSite, inspectedLink.peer_device_name || inspectedLink.peerDevice, inspectedLink.peer_wan_interface || inspectedLink.destCircuit, inspectedLink.debug_peer_ip)}</span>
                                                 </div>
                                                 {peerVepId && (
                                                     <div className="mt-1 pt-1 border-t border-border/30 flex items-center justify-between gap-1">
@@ -5738,7 +5722,7 @@ function TopologyContent({ token, theme }: TopologyProps) {
                                             </div>
                                         </div>
 
-                                        {/* Status Pill & Action Buttons */}
+                                        {/* Status Pill */}
                                         <div className="flex items-center justify-between pt-2 border-t border-border/40 text-xs">
                                             <div className="flex items-center gap-1.5 min-w-0">
                                                 <span className={cn(
@@ -5753,42 +5737,6 @@ function TopologyContent({ token, theme }: TopologyProps) {
                                                             ? `Tunnel Down (${statusReason || 'Offline'})`
                                                             : `Inactive Tunnel (${statusReason || 'Standby Path'})`}
                                                 </span>
-                                            </div>
-                                            <div className="flex items-center gap-2 shrink-0">
-                                                {inspectedLink.sourceWan && inspectedLink.sourceSiteId && (
-                                                    <button
-                                                        onClick={() => {
-                                                            handleSelectCircuit({
-                                                                siteId: inspectedLink.sourceSiteId,
-                                                                siteName: inspectedLink.sourceSiteName,
-                                                                devName: inspectedLink.sourceDeviceName,
-                                                                circuitKey: `${inspectedLink.sourceSiteId}:${inspectedLink.sourceDeviceName}:${inspectedLink.sourceCircuitName}`,
-                                                                wan: inspectedLink.sourceWan
-                                                            });
-                                                            setInspectedLink(null);
-                                                        }}
-                                                        className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-sky-500/10 hover:bg-sky-500/20 text-sky-400 border border-sky-500/20 text-[10px] font-bold transition-all cursor-pointer whitespace-nowrap"
-                                                        title="Open side drawer showing all tunnels on this circuit"
-                                                    >
-                                                        <Layers size={11} /> All Circuit Tunnels
-                                                    </button>
-                                                )}
-                                                {(() => {
-                                                    const resolvedTargetIp = resolveWanIp(
-                                                        inspectedLink.peer_site_name || inspectedLink.peerSite,
-                                                        inspectedLink.peer_device_name || inspectedLink.peerDevice,
-                                                        inspectedLink.peer_wan_interface || inspectedLink.destCircuit,
-                                                        inspectedLink.debug_peer_ip || inspectedLink.public_ip || inspectedLink.ip
-                                                    );
-                                                    return (resolvedTargetIp && resolvedTargetIp !== 'N/A') ? (
-                                                        <button
-                                                            onClick={() => setTracerouteTarget(resolvedTargetIp)}
-                                                            className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 border border-blue-500/20 text-[10px] font-bold transition-all cursor-pointer whitespace-nowrap"
-                                                        >
-                                                            <Route size={11} /> Trace Path
-                                                        </button>
-                                                    ) : null;
-                                                })()}
                                             </div>
                                         </div>
                                     </div>
