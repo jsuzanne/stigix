@@ -1154,7 +1154,8 @@ export default function App() {
         features={{
           xfr_enabled: features.xfr_enabled,
           pcap_enabled: isPcapEnabled,
-          copilot_enabled: Boolean(copilotConfig?.featureEnabled && copilotConfig?.hasKey)
+          copilot_enabled: Boolean(copilotConfig?.featureEnabled && copilotConfig?.hasKey),
+          snapshots_enabled: features.snapshots_enabled
         }}
         activeTasks={activeTasks}
         copilotDrawerOpen={copilotDrawerOpen}
@@ -1967,7 +1968,8 @@ export default function App() {
         features={{
           xfr_enabled: features.xfr_enabled,
           pcap_enabled: isPcapEnabled,
-          copilot_enabled: Boolean(copilotConfig?.featureEnabled && copilotConfig?.hasKey)
+          copilot_enabled: Boolean(copilotConfig?.featureEnabled && copilotConfig?.hasKey),
+          snapshots_enabled: features.snapshots_enabled
         }}
         onOpenMagicJoin={() => setShowMagicJoinModal(true)}
         onToggleCopilot={() => setCopilotDrawerOpen(prev => !prev)}

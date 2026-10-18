@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.0.43] - 2026-10-18
+
+### Fixed
+- **Navigation Feature Flag Propagation (`web-dashboard/src/App.tsx`)**:
+  - Forwarded `snapshots_enabled: features.snapshots_enabled` to `SidebarRail` and `SearchPaletteModal`.
+  - Fixes missing `ChangeGuard (Before/After)` menu entry under the `Validate` flyout menu when `ENABLE_CHANGE_SNAPSHOTS=true`.
+  - Rebuilt and hot-deployed production assets to BR8.
+
 ## [3.0.42] - 2026-10-18
 
 ### Changed & Refined
