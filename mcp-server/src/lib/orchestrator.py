@@ -327,14 +327,20 @@ class TestOrchestrator:
                         # The response IS the completed job — extract metrics immediately
                         summary = result.get("summary") or {}
                         if summary or result.get("status") in ("completed", "finished", "success"):
+                            req_dir = str((result.get("params") or {}).get("direction") or direction or "client-to-server").lower()
+                            is_bidir = req_dir in ("bidirectional", "bidir")
+                            is_download = req_dir in ("server-to-client", "download", "reverse")
                             throughput = (
-                                summary.get("received_mbps") or summary.get("sent_mbps") or
-                                summary.get("throughput_mbps") or summary.get("avg_bandwidth_mbps") or 0
+                                summary.get("throughput_mbps") or summary.get("avg_bandwidth_mbps") or
+                                summary.get("sent_mbps") or summary.get("received_mbps") or 0
                             )
+                            sent_val = 0.0 if is_download else float(summary.get("sent_mbps") or throughput or 0)
+                            recv_val = float(summary.get("received_mbps") or throughput or 0) if (is_bidir or is_download) else 0.0
                             xfr_inline_result = {
+                                "direction": req_dir,
                                 "throughput_mbps": float(throughput),
-                                "sent_mbps": float(summary.get("sent_mbps") or 0),
-                                "received_mbps": float(summary.get("received_mbps") or 0),
+                                "sent_mbps": sent_val,
+                                "received_mbps": recv_val,
                                 "loss_percent": float(summary.get("loss_percent") or 0),
                                 "retransmits": int(summary.get("retransmits") or 0),
                                 "bytes_total": int(summary.get("bytes_total") or 0),
@@ -522,15 +528,21 @@ class TestOrchestrator:
 
                 # Map Stigix job metrics to MCP status
                 summary = job.get("summary") or {}
+                job_dir = str((job.get("params") or {}).get("direction") or job.get("direction") or "client-to-server").lower()
+                is_bidir = job_dir in ("bidirectional", "bidir")
+                is_download = job_dir in ("server-to-client", "download", "reverse")
                 
-                throughput = summary.get("received_mbps", 0) or summary.get("sent_mbps", 0) or summary.get("throughput_mbps", 0) or summary.get("avg_bandwidth_mbps", 0)
+                throughput = summary.get("throughput_mbps", 0) or summary.get("avg_bandwidth_mbps", 0) or summary.get("sent_mbps", 0) or summary.get("received_mbps", 0)
+                sent_val = 0.0 if is_download else float(summary.get("sent_mbps", 0) or throughput)
+                recv_val = float(summary.get("received_mbps", 0) or throughput) if (is_bidir or is_download) else 0.0
                 
                 metrics = {
+                    "direction": job_dir,
                     "throughput_mbps": float(throughput),
                     "loss_percent": float(summary.get("loss_percent", 0)),
                     "latency_ms": float(summary.get("rtt_ms_avg", 0) or summary.get("rtt_ms", 0)),
-                    "sent_mbps": float(summary.get("sent_mbps", 0)),
-                    "received_mbps": float(summary.get("received_mbps", 0)),
+                    "sent_mbps": sent_val,
+                    "received_mbps": recv_val,
                     "retransmits": int(summary.get("retransmits", 0)),
                     "bytes_total": int(summary.get("bytes_total", 0)),
                     "started_at": job.get("started_at"),
@@ -1698,10 +1710,15 @@ class TestOrchestrator:
                 normalized = []
                 for job in raw_jobs:
                     summary = job.get("summary") or {}
+                    job_dir = str((job.get("params") or {}).get("direction") or job.get("direction") or "client-to-server").lower()
+                    is_bidir = job_dir in ("bidirectional", "bidir")
+                    is_download = job_dir in ("server-to-client", "download", "reverse")
                     throughput = (
-                        summary.get("received_mbps") or summary.get("sent_mbps") or
-                        summary.get("throughput_mbps") or summary.get("avg_bandwidth_mbps") or 0
+                        summary.get("throughput_mbps") or summary.get("avg_bandwidth_mbps") or
+                        summary.get("sent_mbps") or summary.get("received_mbps") or 0
                     )
+                    sent_val = 0.0 if is_download else float(summary.get("sent_mbps") or throughput or 0)
+                    recv_val = float(summary.get("received_mbps") or throughput or 0) if (is_bidir or is_download) else 0.0
                     raw_status = job.get("status", "unknown").lower()
                     status_str = "finished" if raw_status in ("completed", "finished", "success") else raw_status
                     normalized.append({
@@ -1710,13 +1727,13 @@ class TestOrchestrator:
                         "source": job.get("source") or job.get("source_id") or agent_id,
                         "target": self._extract_xfr_target(job),
                         "protocol": (job.get("params") or {}).get("protocol") or job.get("protocol") or "tcp",
-                        "direction": (job.get("params") or {}).get("direction") or job.get("direction") or "client-to-server",
+                        "direction": job_dir,
                         "duration_s": (job.get("params") or {}).get("duration_sec") or job.get("duration_sec") or 0,
                         "parallel_streams": (job.get("params") or {}).get("parallel_streams") or 4,
                         # ── Normalised throughput metrics ─────────────────────
                         "throughput_mbps": float(throughput),
-                        "sent_mbps": float(summary.get("sent_mbps") or 0),
-                        "received_mbps": float(summary.get("received_mbps") or 0),
+                        "sent_mbps": sent_val,
+                        "received_mbps": recv_val,
                         "loss_percent": float(summary.get("loss_percent") or 0),
                         "retransmits": int(summary.get("retransmits") or 0),
                         "bytes_total": int(summary.get("bytes_total") or 0),

@@ -2156,6 +2156,18 @@ export async function executeCopilotTool(
 
                     const formatXfrJob = (job: any) => {
                         const sum = job.summary;
+                        const dir = String(job.params?.direction || 'client-to-server').toLowerCase();
+                        const isBidir = dir === 'bidirectional' || dir === 'bidir';
+                        const isDownload = dir === 'server-to-client' || dir === 'download' || dir === 'reverse';
+                        const baseThroughput = sum?.throughput_mbps ?? sum?.avg_bandwidth_mbps ?? sum?.sent_mbps ?? sum?.received_mbps;
+                        const uploadMbps = sum ? (isDownload ? 0 : (sum.sent_mbps ?? baseThroughput ?? 0)) : undefined;
+                        const downloadMbps = sum ? (isBidir ? (sum.received_mbps ?? baseThroughput ?? 0) : (isDownload ? (sum.received_mbps ?? baseThroughput ?? 0) : 0)) : undefined;
+                        const normalizedSummary = sum ? {
+                            ...sum,
+                            throughput_mbps: baseThroughput,
+                            sent_mbps: uploadMbps,
+                            received_mbps: downloadMbps
+                        } : sum;
                         return {
                             node: nodeCtx.siteName,
                             test_type: 'xfr_speedtest',
@@ -2164,22 +2176,19 @@ export async function executeCopilotTool(
                             status: job.status,
                             target: job.params?.host || job.params?.target?.host,
                             protocol: job.params?.protocol || 'tcp',
-                            direction: job.params?.direction || 'bidirectional',
+                            direction: dir,
+                            direction_label: isBidir ? 'bidirectional' : (isDownload ? 'unidirectional download (server-to-client)' : 'unidirectional upload (client-to-server)'),
                             duration: job.params?.duration_sec ? `${job.params.duration_sec}s` : undefined,
                             started_at: job.started_at,
                             finished_at: job.finished_at,
-                            throughput_mbps: sum?.throughput_mbps ?? sum?.avg_bandwidth_mbps ?? (
-                                (sum?.received_mbps !== undefined && sum?.sent_mbps !== undefined)
-                                    ? (sum.received_mbps + sum.sent_mbps)
-                                    : (sum?.received_mbps ?? sum?.sent_mbps)
-                            ),
-                            upload_mbps: sum?.sent_mbps,
-                            download_mbps: sum?.received_mbps,
+                            throughput_mbps: baseThroughput,
+                            upload_mbps: uploadMbps,
+                            download_mbps: downloadMbps,
                             rtt_ms: sum?.rtt_ms_avg ?? sum?.rtt_ms,
                             retransmits: sum?.retransmits,
                             loss_pct: sum?.loss_percent ?? 0,
                             total_bytes: sum?.bytes_total,
-                            summary: sum,
+                            summary: normalizedSummary,
                             error: job.error,
                             ...(explicitWaitSec > 0 ? { waited_seconds: explicitWaitSec } : {})
                         };
@@ -3165,30 +3174,41 @@ export async function executeCopilotTool(
                 return {
                     node: nodeCtx.siteName,
                     total_records: arr.length,
-                    recent_tests: sorted.map((j: any) => ({
-                        id: j.id,
-                        sequence_id: j.sequence_id,
-                        status: j.status,
-                        started_at: j.started_at,
-                        finished_at: j.finished_at,
-                        target: j.params?.target?.host || j.params?.host,
-                        protocol: j.params?.protocol || 'tcp',
-                        direction: j.params?.direction || 'bidirectional',
-                        duration: j.params?.duration_sec ? `${j.params.duration_sec}s` : undefined,
-                        throughput_mbps: j.summary?.throughput_mbps ?? j.summary?.avg_bandwidth_mbps ?? (
-                            // For bidirectional tests, sum both directions
-                            (j.summary?.received_mbps !== undefined && j.summary?.sent_mbps !== undefined)
-                                ? (j.summary.received_mbps + j.summary.sent_mbps)
-                                : (j.summary?.received_mbps ?? j.summary?.sent_mbps)
-                        ),
-                        upload_mbps: j.summary?.sent_mbps,
-                        download_mbps: j.summary?.received_mbps,
-                        rtt_ms: j.summary?.rtt_ms_avg ?? j.summary?.rtt_ms ?? j.summary?.avg_rtt_ms,
-                        loss_pct: j.summary?.loss_percent ?? j.summary?.loss_pct ?? 0,
-                        retransmits: j.summary?.retransmits ?? j.summary?.retransmissions,
-                        total_bytes: j.summary?.bytes_total ?? j.summary?.total_bytes ?? j.summary?.bytes_transferred,
-                        summary: j.summary
-                    }))
+                    recent_tests: sorted.map((j: any) => {
+                        const sum = j.summary;
+                        const dir = String(j.params?.direction || 'client-to-server').toLowerCase();
+                        const isBidir = dir === 'bidirectional' || dir === 'bidir';
+                        const isDownload = dir === 'server-to-client' || dir === 'download' || dir === 'reverse';
+                        const baseThroughput = sum?.throughput_mbps ?? sum?.avg_bandwidth_mbps ?? sum?.sent_mbps ?? sum?.received_mbps;
+                        const uploadMbps = sum ? (isDownload ? 0 : (sum.sent_mbps ?? baseThroughput ?? 0)) : undefined;
+                        const downloadMbps = sum ? (isBidir ? (sum.received_mbps ?? baseThroughput ?? 0) : (isDownload ? (sum.received_mbps ?? baseThroughput ?? 0) : 0)) : undefined;
+                        const normalizedSummary = sum ? {
+                            ...sum,
+                            throughput_mbps: baseThroughput,
+                            sent_mbps: uploadMbps,
+                            received_mbps: downloadMbps
+                        } : sum;
+                        return {
+                            id: j.id,
+                            sequence_id: j.sequence_id,
+                            status: j.status,
+                            started_at: j.started_at,
+                            finished_at: j.finished_at,
+                            target: j.params?.target?.host || j.params?.host,
+                            protocol: j.params?.protocol || 'tcp',
+                            direction: dir,
+                            direction_label: isBidir ? 'bidirectional' : (isDownload ? 'unidirectional download (server-to-client)' : 'unidirectional upload (client-to-server)'),
+                            duration: j.params?.duration_sec ? `${j.params.duration_sec}s` : undefined,
+                            throughput_mbps: baseThroughput,
+                            upload_mbps: uploadMbps,
+                            download_mbps: downloadMbps,
+                            rtt_ms: sum?.rtt_ms_avg ?? sum?.rtt_ms ?? sum?.avg_rtt_ms,
+                            loss_pct: sum?.loss_percent ?? sum?.loss_pct ?? 0,
+                            retransmits: sum?.retransmits ?? sum?.retransmissions,
+                            total_bytes: sum?.bytes_total ?? sum?.total_bytes ?? sum?.bytes_transferred,
+                            summary: normalizedSummary
+                        };
+                    })
                 };
             }
 

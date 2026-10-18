@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.0.39] - 2026-10-18
+
+### Fixed & Enhanced
+- **XFR Speedtest Direction-Aware Metrics & Throughput Doubling Fix (`server.ts`, `ai-tools.ts`, `orchestrator.py`, `test-copilot-suite.ts`)**:
+  - Preserved raw `throughput_mbps` in `XfrJobManager.mapSummary()` (`server.ts`) instead of only duplicating it into both `sent_mbps` and `received_mbps`.
+  - Removed the `received_mbps + sent_mbps` summation in `get_test_status` and `list_speedtest_history` (`ai-tools.ts`) that caused unidirectional XFR tests (e.g., `121.3 Mbps` upload) to be reported as `242.6 Mbps` bidirectional by the AI Copilot.
+  - Added direction-aware normalization (`client-to-server` upload sets `download_mbps = 0`; `server-to-client` download sets `upload_mbps = 0`) and explicit `direction_label` across `ai-tools.ts` and `mcp-server/src/lib/orchestrator.py`.
+  - Added automated regression Test 48 in `web-dashboard/tests/test-copilot-suite.ts` and a consolidated Quick-Reference Master Table of all 21 test prompts in `PRD/PRD_AI_COPILOT_RELIABILITY_AND_TEST_PLAN.md`.
+
 ## [3.0.38] - 2026-10-17
 
 ### Performance & Optimization

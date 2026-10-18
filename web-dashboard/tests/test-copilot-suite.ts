@@ -835,6 +835,71 @@ export class CopilotTestSuite {
             return { waited_seconds: res.waited_seconds, elapsed_ms: elapsed };
         });
 
+        // 48. Regression Test: XFR unidirectional speedtest does NOT double throughput_mbps (121 Mbps != 242 Mbps)
+        await this.runTest('48. Tool "get_test_status & list_speedtest_history" (Unidirectional XFR throughput no-doubling)', async () => {
+            const fakeJob = {
+                test_id: 'X01041',
+                status: 'completed',
+                created_at: new Date().toISOString(),
+                config: {
+                    target: '95.216.197.25',
+                    port: 5201,
+                    protocol: 'tcp',
+                    direction: 'client-to-server',
+                    duration_sec: 5,
+                    streams: 4,
+                    bitrate: '0'
+                },
+                // Simulate XfrJobManager.mapSummary legacy/UI shape where both sent_mbps & received_mbps = 121.3
+                summary: {
+                    sent_mbps: 121.3,
+                    received_mbps: 121.3,
+                    retransmits: 12,
+                    jitter_ms: 0,
+                    lost_percent: 0,
+                    rtt_ms: 18.4
+                }
+            };
+            const localXfrCtx: ToolExecutionContext = {
+                ...remoteCtx,
+                xfrJobManager: {
+                    getJob: (id: string) => id === 'X01041' ? fakeJob : null,
+                    getHistory: () => [fakeJob]
+                }
+            };
+
+            const statusRes = await executeCopilotTool('get_test_status', {
+                agent_id: 'local',
+                test_id: 'X01041'
+            }, localXfrCtx);
+            if (statusRes.error) throw new Error(statusRes.error);
+            if (statusRes.throughput_mbps !== 121.3) {
+                throw new Error(`Expected throughput_mbps=121.3 (not doubled to 242.6), got ${statusRes.throughput_mbps}`);
+            }
+            if (statusRes.upload_mbps !== 121.3 || statusRes.download_mbps !== 0) {
+                throw new Error(`Expected upload_mbps=121.3 and download_mbps=0 for client-to-server, got up=${statusRes.upload_mbps}, down=${statusRes.download_mbps}`);
+            }
+
+            const histRes = await executeCopilotTool('list_speedtest_history', {
+                agent_id: 'local',
+                limit: 5
+            }, localXfrCtx);
+            if (histRes.error) throw new Error(histRes.error);
+            const h0 = histRes.history?.[0];
+            if (!h0 || h0.throughput_mbps !== 121.3 || h0.upload_mbps !== 121.3 || h0.download_mbps !== 0) {
+                throw new Error(`Unexpected history item metrics: ${JSON.stringify(h0)}`);
+            }
+            return {
+                test_id: statusRes.test_id,
+                direction: statusRes.direction,
+                direction_label: statusRes.direction_label,
+                throughput_mbps: statusRes.throughput_mbps,
+                upload_mbps: statusRes.upload_mbps,
+                download_mbps: statusRes.download_mbps
+            };
+        });
+
+
         // Summary
         const passedCount = this.results.filter(r => r.passed).length;
         const totalCount = this.results.length;

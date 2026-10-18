@@ -709,6 +709,7 @@ interface XfrTestParams {
 interface XfrTestResultSummary {
     protocol: string;
     duration_sec: number;
+    throughput_mbps?: number;
     sent_mbps: number;
     received_mbps: number;
     loss_percent: number;
@@ -1131,6 +1132,7 @@ class XfrJobManager {
             protocol: p.protocol || 'tcp',
             duration_sec: p.duration_sec || (p.duration_ms ? p.duration_ms / 1000 : 0),
             bytes_total: p.bytes_total || 0,
+            throughput_mbps: p.throughput_mbps || p.sent_mbps || p.received_mbps || 0,
             sent_mbps: p.throughput_mbps || p.sent_mbps || 0,
             received_mbps: p.throughput_mbps || p.received_mbps || 0,
             loss_percent: p.loss_percent || p.udp_stats?.lost_percent || 0,
