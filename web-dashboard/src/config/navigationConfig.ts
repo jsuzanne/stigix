@@ -172,7 +172,7 @@ export const STIGIX_NAVIGATION_DOMAINS: NavDomainConfig[] = [
                 label: 'ChangeGuard (Before/After)',
                 icon: GitCompare,
                 route: '#/validate/snapshots',
-                description: 'Pre/post migration state capture, WireGuard tunnel verification & delta diffing',
+                description: 'Pre/post migration state capture, SD-WAN IPsec overlay verification & delta diffing',
                 featureFlag: 'snapshots_enabled',
                 keywords: ['snapshot', 'changeguard', 'before', 'after', 'diff', 'migration', 'delta', 'verification', 'rollback']
             }

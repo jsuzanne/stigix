@@ -29,7 +29,7 @@ Historically, engineers manually copy-paste terminal command outputs (`ping`, `t
 ## 2. Core Principles & Architecture Strategy
 
 1. **Lightweight & Non-Disruptive:**
-   A snapshot is simply a freeze-frame of data Stigix *already gathers in memory* (Topology, WireGuard peer states, DEM reachability matrix, synthetic probes). Creation time must be `< 50ms` with zero CPU overhead.
+   A snapshot is simply a freeze-frame of data Stigix *already gathers in memory* (Topology, SD-WAN IPsec overlay peer states, DEM reachability matrix, synthetic probes). Creation time must be `< 50ms` with zero CPU overhead.
 2. **Minimal Storage Footprint:**
    Each snapshot is a compact JSON payload (~10 KB to 40 KB). 100 snapshots consume under 4 MB. Snapshots are stored in local storage (`data/snapshots/*.json` or local SQLite) with automated retention policies.
 3. **Evolutionary Pilot (Feature-Flagged):**

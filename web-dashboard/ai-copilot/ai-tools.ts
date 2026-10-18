@@ -1826,7 +1826,7 @@ export const COPILOT_TOOLS: AnthropicToolDefinition[] = [
     },
     {
         name: 'take_snapshot',
-        description: 'Take a state snapshot of the node (captures WireGuard overlay tunnels, reachability status, and DEM matrix / probes). Use this before or after network maintenance (e.g. site migration, ISP cutover, router swap) to establish a baseline or post-change state.',
+        description: 'Take a state snapshot of the node (captures SD-WAN IPsec overlay tunnels, reachability status, and DEM matrix / probes). Use this before or after network maintenance (e.g. site migration, ISP cutover, router swap) to establish a baseline or post-change state.',
         input_schema: {
             type: 'object',
             properties: {

@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.0.42] - 2026-10-18
+
+### Changed & Refined
+- **ChangeGuard Alignment to SD-WAN IPsec Overlay Architecture (`ChangeGuard.tsx`, `ai-tools.ts`, `snapshot-manager.ts`, `navigationConfig.ts`, `PRD_CHANGE_GUARD_BEFORE_AFTER_DIFF.md`)**:
+  - Replaced all legacy "WireGuard" terminology and assumptions with **SD-WAN IPsec Overlay Mesh Tunnels** across the UI dashboard, tables, navigation, and AI Copilot prompt descriptions.
+  - Removed default WireGuard port fallback (`51820`) in `snapshot-manager.ts` in favor of dynamic SD-WAN peer port mapping.
+  - Synchronized and validated live on SD-WAN lab node BR8.
+
 ## [3.0.41] - 2026-10-18
 
 ### Fixed & Enhanced

@@ -297,7 +297,7 @@ export default function ChangeGuard({ token }: ChangeGuardProps) {
                         </h1>
                     </div>
                     <p className="text-sm text-slate-400">
-                        Pre/post migration state capture, WireGuard tunnel verification & deterministic delta diffing.
+                        Pre/post migration state capture, SD-WAN IPsec overlay verification & deterministic delta diffing.
                     </p>
                 </div>
 
@@ -534,12 +534,12 @@ export default function ChangeGuard({ token }: ChangeGuardProps) {
                                 </div>
                             </div>
 
-                            {/* WireGuard Overlay Tunnels Table */}
+                            {/* SD-WAN IPsec Overlay Tunnels Table */}
                             {diffReport.tunnels.comparisons.length > 0 && (
                                 <div className="bg-slate-900/80 border border-slate-700/80 rounded-lg overflow-hidden">
                                     <div className="px-4 py-3 bg-slate-800/70 border-b border-slate-700 text-xs font-bold text-slate-200 flex items-center gap-2">
                                         <Network className="w-4 h-4 text-indigo-400" />
-                                        WireGuard Overlay Mesh Tunnels ({diffReport.tunnels.comparisons.length} peers)
+                                        SD-WAN IPsec Overlay Mesh Tunnels ({diffReport.tunnels.comparisons.length} peers)
                                     </div>
                                     <div className="overflow-x-auto">
                                         <table className="w-full text-left text-xs text-slate-300">
@@ -631,7 +631,7 @@ export default function ChangeGuard({ token }: ChangeGuardProps) {
                                     <th className="px-4 py-3">Snapshot Name</th>
                                     <th className="px-4 py-3">Site / Node</th>
                                     <th className="px-4 py-3">Captured At</th>
-                                    <th className="px-4 py-3">WireGuard Tunnels</th>
+                                    <th className="px-4 py-3">SD-WAN Overlay Tunnels</th>
                                     <th className="px-4 py-3">DEM Health</th>
                                     <th className="px-4 py-3">Source</th>
                                     <th className="px-4 py-3 text-right">Actions</th>
@@ -753,7 +753,7 @@ export default function ChangeGuard({ token }: ChangeGuardProps) {
                                 <span className="font-semibold text-slate-300">What will be captured:</span>
                                 <ul className="list-disc pl-4 space-y-0.5 text-slate-400">
                                     <li>Node identity, site name, and Stigix version</li>
-                                    <li>All active WireGuard overlay mesh tunnels & endpoints</li>
+                                    <li>All active SD-WAN IPsec overlay mesh tunnels & endpoints</li>
                                     <li>Complete DEM reachability matrix (latency, jitter, packet loss)</li>
                                 </ul>
                             </div>

@@ -170,7 +170,7 @@ export class SnapshotManager {
                 peerId: p.instance_id || p.site_name || 'unknown-peer',
                 siteName: p.site_name || p.instance_id,
                 status: isOnline ? 'UP' : 'DOWN',
-                endpoint: p.ip_public ? `${p.ip_public}:${p.port || 51820}` : undefined,
+                endpoint: p.ip_public ? (p.port ? `${p.ip_public}:${p.port}` : p.ip_public) : undefined,
                 latestHandshake: p.last_seen ? Math.floor(new Date(p.last_seen).getTime() / 1000) : undefined,
                 transferRxBytes: p.transfer_rx_bytes || 0,
                 transferTxBytes: p.transfer_tx_bytes || 0,
