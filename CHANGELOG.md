@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [3.0.49] - 2026-10-18
 
+### Added
+- **Mermaid Architecture Diagram Rendering in PDF Tooling (`Scripts/md2pdf.py`)**:
+  - Automatically compiles Mermaid code blocks into high-resolution images via Kroki with local disk caching, embedding clear architectural diagrams directly into generated PDF documentation.
+
 ### Fixed
 - **Packet Capture Stop & Dissection Notification Deduplication (`web-dashboard/src/PacketCapture.tsx`)**:
   - **Eliminated Race Condition on Manual Stop**: Stopping capture via `handleStopCapture` immediately clears capture state, activates an `isStoppingRef` flag, and cancels pending polling ticks, preventing the background poller from racing with a redundant "Packet capture completed" notification and duplicate dissection dispatch.
