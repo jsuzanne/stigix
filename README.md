@@ -124,6 +124,13 @@ This project is my way to turn all that lab and demo experience into an open-sou
 
 The project is evolving rapidly with major features, engines, and UX refinements in every release.
 
+### 🚀 Stigix 3.0.49 — ChangeGuard Diff Engine, AI Copilot Suite & SD-WAN Diagnostics *(v3.0.49)*
+
+- **🛡️ ChangeGuard Network State Snapshot & Diff** — Capture pre/post-maintenance snapshots of SD-WAN overlay tunnels, routes, and underlay state with instant visual delta comparison.
+- **🤖 Expanded FastMCP AI Copilot (89 Tools)** — Multi-turn network diagnostics, automated failover verification, security audit suites, and self-healing test automation.
+- **🗺️ Enhanced 3-State SD-WAN Overlay Diagnostics** — Strict `ACTIVE`, `INACTIVE`, and `DOWN` tunnel states with real-time root-cause analysis (Core BGP peering, correlation events) and 1-click ION CLI inspection.
+- **📦 Resilient Stateful PCAP Replay** — L7 application replay with deduplicated live packet capture dissection and zero race condition event handling.
+
 ### 🚀 Stigix 3.0.14 — Performance Acceleration, DEM Master Control & Failover Optimization *(v3.0.14)*
 
 - **⏸️ DEM Local Engine Master Switch** — 1-click toggle to suspend or resume synthetic probes on local management/out-of-band nodes while propagating configurations fleet-wide.
