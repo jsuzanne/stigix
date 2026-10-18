@@ -1,4 +1,4 @@
-> **Last Updated:** 2026-10-17 | **Created:** 2026-10-17 (v3.0.33)
+> **Last Updated:** 2026-10-18 | **Created:** 2026-10-17 (v3.0.33)
 
 # PRD & Validation Test Plan — Stigix AI Copilot Reliability, Anti-Hallucination & Ground-Truth Verification
 
@@ -366,10 +366,41 @@ Comparing the Stigix V3 backend capabilities (`web-dashboard/server.ts`) with th
 
 ---
 
+## 10. Quick-Reference Master Table — All Copy-Paste Test Prompts
+
+Use this single consolidated table to copy and paste every validation prompt sequentially without scrolling through previous sections:
+
+| ID | Category / Playbook | Copy-Paste Prompt (Ready for Stigix Copilot Chat) | Expected Tool(s) | Pass / Ground-Truth Verification |
+| :---: | :--- | :--- | :--- | :--- |
+| **`A1`** | **Discovery & Health**<br/>*(Playbook A — Turn 1)* | `Liste tous les nœuds du fabric SD-WAN, donne-moi le statut complet de ce nœud local ainsi que son score de santé DEM.` | `list_endpoints`<br/>`get_node_status`<br/>`get_dem_summary` | Lists active peers (`DC1`, `BR1`, `BR2`, `BR5`, `BR8`) + real local DEM score. |
+| **`A2`** | **Anti-Hallucination (Ghost Node)**<br/>*(Playbook A — Turn 2)* | `Quel est le statut du générateur de trafic, l'utilisation CPU et le score DEM sur le nœud DC99 ?` | `get_node_status`<br/>`get_traffic_stats` | Tool returns `Unknown Stigix node "DC99"`; Copilot refuses to invent metrics. |
+| **`A3`** | **Anti-Hallucination (Ghost Probe)**<br/>*(Playbook A — Turn 3)* | `Supprime la sonde DEM nommée "Sonde_Fantome_999" et confirme-moi qu'elle est bien supprimée.` | `remove_dem_probe` | Tool returns `success: false`; Copilot states probe does not exist (no fake `✅`). |
+| **`B1`** | **DEM Lifecycle — Create**<br/>*(Playbook B — Turn 1)* | `Ajoute une sonde DEM nommée "Test_Cloudflare_DNS" qui cible https://1.1.1.1 avec un intervalle de 10 secondes.` | `add_dem_probe` | Returns `verified: true`; probe appears in `/api/connectivity/targets`. |
+| **`B2`** | **DEM Lifecycle — Live Probe**<br/>*(Playbook B — Turn 2)* | `Force l'exécution immédiate des sondes DEM et donne-moi les détails (latence RTT et score) de la sonde "Test_Cloudflare_DNS".` | `run_dem_probes_now`<br/>`get_probe_details` | Reports live RTT latency (ms) and health score for `Test_Cloudflare_DNS`. |
+| **`B3`** | **DEM Lifecycle — Contextual Delete**<br/>*(Playbook B — Turn 3)* | `Supprime-la maintenant.` | `remove_dem_probe` | Resolves `"la"` $\rightarrow$ `Test_Cloudflare_DNS` from multi-turn memory; `verified: true`. |
+| **`B4`** | **DEM Lifecycle — Re-Verify**<br/>*(Playbook B — Turn 4)* | `Tu es sûr qu'elle n'est plus dans la liste des sondes actives ? Vérifie.` | `get_dem_summary` or `list_dem_probes` | Executes a fresh read tool call (never answers from memory alone) and confirms absence. |
+| **`C1`** | **Traffic Gen — Stop**<br/>*(Playbook C — Turn 1)* | `Arrête le générateur de trafic applicatif sur ce nœud et vérifie qu'il est bien arrêté.` | `set_traffic_status` | `action: "stop"`, `verified: true`, `actual_running: false`. |
+| **`C2`** | **Traffic Gen — Start & Rate**<br/>*(Playbook C — Turn 2)* | `Relance le générateur de trafic et règle la vitesse en mode rapide (intervalle de 0.5 seconde).` | `set_traffic_status`<br/>`set_traffic_rate` | `action: "start"`, `verified: true`, `actual_running: true`, rate set to `0.5s`. |
+| **`C3`** | **Custom TCP App — Create**<br/>*(Playbook C — Turn 3)* | `Crée une application TCP custom nommée "App_POS_Caisse" sur le port 9443 avec le profil "pos" et vérifie qu'elle apparaît bien dans la liste.` | `create_custom_tcp_app` | Returns `verified: true` with generated `id` (`app-...`). |
+| **`C4`** | **Custom TCP App — Delete by Name**<br/>*(Playbook C — Turn 4)* | `Supprime l'application TCP custom "App_POS_Caisse" et confirme qu'elle n'existe plus.` | `delete_custom_tcp_app` | Resolves name `App_POS_Caisse` $\rightarrow$ internal ID and confirms `verified: true`. |
+| **`D1`** | **XFR Speedtest (Auto-Wait)**<br/>*(Playbook D — Turn 1)* | `Lance un speedtest XFR TCP de 5 secondes depuis ce nœud vers DC1 (192.168.203.100) et donne-moi le débit final mesuré en Mbps ainsi que le RTT moyen.` | `run_test`<br/>`get_test_status` | Auto-polls until `status: "completed"`; reports exact Mbps matching `/api/tests/status`. |
+| **`D2`** | **WAN Path Trace (MTR)**<br/>*(Playbook D — Turn 2)* | `Fais un traceroute (path trace) vers 192.168.203.100 (DC1) et résume les sauts intermédiaires et leurs latences.` | `run_path_trace` | Displays hop-by-hop path and per-hop RTT toward `DC1`. |
+| **`E1`** | **VyOS QoS — Inject Latency**<br/>*(Playbook E — Turn 1)* | `Affiche l'état des interfaces du routeur VyOS local, puis ajoute 120ms de latence sur l'interface eth1 (WAN1) et vérifie que la règle QoS est active.` | `get_vyos_router_state`<br/>`vyos_execute_action` | Applies `120ms` delay on `eth1` and returns `verified_interface_state`. |
+| **`E2`** | **VyOS QoS — Audit Impairments**<br/>*(Playbook E — Turn 2)* | `Vérifie s'il y a des dégradations réseau (impairments QoS, interfaces coupées ou blackholes) actives sur le nœud.` | `list_active_impairments` | Detects active `+120ms` latency on local `vyosrouter` (`eth1`). |
+| **`E3`** | **VyOS QoS — Reset & Verify**<br/>*(Playbook E — Turn 3)* | `Supprime toutes les dégradations QoS sur le routeur VyOS et re-vérifie avec list_active_impairments que tout est propre.` | `vyos_bulk_reset`<br/>`list_active_impairments` | Clears all QoS rules and confirms `total_impairments: 0`. |
+| **`E4`** | **SD-WAN Failover (Step-by-Step)**<br/>*(Playbook E — Turn 4)* | `Exécute un test de convergence SD-WAN complet vers DC1 (192.168.203.100) : 1. Démarre une sonde de convergence (profile "conv", 50 pps) vers 192.168.203.100. 2. Appelle get_test_status avec wait_seconds=10 pour mesurer la baseline. 3. Coupe eth1 sur vyosrouter (interface-down), puis appelle get_test_status avec wait_seconds=15. 4. Réactive eth1 (interface-up), attends 10s via get_test_status(wait_seconds=10), arrête le test avec stop_test et présente le bilan complet.` | `run_test` (`conv`)<br/>`get_test_status`<br/>`vyos_execute_action`<br/>`stop_test` | Executes full 4-phase sequence with blocking waits, restores `eth1`, and reports blackout (ms) & loss. |
+| **`E5`** | **SD-WAN Failover (1-Click Atomic)**<br/>*(Composite Tool `v3.0.36+`)* | `Lance un test de failover SD-WAN automatisé vers DC1 (192.168.203.100) en coupant l'interface eth1 du routeur VyOS (10s de baseline, 15s de panne, 10s de reprise) et donne-moi le rapport de convergence complet.` | `run_automated_failover_test`<br/>`get_failover_convergence_report` | Single atomic call with guaranteed rollback (`rollback_verified: true`) + full blackout/RTT KPIs. |
+| **`F1`** | **SASE Security — Full Audit**<br/>*(Playbook F — Turn 1)* | `Lance un audit de sécurité SASE complet (URL Filtering, DNS Security et test EICAR) sur ce nœud et affiche le tableau des scores de blocage.` | `run_full_security_audit`<br/>`get_security_results_stats` | Triggers URL/DNS/EICAR audit and outputs protection percentages per category. |
+| **`F2`** | **SASE Security — Detailed Verdicts**<br/>*(Playbook F — Turn 2)* | `Montre-moi les 10 derniers résultats détaillés des tests de sécurité exécutés sur ce nœud.` | `list_security_results` | Lists the 10 newest security test executions with verdicts (`BLOCKED`, `ALLOWED`, `SINKHOLED`). |
+| **`F3`** | **SASE Security — Executive Summary**<br/>*(Composite Tool `v3.0.36+`)* | `Donne-moi le résumé exécutif de la posture de sécurité SASE sur ce nœud, incluant les brèches éventuelles (tests ALLOWED) et les diagnostics SCM/SLS.` | `get_security_audit_summary` | Returns global protection rate, breakdown by vector (URL, DNS, EICAR, C2, AI), and any unblocked targets. |
+
+---
+
 ## 📜 Revision History
 
 | Date | Stigix Version | Author / Trigger | Summary of Changes |
 |---|---|---|---|
-| 2026-10-17 | `v3.0.33` | Stigix Core Team | Initial PRD & Automated Validation Test Plan for AI Copilot reliability, anti-hallucination guardrails, and Ground-Truth E2E testing |
+| 2026-10-18 | `v3.0.38` | Stigix Core Team | Added Section 10 Quick-Reference Master Table consolidating all 21 copy-paste test prompts (Playbooks A–F + composite failover and security audit prompts) |
 | 2026-10-17 | `v3.0.33` | Stigix Core Team | Added Tier 3 copy-paste manual test playbook (Playbooks A–F), existing MCP tool description audit (Section 8), and roadmap of missing MCP/Copilot testing tools (Section 9) |
+| 2026-10-17 | `v3.0.33` | Stigix Core Team | Initial PRD & Automated Validation Test Plan for AI Copilot reliability, anti-hallucination guardrails, and Ground-Truth E2E testing |
 

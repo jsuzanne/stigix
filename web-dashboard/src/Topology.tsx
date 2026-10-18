@@ -529,69 +529,48 @@ const SiteNode = ({ data }: any) => {
         </div>
     );
 
-    // Render the Stigix Probe badge (either wired to the LAN VyOS router, or integrated on the LAN bus when no VyOS is present)
+    // Render the Stigix Probe badge (wired to the LAN VyOS router when present)
     const renderStigixBadge = (compactForVyosChain = false) => {
         if (!siteStigixNode) return null;
         const stigixIp = siteStigixNode.ip_private || siteStigixNode.ip || '';
         return (
             <div
                 className={cn(
-                    "bg-blue-500/15 dark:bg-blue-600/20 px-2.5 py-1 rounded-xl border-2 border-blue-500 dark:border-blue-400 text-[10px] font-mono font-bold text-blue-800 dark:text-blue-200 shadow-lg shadow-blue-500/20 dark:shadow-blue-500/25 relative z-20 transition-all hover:scale-105 hover:bg-blue-500/25 dark:hover:bg-blue-500/30 hover:border-blue-600 dark:hover:border-blue-300 flex items-center gap-1.5 cursor-default whitespace-nowrap",
-                    compactForVyosChain ? "h-[28px]" : "h-[30px]"
+                    "bg-blue-500/15 dark:bg-blue-600/20 px-2 py-0.5 rounded-lg border-2 border-blue-500 dark:border-blue-400 text-[9.5px] font-mono font-bold text-blue-800 dark:text-blue-200 shadow-md shadow-blue-500/20 dark:shadow-blue-500/25 relative z-20 transition-all hover:scale-105 hover:bg-blue-500/25 dark:hover:bg-blue-500/30 hover:border-blue-600 dark:hover:border-blue-300 flex items-center gap-1 cursor-default whitespace-nowrap",
+                    compactForVyosChain ? "h-[26px]" : "h-[28px]"
                 )}
                 title={`⚡ Stigix SASE Agent: ${siteStigixNode.name || siteStigixNode.id}${stigixIp ? ` (${stigixIp})` : ''} • ${isStigixLeader ? 'LEADER' : 'PEER'}${hasLanVyos ? ` • Connected via ${lanVyosRouters[0]?.name || 'VyOS'}` : ''}`}
             >
-                <span className="relative flex h-2 w-2 shrink-0">
+                <span className="relative flex h-1.5 w-1.5 shrink-0">
                     <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
-                    <span className="relative inline-flex rounded-full h-2 w-2 bg-blue-600 dark:bg-blue-500"></span>
+                    <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-blue-600 dark:bg-blue-400"></span>
                 </span>
-                <Zap size={12} className="text-blue-600 dark:text-blue-300 shrink-0" />
+                <Zap size={11} className="text-blue-600 dark:text-blue-300 shrink-0" />
                 <span className="font-black tracking-tight text-blue-900 dark:text-blue-100">STIGIX</span>
-                <span className="text-[8px] px-1.5 py-0.2 rounded bg-blue-500/20 dark:bg-blue-400/25 border border-blue-600/40 dark:border-blue-300/40 text-blue-900 dark:text-blue-100 uppercase font-black tracking-wider">
+                <span className="text-[7.5px] px-1 py-0.1 rounded bg-blue-500/20 dark:bg-blue-400/25 border border-blue-600/40 dark:border-blue-300/40 text-blue-950 dark:text-blue-100 uppercase font-black tracking-wider">
                     {isStigixLeader ? 'LEADER' : 'PEER'}
                 </span>
             </div>
         );
     };
 
-    // Render the Primary Shared LAN Bus pill (always centered at X=0 so DC1-R2 and DC1-R1 Port 3 wires land directly on it)
+    // Render the Primary Shared LAN Bus pill (always green for LAN subnet; embeds a compact blue Stigix capsule when no LAN VyOS is present)
     const renderPrimaryLanBus = () => {
-        // If there is NO LAN VyOS on this site and Stigix is present, highlight the LAN pill with the Stigix badge
-        if (!hasLanVyos && siteStigixNode) {
-            return (
-                <div className="relative flex items-center justify-center">
-                    <div
-                        className="bg-blue-500/15 dark:bg-blue-600/20 px-3.5 py-1 rounded-xl border-2 border-blue-500 dark:border-blue-400 text-[11px] font-mono font-bold text-blue-800 dark:text-blue-200 shadow-lg shadow-blue-500/20 dark:shadow-blue-500/25 relative z-10 group transition-all hover:scale-105 hover:bg-blue-500/25 dark:hover:bg-blue-500/30 hover:border-blue-600 dark:hover:border-blue-300 flex items-center gap-2 cursor-pointer h-[32px] whitespace-nowrap"
-                        title={`⚡ Stigix SASE Agent: ${siteStigixNode.name || siteStigixNode.id} (${siteStigixNode.ip || siteStigixNode.ip_private}) • ${isStigixLeader ? 'LEADER' : 'PEER'}`}
-                    >
-                        <span className="relative flex h-2 w-2">
-                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
-                            <span className="relative inline-flex rounded-full h-2 w-2 bg-blue-600 dark:bg-blue-500"></span>
-                        </span>
-                        <Zap size={13} className="text-blue-600 dark:text-blue-300" />
-                        <span>{primaryLanSubnet}</span>
-                        <span className="text-[8px] px-1.5 py-0.5 rounded bg-blue-500/20 dark:bg-blue-400/25 border border-blue-600/40 dark:border-blue-300/40 text-blue-900 dark:text-blue-100 uppercase font-black tracking-wider ml-0.5">
-                            {isStigixLeader ? 'LEADER' : 'PEER'}
-                        </span>
-                    </div>
-                    {secondarySubnets.length > 0 && (
-                        <div className="absolute left-full ml-2 flex items-center gap-1.5">
-                            {secondarySubnets.map((subnet, sIdx) => renderSecondarySubnetPill(subnet, sIdx))}
-                        </div>
-                    )}
-                </div>
-            );
-        }
+        const hasEmbeddedStigix = !hasLanVyos && Boolean(siteStigixNode);
+        const stigixIp = siteStigixNode ? (siteStigixNode.ip_private || siteStigixNode.ip || '') : '';
 
-        // Shared ION LAN Bus (e.g. 192.168.201.0/24 shared by DC1-R2 & DC1-R1, connected to VyOS)
         return (
             <div className="relative flex items-center justify-center">
                 <div
                     className={cn(
-                        "bg-emerald-500/15 px-3.5 py-1 rounded-xl border-2 border-emerald-600/55 dark:border-emerald-500/45 text-[11px] font-mono font-black text-emerald-800 dark:text-emerald-300 shadow-md shadow-emerald-500/15 relative z-10 transition-all hover:border-emerald-600 dark:hover:border-emerald-400 flex items-center gap-2 cursor-default whitespace-nowrap",
-                        hasLanVyos ? "h-[30px]" : "h-[32px]"
+                        "bg-emerald-500/15 py-1 rounded-xl border-2 border-emerald-600/55 dark:border-emerald-500/45 text-[11px] font-mono font-black text-emerald-800 dark:text-emerald-300 shadow-md shadow-emerald-500/15 relative z-10 transition-all hover:border-emerald-600 dark:hover:border-emerald-400 flex items-center gap-2 cursor-default whitespace-nowrap",
+                        hasEmbeddedStigix ? "pl-3 pr-1.5 h-[32px]" : (hasLanVyos ? "px-3.5 h-[30px]" : "px-3.5 h-[32px]")
                     )}
-                    title={`Shared ION LAN Segment: ${primaryLanSubnet}${devices.length > 1 ? ` (${devices.map((d: any) => d.device_name).join(' + ')})` : ''}`}
+                    title={
+                        hasEmbeddedStigix
+                            ? `ION LAN Segment: ${primaryLanSubnet} • ⚡ Stigix SASE Agent: ${siteStigixNode.name || siteStigixNode.id}${stigixIp ? ` (${stigixIp})` : ''} (${isStigixLeader ? 'LEADER' : 'PEER'})`
+                            : `Shared ION LAN Segment: ${primaryLanSubnet}${devices.length > 1 ? ` (${devices.map((d: any) => d.device_name).join(' + ')})` : ''}`
+                    }
                 >
                     <span className="w-2 h-2 rounded-full bg-emerald-600 dark:bg-emerald-400 shadow-[0_0_6px_rgba(52,211,153,0.8)] shrink-0" />
                     <span>{primaryLanSubnet}</span>
@@ -599,6 +578,22 @@ const SiteNode = ({ data }: any) => {
                         <span className="text-[8px] px-1.5 py-0.2 rounded bg-emerald-600/20 dark:bg-emerald-500/20 border border-emerald-600/45 dark:border-emerald-400/35 text-emerald-900 dark:text-emerald-200 uppercase font-black tracking-wider">
                             LAN BUS
                         </span>
+                    )}
+                    {hasEmbeddedStigix && (
+                        <div
+                            className="ml-0.5 pl-1.5 pr-1.5 py-0.5 rounded-lg bg-blue-500/20 dark:bg-blue-500/25 border border-blue-500/60 dark:border-blue-400/50 text-blue-900 dark:text-blue-100 shadow-sm shadow-blue-500/20 flex items-center gap-1 transition-all hover:bg-blue-500/30 dark:hover:bg-blue-500/35"
+                            title={`⚡ Stigix SASE Agent: ${siteStigixNode.name || siteStigixNode.id}${stigixIp ? ` (${stigixIp})` : ''} • ${isStigixLeader ? 'LEADER' : 'PEER'}`}
+                        >
+                            <span className="relative flex h-1.5 w-1.5 shrink-0">
+                                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
+                                <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-blue-600 dark:bg-blue-400"></span>
+                            </span>
+                            <Zap size={10} className="text-blue-600 dark:text-blue-300 shrink-0" />
+                            <span className="text-[9px] font-black tracking-tight text-blue-900 dark:text-blue-100">STIGIX</span>
+                            <span className="text-[7.5px] px-1 py-0.1 rounded bg-blue-600/20 dark:bg-blue-400/25 border border-blue-600/40 dark:border-blue-300/40 text-blue-950 dark:text-blue-100 uppercase font-black tracking-wider">
+                                {isStigixLeader ? 'LEADER' : 'PEER'}
+                            </span>
+                        </div>
                     )}
                 </div>
                 {secondarySubnets.length > 0 && (
@@ -626,7 +621,7 @@ const SiteNode = ({ data }: any) => {
                 {siteStigixNode && (
                     <div className="absolute right-full flex items-center">
                         {renderStigixBadge(true)}
-                        <div className="w-3.5 h-[2px] bg-gradient-to-r from-blue-500 to-amber-500 dark:from-blue-400 dark:to-amber-400 shadow-[0_0_6px_rgba(59,130,246,0.6)]" />
+                        <div className="w-2.5 h-[2px] bg-gradient-to-r from-blue-500 to-amber-500 dark:from-blue-400 dark:to-amber-400 shadow-[0_0_6px_rgba(59,130,246,0.6)]" />
                     </div>
                 )}
 
