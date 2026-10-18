@@ -2001,12 +2001,10 @@ function TopologyContent({ token, theme }: TopologyProps) {
         return () => clearInterval(interval);
     }, [token, activePeerId]);
 
-    // Live on-demand Prisma SD-WAN tunnel inspection when clicking an overlay tunnel
-    const [liveInspectedTunnel, setLiveInspectedTunnel] = useState<any | null>(null);
-    const [isLiveInspecting, setIsLiveInspecting] = useState(false);
+    // 1-Click Copy ION CLI command helper
     const [copiedCliKey, setCopiedCliKey] = useState<string | null>(null);
 
-    const handleCopyCli = useCallback((text: string, key: string) => {
+    const handleCopyCli = useCallback((key: string, text: string) => {
         if (!text) return;
         navigator.clipboard?.writeText(text).catch(() => {});
         setCopiedCliKey(key);
@@ -2014,39 +2012,6 @@ function TopologyContent({ token, theme }: TopologyProps) {
             setCopiedCliKey(prev => (prev === key ? null : prev));
         }, 1800);
     }, []);
-
-    useEffect(() => {
-        const vpnId = inspectedLink?.debug_vpn_id || inspectedLink?.vpnId || inspectedLink?.id;
-        if (!inspectedLink || !vpnId || vpnId === 'N/A' || !token) {
-            setLiveInspectedTunnel(null);
-            setIsLiveInspecting(false);
-            return;
-        }
-        let cancelled = false;
-        setIsLiveInspecting(true);
-        setLiveInspectedTunnel(null);
-
-        const srcSite = encodeURIComponent(inspectedLink.sourceSiteName || inspectedLink.sourceSite || '');
-        const dstSite = encodeURIComponent(inspectedLink.peer_site_name || inspectedLink.peerSite || '');
-
-        gFetch(`/api/topology/vpn-link/${encodeURIComponent(String(vpnId))}/inspect?srcSiteName=${srcSite}&dstSiteName=${dstSite}`, {
-            headers: { 'Authorization': `Bearer ${token}` }
-        })
-            .then(r => (r.ok ? r.json() : null))
-            .then(data => {
-                if (!cancelled && data && !data.error) {
-                    setLiveInspectedTunnel(data);
-                }
-            })
-            .catch(() => {})
-            .finally(() => {
-                if (!cancelled) setIsLiveInspecting(false);
-            });
-
-        return () => {
-            cancelled = true;
-        };
-    }, [inspectedLink?.debug_vpn_id, inspectedLink?.vpnId, inspectedLink?.id, inspectedLink?.sourceSiteName, inspectedLink?.peer_site_name, token, gFetch]);
 
     const handleVyosDirectAction = async (
         routerName: string,
@@ -3254,21 +3219,16 @@ function TopologyContent({ token, theme }: TopologyProps) {
                             }
 
                             const isUp = c.status === 'UP' || c.link_up || c.active || c.usable;
-                            const isNotUsable = (c.tunnel_state === 'NOT_USABLE') || (Boolean(c.link_up) && !Boolean(c.usable));
                             let strokeColor = '#3b82f6'; // Blue: Inactive / Passive Standby
                             let strokeClass = '5,5';
                             let animated = false;
-                            let tunnelState: 'ACTIVE' | 'INACTIVE' | 'NOT_USABLE' | 'DOWN' = 'INACTIVE';
+                            let tunnelState: 'ACTIVE' | 'INACTIVE' | 'DOWN' = 'INACTIVE';
 
                             if (c.active) {
                                 tunnelState = 'ACTIVE';
                                 strokeColor = '#10b981'; // Emerald Green: Active (UP)
                                 strokeClass = '2,6';
                                 animated = true;
-                            } else if (isNotUsable) {
-                                tunnelState = 'NOT_USABLE';
-                                strokeColor = '#f59e0b'; // Amber: Link Up, Not Usable (e.g. Core BGP Peering down in DC)
-                                strokeClass = '4,4';
                             } else if (c.status === 'DOWN' || (!isUp && !c.usable)) {
                                 tunnelState = 'DOWN';
                                 strokeColor = '#ef4444'; // Red: Down
@@ -4171,7 +4131,7 @@ function TopologyContent({ token, theme }: TopologyProps) {
 
             if (edgeData?.isOverlayTunnel && overlayTunnelStateFilter !== 'ALL') {
                 const edgeState = edgeData.tunnelState || (edgeData.active ? 'ACTIVE' : (edgeData.status === 'DOWN' ? 'DOWN' : 'INACTIVE'));
-                const isMatch = edgeState === overlayTunnelStateFilter || (overlayTunnelStateFilter === 'INACTIVE' && edgeState === 'NOT_USABLE');
+                const isMatch = edgeState === overlayTunnelStateFilter;
                 if (!isMatch) {
                     currentEdge = {
                         ...currentEdge,
@@ -4193,7 +4153,7 @@ function TopologyContent({ token, theme }: TopologyProps) {
                             ...currentEdge.style,
                             opacity: 1,
                             strokeWidth: edgeData.active ? 4.5 : 3,
-                            filter: edgeData.active ? 'drop-shadow(0 0 6px rgba(16,185,129,0.7))' : (edgeState === 'NOT_USABLE' ? 'drop-shadow(0 0 6px rgba(245,158,11,0.7))' : edgeState === 'INACTIVE' ? 'drop-shadow(0 0 6px rgba(59,130,246,0.6))' : 'drop-shadow(0 0 6px rgba(239,68,68,0.7))'),
+                            filter: edgeData.active ? 'drop-shadow(0 0 6px rgba(16,185,129,0.7))' : edgeState === 'INACTIVE' ? 'drop-shadow(0 0 6px rgba(59,130,246,0.6))' : 'drop-shadow(0 0 6px rgba(239,68,68,0.7))',
                             transition: 'opacity 0.15s ease, stroke-width 0.15s ease'
                         }
                     };
@@ -5423,16 +5383,16 @@ function TopologyContent({ token, theme }: TopologyProps) {
                                             {/* State Badge with Directional Arrows */}
                                             <div className={cn(
                                                 "px-2 py-0.5 rounded-full border text-[9px] font-black uppercase tracking-wider flex items-center gap-1",
-                                                hoveredEdge.data.tunnelState === 'ACTIVE' && "bg-emerald-500/20 text-emerald-400 border-emerald-500/40 shadow-[0_0_10px_rgba(16,185,129,0.3)]",
-                                                hoveredEdge.data.tunnelState === 'INACTIVE' && "bg-blue-500/20 text-blue-400 border-blue-500/40",
-                                                hoveredEdge.data.tunnelState === 'DOWN' && "bg-rose-500/20 text-rose-400 border-rose-500/40"
+                                                (hoveredEdge.data.tunnelState === 'ACTIVE' || hoveredEdge.data.active) && "bg-emerald-500/20 text-emerald-400 border-emerald-500/40 shadow-[0_0_10px_rgba(16,185,129,0.3)]",
+                                                (!hoveredEdge.data.active && hoveredEdge.data.status !== 'DOWN' && hoveredEdge.data.tunnelState !== 'DOWN') && "bg-blue-500/20 text-blue-400 border-blue-500/40",
+                                                (hoveredEdge.data.tunnelState === 'DOWN' || hoveredEdge.data.status === 'DOWN') && "bg-rose-500/20 text-rose-400 border-rose-500/40"
                                             )}>
                                                 <span className="text-[9px]">⇐</span>
                                                 <span className={cn(
                                                     "w-1.5 h-1.5 rounded-full",
-                                                    hoveredEdge.data.tunnelState === 'ACTIVE' ? "bg-emerald-400 animate-pulse" : hoveredEdge.data.tunnelState === 'INACTIVE' ? "bg-blue-400" : "bg-rose-400"
+                                                    (hoveredEdge.data.tunnelState === 'ACTIVE' || hoveredEdge.data.active) ? "bg-emerald-400 animate-pulse" : (hoveredEdge.data.tunnelState === 'DOWN' || hoveredEdge.data.status === 'DOWN') ? "bg-rose-400" : "bg-blue-400"
                                                 )} />
-                                                <span>{hoveredEdge.data.tunnelState || (hoveredEdge.data.active ? 'ACTIVE' : hoveredEdge.data.status === 'DOWN' ? 'DOWN' : 'INACTIVE')}</span>
+                                                <span>{hoveredEdge.data.active ? 'ACTIVE' : (hoveredEdge.data.status === 'DOWN' || hoveredEdge.data.tunnelState === 'DOWN') ? 'DOWN' : 'INACTIVE'}</span>
                                                 <span className="text-[9px]">⇒</span>
                                             </div>
 
@@ -5496,36 +5456,32 @@ function TopologyContent({ token, theme }: TopologyProps) {
                         {/* Floating Link Inspector Card (Zero Canvas Push) */}
                         {inspectedLink && (
                             inspectedLink.isOverlayTunnel ? (() => {
-                                const live = liveInspectedTunnel || {};
-                                const rawStatus = String(live.status || inspectedLink.status || '').toUpperCase();
-                                const isTunnelActive = live.active !== undefined ? Boolean(live.active) : (inspectedLink.tunnelState === 'ACTIVE' || Boolean(inspectedLink.active));
-                                const isTunnelUsable = live.usable !== undefined ? Boolean(live.usable) : (inspectedLink.usable !== undefined ? Boolean(inspectedLink.usable) : isTunnelActive);
-                                const isLinkUp = live.link_up !== undefined ? Boolean(live.link_up) : (inspectedLink.link_up !== undefined ? Boolean(inspectedLink.link_up) : rawStatus === 'UP');
+                                const rawStatus = String(inspectedLink.status || '').toUpperCase();
+                                const isTunnelActive = inspectedLink.tunnelState === 'ACTIVE' || Boolean(inspectedLink.active);
+                                const isDown = rawStatus === 'DOWN' || inspectedLink.tunnelState === 'DOWN';
 
-                                const resolvedState: 'ACTIVE' | 'STANDBY' | 'NOT_USABLE' | 'DOWN' =
+                                const resolvedState: 'ACTIVE' | 'INACTIVE' | 'DOWN' =
                                     isTunnelActive
                                         ? 'ACTIVE'
-                                        : (rawStatus === 'DOWN' || (!isLinkUp && !isTunnelUsable))
+                                        : isDown
                                             ? 'DOWN'
-                                            : !isTunnelUsable
-                                                ? 'NOT_USABLE'
-                                                : 'STANDBY';
+                                            : 'INACTIVE';
 
-                                const statusReason = live.status_reason ?? inspectedLink.status_reason ?? null;
-                                const statusReasonCode = live.status_reason_code ?? inspectedLink.status_reason_code ?? null;
-                                const statusReasonDetail = live.status_reason_detail ?? inspectedLink.status_reason_detail ?? null;
-                                const uptimeSec = live.uptime_sec ?? inspectedLink.uptime_sec ?? null;
-                                const flapCount = live.flap_count ?? inspectedLink.flap_count ?? 0;
-                                const cipher = live.cipher || inspectedLink.cipher || 'aes-256-cbc';
-                                const keepaliveInterval = live.keepalive_interval_ms ?? inspectedLink.keepalive_interval_ms ?? 1000;
-                                const keepaliveRetries = live.keepalive_retries ?? inspectedLink.keepalive_retries ?? 3;
-                                const anynetType = live.anynet_type || inspectedLink.anynet_type || 'auto-public';
-                                const vpnLinkId = String(inspectedLink.debug_vpn_id || inspectedLink.id || live.vpn_id || 'N/A');
+                                const statusReason = inspectedLink.status_reason ?? null;
+                                const statusReasonCode = inspectedLink.status_reason_code ?? null;
+                                const statusReasonDetail = inspectedLink.status_reason_detail ?? null;
+                                const uptimeSec = inspectedLink.uptime_sec ?? null;
+                                const flapCount = inspectedLink.flap_count ?? 0;
+                                const cipher = inspectedLink.cipher || 'aes-256-cbc';
+                                const keepaliveInterval = inspectedLink.keepalive_interval_ms ?? 1000;
+                                const keepaliveRetries = inspectedLink.keepalive_retries ?? 3;
+                                const anynetType = inspectedLink.anynet_type || 'auto-public';
+                                const vpnLinkId = String(inspectedLink.debug_vpn_id || inspectedLink.id || 'N/A');
 
-                                const localVepId = live.src_vep_id || inspectedLink.local_vep_id || null;
-                                const peerVepId = live.dst_vep_id || inspectedLink.peer_vep_id || null;
-                                const localShimIp = live.src_shim_ip || inspectedLink.local_shim_ip || null;
-                                const peerShimIp = live.dst_shim_ip || inspectedLink.peer_shim_ip || null;
+                                const localVepId = inspectedLink.local_vep_id || null;
+                                const peerVepId = inspectedLink.peer_vep_id || null;
+                                const localShimIp = inspectedLink.local_shim_ip || null;
+                                const peerShimIp = inspectedLink.peer_shim_ip || null;
 
                                 const localIonCli = localVepId ? `dump vpn status VpnID=${localVepId}` : null;
                                 const peerIonCli = peerVepId ? `dump vpn status VpnID=${peerVepId}` : null;
@@ -5539,11 +5495,9 @@ function TopologyContent({ token, theme }: TopologyProps) {
                                                     "p-2 rounded-xl shrink-0",
                                                     resolvedState === 'ACTIVE'
                                                         ? "bg-emerald-500/20 text-emerald-400"
-                                                        : resolvedState === 'NOT_USABLE'
-                                                            ? "bg-amber-500/20 text-amber-400"
-                                                            : resolvedState === 'DOWN'
-                                                                ? "bg-rose-500/20 text-rose-400"
-                                                                : "bg-blue-500/20 text-blue-400"
+                                                        : resolvedState === 'DOWN'
+                                                            ? "bg-rose-500/20 text-rose-400"
+                                                            : "bg-blue-500/20 text-blue-400"
                                                 )}>
                                                     <Share2 size={16} />
                                                 </div>
@@ -5555,30 +5509,19 @@ function TopologyContent({ token, theme }: TopologyProps) {
                                                         <span className={cn(
                                                             "px-2 py-0.5 rounded-full border text-[9px] font-black uppercase tracking-wider flex items-center gap-1 whitespace-nowrap",
                                                             resolvedState === 'ACTIVE' && "bg-emerald-500/20 text-emerald-400 border-emerald-500/40 shadow-[0_0_10px_rgba(16,185,129,0.2)]",
-                                                            resolvedState === 'STANDBY' && "bg-blue-500/20 text-blue-400 border-blue-500/40",
-                                                            resolvedState === 'NOT_USABLE' && "bg-amber-500/20 text-amber-400 border-amber-500/40 shadow-[0_0_10px_rgba(245,158,11,0.15)]",
+                                                            resolvedState === 'INACTIVE' && "bg-blue-500/20 text-blue-400 border-blue-500/40",
                                                             resolvedState === 'DOWN' && "bg-rose-500/20 text-rose-400 border-rose-500/40"
                                                         )}>
                                                             <span className={cn(
                                                                 "w-1.5 h-1.5 rounded-full shrink-0",
                                                                 resolvedState === 'ACTIVE' ? "bg-emerald-400 animate-pulse" :
-                                                                resolvedState === 'NOT_USABLE' ? "bg-amber-400 animate-pulse" :
-                                                                resolvedState === 'STANDBY' ? "bg-blue-400" : "bg-rose-400"
+                                                                resolvedState === 'DOWN' ? "bg-rose-400" : "bg-blue-400"
                                                             )} />
-                                                            {resolvedState === 'NOT_USABLE' ? 'UP · NOT USABLE' : resolvedState}
+                                                            {resolvedState}
                                                         </span>
                                                         <span className="px-1.5 py-0.5 rounded bg-card-secondary border border-border/50 text-[8px] font-mono font-bold text-text-muted uppercase whitespace-nowrap">
                                                             {anynetType}
                                                         </span>
-                                                        {isLiveInspecting ? (
-                                                            <span className="px-1.5 py-0.5 rounded-full bg-sky-500/15 border border-sky-500/30 text-[8px] font-mono font-bold text-sky-400 flex items-center gap-1 whitespace-nowrap">
-                                                                <RefreshCw size={8} className="animate-spin" /> LIVE API...
-                                                            </span>
-                                                        ) : liveInspectedTunnel ? (
-                                                            <span className="px-1.5 py-0.5 rounded-full bg-emerald-500/15 border border-emerald-500/30 text-[8px] font-mono font-bold text-emerald-400 flex items-center gap-1 whitespace-nowrap" title="Real-time controller query completed">
-                                                                <span className="w-1 h-1 rounded-full bg-emerald-400" /> LIVE
-                                                            </span>
-                                                        ) : null}
                                                     </div>
                                                     <p className="text-[10px] text-text-muted font-mono tracking-wide truncate whitespace-nowrap mt-0.5">
                                                         {inspectedLink.sourceSiteName || 'Source'} ➔ {inspectedLink.peer_site_name || 'Peer'}
@@ -5599,22 +5542,24 @@ function TopologyContent({ token, theme }: TopologyProps) {
                                             </button>
                                         </div>
 
-                                        {/* Root-Cause Diagnostic Alert Banner (Shown when Not Usable, Down, or Fault Reason present) */}
-                                        {(statusReason || resolvedState === 'NOT_USABLE' || resolvedState === 'DOWN') && (
+                                        {/* Root-Cause Diagnostic Alert Banner */}
+                                        {(statusReason || resolvedState !== 'ACTIVE') && (
                                             <div className={cn(
                                                 "mt-2.5 p-2.5 rounded-xl border flex items-start gap-2.5 text-xs",
                                                 resolvedState === 'DOWN'
                                                     ? "bg-rose-500/10 border-rose-500/30 text-rose-200"
-                                                    : "bg-amber-500/10 border-amber-500/30 text-amber-200"
+                                                    : resolvedState === 'INACTIVE'
+                                                        ? "bg-blue-500/10 border-blue-500/30 text-blue-200"
+                                                        : "bg-emerald-500/10 border-emerald-500/30 text-emerald-200"
                                             )}>
                                                 <AlertTriangle size={15} className={cn(
                                                     "shrink-0 mt-0.5",
-                                                    resolvedState === 'DOWN' ? "text-rose-400" : "text-amber-400"
+                                                    resolvedState === 'DOWN' ? "text-rose-400" : resolvedState === 'INACTIVE' ? "text-blue-400" : "text-emerald-400"
                                                 )} />
                                                 <div className="min-w-0 flex-1">
                                                     <div className="flex items-center justify-between gap-2 flex-wrap">
                                                         <span className="font-black text-[11px] tracking-tight">
-                                                            {resolvedState === 'NOT_USABLE' ? 'Link is "Not Usable"' : resolvedState === 'DOWN' ? 'Link is "Down"' : 'Tunnel Diagnostic'}
+                                                            {resolvedState === 'DOWN' ? 'Link is "Down"' : resolvedState === 'INACTIVE' ? 'Link is "Inactive"' : 'Transit Active'}
                                                             {statusReason ? ` — Reason: ${statusReason}` : ''}
                                                         </span>
                                                         {statusReasonCode && (
@@ -5622,7 +5567,9 @@ function TopologyContent({ token, theme }: TopologyProps) {
                                                                 "px-1.5 py-0.5 rounded font-mono text-[8px] font-bold uppercase tracking-wider border shrink-0",
                                                                 resolvedState === 'DOWN'
                                                                     ? "bg-rose-500/20 text-rose-300 border-rose-500/40"
-                                                                    : "bg-amber-500/20 text-amber-300 border-amber-500/40"
+                                                                    : resolvedState === 'INACTIVE'
+                                                                        ? "bg-blue-500/20 text-blue-300 border-blue-500/40"
+                                                                        : "bg-emerald-500/20 text-emerald-300 border-emerald-500/40"
                                                             )}>
                                                                 {statusReasonCode}
                                                             </span>
@@ -5797,17 +5744,14 @@ function TopologyContent({ token, theme }: TopologyProps) {
                                                 <span className={cn(
                                                     "w-2 h-2 rounded-full shrink-0",
                                                     resolvedState === 'ACTIVE' ? "bg-emerald-500 animate-pulse" :
-                                                    resolvedState === 'NOT_USABLE' ? "bg-amber-500 animate-pulse" :
                                                     resolvedState === 'DOWN' ? "bg-rose-500" : "bg-blue-500"
                                                 )} />
                                                 <span className="text-[9px] font-black uppercase text-text-primary truncate whitespace-nowrap">
                                                     {resolvedState === 'ACTIVE'
                                                         ? 'Operational Forwarding Transit Path'
-                                                        : resolvedState === 'NOT_USABLE'
-                                                            ? `Tunnel Up, Not Usable (${statusReason || 'Routing Ineligible'})`
-                                                            : resolvedState === 'STANDBY'
-                                                                ? 'Standby Path (Up & Usable, Idle Transit)'
-                                                                : `Tunnel Down (${statusReason || 'Offline'})`}
+                                                        : resolvedState === 'DOWN'
+                                                            ? `Tunnel Down (${statusReason || 'Offline'})`
+                                                            : `Inactive Tunnel (${statusReason || 'Standby Path'})`}
                                                 </span>
                                             </div>
                                             <div className="flex items-center gap-2 shrink-0">
@@ -6309,26 +6253,28 @@ function TopologyContent({ token, theme }: TopologyProps) {
                                                                                         <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
                                                                                         ACTIVE
                                                                                     </span>
-                                                                                ) : t.isRoutingUsable ? (
-                                                                                    <span className="px-2 py-0.5 rounded-full text-[9px] font-bold bg-cyan-500/15 text-cyan-400 border border-cyan-500/30">
-                                                                                        STANDBY
-                                                                                    </span>
-                                                                                ) : t.isLinkUp ? (
-                                                                                    <span className="px-2 py-0.5 rounded-full text-[9px] font-bold bg-amber-500/15 text-amber-400 border border-amber-500/30 flex items-center gap-1">
-                                                                                        <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse"></span>
-                                                                                        NOT USABLE
-                                                                                    </span>
-                                                                                ) : (
+                                                                                ) : (t.status === 'DOWN' || (!t.isLinkUp && !t.isRoutingUsable)) ? (
                                                                                     <span className="px-2 py-0.5 rounded-full text-[9px] font-bold bg-rose-500/15 text-rose-400 border border-rose-500/30">
                                                                                         DOWN
+                                                                                    </span>
+                                                                                ) : (
+                                                                                    <span className="px-2 py-0.5 rounded-full text-[9px] font-bold bg-blue-500/15 text-blue-400 border border-blue-500/30">
+                                                                                        INACTIVE
                                                                                     </span>
                                                                                 )}
                                                                             </div>
                                                                         </div>
 
                                                                         {t.raw?.status_reason && (
-                                                                            <div className="mb-2 px-2 py-1 rounded-md bg-amber-500/10 border border-amber-500/20 text-[9px] font-mono text-amber-300 flex items-center gap-1.5 truncate" title={t.raw.status_reason_detail || t.raw.status_reason}>
-                                                                                <AlertTriangle size={10} className="shrink-0 text-amber-400" />
+                                                                            <div className={cn(
+                                                                                "mb-2 px-2 py-1 rounded-md text-[9px] font-mono flex items-center gap-1.5 truncate border",
+                                                                                t.isRoutingActive
+                                                                                    ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-300"
+                                                                                    : (t.status === 'DOWN' || (!t.isLinkUp && !t.isRoutingUsable))
+                                                                                        ? "bg-rose-500/10 border-rose-500/20 text-rose-300"
+                                                                                        : "bg-blue-500/10 border-blue-500/20 text-blue-300"
+                                                                            )} title={t.raw.status_reason_detail || t.raw.status_reason}>
+                                                                                <AlertTriangle size={10} className="shrink-0" />
                                                                                 <span className="truncate">Reason: {t.raw.status_reason}</span>
                                                                             </div>
                                                                         )}
@@ -6361,7 +6307,7 @@ function TopologyContent({ token, theme }: TopologyProps) {
                                                                                 onClick={() => setInspectedLink({
                                                                                     ...(t.raw || {}),
                                                                                     isOverlayTunnel: true,
-                                                                                    tunnelState: t.isRoutingActive ? 'ACTIVE' : t.isRoutingUsable ? 'STANDBY' : t.isLinkUp ? 'NOT_USABLE' : 'DOWN',
+                                                                                    tunnelState: t.isRoutingActive ? 'ACTIVE' : (t.status === 'DOWN' || (!t.isLinkUp && !t.isRoutingUsable)) ? 'DOWN' : 'INACTIVE',
                                                                                     sourceSiteName: t.sourceSite,
                                                                                     sourceSiteId: t.sourceSiteId,
                                                                                     sourceDeviceName: t.sourceDevice,

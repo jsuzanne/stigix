@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.0.47] - 2026-10-18
+
+### Fixed & Enhanced
+- **Preserved Strict 3-State SD-WAN Tunnel Visualization (`web-dashboard/src/Topology.tsx`, `engines/getflow.py`, `Scripts/getflow.py`)**:
+  - **3-State Canvas & Tooltip Standard**: Restored pure 3-state rendering across the map canvas edges, hover tooltips, filter pills, and side drawer:
+    - **`ACTIVE`** (Emerald green `#10b981`): Forwarding data traffic.
+    - **`INACTIVE`** (Blue `#3b82f6`): Operational Up tunnels in standby mode (passive cluster member or backup circuit) or not usable for transit.
+    - **`DOWN`** (Rose red `#ef4444`): Physically down or unreachable peer tunnels.
+  - **Diagnostic Reason in Inspector Widget**: The diagnostic `status_reason`, `status_reason_code`, and `status_reason_detail` are clearly surfaced inside the floating inspector widget card when clicking any tunnel (e.g. `Core Peering is down in DC` when a Hub BGP peer is down, or `Cluster / Standby Member Path`, or `Peer is unreachable`).
+  - **Hub/Datacenter Scoped BGP Peer Filtering**: Scoped Core BGP peer checks exclusively to Hub/DC sites to eliminate false positives from spoke branch LAN BGP peers.
+  - **1-Click ION CLI Copy**: Fixed clipboard copy handler argument ordering for `dump vpn status VpnID=<vep_id>` for local and peer ION endpoints.
+
 ## [3.0.46] - 2026-10-18
 
 ### Fixed

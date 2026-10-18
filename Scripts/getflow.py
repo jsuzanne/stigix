@@ -1120,18 +1120,22 @@ def get_bulk_topology(sdk, all_site_ids, el_status_map=None, id_to_el_name=None,
         direction = (b_item.get('direction') or '').lower()
         pstat = b_item.get('peer_status') or {}
         b_state = pstat.get('state', 'Unknown')
-        # Core BGP peers in DC have direction empty or != 'wan'
-        if direction != 'wan' and b_state != 'Established':
-            b_eid = b_item.get('element_id')
-            b_sid = b_item.get('site_id')
+        b_eid = b_item.get('element_id')
+        b_sid = b_item.get('site_id')
+        s_obj = site_id_to_obj.get(b_sid, {})
+        s_name = (s_obj.get('name') or '').lower()
+        is_hub_site = (s_obj.get('element_cluster_role') == 'HUB' or 'dc' in s_name or 'hub' in s_name)
+        # Core BGP peers in DC have direction empty or != 'wan' AND belong to a Hub/DC
+        if is_hub_site and direction != 'wan' and b_state != 'Established':
+            peer_id = b_item.get('peer_ip') or b_item.get('peer_ip_v4') or b_item.get('router_id') or b_item.get('name') or 'Core BGP Peer'
             info = {
-                'router_id': b_item.get('router_id') or b_item.get('name') or 'BGP Peer',
+                'router_id': peer_id,
                 'state': b_state,
                 'downtime': pstat.get('downtime') or 'N/A',
                 'element_id': b_eid,
                 'element_name': id_to_el_name.get(b_eid, b_eid),
                 'site_id': b_sid,
-                'site_name': site_id_to_obj.get(b_sid, {}).get('name', b_sid),
+                'site_name': s_obj.get('name', b_sid),
             }
             if b_eid:
                 core_bgp_down_by_el.setdefault(str(b_eid), []).append(info)
@@ -1259,12 +1263,10 @@ def get_bulk_topology(sdk, all_site_ids, el_status_map=None, id_to_el_name=None,
                 is_usable = bool(vdata.get('usable', False))
                 is_active = bool(vdata.get('active', False))
 
-                if is_up and is_usable and is_active:
+                if is_up and is_active:
                     t_state = 'ACTIVE'
-                elif is_up and is_usable and not is_active:
-                    t_state = 'STANDBY'
-                elif is_up and not is_usable:
-                    t_state = 'NOT_USABLE'
+                elif is_up and not is_active:
+                    t_state = 'INACTIVE'
                 else:
                     t_state = 'DOWN'
                 vdata['tunnel_state'] = t_state
@@ -1314,29 +1316,42 @@ def get_bulk_topology(sdk, all_site_ids, el_status_map=None, id_to_el_name=None,
                 reason_code = None
                 reason_detail = None
 
-                if t_state == 'NOT_USABLE':
-                    # Check if Hub/DC element has Core BGP Peering down
-                    ep1_el = str(vdata.get('ep1_element_id') or '')
-                    ep2_el = str(vdata.get('ep2_element_id') or '')
-                    peer_sid = str(c.get('peer_site_id') or '')
-                    src_sid = str(site_id or '')
-                    bgp_downs = (
-                        core_bgp_down_by_el.get(ep1_el)
-                        or core_bgp_down_by_el.get(ep2_el)
-                        or core_bgp_down_by_site.get(peer_sid)
-                        or core_bgp_down_by_site.get(src_sid)
-                    )
-                    if bgp_downs:
-                        b0 = bgp_downs[0]
-                        reason = "Core Peering is down in DC"
-                        reason_code = "PEERING_CORE_DOWN"
-                        reason_detail = f"{b0['element_name']} Core BGP peer {b0['router_id']} is {b0['state']} (down {b0['downtime']})"
-                    elif best_event_code:
-                        reason = VPN_FAULT_REASON_MAP.get(best_event_code, best_event_code)
-                        reason_code = best_event_code
+                if t_state == 'INACTIVE':
+                    if not is_usable:
+                        # Check if remote or local Hub/DC element has Core BGP Peering down
+                        ep1_el = str(vdata.get('ep1_element_id') or '')
+                        ep2_el = str(vdata.get('ep2_element_id') or '')
+                        peer_sid = str(c.get('peer_site_id') or '')
+                        src_sid = str(site_id or '')
+                        peer_is_hub = (site_id_to_obj.get(peer_sid, {}).get('element_cluster_role') == 'HUB' or 'dc' in (site_id_to_obj.get(peer_sid, {}).get('name') or '').lower())
+                        src_is_hub = (site_id_to_obj.get(src_sid, {}).get('element_cluster_role') == 'HUB' or 'dc' in (site_id_to_obj.get(src_sid, {}).get('name') or '').lower())
+                        bgp_downs = (
+                            core_bgp_down_by_el.get(ep1_el)
+                            or core_bgp_down_by_el.get(ep2_el)
+                            or (core_bgp_down_by_site.get(peer_sid) if peer_is_hub else None)
+                            or (core_bgp_down_by_site.get(src_sid) if src_is_hub else None)
+                        )
+                        if bgp_downs:
+                            b0 = bgp_downs[0]
+                            reason = "Core Peering is down in DC"
+                            reason_code = "PEERING_CORE_DOWN"
+                            reason_detail = f"{b0['element_name']} Core BGP peer ({b0['router_id']}) is {b0['state']} (down {b0['downtime']})"
+                        elif best_event_code:
+                            reason = VPN_FAULT_REASON_MAP.get(best_event_code, best_event_code)
+                            reason_code = best_event_code
+                        else:
+                            reason = "Inactive (Cluster / Standby Member Path — Not Usable)"
+                            reason_code = "STANDBY_NOT_USABLE"
+                            reason_detail = "Tunnel is Up physically but marked Not Usable by controller (standby cluster member or backup circuit)"
                     else:
-                        reason = "Tunnel Up but marked Not Usable by controller"
-                        reason_code = "VPN_NOT_USABLE"
+                        reason = "Inactive (Standby Path — Up & Usable)"
+                        reason_code = "STANDBY_USABLE"
+                        reason_detail = "Tunnel is operational and ready for forwarding, but currently idle / passive standby"
+
+                elif t_state == 'ACTIVE':
+                    reason = "Active (Primary Forwarding Transit Path)"
+                    reason_code = "FORWARDING_ACTIVE"
+                    reason_detail = "Tunnel is actively carrying overlay data traffic"
 
                 elif t_state == 'DOWN':
                     if best_event_code:
