@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.0.40] - 2026-10-18
+
+### Added & Enhanced
+- **Stigix ChangeGuard — Before / After State Snapshot & Delta Diff Engine (`snapshot-manager.ts`, `ChangeGuard.tsx`, `ai-tools.ts`, `server.ts`)**:
+  - **Core Snapshot Engine & Retention**: Captures node identity, WireGuard overlay mesh tunnels (handshakes, endpoints, UP/DOWN status), and full Digital Experience Monitoring (DEM) probe matrices (average latency, jitter, loss %, health status). Automatically persists timestamped JSON snapshots to `./config/snapshots/` with rotation (capped at 50).
+  - **Deterministic Delta Diffing & Verdict Scoring**: Implemented mathematical delta evaluation comparing baseline vs. target/live states with confidence scoring (0–100) and actionable operational verdicts (`GO`, `WARNING`, `NO_GO`). Flags critical regressions (tunnel down, packet loss increase, latency spikes) alongside improvements.
+  - **REST API & Feature Flag Security**: Added authenticated endpoints (`GET/POST /api/snapshots`, `GET/DELETE /api/snapshots/:id`, `POST /api/snapshots/diff`) strictly guarded behind the `ENABLE_CHANGE_SNAPSHOTS` feature flag.
+  - **AI Copilot Integration**: Added `take_snapshot`, `compare_snapshots`, and `list_snapshots` tools into `ai-tools.ts` for conversational natural language pre/post migration validation.
+  - **Web Dashboard UI (`ChangeGuard.tsx`, `navigationConfig.ts`, `App.tsx`)**: Built a dedicated ChangeGuard view in the `Validate` navigation domain featuring interactive Baseline vs. Target comparison, real-time verdict banners, color-coded DEM & WireGuard delta tables, raw JSON inspection, and snapshot timeline management.
+  - **Automated Test Suite & PRD**: Added 100% automated test coverage in `test-snapshot-engine.ts` and evolutionary 4-phase PRD in `docs/PRD_CHANGE_GUARD_BEFORE_AFTER_DIFF.md`.
+
 ## [3.0.39] - 2026-10-18
 
 ### Fixed & Enhanced

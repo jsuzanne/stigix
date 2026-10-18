@@ -22,6 +22,7 @@ interface SidebarFlyoutProps {
         xfr_enabled?: boolean;
         pcap_enabled?: boolean;
         copilot_enabled?: boolean;
+        snapshots_enabled?: boolean;
     };
     activeTasks?: Record<string, boolean>;
     favorites?: string[];
@@ -54,6 +55,7 @@ export const SidebarFlyout: React.FC<SidebarFlyoutProps> = ({
         if (item.featureFlag === 'xfr_enabled' && !features.xfr_enabled) return false;
         if (item.featureFlag === 'pcap_enabled' && !features.pcap_enabled) return false;
         if (item.featureFlag === 'copilot_enabled' && !features.copilot_enabled) return false;
+        if (item.featureFlag === 'snapshots_enabled' && !features.snapshots_enabled) return false;
         return true;
     });
 

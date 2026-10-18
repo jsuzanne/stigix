@@ -43,6 +43,7 @@ import multer from 'multer';
 import { FleetTunnelManager } from './fleet-tunnel.js';
 import { MagicJoinManager } from './magic-join-manager.js';
 import { CertificateManager } from './certificate-manager.js';
+import { SnapshotManager, StigixSnapshot } from './snapshot-manager.js';
 
 // Multer setup for EDL file uploads (memory storage)
 const upload = multer({
@@ -2981,7 +2982,9 @@ app.get('/api/features', (req, res) => {
         xfr_enabled: true,
         xfr_targets: XFR_QUICK_TARGETS,
         targets: targetsManager.getMergedTargets(),   // shared targets registry
-        enablePcapReplay: process.env.ENABLE_PCAP_REPLAY === 'true'
+        enablePcapReplay: process.env.ENABLE_PCAP_REPLAY === 'true',
+        snapshots_enabled: process.env.ENABLE_CHANGE_SNAPSHOTS === 'true',
+        enableChangeSnapshots: process.env.ENABLE_CHANGE_SNAPSHOTS === 'true'
     });
 });
 
@@ -15973,6 +15976,117 @@ app.post('/api/internal/log-event', (req, res) => {
 });
 log('SYSTEM', `⚡ API Studio & Real-Time Log Inspector mounted at /api/api-studio, /api/logs, /api/playground`);
 
+// --- Stigix ChangeGuard Snapshot & Delta API ---
+const snapshotManager = new SnapshotManager(APP_CONFIG.configDir);
+const getStigixVersion = () => {
+    try {
+        const vPath = fs.existsSync('/app/VERSION') ? '/app/VERSION' : path.join(PROJECT_ROOT, 'VERSION');
+        if (fs.existsSync(vPath)) return fs.readFileSync(vPath, 'utf8').trim();
+    } catch {}
+    return process.env.STIGIX_VERSION || '3.0.39';
+};
+
+app.get('/api/snapshots', authenticateToken, (req, res) => {
+    if (process.env.ENABLE_CHANGE_SNAPSHOTS !== 'true') {
+        return res.status(403).json({ error: 'ChangeGuard Snapshots feature is disabled (ENABLE_CHANGE_SNAPSHOTS=false)' });
+    }
+    const snapshots = snapshotManager.listSnapshots();
+    res.json({ snapshots });
+});
+
+app.post('/api/snapshots', authenticateToken, async (req, res) => {
+    if (process.env.ENABLE_CHANGE_SNAPSHOTS !== 'true') {
+        return res.status(403).json({ error: 'ChangeGuard Snapshots feature is disabled (ENABLE_CHANGE_SNAPSHOTS=false)' });
+    }
+    const { name, description, tags } = req.body;
+    if (!name || typeof name !== 'string' || !name.trim()) {
+        return res.status(400).json({ error: 'Snapshot name is required' });
+    }
+    try {
+        const snapshot = await snapshotManager.captureState({
+            name,
+            description,
+            tags,
+            createdBy: (req as any).user?.username || 'api',
+            context: {
+                registryManager,
+                connectivityLogger,
+                getAllProbes: getFullEffectiveConnectivityProbes,
+                getSystemSettings,
+                underlayTopologyManager,
+                version: getStigixVersion()
+            }
+        });
+        log('SNAPSHOT', `📸 Captured state snapshot "${snapshot.name}" (${snapshot.id}) with ${snapshot.tunnels.length} tunnels and ${snapshot.demMatrix.length} DEM probes`);
+        res.json({ success: true, snapshot });
+    } catch (e: any) {
+        res.status(500).json({ error: 'Failed to capture snapshot', detail: e.message });
+    }
+});
+
+app.get('/api/snapshots/:id', authenticateToken, (req, res) => {
+    if (process.env.ENABLE_CHANGE_SNAPSHOTS !== 'true') {
+        return res.status(403).json({ error: 'ChangeGuard Snapshots feature is disabled' });
+    }
+    const snapshot = snapshotManager.getSnapshot(req.params.id);
+    if (!snapshot) {
+        return res.status(404).json({ error: 'Snapshot not found' });
+    }
+    res.json({ snapshot });
+});
+
+app.delete('/api/snapshots/:id', authenticateToken, (req, res) => {
+    if (process.env.ENABLE_CHANGE_SNAPSHOTS !== 'true') {
+        return res.status(403).json({ error: 'ChangeGuard Snapshots feature is disabled' });
+    }
+    const success = snapshotManager.deleteSnapshot(req.params.id);
+    if (!success) {
+        return res.status(404).json({ error: 'Snapshot not found or could not be deleted' });
+    }
+    res.json({ success: true, message: `Snapshot ${req.params.id} deleted` });
+});
+
+app.post('/api/snapshots/diff', authenticateToken, async (req, res) => {
+    if (process.env.ENABLE_CHANGE_SNAPSHOTS !== 'true') {
+        return res.status(403).json({ error: 'ChangeGuard Snapshots feature is disabled' });
+    }
+    const { baseline, target } = req.body;
+    if (!baseline) {
+        return res.status(400).json({ error: 'Baseline snapshot ID or name is required' });
+    }
+
+    const baselineSnap = snapshotManager.getSnapshot(baseline);
+    if (!baselineSnap) {
+        return res.status(404).json({ error: `Baseline snapshot "${baseline}" not found` });
+    }
+
+    let targetSnap: StigixSnapshot | null = null;
+    if (!target || target === 'current' || target === 'live') {
+        targetSnap = await snapshotManager.captureState({
+            name: 'current-live-state',
+            description: 'Live instantaneous state for comparison',
+            createdBy: 'system',
+            context: {
+                registryManager,
+                connectivityLogger,
+                getAllProbes: getFullEffectiveConnectivityProbes,
+                getSystemSettings,
+                underlayTopologyManager,
+                version: getStigixVersion()
+            }
+        });
+    } else {
+        targetSnap = snapshotManager.getSnapshot(target);
+        if (!targetSnap) {
+            return res.status(404).json({ error: `Target snapshot "${target}" not found` });
+        }
+    }
+
+    const diff = snapshotManager.computeDiff(baselineSnap, targetSnap);
+    res.json({ success: true, diff });
+});
+log('SNAPSHOT', `📸 ChangeGuard Snapshot Engine mounted at /api/snapshots (Feature Flag: ENABLE_CHANGE_SNAPSHOTS=${process.env.ENABLE_CHANGE_SNAPSHOTS === 'true'})`);
+
 // --- Stigix In-App AI Copilot API ---
 const aiCopilotSystemToken = jwt.sign({ username: 'stigix-copilot-internal', role: 'admin' }, SECRET_KEY, { expiresIn: '365d' });
 const aiManager = new AiManager(APP_CONFIG.configDir);
@@ -15983,6 +16097,7 @@ aiManager.setExecutionContext({
     tcpAppManager,
     xfrManager,
     provisioningManager,
+    snapshotManager,
     getSystemSettings,
     systemToken: aiCopilotSystemToken,
     serverPort: PORT,

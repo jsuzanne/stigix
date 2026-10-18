@@ -25,6 +25,7 @@ export interface ToolExecutionContext {
     getAllProbes?: () => any[];
     saveCustomProbes?: (probes: any[]) => Promise<boolean> | boolean;
     performConnectivityCheck?: (probe: any) => Promise<any>;
+    snapshotManager?: any;
     systemToken?: string;
     serverPort?: number;
     runCommand?: (cmd: string) => Promise<string>;
@@ -1821,6 +1822,43 @@ export const COPILOT_TOOLS: AnthropicToolDefinition[] = [
                 limit: { type: 'number', description: 'Max history records (default: 15).' }
             },
             required: ['agent_id']
+        }
+    },
+    {
+        name: 'take_snapshot',
+        description: 'Take a state snapshot of the node (captures WireGuard overlay tunnels, reachability status, and DEM matrix / probes). Use this before or after network maintenance (e.g. site migration, ISP cutover, router swap) to establish a baseline or post-change state.',
+        input_schema: {
+            type: 'object',
+            properties: {
+                agent_id: { type: 'string', description: 'ID of node to snapshot (default: local).' },
+                name: { type: 'string', description: 'Short unique label for the snapshot (e.g. "pre-migration-br1", "post-fiber-upgrade").' },
+                description: { type: 'string', description: 'Optional context or description of the maintenance.' },
+                tags: { type: 'array', items: { type: 'string' }, description: 'Optional tags (e.g. ["migration", "wan"]).' }
+            },
+            required: ['name']
+        }
+    },
+    {
+        name: 'compare_snapshots',
+        description: 'Compare two network state snapshots (or compare a baseline snapshot with the live current state) to assess the impact of a migration or network change. Returns deterministic deltas (tunnel status, RTT latency change, packet loss delta, jitter) and flags regressions or improvements.',
+        input_schema: {
+            type: 'object',
+            properties: {
+                agent_id: { type: 'string', description: 'ID of node where snapshots are stored (default: local).' },
+                baseline: { type: 'string', description: 'Name or ID of baseline snapshot (e.g. "pre-migration-br1").' },
+                target: { type: 'string', description: 'Name or ID of target snapshot, or "current" to compare against live state (default: "current").' }
+            },
+            required: ['baseline']
+        }
+    },
+    {
+        name: 'list_snapshots',
+        description: 'List all available network state snapshots stored on a node with their creation timestamps, tunnel counts, and probe metrics.',
+        input_schema: {
+            type: 'object',
+            properties: {
+                agent_id: { type: 'string', description: 'ID of node (default: local).' }
+            }
         }
     }
 ];
@@ -4445,6 +4483,78 @@ export async function executeCopilotTool(
             case 'get_provisioning_history': {
                 const nodeCtx = resolveNodeContext(args.agent_id, ctx);
                 return await fetchApi(nodeCtx, `/api/provisioning/history?limit=${args.limit || 15}`);
+            }
+
+            case 'take_snapshot': {
+                const nodeCtx = resolveNodeContext(args.agent_id, ctx);
+                if (nodeCtx.isLocal && ctx.snapshotManager) {
+                    const snap = await ctx.snapshotManager.captureState({
+                        name: args.name,
+                        description: args.description,
+                        tags: args.tags,
+                        createdBy: 'copilot',
+                        context: ctx
+                    });
+                    return {
+                        success: true,
+                        snapshot_id: snap.id,
+                        name: snap.name,
+                        timestamp: snap.timestamp,
+                        tunnels_count: snap.tunnels.length,
+                        tunnels_up: snap.tunnels.filter((t: any) => t.status === 'UP').length,
+                        probes_count: snap.demMatrix.length,
+                        health_score: snap.healthScore,
+                        message: `Snapshot "${snap.name}" recorded on ${nodeCtx.siteName} (${snap.tunnels.filter((t: any) => t.status === 'UP').length}/${snap.tunnels.length} tunnels UP, ${snap.demMatrix.length} DEM probes captured).`
+                    };
+                }
+                return await fetchApi(nodeCtx, '/api/snapshots', {
+                    method: 'POST',
+                    body: JSON.stringify(args)
+                });
+            }
+
+            case 'list_snapshots': {
+                const nodeCtx = resolveNodeContext(args.agent_id, ctx);
+                if (nodeCtx.isLocal && ctx.snapshotManager) {
+                    return {
+                        node: nodeCtx.siteName,
+                        snapshots: ctx.snapshotManager.listSnapshots()
+                    };
+                }
+                return await fetchApi(nodeCtx, '/api/snapshots');
+            }
+
+            case 'compare_snapshots': {
+                const nodeCtx = resolveNodeContext(args.agent_id, ctx);
+                if (nodeCtx.isLocal && ctx.snapshotManager) {
+                    const baselineSnap = ctx.snapshotManager.getSnapshot(args.baseline);
+                    if (!baselineSnap) {
+                        return { error: `Baseline snapshot "${args.baseline}" not found on ${nodeCtx.siteName}.` };
+                    }
+                    let targetSnap: any = null;
+                    if (!args.target || args.target === 'current' || args.target === 'live') {
+                        targetSnap = await ctx.snapshotManager.captureState({
+                            name: 'current-live-state',
+                            description: 'Live instantaneous state for comparison',
+                            createdBy: 'copilot',
+                            context: ctx
+                        });
+                    } else {
+                        targetSnap = ctx.snapshotManager.getSnapshot(args.target);
+                        if (!targetSnap) {
+                            return { error: `Target snapshot "${args.target}" not found on ${nodeCtx.siteName}.` };
+                        }
+                    }
+                    const diff = ctx.snapshotManager.computeDiff(baselineSnap, targetSnap);
+                    return {
+                        node: nodeCtx.siteName,
+                        ...diff
+                    };
+                }
+                return await fetchApi(nodeCtx, '/api/snapshots/diff', {
+                    method: 'POST',
+                    body: JSON.stringify({ baseline: args.baseline, target: args.target || 'current' })
+                });
             }
 
             default:
