@@ -291,6 +291,12 @@ export default function PacketCapture({ token, localSiteName, onNavigateToReplay
     const [activeSession, setActiveSession] = useState<any>(null);
     const [elapsedSeconds, setElapsedSeconds] = useState<number>(0);
 
+    // Control & deduplication refs
+    const isCapturingRef = useRef<boolean>(false);
+    const isStoppingRef = useRef<boolean>(false);
+    const completedSessionIdRef = useRef<string | null>(null);
+    const dissectingFileRef = useRef<string | null>(null);
+
     // Dissected packets
     const [packets, setPackets] = useState<PacketItem[]>([]);
     const [totalPackets, setTotalPackets] = useState<number>(0);
@@ -607,6 +613,7 @@ export default function PacketCapture({ token, localSiteName, onNavigateToReplay
             if (res.ok) {
                 const data = await res.json();
                 if (data.active) {
+                    isCapturingRef.current = true;
                     setCapturing(true);
                     setActiveSession(data);
                     setActivePcapFile(data.pcap_filename || '');
@@ -621,40 +628,65 @@ export default function PacketCapture({ token, localSiteName, onNavigateToReplay
         }
     };
 
-    // Live capture polling timer
+    // Live capture polling timer (sequential chained setTimeout prevents overlapping polls and duplicate events)
     useEffect(() => {
-        let interval: ReturnType<typeof setInterval> | null = null;
-        if (capturing) {
-            interval = setInterval(async () => {
-                try {
-                    const res = await gFetch('/api/capture/status', { credentials: 'include', headers: authHeaders });
-                    if (res.ok) {
-                        const status = await res.json();
-                        setElapsedSeconds(status.elapsed_seconds || 0);
-                        setFileSizeBytes(status.file_size_bytes || 0);
+        if (!capturing) return;
 
-                        if (!status.active) {
-                            // Capture finished
+        let timerId: ReturnType<typeof setTimeout> | null = null;
+        let isCancelled = false;
+
+        const pollStatus = async () => {
+            if (isCancelled || !isCapturingRef.current || isStoppingRef.current) {
+                return;
+            }
+
+            try {
+                const res = await gFetch('/api/capture/status', { credentials: 'include', headers: authHeaders });
+                if (isCancelled || !isCapturingRef.current || isStoppingRef.current) {
+                    return;
+                }
+
+                if (res.ok) {
+                    const status = await res.json();
+                    setElapsedSeconds(status.elapsed_seconds || 0);
+                    setFileSizeBytes(status.file_size_bytes || 0);
+
+                    if (!status.active) {
+                        // Capture finished on server (auto-stopped by duration or max packets)
+                        const sessionKey = status.session_id || status.pcap_filename || 'completed';
+                        if (completedSessionIdRef.current !== sessionKey) {
+                            completedSessionIdRef.current = sessionKey;
+                            isCapturingRef.current = false;
                             setCapturing(false);
                             setActiveSession(null);
                             toast.success(`Packet capture completed (${status.elapsed_seconds || durationSec}s)!`);
                             if (status.pcap_filename) {
                                 loadDissectedPackets(status.pcap_filename);
                             }
-                        } else {
-                            // Fetch incremental packets while running
-                            fetchLivePackets();
                         }
+                        return; // Stop polling loop
+                    } else {
+                        // Fetch incremental packets while running
+                        await fetchLivePackets();
                     }
-                } catch (e) {
-                    console.error('Status poll error', e);
                 }
-            }, 1800);
-        }
-        return () => {
-            if (interval) clearInterval(interval);
+            } catch (e) {
+                console.error('Status poll error', e);
+            }
+
+            // Schedule next poll only if still actively capturing and not cancelled
+            if (!isCancelled && isCapturingRef.current && !isStoppingRef.current) {
+                timerId = setTimeout(pollStatus, 1800);
+            }
         };
-    }, [capturing, activePcapFile]);
+
+        timerId = setTimeout(pollStatus, 1800);
+
+        return () => {
+            isCancelled = true;
+            if (timerId) clearTimeout(timerId);
+        };
+    }, [capturing]);
 
     const fetchLivePackets = async () => {
         try {
@@ -673,15 +705,25 @@ export default function PacketCapture({ token, localSiteName, onNavigateToReplay
     };
 
     const loadDissectedPackets = async (filename?: string) => {
+        const targetFile = filename || activePcapFile;
+        if (!targetFile) return;
+
+        // Prevent duplicate concurrent dissection calls for the exact same file
+        if (dissectingFileRef.current === targetFile) {
+            return;
+        }
+        dissectingFileRef.current = targetFile;
+
         setLoadingPackets(true);
         setPackets([]);
         setSelectedPacketNo(null);
-        if (filename) setActivePcapFile(filename);
-        const displayName = filename ? filename.split('/').pop() : 'capture';
-        const toastId = toast.loading(`Dissecting ${displayName}...`);
+        setActivePcapFile(targetFile);
+        const displayName = targetFile.split('/').pop() || 'capture';
+        const toastKey = `dissect-${displayName}`;
+        toast.loading(`Dissecting ${displayName}...`, { id: toastKey });
 
         try {
-            const fileQuery = filename ? `?file=${encodeURIComponent(filename)}&limit=250` : '?limit=250';
+            const fileQuery = `?file=${encodeURIComponent(targetFile)}&limit=250`;
             const res = await gFetch(`/api/capture/packets${fileQuery}`, { credentials: 'include', headers: authHeaders });
             if (!res.ok) {
                 const errData = await res.json().catch(() => ({}));
@@ -707,14 +749,15 @@ export default function PacketCapture({ token, localSiteName, onNavigateToReplay
                         'User Datagram Protocol': true
                     });
                 }
-                toast.success(`Loaded ${data.packets.length} packets from ${displayName} (Total: ${data.total_packets || data.packets.length})`, { id: toastId });
+                toast.success(`Loaded ${data.packets.length} packets from ${displayName} (Total: ${data.total_packets || data.packets.length})`, { id: toastKey });
             } else {
-                toast.dismiss(toastId);
+                toast.dismiss(toastKey);
             }
         } catch (e: any) {
-            toast.error(`Failed to load packets: ${e.message}`, { id: toastId });
+            toast.error(`Failed to load packets: ${e.message}`, { id: toastKey });
         } finally {
             setLoadingPackets(false);
+            dissectingFileRef.current = null;
         }
     };
 
@@ -746,6 +789,8 @@ export default function PacketCapture({ token, localSiteName, onNavigateToReplay
         setTotalPackets(0);
         setSelectedPacketNo(null);
         setElapsedSeconds(0);
+        completedSessionIdRef.current = null;
+        isStoppingRef.current = false;
 
         try {
             const res = await gFetch('/api/capture/start', {
@@ -763,6 +808,7 @@ export default function PacketCapture({ token, localSiteName, onNavigateToReplay
 
             const data = await res.json();
             if (res.ok && data.active) {
+                isCapturingRef.current = true;
                 setCapturing(true);
                 setActiveSession(data);
                 setActivePcapFile(data.pcap_filename);
@@ -776,6 +822,11 @@ export default function PacketCapture({ token, localSiteName, onNavigateToReplay
     };
 
     const handleStopCapture = async () => {
+        if (isStoppingRef.current) return;
+        isStoppingRef.current = true;
+        isCapturingRef.current = false;
+        setCapturing(false);
+
         try {
             const res = await gFetch('/api/capture/stop', {
                 method: 'POST',
@@ -784,17 +835,19 @@ export default function PacketCapture({ token, localSiteName, onNavigateToReplay
             });
             if (res.ok) {
                 const data = await res.json();
-                setCapturing(false);
                 setActiveSession(null);
+                const targetFile = data.pcap_filename || activePcapFile;
+                // Mark session as completed so background poller doesn't trigger duplicate notifications
+                completedSessionIdRef.current = data.session_id || targetFile || 'stopped';
                 toast.success('Capture stopped');
-                if (data.pcap_filename) {
-                    loadDissectedPackets(data.pcap_filename);
-                } else if (activePcapFile) {
-                    loadDissectedPackets(activePcapFile);
+                if (targetFile) {
+                    loadDissectedPackets(targetFile);
                 }
             }
         } catch (e: any) {
             toast.error(`Error stopping capture: ${e.message}`);
+        } finally {
+            isStoppingRef.current = false;
         }
     };
 

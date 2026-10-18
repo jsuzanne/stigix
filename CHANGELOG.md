@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.0.49] - 2026-10-18
+
+### Fixed
+- **Packet Capture Stop & Dissection Notification Deduplication (`web-dashboard/src/PacketCapture.tsx`)**:
+  - **Eliminated Race Condition on Manual Stop**: Stopping capture via `handleStopCapture` immediately clears capture state, activates an `isStoppingRef` flag, and cancels pending polling ticks, preventing the background poller from racing with a redundant "Packet capture completed" notification and duplicate dissection dispatch.
+  - **Sequential Chained Polling**: Replaced unmanaged `setInterval` with recursive, cancellable `setTimeout` ensuring only one `/api/capture/status` request is ever in-flight at a time, eliminating duplicated completions when capture stops automatically (duration or packet limit reached).
+  - **Toast Deduplication with Stable ID**: Bound `react-hot-toast` loading and completion toasts to a deterministic ID (`dissect-${displayName}`), preventing stacked duplicate "Dissecting..." toasts on screen.
+  - **Concurrent Dissection Guard (`dissectingFileRef`)**: Added an in-memory guard ref that drops concurrent requests to dissect the same PCAP trace.
+
 ## [3.0.48] - 2026-10-18
 
 ### Changed & Simplified
