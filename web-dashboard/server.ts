@@ -4538,7 +4538,7 @@ app.get('/api/voice/stats', authenticateToken, (req, res) => {
             if (error) return res.json({ success: true, stats: [] });
             const lines = stdout.trim().split('\n').filter(l => l.trim());
             try {
-                const stats = lines.map(l => JSON.parse(l));
+                const stats = lines.map(l => { try { return JSON.parse(l); } catch { return null; } }).filter(Boolean);
                 res.json({ success: true, stats: stats.reverse() });
             } catch (err) {
                 res.json({ success: true, stats: [] });
@@ -6922,9 +6922,12 @@ app.get('/api/convergence/history', authenticateToken, (req, res) => {
     try {
         if (!fs.existsSync(CONVERGENCE_HISTORY_FILE)) return res.json([]);
         const lines = fs.readFileSync(CONVERGENCE_HISTORY_FILE, 'utf8').split('\n').filter(l => l.trim());
-        const history = lines.map(l => JSON.parse(l)).reverse().slice(0, 100);
+        const history = lines.map(l => {
+            try { return JSON.parse(l); } catch { return null; }
+        }).filter(Boolean).reverse().slice(0, 100);
         res.json(history);
-    } catch (e) {
+    } catch (e: any) {
+        log('CONV', `Error reading convergence history: ${e.message}`, 'error');
         res.status(500).json({ error: 'Failed to read history' });
     }
 });
@@ -8356,7 +8359,9 @@ const getSecurityUIConfig = () => {
         if (fs.existsSync(SECURITY_HISTORY_FILE)) {
             const data = execSync(`tail -n 50 "${SECURITY_HISTORY_FILE}"`, { encoding: 'utf8' });
             const lines = data.trim().split('\n').filter(l => l.trim());
-            uiConfig.test_history = lines.map(l => JSON.parse(l)).reverse();
+            uiConfig.test_history = lines.map(l => {
+                try { return JSON.parse(l); } catch { return null; }
+            }).filter(Boolean).reverse();
         } else {
             uiConfig.test_history = [];
         }
@@ -9445,41 +9450,9 @@ const performSecurityStatsReset = () => {
     return false;
 };
 
-let dailyResetTimeout: NodeJS.Timeout | null = null;
-let dailyResetInterval: NodeJS.Timeout | null = null;
-
-const scheduleMidnightReset = () => {
-    const now = new Date();
-    const midnight = new Date(
-        now.getFullYear(),
-        now.getMonth(),
-        now.getDate() + 1, // Tomorrow
-        0, 0, 0, 0 // Midnight
-    );
-
-    const msUntilMidnight = midnight.getTime() - now.getTime();
-    console.log(`[SECURITY] Next daily stats reset scheduled in ${(msUntilMidnight / 1000 / 60 / 60).toFixed(2)} hours`);
-
-    if (dailyResetTimeout) clearTimeout(dailyResetTimeout);
-    if (dailyResetInterval) clearInterval(dailyResetInterval);
-
-    // Initial timeout to hit exactly midnight
-    dailyResetTimeout = setTimeout(() => {
-        console.log('[SECURITY] Executing midnight daily security stats reset');
-        performSecurityStatsReset();
-
-        // Then set a 24-hour interval
-        dailyResetInterval = setInterval(() => {
-            console.log('[SECURITY] Executing daily security stats reset');
-            performSecurityStatsReset();
-        }, 24 * 60 * 60 * 1000);
-    }, msUntilMidnight);
-};
-
 // Start schedulers on server startup
 setTimeout(() => {
     startSchedulers();
-    scheduleMidnightReset();
 
     // VyOS Health Check (Immediate on boot after 3s, then every 60s)
     setTimeout(() => {
@@ -14282,7 +14255,7 @@ setInterval(async () => {
             if (fs.existsSync(VOICE_STATS_FILE)) {
                 const out = execSync(`tail -n 20 ${VOICE_STATS_FILE}`, { encoding: 'utf8' });
                 const lines = out.trim().split('\n').filter(l => l.trim());
-                const stats = lines.map(l => JSON.parse(l));
+                const stats = lines.map(l => { try { return JSON.parse(l); } catch { return null; } }).filter(Boolean);
                 const mosCalls = stats.filter((c: any) => (c.mos_score ?? 0) > 0);
                 if (mosCalls.length > 0) {
                      avgMos = parseFloat((mosCalls.reduce((s, c) => s + c.mos_score, 0) / mosCalls.length).toFixed(2));
@@ -14634,7 +14607,7 @@ const collectFleetTelemetrySummary = async () => {
         if (fs.existsSync(VOICE_STATS_FILE)) {
             const out = execSync(`tail -n 20 ${VOICE_STATS_FILE}`, { encoding: 'utf8' });
             const lines = out.trim().split('\n').filter(l => l.trim());
-            const stats = lines.map(l => JSON.parse(l));
+            const stats = lines.map(l => { try { return JSON.parse(l); } catch { return null; } }).filter(Boolean);
             const mosCalls = stats.filter((c: any) => (c.mos_score ?? 0) > 0);
             if (mosCalls.length > 0) {
                 voiceMos = parseFloat((mosCalls.reduce((s: number, c: any) => s + c.mos_score, 0) / mosCalls.length).toFixed(2));

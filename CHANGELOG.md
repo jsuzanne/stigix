@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.0.50] - 2026-10-19
+
+### Fixed
+- **Resilient JSONL Parsing for Historical Log Endpoints (`web-dashboard/server.ts`)**:
+  - Guarded JSON parsing with per-line `try/catch` and `.filter(Boolean)` in `GET /api/convergence/history`, `getSecurityUIConfig()`, `GET /api/voice/stats`, and voice MOS calculation telemetry.
+  - Skips any corrupt or incomplete lines cleanly without aborting with HTTP 500 error, guaranteeing that historical test records never disappear from the UI due to a single malformed write.
+- **Removed Unintended Midnight Security Statistics Reset (`web-dashboard/server.ts`)**:
+  - Completely removed the unprompted `scheduleMidnightReset()` routine that wiped security counters, erased historical logs via `testLogger.deleteAll()`, and restarted test IDs at 0 every midnight.
+  - Cumulative security efficacy statistics, posture scores, and test counters now persist continuously over time as intended; resetting statistics is strictly reserved for explicit manual administrator action (`DELETE /api/security/statistics`).
+
 ## [3.0.49] - 2026-10-18
 
 ### Added
