@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.0.46] - 2026-10-18
+
+### Fixed
+- **SD-WAN Topology Engine Missing `time` Import (`engines/getflow.py`, `Scripts/getflow.py`)**:
+  - Added missing `import time` required by `get_bulk_topology` when computing `now_ms` for correlation events windowing and tunnel state uptime duration (`uptime_sec`).
+  - Verified end-to-end live on `DC1` (`192.168.122.51`) across all 11 SD-WAN sites and confirmed exact root-cause output on `BR1` tunnels (`1772715388344016045`, `1747404411372004345`, `1747408660494004645`).
+
 ## [3.0.45] - 2026-10-18
 
 ### Added & Enhanced
