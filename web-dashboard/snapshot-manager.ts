@@ -33,14 +33,45 @@ export interface StigixSnapshotDemMetric {
     status?: 'PASS' | 'FAIL' | 'WARN' | 'UNKNOWN';
 }
 
+export interface StigixSnapshotSdwanDevice {
+    deviceId: string;
+    deviceName: string;
+    model?: string;
+    softwareVersion?: string;
+    state?: string;
+    connected: boolean;
+    lanIps?: string[];
+    wanIps?: string[];
+}
+
+export interface StigixSnapshotSdwanSite {
+    siteId: string;
+    siteName: string;
+    role: string;
+    connected: boolean;
+    devices: StigixSnapshotSdwanDevice[];
+}
+
+export interface StigixSnapshotSdwanTopology {
+    siteCount: number;
+    sites: StigixSnapshotSdwanSite[];
+    underlay?: {
+        available: boolean;
+        matchedCount: number;
+        noMatchCount: number;
+        routers: string[];
+    };
+}
+
 export interface StigixSnapshot {
     id: string;
     name: string;
     description?: string;
     timestamp: string;
     node: StigixSnapshotNode;
-    tunnels: StigixSnapshotTunnel[];
+    tunnels: StigixSnapshotTunnel[]; // Stigix Mesh peers
     demMatrix: StigixSnapshotDemMetric[];
+    sdwanTopology?: StigixSnapshotSdwanTopology; // SD-WAN Overlay (IONs & Sites)
     healthScore?: number;
     metadata?: {
         createdBy?: string;
@@ -58,6 +89,8 @@ export interface SnapshotSummary {
     tunnelCount: number;
     tunnelsUpCount: number;
     probeCount: number;
+    sdwanSiteCount?: number;
+    sdwanSitesOnline?: number;
     healthScore?: number;
     tags?: string[];
 }
@@ -91,6 +124,36 @@ export interface SnapshotDemDelta {
     state: 'IMPROVED' | 'REGRESSED' | 'STABLE' | 'NEW' | 'REMOVED';
 }
 
+export interface SnapshotSdwanDeviceDelta {
+    deviceId: string;
+    deviceName: string;
+    model?: string;
+    connectedBefore: boolean;
+    connectedAfter: boolean;
+    stateChange: 'DISCONNECTED' | 'RECONNECTED' | 'STABLE_ONLINE' | 'STABLE_OFFLINE' | 'NEW' | 'REMOVED';
+}
+
+export interface SnapshotSdwanSiteDelta {
+    siteId: string;
+    siteName: string;
+    role: string;
+    connectedBefore: boolean;
+    connectedAfter: boolean;
+    stateChange: 'STABLE_ONLINE' | 'STABLE_OFFLINE' | 'DISCONNECTED' | 'RECONNECTED' | 'NEW' | 'REMOVED';
+    deviceChanges: SnapshotSdwanDeviceDelta[];
+}
+
+export interface SnapshotSdwanUnderlayDelta {
+    availableBefore?: boolean;
+    availableAfter?: boolean;
+    matchedBefore?: number;
+    matchedAfter?: number;
+    matchedDelta?: number;
+    routersBefore?: string[];
+    routersAfter?: string[];
+    offlineRouters?: string[];
+}
+
 export interface SnapshotDiffResult {
     baseline: {
         id: string;
@@ -110,12 +173,15 @@ export interface SnapshotDiffResult {
         totalTunnels: { before: number; after: number; delta: number };
         tunnelsUp: { before: number; after: number; delta: number };
         totalProbes: { before: number; after: number; delta: number };
+        sdwanSites?: { before: number; after: number; delta: number; onlineBefore: number; onlineAfter: number };
         healthScore: { before?: number; after?: number; delta?: number };
     };
     regressions: string[];
     improvements: string[];
-    tunnelDeltas: SnapshotTunnelDelta[];
+    tunnelDeltas: SnapshotTunnelDelta[]; // Stigix Mesh peers deltas
     demDeltas: SnapshotDemDelta[];
+    sdwanDeltas?: SnapshotSdwanSiteDelta[]; // SD-WAN Overlay (IONs & Sites) deltas
+    sdwanUnderlayDelta?: SnapshotSdwanUnderlayDelta;
 }
 
 export class SnapshotManager {
@@ -152,6 +218,7 @@ export class SnapshotManager {
             getAllProbes?: () => any[];
             getSystemSettings?: () => any;
             underlayTopologyManager?: any;
+            getTopology?: () => Promise<any> | any;
             version?: string;
         };
     }): Promise<StigixSnapshot> {
@@ -162,10 +229,11 @@ export class SnapshotManager {
         const role = regStatus.current_mode || process.env.STIGIX_REGISTRY_MODE || 'peer';
         const wanIp = regStatus.detected_ip || regStatus.ip_public || undefined;
 
-        // 1. Gather Tunnels / Peers
+        // 1. Gather Stigix Mesh Peers
         const peers = typeof ctx.registryManager?.getPeers === 'function' ? ctx.registryManager.getPeers() : [];
         const tunnels: StigixSnapshotTunnel[] = peers.map((p: any) => {
-            const isOnline = p.status === 'ONLINE' || (p.last_seen && (Date.now() - new Date(p.last_seen).getTime() < 300000));
+            const lastSeenAgeMs = p.last_seen ? (Date.now() - new Date(p.last_seen).getTime()) : Infinity;
+            const isOnline = p.status !== 'OFFLINE' && (p.status === 'ONLINE' || lastSeenAgeMs < 120000);
             return {
                 peerId: p.instance_id || p.site_name || 'unknown-peer',
                 siteName: p.site_name || p.instance_id,
@@ -218,6 +286,64 @@ export class SnapshotManager {
             });
         }
 
+        // 3. Gather SD-WAN Overlay (Prisma SD-WAN IONs & Sites) + VyOS Underlay
+        let sdwanTopology: StigixSnapshotSdwanTopology | undefined = undefined;
+        if (ctx.getTopology) {
+            try {
+                const topoData = typeof ctx.getTopology === 'function' ? await ctx.getTopology() : ctx.getTopology;
+                if (topoData && Array.isArray(topoData.sites)) {
+                    const sites: StigixSnapshotSdwanSite[] = topoData.sites.map((s: any) => {
+                        const devices: StigixSnapshotSdwanDevice[] = (s.devices || []).map((d: any) => {
+                            const isConnected = Boolean(
+                                d.connected || 
+                                d.state === 'online' ||
+                                (Array.isArray(d.wan_interfaces) && d.wan_interfaces.some((w: any) => w.link_up === true)) ||
+                                (Array.isArray(d.service_links) && d.service_links.some((sl: any) => sl.operational_state === 'up' || sl.extended_state === 'tunnel_up'))
+                            );
+                            return {
+                                deviceId: d.device_id || d.id || '',
+                                deviceName: d.device_name || d.name || 'ION',
+                                model: d.model,
+                                softwareVersion: d.software_version,
+                                state: d.state,
+                                connected: isConnected,
+                                lanIps: (d.lan_interfaces || []).map((l: any) => l.ipv4_address || l.ip).filter(Boolean),
+                                wanIps: (d.wan_interfaces || []).map((w: any) => w.ipv4_address || w.ip).filter(Boolean)
+                            };
+                        });
+                        const connected = devices.length > 0 && devices.some(dev => dev.connected);
+                        return {
+                            siteId: s.site_id || s.id || '',
+                            siteName: s.site_name || s.name || 'Site',
+                            role: s.site_role || s.role || 'SPOKE',
+                            connected,
+                            devices
+                        };
+                    });
+
+                    let underlayInfo = undefined;
+                    if (topoData.underlay) {
+                        const u = topoData.underlay;
+                        const routersList = u.routers ? (Array.isArray(u.routers) ? u.routers : Object.keys(u.routers)) : [];
+                        underlayInfo = {
+                            available: Boolean(u.available),
+                            matchedCount: u.summary?.matched ?? 0,
+                            noMatchCount: u.summary?.noMatch ?? 0,
+                            routers: routersList
+                        };
+                    }
+
+                    sdwanTopology = {
+                        siteCount: sites.length,
+                        sites,
+                        underlay: underlayInfo
+                    };
+                }
+            } catch (err: any) {
+                console.error('[SNAPSHOT_MGR] Failed to capture SD-WAN topology:', err?.message || err);
+            }
+        }
+
         const timestamp = new Date().toISOString();
         const dateSlug = timestamp.replace(/[-:T]/g, '').slice(0, 14);
         const nameSlug = this.slugify(options.name);
@@ -237,6 +363,7 @@ export class SnapshotManager {
             },
             tunnels,
             demMatrix,
+            sdwanTopology,
             healthScore,
             metadata: {
                 createdBy: options.createdBy || 'copilot',
@@ -273,6 +400,8 @@ export class SnapshotManager {
                     tunnelCount: data.tunnels?.length || 0,
                     tunnelsUpCount: (data.tunnels || []).filter(t => t.status === 'UP').length,
                     probeCount: data.demMatrix?.length || 0,
+                    sdwanSiteCount: data.sdwanTopology?.siteCount || 0,
+                    sdwanSitesOnline: (data.sdwanTopology?.sites || []).filter(s => s.connected).length,
                     healthScore: data.healthScore,
                     tags: data.metadata?.tags
                 });
@@ -517,11 +646,160 @@ export class SnapshotManager {
             }
         }
 
-        // 3. Score & Verdict Calculation
+        // 3. SD-WAN Overlay (Prisma SD-WAN Sites & IONs) Deltas
+        const baselineSdwanMap = new Map<string, StigixSnapshotSdwanSite>();
+        for (const s of baseline.sdwanTopology?.sites || []) {
+            baselineSdwanMap.set(s.siteName.toLowerCase(), s);
+        }
+
+        const targetSdwanMap = new Map<string, StigixSnapshotSdwanSite>();
+        for (const s of target.sdwanTopology?.sites || []) {
+            targetSdwanMap.set(s.siteName.toLowerCase(), s);
+        }
+
+        const sdwanDeltas: SnapshotSdwanSiteDelta[] = [];
+        const allSdwanSites = new Set([...baselineSdwanMap.keys(), ...targetSdwanMap.keys()]);
+
+        let sdwanSitesOnlineBefore = 0;
+        let sdwanSitesOnlineAfter = 0;
+        let sdwanDevicesDisconnected = 0;
+
+        for (const siteKey of allSdwanSites) {
+            const b = baselineSdwanMap.get(siteKey);
+            const t = targetSdwanMap.get(siteKey);
+
+            if (b?.connected) sdwanSitesOnlineBefore++;
+            if (t?.connected) sdwanSitesOnlineAfter++;
+
+            if (!b && t) {
+                sdwanDeltas.push({
+                    siteId: t.siteId,
+                    siteName: t.siteName,
+                    role: t.role,
+                    connectedBefore: false,
+                    connectedAfter: t.connected,
+                    stateChange: 'NEW',
+                    deviceChanges: []
+                });
+                improvements.push(`SD-WAN Site "${t.siteName}" (${t.role}) joined overlay`);
+            } else if (b && !t) {
+                sdwanDeltas.push({
+                    siteId: b.siteId,
+                    siteName: b.siteName,
+                    role: b.role,
+                    connectedBefore: b.connected,
+                    connectedAfter: false,
+                    stateChange: 'REMOVED',
+                    deviceChanges: []
+                });
+                regressions.push(`CRITICAL: SD-WAN Site "${b.siteName}" disappeared from overlay`);
+            } else if (b && t) {
+                const deviceChanges: SnapshotSdwanDeviceDelta[] = [];
+                for (const bDev of b.devices || []) {
+                    const tDev = (t.devices || []).find(d => d.deviceId === bDev.deviceId || d.deviceName === bDev.deviceName);
+                    if (tDev) {
+                        if (bDev.connected && !tDev.connected) {
+                            deviceChanges.push({
+                                deviceId: bDev.deviceId,
+                                deviceName: bDev.deviceName,
+                                model: bDev.model,
+                                connectedBefore: true,
+                                connectedAfter: false,
+                                stateChange: 'DISCONNECTED'
+                            });
+                            sdwanDevicesDisconnected++;
+                            regressions.push(`CRITICAL: SD-WAN ION "${bDev.deviceName}" on Site "${t.siteName}" went OFFLINE / DISCONNECTED`);
+                        } else if (!bDev.connected && tDev.connected) {
+                            deviceChanges.push({
+                                deviceId: bDev.deviceId,
+                                deviceName: bDev.deviceName,
+                                model: bDev.model,
+                                connectedBefore: false,
+                                connectedAfter: true,
+                                stateChange: 'RECONNECTED'
+                            });
+                            improvements.push(`SD-WAN ION "${bDev.deviceName}" on Site "${t.siteName}" recovered / CONNECTED`);
+                        }
+                    }
+                }
+
+                let stateChange: SnapshotSdwanSiteDelta['stateChange'] = 'STABLE_ONLINE';
+                if (b.connected && !t.connected) {
+                    stateChange = 'DISCONNECTED';
+                } else if (!b.connected && t.connected) {
+                    stateChange = 'RECONNECTED';
+                } else if (!b.connected && !t.connected) {
+                    stateChange = 'STABLE_OFFLINE';
+                }
+
+                if (deviceChanges.length > 0 || stateChange !== 'STABLE_ONLINE') {
+                    sdwanDeltas.push({
+                        siteId: t.siteId,
+                        siteName: t.siteName,
+                        role: t.role,
+                        connectedBefore: b.connected,
+                        connectedAfter: t.connected,
+                        stateChange,
+                        deviceChanges
+                    });
+                }
+            }
+        }
+
+        // 4. VyOS Underlay Deltas
+        let sdwanUnderlayDelta: SnapshotSdwanUnderlayDelta | undefined = undefined;
+        if (baseline.sdwanTopology?.underlay || target.sdwanTopology?.underlay) {
+            const bU = baseline.sdwanTopology?.underlay;
+            const tU = target.sdwanTopology?.underlay;
+            const bRouters = (bU?.routers || []) as any[];
+            const tRouters = (tU?.routers || []) as any[];
+
+            const bRouterNames = bRouters.map(r => r.name || r.id || r.host || String(r));
+            const tRouterMap = new Map<string, any>();
+            tRouters.forEach(r => {
+                const key = r.name || r.id || r.host || String(r);
+                tRouterMap.set(key, r);
+            });
+
+            const offlineRouters: string[] = [];
+            for (const r of bRouters) {
+                const name = r.name || r.id || r.host || String(r);
+                const tR = tRouterMap.get(name);
+                const isOnline = tR && (tR.status === 'online' || tR.status === 'up');
+                if (!isOnline) {
+                    offlineRouters.push(name);
+                }
+            }
+
+            if (offlineRouters.length > 0) {
+                regressions.push(`CRITICAL: VyOS Underlay router(s) unreachable: ${offlineRouters.join(', ')}`);
+            }
+
+            sdwanUnderlayDelta = {
+                availableBefore: bU?.available,
+                availableAfter: tU?.available,
+                matchedBefore: bU?.matchedCount,
+                matchedAfter: tU?.matchedCount,
+                matchedDelta: (tU?.matchedCount ?? 0) - (bU?.matchedCount ?? 0),
+                routersBefore: bRouterNames,
+                routersAfter: Array.from(tRouterMap.keys()),
+                offlineRouters
+            };
+        }
+
+        // 5. Score & Verdict Calculation
         let score = 100;
-        // Critical penalty: tunnel went down (-40 each)
+        // Critical penalty: Stigix Mesh tunnel went down (-40 each)
         const failedTunnels = tunnelDeltas.filter(t => t.stateChange === 'FAILED');
         score -= failedTunnels.length * 40;
+
+        // Critical penalty: SD-WAN ION device disconnected (-30 each)
+        score -= sdwanDevicesDisconnected * 30;
+
+        // Critical penalty: Underlay router offline (-25 each)
+        if (sdwanUnderlayDelta?.offlineRouters?.length) {
+            score -= sdwanUnderlayDelta.offlineRouters.length * 25;
+        }
 
         // Packet loss regressions (-20 each)
         const packetLossRegressions = demDeltas.filter(d => (d.packetLossDelta || 0) > 0);
@@ -534,7 +812,7 @@ export class SnapshotManager {
         score = Math.max(0, Math.min(100, score));
 
         let verdict: 'GO' | 'WARNING' | 'NO_GO' = 'GO';
-        if (failedTunnels.length > 0 || score < 50) {
+        if (failedTunnels.length > 0 || sdwanDevicesDisconnected > 0 || (sdwanUnderlayDelta?.offlineRouters?.length || 0) > 0 || score < 50) {
             verdict = 'NO_GO';
         } else if (regressions.length > 0 || score < 85) {
             verdict = 'WARNING';
@@ -571,6 +849,13 @@ export class SnapshotManager {
                     after: target.demMatrix?.length || 0,
                     delta: (target.demMatrix?.length || 0) - (baseline.demMatrix?.length || 0)
                 },
+                sdwanSites: {
+                    before: baseline.sdwanTopology?.siteCount || 0,
+                    after: target.sdwanTopology?.siteCount || 0,
+                    delta: (target.sdwanTopology?.siteCount || 0) - (baseline.sdwanTopology?.siteCount || 0),
+                    onlineBefore: sdwanSitesOnlineBefore,
+                    onlineAfter: sdwanSitesOnlineAfter
+                },
                 healthScore: {
                     before: baseline.healthScore,
                     after: target.healthScore,
@@ -582,7 +867,9 @@ export class SnapshotManager {
             regressions,
             improvements,
             tunnelDeltas,
-            demDeltas
+            demDeltas,
+            sdwanDeltas,
+            sdwanUnderlayDelta
         };
     }
 }

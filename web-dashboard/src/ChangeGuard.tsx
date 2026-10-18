@@ -19,7 +19,10 @@ import {
     X,
     TrendingDown,
     TrendingUp,
-    FileJson
+    FileJson,
+    Server,
+    Globe,
+    Layers
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { cn } from './lib/utils';
@@ -69,6 +72,36 @@ interface DemProbeComparison {
     status_improvement: boolean;
 }
 
+interface SdwanDeviceDelta {
+    deviceId: string;
+    deviceName: string;
+    model?: string;
+    connectedBefore: boolean;
+    connectedAfter: boolean;
+    stateChange: 'DISCONNECTED' | 'RECONNECTED' | 'STABLE_ONLINE' | 'STABLE_OFFLINE' | 'NEW' | 'REMOVED';
+}
+
+interface SdwanSiteDelta {
+    siteId: string;
+    siteName: string;
+    role: string;
+    connectedBefore: boolean;
+    connectedAfter: boolean;
+    stateChange: 'STABLE_ONLINE' | 'STABLE_OFFLINE' | 'DISCONNECTED' | 'RECONNECTED' | 'NEW' | 'REMOVED';
+    deviceChanges: SdwanDeviceDelta[];
+}
+
+interface SdwanUnderlayDelta {
+    availableBefore?: boolean;
+    availableAfter?: boolean;
+    matchedBefore?: number;
+    matchedAfter?: number;
+    matchedDelta?: number;
+    routersBefore?: string[];
+    routersAfter?: string[];
+    offlineRouters?: string[];
+}
+
 interface DiffReport {
     baseline_id: string;
     baseline_name: string;
@@ -92,6 +125,14 @@ interface DiffReport {
         average_latency_delta_ms: number;
         average_loss_delta_percent: number;
         probes: DemProbeComparison[];
+    };
+    sdwan?: {
+        total_baseline: number;
+        total_current: number;
+        online_baseline: number;
+        online_current: number;
+        sites: SdwanSiteDelta[];
+        underlay?: SdwanUnderlayDelta;
     };
     critical_regressions: string[];
     improvements: string[];
@@ -247,16 +288,18 @@ export default function ChangeGuard({ token }: ChangeGuardProps) {
 
             if (!res.ok) {
                 const errData = await res.json().catch(() => ({}));
-                toast.error(errData.error || 'Failed to compute diff');
+                const msg = errData.detail || errData.error || `HTTP ${res.status}: Failed to compute diff`;
+                toast.error(msg, { duration: 6000 });
+                console.error('[SNAPSHOT_DIFF] Failed:', errData);
                 return;
             }
 
             const data = await res.json();
             setDiffReport(data.diff);
             toast.success(`Diff calculated: Verdict ${data.diff.verdict} (${data.diff.score}/100)`);
-        } catch (err) {
+        } catch (err: any) {
             console.error('Diff error:', err);
-            toast.error('Error computing diff');
+            toast.error(`Error computing diff: ${err?.message || 'Network error'}`);
         } finally {
             setDiffLoading(false);
         }
@@ -534,12 +577,17 @@ export default function ChangeGuard({ token }: ChangeGuardProps) {
                                 </div>
                             </div>
 
-                            {/* SD-WAN IPsec Overlay Tunnels Table */}
+                            {/* Stigix Mesh Peer Tunnels Table */}
                             {diffReport.tunnels.comparisons.length > 0 && (
                                 <div className="bg-slate-900/80 border border-slate-700/80 rounded-lg overflow-hidden">
-                                    <div className="px-4 py-3 bg-slate-800/70 border-b border-slate-700 text-xs font-bold text-slate-200 flex items-center gap-2">
-                                        <Network className="w-4 h-4 text-indigo-400" />
-                                        SD-WAN IPsec Overlay Mesh Tunnels ({diffReport.tunnels.comparisons.length} peers)
+                                    <div className="px-4 py-3 bg-slate-800/70 border-b border-slate-700 text-xs font-bold text-slate-200 flex items-center justify-between">
+                                        <div className="flex items-center gap-2">
+                                            <Network className="w-4 h-4 text-indigo-400" />
+                                            Stigix Mesh Peer Tunnels ({diffReport.tunnels.comparisons.length} peers)
+                                        </div>
+                                        <div className="text-[11px] font-normal text-slate-400">
+                                            Mesh Connectivity: <strong className="text-slate-200">{diffReport.tunnels.comparisons.filter(t => t.current_status?.toUpperCase() === 'UP').length}/{diffReport.tunnels.total_current} UP</strong>
+                                        </div>
                                     </div>
                                     <div className="overflow-x-auto">
                                         <table className="w-full text-left text-xs text-slate-300">
@@ -561,27 +609,27 @@ export default function ChangeGuard({ token }: ChangeGuardProps) {
                                                         <td className="px-4 py-2">
                                                             <span className={cn(
                                                                 "px-2 py-0.5 rounded text-[10px] font-bold",
-                                                                t.baseline_status === 'up' ? "bg-emerald-500/20 text-emerald-400" : "bg-rose-500/20 text-rose-400"
+                                                                t.baseline_status?.toUpperCase() === 'UP' ? "bg-emerald-500/20 text-emerald-400" : "bg-rose-500/20 text-rose-400"
                                                             )}>
-                                                                {t.baseline_status.toUpperCase()}
+                                                                {t.baseline_status?.toUpperCase() || 'UNKNOWN'}
                                                             </span>
                                                         </td>
                                                         <td className="px-4 py-2">
                                                             <span className={cn(
                                                                 "px-2 py-0.5 rounded text-[10px] font-bold",
-                                                                t.current_status === 'up' ? "bg-emerald-500/20 text-emerald-400" : "bg-rose-500/20 text-rose-400"
+                                                                t.current_status?.toUpperCase() === 'UP' ? "bg-emerald-500/20 text-emerald-400" : "bg-rose-500/20 text-rose-400"
                                                             )}>
-                                                                {t.current_status.toUpperCase()}
+                                                                {t.current_status?.toUpperCase() || 'UNKNOWN'}
                                                             </span>
                                                         </td>
                                                         <td className="px-4 py-2 font-sans">
                                                             {t.regression ? (
                                                                 <span className="text-rose-400 font-bold flex items-center gap-1">
-                                                                    <XCircle className="w-3.5 h-3.5" /> CRITICAL: Tunnel went DOWN
+                                                                    <XCircle className="w-3.5 h-3.5" /> CRITICAL: Mesh Peer went DOWN
                                                                 </span>
                                                             ) : t.improvement ? (
                                                                 <span className="text-emerald-400 font-bold flex items-center gap-1">
-                                                                    <CheckCircle className="w-3.5 h-3.5" /> RECOVERED: Tunnel came UP
+                                                                    <CheckCircle className="w-3.5 h-3.5" /> RECOVERED: Mesh Peer came UP
                                                                 </span>
                                                             ) : (
                                                                 <span className="text-slate-500">Unchanged</span>
@@ -592,6 +640,116 @@ export default function ChangeGuard({ token }: ChangeGuardProps) {
                                             </tbody>
                                         </table>
                                     </div>
+                                </div>
+                            )}
+
+                            {/* SD-WAN Overlay (Prisma SD-WAN Sites & ION Devices) */}
+                            {diffReport.sdwan && diffReport.sdwan.sites && diffReport.sdwan.sites.length > 0 && (
+                                <div className="bg-slate-900/80 border border-slate-700/80 rounded-lg overflow-hidden">
+                                    <div className="px-4 py-3 bg-slate-800/70 border-b border-slate-700 text-xs font-bold text-slate-200 flex items-center justify-between">
+                                        <div className="flex items-center gap-2">
+                                            <Globe className="w-4 h-4 text-emerald-400" />
+                                            SD-WAN Overlay (Prisma SD-WAN Sites & ION Devices) ({diffReport.sdwan.sites.length} sites)
+                                        </div>
+                                        <div className="flex items-center gap-3 text-[11px] font-normal text-slate-400 font-mono">
+                                            <span>Baseline Online: <strong className="text-slate-200">{diffReport.sdwan.online_baseline}/{diffReport.sdwan.total_baseline}</strong></span>
+                                            <span>Target Online: <strong className={cn(diffReport.sdwan.online_current < diffReport.sdwan.online_baseline ? "text-rose-400 font-bold" : "text-emerald-400")}>{diffReport.sdwan.online_current}/{diffReport.sdwan.total_current}</strong></span>
+                                        </div>
+                                    </div>
+                                    <div className="overflow-x-auto">
+                                        <table className="w-full text-left text-xs text-slate-300">
+                                            <thead className="bg-slate-800/40 text-slate-400 font-semibold border-b border-slate-700/50">
+                                                <tr>
+                                                    <th className="px-4 py-2.5">Site / Role</th>
+                                                    <th className="px-4 py-2.5">ION Device(s)</th>
+                                                    <th className="px-4 py-2.5">Baseline State</th>
+                                                    <th className="px-4 py-2.5">Target State</th>
+                                                    <th className="px-4 py-2.5">Delta</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody className="divide-y divide-slate-800/60 font-mono">
+                                                {diffReport.sdwan.sites.map(site => {
+                                                    const isSiteRegressed = site.stateChange === 'DISCONNECTED' || site.deviceChanges.some(d => d.stateChange === 'DISCONNECTED');
+                                                    const isSiteImproved = site.stateChange === 'RECONNECTED' || site.deviceChanges.some(d => d.stateChange === 'RECONNECTED');
+                                                    return (
+                                                        <tr key={site.siteId || site.siteName} className={cn(
+                                                            "hover:bg-slate-800/30 transition",
+                                                            isSiteRegressed && "bg-rose-950/20 text-rose-300",
+                                                            isSiteImproved && "bg-emerald-950/20 text-emerald-300"
+                                                        )}>
+                                                            <td className="px-4 py-2.5 font-sans">
+                                                                <div className="font-semibold text-slate-200">{site.siteName}</div>
+                                                                <span className="text-[10px] text-slate-400 uppercase font-mono">{site.role}</span>
+                                                            </td>
+                                                            <td className="px-4 py-2.5 font-sans text-xs">
+                                                                {site.deviceChanges.length === 0 ? (
+                                                                    <span className="text-slate-500 italic">No ION mapped</span>
+                                                                ) : (
+                                                                    <div className="space-y-1">
+                                                                        {site.deviceChanges.map(dev => (
+                                                                            <div key={dev.deviceId || dev.deviceName} className="flex items-center gap-2">
+                                                                                <Server className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                                                                                <span className="font-medium text-slate-200">{dev.deviceName}</span>
+                                                                                {dev.model && <span className="text-[10px] text-slate-500">({dev.model})</span>}
+                                                                                {dev.stateChange === 'DISCONNECTED' && (
+                                                                                    <span className="px-1.5 py-0.2 rounded bg-rose-500/20 text-rose-400 text-[9px] font-bold">DISCONNECTED</span>
+                                                                                )}
+                                                                                {dev.stateChange === 'RECONNECTED' && (
+                                                                                    <span className="px-1.5 py-0.2 rounded bg-emerald-500/20 text-emerald-400 text-[9px] font-bold">RECONNECTED</span>
+                                                                                )}
+                                                                            </div>
+                                                                        ))}
+                                                                    </div>
+                                                                )}
+                                                            </td>
+                                                            <td className="px-4 py-2.5">
+                                                                <span className={cn(
+                                                                    "px-2 py-0.5 rounded text-[10px] font-bold",
+                                                                    site.connectedBefore ? "bg-emerald-500/20 text-emerald-400" : "bg-rose-500/20 text-rose-400"
+                                                                )}>
+                                                                    {site.connectedBefore ? 'ONLINE' : 'OFFLINE'}
+                                                                </span>
+                                                            </td>
+                                                            <td className="px-4 py-2.5">
+                                                                <span className={cn(
+                                                                    "px-2 py-0.5 rounded text-[10px] font-bold",
+                                                                    site.connectedAfter ? "bg-emerald-500/20 text-emerald-400" : "bg-rose-500/20 text-rose-400"
+                                                                )}>
+                                                                    {site.connectedAfter ? 'ONLINE' : 'OFFLINE'}
+                                                                </span>
+                                                            </td>
+                                                            <td className="px-4 py-2.5 font-sans">
+                                                                {isSiteRegressed ? (
+                                                                    <span className="text-rose-400 font-bold flex items-center gap-1">
+                                                                        <XCircle className="w-3.5 h-3.5" /> CRITICAL: ION Disconnected
+                                                                    </span>
+                                                                ) : isSiteImproved ? (
+                                                                    <span className="text-emerald-400 font-bold flex items-center gap-1">
+                                                                        <CheckCircle className="w-3.5 h-3.5" /> RECOVERED: ION Reconnected
+                                                                    </span>
+                                                                ) : (
+                                                                    <span className="text-slate-500">Unchanged</span>
+                                                                )}
+                                                            </td>
+                                                        </tr>
+                                                    );
+                                                })}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* VyOS Underlay Health Regressions */}
+                            {diffReport.sdwan?.underlay && (diffReport.sdwan.underlay.offlineRouters?.length || 0) > 0 && (
+                                <div className="bg-rose-950/20 border border-rose-500/30 rounded-lg p-4 space-y-2">
+                                    <div className="text-xs font-bold text-rose-400 uppercase tracking-wider flex items-center gap-1.5">
+                                        <AlertTriangle className="w-4 h-4" />
+                                        VyOS Underlay Regressions Detected
+                                    </div>
+                                    <p className="text-xs text-rose-200">
+                                        Unreachable Underlay Router(s): <strong className="font-mono text-rose-300">{diffReport.sdwan.underlay.offlineRouters?.join(', ')}</strong>
+                                    </p>
                                 </div>
                             )}
                         </div>

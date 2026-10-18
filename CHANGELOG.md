@@ -5,6 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.0.44] - 2026-10-18
+
+### Added & Enhanced
+- **SD-WAN Overlay & VyOS Underlay Topology in ChangeGuard Snapshots (`snapshot-manager.ts`, `server.ts`, `ChangeGuard.tsx`)**:
+  - **Prisma SD-WAN Topology Capture**: Integrated full SD-WAN topology capture into state snapshots (`POST /api/snapshots`), retrieving all 11 Prisma SD-WAN sites, ION devices, interfaces, and service link states via `prisma_sase` client cache.
+  - **Comprehensive Multi-Layer Diff Engine**:
+    - **Stigix Mesh (Peer Tunnels)**: Accurately computes tunnel availability and regressions across Stigix peer nodes.
+    - **SD-WAN Overlay (IONs & Sites)**: Tracks disconnected ION devices (-30 score penalty, automatic `NO_GO` verdict).
+    - **VyOS Underlay Routers**: Detects offline/unreachable underlay routers (-25 penalty per router, automatic `NO_GO` verdict).
+    - **DEM Probes**: Latency and packet loss regression scoring.
+  - **Diagnostic Error Handling & Resilience**:
+    - Wrapped `POST /api/snapshots/diff` with complete try/catch handling and diagnostic details.
+    - Fixed property mapping between `SnapshotDemDelta` and probe comparison objects.
+    - Fixed VyOS underlay router diff comparison to match router IDs/names and online status rather than reference equality.
+  - **Terminology Clarification**:
+    - Clearly demarcated **Stigix Mesh** (inter-Stigix peer tunnels) from **SD-WAN Overlay** (inter-ION IPsec tunnels) and **VyOS Underlay**.
+  - **Live Verification**: Validated live on SD-WAN lab node BR8 (`192.168.123.102`), achieving clean `GO` (100/100) snapshot comparisons.
+
 ## [3.0.43] - 2026-10-18
 
 ### Fixed
