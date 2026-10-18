@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.0.41] - 2026-10-18
+
+### Fixed & Enhanced
+- **ChangeGuard API Harmonization & Web UI Integration (`server.ts`, `ChangeGuard.tsx`)**:
+  - Enriched `GET /api/snapshots` to return normalized metadata fields (`tunnels_count`, `tunnels_up`, `dem_probes_count`, `dem_healthy_count`, `iso_time`, and full node identity) compatible with the Web Dashboard table and timeline.
+  - Aligned `POST /api/snapshots/diff` to accept both `{ baseline_id, current_id }` and `{ baseline, target }`, and return structured `DiffReport` payloads with top-level `score`, `verdict`, formatted tunnel and DEM probe comparisons for real-time UI rendering.
+  - Validated live on SD-WAN lab node BR8 (`192.168.123.102`): baseline snapshot capture, live state delta comparison, and `GO` verdict computation.
+
 ## [3.0.40] - 2026-10-18
 
 ### Added & Enhanced

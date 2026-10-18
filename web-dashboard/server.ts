@@ -15990,7 +15990,23 @@ app.get('/api/snapshots', authenticateToken, (req, res) => {
     if (process.env.ENABLE_CHANGE_SNAPSHOTS !== 'true') {
         return res.status(403).json({ error: 'ChangeGuard Snapshots feature is disabled (ENABLE_CHANGE_SNAPSHOTS=false)' });
     }
-    const snapshots = snapshotManager.listSnapshots();
+    const rawList = snapshotManager.listSnapshots();
+    const snapshots = rawList.map(s => ({
+        ...s,
+        timestamp: new Date(s.timestamp).getTime(),
+        iso_time: s.timestamp,
+        source: 'manual',
+        node: {
+            hostname: s.node?.nodeId || 'unknown',
+            site_name: s.node?.siteName || s.node?.nodeId || 'Unknown Site',
+            role: s.node?.role || 'peer',
+            stigix_version: s.node?.version || 'unknown'
+        },
+        tunnels_count: s.tunnelCount,
+        tunnels_up: s.tunnelsUpCount,
+        dem_probes_count: s.probeCount,
+        dem_healthy_count: Math.round((s.probeCount * (s.healthScore ?? 100)) / 100)
+    }));
     res.json({ snapshots });
 });
 
@@ -16018,7 +16034,16 @@ app.post('/api/snapshots', authenticateToken, async (req, res) => {
             }
         });
         log('SNAPSHOT', `📸 Captured state snapshot "${snapshot.name}" (${snapshot.id}) with ${snapshot.tunnels.length} tunnels and ${snapshot.demMatrix.length} DEM probes`);
-        res.json({ success: true, snapshot });
+        res.json({ 
+            success: true, 
+            snapshot: {
+                ...snapshot,
+                metadata: {
+                    ...snapshot.metadata,
+                    name: snapshot.name
+                }
+            }
+        });
     } catch (e: any) {
         res.status(500).json({ error: 'Failed to capture snapshot', detail: e.message });
     }
@@ -16050,18 +16075,21 @@ app.post('/api/snapshots/diff', authenticateToken, async (req, res) => {
     if (process.env.ENABLE_CHANGE_SNAPSHOTS !== 'true') {
         return res.status(403).json({ error: 'ChangeGuard Snapshots feature is disabled' });
     }
-    const { baseline, target } = req.body;
-    if (!baseline) {
+    const { baseline, target, baseline_id, current_id } = req.body;
+    const baseKey = baseline || baseline_id;
+    const targetKey = target || current_id;
+
+    if (!baseKey) {
         return res.status(400).json({ error: 'Baseline snapshot ID or name is required' });
     }
 
-    const baselineSnap = snapshotManager.getSnapshot(baseline);
+    const baselineSnap = snapshotManager.getSnapshot(baseKey);
     if (!baselineSnap) {
-        return res.status(404).json({ error: `Baseline snapshot "${baseline}" not found` });
+        return res.status(404).json({ error: `Baseline snapshot "${baseKey}" not found` });
     }
 
     let targetSnap: StigixSnapshot | null = null;
-    if (!target || target === 'current' || target === 'live') {
+    if (!targetKey || targetKey === 'current' || targetKey === 'live') {
         targetSnap = await snapshotManager.captureState({
             name: 'current-live-state',
             description: 'Live instantaneous state for comparison',
@@ -16076,13 +16104,73 @@ app.post('/api/snapshots/diff', authenticateToken, async (req, res) => {
             }
         });
     } else {
-        targetSnap = snapshotManager.getSnapshot(target);
+        targetSnap = snapshotManager.getSnapshot(targetKey);
         if (!targetSnap) {
-            return res.status(404).json({ error: `Target snapshot "${target}" not found` });
+            return res.status(404).json({ error: `Target snapshot "${targetKey}" not found` });
         }
     }
 
-    const diff = snapshotManager.computeDiff(baselineSnap, targetSnap);
+    const rawDiff = snapshotManager.computeDiff(baselineSnap, targetSnap);
+
+    const tunnelComparisons = (rawDiff.tunnelDeltas || []).map(td => ({
+        peer_id: td.peerId,
+        baseline_status: td.statusBefore,
+        current_status: td.statusAfter,
+        status_changed: td.statusBefore !== td.statusAfter,
+        regression: td.stateChange === 'FAILED',
+        improvement: td.stateChange === 'RECOVERED'
+    }));
+
+    const demProbeComparisons = (rawDiff.demDeltas || []).map(dd => ({
+        target_id: dd.targetId,
+        target_label: dd.targetLabel,
+        baseline_latency_ms: dd.latencyBeforeMs ?? 0,
+        current_latency_ms: dd.latencyAfterMs ?? 0,
+        latency_delta_ms: dd.latencyDeltaMs ?? 0,
+        latency_delta_percent: dd.latencyPercentChange ?? 0,
+        baseline_loss_percent: dd.packetLossBefore ?? 0,
+        current_loss_percent: dd.packetLossAfter ?? 0,
+        loss_delta_percent: dd.packetLossDelta ?? 0,
+        baseline_jitter_ms: dd.jitterBeforeMs ?? 0,
+        current_jitter_ms: dd.jitterAfterMs ?? 0,
+        jitter_delta_ms: dd.jitterDeltaMs ?? 0,
+        status_regression: dd.state === 'REGRESSED' || (dd.packetLossDelta ?? 0) > 0,
+        status_improvement: dd.state === 'IMPROVED'
+    }));
+
+    const diff = {
+        ...rawDiff,
+        baseline_id: baselineSnap.id,
+        baseline_name: baselineSnap.name,
+        current_id: targetSnap.id,
+        current_name: targetSnap.name,
+        generated_at: new Date().toISOString(),
+        score: rawDiff.summary.score,
+        verdict: rawDiff.summary.verdict,
+        critical_regressions: rawDiff.regressions,
+        improvements: rawDiff.improvements,
+        tunnels: {
+            total_baseline: rawDiff.summary.totalTunnels.before,
+            total_current: rawDiff.summary.totalTunnels.after,
+            down_now: rawDiff.summary.totalTunnels.after - rawDiff.summary.tunnelsUp.after,
+            regressed: rawDiff.tunnelDeltas.filter(t => t.stateChange === 'FAILED').length,
+            improved: rawDiff.tunnelDeltas.filter(t => t.stateChange === 'RECOVERED').length,
+            comparisons: tunnelComparisons
+        },
+        dem: {
+            total_probes: rawDiff.summary.totalProbes.after,
+            regressed_probes: demProbeComparisons.filter(p => p.status_regression).length,
+            improved_probes: demProbeComparisons.filter(p => p.status_improvement).length,
+            average_latency_delta_ms: demProbeComparisons.length > 0
+                ? parseFloat((demProbeComparisons.reduce((acc, p) => acc + p.latency_delta_ms, 0) / demProbeComparisons.length).toFixed(2))
+                : 0,
+            average_loss_delta_percent: demProbeComparisons.length > 0
+                ? parseFloat((demProbeComparisons.reduce((acc, p) => acc + p.loss_delta_percent, 0) / demProbeComparisons.length).toFixed(2))
+                : 0,
+            probes: demProbeComparisons
+        }
+    };
+
     res.json({ success: true, diff });
 });
 log('SNAPSHOT', `📸 ChangeGuard Snapshot Engine mounted at /api/snapshots (Feature Flag: ENABLE_CHANGE_SNAPSHOTS=${process.env.ENABLE_CHANGE_SNAPSHOTS === 'true'})`);
