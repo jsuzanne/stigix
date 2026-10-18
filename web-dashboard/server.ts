@@ -3242,7 +3242,33 @@ let topologyCache: { data: any, timestamp: number } | null = null;
 const TOPO_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 let inFlightTopologyPromise: Promise<any> | null = null;
 
+let topologyBuildProgress: {
+    building: boolean;
+    stage: number;
+    stageKey: string;
+    stageLabel: string;
+    startedAt: number | null;
+    lastDurationMs: number | null;
+} = {
+    building: false,
+    stage: 0,
+    stageKey: 'idle',
+    stageLabel: 'Idle',
+    startedAt: null,
+    lastDurationMs: null,
+};
+
 async function executeTopologyBuild(): Promise<any> {
+    const buildStartedAt = Date.now();
+    topologyBuildProgress = {
+        building: true,
+        stage: 1,
+        stageKey: 'auth',
+        stageLabel: 'Authenticating with Prisma SASE OAuth2 API...',
+        startedAt: buildStartedAt,
+        lastDurationMs: topologyBuildProgress.lastDurationMs,
+    };
+
     return new Promise((resolve, reject) => {
         const scriptPath = path.join(PROJECT_ROOT, 'engines', 'getflow.py');
         const enginesDir = path.join(PROJECT_ROOT, 'engines');
@@ -3250,7 +3276,7 @@ async function executeTopologyBuild(): Promise<any> {
         // Check Env
         const hasId = !!process.env.PRISMA_SDWAN_CLIENT_ID;
         const hasSecret = !!process.env.PRISMA_SDWAN_CLIENT_SECRET;
-        const hasTsg = !!process.env.PRISMA_SDWAN_TSG_ID;
+        const hasTsg = !!(process.env.PRISMA_SDWAN_TSG_ID || process.env.PRISMA_SDWAN_TSGID);
         log('TOPO', `Spawn Env Check - ID: ${hasId}, Secret: ${hasSecret}, TSG: ${hasTsg}`);
 
         log('TOPO', `Spawning ${PYTHON_PATH} ${scriptPath} --build-topology --json`);
@@ -3269,14 +3295,28 @@ async function executeTopologyBuild(): Promise<any> {
             stdout += d.toString();
         });
         proc.stderr.on('data', (d) => {
-            stderr += d.toString();
-            console.error(`[TOPO-STDERR] ${d.toString().trim()}`);
+            const chunk = d.toString();
+            stderr += chunk;
+            const lines = chunk.split(/\r?\n/);
+            for (const line of lines) {
+                const match = line.match(/\[TOPO-STAGE\]\s*(\d+)\|([^|]+)\|(.+)/);
+                if (match) {
+                    topologyBuildProgress.stage = parseInt(match[1], 10) || topologyBuildProgress.stage;
+                    topologyBuildProgress.stageKey = match[2].trim();
+                    topologyBuildProgress.stageLabel = match[3].trim();
+                }
+            }
+            console.error(`[TOPO-STDERR] ${chunk.trim()}`);
         });
 
         proc.on('close', async (code) => {
             if (code === 0) {
                 try {
                     const data = JSON.parse(stdout);
+                    topologyBuildProgress.stage = 4;
+                    topologyBuildProgress.stageKey = 'underlay';
+                    topologyBuildProgress.stageLabel = 'Correlating VyOS Underlay & Stigix Mesh Agents...';
+
                     // Enrich with underlay resolution (additive, isolated from topology)
                     let underlay: any = null;
                     try {
@@ -3284,33 +3324,114 @@ async function executeTopologyBuild(): Promise<any> {
                     } catch (ue: any) {
                         log('UNDERLAY', `Underlay resolution failed (topology unaffected): ${ue.message}`, 'warn');
                     }
+                    const durationMs = Date.now() - buildStartedAt;
                     const enrichedData = underlay ? { ...data, underlay } : data;
                     topologyCache = { data: enrichedData, timestamp: Date.now() };
+                    topologyBuildProgress = {
+                        building: false,
+                        stage: 4,
+                        stageKey: 'complete',
+                        stageLabel: 'Topology Ready',
+                        startedAt: null,
+                        lastDurationMs: durationMs,
+                    };
                     resolve(enrichedData);
                 } catch (e: any) {
+                    topologyBuildProgress.building = false;
                     console.error('[TOPO] Failed to parse JSON:', e, 'STDOUT length:', stdout.length);
                     reject(new Error('Failed to parse topology data'));
                 }
             } else {
+                topologyBuildProgress.building = false;
                 console.error(`[TOPO] getflow.py exited with code ${code}. Stderr: ${stderr}`);
                 reject(new Error(`Failed to build topology (exit code ${code}): ${stderr || 'Unknown error'}`));
             }
         });
 
         proc.on('error', (err) => {
+            topologyBuildProgress.building = false;
             console.error('[TOPO] Failed to spawn process:', err);
             reject(err);
         });
     });
 }
 
+function triggerBackgroundTopologyBuild(): Promise<any> {
+    if (!inFlightTopologyPromise) {
+        inFlightTopologyPromise = executeTopologyBuild()
+            .catch((err) => {
+                log('TOPO', `Background topology build failed: ${err.message}`, 'warn');
+                throw err;
+            })
+            .finally(() => {
+                inFlightTopologyPromise = null;
+            });
+    }
+    return inFlightTopologyPromise;
+}
+
+// Pre-warm topology cache in background 12s after server start when Prisma SASE credentials exist
+setTimeout(() => {
+    const hasCreds = Boolean(
+        process.env.PRISMA_SDWAN_CLIENT_ID &&
+        process.env.PRISMA_SDWAN_CLIENT_SECRET &&
+        (process.env.PRISMA_SDWAN_TSG_ID || process.env.PRISMA_SDWAN_TSGID)
+    );
+    if (hasCreds && !topologyCache && !inFlightTopologyPromise) {
+        log('TOPO', '🚀 Pre-warming SD-WAN topology cache in background...');
+        triggerBackgroundTopologyBuild().catch(() => {});
+    }
+}, 12_000);
+
+app.get('/api/topology/status', authenticateToken, (req, res) => {
+    const now = Date.now();
+    const ageMs = topologyCache ? (now - topologyCache.timestamp) : null;
+    res.json({
+        building: Boolean(inFlightTopologyPromise),
+        stage: topologyBuildProgress.stage,
+        stageKey: topologyBuildProgress.stageKey,
+        stageLabel: topologyBuildProgress.stageLabel,
+        startedAt: topologyBuildProgress.startedAt,
+        elapsedMs: topologyBuildProgress.building && topologyBuildProgress.startedAt ? (now - topologyBuildProgress.startedAt) : 0,
+        lastDurationMs: topologyBuildProgress.lastDurationMs,
+        cached: Boolean(topologyCache),
+        cacheAgeSeconds: ageMs !== null ? Math.round(ageMs / 1000) : null,
+        stale: ageMs !== null ? (ageMs >= TOPO_CACHE_TTL) : false,
+    });
+});
+
 app.get('/api/topology', authenticateToken, async (req, res) => {
     const now = Date.now();
     const force = req.query.force === 'true';
 
-    if (!force && topologyCache && (now - topologyCache.timestamp < TOPO_CACHE_TTL)) {
-        dbg(`[TOPO] Returning cached topology (${Math.round((now - topologyCache.timestamp) / 1000)}s old)`);
-        return res.json(topologyCache.data);
+    if (!force && topologyCache) {
+        const ageMs = now - topologyCache.timestamp;
+        const ageSeconds = Math.round(ageMs / 1000);
+        if (ageMs < TOPO_CACHE_TTL) {
+            dbg(`[TOPO] Returning fresh cached topology (${ageSeconds}s old)`);
+            return res.json({
+                ...topologyCache.data,
+                _cache: {
+                    stale: false,
+                    refreshing: Boolean(inFlightTopologyPromise),
+                    ageSeconds,
+                    lastDurationMs: topologyBuildProgress.lastDurationMs,
+                }
+            });
+        }
+
+        // Stale-While-Revalidate: return stale cache immediately (<10ms) and trigger background refresh
+        dbg(`[TOPO] Returning stale topology (${ageSeconds}s old) and triggering background revalidate`);
+        triggerBackgroundTopologyBuild().catch(() => {});
+        return res.json({
+            ...topologyCache.data,
+            _cache: {
+                stale: true,
+                refreshing: true,
+                ageSeconds,
+                lastDurationMs: topologyBuildProgress.lastDurationMs,
+            }
+        });
     }
 
     // Reuse in-flight topology build promise if already running
@@ -3318,7 +3439,15 @@ app.get('/api/topology', authenticateToken, async (req, res) => {
         dbg('[TOPO] Piggybacking on active in-flight topology build');
         try {
             const data = await inFlightTopologyPromise;
-            return res.json(data);
+            return res.json({
+                ...data,
+                _cache: {
+                    stale: false,
+                    refreshing: false,
+                    ageSeconds: 0,
+                    lastDurationMs: topologyBuildProgress.lastDurationMs,
+                }
+            });
         } catch (e: any) {
             return res.status(500).json({ error: e.message });
         }
@@ -3331,14 +3460,17 @@ app.get('/api/topology', authenticateToken, async (req, res) => {
         return res.json(topologyCache.data);
     }
 
-    inFlightTopologyPromise = executeTopologyBuild()
-        .finally(() => {
-            inFlightTopologyPromise = null;
-        });
-
     try {
-        const data = await inFlightTopologyPromise;
-        res.json(data);
+        const data = await triggerBackgroundTopologyBuild();
+        res.json({
+            ...data,
+            _cache: {
+                stale: false,
+                refreshing: false,
+                ageSeconds: 0,
+                lastDurationMs: topologyBuildProgress.lastDurationMs,
+            }
+        });
     } catch (err: any) {
         res.status(500).json({ error: err.message });
     }

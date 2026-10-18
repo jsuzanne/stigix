@@ -945,26 +945,33 @@ def get_bulk_topology(sdk, all_site_ids, debug=False, debug_topo=False):
 
     url = "https://api.sase.paloaltonetworks.com/sdwan/v3.6/api/topology"
 
-    for site_id in all_site_ids:
+    def _fetch_site_topo(site_id):
         try:
             payload = {"type": "basenet", "nodes": [site_id]}
             if debug_topo:
                 print(f"[DEBUG-TOPO] POST {url}\nPayload: {json.dumps(payload)}", file=sys.stderr)
             resp = sdk._session.post(url, json=payload, timeout=30)
-            
+
             if debug_topo and resp.status_code == 200:
                 js_str = json.dumps(resp.json(), indent=2)
                 print(f"[DEBUG-TOPO] Topology Response for site {site_id}:\n{js_str[:4000]}... (truncated)", file=sys.stderr)
-                
+
             if resp.status_code != 200:
                 if debug:
                     print(f" [TOPO] {site_id}: API returned {resp.status_code}", file=sys.stderr)
-                continue
+                return (site_id, [])
 
             links = resp.json().get('links', [])
             if debug:
                 print(f" [TOPO] {site_id}: {len(links)} links", file=sys.stderr)
+            return (site_id, links)
+        except Exception as e:
+            if debug:
+                print(f" [TOPO] {site_id}: Error: {e}", file=sys.stderr)
+            return (site_id, [])
 
+    with concurrent.futures.ThreadPoolExecutor(max_workers=15) as executor:
+        for site_id, links in executor.map(_fetch_site_topo, all_site_ids):
             for link in links:
                 src_site = link.get('source_node_id')
                 tgt_site = link.get('target_node_id')
@@ -995,10 +1002,6 @@ def get_bulk_topology(sdk, all_site_ids, debug=False, debug_topo=False):
                     'sub_type': sub_type,
                     'vpnlinks': vpnlinks_raw
                 })
-
-        except Exception as e:
-            if debug:
-                print(f" [TOPO] {site_id}: Error: {e}", file=sys.stderr)
 
     # Deduplicate connections per site (same peer may appear via multiple site queries)
     deduped = {}
@@ -1261,6 +1264,7 @@ def build_full_topology(sdk: API, sites_data: dict, debug: bool = False, debug_t
         print(f"[TOPO] Constructing final topology dictionary for {len(sites_data)} sites...", file=sys.stderr)
 
     # --- Step 2: All elements (ION devices) ---
+    print(f"[TOPO-STAGE] 2|inventory|Discovering {len(sites_data)} SD-WAN Sites, ION Clusters & LAN Subnets...", file=sys.stderr, flush=True)
     try:
         elements_resp = sdk.get.elements()
         all_elements = elements_resp.cgx_content.get('items', []) if elements_resp.cgx_status else []
@@ -1370,19 +1374,24 @@ def build_full_topology(sdk: API, sites_data: dict, debug: bool = False, debug_t
             if debug:
                 print(f" [TOPO] Error fetching ServiceLink statuses: {e}", file=sys.stderr)
 
-    # --- Step 3: All WAN interfaces per site ---
+    # --- Step 3: All WAN interfaces per site (parallel) ---
+    print(f"[TOPO-STAGE] 3|tunnels|Mapping Overlay VPN Tunnels & SASE Service Links ({len(all_elements)} IONs)...", file=sys.stderr, flush=True)
     wan_if_by_site = {}   # site_id -> list of waninterface objects
     wan_if_by_id = {}     # wan_if_id -> waninterface object + site_id
-    for site_id in all_site_ids:
+    def _fetch_site_wan_ifs(site_id):
         try:
             resp = sdk.get.waninterfaces(site_id=site_id)
             if resp.cgx_status:
-                items = resp.cgx_content.get('items', [])
-                wan_if_by_site[site_id] = items
-                for w in items:
-                    wan_if_by_id[w.get('id')] = {**w, '_site_id': site_id}
+                return (site_id, resp.cgx_content.get('items', []) or [])
         except Exception:
             pass
+        return (site_id, [])
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=15) as executor:
+        for site_id, items in executor.map(_fetch_site_wan_ifs, all_site_ids):
+            wan_if_by_site[site_id] = items
+            for w in items:
+                wan_if_by_id[w.get('id')] = {**w, '_site_id': site_id}
 
     # --- Step 4: Bulk topology (VPN connections) ---
     if debug:
@@ -1390,6 +1399,7 @@ def build_full_topology(sdk: API, sites_data: dict, debug: bool = False, debug_t
     connections_by_site = get_bulk_topology(sdk, all_site_ids, debug=debug, debug_topo=debug_topo)
 
     # --- Step 5: Operational Bulk IPs (for DHCP) ---
+    print("[TOPO-STAGE] 4|underlay|Correlating Operational IPs, Gateways & VyOS Underlay...", file=sys.stderr, flush=True)
     op_ip_map = get_operational_ips(sdk, all_site_ids, el_interfaces_map=el_interfaces_map, all_elements=all_elements, debug=debug)
 
     # Pre-calculate global WAN interface IPs for reliable remote peer resolution
@@ -1476,10 +1486,15 @@ def build_full_topology(sdk: API, sites_data: dict, debug: bool = False, debug_t
                 for swi in swi_ids:
                     element_wan_if_ids.add(swi)
 
-                # LAN: used_for=lan OR used_for=private (DC), static IP
+                # LAN: used_for=lan OR used_for=private (DC), static IP (physical only, exclude loopbacks)
                 if used_for in ('lan', 'private') and ipv4_cfg.get('type') == 'static':
                     # Exclude overlay/circuit-linked interfaces
                     if used_for == 'private' and (swi_ids or intf.get('label_id') or intf.get('wan_network_id')):
+                        continue
+
+                    intf_type = (intf.get('type') or '').lower()
+                    intf_name_lower = (intf.get('name') or '').lower()
+                    if intf_type == 'loopback' or 'loopback' in intf_name_lower or intf_name_lower.startswith('lo'):
                         continue
 
                     static = ipv4_cfg.get('static_config') or {}
@@ -1496,6 +1511,9 @@ def build_full_topology(sdk: API, sites_data: dict, debug: bool = False, debug_t
                             iface_obj = ipaddress.IPv4Interface(f"{ip_raw}/{nm}")
 
                         intf_desc = get_interface_description(intf)
+                        if iface_obj.network.prefixlen == 32 or 'loopback' in (intf_desc or '').lower():
+                            continue
+
                         op_status = op_ip_map.get((el_id, intf.get('name')), {})
                         lan_interfaces.append({
                             'interface_name': intf.get('name'),
@@ -2007,6 +2025,8 @@ def main():
 
     sdk = API(update_check=False)
 
+    if getattr(args, 'build_topology', False):
+        print("[TOPO-STAGE] 1|auth|Authenticating with Prisma SASE OAuth2 API...", file=sys.stderr, flush=True)
     log_output("\n🔐 Authenticating...", json_mode)
     try:
         login_success = sdk.interactive.login_secret(

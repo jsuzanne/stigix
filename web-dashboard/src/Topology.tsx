@@ -1780,6 +1780,21 @@ function TopologyContent({ token, theme }: TopologyProps) {
     const { gFetch, activePeerId } = usePeerContext();
     const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
     const [loading, setLoading] = useState(true);
+    const [refreshing, setRefreshing] = useState(false);
+    const [staleRevalidating, setStaleRevalidating] = useState(false);
+    const [buildProgress, setBuildProgress] = useState<{
+        stage: number;
+        stageKey: string;
+        stageLabel: string;
+        elapsedMs: number;
+        lastDurationMs: number | null;
+    }>({
+        stage: 1,
+        stageKey: 'auth',
+        stageLabel: 'Authenticating with Prisma SASE OAuth2 API...',
+        elapsedMs: 0,
+        lastDurationMs: null,
+    });
     const [error, setError] = useState<string | null>(null);
     const [selectedObject, setSelectedObject] = useState<any>(null);
     const [searchQuery, setSearchQuery] = useState('');
@@ -3446,7 +3461,18 @@ function TopologyContent({ token, theme }: TopologyProps) {
     }, [logicalViewSiteId, selectedNetwork, setNodes, setEdges, visibleSiteIds, isHubLike, siteHubStatus, topologyViewMode, underlayData, fleetNodes, pathFilter, bgLayout, showBranchMesh, hasPureHubs, effectiveBgAsHub, getVyosInterfaceStatus, siteLanVyosMap]);
 
     const fetchTopology = useCallback(async () => {
-        setLoading(true);
+        if (!topology) {
+            setLoading(true);
+            setBuildProgress({
+                stage: 1,
+                stageKey: 'auth',
+                stageLabel: 'Authenticating with Prisma SASE OAuth2 API...',
+                elapsedMs: 0,
+                lastDurationMs: null,
+            });
+        } else {
+            setRefreshing(true);
+        }
         setError(null);
         try {
             const res = await gFetch('/api/topology', {
@@ -3456,6 +3482,14 @@ function TopologyContent({ token, theme }: TopologyProps) {
             if (data.error) throw new Error(data.error);
             setTopology(data);
             setLastRefresh(new Date());
+
+            if (data?._cache?.refreshing) {
+                setRefreshing(true);
+                setStaleRevalidating(true);
+            } else {
+                setRefreshing(false);
+                setStaleRevalidating(false);
+            }
 
             // Fetch fleet nodes for Stigix mesh overlay
             gFetch('/api/fleet/matrix', {
@@ -3483,10 +3517,69 @@ function TopologyContent({ token, theme }: TopologyProps) {
             processTopology(data);
         } catch (e: any) {
             setError(e.message);
+            setRefreshing(false);
+            setStaleRevalidating(false);
         } finally {
             setLoading(false);
         }
-    }, [token, processTopology, gFetch]);
+    }, [token, processTopology, gFetch, topology]);
+
+    // Poll /api/topology/status while building (either initial loading or background refreshing)
+    useEffect(() => {
+        if (!loading && !refreshing) return;
+
+        const startTs = Date.now();
+        const tickInterval = setInterval(() => {
+            setBuildProgress(prev => ({
+                ...prev,
+                elapsedMs: Math.max(prev.elapsedMs, Date.now() - startTs),
+            }));
+        }, 120);
+
+        const pollStatus = async () => {
+            try {
+                const res = await gFetch('/api/topology/status', {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                if (!res.ok) return;
+                const status = await res.json();
+                if (status.building) {
+                    setBuildProgress(prev => ({
+                        stage: status.stage || prev.stage || 1,
+                        stageKey: status.stageKey || prev.stageKey || 'auth',
+                        stageLabel: status.stageLabel || prev.stageLabel || 'Authenticating with Prisma SASE OAuth2 API...',
+                        elapsedMs: Math.max(prev.elapsedMs, status.elapsedMs || 0),
+                        lastDurationMs: status.lastDurationMs ?? prev.lastDurationMs,
+                    }));
+                } else if (staleRevalidating) {
+                    // Background stale-while-revalidate finished! Pull fresh cached topology seamlessly
+                    setStaleRevalidating(false);
+                    setRefreshing(false);
+                    const freshRes = await gFetch('/api/topology', {
+                        headers: { 'Authorization': `Bearer ${token}` }
+                    });
+                    if (freshRes.ok) {
+                        const freshData = await freshRes.json();
+                        if (!freshData.error) {
+                            setTopology(freshData);
+                            setLastRefresh(new Date());
+                            if (freshData.underlay) setUnderlayData(freshData.underlay);
+                            processTopology(freshData);
+                        }
+                    }
+                }
+            } catch {
+                // Ignore transient status poll errors
+            }
+        };
+
+        pollStatus();
+        const pollInterval = setInterval(pollStatus, 650);
+        return () => {
+            clearInterval(tickInterval);
+            clearInterval(pollInterval);
+        };
+    }, [loading, refreshing, staleRevalidating, token, gFetch, processTopology]);
 
     useEffect(() => {
         if (!topology) {
@@ -3570,9 +3663,22 @@ function TopologyContent({ token, theme }: TopologyProps) {
         setHoveredEdge(null);
     }, []);
 
-    const handleRefresh = async () => {
-        // Bypass the server's 5-minute cache entirely by passing a force parameter
-        setLoading(true);
+    const handleRefresh = useCallback(async () => {
+        // Bypass the server's 5-minute cache entirely by passing a force parameter.
+        // If topology is already loaded, keep the canvas interactive and show non-blocking progress!
+        if (!topology) {
+            setLoading(true);
+        } else {
+            setRefreshing(true);
+        }
+        setStaleRevalidating(false);
+        setBuildProgress(prev => ({
+            stage: 1,
+            stageKey: 'auth',
+            stageLabel: 'Authenticating with Prisma SASE OAuth2 API...',
+            elapsedMs: 0,
+            lastDurationMs: prev.lastDurationMs,
+        }));
         setError(null);
         try {
             const res = await gFetch('/api/topology?force=true', {
@@ -3594,11 +3700,12 @@ function TopologyContent({ token, theme }: TopologyProps) {
             }
             processTopology(data);
         } catch (e: any) {
-            setError(e.message);
+            if (!topology) setError(e.message);
         } finally {
             setLoading(false);
+            setRefreshing(false);
         }
-    };
+    }, [token, gFetch, processTopology, topology]);
 
     const handleExportPng = useCallback(() => {
         const flowElement = document.querySelector('.react-flow') as HTMLElement;
@@ -4068,16 +4175,125 @@ function TopologyContent({ token, theme }: TopologyProps) {
     return (
         <div className="h-[calc(100vh-140px)] w-full relative dark:bg-black/20 bg-card-secondary/30 rounded-3xl border border-border overflow-hidden animate-in fade-in zoom-in-95 duration-500 flex flex-col">
             {loading ? (
-                <div className="absolute inset-0 z-50 flex flex-col items-center justify-center bg-background/80 backdrop-blur-md">
-                    <div className="relative w-24 h-24 mb-6">
-                        <div className="absolute inset-0 border-4 border-blue-500/20 rounded-full" />
-                        <div className="absolute inset-0 border-4 border-blue-500 border-t-transparent rounded-full animate-spin" />
-                        <div className="absolute inset-0 flex items-center justify-center">
-                            <Network size={32} className="text-blue-500 animate-pulse" />
+                <div className="absolute inset-0 z-50 flex flex-col items-center justify-center bg-background/85 backdrop-blur-md p-6">
+                    <div className="max-w-md w-full bg-card/95 border border-border rounded-3xl p-6 shadow-2xl flex flex-col items-center">
+                        {/* Header Icon + Elapsed Counter */}
+                        <div className="flex items-center justify-between w-full mb-5">
+                            <div className="flex items-center gap-3">
+                                <div className="relative w-12 h-12 shrink-0">
+                                    <div className="absolute inset-0 border-2 border-blue-500/20 rounded-2xl" />
+                                    <div className="absolute inset-0 border-2 border-blue-500 border-t-transparent rounded-2xl animate-spin" />
+                                    <div className="absolute inset-0 flex items-center justify-center">
+                                        <Network size={20} className="text-blue-500 animate-pulse" />
+                                    </div>
+                                </div>
+                                <div>
+                                    <h2 className="text-sm font-black text-text-primary tracking-tight uppercase">Live SASE Discovery</h2>
+                                    <p className="text-[10px] text-text-muted font-bold tracking-wider uppercase mt-0.5">
+                                        Step {buildProgress.stage} of 4 • Parallel Engine
+                                    </p>
+                                </div>
+                            </div>
+                            <div className="px-2.5 py-1 rounded-xl bg-blue-500/10 border border-blue-500/25 text-blue-400 font-mono text-xs font-black tracking-tight">
+                                {(buildProgress.elapsedMs / 1000).toFixed(1)}s
+                            </div>
+                        </div>
+
+                        {/* Smooth Progress Bar */}
+                        <div className="w-full h-1.5 bg-card-secondary rounded-full overflow-hidden mb-5 border border-border/50">
+                            <div
+                                className="h-full bg-gradient-to-r from-blue-600 via-sky-400 to-emerald-400 transition-all duration-300 rounded-full"
+                                style={{
+                                    width: `${Math.min(
+                                        96,
+                                        Math.max(12, (buildProgress.stage - 1) * 25 + Math.min(22, (buildProgress.elapsedMs / 1000) * 3.5))
+                                    )}%`
+                                }}
+                            />
+                        </div>
+
+                        {/* 4-Step Live Stepper */}
+                        <div className="w-full space-y-2.5">
+                            {[
+                                {
+                                    id: 1,
+                                    title: 'Prisma SASE OAuth2 Handshake',
+                                    subtitle: 'Sub-tenant TSG authentication & bearer token',
+                                },
+                                {
+                                    id: 2,
+                                    title: 'SD-WAN Sites, IONs & LAN Subnets',
+                                    subtitle: 'Parallel site inventory, clusters & interface roles',
+                                },
+                                {
+                                    id: 3,
+                                    title: 'Overlay VPN Mesh & SASE Fabric',
+                                    subtitle: 'Mapping WAN circuits, IPSec state & Prisma Access PoPs',
+                                },
+                                {
+                                    id: 4,
+                                    title: 'Operational IPs & VyOS Underlay',
+                                    subtitle: 'Resolving live DHCP/PPPoE state & next-hop hardware ports',
+                                },
+                            ].map((step) => {
+                                const isDone = buildProgress.stage > step.id;
+                                const isActive = buildProgress.stage === step.id;
+                                return (
+                                    <div
+                                        key={step.id}
+                                        className={cn(
+                                            "flex items-center gap-3 px-3.5 py-2.5 rounded-2xl border transition-all duration-300",
+                                            isActive
+                                                ? "bg-blue-500/10 border-blue-500/35 shadow-sm"
+                                                : isDone
+                                                    ? "bg-emerald-500/5 border-emerald-500/20"
+                                                    : "bg-card-secondary/30 border-border/40 opacity-50"
+                                        )}
+                                    >
+                                        <div
+                                            className={cn(
+                                                "w-6 h-6 rounded-lg flex items-center justify-center text-[10px] font-black shrink-0 transition-all",
+                                                isDone
+                                                    ? "bg-emerald-500 text-white shadow-sm shadow-emerald-500/30"
+                                                    : isActive
+                                                        ? "bg-blue-600 text-white shadow-sm shadow-blue-500/30"
+                                                        : "bg-card-secondary text-text-muted border border-border"
+                                            )}
+                                        >
+                                            {isDone ? (
+                                                <Check size={13} strokeWidth={3.5} />
+                                            ) : isActive ? (
+                                                <RefreshCw size={12} className="animate-spin" />
+                                            ) : (
+                                                step.id
+                                            )}
+                                        </div>
+                                        <div className="flex-1 min-w-0 text-left">
+                                            <div className={cn(
+                                                "text-xs font-black tracking-tight truncate",
+                                                isActive ? "text-blue-400" : isDone ? "text-text-primary" : "text-text-muted"
+                                            )}>
+                                                {step.title}
+                                            </div>
+                                            <div className="text-[10px] text-text-muted font-medium truncate">
+                                                {step.subtitle}
+                                            </div>
+                                        </div>
+                                        {isDone && (
+                                            <span className="text-[9px] font-mono font-black uppercase tracking-wider text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-md border border-emerald-500/20">
+                                                Done
+                                            </span>
+                                        )}
+                                        {isActive && (
+                                            <span className="text-[9px] font-mono font-black uppercase tracking-wider text-blue-400 bg-blue-500/15 px-2 py-0.5 rounded-md border border-blue-500/30 animate-pulse">
+                                                Active
+                                            </span>
+                                        )}
+                                    </div>
+                                );
+                            })}
                         </div>
                     </div>
-                    <h2 className="text-xl font-black text-text-primary tracking-tight uppercase">Building Topology</h2>
-                    <p className="text-text-muted text-xs font-bold mt-2 tracking-widest animate-pulse">Querying Prisma SASE Systems...</p>
                 </div>
             ) : error ? (
                 <div className="absolute inset-0 z-50 flex flex-col items-center justify-center bg-card/80 backdrop-blur-md p-8">
@@ -4453,8 +4669,21 @@ function TopologyContent({ token, theme }: TopologyProps) {
                             )}
                         </div>
 
-                        {/* Right: Actions / Clear Filter */}
+                        {/* Right: Actions / Background Refresh Status / Clear Filter */}
                         <div className="flex items-center gap-2 z-20 shrink-0 min-w-[32px]">
+                            {refreshing && (
+                                <div className="flex items-center gap-2 bg-blue-500/10 border border-blue-500/30 px-3 py-1.5 rounded-xl shadow-sm animate-in fade-in duration-200">
+                                    <RefreshCw size={12} className="text-blue-400 animate-spin shrink-0" />
+                                    <div className="flex flex-col text-left">
+                                        <span className="text-[9px] font-black text-blue-400 uppercase tracking-wider leading-tight">
+                                            Step {buildProgress.stage}/4 • {(buildProgress.elapsedMs / 1000).toFixed(1)}s
+                                        </span>
+                                        <span className="text-[9px] font-bold text-text-muted truncate max-w-[180px] leading-tight">
+                                            {buildProgress.stageLabel}
+                                        </span>
+                                    </div>
+                                </div>
+                            )}
                             {(logicalViewSiteId || selectedNetwork) && (
                                 <button
                                     onClick={() => {
@@ -4706,11 +4935,17 @@ function TopologyContent({ token, theme }: TopologyProps) {
 
                                 {/* Refresh Topology Data */}
                                 <button
-                                    onClick={fetchTopology}
-                                    className="w-9 h-9 hover:bg-card-secondary rounded-xl text-text-muted hover:text-orange-500 transition-all flex items-center justify-center cursor-pointer"
-                                    title="Refresh Data"
+                                    onClick={handleRefresh}
+                                    disabled={refreshing}
+                                    className={cn(
+                                        "w-9 h-9 rounded-xl transition-all flex items-center justify-center cursor-pointer",
+                                        refreshing
+                                            ? "bg-blue-500/15 text-blue-400 border border-blue-500/30"
+                                            : "hover:bg-card-secondary text-text-muted hover:text-orange-500"
+                                    )}
+                                    title={refreshing ? `Refreshing Topology (${buildProgress.stageLabel})` : "Force Refresh Topology Data"}
                                 >
-                                    <RefreshCw size={16} />
+                                    <RefreshCw size={16} className={cn(refreshing && "animate-spin")} />
                                 </button>
 
                                 <div className="w-6 h-px bg-border/60 my-0.5" />
