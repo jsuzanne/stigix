@@ -180,53 +180,83 @@ export const ScoreDashboard = ({
         );
     };
 
+    const formatCount = (n: number | undefined | null): string => {
+        if (n === null || n === undefined) return '0';
+        if (n >= 1000000) return (n / 1000000).toFixed(1).replace(/\.0$/, '') + 'M';
+        if (n >= 10000) return (n / 1000).toFixed(1).replace(/\.0$/, '') + 'k';
+        return n.toLocaleString();
+    };
+
     const renderCounters = (type: 'url' | 'dns' | 'threat') => {
         if (!statistics) return null;
         if (type === 'url') {
             return (
-                <div className="flex items-center gap-3 bg-background/60 border border-border/60 rounded-lg px-2.5 py-1.5">
-                    <div className="text-right">
-                        <div className="text-sm font-black text-red-500 tabular-nums leading-none">{statistics.url_tests_blocked}</div>
-                        <div className="text-[8px] font-black text-text-muted uppercase tracking-wider opacity-60 mt-0.5">Blocked</div>
-                    </div>
-                    <div className="w-px h-5 bg-border/60" />
-                    <div className="text-right">
-                        <div className="text-sm font-black text-green-500 tabular-nums leading-none">{statistics.url_tests_allowed}</div>
-                        <div className="text-[8px] font-black text-text-muted uppercase tracking-wider opacity-60 mt-0.5">Allowed</div>
+                <div className="flex flex-col items-end">
+                    <span className="text-[7.5px] font-black tracking-widest text-text-muted/60 uppercase mb-0.5" title="Resets daily at 00:00 — raw test history preserved">Today</span>
+                    <div className="flex items-center gap-3 bg-background/60 border border-border/60 rounded-lg px-2.5 py-1.5">
+                        <div className="text-right">
+                            <div className="text-sm font-black text-red-500 tabular-nums leading-none" title={`${statistics.url_tests_blocked?.toLocaleString() ?? 0} blocked`}>
+                                {formatCount(statistics.url_tests_blocked)}
+                            </div>
+                            <div className="text-[8px] font-black text-text-muted uppercase tracking-wider opacity-60 mt-0.5">Blocked</div>
+                        </div>
+                        <div className="w-px h-5 bg-border/60" />
+                        <div className="text-right">
+                            <div className="text-sm font-black text-green-500 tabular-nums leading-none" title={`${statistics.url_tests_allowed?.toLocaleString() ?? 0} allowed`}>
+                                {formatCount(statistics.url_tests_allowed)}
+                            </div>
+                            <div className="text-[8px] font-black text-text-muted uppercase tracking-wider opacity-60 mt-0.5">Allowed</div>
+                        </div>
                     </div>
                 </div>
             );
         }
         if (type === 'dns') {
             return (
-                <div className="flex items-center gap-2.5 bg-background/60 border border-border/60 rounded-lg px-2.5 py-1.5">
-                    <div className="text-right">
-                        <div className="text-sm font-black text-orange-500 tabular-nums leading-none">{statistics.dns_tests_blocked}</div>
-                        <div className="text-[8px] font-black text-text-muted uppercase tracking-wider opacity-60 mt-0.5">Blocked</div>
-                    </div>
-                    <div className="w-px h-5 bg-border/60" />
-                    <div className="text-right">
-                        <div className="text-sm font-black text-yellow-500 tabular-nums leading-none">{statistics.dns_tests_sinkholed || 0}</div>
-                        <div className="text-[8px] font-black text-text-muted uppercase tracking-wider opacity-60 mt-0.5">Sinkhole</div>
-                    </div>
-                    <div className="w-px h-5 bg-border/60" />
-                    <div className="text-right">
-                        <div className="text-sm font-black text-green-500 tabular-nums leading-none">{statistics.dns_tests_allowed || 0}</div>
-                        <div className="text-[8px] font-black text-text-muted uppercase tracking-wider opacity-60 mt-0.5">Allowed</div>
+                <div className="flex flex-col items-end">
+                    <span className="text-[7.5px] font-black tracking-widest text-text-muted/60 uppercase mb-0.5" title="Resets daily at 00:00 — raw test history preserved">Today</span>
+                    <div className="flex items-center gap-2.5 bg-background/60 border border-border/60 rounded-lg px-2.5 py-1.5">
+                        <div className="text-right">
+                            <div className="text-sm font-black text-orange-500 tabular-nums leading-none" title={`${statistics.dns_tests_blocked?.toLocaleString() ?? 0} blocked`}>
+                                {formatCount(statistics.dns_tests_blocked)}
+                            </div>
+                            <div className="text-[8px] font-black text-text-muted uppercase tracking-wider opacity-60 mt-0.5">Blocked</div>
+                        </div>
+                        <div className="w-px h-5 bg-border/60" />
+                        <div className="text-right">
+                            <div className="text-sm font-black text-yellow-500 tabular-nums leading-none" title={`${(statistics.dns_tests_sinkholed || 0)?.toLocaleString()} sinkholed`}>
+                                {formatCount(statistics.dns_tests_sinkholed || 0)}
+                            </div>
+                            <div className="text-[8px] font-black text-text-muted uppercase tracking-wider opacity-60 mt-0.5">Sinkhole</div>
+                        </div>
+                        <div className="w-px h-5 bg-border/60" />
+                        <div className="text-right">
+                            <div className="text-sm font-black text-green-500 tabular-nums leading-none" title={`${(statistics.dns_tests_allowed || 0)?.toLocaleString()} allowed`}>
+                                {formatCount(statistics.dns_tests_allowed || 0)}
+                            </div>
+                            <div className="text-[8px] font-black text-text-muted uppercase tracking-wider opacity-60 mt-0.5">Allowed</div>
+                        </div>
                     </div>
                 </div>
             );
         }
         return (
-            <div className="flex items-center gap-3 bg-background/60 border border-border/60 rounded-lg px-2.5 py-1.5">
-                <div className="text-right">
-                    <div className="text-sm font-black text-purple-500 tabular-nums leading-none">{statistics.threat_tests_blocked}</div>
-                    <div className="text-[8px] font-black text-text-muted uppercase tracking-wider opacity-60 mt-0.5">Blocked</div>
-                </div>
-                <div className="w-px h-5 bg-border/60" />
-                <div className="text-right">
-                    <div className="text-sm font-black text-green-500 tabular-nums leading-none">{statistics.threat_tests_allowed}</div>
-                    <div className="text-[8px] font-black text-text-muted uppercase tracking-wider opacity-60 mt-0.5">Allowed</div>
+            <div className="flex flex-col items-end">
+                <span className="text-[7.5px] font-black tracking-widest text-text-muted/60 uppercase mb-0.5" title="Resets daily at 00:00 — raw test history preserved">Today</span>
+                <div className="flex items-center gap-3 bg-background/60 border border-border/60 rounded-lg px-2.5 py-1.5">
+                    <div className="text-right">
+                        <div className="text-sm font-black text-purple-500 tabular-nums leading-none" title={`${statistics.threat_tests_blocked?.toLocaleString() ?? 0} blocked`}>
+                            {formatCount(statistics.threat_tests_blocked)}
+                        </div>
+                        <div className="text-[8px] font-black text-text-muted uppercase tracking-wider opacity-60 mt-0.5">Blocked</div>
+                    </div>
+                    <div className="w-px h-5 bg-border/60" />
+                    <div className="text-right">
+                        <div className="text-sm font-black text-green-500 tabular-nums leading-none" title={`${statistics.threat_tests_allowed?.toLocaleString() ?? 0} allowed`}>
+                            {formatCount(statistics.threat_tests_allowed)}
+                        </div>
+                        <div className="text-[8px] font-black text-text-muted uppercase tracking-wider opacity-60 mt-0.5">Allowed</div>
+                    </div>
                 </div>
             </div>
         );

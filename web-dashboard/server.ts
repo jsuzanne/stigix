@@ -9445,14 +9445,71 @@ const performSecurityStatsReset = () => {
             return true;
         }
     } catch (e: any) {
-        console.error('[SECURITY] Scheduled reset failed:', e.message);
+        console.error('[SECURITY] Manual reset failed:', e.message);
     }
     return false;
+};
+
+const performDailyStatsReset = () => {
+    try {
+        const config = readSecurityConfig();
+        if (config) {
+            config.statistics = {
+                total_tests_run: 0,
+                url_tests_blocked: 0,
+                url_tests_allowed: 0,
+                dns_tests_blocked: 0,
+                dns_tests_sinkholed: 0,
+                dns_tests_allowed: 0,
+                threat_tests_blocked: 0,
+                threat_tests_allowed: 0,
+                last_test_time: config.statistics?.last_test_time || null
+            };
+            saveSecurityConfig(config);
+            console.log('[SECURITY] Midnight daily reset: counters reset to 0 (history and raw logs preserved)');
+            return true;
+        }
+    } catch (e: any) {
+        console.error('[SECURITY] Scheduled daily reset failed:', e.message);
+    }
+    return false;
+};
+
+let dailyResetTimeout: NodeJS.Timeout | null = null;
+let dailyResetInterval: NodeJS.Timeout | null = null;
+
+const scheduleMidnightReset = () => {
+    const now = new Date();
+    const midnight = new Date(
+        now.getFullYear(),
+        now.getMonth(),
+        now.getDate() + 1, // Tomorrow
+        0, 0, 0, 0 // Midnight
+    );
+
+    const msUntilMidnight = midnight.getTime() - now.getTime();
+    console.log(`[SECURITY] Next daily stats reset scheduled in ${(msUntilMidnight / 1000 / 60 / 60).toFixed(2)} hours`);
+
+    if (dailyResetTimeout) clearTimeout(dailyResetTimeout);
+    if (dailyResetInterval) clearInterval(dailyResetInterval);
+
+    // Initial timeout to hit exactly midnight
+    dailyResetTimeout = setTimeout(() => {
+        console.log('[SECURITY] Executing midnight daily security stats reset');
+        performDailyStatsReset();
+
+        // Then set a 24-hour interval
+        dailyResetInterval = setInterval(() => {
+            console.log('[SECURITY] Executing daily security stats reset');
+            performDailyStatsReset();
+        }, 24 * 60 * 60 * 1000);
+    }, msUntilMidnight);
 };
 
 // Start schedulers on server startup
 setTimeout(() => {
     startSchedulers();
+    scheduleMidnightReset();
 
     // VyOS Health Check (Immediate on boot after 3s, then every 60s)
     setTimeout(() => {

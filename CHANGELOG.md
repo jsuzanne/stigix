@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.0.51] - 2026-10-19
+
+### Added
+- **Explicit "Today" Indicator & Compact Formatting in Security Posture Dashboard (`ScoreDashboard.tsx`)**:
+  - Added a dedicated "TODAY" label above blocked and allowed counter badges to clearly signal that live counters reflect today's activity cycle.
+  - Implemented compact number formatting (`formatCount`: `10.5k`, `1.2M`) with exact counts displayed in tooltips on hover, preventing UI overflow or layout shifts when test volumes scale up.
+
+### Changed
+- **Safe Daily Midnight Security Counter Cycle (`web-dashboard/server.ts`)**:
+  - Restored automatic midnight reset specifically for daily counter gauges (`config.statistics`) to provide fresh daily efficacy metrics.
+  - Guaranteed zero data loss: midnight resets strictly preserve persistent test execution histories (`test-results.jsonl`, `security-history.jsonl`), rolling backups, and sequential test counter IDs (`test-counter.json`). Historical test purges remain strictly manual via `DELETE /api/security/statistics`.
+
 ## [3.0.50] - 2026-10-19
 
 ### Fixed
