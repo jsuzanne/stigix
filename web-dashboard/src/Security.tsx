@@ -151,6 +151,7 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
     const [batchProcessingUrl, setBatchProcessingUrl] = useState(false);
     const [batchProcessingDns, setBatchProcessingDns] = useState(false);
     const [testing, setTesting] = useState<{ [key: string]: boolean }>({});
+    const [freshVerdicts, setFreshVerdicts] = useState<{ [key: string]: number }>({});
     const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null);
 
     // Collapsible sections & section filter tab
@@ -622,6 +623,8 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
     };
 
 
+    const savingConfigCountRef = React.useRef(0);
+
     const fetchConfig = async () => {
         try {
             const res = await gFetch('/api/security/config', { headers: authHeaders() });
@@ -634,6 +637,23 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
             if (!data) {
                 console.error('Security config data is empty');
                 return;
+            }
+
+            // Do not overwrite optimistic UI state if a save is currently in-flight
+            if (savingConfigCountRef.current > 0) {
+                return;
+            }
+
+            // Ensure url_filtering and dns_security arrays exist
+            if (!data.url_filtering) {
+                data.url_filtering = { enabled: true, enabled_categories: [], protocol: 'https' };
+            } else if (!Array.isArray(data.url_filtering.enabled_categories)) {
+                data.url_filtering.enabled_categories = [];
+            }
+            if (!data.dns_security) {
+                data.dns_security = { enabled: true, enabled_tests: [] };
+            } else if (!Array.isArray(data.dns_security.enabled_tests)) {
+                data.dns_security.enabled_tests = [];
             }
 
             // Ensure scheduled_execution has the new structure if it's from an old config
@@ -832,6 +852,9 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
     };
 
     const saveConfig = async (newConfig: Partial<SecurityConfig>) => {
+        // Immediate optimistic state update so checkbox toggles respond on the exact click frame
+        setConfig(prev => prev ? { ...prev, ...newConfig } : prev);
+        savingConfigCountRef.current += 1;
         try {
             const res = await gFetch('/api/security/config', {
                 method: 'POST',
@@ -839,11 +862,13 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
                 body: JSON.stringify(newConfig)
             });
             const data = await res.json();
-            if (data.success) {
+            if (data.success && data.config && savingConfigCountRef.current <= 1) {
                 setConfig(data.config);
             }
         } catch (e) {
             console.error('Failed to save config:', e);
+        } finally {
+            savingConfigCountRef.current = Math.max(0, savingConfigCountRef.current - 1);
         }
     };
 
@@ -861,7 +886,7 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
 
     const toggleURLCategory = (categoryId: string) => {
         if (!config) return;
-        const enabled = config.url_filtering.enabled_categories;
+        const enabled = Array.isArray(config.url_filtering?.enabled_categories) ? config.url_filtering.enabled_categories : [];
         const newEnabled = enabled.includes(categoryId)
             ? enabled.filter(id => id !== categoryId)
             : [...enabled, categoryId];
@@ -873,7 +898,7 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
 
     const toggleDNSTest = (testId: string) => {
         if (!config) return;
-        const enabled = config.dns_security.enabled_tests;
+        const enabled = Array.isArray(config.dns_security?.enabled_tests) ? config.dns_security.enabled_tests : [];
         const newEnabled = enabled.includes(testId)
             ? enabled.filter(id => id !== testId)
             : [...enabled, testId];
@@ -897,18 +922,19 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
 
     const toggleAllURLCategories = () => {
         if (!config) return;
+        const currentEnabled = Array.isArray(config.url_filtering?.enabled_categories) ? config.url_filtering.enabled_categories : [];
         const visibleCats = securityProfile.url_filtering.items.filter(cat =>
             cat.name.toLowerCase().includes(urlSearchQuery.toLowerCase()) ||
             cat.url.toLowerCase().includes(urlSearchQuery.toLowerCase())
         );
         const visibleIds = visibleCats.map(cat => cat.id);
-        const allVisibleEnabled = visibleIds.every(id => config.url_filtering.enabled_categories.includes(id));
+        const allVisibleEnabled = visibleIds.length > 0 && visibleIds.every(id => currentEnabled.includes(id));
 
         let newEnabled: string[];
         if (allVisibleEnabled) {
-            newEnabled = config.url_filtering.enabled_categories.filter(id => !visibleIds.includes(id));
+            newEnabled = currentEnabled.filter(id => !visibleIds.includes(id));
         } else {
-            newEnabled = Array.from(new Set([...config.url_filtering.enabled_categories, ...visibleIds]));
+            newEnabled = Array.from(new Set([...currentEnabled, ...visibleIds]));
         }
 
         saveConfig({
@@ -918,18 +944,19 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
 
     const toggleAllDNSTests = () => {
         if (!config) return;
+        const currentEnabled = Array.isArray(config.dns_security?.enabled_tests) ? config.dns_security.enabled_tests : [];
         const visibleTests = securityProfile.dns_security.items.filter(test =>
             test.name.toLowerCase().includes(dnsSearchQuery.toLowerCase()) ||
             test.domain.toLowerCase().includes(dnsSearchQuery.toLowerCase())
         );
         const visibleIds = visibleTests.map(test => test.id);
-        const allVisibleEnabled = visibleIds.every(id => config.dns_security.enabled_tests.includes(id));
+        const allVisibleEnabled = visibleIds.length > 0 && visibleIds.every(id => currentEnabled.includes(id));
 
         let newEnabled: string[];
         if (allVisibleEnabled) {
-            newEnabled = config.dns_security.enabled_tests.filter(id => !visibleIds.includes(id));
+            newEnabled = currentEnabled.filter(id => !visibleIds.includes(id));
         } else {
-            newEnabled = Array.from(new Set([...config.dns_security.enabled_tests, ...visibleIds]));
+            newEnabled = Array.from(new Set([...currentEnabled, ...visibleIds]));
         }
 
         saveConfig({
@@ -963,7 +990,13 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
     };
 
     const runURLTest = async (category: URLCategory) => {
-        setTesting({ ...testing, [`url-${category.id}`]: true });
+        const cardKey = `url-${category.id}`;
+        setTesting(prev => ({ ...prev, [cardKey]: true }));
+        setFreshVerdicts(prev => {
+            const next = { ...prev };
+            delete next[cardKey];
+            return next;
+        });
         try {
             const targetUrl = getTargetUrl(category.url);
             const res = await gFetch('/api/security/url-test', {
@@ -975,25 +1008,29 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
             if (result.status) {
                 notifyStatusChange(category.name, result.status, result.previousStatus);
             }
-            await fetchResults();
-            await fetchConfig();
+            await Promise.all([fetchResults(), fetchLatestVerdicts(), fetchConfig()]);
+            setFreshVerdicts(prev => ({ ...prev, [cardKey]: Date.now() }));
         } catch (e) {
             console.error('URL test failed:', e);
         } finally {
-            setTesting({ ...testing, [`url-${category.id}`]: false });
+            setTesting(prev => ({ ...prev, [cardKey]: false }));
         }
     };
 
     const runURLBatchTest = async () => {
         if (!config || batchProcessingUrl) return;
         setBatchProcessingUrl(true);
+        const enabledCategories = securityProfile.url_filtering.items.filter(cat =>
+            config.url_filtering.enabled_categories.includes(cat.id)
+        );
+        setFreshVerdicts(prev => {
+            const next = { ...prev };
+            enabledCategories.forEach(cat => delete next[`url-${cat.id}`]);
+            return next;
+        });
         const activeProtocol = (config.url_filtering?.protocol || 'http').toUpperCase();
         showToast(`Running ${config.url_filtering.enabled_categories.length} URL filtering tests (${activeProtocol})...`, 'info');
         try {
-            const enabledCategories = securityProfile.url_filtering.items.filter(cat =>
-                config.url_filtering.enabled_categories.includes(cat.id)
-            );
-
             const tests = enabledCategories.map(cat => ({ url: getTargetUrl(cat.url), category: cat.name }));
 
             await gFetch('/api/security/url-test-batch', {
@@ -1001,8 +1038,13 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
                 headers: { ...authHeaders(), 'Content-Type': 'application/json' },
                 body: JSON.stringify({ tests })
             });
-            await fetchResults();
-            await fetchConfig();
+            await Promise.all([fetchResults(), fetchLatestVerdicts(), fetchConfig()]);
+            const now = Date.now();
+            setFreshVerdicts(prev => {
+                const next = { ...prev };
+                enabledCategories.forEach(cat => { next[`url-${cat.id}`] = now; });
+                return next;
+            });
             showToast(`URL filtering tests completed (${activeProtocol})!`, 'success');
         } catch (e) {
             console.error('Batch URL test failed:', e);
@@ -1013,7 +1055,13 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
     };
 
     const runDNSTest = async (test: DNSTestDomain) => {
-        setTesting({ ...testing, [`dns-${test.id}`]: true });
+        const cardKey = `dns-${test.id}`;
+        setTesting(prev => ({ ...prev, [cardKey]: true }));
+        setFreshVerdicts(prev => {
+            const next = { ...prev };
+            delete next[cardKey];
+            return next;
+        });
         try {
             const res = await gFetch('/api/security/dns-test', {
                 method: 'POST',
@@ -1024,24 +1072,28 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
             if (data.status) {
                 notifyStatusChange(test.name, data.status, data.previousStatus);
             }
-            await fetchResults();
-            await fetchConfig();
+            await Promise.all([fetchResults(), fetchLatestVerdicts(), fetchConfig()]);
+            setFreshVerdicts(prev => ({ ...prev, [cardKey]: Date.now() }));
         } catch (e) {
             console.error('DNS test failed:', e);
         } finally {
-            setTesting({ ...testing, [`dns-${test.id}`]: false });
+            setTesting(prev => ({ ...prev, [cardKey]: false }));
         }
     };
 
     const runDNSBatchTest = async () => {
         if (!config || batchProcessingDns) return;
         setBatchProcessingDns(true);
+        const enabledTests = securityProfile.dns_security.items.filter(test =>
+            config.dns_security.enabled_tests.includes(test.id)
+        );
+        setFreshVerdicts(prev => {
+            const next = { ...prev };
+            enabledTests.forEach(test => delete next[`dns-${test.id}`]);
+            return next;
+        });
         showToast(`Running ${config.dns_security.enabled_tests.length} DNS security tests...`, 'info');
         try {
-            const enabledTests = securityProfile.dns_security.items.filter(test =>
-                config.dns_security.enabled_tests.includes(test.id)
-            );
-
             const tests = enabledTests.map(test => ({ domain: test.domain, testName: test.name }));
 
             await gFetch('/api/security/dns-test-batch', {
@@ -1049,8 +1101,13 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
                 headers: { ...authHeaders(), 'Content-Type': 'application/json' },
                 body: JSON.stringify({ tests })
             });
-            await fetchResults();
-            await fetchConfig();
+            await Promise.all([fetchResults(), fetchLatestVerdicts(), fetchConfig()]);
+            const now = Date.now();
+            setFreshVerdicts(prev => {
+                const next = { ...prev };
+                enabledTests.forEach(test => { next[`dns-${test.id}`] = now; });
+                return next;
+            });
             showToast('DNS security tests completed!', 'success');
         } catch (e) {
             console.error('Batch DNS test failed:', e);
@@ -1067,7 +1124,13 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
     // Single source of truth for all test types.
 
     const runC2Test = async (scenario: C2Scenario) => {
-        setTesting(prev => ({ ...prev, [`c2-${scenario.id}`]: true }));
+        const cardKey = `c2-${scenario.id}`;
+        setTesting(prev => ({ ...prev, [cardKey]: true }));
+        setFreshVerdicts(prev => {
+            const next = { ...prev };
+            delete next[cardKey];
+            return next;
+        });
         try {
             const res = await gFetch('/api/security/c2-test', {
                 method: 'POST',
@@ -1084,23 +1147,29 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
                 const label = data.status === 'enforced' ? '✓ Blocked' : data.status === 'bypass' ? '⊗ Allowed' : '⚠ Inconclusive';
                 showToast(`${scenario.name}: ${label}`, data.status === 'enforced' ? 'success' : data.status === 'bypass' ? 'error' : 'info');
             }
-            await fetchResults();
+            await Promise.all([fetchResults(), fetchLatestVerdicts()]);
+            setFreshVerdicts(prev => ({ ...prev, [cardKey]: Date.now() }));
         } catch (e) {
             console.error('C2 test failed:', e);
             showToast('C2 test failed', 'error');
         } finally {
-            setTesting(prev => ({ ...prev, [`c2-${scenario.id}`]: false }));
+            setTesting(prev => ({ ...prev, [cardKey]: false }));
         }
     };
 
     const runC2BatchTest = async () => {
         if (batchProcessingC2 || c2SelectedScenarios.length === 0) return;
         setBatchProcessingC2(true);
+        const selectedScenarios = securityProfile.c2_scenarios
+            .filter(s => c2SelectedScenarios.includes(s.id))
+            .map(s => ({ scenarioId: s.id, scenarioName: s.name, attackType: s.attack_type, target: s.target }));
+        setFreshVerdicts(prev => {
+            const next = { ...prev };
+            selectedScenarios.forEach(s => delete next[`c2-${s.scenarioId}`]);
+            return next;
+        });
         showToast(`Running ${c2SelectedScenarios.length} C2 attack scenarios...`, 'info');
         try {
-            const selectedScenarios = securityProfile.c2_scenarios
-                .filter(s => c2SelectedScenarios.includes(s.id))
-                .map(s => ({ scenarioId: s.id, scenarioName: s.name, attackType: s.attack_type, target: s.target }));
             await gFetch('/api/security/c2-test-batch', {
                 method: 'POST',
                 headers: { ...authHeaders(), 'Content-Type': 'application/json' },
@@ -1108,7 +1177,13 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
             });
             // Poll for results after a delay (batch runs in background)
             setTimeout(async () => {
-                await fetchResults();
+                await Promise.all([fetchResults(), fetchLatestVerdicts()]);
+                const now = Date.now();
+                setFreshVerdicts(prev => {
+                    const next = { ...prev };
+                    selectedScenarios.forEach(s => { next[`c2-${s.scenarioId}`] = now; });
+                    return next;
+                });
                 showToast('C2 batch completed!', 'success');
                 setBatchProcessingC2(false);
             }, selectedScenarios.length * 4000 + 2000);
@@ -1136,7 +1211,13 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
 
     // ── AI Security Test Functions ────────────────────────────────────────────
     const runAITest = async (scenario: AISecurityScenario) => {
-        setTesting(prev => ({ ...prev, [`ai-${scenario.id}`]: true }));
+        const cardKey = `ai-${scenario.id}`;
+        setTesting(prev => ({ ...prev, [cardKey]: true }));
+        setFreshVerdicts(prev => {
+            const next = { ...prev };
+            delete next[cardKey];
+            return next;
+        });
         try {
             const res = await gFetch('/api/security/ai-test', {
                 method: 'POST',
@@ -1154,30 +1235,42 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
                 const label = s === 'enforced' ? '✓ Blocked' : s === 'bypass' ? '⊗ Allowed' : s === 'completed' ? '✓ Completed' : '⚠ Inconclusive';
                 showToast(`${scenario.name}: ${label}`, s === 'enforced' || s === 'completed' ? 'success' : s === 'bypass' ? 'error' : 'info');
             }
-            await fetchResults();
+            await Promise.all([fetchResults(), fetchLatestVerdicts()]);
+            setFreshVerdicts(prev => ({ ...prev, [cardKey]: Date.now() }));
         } catch (e) {
             console.error('AI test failed:', e);
             showToast('AI Security test failed', 'error');
         } finally {
-            setTesting(prev => ({ ...prev, [`ai-${scenario.id}`]: false }));
+            setTesting(prev => ({ ...prev, [cardKey]: false }));
         }
     };
 
     const runAIBatchTest = async () => {
         if (batchProcessingAI || aiSelectedScenarios.length === 0) return;
         setBatchProcessingAI(true);
+        const selectedScenarios = securityProfile.ai_security_scenarios
+            .filter(s => aiSelectedScenarios.includes(s.id))
+            .map(s => ({ scenarioId: s.id, scenarioName: s.name, attackType: s.attack_type, targets: s.targets }));
+        setFreshVerdicts(prev => {
+            const next = { ...prev };
+            selectedScenarios.forEach(s => delete next[`ai-${s.scenarioId}`]);
+            return next;
+        });
         showToast(`Running ${aiSelectedScenarios.length} AI Security scenarios...`, 'info');
         try {
-            const selectedScenarios = securityProfile.ai_security_scenarios
-                .filter(s => aiSelectedScenarios.includes(s.id))
-                .map(s => ({ scenarioId: s.id, scenarioName: s.name, attackType: s.attack_type, targets: s.targets }));
             await gFetch('/api/security/ai-test-batch', {
                 method: 'POST',
                 headers: { ...authHeaders(), 'Content-Type': 'application/json' },
                 body: JSON.stringify({ scenarios: selectedScenarios })
             });
             setTimeout(async () => {
-                await fetchResults();
+                await Promise.all([fetchResults(), fetchLatestVerdicts()]);
+                const now = Date.now();
+                setFreshVerdicts(prev => {
+                    const next = { ...prev };
+                    selectedScenarios.forEach(s => { next[`ai-${s.scenarioId}`] = now; });
+                    return next;
+                });
                 showToast('AI Security batch completed!', 'success');
                 setBatchProcessingAI(false);
             }, selectedScenarios.length * 6000 + 2000); // volume test takes longer
@@ -1216,15 +1309,27 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
         }
 
         setLoading(true);
+        setFreshVerdicts(prev => {
+            const next = { ...prev };
+            endpointsToTest.forEach(ep => delete next[`eicar-${ep}`]);
+            delete next['eicar-global'];
+            return next;
+        });
         showToast(`Running EICAR threat test to ${endpointsToTest.length} targets...`, 'info');
         try {
-            const res = await gFetch('/api/security/threat-test', {
+            await gFetch('/api/security/threat-test', {
                 method: 'POST',
                 headers: { ...authHeaders(), 'Content-Type': 'application/json' },
                 body: JSON.stringify({ endpoint: endpointsToTest })
             });
-            await fetchResults();
-            await fetchConfig();
+            await Promise.all([fetchResults(), fetchLatestVerdicts(), fetchConfig()]);
+            const now = Date.now();
+            setFreshVerdicts(prev => {
+                const next = { ...prev };
+                endpointsToTest.forEach(ep => { next[`eicar-${ep}`] = now; });
+                next['eicar-global'] = now;
+                return next;
+            });
             showToast('EICAR threat tests completed!', 'success');
 
             // Save endpoints to config for scheduled tests
@@ -1249,7 +1354,14 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
     const runSingleEicarTest = async (endpoint: string, e: React.MouseEvent) => {
         e.stopPropagation(); // prevent row selection toggle
         if (runningEicarTarget || loading) return;
+        const cardKey = `eicar-${endpoint}`;
         setRunningEicarTarget(endpoint);
+        setFreshVerdicts(prev => {
+            const next = { ...prev };
+            delete next[cardKey];
+            delete next['eicar-global'];
+            return next;
+        });
         showToast(`Running EICAR test on ${endpoint}...`, 'info');
         try {
             await gFetch('/api/security/threat-test', {
@@ -1257,8 +1369,13 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
                 headers: { ...authHeaders(), 'Content-Type': 'application/json' },
                 body: JSON.stringify({ endpoint: [endpoint] })
             });
-            await fetchResults();
-            await fetchConfig();
+            await Promise.all([fetchResults(), fetchLatestVerdicts(), fetchConfig()]);
+            const now = Date.now();
+            setFreshVerdicts(prev => ({
+                ...prev,
+                [cardKey]: now,
+                'eicar-global': now
+            }));
             showToast('EICAR test completed!', 'success');
         } catch (err) {
             console.error('Single EICAR test failed:', err);
@@ -1378,6 +1495,8 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
                 headers: authHeaders()
             });
             setTestResults([]);
+            setLatestVerdicts({});
+            setFreshVerdicts({});
         } catch (e) {
             console.error('Failed to clear history:', e);
         }
@@ -1393,6 +1512,8 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
             });
             const data = await res.json();
             if (data.success) {
+                setLatestVerdicts({});
+                setFreshVerdicts({});
                 await fetchConfig();
                 await fetchResults();
                 showToast('Statistics and history reset successfully', 'success');
@@ -1415,11 +1536,104 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
         link.click();
     };
 
-    const getStatusBadge = (result: any) => {
+    const getStatusBadge = (result: any, options?: { isFresh?: boolean; isTesting?: boolean; freshKey?: number }) => {
         if (!result) return null;
 
         const status = result.status || (result.success ? 'allowed' : 'blocked');
 
+        // Card-level badge with dull (previous/historical) vs solid vivid (freshly re-tested) states
+        if (options) {
+            const isFresh = Boolean(options.isFresh && !options.isTesting);
+            const dimClass = options.isTesting ? 'opacity-40' : 'opacity-55';
+            const titleText = options.isTesting
+                ? 'Re-running test...'
+                : isFresh
+                    ? 'Fresh test result (just executed)'
+                    : 'Previous test result — run test to refresh';
+
+            if (isFresh) {
+                if (status === 'blocked' || status === 'enforced') {
+                    return (
+                        <span key={options.freshKey} title={titleText} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-red-600 text-white border border-red-500 shadow-sm shadow-red-600/30 text-xs font-bold animate-in zoom-in-95 duration-200 whitespace-nowrap">
+                            <XCircle size={13} /> Blocked
+                        </span>
+                    );
+                } else if (status === 'sinkholed') {
+                    return (
+                        <span key={options.freshKey} title={titleText} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-amber-400 text-slate-950 border border-amber-300 shadow-sm shadow-amber-400/30 text-xs font-black animate-in zoom-in-95 duration-200 whitespace-nowrap">
+                            <AlertTriangle size={13} /> Sinkholed
+                        </span>
+                    );
+                } else if (status === 'allowed' || status === 'resolved' || status === 'bypass') {
+                    return (
+                        <span key={options.freshKey} title={titleText} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-emerald-600 text-white border border-emerald-500 shadow-sm shadow-emerald-600/30 text-xs font-bold animate-in zoom-in-95 duration-200 whitespace-nowrap">
+                            <CheckCircle size={13} /> Allowed
+                        </span>
+                    );
+                } else if (status === 'completed') {
+                    return (
+                        <span key={options.freshKey} title={titleText} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-cyan-600 text-white border border-cyan-500 shadow-sm text-xs font-bold animate-in zoom-in-95 duration-200 whitespace-nowrap">
+                            <CheckCircle size={13} /> Completed{result.reached_count != null ? ` ${result.reached_count}/${result.total_count}` : ''}
+                        </span>
+                    );
+                } else if (status === 'inconclusive' || status === 'unreachable' || status === 'error') {
+                    const label = status === 'inconclusive' ? 'Inconclusive' : status === 'unreachable' ? 'Unreachable' : 'Error';
+                    return (
+                        <span key={options.freshKey} title={titleText} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-orange-500 text-white border border-orange-400 shadow-sm text-xs font-bold animate-in zoom-in-95 duration-200 whitespace-nowrap">
+                            {status === 'error' ? <XCircle size={13} /> : <AlertTriangle size={13} />} {label}
+                        </span>
+                    );
+                } else {
+                    return (
+                        <span key={options.freshKey} title={titleText} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-slate-600 text-white border border-slate-500 text-xs font-bold animate-in zoom-in-95 duration-200 whitespace-nowrap">
+                            <Clock size={13} /> Unknown
+                        </span>
+                    );
+                }
+            }
+
+            // Dull / opaque badge for historical verdicts or while re-running
+            if (status === 'blocked' || status === 'enforced') {
+                return (
+                    <span title={titleText} className={cn("inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-red-500/10 text-red-400/75 border border-red-500/20 text-xs font-medium transition-opacity whitespace-nowrap", dimClass)}>
+                        <XCircle size={13} /> Blocked
+                    </span>
+                );
+            } else if (status === 'sinkholed') {
+                return (
+                    <span title={titleText} className={cn("inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-amber-500/10 text-amber-400/75 border border-amber-500/20 text-xs font-medium transition-opacity whitespace-nowrap", dimClass)}>
+                        <AlertTriangle size={13} /> Sinkholed
+                    </span>
+                );
+            } else if (status === 'allowed' || status === 'resolved' || status === 'bypass') {
+                return (
+                    <span title={titleText} className={cn("inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-emerald-500/10 text-emerald-400/75 border border-emerald-500/20 text-xs font-medium transition-opacity whitespace-nowrap", dimClass)}>
+                        <CheckCircle size={13} /> Allowed
+                    </span>
+                );
+            } else if (status === 'completed') {
+                return (
+                    <span title={titleText} className={cn("inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-cyan-500/10 text-cyan-400/75 border border-cyan-500/20 text-xs font-medium transition-opacity whitespace-nowrap", dimClass)}>
+                        <CheckCircle size={13} /> Completed{result.reached_count != null ? ` ${result.reached_count}/${result.total_count}` : ''}
+                    </span>
+                );
+            } else if (status === 'inconclusive' || status === 'unreachable' || status === 'error') {
+                const label = status === 'inconclusive' ? 'Inconclusive' : status === 'unreachable' ? 'Unreachable' : 'Error';
+                return (
+                    <span title={titleText} className={cn("inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-orange-500/10 text-orange-400/75 border border-orange-500/20 text-xs font-medium transition-opacity whitespace-nowrap", dimClass)}>
+                        {status === 'error' ? <XCircle size={13} /> : <AlertTriangle size={13} />} {label}
+                    </span>
+                );
+            } else {
+                return (
+                    <span title={titleText} className={cn("inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-card-secondary text-text-muted border border-border text-xs font-medium transition-opacity whitespace-nowrap", dimClass)}>
+                        <Clock size={13} /> Unknown
+                    </span>
+                );
+            }
+        }
+
+        // Standard badge for log tables and detail modals
         if (status === 'blocked' || status === 'enforced') {
             return <span className="flex items-center gap-1 text-red-400 text-sm"><XCircle size={14} /> Blocked</span>;
         } else if (status === 'sinkholed') {
@@ -1892,17 +2106,21 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
                     return (
                         <div className="p-6 space-y-6">
                             <div className="flex flex-wrap items-center justify-between gap-4">
-                                <label className="flex items-center gap-2 cursor-pointer group">
-                                    <div className="relative flex items-center">
-                                        <input
-                                            type="checkbox"
-                                            checked={allVisibleCatsEnabled}
-                                            onChange={toggleAllURLCategories}
-                                            className="w-4 h-4 rounded border-border bg-card-secondary text-red-600 focus:ring-1 focus:ring-red-500 outline-none transition-all"
-                                        />
+                                <button
+                                    type="button"
+                                    onClick={toggleAllURLCategories}
+                                    className="flex items-center gap-2.5 cursor-pointer group select-none"
+                                >
+                                    <div className={cn(
+                                        "w-4 h-4 rounded border flex items-center justify-center transition-all shrink-0",
+                                        allVisibleCatsEnabled
+                                            ? "bg-red-600 border-red-500 text-white shadow-sm shadow-red-900/30"
+                                            : "bg-card-secondary border-border group-hover:border-red-500/60"
+                                    )}>
+                                        {allVisibleCatsEnabled && <Check size={11} className="text-white" strokeWidth={3} />}
                                     </div>
-                                    <span className="text-[10px] font-black uppercase tracking-widest text-text-muted group-hover:text-text-primary transition-colors">Select All</span>
-                                </label>
+                                    <span className="text-[10px] font-black uppercase tracking-widest text-text-primary dark:text-white group-hover:text-red-400 transition-colors">Select All</span>
+                                </button>
                                 <button
                                     onClick={runURLBatchTest}
                                     disabled={loading || batchProcessingUrl || config.url_filtering.enabled_categories.length === 0 || (systemHealth && !systemHealth.ready)}
@@ -1928,7 +2146,7 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
                             </div>
 
                             {visibleCats.length > 0 ? (
-                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-3 max-h-96 overflow-y-auto pr-2 scrollbar-thin scrollbar-thumb-border">
+                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 min-[1800px]:grid-cols-4 min-[2200px]:grid-cols-5 gap-3 max-h-96 overflow-y-auto pr-2 scrollbar-thin scrollbar-thumb-border">
                                     {visibleCats.map(category => {
                                         const isEnabled = config.url_filtering.enabled_categories.includes(category.id);
                                         const isTesting = testing[`url-${category.id}`];
@@ -1941,32 +2159,40 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
                                                 key={category.id}
                                                 id={`url-item-${category.id}`}
                                                 className={cn(
-                                                    "bg-card border rounded-xl p-3 flex items-center justify-between transition-all group hover:shadow-md",
-                                                    isEnabled ? "border-red-500/20 shadow-sm" : "border-border opacity-60 hover:opacity-100"
+                                                    "bg-card border rounded-xl p-3 flex items-center justify-between gap-2 transition-all group hover:shadow-md",
+                                                    isEnabled ? "border-red-500/30 shadow-sm" : "border-border hover:border-border/80"
                                                 )}
                                             >
-                                                <div className="flex items-center gap-3 flex-1 min-w-0">
-                                                    <input
-                                                        type="checkbox"
-                                                        checked={isEnabled}
-                                                        onChange={() => toggleURLCategory(category.id)}
-                                                        className="w-4 h-4 rounded border-border bg-card-secondary text-red-600 focus:ring-1 focus:ring-red-500 outline-none transition-all"
-                                                    />
-                                                    <div className="min-w-0 pr-2">
-                                                        <div className={cn("text-xs font-black tracking-tight truncate", isEnabled ? "text-text-primary" : "text-text-muted")}>
+                                                <div
+                                                    onClick={() => toggleURLCategory(category.id)}
+                                                    className="flex items-center gap-3 flex-1 min-w-0 cursor-pointer select-none"
+                                                >
+                                                    <div className={cn(
+                                                        "w-4 h-4 rounded border flex items-center justify-center transition-all shrink-0",
+                                                        isEnabled
+                                                            ? "bg-red-600 border-red-500 text-white shadow-sm shadow-red-900/30"
+                                                            : "bg-card-secondary border-border group-hover:border-red-500/50"
+                                                    )}>
+                                                        {isEnabled && <Check size={11} className="text-white" strokeWidth={3} />}
+                                                    </div>
+                                                    <div className="min-w-0 pr-1 flex-1">
+                                                        <div
+                                                            className="text-xs font-black tracking-tight truncate text-text-primary dark:text-white"
+                                                            title={category.name}
+                                                        >
                                                             {category.name}
                                                         </div>
-                                                        <div className="text-[9px] text-text-muted font-mono truncate opacity-60 group-hover:opacity-100 transition-opacity flex items-center gap-1">
-                                                            <span className={cn("text-[8px] font-bold uppercase px-1 py-0.2 rounded leading-tight", isHttps ? "bg-emerald-500/15 text-emerald-500 border border-emerald-500/20" : "bg-card-secondary text-text-muted border border-border/50")}>
+                                                        <div className="text-[9px] text-text-muted font-mono truncate opacity-75 group-hover:opacity-100 transition-opacity flex items-center gap-1" title={targetUrl}>
+                                                            <span className={cn("text-[8px] font-bold uppercase px-1 py-0.2 rounded leading-tight shrink-0", isHttps ? "bg-emerald-500/15 text-emerald-500 border border-emerald-500/20" : "bg-card-secondary text-text-muted border border-border/50")}>
                                                                 {isHttps ? 'https' : 'http'}
                                                             </span>
                                                             <span className="truncate">{targetUrl.replace(/^https?:\/\//i, '')}</span>
                                                         </div>
                                                     </div>
                                                 </div>
-                                                <div className="flex items-center gap-2">
-                                                    {lastResult && getStatusBadge(lastResult.result)}
-                                                    <div className="flex gap-1.5 ml-2 p-1 bg-card-secondary/50 rounded-lg border border-border/50">
+                                                <div className="flex items-center gap-1.5 shrink-0">
+                                                    {lastResult && getStatusBadge(lastResult.result, { isFresh: !!freshVerdicts[`url-${category.id}`], isTesting: isTesting || (batchProcessingUrl && isEnabled), freshKey: freshVerdicts[`url-${category.id}`] })}
+                                                    <div className="flex gap-1 p-1 bg-card-secondary/50 rounded-lg border border-border/50 shrink-0">
                                                         <button
                                                             onClick={() => copyToClipboard(`curl -fsS --max-time 10 -o /dev/null -w '%{http_code}' '${targetUrl}'`)}
                                                             className="p-1.5 hover:bg-card border border-transparent hover:border-border rounded-lg text-text-muted hover:text-blue-600 transition-all"
@@ -2078,17 +2304,21 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
                     return (
                         <div className="p-6 space-y-8">
                             <div className="flex flex-wrap items-center justify-between gap-4">
-                                <label className="flex items-center gap-2 cursor-pointer group">
-                                    <div className="relative flex items-center">
-                                        <input
-                                            type="checkbox"
-                                            checked={allVisibleTestsEnabled}
-                                            onChange={toggleAllDNSTests}
-                                            className="w-4 h-4 rounded border-border bg-card-secondary text-blue-600 focus:ring-1 focus:ring-blue-500 outline-none transition-all"
-                                        />
+                                <button
+                                    type="button"
+                                    onClick={toggleAllDNSTests}
+                                    className="flex items-center gap-2.5 cursor-pointer group select-none"
+                                >
+                                    <div className={cn(
+                                        "w-4 h-4 rounded border flex items-center justify-center transition-all shrink-0",
+                                        allVisibleTestsEnabled
+                                            ? "bg-blue-600 border-blue-500 text-white shadow-sm shadow-blue-900/30"
+                                            : "bg-card-secondary border-border group-hover:border-blue-500/60"
+                                    )}>
+                                        {allVisibleTestsEnabled && <Check size={11} className="text-white" strokeWidth={3} />}
                                     </div>
-                                    <span className="text-[10px] font-black uppercase tracking-widest text-text-muted group-hover:text-text-primary transition-colors">Select All</span>
-                                </label>
+                                    <span className="text-[10px] font-black uppercase tracking-widest text-text-primary dark:text-white group-hover:text-blue-400 transition-colors">Select All</span>
+                                </button>
                                 <button
                                     onClick={runDNSBatchTest}
                                     disabled={loading || batchProcessingDns || config.dns_security.enabled_tests.length === 0 || (systemHealth && !systemHealth.ready)}
@@ -2119,7 +2349,7 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
                                     {visibleBasicDNS.length > 0 && (
                                         <div>
                                             <h4 className="text-[10px] font-black text-text-muted tracking-[0.2em] mb-4 border-l-2 border-blue-600 dark:border-blue-400 pl-2">Critical DNS Threats</h4>
-                                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 max-h-80 overflow-y-auto pr-2 scrollbar-thin scrollbar-thumb-border">
+                                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 min-[1800px]:grid-cols-4 gap-3 max-h-80 overflow-y-auto pr-2 scrollbar-thin scrollbar-thumb-border">
                                                 {visibleBasicDNS.map(test => {
                                                     const isEnabled = config.dns_security.enabled_tests.includes(test.id);
                                                     const isTesting = testing[`dns-${test.id}`];
@@ -2130,29 +2360,37 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
                                                             key={test.id}
                                                             id={`dns-item-${test.id}`}
                                                             className={cn(
-                                                                "bg-card border rounded-xl p-3 flex items-center justify-between transition-all group hover:shadow-md",
-                                                                isEnabled ? "border-blue-500/20 shadow-sm" : "border-border opacity-60 hover:opacity-100"
+                                                                "bg-card border rounded-xl p-3 flex items-center justify-between gap-2 transition-all group hover:shadow-md",
+                                                                isEnabled ? "border-blue-500/30 shadow-sm" : "border-border hover:border-border/80"
                                                             )}
                                                         >
-                                                            <div className="flex items-center gap-3 flex-1 min-w-0">
-                                                                <input
-                                                                    type="checkbox"
-                                                                    checked={isEnabled}
-                                                                    onChange={() => toggleDNSTest(test.id)}
-                                                                    className="w-4 h-4 rounded border-border bg-card-secondary text-blue-600 focus:ring-1 focus:ring-blue-500 outline-none transition-all"
-                                                                />
-                                                                <div className="min-w-0 pr-2">
-                                                                    <div className={cn("text-xs font-black tracking-tight truncate", isEnabled ? "text-text-primary" : "text-text-muted")}>
+                                                            <div
+                                                                onClick={() => toggleDNSTest(test.id)}
+                                                                className="flex items-center gap-3 flex-1 min-w-0 cursor-pointer select-none"
+                                                            >
+                                                                <div className={cn(
+                                                                    "w-4 h-4 rounded border flex items-center justify-center transition-all shrink-0",
+                                                                    isEnabled
+                                                                        ? "bg-blue-600 border-blue-500 text-white shadow-sm shadow-blue-900/30"
+                                                                        : "bg-card-secondary border-border group-hover:border-blue-500/50"
+                                                                )}>
+                                                                    {isEnabled && <Check size={11} className="text-white" strokeWidth={3} />}
+                                                                </div>
+                                                                <div className="min-w-0 pr-1 flex-1">
+                                                                    <div
+                                                                        className="text-xs font-black tracking-tight truncate text-text-primary dark:text-white"
+                                                                        title={test.name}
+                                                                    >
                                                                         {test.name}
                                                                     </div>
-                                                                    <div className="text-[9px] text-text-muted font-mono truncate opacity-60 group-hover:opacity-100 transition-opacity">
+                                                                    <div className="text-[9px] text-text-muted font-mono truncate opacity-75 group-hover:opacity-100 transition-opacity" title={test.domain}>
                                                                         {test.domain}
                                                                     </div>
                                                                 </div>
                                                             </div>
-                                                            <div className="flex items-center gap-2">
-                                                                {lastResult && getStatusBadge(lastResult.result)}
-                                                                <div className="flex gap-1.5 ml-2 p-1 bg-card-secondary/50 rounded-lg border border-border/50">
+                                                            <div className="flex items-center gap-1.5 shrink-0">
+                                                                {lastResult && getStatusBadge(lastResult.result, { isFresh: !!freshVerdicts[`dns-${test.id}`], isTesting: isTesting || (batchProcessingDns && isEnabled), freshKey: freshVerdicts[`dns-${test.id}`] })}
+                                                                <div className="flex gap-1 p-1 bg-card-secondary/50 rounded-lg border border-border/50 shrink-0">
                                                                     <button
                                                                         onClick={() => copyToClipboard(`nslookup -timeout=2 ${test.domain}`)}
                                                                         className="p-1.5 hover:bg-card border border-transparent hover:border-border rounded-lg text-text-muted hover:text-blue-600 transition-all"
@@ -2181,7 +2419,7 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
                                     {visibleAdvancedDNS.length > 0 && (
                                         <div>
                                             <h4 className="text-[10px] font-black text-text-muted tracking-[0.2em] mb-4 border-l-2 border-purple-600 dark:border-purple-400 pl-2">Advanced DNS Security</h4>
-                                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 max-h-80 overflow-y-auto pr-2 scrollbar-thin scrollbar-thumb-border">
+                                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 min-[1800px]:grid-cols-4 gap-3 max-h-80 overflow-y-auto pr-2 scrollbar-thin scrollbar-thumb-border">
                                                 {visibleAdvancedDNS.map(test => {
                                                     const isEnabled = config.dns_security.enabled_tests.includes(test.id);
                                                     const isTesting = testing[`dns-${test.id}`];
@@ -2192,29 +2430,37 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
                                                             key={test.id}
                                                             id={`dns-item-${test.id}`}
                                                             className={cn(
-                                                                "bg-card border rounded-xl p-3 flex items-center justify-between transition-all group hover:shadow-md",
-                                                                isEnabled ? "border-purple-500/20 shadow-sm" : "border-border opacity-60 hover:opacity-100"
+                                                                "bg-card border rounded-xl p-3 flex items-center justify-between gap-2 transition-all group hover:shadow-md",
+                                                                isEnabled ? "border-purple-500/30 shadow-sm" : "border-border hover:border-border/80"
                                                             )}
                                                         >
-                                                            <div className="flex items-center gap-3 flex-1 min-w-0">
-                                                                <input
-                                                                    type="checkbox"
-                                                                    checked={isEnabled}
-                                                                    onChange={() => toggleDNSTest(test.id)}
-                                                                    className="w-4 h-4 rounded border-border bg-card-secondary text-purple-600 focus:ring-1 focus:ring-purple-500 outline-none transition-all"
-                                                                />
-                                                                <div className="min-w-0 pr-2">
-                                                                    <div className={cn("text-xs font-black tracking-tight truncate", isEnabled ? "text-text-primary" : "text-text-muted")}>
+                                                            <div
+                                                                onClick={() => toggleDNSTest(test.id)}
+                                                                className="flex items-center gap-3 flex-1 min-w-0 cursor-pointer select-none"
+                                                            >
+                                                                <div className={cn(
+                                                                    "w-4 h-4 rounded border flex items-center justify-center transition-all shrink-0",
+                                                                    isEnabled
+                                                                        ? "bg-purple-600 border-purple-500 text-white shadow-sm shadow-purple-900/30"
+                                                                        : "bg-card-secondary border-border group-hover:border-purple-500/50"
+                                                                )}>
+                                                                    {isEnabled && <Check size={11} className="text-white" strokeWidth={3} />}
+                                                                </div>
+                                                                <div className="min-w-0 pr-1 flex-1">
+                                                                    <div
+                                                                        className="text-xs font-black tracking-tight truncate text-text-primary dark:text-white"
+                                                                        title={test.name}
+                                                                    >
                                                                         {test.name}
                                                                     </div>
-                                                                    <div className="text-[9px] text-text-muted font-mono truncate opacity-60 group-hover:opacity-100 transition-opacity">
+                                                                    <div className="text-[9px] text-text-muted font-mono truncate opacity-75 group-hover:opacity-100 transition-opacity" title={test.domain}>
                                                                         {test.domain}
                                                                     </div>
                                                                 </div>
                                                             </div>
-                                                            <div className="flex items-center gap-2">
-                                                                {lastResult && getStatusBadge(lastResult.result)}
-                                                                <div className="flex gap-1.5 ml-2 p-1 bg-card-secondary/50 rounded-lg border border-border/50">
+                                                            <div className="flex items-center gap-1.5 shrink-0">
+                                                                {lastResult && getStatusBadge(lastResult.result, { isFresh: !!freshVerdicts[`dns-${test.id}`], isTesting: isTesting || (batchProcessingDns && isEnabled), freshKey: freshVerdicts[`dns-${test.id}`] })}
+                                                                <div className="flex gap-1 p-1 bg-card-secondary/50 rounded-lg border border-border/50 shrink-0">
                                                                     <button
                                                                         onClick={() => copyToClipboard(`nslookup -timeout=2 ${test.domain}`)}
                                                                         className="p-1.5 hover:bg-card border border-transparent hover:border-border rounded-lg text-text-muted hover:text-blue-600 transition-all"
@@ -2424,7 +2670,7 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
                                                         )}
                                                     </div>
                                                     <div className="flex items-center gap-1.5 ml-2 border-l border-border/50 pl-3">
-                                                        {lastResult && getStatusBadge(lastResult.result)}
+                                                        {lastResult && getStatusBadge(lastResult.result, { isFresh: !!freshVerdicts[`eicar-${cloudEicarUrl}`], isTesting: runningEicarTarget === cloudEicarUrl || (loading && isSelected), freshKey: freshVerdicts[`eicar-${cloudEicarUrl}`] })}
                                                         {/* Status dot */}
                                                         {disabled ? (
                                                             <div className="w-1.5 h-1.5 rounded-full bg-amber-500 shrink-0" title="Key not configured" />
@@ -2501,7 +2747,7 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
                                                         <p className="text-[9px] text-text-muted font-mono mt-0.5 truncate">{ca.url}</p>
                                                     </div>
                                                     <div className="flex items-center gap-1.5 ml-2 border-l border-border/50 pl-3">
-                                                        {lastResult && getStatusBadge(lastResult.result)}
+                                                        {lastResult && getStatusBadge(lastResult.result, { isFresh: !!freshVerdicts[`eicar-${ca.url}`], isTesting: runningEicarTarget === ca.url || (loading && isSelected), freshKey: freshVerdicts[`eicar-${ca.url}`] })}
                                                         {/* Live server indicator */}
                                                         <div className="relative flex h-2 w-2 items-center justify-center shrink-0" title="Live Active Listener">
                                                             <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75" style={{ animationDuration: '3s' }}></span>
@@ -2560,7 +2806,7 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
                                                         <p className="text-[9px] text-text-muted font-mono mt-0.5 truncate">{url}</p>
                                                     </div>
                                                     <div className="flex items-center gap-1.5 ml-2 border-l border-border/50 pl-3">
-                                                        {lastResult && getStatusBadge(lastResult.result)}
+                                                        {lastResult && getStatusBadge(lastResult.result, { isFresh: !!freshVerdicts[`eicar-${url}`], isTesting: runningEicarTarget === url || (loading && isSelected), freshKey: freshVerdicts[`eicar-${url}`] })}
                                                         {/* Status dot */}
                                                         {status === 'loading' || status === undefined ? (
                                                             <div className="w-1.5 h-1.5 rounded-full bg-border animate-pulse shrink-0" title="Checking reachability..." />
@@ -2605,7 +2851,7 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
                                         <label className="text-[10px] font-black text-text-muted tracking-widest block">Custom Endpoint URL (Optional)</label>
                                         {customEicarUrl && (() => {
                                             const lastResult = getEicarResult(customEicarUrl);
-                                            return lastResult ? getStatusBadge(lastResult.result) : null;
+                                            return lastResult ? getStatusBadge(lastResult.result, { isFresh: !!freshVerdicts[`eicar-${customEicarUrl}`], isTesting: runningEicarTarget === customEicarUrl || loading, freshKey: freshVerdicts[`eicar-${customEicarUrl}`] }) : null;
                                         })()}
                                     </div>
                                     <input
@@ -2641,7 +2887,7 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
 
                                 {testResults.find(r => r.testType === 'threat_prevention' || r.testType === 'threat') && (
                                     <div className="mt-3">
-                                        {getStatusBadge(testResults.find(r => r.testType === 'threat_prevention' || r.testType === 'threat')?.result)}
+                                        {getStatusBadge(testResults.find(r => r.testType === 'threat_prevention' || r.testType === 'threat')?.result, { isFresh: !!freshVerdicts['eicar-global'], isTesting: loading || !!runningEicarTarget, freshKey: freshVerdicts['eicar-global'] })}
                                     </div>
                                 )}
                             </div>
@@ -2721,17 +2967,21 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
                         <div className="p-6 space-y-6">
                             {/* Controls row */}
                             <div className="flex flex-wrap items-center justify-between gap-4">
-                                <label className="flex items-center gap-2 cursor-pointer group">
-                                    <div className="relative flex items-center">
-                                        <input
-                                            type="checkbox"
-                                            checked={allVisibleSelected}
-                                            onChange={toggleAllC2Scenarios}
-                                            className="w-4 h-4 rounded border-border bg-card-secondary text-purple-600 focus:ring-1 focus:ring-purple-500 outline-none transition-all"
-                                        />
+                                <button
+                                    type="button"
+                                    onClick={toggleAllC2Scenarios}
+                                    className="flex items-center gap-2.5 cursor-pointer group select-none"
+                                >
+                                    <div className={cn(
+                                        "w-4 h-4 rounded border flex items-center justify-center transition-all shrink-0",
+                                        allVisibleSelected
+                                            ? "bg-purple-600 border-purple-500 text-white shadow-sm shadow-purple-900/30"
+                                            : "bg-card-secondary border-border group-hover:border-purple-500/60"
+                                    )}>
+                                        {allVisibleSelected && <Check size={11} className="text-white" strokeWidth={3} />}
                                     </div>
-                                    <span className="text-[10px] font-black uppercase tracking-widest text-text-muted group-hover:text-text-primary transition-colors">Select All</span>
-                                </label>
+                                    <span className="text-[10px] font-black uppercase tracking-widest text-text-primary dark:text-white group-hover:text-purple-400 transition-colors">Select All</span>
+                                </button>
                                 <button
                                     onClick={runC2BatchTest}
                                     disabled={batchProcessingC2 || c2SelectedScenarios.length === 0}
@@ -2754,7 +3004,7 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
                             <div>
                                 <h4 className="text-[10px] font-black text-text-muted tracking-[0.2em] mb-4 border-l-2 border-purple-600 dark:border-purple-400 pl-2">Attack Simulation Scenarios</h4>
                                 {visibleScenarios.length > 0 ? (
-                                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
+                                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 min-[1800px]:grid-cols-4 gap-3">
                                         {visibleScenarios.map(scenario => {
                                             const isEnabled = c2SelectedScenarios.includes(scenario.id);
                                             const isTesting = testing[`c2-${scenario.id}`];
@@ -2765,31 +3015,39 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
                                                     key={scenario.id}
                                                     id={`c2-item-${scenario.id}`}
                                                     className={cn(
-                                                        "bg-card border rounded-xl p-3 flex items-center justify-between transition-all group hover:shadow-md",
-                                                        isEnabled ? "border-purple-500/20 shadow-sm" : "border-border opacity-60 hover:opacity-100"
+                                                        "bg-card border rounded-xl p-3 flex items-center justify-between gap-2 transition-all group hover:shadow-md",
+                                                        isEnabled ? "border-purple-500/30 shadow-sm" : "border-border hover:border-border/80"
                                                     )}
                                                 >
-                                                    <div className="flex items-center gap-3 flex-1 min-w-0">
-                                                        <input
-                                                            type="checkbox"
-                                                            checked={isEnabled}
-                                                            onChange={() => setC2SelectedScenarios(prev =>
-                                                                prev.includes(scenario.id) ? prev.filter(id => id !== scenario.id) : [...prev, scenario.id]
-                                                            )}
-                                                            className="w-4 h-4 rounded border-border bg-card-secondary text-purple-600 focus:ring-1 focus:ring-purple-500 outline-none transition-all"
-                                                        />
-                                                        <div className="min-w-0 pr-2">
-                                                            <div className={cn("text-xs font-black tracking-tight truncate", isEnabled ? "text-text-primary" : "text-text-muted")}>
+                                                    <div
+                                                        onClick={() => setC2SelectedScenarios(prev =>
+                                                            prev.includes(scenario.id) ? prev.filter(id => id !== scenario.id) : [...prev, scenario.id]
+                                                        )}
+                                                        className="flex items-center gap-3 flex-1 min-w-0 cursor-pointer select-none"
+                                                    >
+                                                        <div className={cn(
+                                                            "w-4 h-4 rounded border flex items-center justify-center transition-all shrink-0",
+                                                            isEnabled
+                                                                ? "bg-purple-600 border-purple-500 text-white shadow-sm shadow-purple-900/30"
+                                                                : "bg-card-secondary border-border group-hover:border-purple-500/50"
+                                                        )}>
+                                                            {isEnabled && <Check size={11} className="text-white" strokeWidth={3} />}
+                                                        </div>
+                                                        <div className="min-w-0 pr-1 flex-1">
+                                                            <div
+                                                                className="text-xs font-black tracking-tight truncate text-text-primary dark:text-white"
+                                                                title={scenario.name}
+                                                            >
                                                                 {scenario.name}
                                                             </div>
-                                                            <div className="text-[9px] text-text-muted font-mono truncate opacity-60 group-hover:opacity-100 transition-opacity">
+                                                            <div className="text-[9px] text-text-muted font-mono truncate opacity-75 group-hover:opacity-100 transition-opacity" title={scenario.target}>
                                                                 {scenario.target}
                                                             </div>
                                                         </div>
                                                     </div>
-                                                    <div className="flex items-center gap-2">
-                                                        {lastResult && getStatusBadge(lastResult.result)}
-                                                        <div className="flex gap-1.5 ml-2 p-1 bg-card-secondary/50 rounded-lg border border-border/50">
+                                                    <div className="flex items-center gap-1.5 shrink-0">
+                                                        {lastResult && getStatusBadge(lastResult.result, { isFresh: !!freshVerdicts[`c2-${scenario.id}`], isTesting: isTesting || (batchProcessingC2 && isEnabled), freshKey: freshVerdicts[`c2-${scenario.id}`] })}
+                                                        <div className="flex gap-1 p-1 bg-card-secondary/50 rounded-lg border border-border/50 shrink-0">
                                                             <button
                                                                 onClick={() => copyToClipboard(scenario.cliHint)}
                                                                 className="p-1.5 hover:bg-card border border-transparent hover:border-border rounded-lg text-text-muted hover:text-purple-600 transition-all"
@@ -2894,17 +3152,21 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
                         <div className="p-6 space-y-6">
                             {/* Controls row */}
                             <div className="flex flex-wrap items-center justify-between gap-4">
-                                <label className="flex items-center gap-2 cursor-pointer group">
-                                    <div className="relative flex items-center">
-                                        <input
-                                            type="checkbox"
-                                            checked={allVisibleSelected}
-                                            onChange={toggleAllAIScenarios}
-                                            className="w-4 h-4 rounded border-border bg-card-secondary text-cyan-600 focus:ring-1 focus:ring-cyan-500 outline-none transition-all"
-                                        />
+                                <button
+                                    type="button"
+                                    onClick={toggleAllAIScenarios}
+                                    className="flex items-center gap-2.5 cursor-pointer group select-none"
+                                >
+                                    <div className={cn(
+                                        "w-4 h-4 rounded border flex items-center justify-center transition-all shrink-0",
+                                        allVisibleSelected
+                                            ? "bg-cyan-600 border-cyan-500 text-white shadow-sm shadow-cyan-900/30"
+                                            : "bg-card-secondary border-border group-hover:border-cyan-500/60"
+                                    )}>
+                                        {allVisibleSelected && <Check size={11} className="text-white" strokeWidth={3} />}
                                     </div>
-                                    <span className="text-[10px] font-black uppercase tracking-widest text-text-muted group-hover:text-text-primary transition-colors">Select All</span>
-                                </label>
+                                    <span className="text-[10px] font-black uppercase tracking-widest text-text-primary dark:text-white group-hover:text-cyan-400 transition-colors">Select All</span>
+                                </button>
                                 <button
                                     onClick={runAIBatchTest}
                                     disabled={batchProcessingAI || aiSelectedScenarios.length === 0}
@@ -2926,7 +3188,7 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
                             <div>
                                 <h4 className="text-[10px] font-black text-text-muted tracking-[0.2em] mb-4 border-l-2 border-cyan-600 dark:border-cyan-400 pl-2">AI Security Attack Scenarios</h4>
                                 {visibleScenarios.length > 0 ? (
-                                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
+                                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 min-[1800px]:grid-cols-4 gap-3">
                                         {visibleScenarios.map(scenario => {
                                             const isEnabled = aiSelectedScenarios.includes(scenario.id);
                                             const isTesting = testing[`ai-${scenario.id}`];
@@ -2938,26 +3200,31 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
                                                     key={scenario.id}
                                                     id={`ai-item-${scenario.id}`}
                                                     className={cn(
-                                                        "relative p-4 rounded-xl border transition-all",
+                                                        "relative p-4 rounded-xl border transition-all group hover:shadow-md",
                                                         isEnabled
                                                             ? "bg-card border-cyan-500/30 shadow-sm"
-                                                            : "bg-card-secondary/30 border-border opacity-60"
+                                                            : "bg-card border-border hover:border-border/80"
                                                     )}
                                                 >
                                                     {/* Header */}
                                                     <div className="flex items-start justify-between gap-2 mb-2">
-                                                        <div className="flex items-start gap-2 flex-1 min-w-0">
-                                                            <input
-                                                                type="checkbox"
-                                                                checked={isEnabled}
-                                                                onChange={() => {
-                                                                    if (isEnabled) setAISelectedScenarios(prev => prev.filter(id => id !== scenario.id));
-                                                                    else setAISelectedScenarios(prev => [...prev, scenario.id]);
-                                                                }}
-                                                                className="mt-0.5 w-3.5 h-3.5 rounded border-border bg-card-secondary text-cyan-600 focus:ring-1 focus:ring-cyan-500 outline-none flex-shrink-0"
-                                                            />
-                                                            <div className="min-w-0">
-                                                                <p className="text-[11px] font-black text-text-primary leading-tight truncate">{scenario.name}</p>
+                                                        <div
+                                                            onClick={() => {
+                                                                if (isEnabled) setAISelectedScenarios(prev => prev.filter(id => id !== scenario.id));
+                                                                else setAISelectedScenarios(prev => [...prev, scenario.id]);
+                                                            }}
+                                                            className="flex items-start gap-2.5 flex-1 min-w-0 cursor-pointer select-none"
+                                                        >
+                                                            <div className={cn(
+                                                                "mt-0.5 w-4 h-4 rounded border flex items-center justify-center transition-all shrink-0",
+                                                                isEnabled
+                                                                    ? "bg-cyan-600 border-cyan-500 text-white shadow-sm shadow-cyan-900/30"
+                                                                    : "bg-card-secondary border-border group-hover:border-cyan-500/50"
+                                                            )}>
+                                                                {isEnabled && <Check size={11} className="text-white" strokeWidth={3} />}
+                                                            </div>
+                                                            <div className="min-w-0 flex-1">
+                                                                <p className="text-xs font-black text-text-primary dark:text-white leading-tight truncate" title={scenario.name}>{scenario.name}</p>
                                                                 <p className="text-[9px] text-cyan-600 dark:text-cyan-400 font-bold tracking-widest uppercase mt-0.5">{scenario.policy_engine}</p>
                                                             </div>
                                                         </div>
@@ -2991,7 +3258,7 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
                                                     {lastResult && (
                                                         <div className="mt-2 pt-2 border-t border-border/50 flex items-center justify-between">
                                                             <span className="text-[8px] text-text-muted">Last result:</span>
-                                                            <div className="scale-75 origin-right">{getStatusBadge(lastResult.result)}</div>
+                                                            <div className="scale-90 origin-right">{getStatusBadge(lastResult.result, { isFresh: !!freshVerdicts[`ai-${scenario.id}`], isTesting: isTesting || (batchProcessingAI && isEnabled), freshKey: freshVerdicts[`ai-${scenario.id}`] })}</div>
                                                         </div>
                                                     )}
                                                 </div>

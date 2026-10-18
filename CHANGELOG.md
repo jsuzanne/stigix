@@ -5,6 +5,149 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.0.49] - 2026-10-18
+
+### Fixed
+- **Packet Capture Stop & Dissection Notification Deduplication (`web-dashboard/src/PacketCapture.tsx`)**:
+  - **Eliminated Race Condition on Manual Stop**: Stopping capture via `handleStopCapture` immediately clears capture state, activates an `isStoppingRef` flag, and cancels pending polling ticks, preventing the background poller from racing with a redundant "Packet capture completed" notification and duplicate dissection dispatch.
+  - **Sequential Chained Polling**: Replaced unmanaged `setInterval` with recursive, cancellable `setTimeout` ensuring only one `/api/capture/status` request is ever in-flight at a time, eliminating duplicated completions when capture stops automatically (duration or packet limit reached).
+  - **Toast Deduplication with Stable ID**: Bound `react-hot-toast` loading and completion toasts to a deterministic ID (`dissect-${displayName}`), preventing stacked duplicate "Dissecting..." toasts on screen.
+  - **Concurrent Dissection Guard (`dissectingFileRef`)**: Added an in-memory guard ref that drops concurrent requests to dissect the same PCAP trace.
+
+## [3.0.48] - 2026-10-18
+
+### Changed & Simplified
+- **Simplified SD-WAN Overlay Tunnel Inspector Widget (`web-dashboard/src/Topology.tsx`)**:
+  - Removed internal CGNAT Shim IPs (`Shim: 100.64.x.x`) from both Source and Peer endpoint boxes in the overlay tunnel card, preserving focus on the physical WAN IP, site/device names, and VEP ID with 1-click `Copy ION CLI` (`dump vpn status VpnID=<vep_id>`).
+  - Removed redundant `All Circuit Tunnels` button from the bottom of the card (circuits and their tunnel drawers remain directly accessible by clicking physical circuit badges on canvas).
+  - Removed misleading `Trace Path` button from the overlay tunnel inspector card (host/container ICMP traceroutes do not represent SD-WAN underlay paths and no ION on-demand underlay traceroute API exists).
+
+## [3.0.47] - 2026-10-18
+
+### Fixed & Enhanced
+- **Preserved Strict 3-State SD-WAN Tunnel Visualization (`web-dashboard/src/Topology.tsx`, `engines/getflow.py`, `Scripts/getflow.py`)**:
+  - **3-State Canvas & Tooltip Standard**: Restored pure 3-state rendering across the map canvas edges, hover tooltips, filter pills, and side drawer:
+    - **`ACTIVE`** (Emerald green `#10b981`): Forwarding data traffic.
+    - **`INACTIVE`** (Blue `#3b82f6`): Operational Up tunnels in standby mode (passive cluster member or backup circuit) or not usable for transit.
+    - **`DOWN`** (Rose red `#ef4444`): Physically down or unreachable peer tunnels.
+  - **Diagnostic Reason in Inspector Widget**: The diagnostic `status_reason`, `status_reason_code`, and `status_reason_detail` are clearly surfaced inside the floating inspector widget card when clicking any tunnel (e.g. `Core Peering is down in DC` when a Hub BGP peer is down, or `Cluster / Standby Member Path`, or `Peer is unreachable`).
+  - **Hub/Datacenter Scoped BGP Peer Filtering**: Scoped Core BGP peer checks exclusively to Hub/DC sites to eliminate false positives from spoke branch LAN BGP peers.
+  - **1-Click ION CLI Copy**: Fixed clipboard copy handler argument ordering for `dump vpn status VpnID=<vep_id>` for local and peer ION endpoints.
+
+## [3.0.46] - 2026-10-18
+
+### Fixed
+- **SD-WAN Topology Engine Missing `time` Import (`engines/getflow.py`, `Scripts/getflow.py`)**:
+  - Added missing `import time` required by `get_bulk_topology` when computing `now_ms` for correlation events windowing and tunnel state uptime duration (`uptime_sec`).
+  - Verified end-to-end live on `DC1` (`192.168.122.51`) across all 11 SD-WAN sites and confirmed exact root-cause output on `BR1` tunnels (`1772715388344016045`, `1747404411372004345`, `1747408660494004645`).
+
+## [3.0.45] - 2026-10-18
+
+### Added & Enhanced
+- **SD-WAN Overlay Tunnel Live Root-Cause Diagnostics & 1-Click ION CLI VEP Inspector (`engines/getflow.py`, `Scripts/getflow.py`, `web-dashboard/server.ts`, `web-dashboard/src/Topology.tsx`)**:
+  - **4-State Tunnel Classification**: Distinguished between **`ACTIVE`** (forwarding traffic), **`STANDBY`** (`status: up, usable: true, active: false`), **`UP · NOT USABLE`** (`status: up, usable: false` rendered with amber dashed line `#f59e0b`), and **`DOWN`** (`status: down`).
+  - **3-Tier Root-Cause Fault Engine (`status_reason`, `status_reason_code`, `status_reason_detail`)**:
+    - **Tier 1 (Prisma Correlation Events)**: Queries `POST /sdwan/v2.1/api/anynetlinks/correlationevents/query` to map official controller fault codes (`PEERING_CORE_DOWN` ➔ `Core Peering is down in DC`, `NETWORK_VPNPEER_UNREACHABLE` ➔ `Peer is unreachable`, `NETWORK_VPNBFD_DOWN` ➔ `BFD session is down`).
+    - **Tier 2 (Real-Time Core BGP Peer Check)**: Queries `POST /sdwan/v2.0/api/bgppeers/status/query` across Hub/DC routers to detect down Core BGP peers (`scope: "core"`) causing `Not Usable` overlay states and surfaces the exact peer IP and down duration.
+    - **Tier 3 (State Fallback)**: Gracefully falls back to `GET /sdwan/v2.0/api/vpnlinks/{id}/state` when `/status` returns `400 VPL_ACTION_INSUFFICIENT_VPE` on unreachable tunnels.
+  - **VEP IDs, Tunnel Shim IPs & 1-Click ION CLI Copy (`dump vpn status VpnID=<vep_id>`)**:
+    - Queries `POST /sdwan/v2.0/api/vpnlinks/query` to extract endpoint-specific `vep1_id`, `vep2_id`, `vep1_shim_ipv4`, and `vep2_shim_ipv4`.
+    - Displays the exact local `VEP ID`, tunnel `Shim IP` (`100.64.x.x`), and a 1-click **`Copy ION CLI`** button on both the **SOURCE ENDPOINT** and **REMOTE ENDPOINT** cards (`dump vpn status VpnID=<vep_id>`).
+  - **On-Demand Live Tunnel Inspection Endpoint (`GET /api/topology/vpn-link/:vpnId/inspect`)**:
+    - Clicking any overlay tunnel on the topology canvas or in the Circuit Tunnels drawer triggers an instant (~150ms) live controller check to refresh operational status, uptime duration (`last_state_change`), flap count, cipher/BFD parameters, and fault reasons in real time.
+
+## [3.0.44] - 2026-10-18
+
+### Added & Enhanced
+- **SD-WAN Overlay & VyOS Underlay Topology in ChangeGuard Snapshots (`snapshot-manager.ts`, `server.ts`, `ChangeGuard.tsx`)**:
+  - **Prisma SD-WAN Topology Capture**: Integrated full SD-WAN topology capture into state snapshots (`POST /api/snapshots`), retrieving all 11 Prisma SD-WAN sites, ION devices, interfaces, and service link states via `prisma_sase` client cache.
+  - **Comprehensive Multi-Layer Diff Engine**:
+    - **Stigix Mesh (Peer Tunnels)**: Accurately computes tunnel availability and regressions across Stigix peer nodes.
+    - **SD-WAN Overlay (IONs & Sites)**: Tracks disconnected ION devices (-30 score penalty, automatic `NO_GO` verdict).
+    - **VyOS Underlay Routers**: Detects offline/unreachable underlay routers (-25 penalty per router, automatic `NO_GO` verdict).
+    - **DEM Probes**: Latency and packet loss regression scoring.
+  - **Diagnostic Error Handling & Resilience**:
+    - Wrapped `POST /api/snapshots/diff` with complete try/catch handling and diagnostic details.
+    - Fixed property mapping between `SnapshotDemDelta` and probe comparison objects.
+    - Fixed VyOS underlay router diff comparison to match router IDs/names and online status rather than reference equality.
+  - **Terminology Clarification**:
+    - Clearly demarcated **Stigix Mesh** (inter-Stigix peer tunnels) from **SD-WAN Overlay** (inter-ION IPsec tunnels) and **VyOS Underlay**.
+  - **Live Verification**: Validated live on SD-WAN lab node BR8 (`192.168.123.102`), achieving clean `GO` (100/100) snapshot comparisons.
+
+## [3.0.43] - 2026-10-18
+
+### Fixed
+- **Navigation Feature Flag Propagation (`web-dashboard/src/App.tsx`)**:
+  - Forwarded `snapshots_enabled: features.snapshots_enabled` to `SidebarRail` and `SearchPaletteModal`.
+  - Fixes missing `ChangeGuard (Before/After)` menu entry under the `Validate` flyout menu when `ENABLE_CHANGE_SNAPSHOTS=true`.
+  - Rebuilt and hot-deployed production assets to BR8.
+
+## [3.0.42] - 2026-10-18
+
+### Changed & Refined
+- **ChangeGuard Alignment to SD-WAN IPsec Overlay Architecture (`ChangeGuard.tsx`, `ai-tools.ts`, `snapshot-manager.ts`, `navigationConfig.ts`, `PRD_CHANGE_GUARD_BEFORE_AFTER_DIFF.md`)**:
+  - Replaced all legacy "WireGuard" terminology and assumptions with **SD-WAN IPsec Overlay Mesh Tunnels** across the UI dashboard, tables, navigation, and AI Copilot prompt descriptions.
+  - Removed default WireGuard port fallback (`51820`) in `snapshot-manager.ts` in favor of dynamic SD-WAN peer port mapping.
+  - Synchronized and validated live on SD-WAN lab node BR8.
+
+## [3.0.41] - 2026-10-18
+
+### Fixed & Enhanced
+- **ChangeGuard API Harmonization & Web UI Integration (`server.ts`, `ChangeGuard.tsx`)**:
+  - Enriched `GET /api/snapshots` to return normalized metadata fields (`tunnels_count`, `tunnels_up`, `dem_probes_count`, `dem_healthy_count`, `iso_time`, and full node identity) compatible with the Web Dashboard table and timeline.
+  - Aligned `POST /api/snapshots/diff` to accept both `{ baseline_id, current_id }` and `{ baseline, target }`, and return structured `DiffReport` payloads with top-level `score`, `verdict`, formatted tunnel and DEM probe comparisons for real-time UI rendering.
+  - Validated live on SD-WAN lab node BR8 (`192.168.123.102`): baseline snapshot capture, live state delta comparison, and `GO` verdict computation.
+
+## [3.0.40] - 2026-10-18
+
+### Added & Enhanced
+- **Stigix ChangeGuard — Before / After State Snapshot & Delta Diff Engine (`snapshot-manager.ts`, `ChangeGuard.tsx`, `ai-tools.ts`, `server.ts`)**:
+  - **Core Snapshot Engine & Retention**: Captures node identity, WireGuard overlay mesh tunnels (handshakes, endpoints, UP/DOWN status), and full Digital Experience Monitoring (DEM) probe matrices (average latency, jitter, loss %, health status). Automatically persists timestamped JSON snapshots to `./config/snapshots/` with rotation (capped at 50).
+  - **Deterministic Delta Diffing & Verdict Scoring**: Implemented mathematical delta evaluation comparing baseline vs. target/live states with confidence scoring (0–100) and actionable operational verdicts (`GO`, `WARNING`, `NO_GO`). Flags critical regressions (tunnel down, packet loss increase, latency spikes) alongside improvements.
+  - **REST API & Feature Flag Security**: Added authenticated endpoints (`GET/POST /api/snapshots`, `GET/DELETE /api/snapshots/:id`, `POST /api/snapshots/diff`) strictly guarded behind the `ENABLE_CHANGE_SNAPSHOTS` feature flag.
+  - **AI Copilot Integration**: Added `take_snapshot`, `compare_snapshots`, and `list_snapshots` tools into `ai-tools.ts` for conversational natural language pre/post migration validation.
+  - **Web Dashboard UI (`ChangeGuard.tsx`, `navigationConfig.ts`, `App.tsx`)**: Built a dedicated ChangeGuard view in the `Validate` navigation domain featuring interactive Baseline vs. Target comparison, real-time verdict banners, color-coded DEM & WireGuard delta tables, raw JSON inspection, and snapshot timeline management.
+  - **Automated Test Suite & PRD**: Added 100% automated test coverage in `test-snapshot-engine.ts` and evolutionary 4-phase PRD in `docs/PRD_CHANGE_GUARD_BEFORE_AFTER_DIFF.md`.
+
+## [3.0.39] - 2026-10-18
+
+### Fixed & Enhanced
+- **XFR Speedtest Direction-Aware Metrics & Throughput Doubling Fix (`server.ts`, `ai-tools.ts`, `orchestrator.py`, `test-copilot-suite.ts`)**:
+  - Preserved raw `throughput_mbps` in `XfrJobManager.mapSummary()` (`server.ts`) instead of only duplicating it into both `sent_mbps` and `received_mbps`.
+  - Removed the `received_mbps + sent_mbps` summation in `get_test_status` and `list_speedtest_history` (`ai-tools.ts`) that caused unidirectional XFR tests (e.g., `121.3 Mbps` upload) to be reported as `242.6 Mbps` bidirectional by the AI Copilot.
+  - Added direction-aware normalization (`client-to-server` upload sets `download_mbps = 0`; `server-to-client` download sets `upload_mbps = 0`) and explicit `direction_label` across `ai-tools.ts` and `mcp-server/src/lib/orchestrator.py`.
+  - Added automated regression Test 48 in `web-dashboard/tests/test-copilot-suite.ts` and a consolidated Quick-Reference Master Table of all 21 test prompts in `PRD/PRD_AI_COPILOT_RELIABILITY_AND_TEST_PLAN.md`.
+
+## [3.0.38] - 2026-10-17
+
+### Performance & Optimization
+- **Fast URL Filtering & DNS Security Test Execution (`server.ts`, `test-logger.ts`, `scm_traffic_log_viewer.py`)**:
+  - **Non-Blocking Background SLS Enrichment**: Decoupled `enrichWithSLS()` inside `addTestResult()` so SCM/SLS traffic log correlation runs asynchronously in the background after returning the HTTP test verdict to the UI, eliminating the 10–15s synchronous wait per single test click.
+  - **Eliminated DNS Resolution Timeouts in SCM Rule Matcher (`scm_traffic_log_viewer.py`)**: Removed blocking `socket.gethostbyname()` calls in `match_ip_list()` and evaluated wildcard/EDL targets (`Worldwide Any IPv4`, `ADEM_Groups`, `panw-*-ip-list`) first so unresolvable or sinkholed DNS test domains never hang across security rules.
+  - **In-Memory `TestLogger` Result Cache (`test-logger.ts`)**: Added an in-memory `cachedResults` array to `TestLogger` so `getLatestStatus()`, `getResults()`, `getLatestVerdicts()`, and `getStats()` serve from memory instead of re-reading and parsing `test-results*.jsonl` from disk on every test or UI poll.
+  - **URL Test Acceleration & Parallel Batch Worker Pool (`server.ts`)**: Added a 60s hostname cache to `preDnsCheck()` with a 2s timeout, tightened `curl` timeouts (`--connect-timeout 3 --max-time 4`), and parallelized `/api/security/url-test-batch` with an 8-worker pool.
+  - **DNS Test Acceleration & Parallel Batch Worker Pool (`server.ts`)**: Reduced `nslookup` timeout from `5s` to `2s`, skipped redundant retry sleeps (`500ms`/`1500ms`) when the initial query already returned an authoritative `NXDOMAIN`/`SERVFAIL`/sinkhole/NODATA response, and parallelized `/api/security/dns-test-batch` with an 8-worker pool.
+
+## [3.0.37] - 2026-10-17
+
+### Fixed & Enhanced
+- **Security Dashboard — Responsive Grid, High-Contrast Category Titles & Selection Reliability (`Security.tsx`)**:
+  - **Responsive Breakpoints for 13" MacBook Air vs. 27" Displays**: Adjusted grid breakpoints from `xl:grid-cols-4 2xl:grid-cols-5` to `lg:grid-cols-3 min-[1800px]:grid-cols-4 min-[2200px]:grid-cols-5` (URL Filtering) and `lg:grid-cols-3 min-[1800px]:grid-cols-4` (DNS Security, C2 Scenarios, AI Security) so 13" Retina screens display 3 spacious columns without truncating titles while 27" monitors retain 4–5 columns.
+  - **High-Contrast Bright White Category Titles**: Removed `opacity-60` card attenuation and `text-text-muted` dimming on unselected items so all category, domain, and scenario names remain bright white (`text-text-primary dark:text-white`) regardless of selection state.
+  - **Instant Optimistic Selection & Custom Checkboxes**: Replaced native `<input type="checkbox">` controls with custom `<Check />` badges and clickable card headers, added immediate optimistic React state updates in `saveConfig()`, and guarded 15s background polling (`fetchConfig()`) with `savingConfigCountRef` to prevent race conditions when toggling individual categories or *Select All*.
+- **DEM / Connectivity Logger Cache Optimization (`connectivity-logger.ts`)**:
+  - Preserved the 5-second TTL on `statsCache` in `ConnectivityLogger.getStats()` instead of invalidating it on every single background probe write, reducing synchronous JSONL disk parsing overhead during DEM page loads.
+
+## [3.0.36] - 2026-10-17
+
+### Added & Enhanced
+- **Security Testing UI — Fresh vs. Historical Verdict Badges (`Security.tsx`)**:
+  - Added visual state differentiation between historical test verdicts (`opacity-55` muted/outline badges on initial load or while re-testing) and freshly executed test verdicts (solid vivid badges: `bg-red-600 text-white` for `Blocked`, `bg-emerald-600 text-white` for `Allowed`, `bg-amber-400 text-slate-950` for `Sinkholed`) with a `zoom-in-95` entrance animation across URL Filtering, DNS Security, Threat Prevention (EICAR), C2 Attack Scenarios, and AI Security cards.
+  - Automatically refreshes `fetchLatestVerdicts()` alongside `fetchResults()` immediately after single or batch test completion so card badges update in real time.
+- **AI Copilot & FastMCP Composite SD-WAN / Security Tools (`ai-tools.ts`, `server.py`, `orchestrator.py`, `tools_manifest.yaml`)**:
+  - Added `run_automated_failover_test`, `get_failover_convergence_report`, and `get_security_audit_summary` tools across both embedded AI Copilot and FastMCP server.
+  - Enhanced `list_active_impairments` to inspect local VyOS instances when `vyos_targets` is empty, and added blocking `wait_seconds` support to `get_test_status`.
+
 ## [3.0.35] - 2026-10-17
 
 ### Added & Enhanced

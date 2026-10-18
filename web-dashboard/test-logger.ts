@@ -57,6 +57,7 @@ export class TestLogger {
     private retentionDays: number;
     private maxLogSizeMB: number;
     private currentLogFile: string;
+    private cachedResults: TestResult[] | null = null;
 
     constructor(logDir: string, retentionDays: number = 7, maxLogSizeMB: number = 100) {
         this.logDir = logDir;
@@ -75,6 +76,10 @@ export class TestLogger {
      */
     async logTest(result: TestResult): Promise<void> {
         try {
+            if (this.cachedResults !== null) {
+                this.cachedResults.unshift(result);
+            }
+
             // Check if log rotation is needed
             await this.rotateIfNeeded();
 
@@ -366,6 +371,7 @@ export class TestLogger {
      */
     async deleteAll(): Promise<number> {
         try {
+            this.cachedResults = null;
             const files = await readdir(this.logDir);
             const logFiles = files.filter(f => f.startsWith('test-results') && f.endsWith('.jsonl'));
 
@@ -374,6 +380,7 @@ export class TestLogger {
                 await unlink(filePath);
             }
 
+            this.cachedResults = [];
             return logFiles.length;
         } catch (error) {
             log('TEST_LOGGER', `Failed to delete all logs: ${error}`, 'error');
@@ -382,9 +389,12 @@ export class TestLogger {
     }
 
     /**
-     * Read all test results from all log files
+     * Read all test results from all log files (with in-memory cache)
      */
     private async readAllResults(): Promise<TestResult[]> {
+        if (this.cachedResults !== null) {
+            return this.cachedResults;
+        }
         try {
             const files = await readdir(this.logDir);
             const logFiles = files
@@ -418,6 +428,7 @@ export class TestLogger {
                 }
             }
 
+            this.cachedResults = allResults;
             return allResults;
         } catch (error) {
             log('TEST_LOGGER', `Failed to read all results: ${error}`, 'error');

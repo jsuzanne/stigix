@@ -63,7 +63,9 @@ import {
     Loader2,
     Maximize,
     ShieldAlert,
-    ShieldX
+    ShieldX,
+    Copy,
+    Terminal
 } from 'lucide-react';
 import { toPng } from 'html-to-image';
 import { clsx } from 'clsx';
@@ -73,6 +75,17 @@ import { VyosTrafficControlModal } from './components/VyosTrafficControlModal';
 
 function cn(...inputs: (string | undefined | null | false)[]) {
     return twMerge(clsx(inputs));
+}
+
+function formatTunnelDuration(sec?: number | null): string {
+    if (sec === undefined || sec === null || !Number.isFinite(sec) || sec < 0) return 'N/A';
+    const d = Math.floor(sec / 86400);
+    const h = Math.floor((sec % 86400) / 3600);
+    const m = Math.floor((sec % 3600) / 60);
+    const s = Math.floor(sec % 60);
+    const hms = `${String(h)}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+    if (d > 0) return `${d}d ${hms}`;
+    return hms;
 }
 
 // Robust QoS normalization helper
@@ -529,69 +542,48 @@ const SiteNode = ({ data }: any) => {
         </div>
     );
 
-    // Render the Stigix Probe badge (either wired to the LAN VyOS router, or integrated on the LAN bus when no VyOS is present)
+    // Render the Stigix Probe badge (wired to the LAN VyOS router when present)
     const renderStigixBadge = (compactForVyosChain = false) => {
         if (!siteStigixNode) return null;
         const stigixIp = siteStigixNode.ip_private || siteStigixNode.ip || '';
         return (
             <div
                 className={cn(
-                    "bg-blue-500/15 dark:bg-blue-600/20 px-2.5 py-1 rounded-xl border-2 border-blue-500 dark:border-blue-400 text-[10px] font-mono font-bold text-blue-800 dark:text-blue-200 shadow-lg shadow-blue-500/20 dark:shadow-blue-500/25 relative z-20 transition-all hover:scale-105 hover:bg-blue-500/25 dark:hover:bg-blue-500/30 hover:border-blue-600 dark:hover:border-blue-300 flex items-center gap-1.5 cursor-default whitespace-nowrap",
-                    compactForVyosChain ? "h-[28px]" : "h-[30px]"
+                    "bg-blue-500/15 dark:bg-blue-600/20 px-2 py-0.5 rounded-lg border-2 border-blue-500 dark:border-blue-400 text-[9.5px] font-mono font-bold text-blue-800 dark:text-blue-200 shadow-md shadow-blue-500/20 dark:shadow-blue-500/25 relative z-20 transition-all hover:scale-105 hover:bg-blue-500/25 dark:hover:bg-blue-500/30 hover:border-blue-600 dark:hover:border-blue-300 flex items-center gap-1 cursor-default whitespace-nowrap",
+                    compactForVyosChain ? "h-[26px]" : "h-[28px]"
                 )}
                 title={`⚡ Stigix SASE Agent: ${siteStigixNode.name || siteStigixNode.id}${stigixIp ? ` (${stigixIp})` : ''} • ${isStigixLeader ? 'LEADER' : 'PEER'}${hasLanVyos ? ` • Connected via ${lanVyosRouters[0]?.name || 'VyOS'}` : ''}`}
             >
-                <span className="relative flex h-2 w-2 shrink-0">
+                <span className="relative flex h-1.5 w-1.5 shrink-0">
                     <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
-                    <span className="relative inline-flex rounded-full h-2 w-2 bg-blue-600 dark:bg-blue-500"></span>
+                    <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-blue-600 dark:bg-blue-400"></span>
                 </span>
-                <Zap size={12} className="text-blue-600 dark:text-blue-300 shrink-0" />
+                <Zap size={11} className="text-blue-600 dark:text-blue-300 shrink-0" />
                 <span className="font-black tracking-tight text-blue-900 dark:text-blue-100">STIGIX</span>
-                <span className="text-[8px] px-1.5 py-0.2 rounded bg-blue-500/20 dark:bg-blue-400/25 border border-blue-600/40 dark:border-blue-300/40 text-blue-900 dark:text-blue-100 uppercase font-black tracking-wider">
+                <span className="text-[7.5px] px-1 py-0.1 rounded bg-blue-500/20 dark:bg-blue-400/25 border border-blue-600/40 dark:border-blue-300/40 text-blue-950 dark:text-blue-100 uppercase font-black tracking-wider">
                     {isStigixLeader ? 'LEADER' : 'PEER'}
                 </span>
             </div>
         );
     };
 
-    // Render the Primary Shared LAN Bus pill (always centered at X=0 so DC1-R2 and DC1-R1 Port 3 wires land directly on it)
+    // Render the Primary Shared LAN Bus pill (always green for LAN subnet; embeds a compact blue Stigix capsule when no LAN VyOS is present)
     const renderPrimaryLanBus = () => {
-        // If there is NO LAN VyOS on this site and Stigix is present, highlight the LAN pill with the Stigix badge
-        if (!hasLanVyos && siteStigixNode) {
-            return (
-                <div className="relative flex items-center justify-center">
-                    <div
-                        className="bg-blue-500/15 dark:bg-blue-600/20 px-3.5 py-1 rounded-xl border-2 border-blue-500 dark:border-blue-400 text-[11px] font-mono font-bold text-blue-800 dark:text-blue-200 shadow-lg shadow-blue-500/20 dark:shadow-blue-500/25 relative z-10 group transition-all hover:scale-105 hover:bg-blue-500/25 dark:hover:bg-blue-500/30 hover:border-blue-600 dark:hover:border-blue-300 flex items-center gap-2 cursor-pointer h-[32px] whitespace-nowrap"
-                        title={`⚡ Stigix SASE Agent: ${siteStigixNode.name || siteStigixNode.id} (${siteStigixNode.ip || siteStigixNode.ip_private}) • ${isStigixLeader ? 'LEADER' : 'PEER'}`}
-                    >
-                        <span className="relative flex h-2 w-2">
-                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
-                            <span className="relative inline-flex rounded-full h-2 w-2 bg-blue-600 dark:bg-blue-500"></span>
-                        </span>
-                        <Zap size={13} className="text-blue-600 dark:text-blue-300" />
-                        <span>{primaryLanSubnet}</span>
-                        <span className="text-[8px] px-1.5 py-0.5 rounded bg-blue-500/20 dark:bg-blue-400/25 border border-blue-600/40 dark:border-blue-300/40 text-blue-900 dark:text-blue-100 uppercase font-black tracking-wider ml-0.5">
-                            {isStigixLeader ? 'LEADER' : 'PEER'}
-                        </span>
-                    </div>
-                    {secondarySubnets.length > 0 && (
-                        <div className="absolute left-full ml-2 flex items-center gap-1.5">
-                            {secondarySubnets.map((subnet, sIdx) => renderSecondarySubnetPill(subnet, sIdx))}
-                        </div>
-                    )}
-                </div>
-            );
-        }
+        const hasEmbeddedStigix = !hasLanVyos && Boolean(siteStigixNode);
+        const stigixIp = siteStigixNode ? (siteStigixNode.ip_private || siteStigixNode.ip || '') : '';
 
-        // Shared ION LAN Bus (e.g. 192.168.201.0/24 shared by DC1-R2 & DC1-R1, connected to VyOS)
         return (
             <div className="relative flex items-center justify-center">
                 <div
                     className={cn(
-                        "bg-emerald-500/15 px-3.5 py-1 rounded-xl border-2 border-emerald-600/55 dark:border-emerald-500/45 text-[11px] font-mono font-black text-emerald-800 dark:text-emerald-300 shadow-md shadow-emerald-500/15 relative z-10 transition-all hover:border-emerald-600 dark:hover:border-emerald-400 flex items-center gap-2 cursor-default whitespace-nowrap",
-                        hasLanVyos ? "h-[30px]" : "h-[32px]"
+                        "bg-emerald-500/15 py-1 rounded-xl border-2 border-emerald-600/55 dark:border-emerald-500/45 text-[11px] font-mono font-black text-emerald-800 dark:text-emerald-300 shadow-md shadow-emerald-500/15 relative z-10 transition-all hover:border-emerald-600 dark:hover:border-emerald-400 flex items-center gap-2 cursor-default whitespace-nowrap",
+                        hasEmbeddedStigix ? "pl-3 pr-1.5 h-[32px]" : (hasLanVyos ? "px-3.5 h-[30px]" : "px-3.5 h-[32px]")
                     )}
-                    title={`Shared ION LAN Segment: ${primaryLanSubnet}${devices.length > 1 ? ` (${devices.map((d: any) => d.device_name).join(' + ')})` : ''}`}
+                    title={
+                        hasEmbeddedStigix
+                            ? `ION LAN Segment: ${primaryLanSubnet} • ⚡ Stigix SASE Agent: ${siteStigixNode.name || siteStigixNode.id}${stigixIp ? ` (${stigixIp})` : ''} (${isStigixLeader ? 'LEADER' : 'PEER'})`
+                            : `Shared ION LAN Segment: ${primaryLanSubnet}${devices.length > 1 ? ` (${devices.map((d: any) => d.device_name).join(' + ')})` : ''}`
+                    }
                 >
                     <span className="w-2 h-2 rounded-full bg-emerald-600 dark:bg-emerald-400 shadow-[0_0_6px_rgba(52,211,153,0.8)] shrink-0" />
                     <span>{primaryLanSubnet}</span>
@@ -599,6 +591,22 @@ const SiteNode = ({ data }: any) => {
                         <span className="text-[8px] px-1.5 py-0.2 rounded bg-emerald-600/20 dark:bg-emerald-500/20 border border-emerald-600/45 dark:border-emerald-400/35 text-emerald-900 dark:text-emerald-200 uppercase font-black tracking-wider">
                             LAN BUS
                         </span>
+                    )}
+                    {hasEmbeddedStigix && (
+                        <div
+                            className="ml-0.5 pl-1.5 pr-1.5 py-0.5 rounded-lg bg-blue-500/20 dark:bg-blue-500/25 border border-blue-500/60 dark:border-blue-400/50 text-blue-900 dark:text-blue-100 shadow-sm shadow-blue-500/20 flex items-center gap-1 transition-all hover:bg-blue-500/30 dark:hover:bg-blue-500/35"
+                            title={`⚡ Stigix SASE Agent: ${siteStigixNode.name || siteStigixNode.id}${stigixIp ? ` (${stigixIp})` : ''} • ${isStigixLeader ? 'LEADER' : 'PEER'}`}
+                        >
+                            <span className="relative flex h-1.5 w-1.5 shrink-0">
+                                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
+                                <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-blue-600 dark:bg-blue-400"></span>
+                            </span>
+                            <Zap size={10} className="text-blue-600 dark:text-blue-300 shrink-0" />
+                            <span className="text-[9px] font-black tracking-tight text-blue-900 dark:text-blue-100">STIGIX</span>
+                            <span className="text-[7.5px] px-1 py-0.1 rounded bg-blue-600/20 dark:bg-blue-400/25 border border-blue-600/40 dark:border-blue-300/40 text-blue-950 dark:text-blue-100 uppercase font-black tracking-wider">
+                                {isStigixLeader ? 'LEADER' : 'PEER'}
+                            </span>
+                        </div>
                     )}
                 </div>
                 {secondarySubnets.length > 0 && (
@@ -626,7 +634,7 @@ const SiteNode = ({ data }: any) => {
                 {siteStigixNode && (
                     <div className="absolute right-full flex items-center">
                         {renderStigixBadge(true)}
-                        <div className="w-3.5 h-[2px] bg-gradient-to-r from-blue-500 to-amber-500 dark:from-blue-400 dark:to-amber-400 shadow-[0_0_6px_rgba(59,130,246,0.6)]" />
+                        <div className="w-2.5 h-[2px] bg-gradient-to-r from-blue-500 to-amber-500 dark:from-blue-400 dark:to-amber-400 shadow-[0_0_6px_rgba(59,130,246,0.6)]" />
                     </div>
                 )}
 
@@ -1785,6 +1793,21 @@ function TopologyContent({ token, theme }: TopologyProps) {
     const { gFetch, activePeerId } = usePeerContext();
     const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
     const [loading, setLoading] = useState(true);
+    const [refreshing, setRefreshing] = useState(false);
+    const [staleRevalidating, setStaleRevalidating] = useState(false);
+    const [buildProgress, setBuildProgress] = useState<{
+        stage: number;
+        stageKey: string;
+        stageLabel: string;
+        elapsedMs: number;
+        lastDurationMs: number | null;
+    }>({
+        stage: 1,
+        stageKey: 'auth',
+        stageLabel: 'Authenticating with Prisma SASE OAuth2 API...',
+        elapsedMs: 0,
+        lastDurationMs: null,
+    });
     const [error, setError] = useState<string | null>(null);
     const [selectedObject, setSelectedObject] = useState<any>(null);
     const [searchQuery, setSearchQuery] = useState('');
@@ -1977,6 +2000,18 @@ function TopologyContent({ token, theme }: TopologyProps) {
         }, 6000);
         return () => clearInterval(interval);
     }, [token, activePeerId]);
+
+    // 1-Click Copy ION CLI command helper
+    const [copiedCliKey, setCopiedCliKey] = useState<string | null>(null);
+
+    const handleCopyCli = useCallback((key: string, text: string) => {
+        if (!text) return;
+        navigator.clipboard?.writeText(text).catch(() => {});
+        setCopiedCliKey(key);
+        setTimeout(() => {
+            setCopiedCliKey(prev => (prev === key ? null : prev));
+        }, 1800);
+    }, []);
 
     const handleVyosDirectAction = async (
         routerName: string,
@@ -3183,7 +3218,7 @@ function TopologyContent({ token, theme }: TopologyProps) {
                                 if (!isSourceSelected && !isSelectedSiteHub) return;
                             }
 
-                            const isUp = c.status === 'UP' || c.active || c.usable;
+                            const isUp = c.status === 'UP' || c.link_up || c.active || c.usable;
                             let strokeColor = '#3b82f6'; // Blue: Inactive / Passive Standby
                             let strokeClass = '5,5';
                             let animated = false;
@@ -3451,7 +3486,18 @@ function TopologyContent({ token, theme }: TopologyProps) {
     }, [logicalViewSiteId, selectedNetwork, setNodes, setEdges, visibleSiteIds, isHubLike, siteHubStatus, topologyViewMode, underlayData, fleetNodes, pathFilter, bgLayout, showBranchMesh, hasPureHubs, effectiveBgAsHub, getVyosInterfaceStatus, siteLanVyosMap]);
 
     const fetchTopology = useCallback(async () => {
-        setLoading(true);
+        if (!topology) {
+            setLoading(true);
+            setBuildProgress({
+                stage: 1,
+                stageKey: 'auth',
+                stageLabel: 'Authenticating with Prisma SASE OAuth2 API...',
+                elapsedMs: 0,
+                lastDurationMs: null,
+            });
+        } else {
+            setRefreshing(true);
+        }
         setError(null);
         try {
             const res = await gFetch('/api/topology', {
@@ -3461,6 +3507,14 @@ function TopologyContent({ token, theme }: TopologyProps) {
             if (data.error) throw new Error(data.error);
             setTopology(data);
             setLastRefresh(new Date());
+
+            if (data?._cache?.refreshing) {
+                setRefreshing(true);
+                setStaleRevalidating(true);
+            } else {
+                setRefreshing(false);
+                setStaleRevalidating(false);
+            }
 
             // Fetch fleet nodes for Stigix mesh overlay
             gFetch('/api/fleet/matrix', {
@@ -3488,10 +3542,69 @@ function TopologyContent({ token, theme }: TopologyProps) {
             processTopology(data);
         } catch (e: any) {
             setError(e.message);
+            setRefreshing(false);
+            setStaleRevalidating(false);
         } finally {
             setLoading(false);
         }
-    }, [token, processTopology, gFetch]);
+    }, [token, processTopology, gFetch, topology]);
+
+    // Poll /api/topology/status while building (either initial loading or background refreshing)
+    useEffect(() => {
+        if (!loading && !refreshing) return;
+
+        const startTs = Date.now();
+        const tickInterval = setInterval(() => {
+            setBuildProgress(prev => ({
+                ...prev,
+                elapsedMs: Math.max(prev.elapsedMs, Date.now() - startTs),
+            }));
+        }, 120);
+
+        const pollStatus = async () => {
+            try {
+                const res = await gFetch('/api/topology/status', {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                if (!res.ok) return;
+                const status = await res.json();
+                if (status.building) {
+                    setBuildProgress(prev => ({
+                        stage: status.stage || prev.stage || 1,
+                        stageKey: status.stageKey || prev.stageKey || 'auth',
+                        stageLabel: status.stageLabel || prev.stageLabel || 'Authenticating with Prisma SASE OAuth2 API...',
+                        elapsedMs: Math.max(prev.elapsedMs, status.elapsedMs || 0),
+                        lastDurationMs: status.lastDurationMs ?? prev.lastDurationMs,
+                    }));
+                } else if (staleRevalidating) {
+                    // Background stale-while-revalidate finished! Pull fresh cached topology seamlessly
+                    setStaleRevalidating(false);
+                    setRefreshing(false);
+                    const freshRes = await gFetch('/api/topology', {
+                        headers: { 'Authorization': `Bearer ${token}` }
+                    });
+                    if (freshRes.ok) {
+                        const freshData = await freshRes.json();
+                        if (!freshData.error) {
+                            setTopology(freshData);
+                            setLastRefresh(new Date());
+                            if (freshData.underlay) setUnderlayData(freshData.underlay);
+                            processTopology(freshData);
+                        }
+                    }
+                }
+            } catch {
+                // Ignore transient status poll errors
+            }
+        };
+
+        pollStatus();
+        const pollInterval = setInterval(pollStatus, 650);
+        return () => {
+            clearInterval(tickInterval);
+            clearInterval(pollInterval);
+        };
+    }, [loading, refreshing, staleRevalidating, token, gFetch, processTopology]);
 
     useEffect(() => {
         if (!topology) {
@@ -3575,9 +3688,22 @@ function TopologyContent({ token, theme }: TopologyProps) {
         setHoveredEdge(null);
     }, []);
 
-    const handleRefresh = async () => {
-        // Bypass the server's 5-minute cache entirely by passing a force parameter
-        setLoading(true);
+    const handleRefresh = useCallback(async () => {
+        // Bypass the server's 5-minute cache entirely by passing a force parameter.
+        // If topology is already loaded, keep the canvas interactive and show non-blocking progress!
+        if (!topology) {
+            setLoading(true);
+        } else {
+            setRefreshing(true);
+        }
+        setStaleRevalidating(false);
+        setBuildProgress(prev => ({
+            stage: 1,
+            stageKey: 'auth',
+            stageLabel: 'Authenticating with Prisma SASE OAuth2 API...',
+            elapsedMs: 0,
+            lastDurationMs: prev.lastDurationMs,
+        }));
         setError(null);
         try {
             const res = await gFetch('/api/topology?force=true', {
@@ -3599,11 +3725,12 @@ function TopologyContent({ token, theme }: TopologyProps) {
             }
             processTopology(data);
         } catch (e: any) {
-            setError(e.message);
+            if (!topology) setError(e.message);
         } finally {
             setLoading(false);
+            setRefreshing(false);
         }
-    };
+    }, [token, gFetch, processTopology, topology]);
 
     const handleExportPng = useCallback(() => {
         const flowElement = document.querySelector('.react-flow') as HTMLElement;
@@ -4026,7 +4153,7 @@ function TopologyContent({ token, theme }: TopologyProps) {
                             ...currentEdge.style,
                             opacity: 1,
                             strokeWidth: edgeData.active ? 4.5 : 3,
-                            filter: edgeData.active ? 'drop-shadow(0 0 6px rgba(16,185,129,0.7))' : (edgeState === 'INACTIVE' ? 'drop-shadow(0 0 6px rgba(59,130,246,0.6))' : 'drop-shadow(0 0 6px rgba(239,68,68,0.7))'),
+                            filter: edgeData.active ? 'drop-shadow(0 0 6px rgba(16,185,129,0.7))' : edgeState === 'INACTIVE' ? 'drop-shadow(0 0 6px rgba(59,130,246,0.6))' : 'drop-shadow(0 0 6px rgba(239,68,68,0.7))',
                             transition: 'opacity 0.15s ease, stroke-width 0.15s ease'
                         }
                     };
@@ -4073,16 +4200,125 @@ function TopologyContent({ token, theme }: TopologyProps) {
     return (
         <div className="h-[calc(100vh-140px)] w-full relative dark:bg-black/20 bg-card-secondary/30 rounded-3xl border border-border overflow-hidden animate-in fade-in zoom-in-95 duration-500 flex flex-col">
             {loading ? (
-                <div className="absolute inset-0 z-50 flex flex-col items-center justify-center bg-background/80 backdrop-blur-md">
-                    <div className="relative w-24 h-24 mb-6">
-                        <div className="absolute inset-0 border-4 border-blue-500/20 rounded-full" />
-                        <div className="absolute inset-0 border-4 border-blue-500 border-t-transparent rounded-full animate-spin" />
-                        <div className="absolute inset-0 flex items-center justify-center">
-                            <Network size={32} className="text-blue-500 animate-pulse" />
+                <div className="absolute inset-0 z-50 flex flex-col items-center justify-center bg-background/85 backdrop-blur-md p-6">
+                    <div className="max-w-md w-full bg-card/95 border border-border rounded-3xl p-6 shadow-2xl flex flex-col items-center">
+                        {/* Header Icon + Elapsed Counter */}
+                        <div className="flex items-center justify-between w-full mb-5">
+                            <div className="flex items-center gap-3">
+                                <div className="relative w-12 h-12 shrink-0">
+                                    <div className="absolute inset-0 border-2 border-blue-500/20 rounded-2xl" />
+                                    <div className="absolute inset-0 border-2 border-blue-500 border-t-transparent rounded-2xl animate-spin" />
+                                    <div className="absolute inset-0 flex items-center justify-center">
+                                        <Network size={20} className="text-blue-500 animate-pulse" />
+                                    </div>
+                                </div>
+                                <div>
+                                    <h2 className="text-sm font-black text-text-primary tracking-tight uppercase">Live SASE Discovery</h2>
+                                    <p className="text-[10px] text-text-muted font-bold tracking-wider uppercase mt-0.5">
+                                        Step {buildProgress.stage} of 4 • Parallel Engine
+                                    </p>
+                                </div>
+                            </div>
+                            <div className="px-2.5 py-1 rounded-xl bg-blue-500/10 border border-blue-500/25 text-blue-400 font-mono text-xs font-black tracking-tight">
+                                {(buildProgress.elapsedMs / 1000).toFixed(1)}s
+                            </div>
+                        </div>
+
+                        {/* Smooth Progress Bar */}
+                        <div className="w-full h-1.5 bg-card-secondary rounded-full overflow-hidden mb-5 border border-border/50">
+                            <div
+                                className="h-full bg-gradient-to-r from-blue-600 via-sky-400 to-emerald-400 transition-all duration-300 rounded-full"
+                                style={{
+                                    width: `${Math.min(
+                                        96,
+                                        Math.max(12, (buildProgress.stage - 1) * 25 + Math.min(22, (buildProgress.elapsedMs / 1000) * 3.5))
+                                    )}%`
+                                }}
+                            />
+                        </div>
+
+                        {/* 4-Step Live Stepper */}
+                        <div className="w-full space-y-2.5">
+                            {[
+                                {
+                                    id: 1,
+                                    title: 'Prisma SASE OAuth2 Handshake',
+                                    subtitle: 'Sub-tenant TSG authentication & bearer token',
+                                },
+                                {
+                                    id: 2,
+                                    title: 'SD-WAN Sites, IONs & LAN Subnets',
+                                    subtitle: 'Parallel site inventory, clusters & interface roles',
+                                },
+                                {
+                                    id: 3,
+                                    title: 'Overlay VPN Mesh & SASE Fabric',
+                                    subtitle: 'Mapping WAN circuits, IPSec state & Prisma Access PoPs',
+                                },
+                                {
+                                    id: 4,
+                                    title: 'Operational IPs & VyOS Underlay',
+                                    subtitle: 'Resolving live DHCP/PPPoE state & next-hop hardware ports',
+                                },
+                            ].map((step) => {
+                                const isDone = buildProgress.stage > step.id;
+                                const isActive = buildProgress.stage === step.id;
+                                return (
+                                    <div
+                                        key={step.id}
+                                        className={cn(
+                                            "flex items-center gap-3 px-3.5 py-2.5 rounded-2xl border transition-all duration-300",
+                                            isActive
+                                                ? "bg-blue-500/10 border-blue-500/35 shadow-sm"
+                                                : isDone
+                                                    ? "bg-emerald-500/5 border-emerald-500/20"
+                                                    : "bg-card-secondary/30 border-border/40 opacity-50"
+                                        )}
+                                    >
+                                        <div
+                                            className={cn(
+                                                "w-6 h-6 rounded-lg flex items-center justify-center text-[10px] font-black shrink-0 transition-all",
+                                                isDone
+                                                    ? "bg-emerald-500 text-white shadow-sm shadow-emerald-500/30"
+                                                    : isActive
+                                                        ? "bg-blue-600 text-white shadow-sm shadow-blue-500/30"
+                                                        : "bg-card-secondary text-text-muted border border-border"
+                                            )}
+                                        >
+                                            {isDone ? (
+                                                <Check size={13} strokeWidth={3.5} />
+                                            ) : isActive ? (
+                                                <RefreshCw size={12} className="animate-spin" />
+                                            ) : (
+                                                step.id
+                                            )}
+                                        </div>
+                                        <div className="flex-1 min-w-0 text-left">
+                                            <div className={cn(
+                                                "text-xs font-black tracking-tight truncate",
+                                                isActive ? "text-blue-400" : isDone ? "text-text-primary" : "text-text-muted"
+                                            )}>
+                                                {step.title}
+                                            </div>
+                                            <div className="text-[10px] text-text-muted font-medium truncate">
+                                                {step.subtitle}
+                                            </div>
+                                        </div>
+                                        {isDone && (
+                                            <span className="text-[9px] font-mono font-black uppercase tracking-wider text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-md border border-emerald-500/20">
+                                                Done
+                                            </span>
+                                        )}
+                                        {isActive && (
+                                            <span className="text-[9px] font-mono font-black uppercase tracking-wider text-blue-400 bg-blue-500/15 px-2 py-0.5 rounded-md border border-blue-500/30 animate-pulse">
+                                                Active
+                                            </span>
+                                        )}
+                                    </div>
+                                );
+                            })}
                         </div>
                     </div>
-                    <h2 className="text-xl font-black text-text-primary tracking-tight uppercase">Building Topology</h2>
-                    <p className="text-text-muted text-xs font-bold mt-2 tracking-widest animate-pulse">Querying Prisma SASE Systems...</p>
                 </div>
             ) : error ? (
                 <div className="absolute inset-0 z-50 flex flex-col items-center justify-center bg-card/80 backdrop-blur-md p-8">
@@ -4458,8 +4694,21 @@ function TopologyContent({ token, theme }: TopologyProps) {
                             )}
                         </div>
 
-                        {/* Right: Actions / Clear Filter */}
+                        {/* Right: Actions / Background Refresh Status / Clear Filter */}
                         <div className="flex items-center gap-2 z-20 shrink-0 min-w-[32px]">
+                            {refreshing && (
+                                <div className="flex items-center gap-2 bg-blue-500/10 border border-blue-500/30 px-3 py-1.5 rounded-xl shadow-sm animate-in fade-in duration-200">
+                                    <RefreshCw size={12} className="text-blue-400 animate-spin shrink-0" />
+                                    <div className="flex flex-col text-left">
+                                        <span className="text-[9px] font-black text-blue-400 uppercase tracking-wider leading-tight">
+                                            Step {buildProgress.stage}/4 • {(buildProgress.elapsedMs / 1000).toFixed(1)}s
+                                        </span>
+                                        <span className="text-[9px] font-bold text-text-muted truncate max-w-[180px] leading-tight">
+                                            {buildProgress.stageLabel}
+                                        </span>
+                                    </div>
+                                </div>
+                            )}
                             {(logicalViewSiteId || selectedNetwork) && (
                                 <button
                                     onClick={() => {
@@ -4711,11 +4960,17 @@ function TopologyContent({ token, theme }: TopologyProps) {
 
                                 {/* Refresh Topology Data */}
                                 <button
-                                    onClick={fetchTopology}
-                                    className="w-9 h-9 hover:bg-card-secondary rounded-xl text-text-muted hover:text-orange-500 transition-all flex items-center justify-center cursor-pointer"
-                                    title="Refresh Data"
+                                    onClick={handleRefresh}
+                                    disabled={refreshing}
+                                    className={cn(
+                                        "w-9 h-9 rounded-xl transition-all flex items-center justify-center cursor-pointer",
+                                        refreshing
+                                            ? "bg-blue-500/15 text-blue-400 border border-blue-500/30"
+                                            : "hover:bg-card-secondary text-text-muted hover:text-orange-500"
+                                    )}
+                                    title={refreshing ? `Refreshing Topology (${buildProgress.stageLabel})` : "Force Refresh Topology Data"}
                                 >
-                                    <RefreshCw size={16} />
+                                    <RefreshCw size={16} className={cn(refreshing && "animate-spin")} />
                                 </button>
 
                                 <div className="w-6 h-px bg-border/60 my-0.5" />
@@ -5128,16 +5383,16 @@ function TopologyContent({ token, theme }: TopologyProps) {
                                             {/* State Badge with Directional Arrows */}
                                             <div className={cn(
                                                 "px-2 py-0.5 rounded-full border text-[9px] font-black uppercase tracking-wider flex items-center gap-1",
-                                                hoveredEdge.data.tunnelState === 'ACTIVE' && "bg-emerald-500/20 text-emerald-400 border-emerald-500/40 shadow-[0_0_10px_rgba(16,185,129,0.3)]",
-                                                hoveredEdge.data.tunnelState === 'INACTIVE' && "bg-blue-500/20 text-blue-400 border-blue-500/40",
-                                                hoveredEdge.data.tunnelState === 'DOWN' && "bg-rose-500/20 text-rose-400 border-rose-500/40"
+                                                (hoveredEdge.data.tunnelState === 'ACTIVE' || hoveredEdge.data.active) && "bg-emerald-500/20 text-emerald-400 border-emerald-500/40 shadow-[0_0_10px_rgba(16,185,129,0.3)]",
+                                                (!hoveredEdge.data.active && hoveredEdge.data.status !== 'DOWN' && hoveredEdge.data.tunnelState !== 'DOWN') && "bg-blue-500/20 text-blue-400 border-blue-500/40",
+                                                (hoveredEdge.data.tunnelState === 'DOWN' || hoveredEdge.data.status === 'DOWN') && "bg-rose-500/20 text-rose-400 border-rose-500/40"
                                             )}>
                                                 <span className="text-[9px]">⇐</span>
                                                 <span className={cn(
                                                     "w-1.5 h-1.5 rounded-full",
-                                                    hoveredEdge.data.tunnelState === 'ACTIVE' ? "bg-emerald-400 animate-pulse" : hoveredEdge.data.tunnelState === 'INACTIVE' ? "bg-blue-400" : "bg-rose-400"
+                                                    (hoveredEdge.data.tunnelState === 'ACTIVE' || hoveredEdge.data.active) ? "bg-emerald-400 animate-pulse" : (hoveredEdge.data.tunnelState === 'DOWN' || hoveredEdge.data.status === 'DOWN') ? "bg-rose-400" : "bg-blue-400"
                                                 )} />
-                                                <span>{hoveredEdge.data.tunnelState || (hoveredEdge.data.active ? 'ACTIVE' : hoveredEdge.data.status === 'DOWN' ? 'DOWN' : 'INACTIVE')}</span>
+                                                <span>{hoveredEdge.data.active ? 'ACTIVE' : (hoveredEdge.data.status === 'DOWN' || hoveredEdge.data.tunnelState === 'DOWN') ? 'DOWN' : 'INACTIVE'}</span>
                                                 <span className="text-[9px]">⇒</span>
                                             </div>
 
@@ -5200,181 +5455,293 @@ function TopologyContent({ token, theme }: TopologyProps) {
 
                         {/* Floating Link Inspector Card (Zero Canvas Push) */}
                         {inspectedLink && (
-                            inspectedLink.isOverlayTunnel ? (
-                                <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-40 bg-card/95 backdrop-blur-xl border border-border/80 rounded-2xl shadow-2xl p-4 w-[520px] max-w-[95vw] animate-in fade-in slide-in-from-bottom-3 duration-200 pointer-events-auto">
-                                    {/* Header */}
-                                    <div className="flex items-center justify-between pb-2.5 border-b border-border/60">
-                                        <div className="flex items-center gap-2.5 min-w-0">
-                                            <div className={cn(
-                                                "p-2 rounded-xl shrink-0",
-                                                inspectedLink.tunnelState === 'ACTIVE'
-                                                    ? "bg-emerald-500/20 text-emerald-400"
-                                                    : inspectedLink.tunnelState === 'DOWN'
-                                                        ? "bg-rose-500/20 text-rose-400"
-                                                        : "bg-blue-500/20 text-blue-400"
-                                            )}>
-                                                <Share2 size={16} />
-                                            </div>
-                                            <div className="min-w-0">
-                                                <div className="flex items-center gap-2">
-                                                    <h4 className="text-xs font-black text-text-primary tracking-tight uppercase whitespace-nowrap">
-                                                        SD-WAN Overlay Tunnel
-                                                    </h4>
-                                                    <span className={cn(
-                                                        "px-2 py-0.5 rounded-full border text-[9px] font-black uppercase tracking-wider flex items-center gap-1 whitespace-nowrap",
-                                                        inspectedLink.tunnelState === 'ACTIVE' && "bg-emerald-500/20 text-emerald-400 border-emerald-500/40 shadow-[0_0_10px_rgba(16,185,129,0.2)]",
-                                                        inspectedLink.tunnelState === 'INACTIVE' && "bg-blue-500/20 text-blue-400 border-blue-500/40",
-                                                        inspectedLink.tunnelState === 'DOWN' && "bg-rose-500/20 text-rose-400 border-rose-500/40"
-                                                    )}>
-                                                        <span className={cn(
-                                                            "w-1.5 h-1.5 rounded-full shrink-0",
-                                                            inspectedLink.tunnelState === 'ACTIVE' ? "bg-emerald-400 animate-pulse" : inspectedLink.tunnelState === 'INACTIVE' ? "bg-blue-400" : "bg-rose-400"
-                                                        )} />
-                                                        {inspectedLink.tunnelState || (inspectedLink.active ? 'ACTIVE' : inspectedLink.status === 'DOWN' ? 'DOWN' : 'INACTIVE')}
-                                                    </span>
+                            inspectedLink.isOverlayTunnel ? (() => {
+                                const rawStatus = String(inspectedLink.status || '').toUpperCase();
+                                const isTunnelActive = inspectedLink.tunnelState === 'ACTIVE' || Boolean(inspectedLink.active);
+                                const isDown = rawStatus === 'DOWN' || inspectedLink.tunnelState === 'DOWN';
+
+                                const resolvedState: 'ACTIVE' | 'INACTIVE' | 'DOWN' =
+                                    isTunnelActive
+                                        ? 'ACTIVE'
+                                        : isDown
+                                            ? 'DOWN'
+                                            : 'INACTIVE';
+
+                                const statusReason = inspectedLink.status_reason ?? null;
+                                const statusReasonCode = inspectedLink.status_reason_code ?? null;
+                                const statusReasonDetail = inspectedLink.status_reason_detail ?? null;
+                                const uptimeSec = inspectedLink.uptime_sec ?? null;
+                                const flapCount = inspectedLink.flap_count ?? 0;
+                                const cipher = inspectedLink.cipher || 'aes-256-cbc';
+                                const keepaliveInterval = inspectedLink.keepalive_interval_ms ?? 1000;
+                                const keepaliveRetries = inspectedLink.keepalive_retries ?? 3;
+                                const anynetType = inspectedLink.anynet_type || 'auto-public';
+                                const vpnLinkId = String(inspectedLink.debug_vpn_id || inspectedLink.id || 'N/A');
+
+                                const localVepId = inspectedLink.local_vep_id || null;
+                                const peerVepId = inspectedLink.peer_vep_id || null;
+
+                                const localIonCli = localVepId ? `dump vpn status VpnID=${localVepId}` : null;
+                                const peerIonCli = peerVepId ? `dump vpn status VpnID=${peerVepId}` : null;
+
+                                return (
+                                    <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-40 bg-card/95 backdrop-blur-xl border border-border/80 rounded-2xl shadow-2xl p-4 w-[580px] max-w-[96vw] animate-in fade-in slide-in-from-bottom-3 duration-200 pointer-events-auto">
+                                        {/* Header */}
+                                        <div className="flex items-center justify-between pb-2.5 border-b border-border/60">
+                                            <div className="flex items-center gap-2.5 min-w-0">
+                                                <div className={cn(
+                                                    "p-2 rounded-xl shrink-0",
+                                                    resolvedState === 'ACTIVE'
+                                                        ? "bg-emerald-500/20 text-emerald-400"
+                                                        : resolvedState === 'DOWN'
+                                                            ? "bg-rose-500/20 text-rose-400"
+                                                            : "bg-blue-500/20 text-blue-400"
+                                                )}>
+                                                    <Share2 size={16} />
                                                 </div>
-                                                <p className="text-[10px] text-text-muted font-mono tracking-wide truncate whitespace-nowrap">
-                                                    {inspectedLink.sourceSiteName || 'Source'} ➔ {inspectedLink.peer_site_name || 'Peer'}
-                                                </p>
+                                                <div className="min-w-0">
+                                                    <div className="flex items-center gap-1.5 flex-wrap">
+                                                        <h4 className="text-xs font-black text-text-primary tracking-tight uppercase whitespace-nowrap">
+                                                            SD-WAN Overlay Tunnel
+                                                        </h4>
+                                                        <span className={cn(
+                                                            "px-2 py-0.5 rounded-full border text-[9px] font-black uppercase tracking-wider flex items-center gap-1 whitespace-nowrap",
+                                                            resolvedState === 'ACTIVE' && "bg-emerald-500/20 text-emerald-400 border-emerald-500/40 shadow-[0_0_10px_rgba(16,185,129,0.2)]",
+                                                            resolvedState === 'INACTIVE' && "bg-blue-500/20 text-blue-400 border-blue-500/40",
+                                                            resolvedState === 'DOWN' && "bg-rose-500/20 text-rose-400 border-rose-500/40"
+                                                        )}>
+                                                            <span className={cn(
+                                                                "w-1.5 h-1.5 rounded-full shrink-0",
+                                                                resolvedState === 'ACTIVE' ? "bg-emerald-400 animate-pulse" :
+                                                                resolvedState === 'DOWN' ? "bg-rose-400" : "bg-blue-400"
+                                                            )} />
+                                                            {resolvedState}
+                                                        </span>
+                                                        <span className="px-1.5 py-0.5 rounded bg-card-secondary border border-border/50 text-[8px] font-mono font-bold text-text-muted uppercase whitespace-nowrap">
+                                                            {anynetType}
+                                                        </span>
+                                                    </div>
+                                                    <p className="text-[10px] text-text-muted font-mono tracking-wide truncate whitespace-nowrap mt-0.5">
+                                                        {inspectedLink.sourceSiteName || 'Source'} ➔ {inspectedLink.peer_site_name || 'Peer'}
+                                                        {uptimeSec != null && (
+                                                            <span className="ml-2 text-text-secondary">
+                                                                · {resolvedState === 'DOWN' ? 'Down for' : 'Up for'} <strong className="text-text-primary">{formatTunnelDuration(uptimeSec)}</strong>
+                                                            </span>
+                                                        )}
+                                                    </p>
+                                                </div>
                                             </div>
+                                            <button
+                                                onClick={() => setInspectedLink(null)}
+                                                className="p-1.5 hover:bg-card-secondary rounded-lg text-text-muted hover:text-text-primary transition-colors cursor-pointer shrink-0"
+                                                title="Close"
+                                            >
+                                                <X size={15} />
+                                            </button>
                                         </div>
-                                        <button
-                                            onClick={() => setInspectedLink(null)}
-                                            className="p-1.5 hover:bg-card-secondary rounded-lg text-text-muted hover:text-text-primary transition-colors cursor-pointer shrink-0"
-                                            title="Close"
-                                        >
-                                            <X size={15} />
-                                        </button>
-                                    </div>
 
-                                    {/* Dual Endpoints (Source vs Remote Peer) */}
-                                    <div className="grid grid-cols-2 gap-2.5 my-3">
-                                        {/* Source Endpoint Box */}
-                                        <div className="bg-card-secondary/40 p-2.5 rounded-xl border border-border/50 flex flex-col gap-1 min-w-0 overflow-hidden">
-                                            <div className="flex items-center justify-between text-[9px] font-black uppercase tracking-wider text-text-muted">
-                                                <span className="text-cyan-400">SOURCE ENDPOINT</span>
-                                                <span className="font-mono text-[8px] bg-cyan-500/10 text-cyan-400 px-1 rounded">LOCAL</span>
-                                            </div>
-                                            <div className="text-xs font-black text-text-primary truncate whitespace-nowrap" title={inspectedLink.sourceSiteName}>
-                                                {inspectedLink.sourceSiteName || 'Site'}
-                                            </div>
-                                            <div className="text-[10px] text-text-secondary truncate whitespace-nowrap font-mono" title={inspectedLink.sourceDeviceName}>
-                                                Dev: <span className="text-text-primary">{inspectedLink.sourceDeviceName || 'Device'}</span>
-                                            </div>
-                                            <div className="text-[10px] text-text-muted truncate whitespace-nowrap font-mono" title={inspectedLink.sourceCircuitLabel || inspectedLink.sourceCircuitName}>
-                                                WAN: <span className="text-cyan-400 font-bold">{inspectedLink.sourceCircuitLabel || inspectedLink.sourceCircuitName || 'WAN'}</span>
-                                            </div>
-                                            <div className="text-[10px] text-text-secondary truncate whitespace-nowrap font-mono pt-1 border-t border-border/30" title={inspectedLink.debug_source_ip || inspectedLink.ip}>
-                                                IP: <span className="text-emerald-400 font-bold">{inspectedLink.debug_source_ip || inspectedLink.ip || inspectedLink.interface_ip || 'N/A'}</span>
-                                            </div>
-                                        </div>
-
-                                        {/* Remote Peer Endpoint Box */}
-                                        <div className="bg-card-secondary/40 p-2.5 rounded-xl border border-border/50 flex flex-col gap-1 min-w-0 overflow-hidden">
-                                            <div className="flex items-center justify-between text-[9px] font-black uppercase tracking-wider text-text-muted">
-                                                <span className="text-purple-400">REMOTE ENDPOINT</span>
-                                                <span className="font-mono text-[8px] bg-purple-500/10 text-purple-400 px-1 rounded">PEER</span>
-                                            </div>
-                                            <div className="text-xs font-black text-text-primary truncate whitespace-nowrap" title={inspectedLink.peer_site_name}>
-                                                {inspectedLink.peer_site_name || 'Peer Site'}
-                                            </div>
-                                            <div className="text-[10px] text-text-secondary truncate whitespace-nowrap font-mono" title={inspectedLink.peer_device_name}>
-                                                Dev: <span className="text-text-primary">{inspectedLink.peer_device_name || 'Peer Device'}</span>
-                                            </div>
-                                            <div className="text-[10px] text-text-muted truncate whitespace-nowrap font-mono" title={inspectedLink.peer_wan_interface}>
-                                                WAN: <span className="text-purple-400 font-bold">{inspectedLink.peer_wan_interface || 'WAN'}</span>
-                                            </div>
-                                            <div className="text-[10px] text-text-secondary truncate whitespace-nowrap font-mono pt-1 border-t border-border/30" title={inspectedLink.debug_peer_ip}>
-                                                IP: <span className="text-purple-400 font-bold">{resolveWanIp(inspectedLink.peer_site_name || inspectedLink.peerSite, inspectedLink.peer_device_name || inspectedLink.peerDevice, inspectedLink.peer_wan_interface || inspectedLink.destCircuit, inspectedLink.debug_peer_ip)}</span>
-                                            </div>
-                                        </div>
-                                    </div>
-
-                                    {/* Technical Specs 4-Column Bar */}
-                                    <div className="grid grid-cols-4 gap-2 mb-3 text-xs font-mono">
-                                        <div className="bg-card-secondary/30 p-2 rounded-xl border border-border/40 min-w-0 overflow-hidden">
-                                            <div className="text-[8px] font-black text-text-muted uppercase tracking-wider truncate whitespace-nowrap">VPN LINK ID</div>
-                                            <div className="text-[10px] font-bold text-text-primary truncate whitespace-nowrap" title={inspectedLink.debug_vpn_id || inspectedLink.id}>
-                                                {inspectedLink.debug_vpn_id || 'N/A'}
-                                            </div>
-                                        </div>
-                                        <div className="bg-card-secondary/30 p-2 rounded-xl border border-border/40 min-w-0 overflow-hidden">
-                                            <div className="text-[8px] font-black text-text-muted uppercase tracking-wider truncate whitespace-nowrap">TRANSPORT</div>
+                                        {/* Root-Cause Diagnostic Alert Banner */}
+                                        {(statusReason || resolvedState !== 'ACTIVE') && (
                                             <div className={cn(
-                                                "text-[10px] font-bold truncate whitespace-nowrap",
-                                                inspectedLink.wan_network === 'MPLS' || inspectedLink.isMplsCircuit ? "text-purple-400" : "text-sky-400"
+                                                "mt-2.5 p-2.5 rounded-xl border flex items-start gap-2.5 text-xs",
+                                                resolvedState === 'DOWN'
+                                                    ? "bg-rose-500/10 border-rose-500/30 text-rose-200"
+                                                    : resolvedState === 'INACTIVE'
+                                                        ? "bg-blue-500/10 border-blue-500/30 text-blue-200"
+                                                        : "bg-emerald-500/10 border-emerald-500/30 text-emerald-200"
                                             )}>
-                                                {inspectedLink.wan_network || (inspectedLink.isMplsCircuit ? 'MPLS' : 'INTERNET')}
+                                                <AlertTriangle size={15} className={cn(
+                                                    "shrink-0 mt-0.5",
+                                                    resolvedState === 'DOWN' ? "text-rose-400" : resolvedState === 'INACTIVE' ? "text-blue-400" : "text-emerald-400"
+                                                )} />
+                                                <div className="min-w-0 flex-1">
+                                                    <div className="flex items-center justify-between gap-2 flex-wrap">
+                                                        <span className="font-black text-[11px] tracking-tight">
+                                                            {resolvedState === 'DOWN' ? 'Link is "Down"' : resolvedState === 'INACTIVE' ? 'Link is "Inactive"' : 'Transit Active'}
+                                                            {statusReason ? ` — Reason: ${statusReason}` : ''}
+                                                        </span>
+                                                        {statusReasonCode && (
+                                                            <span className={cn(
+                                                                "px-1.5 py-0.5 rounded font-mono text-[8px] font-bold uppercase tracking-wider border shrink-0",
+                                                                resolvedState === 'DOWN'
+                                                                    ? "bg-rose-500/20 text-rose-300 border-rose-500/40"
+                                                                    : resolvedState === 'INACTIVE'
+                                                                        ? "bg-blue-500/20 text-blue-300 border-blue-500/40"
+                                                                        : "bg-emerald-500/20 text-emerald-300 border-emerald-500/40"
+                                                            )}>
+                                                                {statusReasonCode}
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                    {statusReasonDetail && (
+                                                        <div className="text-[10px] font-mono text-text-secondary mt-0.5 truncate" title={statusReasonDetail}>
+                                                            {statusReasonDetail}
+                                                        </div>
+                                                    )}
+                                                </div>
                                             </div>
-                                        </div>
-                                        <div className="bg-card-secondary/30 p-2 rounded-xl border border-border/40 min-w-0 overflow-hidden">
-                                            <div className="text-[8px] font-black text-text-muted uppercase tracking-wider truncate whitespace-nowrap">LATENCY</div>
-                                            <div className="text-[10px] font-bold text-emerald-400 truncate whitespace-nowrap">
-                                                {inspectedLink.latency ? `${inspectedLink.latency}ms` : 'N/A'}
-                                            </div>
-                                        </div>
-                                        <div className="bg-card-secondary/30 p-2 rounded-xl border border-border/40 min-w-0 overflow-hidden">
-                                            <div className="text-[8px] font-black text-text-muted uppercase tracking-wider truncate whitespace-nowrap">PKT LOSS</div>
-                                            <div className="text-[10px] font-bold text-text-secondary truncate whitespace-nowrap">
-                                                {inspectedLink.packet_loss != null ? `${inspectedLink.packet_loss}%` : '0%'}
-                                            </div>
-                                        </div>
-                                    </div>
+                                        )}
 
-                                    {/* Status Pill & Action Buttons */}
-                                    <div className="flex items-center justify-between pt-2 border-t border-border/40 text-xs">
-                                        <div className="flex items-center gap-1.5 min-w-0">
-                                            <span className={cn(
-                                                "w-2 h-2 rounded-full shrink-0",
-                                                inspectedLink.tunnelState === 'ACTIVE' ? "bg-emerald-500 animate-pulse" : inspectedLink.tunnelState === 'DOWN' ? "bg-rose-500" : "bg-blue-500"
-                                            )} />
-                                            <span className="text-[9px] font-black uppercase text-text-primary truncate whitespace-nowrap">
-                                                {inspectedLink.tunnelState === 'ACTIVE'
-                                                    ? 'Operational Transit Path'
-                                                    : inspectedLink.tunnelState === 'INACTIVE'
-                                                        ? 'Standby Path (Up, No Transit)'
-                                                        : 'Tunnel Down (Offline)'}
-                                            </span>
+                                        {/* Dual Endpoints (Source vs Remote Peer) with VEP ID & 1-Click ION CLI Copy */}
+                                        <div className="grid grid-cols-2 gap-2.5 my-2.5">
+                                            {/* Source Endpoint Box */}
+                                            <div className="bg-card-secondary/40 p-2.5 rounded-xl border border-border/50 flex flex-col gap-1 min-w-0 overflow-hidden">
+                                                <div className="flex items-center justify-between text-[9px] font-black uppercase tracking-wider text-text-muted">
+                                                    <span className="text-cyan-400">SOURCE ENDPOINT</span>
+                                                    <span className="font-mono text-[8px] bg-cyan-500/10 text-cyan-400 px-1 rounded">LOCAL</span>
+                                                </div>
+                                                <div className="flex items-baseline justify-between gap-1.5 min-w-0">
+                                                    <div className="text-xs font-black text-text-primary truncate" title={inspectedLink.sourceSiteName}>
+                                                        {inspectedLink.sourceSiteName || 'Site'}
+                                                    </div>
+                                                    <div className="text-[10px] text-text-secondary truncate font-mono shrink-0" title={inspectedLink.sourceDeviceName}>
+                                                        {inspectedLink.sourceDeviceName || 'ION'}
+                                                    </div>
+                                                </div>
+                                                <div className="text-[10px] text-text-muted truncate font-mono" title={inspectedLink.sourceCircuitLabel || inspectedLink.sourceCircuitName}>
+                                                    WAN: <span className="text-cyan-400 font-bold">{inspectedLink.sourceCircuitLabel || inspectedLink.sourceCircuitName || 'WAN'}</span>
+                                                </div>
+                                                <div className="text-[10px] text-text-secondary font-mono pt-1 border-t border-border/30 truncate" title={inspectedLink.debug_source_ip || inspectedLink.ip}>
+                                                    IP: <span className="text-emerald-400 font-bold">{inspectedLink.debug_source_ip || inspectedLink.ip || inspectedLink.interface_ip || 'N/A'}</span>
+                                                </div>
+                                                {localVepId && (
+                                                    <div className="mt-1 pt-1 border-t border-border/30 flex items-center justify-between gap-1">
+                                                        <div className="text-[9px] font-mono text-text-muted truncate" title={`Local VEP ID: ${localVepId}`}>
+                                                            VEP: <span className="text-text-secondary font-bold">{localVepId}</span>
+                                                        </div>
+                                                        {localIonCli && (
+                                                            <button
+                                                                onClick={() => handleCopyCli('local_cli', localIonCli)}
+                                                                className={cn(
+                                                                    "px-1.5 py-0.5 rounded text-[8px] font-mono font-bold flex items-center gap-1 border transition-all cursor-pointer shrink-0",
+                                                                    copiedCliKey === 'local_cli'
+                                                                        ? "bg-emerald-500/20 text-emerald-300 border-emerald-500/40"
+                                                                        : "bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-300 border-cyan-500/30"
+                                                                )}
+                                                                title={`Copy ION CLI command for ${inspectedLink.sourceDeviceName || 'Source'}:\n${localIonCli}`}
+                                                            >
+                                                                <Terminal size={9} />
+                                                                {copiedCliKey === 'local_cli' ? 'Copied CLI!' : 'Copy ION CLI'}
+                                                            </button>
+                                                        )}
+                                                    </div>
+                                                )}
+                                            </div>
+
+                                            {/* Remote Peer Endpoint Box */}
+                                            <div className="bg-card-secondary/40 p-2.5 rounded-xl border border-border/50 flex flex-col gap-1 min-w-0 overflow-hidden">
+                                                <div className="flex items-center justify-between text-[9px] font-black uppercase tracking-wider text-text-muted">
+                                                    <span className="text-purple-400">REMOTE ENDPOINT</span>
+                                                    <span className="font-mono text-[8px] bg-purple-500/10 text-purple-400 px-1 rounded">PEER</span>
+                                                </div>
+                                                <div className="flex items-baseline justify-between gap-1.5 min-w-0">
+                                                    <div className="text-xs font-black text-text-primary truncate" title={inspectedLink.peer_site_name}>
+                                                        {inspectedLink.peer_site_name || 'Peer Site'}
+                                                    </div>
+                                                    <div className="text-[10px] text-text-secondary truncate font-mono shrink-0" title={inspectedLink.peer_device_name}>
+                                                        {inspectedLink.peer_device_name || 'Peer ION'}
+                                                    </div>
+                                                </div>
+                                                <div className="text-[10px] text-text-muted truncate font-mono" title={inspectedLink.peer_wan_interface}>
+                                                    WAN: <span className="text-purple-400 font-bold">{inspectedLink.peer_wan_interface || 'WAN'}</span>
+                                                </div>
+                                                <div className="text-[10px] text-text-secondary font-mono pt-1 border-t border-border/30 truncate" title={inspectedLink.debug_peer_ip}>
+                                                    IP: <span className="text-purple-400 font-bold">{resolveWanIp(inspectedLink.peer_site_name || inspectedLink.peerSite, inspectedLink.peer_device_name || inspectedLink.peerDevice, inspectedLink.peer_wan_interface || inspectedLink.destCircuit, inspectedLink.debug_peer_ip)}</span>
+                                                </div>
+                                                {peerVepId && (
+                                                    <div className="mt-1 pt-1 border-t border-border/30 flex items-center justify-between gap-1">
+                                                        <div className="text-[9px] font-mono text-text-muted truncate" title={`Peer VEP ID: ${peerVepId}`}>
+                                                            VEP: <span className="text-text-secondary font-bold">{peerVepId}</span>
+                                                        </div>
+                                                        {peerIonCli && (
+                                                            <button
+                                                                onClick={() => handleCopyCli('peer_cli', peerIonCli)}
+                                                                className={cn(
+                                                                    "px-1.5 py-0.5 rounded text-[8px] font-mono font-bold flex items-center gap-1 border transition-all cursor-pointer shrink-0",
+                                                                    copiedCliKey === 'peer_cli'
+                                                                        ? "bg-emerald-500/20 text-emerald-300 border-emerald-500/40"
+                                                                        : "bg-purple-500/10 hover:bg-purple-500/20 text-purple-300 border-purple-500/30"
+                                                                )}
+                                                                title={`Copy ION CLI command for ${inspectedLink.peer_device_name || 'Peer'}:\n${peerIonCli}`}
+                                                            >
+                                                                <Terminal size={9} />
+                                                                {copiedCliKey === 'peer_cli' ? 'Copied CLI!' : 'Copy ION CLI'}
+                                                            </button>
+                                                        )}
+                                                    </div>
+                                                )}
+                                            </div>
                                         </div>
-                                        <div className="flex items-center gap-2 shrink-0">
-                                            {inspectedLink.sourceWan && inspectedLink.sourceSiteId && (
-                                                <button
-                                                    onClick={() => {
-                                                        handleSelectCircuit({
-                                                            siteId: inspectedLink.sourceSiteId,
-                                                            siteName: inspectedLink.sourceSiteName,
-                                                            devName: inspectedLink.sourceDeviceName,
-                                                            circuitKey: `${inspectedLink.sourceSiteId}:${inspectedLink.sourceDeviceName}:${inspectedLink.sourceCircuitName}`,
-                                                            wan: inspectedLink.sourceWan
-                                                        });
-                                                        setInspectedLink(null);
-                                                    }}
-                                                    className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-sky-500/10 hover:bg-sky-500/20 text-sky-400 border border-sky-500/20 text-[10px] font-bold transition-all cursor-pointer whitespace-nowrap"
-                                                    title="Open side drawer showing all tunnels on this circuit"
-                                                >
-                                                    <Layers size={11} /> All Circuit Tunnels
-                                                </button>
-                                            )}
-                                            {(() => {
-                                                const resolvedTargetIp = resolveWanIp(
-                                                    inspectedLink.peer_site_name || inspectedLink.peerSite,
-                                                    inspectedLink.peer_device_name || inspectedLink.peerDevice,
-                                                    inspectedLink.peer_wan_interface || inspectedLink.destCircuit,
-                                                    inspectedLink.debug_peer_ip || inspectedLink.public_ip || inspectedLink.ip
-                                                );
-                                                return (resolvedTargetIp && resolvedTargetIp !== 'N/A') ? (
-                                                    <button
-                                                        onClick={() => setTracerouteTarget(resolvedTargetIp)}
-                                                        className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 border border-blue-500/20 text-[10px] font-bold transition-all cursor-pointer whitespace-nowrap"
-                                                    >
-                                                        <Route size={11} /> Trace Path
-                                                    </button>
-                                                ) : null;
-                                            })()}
+
+                                        {/* Technical Specs 5-Column Bar */}
+                                        <div className="grid grid-cols-5 gap-1.5 mb-2.5 text-xs font-mono">
+                                            <div className="bg-card-secondary/30 p-2 rounded-xl border border-border/40 min-w-0 overflow-hidden">
+                                                <div className="flex items-center justify-between gap-1">
+                                                    <span className="text-[8px] font-black text-text-muted uppercase tracking-wider truncate">VPN LINK ID</span>
+                                                    {vpnLinkId !== 'N/A' && (
+                                                        <button
+                                                            onClick={() => handleCopyCli('vpn_id', vpnLinkId)}
+                                                            className="text-text-muted hover:text-text-primary cursor-pointer"
+                                                            title="Copy Controller VPN Link ID"
+                                                        >
+                                                            <Copy size={9} />
+                                                        </button>
+                                                    )}
+                                                </div>
+                                                <div className="text-[9px] font-bold text-text-primary truncate whitespace-nowrap" title={vpnLinkId}>
+                                                    {copiedCliKey === 'vpn_id' ? 'Copied!' : vpnLinkId}
+                                                </div>
+                                            </div>
+                                            <div className="bg-card-secondary/30 p-2 rounded-xl border border-border/40 min-w-0 overflow-hidden">
+                                                <div className="text-[8px] font-black text-text-muted uppercase tracking-wider truncate whitespace-nowrap">TRANSPORT</div>
+                                                <div className={cn(
+                                                    "text-[10px] font-bold truncate whitespace-nowrap",
+                                                    inspectedLink.wan_network === 'MPLS' || inspectedLink.isMplsCircuit ? "text-purple-400" : "text-sky-400"
+                                                )}>
+                                                    {inspectedLink.wan_network || (inspectedLink.isMplsCircuit ? 'MPLS' : 'INTERNET')}
+                                                </div>
+                                            </div>
+                                            <div className="bg-card-secondary/30 p-2 rounded-xl border border-border/40 min-w-0 overflow-hidden">
+                                                <div className="text-[8px] font-black text-text-muted uppercase tracking-wider truncate whitespace-nowrap">STATE DURATION</div>
+                                                <div className="text-[10px] font-bold text-text-primary truncate whitespace-nowrap" title={flapCount ? `${flapCount} state transitions recorded` : 'Time in current state'}>
+                                                    {formatTunnelDuration(uptimeSec)}
+                                                    {flapCount > 1 && <span className="text-[8px] text-amber-400 ml-1">({flapCount}x)</span>}
+                                                </div>
+                                            </div>
+                                            <div className="bg-card-secondary/30 p-2 rounded-xl border border-border/40 min-w-0 overflow-hidden">
+                                                <div className="text-[8px] font-black text-text-muted uppercase tracking-wider truncate whitespace-nowrap">CIPHER / BFD</div>
+                                                <div className="text-[9px] font-bold text-cyan-300 truncate whitespace-nowrap" title={`Cipher: ${cipher} | Keepalive: ${keepaliveInterval}ms x${keepaliveRetries}`}>
+                                                    {String(cipher).replace('aes-', 'AES').replace('-cbc', '')} · {keepaliveInterval}ms
+                                                </div>
+                                            </div>
+                                            <div className="bg-card-secondary/30 p-2 rounded-xl border border-border/40 min-w-0 overflow-hidden">
+                                                <div className="text-[8px] font-black text-text-muted uppercase tracking-wider truncate whitespace-nowrap">LATENCY / LOSS</div>
+                                                <div className="text-[10px] font-bold text-emerald-400 truncate whitespace-nowrap">
+                                                    {inspectedLink.latency ? `${inspectedLink.latency}ms` : 'Optimal'} · {inspectedLink.packet_loss != null ? `${inspectedLink.packet_loss}%` : '0%'}
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        {/* Status Pill */}
+                                        <div className="flex items-center justify-between pt-2 border-t border-border/40 text-xs">
+                                            <div className="flex items-center gap-1.5 min-w-0">
+                                                <span className={cn(
+                                                    "w-2 h-2 rounded-full shrink-0",
+                                                    resolvedState === 'ACTIVE' ? "bg-emerald-500 animate-pulse" :
+                                                    resolvedState === 'DOWN' ? "bg-rose-500" : "bg-blue-500"
+                                                )} />
+                                                <span className="text-[9px] font-black uppercase text-text-primary truncate whitespace-nowrap">
+                                                    {resolvedState === 'ACTIVE'
+                                                        ? 'Operational Forwarding Transit Path'
+                                                        : resolvedState === 'DOWN'
+                                                            ? `Tunnel Down (${statusReason || 'Offline'})`
+                                                            : `Inactive Tunnel (${statusReason || 'Standby Path'})`}
+                                                </span>
+                                            </div>
                                         </div>
                                     </div>
-                                </div>
-                            ) : (
+                                );
+                            })() : (
                                 <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-40 bg-card/95 backdrop-blur-xl border border-border/80 rounded-2xl shadow-2xl p-3.5 w-[380px] max-w-[92vw] animate-in fade-in slide-in-from-bottom-3 duration-200 pointer-events-auto">
                                     <div className="flex items-center justify-between pb-2 border-b border-border/60">
                                         <div className="flex items-center gap-2 min-w-0">
@@ -5834,17 +6201,31 @@ function TopologyContent({ token, theme }: TopologyProps) {
                                                                                         <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
                                                                                         ACTIVE
                                                                                     </span>
-                                                                                ) : (t.isRoutingUsable || t.isLinkUp) ? (
-                                                                                    <span className="px-2 py-0.5 rounded-full text-[9px] font-bold bg-cyan-500/15 text-cyan-400 border border-cyan-500/30">
-                                                                                        INACTIVE
-                                                                                    </span>
-                                                                                ) : (
+                                                                                ) : (t.status === 'DOWN' || (!t.isLinkUp && !t.isRoutingUsable)) ? (
                                                                                     <span className="px-2 py-0.5 rounded-full text-[9px] font-bold bg-rose-500/15 text-rose-400 border border-rose-500/30">
                                                                                         DOWN
+                                                                                    </span>
+                                                                                ) : (
+                                                                                    <span className="px-2 py-0.5 rounded-full text-[9px] font-bold bg-blue-500/15 text-blue-400 border border-blue-500/30">
+                                                                                        INACTIVE
                                                                                     </span>
                                                                                 )}
                                                                             </div>
                                                                         </div>
+
+                                                                        {t.raw?.status_reason && (
+                                                                            <div className={cn(
+                                                                                "mb-2 px-2 py-1 rounded-md text-[9px] font-mono flex items-center gap-1.5 truncate border",
+                                                                                t.isRoutingActive
+                                                                                    ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-300"
+                                                                                    : (t.status === 'DOWN' || (!t.isLinkUp && !t.isRoutingUsable))
+                                                                                        ? "bg-rose-500/10 border-rose-500/20 text-rose-300"
+                                                                                        : "bg-blue-500/10 border-blue-500/20 text-blue-300"
+                                                                            )} title={t.raw.status_reason_detail || t.raw.status_reason}>
+                                                                                <AlertTriangle size={10} className="shrink-0" />
+                                                                                <span className="truncate">Reason: {t.raw.status_reason}</span>
+                                                                            </div>
+                                                                        )}
 
                                                                         {/* Tech details grid */}
                                                                         <div className="grid grid-cols-2 gap-1.5 text-[10px] font-mono bg-card-secondary/40 p-2 rounded-lg border border-border/30 mb-2">
@@ -5861,9 +6242,9 @@ function TopologyContent({ token, theme }: TopologyProps) {
                                                                                 <span className="text-cyan-400 truncate block">{t.vpnId ? `#${t.vpnId}` : 'Mesh VPN'}</span>
                                                                             </div>
                                                                             <div>
-                                                                                <span className="text-text-muted text-[8px] uppercase block font-sans">Latency / Loss</span>
+                                                                                <span className="text-text-muted text-[8px] uppercase block font-sans">Uptime / Latency</span>
                                                                                 <span className="text-emerald-400 truncate block">
-                                                                                    {t.latency ? `${t.latency} ms` : 'Optimal'} {t.loss ? `· ${t.loss}%` : ''}
+                                                                                    {t.raw?.uptime_sec != null ? formatTunnelDuration(t.raw.uptime_sec) : (t.latency ? `${t.latency} ms` : 'Optimal')}
                                                                                 </span>
                                                                             </div>
                                                                         </div>
@@ -5871,9 +6252,30 @@ function TopologyContent({ token, theme }: TopologyProps) {
                                                                         {/* Action row */}
                                                                         <div className="flex items-center justify-between pt-1 border-t border-border/20 text-[10px]">
                                                                             <button
-                                                                                onClick={() => setInspectedLink(t.raw || t)}
+                                                                                onClick={() => setInspectedLink({
+                                                                                    ...(t.raw || {}),
+                                                                                    isOverlayTunnel: true,
+                                                                                    tunnelState: t.isRoutingActive ? 'ACTIVE' : (t.status === 'DOWN' || (!t.isLinkUp && !t.isRoutingUsable)) ? 'DOWN' : 'INACTIVE',
+                                                                                    sourceSiteName: t.sourceSite,
+                                                                                    sourceSiteId: t.sourceSiteId,
+                                                                                    sourceDeviceName: t.sourceDevice,
+                                                                                    sourceCircuitName: t.sourceCircuit,
+                                                                                    sourceCircuitLabel: t.sourceCircuit,
+                                                                                    peer_site_name: t.peerSite,
+                                                                                    peer_site_id: t.peerSiteId,
+                                                                                    peer_device_name: t.peerDevice,
+                                                                                    peer_wan_interface: t.peerCircuit,
+                                                                                    debug_vpn_id: t.vpnId,
+                                                                                    debug_source_ip: t.srcIp,
+                                                                                    debug_peer_ip: t.dstIp,
+                                                                                    wan_network: t.sourceNetwork,
+                                                                                    local_vep_id: t.direction === 'inbound' ? t.raw?.peer_vep_id : t.raw?.local_vep_id,
+                                                                                    peer_vep_id: t.direction === 'inbound' ? t.raw?.local_vep_id : t.raw?.peer_vep_id,
+                                                                                    local_shim_ip: t.direction === 'inbound' ? t.raw?.peer_shim_ip : t.raw?.local_shim_ip,
+                                                                                    peer_shim_ip: t.direction === 'inbound' ? t.raw?.local_shim_ip : t.raw?.peer_shim_ip,
+                                                                                })}
                                                                                 className="px-2 py-1 rounded-md bg-card-secondary hover:bg-card-secondary/80 text-text-primary font-bold flex items-center gap-1 transition-colors cursor-pointer"
-                                                                                title="Inspect Link details"
+                                                                                title="Inspect Link details & run live API diagnostic"
                                                                             >
                                                                                 <Activity size={11} className="text-blue-400" />
                                                                                 <span>Inspect Link</span>

@@ -72,8 +72,7 @@ export class ConnectivityLogger {
                 this.memoryResults.pop();
             }
 
-            // Invalidate stats cache so the next request reflects fresh data
-            this.statsCache = null;
+            // Note: statsCache uses a 5s TTL in getStats(); do not wipe it on every probe write
         } catch (error) {
             log('CONNECTIVITY_LOGGER', `Failed to log result: ${error}`, 'error');
         }

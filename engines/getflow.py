@@ -17,6 +17,7 @@ import socket
 import ipaddress
 import os
 import re
+import time
 from typing import Optional, Dict, Any
 import concurrent.futures
 
@@ -936,35 +937,76 @@ def resolve_path_label(path_id, topology, wan_if_lookup, waninterface_id=None, p
     return "Unknown"
 
 
-def get_bulk_topology(sdk, all_site_ids, debug=False, debug_topo=False):
+VPN_FAULT_REASON_MAP = {
+    'NETWORK_VPNPEER_UNREACHABLE': 'Peer is unreachable',
+    'NETWORK_VPNBFD_DOWN': 'BFD / Keepalive probe timeout',
+    'NETWORK_VPNPEER_UNAVAILABLE': 'Peer WAN endpoint unavailable',
+    'NETWORK_VPNSS_MISMATCH': 'IPsec Security Association (SA) mismatch',
+    'NETWORK_VPNSS_UNAVAILABLE': 'IPsec Security Association (SA) unavailable',
+    'NETWORK_VPNKEK_UNAVAILABLE': 'Key Encryption Key (KEK) unavailable',
+    'NETWORK_VPNLINKCIPHERS_INCOMPATIBLE': 'Incompatible VPN tunnel ciphers',
+    'INCONSISTENT_IPSEC_TUNNEL_HA_STATE': 'Inconsistent IPsec tunnel HA state',
+    'NETWORK_VPNLINK_DOWN': 'VPN Link is down',
+    'VPL_ACTION_INSUFFICIENT_VPE': 'Peer is unreachable',
+}
+
+
+def _normalize_prisma_ts_ms(raw_ts):
+    if not raw_ts:
+        return None
+    try:
+        val = int(raw_ts)
+        # 17-digit Prisma timestamps (_updated_on_utc) are epoch ms * 10000
+        if val > 10**15:
+            return val // 10000
+        # 13-digit timestamps (vpn_events.timestamp) are already epoch ms
+        if val > 10**11:
+            return val
+        # 10-digit epoch seconds
+        return val * 1000
+    except Exception:
+        return None
+
+
+def get_bulk_topology(sdk, all_site_ids, el_status_map=None, id_to_el_name=None, site_id_to_obj=None, debug=False, debug_topo=False):
     """
     Fetch VPN topology for all sites using individual calls (the API rejects multi-node).
     Returns connections_by_site: site_id -> list of outbound connection dicts.
     """
     connections_by_site = {}
+    el_status_map = el_status_map or {}
+    id_to_el_name = id_to_el_name or {}
+    site_id_to_obj = site_id_to_obj or {}
 
     url = "https://api.sase.paloaltonetworks.com/sdwan/v3.6/api/topology"
 
-    for site_id in all_site_ids:
+    def _fetch_site_topo(site_id):
         try:
             payload = {"type": "basenet", "nodes": [site_id]}
             if debug_topo:
                 print(f"[DEBUG-TOPO] POST {url}\nPayload: {json.dumps(payload)}", file=sys.stderr)
             resp = sdk._session.post(url, json=payload, timeout=30)
-            
+
             if debug_topo and resp.status_code == 200:
                 js_str = json.dumps(resp.json(), indent=2)
                 print(f"[DEBUG-TOPO] Topology Response for site {site_id}:\n{js_str[:4000]}... (truncated)", file=sys.stderr)
-                
+
             if resp.status_code != 200:
                 if debug:
                     print(f" [TOPO] {site_id}: API returned {resp.status_code}", file=sys.stderr)
-                continue
+                return (site_id, [])
 
             links = resp.json().get('links', [])
             if debug:
                 print(f" [TOPO] {site_id}: {len(links)} links", file=sys.stderr)
+            return (site_id, links)
+        except Exception as e:
+            if debug:
+                print(f" [TOPO] {site_id}: Error: {e}", file=sys.stderr)
+            return (site_id, [])
 
+    with concurrent.futures.ThreadPoolExecutor(max_workers=15) as executor:
+        for site_id, links in executor.map(_fetch_site_topo, all_site_ids):
             for link in links:
                 src_site = link.get('source_node_id')
                 tgt_site = link.get('target_node_id')
@@ -996,10 +1038,6 @@ def get_bulk_topology(sdk, all_site_ids, debug=False, debug_topo=False):
                     'vpnlinks': vpnlinks_raw
                 })
 
-        except Exception as e:
-            if debug:
-                print(f" [TOPO] {site_id}: Error: {e}", file=sys.stderr)
-
     # Deduplicate connections per site (same peer may appear via multiple site queries)
     deduped = {}
     for site_id, conns in connections_by_site.items():
@@ -1011,6 +1049,99 @@ def get_bulk_topology(sdk, all_site_ids, debug=False, debug_topo=False):
                 seen.add(key)
                 unique.append(c)
         deduped[site_id] = unique
+
+    # Fetch Anynet Correlation Events, BGP Peer Status, and VPN Links Metadata in bulk
+    corr_by_vpnlink = {}
+    corr_by_wan_pair = {}
+    core_bgp_down_by_el = {}
+    core_bgp_down_by_site = {}
+    vpnlinks_meta_by_id = {}
+
+    def _fetch_corr_events():
+        try:
+            c_url = "https://api.sase.paloaltonetworks.com/sdwan/v2.1/api/anynetlinks/correlationevents/query"
+            r = sdk._session.post(c_url, json={}, timeout=10)
+            if r.status_code == 200:
+                return r.json().get('items', []) or []
+        except Exception:
+            pass
+        return []
+
+    def _fetch_bgp_peers():
+        try:
+            b_url = "https://api.sase.paloaltonetworks.com/sdwan/v2.0/api/bgppeers/status/query"
+            r = sdk._session.post(b_url, json={}, timeout=10)
+            if r.status_code == 200:
+                return r.json().get('items', []) or []
+        except Exception:
+            pass
+        return []
+
+    def _fetch_vpnlinks_meta():
+        try:
+            v_url = "https://api.sase.paloaltonetworks.com/sdwan/v2.0/api/vpnlinks/query"
+            r = sdk._session.post(v_url, json={}, timeout=10)
+            if r.status_code == 200:
+                return r.json().get('items', []) or []
+        except Exception:
+            pass
+        return []
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=3) as diag_ex:
+        f_corr = diag_ex.submit(_fetch_corr_events)
+        f_bgp = diag_ex.submit(_fetch_bgp_peers)
+        f_vmeta = diag_ex.submit(_fetch_vpnlinks_meta)
+        corr_items = f_corr.result()
+        bgp_items = f_bgp.result()
+        vmeta_items = f_vmeta.result()
+
+    for vm_item in vmeta_items:
+        vm_id = vm_item.get('id')
+        if vm_id:
+            vpnlinks_meta_by_id[str(vm_id)] = vm_item
+
+    for c_item in corr_items:
+        w1 = c_item.get('ep1_wan_interface_id')
+        w2 = c_item.get('ep2_wan_interface_id')
+        if w1 and w2:
+            corr_by_wan_pair[(w1, w2)] = c_item
+            corr_by_wan_pair[(w2, w1)] = c_item
+        for ve in (c_item.get('vpn_events') or []):
+            v_id = ve.get('vpnlink_id')
+            if v_id:
+                corr_by_vpnlink.setdefault(str(v_id), []).append({
+                    **ve,
+                    'anynet_type': c_item.get('type'),
+                    'anynet_events': c_item.get('events') or [],
+                    'al_id': c_item.get('id') or ve.get('al_id'),
+                })
+
+    for b_item in bgp_items:
+        direction = (b_item.get('direction') or '').lower()
+        pstat = b_item.get('peer_status') or {}
+        b_state = pstat.get('state', 'Unknown')
+        b_eid = b_item.get('element_id')
+        b_sid = b_item.get('site_id')
+        s_obj = site_id_to_obj.get(b_sid, {})
+        s_name = (s_obj.get('name') or '').lower()
+        is_hub_site = (s_obj.get('element_cluster_role') == 'HUB' or 'dc' in s_name or 'hub' in s_name)
+        # Core BGP peers in DC have direction empty or != 'wan' AND belong to a Hub/DC
+        if is_hub_site and direction != 'wan' and b_state != 'Established':
+            peer_id = b_item.get('peer_ip') or b_item.get('peer_ip_v4') or b_item.get('router_id') or b_item.get('name') or 'Core BGP Peer'
+            info = {
+                'router_id': peer_id,
+                'state': b_state,
+                'downtime': pstat.get('downtime') or 'N/A',
+                'element_id': b_eid,
+                'element_name': id_to_el_name.get(b_eid, b_eid),
+                'site_id': b_sid,
+                'site_name': s_obj.get('name', b_sid),
+            }
+            if b_eid:
+                core_bgp_down_by_el.setdefault(str(b_eid), []).append(info)
+            if b_sid:
+                core_bgp_down_by_site.setdefault(str(b_sid), []).append(info)
+
     # Process unique links to hydrate their vpnlinks metadata if present
     all_vpns = set()
     for conns in deduped.values():
@@ -1019,7 +1150,7 @@ def get_bulk_topology(sdk, all_site_ids, debug=False, debug_topo=False):
                 # Topology API v3.x returns vpnlinks as a list of objects
                 vid = vlink.get('id') if isinstance(vlink, dict) else vlink
                 if vid:
-                    all_vpns.add(vid)
+                    all_vpns.add(str(vid))
 
     vpn_cache = {}
     def fetch_vpnstatus(vid):
@@ -1030,23 +1161,63 @@ def get_bulk_topology(sdk, all_site_ids, debug=False, debug_topo=False):
                 sdata = res.json()
                 if debug_topo:
                     print(f"[DEBUG-TOPO] Raw VPN Link Status payload for {vid}:\n{json.dumps(sdata, indent=2)}", file=sys.stderr)
-                is_up = sdata.get('up', sdata.get('link_up', False))
+                is_up = bool(sdata.get('up', sdata.get('link_up', False)))
+                is_usable = bool(sdata.get('usable', False))
+                is_active = bool(sdata.get('state') == 'active' or sdata.get('active', False))
+                raw_cipher = sdata.get('common_cipher') or sdata.get('ep1_cipher') or sdata.get('ep2_cipher')
+                cipher_fmt = raw_cipher.replace('_', '-') if isinstance(raw_cipher, str) else None
                 return vid, {
-                    'active': sdata.get('state') == 'active' or sdata.get('active', False),
+                    'active': is_active,
                     'state': sdata.get('state', 'unknown'),
                     'link_up': is_up,
-                    'status': 'UP' if is_up else 'DOWN', # Strict up/down mapping based requested logic
-                    'usable': sdata.get('usable', False),
-                    # Element IDs for precise mapping
+                    'status': 'UP' if is_up else 'DOWN',
+                    'usable': is_usable,
                     'ep1_element_id': sdata.get('ep1_element_id') or sdata.get('element1_id'),
                     'ep2_element_id': sdata.get('ep2_element_id') or sdata.get('element2_id'),
                     'ep1_site_id': sdata.get('ep1_site_id') or sdata.get('site1_id'),
                     'ep2_site_id': sdata.get('ep2_site_id') or sdata.get('site2_id'),
-                    # IPs for debugging - be extremely robust with keys
+                    'ep1_interface_id': sdata.get('ep1_interface_id'),
+                    'ep2_interface_id': sdata.get('ep2_interface_id'),
+                    'cipher': cipher_fmt,
+                    'keepalive_interval_ms': sdata.get('ep1_keep_alive_interval') or sdata.get('ep2_keep_alive_interval'),
+                    'keepalive_retries': sdata.get('ep1_keep_alive_failure_count') or sdata.get('ep2_keep_alive_failure_count'),
+                    'state_changes': sdata.get('_etag'),
+                    'state_updated_at_ms': _normalize_prisma_ts_ms(sdata.get('_updated_on_utc')),
                     'source_ip': (sdata.get('local_ip') or sdata.get('source_ip') or 
                                  sdata.get('src_ip') or sdata.get('local_address') or 'N/A'),
                     'peer_ip': (sdata.get('remote_ip') or sdata.get('peer_ip') or 
                                sdata.get('dst_ip') or sdata.get('peer_address') or 'N/A')
+                }
+            else:
+                # Non-200 (e.g. 400 VPL_ACTION_INSUFFICIENT_VPE when remote ION is unreachable/offline)
+                err_code = None
+                try:
+                    errs = res.json().get('_error') or []
+                    if errs and isinstance(errs, list):
+                        err_code = errs[0].get('code')
+                except Exception:
+                    pass
+                state_data = {}
+                try:
+                    st_url = f"https://api.sase.paloaltonetworks.com/sdwan/v2.0/api/vpnlinks/{vid}/state"
+                    st_res = sdk._session.get(st_url, timeout=8)
+                    if st_res.status_code == 200:
+                        state_data = st_res.json() or {}
+                except Exception:
+                    pass
+                return vid, {
+                    'active': False,
+                    'state': 'down',
+                    'link_up': False,
+                    'status': 'DOWN',
+                    'usable': False,
+                    'error_code': err_code or f"HTTP_{res.status_code}",
+                    'al_id': state_data.get('al_id'),
+                    'admin_up': state_data.get('enabled', True),
+                    'state_changes': state_data.get('_etag'),
+                    'state_updated_at_ms': _normalize_prisma_ts_ms(state_data.get('_updated_on_utc')),
+                    'source_ip': 'N/A',
+                    'peer_ip': 'N/A',
                 }
         except Exception:
             pass
@@ -1060,22 +1231,164 @@ def get_bulk_topology(sdk, all_site_ids, debug=False, debug_topo=False):
             for future in concurrent.futures.as_completed(future_to_vid):
                 vid, data = future.result()
                 if data:
-                    vpn_cache[vid] = data
+                    vpn_cache[str(vid)] = data
 
-    for conns in deduped.values():
+    now_ms = int(time.time() * 1000)
+
+    for site_id, conns in deduped.items():
         for c in conns:
             hydrated_vpnlinks = []
+            wan_pair_corr = corr_by_wan_pair.get((c.get('source_wan_if_id'), c.get('peer_wan_if_id')))
             for vlink in c.get('vpnlinks', []):
-                vid = vlink.get('id') if isinstance(vlink, dict) else vlink
-                if vid in vpn_cache:
-                    vdata = vpn_cache[vid].copy()
-                    vdata['id'] = vid
-                    # Preserve topology-level fields if vlink was a dict
-                    if isinstance(vlink, dict):
-                        for k, v in vlink.items():
-                            if k not in vdata:
-                                vdata[k] = v
-                    hydrated_vpnlinks.append(vdata)
+                vid = str(vlink.get('id') if isinstance(vlink, dict) else vlink)
+                vdata = vpn_cache.get(vid, {}).copy()
+                vdata['id'] = vid
+                if isinstance(vlink, dict):
+                    for k, v in vlink.items():
+                        if k not in vdata or vdata[k] is None:
+                            vdata[k] = v
+
+                # Merge VPN link static metadata (vep1_id, vep2_id, shim IPs, rekey interval)
+                vmeta = vpnlinks_meta_by_id.get(vid) or {}
+                if vmeta:
+                    vdata['vep1_id'] = vmeta.get('vep1_id')
+                    vdata['vep2_id'] = vmeta.get('vep2_id')
+                    vdata['vep1_shim_ipv4'] = vmeta.get('vep1_shim_ipv4')
+                    vdata['vep2_shim_ipv4'] = vmeta.get('vep2_shim_ipv4')
+                    vdata['rekey_interval_minutes'] = vmeta.get('rekey_interval_minutes')
+                    if not vdata.get('al_id') and vmeta.get('al_id'):
+                        vdata['al_id'] = vmeta.get('al_id')
+
+                is_up = bool(vdata.get('link_up', False))
+                is_usable = bool(vdata.get('usable', False))
+                is_active = bool(vdata.get('active', False))
+
+                if is_up and is_active:
+                    t_state = 'ACTIVE'
+                elif is_up and not is_active:
+                    t_state = 'INACTIVE'
+                else:
+                    t_state = 'DOWN'
+                vdata['tunnel_state'] = t_state
+
+                # Correlate with Anynet Correlation Events & BGP Peers
+                v_events = corr_by_vpnlink.get(vid) or []
+                if not v_events and wan_pair_corr:
+                    for ve in (wan_pair_corr.get('vpn_events') or []):
+                        if str(ve.get('vpnlink_id')) == vid or not ve.get('vpnlink_id'):
+                            v_events.append({
+                                **ve,
+                                'anynet_type': wan_pair_corr.get('type'),
+                                'anynet_events': wan_pair_corr.get('events') or [],
+                                'al_id': wan_pair_corr.get('id') or ve.get('al_id'),
+                            })
+
+                anynet_type = wan_pair_corr.get('type') if wan_pair_corr else None
+                al_id = vdata.get('al_id') or (wan_pair_corr.get('id') if wan_pair_corr else None)
+                vep_id = None
+                flap_count = 0
+                best_event_code = None
+                event_ts_ms = None
+
+                for ve in v_events:
+                    if not anynet_type and ve.get('anynet_type'):
+                        anynet_type = ve.get('anynet_type')
+                    if not al_id and ve.get('al_id'):
+                        al_id = ve.get('al_id')
+                    if not vep_id and ve.get('vep_id'):
+                        vep_id = ve.get('vep_id')
+                    fc = (ve.get('flap_event_details') or {}).get('flap_count')
+                    if fc and fc > flap_count:
+                        flap_count = fc
+                    ev_code = ve.get('event_code')
+                    if ev_code:
+                        # Prefer specific root-cause codes over generic NETWORK_VPNLINK_DOWN
+                        if not best_event_code or (best_event_code == 'NETWORK_VPNLINK_DOWN' and ev_code != 'NETWORK_VPNLINK_DOWN'):
+                            best_event_code = ev_code
+                    ts_cand = _normalize_prisma_ts_ms(ve.get('timestamp'))
+                    if ts_cand and (not event_ts_ms or ts_cand > event_ts_ms):
+                        event_ts_ms = ts_cand
+
+                state_ts_ms = event_ts_ms or vdata.get('state_updated_at_ms')
+                uptime_sec = max(0, int((now_ms - state_ts_ms) // 1000)) if state_ts_ms else None
+
+                reason = None
+                reason_code = None
+                reason_detail = None
+
+                if t_state == 'INACTIVE':
+                    if not is_usable:
+                        # Check if remote or local Hub/DC element has Core BGP Peering down
+                        ep1_el = str(vdata.get('ep1_element_id') or '')
+                        ep2_el = str(vdata.get('ep2_element_id') or '')
+                        peer_sid = str(c.get('peer_site_id') or '')
+                        src_sid = str(site_id or '')
+                        peer_is_hub = (site_id_to_obj.get(peer_sid, {}).get('element_cluster_role') == 'HUB' or 'dc' in (site_id_to_obj.get(peer_sid, {}).get('name') or '').lower())
+                        src_is_hub = (site_id_to_obj.get(src_sid, {}).get('element_cluster_role') == 'HUB' or 'dc' in (site_id_to_obj.get(src_sid, {}).get('name') or '').lower())
+                        bgp_downs = (
+                            core_bgp_down_by_el.get(ep1_el)
+                            or core_bgp_down_by_el.get(ep2_el)
+                            or (core_bgp_down_by_site.get(peer_sid) if peer_is_hub else None)
+                            or (core_bgp_down_by_site.get(src_sid) if src_is_hub else None)
+                        )
+                        if bgp_downs:
+                            b0 = bgp_downs[0]
+                            reason = "Core Peering is down in DC"
+                            reason_code = "PEERING_CORE_DOWN"
+                            reason_detail = f"{b0['element_name']} Core BGP peer ({b0['router_id']}) is {b0['state']} (down {b0['downtime']})"
+                        elif best_event_code:
+                            reason = VPN_FAULT_REASON_MAP.get(best_event_code, best_event_code)
+                            reason_code = best_event_code
+                        else:
+                            reason = "Inactive (Cluster / Standby Member Path — Not Usable)"
+                            reason_code = "STANDBY_NOT_USABLE"
+                            reason_detail = "Tunnel is Up physically but marked Not Usable by controller (standby cluster member or backup circuit)"
+                    else:
+                        reason = "Inactive (Standby Path — Up & Usable)"
+                        reason_code = "STANDBY_USABLE"
+                        reason_detail = "Tunnel is operational and ready for forwarding, but currently idle / passive standby"
+
+                elif t_state == 'ACTIVE':
+                    reason = "Active (Primary Forwarding Transit Path)"
+                    reason_code = "FORWARDING_ACTIVE"
+                    reason_detail = "Tunnel is actively carrying overlay data traffic"
+
+                elif t_state == 'DOWN':
+                    if best_event_code:
+                        reason = VPN_FAULT_REASON_MAP.get(best_event_code, best_event_code)
+                        reason_code = best_event_code
+                    elif vdata.get('error_code'):
+                        ec = vdata.get('error_code')
+                        reason = VPN_FAULT_REASON_MAP.get(ec, "Peer is unreachable")
+                        reason_code = ec
+                    else:
+                        reason = "Peer is unreachable"
+                        reason_code = "NETWORK_VPNLINK_DOWN"
+
+                    # Check if remote element is disconnected from controller
+                    ep1_el = str(vdata.get('ep1_element_id') or '')
+                    ep2_el = str(vdata.get('ep2_element_id') or '')
+                    for check_eid in (ep1_el, ep2_el):
+                        if check_eid and check_eid in el_status_map:
+                            if not el_status_map[check_eid].get('connected', True):
+                                el_nm = id_to_el_name.get(check_eid, check_eid)
+                                reason_detail = f"ION {el_nm} is offline / disconnected from controller"
+                                break
+                    if not reason_detail and vdata.get('error_code') == 'VPL_ACTION_INSUFFICIENT_VPE':
+                        peer_nm = site_id_to_obj.get(c.get('peer_site_id'), {}).get('name', 'Remote peer')
+                        reason_detail = f"{peer_nm} VPE endpoint unavailable (VPL_ACTION_INSUFFICIENT_VPE)"
+
+                vdata['status_reason'] = reason
+                vdata['status_reason_code'] = reason_code
+                vdata['status_reason_detail'] = reason_detail
+                vdata['state_updated_at_ms'] = state_ts_ms
+                vdata['uptime_sec'] = uptime_sec
+                vdata['flap_count'] = flap_count
+                vdata['anynet_type'] = anynet_type or (f"AUTO-{c.get('sub_type', 'PUBLIC').upper()}" if c.get('sub_type') else None)
+                vdata['al_id'] = al_id
+                vdata['vep_id'] = vep_id
+
+                hydrated_vpnlinks.append(vdata)
             c['vpnlinks'] = hydrated_vpnlinks
 
     return deduped
@@ -1261,6 +1574,7 @@ def build_full_topology(sdk: API, sites_data: dict, debug: bool = False, debug_t
         print(f"[TOPO] Constructing final topology dictionary for {len(sites_data)} sites...", file=sys.stderr)
 
     # --- Step 2: All elements (ION devices) ---
+    print(f"[TOPO-STAGE] 2|inventory|Discovering {len(sites_data)} SD-WAN Sites, ION Clusters & LAN Subnets...", file=sys.stderr, flush=True)
     try:
         elements_resp = sdk.get.elements()
         all_elements = elements_resp.cgx_content.get('items', []) if elements_resp.cgx_status else []
@@ -1370,26 +1684,40 @@ def build_full_topology(sdk: API, sites_data: dict, debug: bool = False, debug_t
             if debug:
                 print(f" [TOPO] Error fetching ServiceLink statuses: {e}", file=sys.stderr)
 
-    # --- Step 3: All WAN interfaces per site ---
+    # --- Step 3: All WAN interfaces per site (parallel) ---
+    print(f"[TOPO-STAGE] 3|tunnels|Mapping Overlay VPN Tunnels & SASE Service Links ({len(all_elements)} IONs)...", file=sys.stderr, flush=True)
     wan_if_by_site = {}   # site_id -> list of waninterface objects
     wan_if_by_id = {}     # wan_if_id -> waninterface object + site_id
-    for site_id in all_site_ids:
+    def _fetch_site_wan_ifs(site_id):
         try:
             resp = sdk.get.waninterfaces(site_id=site_id)
             if resp.cgx_status:
-                items = resp.cgx_content.get('items', [])
-                wan_if_by_site[site_id] = items
-                for w in items:
-                    wan_if_by_id[w.get('id')] = {**w, '_site_id': site_id}
+                return (site_id, resp.cgx_content.get('items', []) or [])
         except Exception:
             pass
+        return (site_id, [])
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=15) as executor:
+        for site_id, items in executor.map(_fetch_site_wan_ifs, all_site_ids):
+            wan_if_by_site[site_id] = items
+            for w in items:
+                wan_if_by_id[w.get('id')] = {**w, '_site_id': site_id}
 
     # --- Step 4: Bulk topology (VPN connections) ---
     if debug:
         print(" [TOPO] Fetching VPN connections (this is the slowest step)...", file=sys.stderr)
-    connections_by_site = get_bulk_topology(sdk, all_site_ids, debug=debug, debug_topo=debug_topo)
+    connections_by_site = get_bulk_topology(
+        sdk,
+        all_site_ids,
+        el_status_map=el_status_map,
+        id_to_el_name=id_to_el_name,
+        site_id_to_obj=site_id_to_obj,
+        debug=debug,
+        debug_topo=debug_topo
+    )
 
     # --- Step 5: Operational Bulk IPs (for DHCP) ---
+    print("[TOPO-STAGE] 4|underlay|Correlating Operational IPs, Gateways & VyOS Underlay...", file=sys.stderr, flush=True)
     op_ip_map = get_operational_ips(sdk, all_site_ids, el_interfaces_map=el_interfaces_map, all_elements=all_elements, debug=debug)
 
     # Pre-calculate global WAN interface IPs for reliable remote peer resolution
@@ -1476,10 +1804,15 @@ def build_full_topology(sdk: API, sites_data: dict, debug: bool = False, debug_t
                 for swi in swi_ids:
                     element_wan_if_ids.add(swi)
 
-                # LAN: used_for=lan OR used_for=private (DC), static IP
+                # LAN: used_for=lan OR used_for=private (DC), static IP (physical only, exclude loopbacks)
                 if used_for in ('lan', 'private') and ipv4_cfg.get('type') == 'static':
                     # Exclude overlay/circuit-linked interfaces
                     if used_for == 'private' and (swi_ids or intf.get('label_id') or intf.get('wan_network_id')):
+                        continue
+
+                    intf_type = (intf.get('type') or '').lower()
+                    intf_name_lower = (intf.get('name') or '').lower()
+                    if intf_type == 'loopback' or 'loopback' in intf_name_lower or intf_name_lower.startswith('lo'):
                         continue
 
                     static = ipv4_cfg.get('static_config') or {}
@@ -1496,6 +1829,9 @@ def build_full_topology(sdk: API, sites_data: dict, debug: bool = False, debug_t
                             iface_obj = ipaddress.IPv4Interface(f"{ip_raw}/{nm}")
 
                         intf_desc = get_interface_description(intf)
+                        if iface_obj.network.prefixlen == 32 or 'loopback' in (intf_desc or '').lower():
+                            continue
+
                         op_status = op_ip_map.get((el_id, intf.get('name')), {})
                         lan_interfaces.append({
                             'interface_name': intf.get('name'),
@@ -1657,6 +1993,35 @@ def build_full_topology(sdk: API, sites_data: dict, debug: bool = False, debug_t
                                 resolved_peer_ip = global_wan_ip_by_site_and_wan_name.get((peer_site_id, peer_wan_name))
                         resolved_peer_ip = resolved_peer_ip or peer_wan_obj.get('ip') or 'N/A'
 
+                        # Resolve Local vs Peer VEP ID and Shim IP (100.64.x.x)
+                        vep1_id = vl.get('vep1_id')
+                        vep2_id = vl.get('vep2_id')
+                        vep1_shim = vl.get('vep1_shim_ipv4')
+                        vep2_shim = vl.get('vep2_shim_ipv4')
+
+                        local_vep_id = None
+                        peer_vep_id = None
+                        local_shim_ip = None
+                        peer_shim_ip = None
+
+                        if ep1_site == site_id:
+                            local_vep_id = vep1_id
+                            peer_vep_id = vep2_id
+                            local_shim_ip = vep1_shim
+                            peer_shim_ip = vep2_shim
+                        elif ep2_site == site_id:
+                            local_vep_id = vep2_id
+                            peer_vep_id = vep1_id
+                            local_shim_ip = vep2_shim
+                            peer_shim_ip = vep1_shim
+                        else:
+                            # Fallback when /status returned 400 (no ep1_site/ep2_site)
+                            # Match correlation event vep_id or default vep1/vep2
+                            local_vep_id = vl.get('vep_id') or vep1_id
+                            peer_vep_id = vep2_id if local_vep_id == vep1_id else vep1_id
+                            local_shim_ip = vep1_shim if local_vep_id == vep1_id else vep2_shim
+                            peer_shim_ip = vep2_shim if local_vep_id == vep1_id else vep1_shim
+
                         connections_out.append({
                             'peer_site_id': peer_site_id,
                             'peer_site_name': peer_site_name,
@@ -1671,6 +2036,30 @@ def build_full_topology(sdk: API, sites_data: dict, debug: bool = False, debug_t
                             'usable': vl.get('usable', False),
                             'link_up': vl.get('link_up', False),
                             'vpState': vl.get('state', 'unknown'),
+                            'tunnel_state': vl.get('tunnel_state', 'DOWN'),
+                            # Root-cause diagnostics & telemetry
+                            'status_reason': vl.get('status_reason'),
+                            'status_reason_code': vl.get('status_reason_code'),
+                            'status_reason_detail': vl.get('status_reason_detail'),
+                            'state_updated_at_ms': vl.get('state_updated_at_ms'),
+                            'uptime_sec': vl.get('uptime_sec'),
+                            'state_changes': vl.get('state_changes'),
+                            'flap_count': vl.get('flap_count', 0),
+                            'cipher': vl.get('cipher'),
+                            'keepalive_interval_ms': vl.get('keepalive_interval_ms'),
+                            'keepalive_retries': vl.get('keepalive_retries'),
+                            'rekey_interval_minutes': vl.get('rekey_interval_minutes'),
+                            'anynet_type': vl.get('anynet_type'),
+                            'al_id': vl.get('al_id'),
+                            # VEP IDs & Shim IPs for ION CLI (`dump vpn status VpnID=<vep_id>`)
+                            'local_vep_id': local_vep_id,
+                            'peer_vep_id': peer_vep_id,
+                            'vep1_id': vep1_id,
+                            'vep2_id': vep2_id,
+                            'local_shim_ip': local_shim_ip,
+                            'peer_shim_ip': peer_shim_ip,
+                            'vep1_shim_ipv4': vep1_shim,
+                            'vep2_shim_ipv4': vep2_shim,
                             # Debugging fields requested by user
                             'debug_vpn_id': vl.get('id', 'N/A'),
                             'debug_source_ip': resolved_src_ip,
@@ -2007,6 +2396,8 @@ def main():
 
     sdk = API(update_check=False)
 
+    if getattr(args, 'build_topology', False):
+        print("[TOPO-STAGE] 1|auth|Authenticating with Prisma SASE OAuth2 API...", file=sys.stderr, flush=True)
     log_output("\n🔐 Authenticating...", json_mode)
     try:
         login_success = sdk.interactive.login_secret(

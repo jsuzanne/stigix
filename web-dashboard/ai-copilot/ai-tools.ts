@@ -25,6 +25,7 @@ export interface ToolExecutionContext {
     getAllProbes?: () => any[];
     saveCustomProbes?: (probes: any[]) => Promise<boolean> | boolean;
     performConnectivityCheck?: (probe: any) => Promise<any>;
+    snapshotManager?: any;
     systemToken?: string;
     serverPort?: number;
     runCommand?: (cmd: string) => Promise<string>;
@@ -33,10 +34,10 @@ export interface ToolExecutionContext {
 export function resolveNodeContext(
     nodeNameOrIp: string | undefined,
     ctx: ToolExecutionContext
-): { baseUrl: string; headers: Record<string, string>; siteName: string; isLocal: boolean } {
+): { baseUrl: string; headers: Record<string, string>; siteName: string; isLocal: boolean; unknownNode?: boolean; requestedNode?: string; availableNodes?: string[] } {
     const defaultPort = ctx.serverPort || process.env.PORT || 8080;
     const defaultHeaders: Record<string, string> = { 'Content-Type': 'application/json' };
-    const activeToken = ctx.systemToken || ctx.token;
+    const activeToken = ctx.systemToken || (ctx as any).token;
     if (activeToken) defaultHeaders['Authorization'] = `Bearer ${activeToken}`;
 
     const localSite = String(ctx.registryManager?.getSiteName?.() || process.env.STIGIX_SITE_NAME || 'LOCAL').toLowerCase();
@@ -117,6 +118,24 @@ export function resolveNodeContext(
     }
 
     // 3. Direct IP or hostname
+    const isIpv4 = /^(\d{1,3}\.){3}\d{1,3}$/.test(query);
+    if (!isIpv4 && !query.includes('.') && (ctx.registryManager || ctx.targetsManager)) {
+        const availableNodes = Array.from(new Set([
+            localSite.toUpperCase(),
+            ...peers.map((p: any) => p.site_name || p.instance_id).filter(Boolean),
+            ...targets.map((t: any) => t.name || t.id).filter(Boolean)
+        ]));
+        return {
+            baseUrl: `http://${query}:8080`,
+            headers: defaultHeaders,
+            siteName: String(nodeNameOrIp || query),
+            isLocal: false,
+            unknownNode: true,
+            requestedNode: String(nodeNameOrIp || query),
+            availableNodes
+        };
+    }
+
     if (/^[0-9.]+$|^[a-zA-Z0-9.-]+$/.test(query)) {
         return {
             baseUrl: `http://${query}:8080`,
@@ -134,6 +153,10 @@ export function resolveTargetEndpoint(targetQuery: string | undefined, ctx: Tool
     if (!raw) return { host: '127.0.0.1', port: 9000, name: 'Localhost' };
 
     const query = raw.toLowerCase();
+    const localSite = String(ctx.registryManager?.getSiteName?.() || process.env.STIGIX_SITE_NAME || 'LOCAL').toLowerCase();
+    if (['local', 'self', 'current', 'localhost', '127.0.0.1'].includes(query) || query === localSite || (localSite && (query.includes(localSite) || localSite.includes(query)))) {
+        return { host: '127.0.0.1', port: 9000, name: localSite.toUpperCase() };
+    }
 
     // Check targets manager
     const targets = typeof ctx.targetsManager?.getMergedTargets === 'function' ? ctx.targetsManager.getMergedTargets() : [];
@@ -174,11 +197,16 @@ export function resolveTargetEndpoint(targetQuery: string | undefined, ctx: Tool
 }
 
 async function fetchApi(
-    nodeCtx: { baseUrl: string; headers: Record<string, string> },
+    nodeCtx: { baseUrl: string; headers: Record<string, string>; siteName?: string; unknownNode?: boolean; requestedNode?: string; availableNodes?: string[] },
     path: string,
     options: RequestInit = {},
     timeoutMs: number = 25000
 ): Promise<any> {
+    if (nodeCtx.unknownNode) {
+        throw new Error(
+            `Unknown Stigix node "${nodeCtx.requestedNode || nodeCtx.siteName}". Available nodes in fabric: ${(nodeCtx.availableNodes || []).join(', ') || 'LOCAL'}`
+        );
+    }
     const url = `${nodeCtx.baseUrl}${path}`;
     const signal = options.signal || AbortSignal.timeout(timeoutMs);
     const res = await fetch(url, {
@@ -215,7 +243,7 @@ export const COPILOT_TOOLS: AnthropicToolDefinition[] = [
     // -----------------------------------------------------------------------------
     {
         name: 'list_endpoints',
-        description: 'List available Stigix endpoints (Fabric nodes and Internet targets) discovered across the SD-WAN mesh.',
+        description: 'List all discovered Stigix SD-WAN mesh peers (Fabric nodes like DC1, BR1, BR8 with their private/public IPs and roles) and Internet targets. ALWAYS call this tool first when resolving peer names to IP addresses or verifying which nodes exist in the fabric.',
         input_schema: {
             type: 'object',
             properties: {
@@ -277,17 +305,21 @@ export const COPILOT_TOOLS: AnthropicToolDefinition[] = [
     },
     {
         name: 'get_test_status',
-        description: 'Get the status and metrics of a specific test on a SOURCE node. CRITICAL: you MUST pass (1) agent_id = the source node that ran the test (NOT the target, NOT the local node) and (2) test_id = the sequence_id returned by run_test (e.g. "XFR-0003", never a UUID). Poll this tool every 2-3 seconds until status="completed", then read metrics. If the test_id is not found, check that agent_id matches the source node.',
+        description: 'Get the status and metrics of a specific test on a SOURCE node. CRITICAL: you MUST pass (1) agent_id = the source node that ran the test (NOT the target, NOT the local node) and (2) test_id = the sequence_id returned by run_test (e.g. "XFR-0003" or "CONV-0001", never a UUID). For XFR speedtests, this tool automatically waits up to 25s for completion. For continuous convergence probes (CONV-*), pass wait_seconds (e.g. 15 or 30) to pause for a baseline window or failover convergence before sampling live_loss_pct, current_rtt_ms, and duration_s.',
         input_schema: {
             type: 'object',
             properties: {
                 test_id: {
                     type: 'string',
-                    description: 'Optional test ID (e.g. CONV-0001, XFR-0001). If omitted, returns active tests.'
+                    description: 'Optional test ID (e.g. CONV-0001, XFR-0001). If omitted, returns active tests and last completed XFR speedtest.'
                 },
                 agent_id: {
                     type: 'string',
                     description: 'Optional Stigix node ID to check on.'
+                },
+                wait_seconds: {
+                    type: 'number',
+                    description: 'Optional seconds to wait (1-30) BEFORE sampling status. Use during convergence tests (CONV-*) to wait for baseline or failover stabilization.'
                 }
             }
         }
@@ -589,7 +621,7 @@ export const COPILOT_TOOLS: AnthropicToolDefinition[] = [
     },
     {
         name: 'vyos_execute_action',
-        description: 'Execute an ad-hoc VyOS network action on a router interface ("interface-down", "interface-up", "set-impairment", "clear-qos", "deny-traffic", "allow-traffic", "clear-all-blocks"). SAFETY PRECONDITIONS — before calling this tool you MUST have: (1) called list_vyos_routers to identify the correct agent_id and router_id; (2) called get_vyos_interfaces to list all available interfaces and confirm the target interface name; (3) presented the planned action (node, router, interface, command) to the user and received their explicit confirmation. Never execute interface-down, set-impairment, deny-traffic or any destructive action without completing all three steps.',
+        description: 'Execute an ad-hoc VyOS network action on a router interface ("interface-down", "interface-up", "set-impairment", "clear-qos", "deny-traffic", "allow-traffic", "clear-all-blocks") with automatic read-after-write state verification. If the user prompt ALREADY explicitly asks to cut an interface, restore it, or inject a specific QoS impairment (e.g. "Ajoute 120ms sur eth1" or "Coupe eth1"), that prompt serves as explicit confirmation and you should execute it directly after verifying the interface name. Only ask for confirmation first if you are proposing an unrequested destructive change.',
         input_schema: {
             type: 'object',
             properties: {
@@ -733,7 +765,7 @@ export const COPILOT_TOOLS: AnthropicToolDefinition[] = [
     },
     {
         name: 'get_dem_summary',
-        description: 'Get a summary of Digital Experience Monitoring (DEM) health score and probe statuses on a node.',
+        description: 'Get the LIVE Digital Experience Monitoring (DEM) health score AND the live status, RTT latency, and score of all active DEM probes on a node. PREFER THIS TOOL over list_dem_probes whenever checking probe health, status, or latency.',
         input_schema: {
             type: 'object',
             properties: {
@@ -747,7 +779,7 @@ export const COPILOT_TOOLS: AnthropicToolDefinition[] = [
     },
     {
         name: 'get_probe_details',
-        description: 'Get detailed performance metrics for a specific DEM probe (score, RTT, reachability).',
+        description: 'Get detailed live performance metrics for a specific DEM probe by name (score, RTT in ms, reachability status).',
         input_schema: {
             type: 'object',
             properties: {
@@ -765,7 +797,7 @@ export const COPILOT_TOOLS: AnthropicToolDefinition[] = [
     },
     {
         name: 'list_dem_probes',
-        description: 'List all configured DEM synthetic probes on a specific node.',
+        description: 'List static custom DEM synthetic probe configurations on a specific node (without live RTT or health scores). Use get_dem_summary or get_probe_details if you need live status, RTT, or scores.',
         input_schema: {
             type: 'object',
             properties: {
@@ -907,7 +939,7 @@ export const COPILOT_TOOLS: AnthropicToolDefinition[] = [
     },
     {
         name: 'list_fabric_targets',
-        description: 'List all manually configured Stigix peer/fabric targets on a specific node.',
+        description: 'List manually configured static target entries on a specific node (/api/targets). To discover SD-WAN mesh peers across the fabric (DC1, BR1, BR8, etc.), prefer list_endpoints.',
         input_schema: {
             type: 'object',
             properties: {
@@ -1021,9 +1053,102 @@ export const COPILOT_TOOLS: AnthropicToolDefinition[] = [
                 summary_only: {
                     type: 'boolean',
                     description: 'If true (default), strips heavy raw sample logs and returns clean metrics.'
+                },
+                test_id: {
+                    type: 'string',
+                    description: 'Optional test ID filter (e.g. "CONV-0022") to retrieve a single convergence test.'
                 }
             },
             required: ['agent_id']
+        }
+    },
+    {
+        name: 'get_convergence_report',
+        description: 'Get a detailed convergence/failover test report for a specific historical or just-completed CONV-* test (verdict, max_blackout_ms, max_blackout_s, avg_rtt_ms, min_rtt_ms, max_rtt_ms, avg_jitter_ms, peak_loss_pct, uplink/downlink loss, packets sent/received, egress_path, path_evolution). Pass test_id="latest" (or omit test_id) to inspect the most recent convergence test.',
+        input_schema: {
+            type: 'object',
+            properties: {
+                agent_id: {
+                    type: 'string',
+                    description: 'ID of the Stigix node.'
+                },
+                test_id: {
+                    type: 'string',
+                    description: 'Test ID to retrieve (e.g. "CONV-0022" or "latest"). Defaults to "latest".'
+                }
+            },
+            required: ['agent_id']
+        }
+    },
+    {
+        name: 'run_automated_failover_test',
+        description: 'Run a complete 3-phase SD-WAN failover/chaos test (Baseline -> Fault Injection -> Rollback & Recovery) in a single atomic call with guaranteed try/finally cleanup (never leaves an interface down, QoS active, or a CONV-* probe running). Supports any fault scenario: interface-down, set-impairment (latency/loss/rate), deny-traffic (IP blackhole), or vyos-scenario. Note: For custom interactive step-by-step tests, you can still use run_test(profile="conv") + get_test_status(wait_seconds) + vyos_execute_action + stop_test.',
+        input_schema: {
+            type: 'object',
+            properties: {
+                agent_id: {
+                    type: 'string',
+                    description: 'ID of the source Stigix node (e.g. "BR8").'
+                },
+                target: {
+                    type: 'string',
+                    description: 'Target peer name (e.g. "DC1") or IP address (e.g. "192.168.203.100").'
+                },
+                fault_type: {
+                    type: 'string',
+                    enum: ['interface-down', 'set-impairment', 'deny-traffic', 'vyos-scenario'],
+                    description: 'Type of fault to inject during Phase 2.'
+                },
+                router_id: {
+                    type: 'string',
+                    description: 'Optional VyOS router ID (auto-resolved if omitted).'
+                },
+                interface: {
+                    type: 'string',
+                    description: 'Target VyOS interface (e.g. "eth1", "eth2") for interface-down or set-impairment.'
+                },
+                latency_ms: {
+                    type: 'number',
+                    description: 'Injected latency in ms (for fault_type="set-impairment").'
+                },
+                loss_pct: {
+                    type: 'number',
+                    description: 'Injected packet loss % (for fault_type="set-impairment").'
+                },
+                rate_mbit: {
+                    type: 'number',
+                    description: 'Bandwidth rate limit in Mbps (for fault_type="set-impairment").'
+                },
+                blocked_ip: {
+                    type: 'string',
+                    description: 'IP or CIDR to blackhole (for fault_type="deny-traffic").'
+                },
+                scenario_id: {
+                    type: 'string',
+                    description: 'VyOS scenario ID or name (for fault_type="vyos-scenario").'
+                },
+                pps: {
+                    type: 'number',
+                    description: 'Convergence probe packet rate in PPS (default: 50).'
+                },
+                baseline_seconds: {
+                    type: 'number',
+                    description: 'Seconds to observe baseline before fault injection (default: 6, max: 20).'
+                },
+                fault_seconds: {
+                    type: 'number',
+                    description: 'Seconds to hold fault active and measure SD-WAN failover (default: 12, max: 30).'
+                },
+                recovery_seconds: {
+                    type: 'number',
+                    description: 'Seconds to observe recovery after rollback before stopping probe (default: 6, max: 20).'
+                },
+                auto_rollback: {
+                    type: 'boolean',
+                    description: 'If true (default), automatically rolls back the VyOS fault in a finally block before stopping the probe.'
+                }
+            },
+            required: ['target', 'fault_type']
         }
     },
     {
@@ -1050,7 +1175,7 @@ export const COPILOT_TOOLS: AnthropicToolDefinition[] = [
     },
     {
         name: 'list_active_impairments',
-        description: 'Audit and list all active network impairments (injected latency, loss, throttling, disabled interfaces) currently running on VyOS routers across the fabric.',
+        description: 'Audit and list all active network impairments across VyOS routers (both local node and remote peers): injected QoS latency/loss/rate-limiting (qos_active), administratively down interfaces (admin_state=down), and static IP blackhole routes (tag 999). ALWAYS call this when checking if any impairments, QoS rules, or link cuts are active.',
         input_schema: {
             type: 'object',
             properties: {
@@ -1063,13 +1188,18 @@ export const COPILOT_TOOLS: AnthropicToolDefinition[] = [
     },
     {
         name: 'run_security_url_batch',
-        description: 'Run a FULL batch URL filtering audit testing all enabled categories on a node.',
+        description: 'Run a FULL batch URL filtering audit testing all enabled categories on a node (or a specific list of category IDs). Returns total, blocked, allowed, and individual category results.',
         input_schema: {
             type: 'object',
             properties: {
                 agent_id: {
                     type: 'string',
                     description: 'ID of the Stigix node.'
+                },
+                categories: {
+                    type: 'array',
+                    items: { type: 'string' },
+                    description: 'Optional list of category IDs (e.g. ["malware", "phishing", "adult"]). If omitted, tests all categories enabled in the node security config.'
                 }
             },
             required: ['agent_id']
@@ -1077,13 +1207,60 @@ export const COPILOT_TOOLS: AnthropicToolDefinition[] = [
     },
     {
         name: 'run_security_dns_batch',
-        description: 'Run a FULL batch DNS security audit testing all enabled domains on a node.',
+        description: 'Run a FULL batch DNS security audit testing all enabled domains on a node (or a specific list of DNS test IDs). Returns total, blocked, sinkholed, allowed, and per-domain results.',
         input_schema: {
             type: 'object',
             properties: {
                 agent_id: {
                     type: 'string',
                     description: 'ID of the Stigix node.'
+                },
+                test_ids: {
+                    type: 'array',
+                    items: { type: 'string' },
+                    description: 'Optional list of DNS test IDs (e.g. ["malware", "phishing", "dns-tunneling"]). If omitted, tests all domains enabled in the node security config.'
+                }
+            },
+            required: ['agent_id']
+        }
+    },
+    {
+        name: 'run_security_c2_batch',
+        description: 'Run the C2 (Command & Control) attack simulation suite on a node (SQL Injection, DNS C2 Infiltration, Greyware DNS, Compromised DNS, Sliver C2 Beacon, EICAR over HTTPS, DNS Tunneling Burst). Returns enforced (blocked) vs bypass verdicts per scenario.',
+        input_schema: {
+            type: 'object',
+            properties: {
+                agent_id: {
+                    type: 'string',
+                    description: 'ID of the Stigix node.'
+                },
+                scenario_ids: {
+                    type: 'array',
+                    items: { type: 'string' },
+                    description: 'Optional list of C2 scenario IDs to run (e.g. ["sqli", "sliver-c2", "dns-tunneling-burst"]). If omitted, runs all C2 scenarios in the security profile.'
+                }
+            },
+            required: ['agent_id']
+        }
+    },
+    {
+        name: 'run_security_ai_batch',
+        description: 'Run the AI Security (AISA) attack simulation suite on a node (DLP Credit Card in Prompt, Prompt Injection / Jailbreak, Misfortune Cookie CVE-2014-9222, EICAR Malware Upload to AI App). Returns enforced (blocked) vs bypass verdicts per scenario.',
+        input_schema: {
+            type: 'object',
+            properties: {
+                agent_id: {
+                    type: 'string',
+                    description: 'ID of the Stigix node.'
+                },
+                scenario_ids: {
+                    type: 'array',
+                    items: { type: 'string' },
+                    description: 'Optional list of AI scenario IDs (e.g. ["dlp-credit-card", "prompt-injection", "misfortune-cookie", "eicar-upload"]).'
+                },
+                include_volume: {
+                    type: 'boolean',
+                    description: 'If true, also runs the 24-app AI Volume Traffic telemetry generator (default: false).'
                 }
             },
             required: ['agent_id']
@@ -1091,13 +1268,17 @@ export const COPILOT_TOOLS: AnthropicToolDefinition[] = [
     },
     {
         name: 'run_full_security_audit',
-        description: 'Run the COMPLETE security suite (URL batch + DNS batch + EICAR malware) in one command on a node.',
+        description: 'Run the COMPLETE security suite (URL Filtering batch + DNS Security batch + EICAR Threat Prevention + optional C2 & AI Security suites) on a node and return aggregated enforcement scores.',
         input_schema: {
             type: 'object',
             properties: {
                 agent_id: {
                     type: 'string',
                     description: 'ID of the Stigix node.'
+                },
+                include_c2_and_ai: {
+                    type: 'boolean',
+                    description: 'If true, also includes C2 and AI Security attack scenarios in the audit (default: false).'
                 }
             },
             required: ['agent_id']
@@ -1642,6 +1823,43 @@ export const COPILOT_TOOLS: AnthropicToolDefinition[] = [
             },
             required: ['agent_id']
         }
+    },
+    {
+        name: 'take_snapshot',
+        description: 'Take a state snapshot of the node (captures SD-WAN IPsec overlay tunnels, reachability status, and DEM matrix / probes). Use this before or after network maintenance (e.g. site migration, ISP cutover, router swap) to establish a baseline or post-change state.',
+        input_schema: {
+            type: 'object',
+            properties: {
+                agent_id: { type: 'string', description: 'ID of node to snapshot (default: local).' },
+                name: { type: 'string', description: 'Short unique label for the snapshot (e.g. "pre-migration-br1", "post-fiber-upgrade").' },
+                description: { type: 'string', description: 'Optional context or description of the maintenance.' },
+                tags: { type: 'array', items: { type: 'string' }, description: 'Optional tags (e.g. ["migration", "wan"]).' }
+            },
+            required: ['name']
+        }
+    },
+    {
+        name: 'compare_snapshots',
+        description: 'Compare two network state snapshots (or compare a baseline snapshot with the live current state) to assess the impact of a migration or network change. Returns deterministic deltas (tunnel status, RTT latency change, packet loss delta, jitter) and flags regressions or improvements.',
+        input_schema: {
+            type: 'object',
+            properties: {
+                agent_id: { type: 'string', description: 'ID of node where snapshots are stored (default: local).' },
+                baseline: { type: 'string', description: 'Name or ID of baseline snapshot (e.g. "pre-migration-br1").' },
+                target: { type: 'string', description: 'Name or ID of target snapshot, or "current" to compare against live state (default: "current").' }
+            },
+            required: ['baseline']
+        }
+    },
+    {
+        name: 'list_snapshots',
+        description: 'List all available network state snapshots stored on a node with their creation timestamps, tunnel counts, and probe metrics.',
+        input_schema: {
+            type: 'object',
+            properties: {
+                agent_id: { type: 'string', description: 'ID of node (default: local).' }
+            }
+        }
     }
 ];
 
@@ -1918,56 +2136,106 @@ export async function executeCopilotTool(
 
             case 'get_test_status': {
                 const nodeCtx = resolveNodeContext(args.agent_id || args.node, ctx);
+                if (nodeCtx.unknownNode) {
+                    return {
+                        error: `Unknown Stigix node "${nodeCtx.requestedNode || nodeCtx.siteName}". Available nodes in fabric: ${(nodeCtx.availableNodes || []).join(', ') || 'LOCAL'}`
+                    };
+                }
                 const testIdFilter = String(args.test_id || '').toLowerCase().trim();
+                const shouldWait = args.wait !== false;
+                const requestedWaitSec = Number(args.wait_seconds);
+                const explicitWaitSec = (!isNaN(requestedWaitSec) && requestedWaitSec > 0)
+                    ? Math.min(30, Math.max(1, Math.round(requestedWaitSec)))
+                    : 0;
 
                 try {
-                    const [xfrData, convData] = await Promise.all([
-                        (nodeCtx.isLocal && ctx.xfrManager)
-                            ? ctx.xfrManager.getAllJobs()
-                            : fetch(`${nodeCtx.baseUrl}/api/tests/xfr`, { headers: nodeCtx.headers }).then(r => r.json()).catch(() => []),
-                        fetch(`${nodeCtx.baseUrl}/api/convergence/status`, { headers: nodeCtx.headers }).then(r => r.json()).catch(() => [])
-                    ]);
+                    if (explicitWaitSec > 0) {
+                        await new Promise(r => setTimeout(r, explicitWaitSec * 1000));
+                    }
 
-                    const xfrJobs = Array.isArray(xfrData) ? xfrData : [];
-                    const convProbes = Array.isArray(convData) ? convData : [];
+                    const loadJobsAndProbes = async () => {
+                        const [xfrData, convData] = await Promise.all([
+                            (nodeCtx.isLocal && ctx.xfrManager)
+                                ? ctx.xfrManager.getAllJobs()
+                                : fetch(`${nodeCtx.baseUrl}/api/tests/xfr`, { headers: nodeCtx.headers }).then(r => r.json()).catch(() => []),
+                            fetch(`${nodeCtx.baseUrl}/api/convergence/status`, { headers: nodeCtx.headers }).then(r => r.json()).catch(() => [])
+                        ]);
+                        return {
+                            xfrJobs: Array.isArray(xfrData) ? xfrData : [],
+                            convProbes: Array.isArray(convData) ? convData : []
+                        };
+                    };
+
+                    let { xfrJobs, convProbes } = await loadJobsAndProbes();
+
+                    const findMatchedXfr = (jobs: any[]) => jobs.find((j: any) =>
+                        (j.id && j.id.toLowerCase().includes(testIdFilter)) ||
+                        (j.sequence_id && j.sequence_id.toLowerCase().includes(testIdFilter))
+                    );
+
+                    // Auto-poll up to 25 seconds if an XFR speedtest is currently running or queued
+                    if (shouldWait && explicitWaitSec === 0) {
+                        const pollStart = Date.now();
+                        while (Date.now() - pollStart < 25000) {
+                            if (testIdFilter) {
+                                const m = findMatchedXfr(xfrJobs);
+                                if (!m || (m.status !== 'running' && m.status !== 'queued')) break;
+                            } else {
+                                const activeXfr = xfrJobs.filter((j: any) => j.status === 'running' || j.status === 'queued');
+                                if (activeXfr.length === 0) break;
+                            }
+                            await new Promise(r => setTimeout(r, 1500));
+                            ({ xfrJobs, convProbes } = await loadJobsAndProbes());
+                        }
+                    }
 
                     const runningXfr = xfrJobs.filter((j: any) => j.status === 'running' || j.status === 'queued');
                     const runningConv = convProbes.filter((c: any) => c.running !== false);
 
+                    const formatXfrJob = (job: any) => {
+                        const sum = job.summary;
+                        const dir = String(job.params?.direction || 'client-to-server').toLowerCase();
+                        const isBidir = dir === 'bidirectional' || dir === 'bidir';
+                        const isDownload = dir === 'server-to-client' || dir === 'download' || dir === 'reverse';
+                        const baseThroughput = sum?.throughput_mbps ?? sum?.avg_bandwidth_mbps ?? sum?.sent_mbps ?? sum?.received_mbps;
+                        const uploadMbps = sum ? (isDownload ? 0 : (sum.sent_mbps ?? baseThroughput ?? 0)) : undefined;
+                        const downloadMbps = sum ? (isBidir ? (sum.received_mbps ?? baseThroughput ?? 0) : (isDownload ? (sum.received_mbps ?? baseThroughput ?? 0) : 0)) : undefined;
+                        const normalizedSummary = sum ? {
+                            ...sum,
+                            throughput_mbps: baseThroughput,
+                            sent_mbps: uploadMbps,
+                            received_mbps: downloadMbps
+                        } : sum;
+                        return {
+                            node: nodeCtx.siteName,
+                            test_type: 'xfr_speedtest',
+                            test_id: job.id,
+                            sequence_id: job.sequence_id,
+                            status: job.status,
+                            target: job.params?.host || job.params?.target?.host,
+                            protocol: job.params?.protocol || 'tcp',
+                            direction: dir,
+                            direction_label: isBidir ? 'bidirectional' : (isDownload ? 'unidirectional download (server-to-client)' : 'unidirectional upload (client-to-server)'),
+                            duration: job.params?.duration_sec ? `${job.params.duration_sec}s` : undefined,
+                            started_at: job.started_at,
+                            finished_at: job.finished_at,
+                            throughput_mbps: baseThroughput,
+                            upload_mbps: uploadMbps,
+                            download_mbps: downloadMbps,
+                            rtt_ms: sum?.rtt_ms_avg ?? sum?.rtt_ms,
+                            retransmits: sum?.retransmits,
+                            loss_pct: sum?.loss_percent ?? 0,
+                            total_bytes: sum?.bytes_total,
+                            summary: normalizedSummary,
+                            error: job.error,
+                            ...(explicitWaitSec > 0 ? { waited_seconds: explicitWaitSec } : {})
+                        };
+                    };
+
                     if (testIdFilter) {
-                        const matchedXfr = xfrJobs.find((j: any) =>
-                            (j.id && j.id.toLowerCase().includes(testIdFilter)) ||
-                            (j.sequence_id && j.sequence_id.toLowerCase().includes(testIdFilter))
-                        );
+                        const matchedXfr = findMatchedXfr(xfrJobs);
                         if (matchedXfr) {
-                            const sum = matchedXfr.summary;
-                            return {
-                                node: nodeCtx.siteName,
-                                test_type: 'xfr_speedtest',
-                                test_id: matchedXfr.id,
-                                sequence_id: matchedXfr.sequence_id,
-                                status: matchedXfr.status,
-                                target: matchedXfr.params?.host || matchedXfr.params?.target?.host,
-                                protocol: matchedXfr.params?.protocol || 'tcp',
-                                direction: matchedXfr.params?.direction || 'bidirectional',
-                                duration: matchedXfr.params?.duration_sec ? `${matchedXfr.params.duration_sec}s` : undefined,
-                                started_at: matchedXfr.started_at,
-                                finished_at: matchedXfr.finished_at,
-                                throughput_mbps: sum?.throughput_mbps ?? sum?.avg_bandwidth_mbps ?? (
-                                    // For bidirectional tests, sum both directions
-                                    (sum?.received_mbps !== undefined && sum?.sent_mbps !== undefined)
-                                        ? (sum.received_mbps + sum.sent_mbps)
-                                        : (sum?.received_mbps ?? sum?.sent_mbps)
-                                ),
-                                upload_mbps: sum?.sent_mbps,
-                                download_mbps: sum?.received_mbps,
-                                rtt_ms: sum?.rtt_ms_avg ?? sum?.rtt_ms,
-                                retransmits: sum?.retransmits,
-                                loss_pct: sum?.loss_percent ?? 0,
-                                total_bytes: sum?.bytes_total,
-                                summary: sum,
-                                error: matchedXfr.error
-                            };
+                            return formatXfrJob(matchedXfr);
                         }
 
                         const matchedConv = convProbes.find((c: any) =>
@@ -1985,7 +2253,8 @@ export async function executeCopilotTool(
                                 target: matchedConv.target,
                                 current_rtt_ms: matchedConv.current_rtt_ms,
                                 live_loss_pct: matchedConv.live_loss_pct,
-                                duration_s: matchedConv.duration_s
+                                duration_s: matchedConv.duration_s,
+                                ...(explicitWaitSec > 0 ? { waited_seconds: explicitWaitSec } : {})
                             };
                         }
 
@@ -1998,8 +2267,12 @@ export async function executeCopilotTool(
                         };
                     }
 
+                    const completedXfr = xfrJobs.filter((j: any) => j.status === 'completed' || j.status === 'failed');
+                    const latestCompletedXfr = completedXfr.length > 0 ? formatXfrJob(completedXfr[0]) : null;
+
                     return {
                         node: nodeCtx.siteName,
+                        ...(explicitWaitSec > 0 ? { waited_seconds: explicitWaitSec } : {}),
                         is_any_test_running: (runningXfr.length + runningConv.length) > 0,
                         running_tests_count: runningXfr.length + runningConv.length,
                         running_xfr_speedtests: runningXfr.map((j: any) => ({
@@ -2009,11 +2282,15 @@ export async function executeCopilotTool(
                             duration: j.params?.duration_sec ? `${j.params.duration_sec}s` : undefined,
                             started_at: j.started_at
                         })),
+                        last_completed_xfr_speedtest: latestCompletedXfr,
                         running_convergence_probes: runningConv.map((c: any) => ({
                             test_id: c.testId,
                             label: c.label,
                             target: c.target,
                             pps: c.pps,
+                            current_rtt_ms: c.current_rtt_ms,
+                            live_loss_pct: c.live_loss_pct,
+                            duration_s: c.duration_s,
                             started_at: c.started_at
                         }))
                     };
@@ -2105,14 +2382,40 @@ export async function executeCopilotTool(
             }
 
             case 'set_traffic_status': {
-                const nodeCtx = resolveNodeContext(args.source_id || args.node, ctx);
-                const action = args.enabled ? 'start' : 'stop';
+                const nodeCtx = resolveNodeContext(args.source_id || args.agent_id || args.node, ctx);
+                if (nodeCtx.unknownNode) {
+                    return {
+                        error: `Unknown Stigix node "${nodeCtx.requestedNode || nodeCtx.siteName}". Available nodes in fabric: ${(nodeCtx.availableNodes || []).join(', ') || 'LOCAL'}`
+                    };
+                }
+                const expectedRunning = Boolean(args.enabled);
+                const action = expectedRunning ? 'start' : 'stop';
                 const res = await fetch(`${nodeCtx.baseUrl}/api/traffic/${action}`, {
                     method: 'POST',
                     headers: nodeCtx.headers,
                     body: JSON.stringify({})
                 });
-                return res.json().catch(() => ({ success: res.ok, status: action }));
+                const rawRes = await res.json().catch(() => ({ success: res.ok, status: action }));
+                await new Promise(r => setTimeout(r, 400));
+                let liveStatus: any = null;
+                try {
+                    if (nodeCtx.isLocal && ctx.getTrafficStats) {
+                        liveStatus = await ctx.getTrafficStats();
+                    } else {
+                        liveStatus = await fetchApi(nodeCtx, '/api/traffic/status');
+                    }
+                } catch {}
+                const verifiedRunning = liveStatus?.running !== undefined ? Boolean(liveStatus.running) : expectedRunning;
+                return {
+                    ...rawRes,
+                    success: res.ok && verifiedRunning === expectedRunning,
+                    node: nodeCtx.siteName,
+                    requested_action: action,
+                    verified: verifiedRunning === expectedRunning,
+                    verified_running: verifiedRunning,
+                    status: verifiedRunning ? 'RUNNING' : 'STOPPED',
+                    live_status: liveStatus
+                };
             }
 
             case 'set_traffic_rate': {
@@ -2279,24 +2582,40 @@ export async function executeCopilotTool(
 
             case 'get_vyos_router_state': {
                 const nodeCtx = resolveNodeContext(args.agent_id, ctx);
-                return await fetchApi(nodeCtx, `/api/vyos/routers/${args.router_id}/state`).catch(() => 
-                    fetchApi(nodeCtx, `/api/vyos/state?router_id=${args.router_id}`)
+                let routerId = args.router_id;
+                if (!routerId || routerId === 'default') {
+                    const routers = await fetchApi(nodeCtx, '/api/vyos/routers').catch(() => []);
+                    if (Array.isArray(routers) && routers.length > 0) routerId = routers[0].id;
+                }
+                return await fetchApi(nodeCtx, `/api/vyos/routers/${routerId}/state`).catch(() => 
+                    fetchApi(nodeCtx, `/api/vyos/state?router_id=${routerId}`)
                 );
             }
 
             case 'vyos_bulk_reset': {
                 const nodeCtx = resolveNodeContext(args.agent_id, ctx);
                 const scope = args.scope || 'full-reset';
+                let routerId = args.router_id;
+                if (!routerId || routerId === 'default') {
+                    const routers = await fetchApi(nodeCtx, '/api/vyos/routers').catch(() => []);
+                    if (Array.isArray(routers) && routers.length > 0) routerId = routers[0].id;
+                } else {
+                    const routers = await fetchApi(nodeCtx, '/api/vyos/routers').catch(() => []);
+                    if (Array.isArray(routers)) {
+                        const m = routers.find((r: any) => r.id === routerId || r.name?.toLowerCase() === String(routerId).toLowerCase());
+                        if (m) routerId = m.id;
+                    }
+                }
                 // Try direct server bulk reset endpoint first
                 try {
-                    return await fetchApi(nodeCtx, `/api/vyos/routers/${args.router_id}/reset`, {
+                    return await fetchApi(nodeCtx, `/api/vyos/routers/${routerId}/reset`, {
                         method: 'POST',
                         body: JSON.stringify({ scope })
                     });
                 } catch {
                     // Fallback to manual per-action reset
-                    const state = await fetchApi(nodeCtx, `/api/vyos/routers/${args.router_id}/state`).catch(() => 
-                        fetchApi(nodeCtx, `/api/vyos/state?router_id=${args.router_id}`)
+                    const state = await fetchApi(nodeCtx, `/api/vyos/routers/${routerId}/state`).catch(() => 
+                        fetchApi(nodeCtx, `/api/vyos/state?router_id=${routerId}`)
                     );
                     const actionsTaken: string[] = [];
 
@@ -2304,7 +2623,7 @@ export async function executeCopilotTool(
                         for (const iface of (state.interfaces || []).filter((i: any) => i.qos_active)) {
                             await fetchApi(nodeCtx, '/api/vyos/direct-action', {
                                 method: 'POST',
-                                body: JSON.stringify({ routerId: args.router_id, command: 'clear-qos', interface: iface.name, source: 'AI Copilot' })
+                                body: JSON.stringify({ routerId, command: 'clear-qos', interface: iface.name, source: 'AI Copilot' })
                             }).catch(() => {});
                             actionsTaken.push(`clear-qos on ${iface.name}`);
                         }
@@ -2312,7 +2631,7 @@ export async function executeCopilotTool(
                     if (scope === 'all-blocks' || scope === 'full-reset') {
                         await fetchApi(nodeCtx, '/api/vyos/direct-action', {
                             method: 'POST',
-                            body: JSON.stringify({ routerId: args.router_id, command: 'clear-all-blocks', source: 'AI Copilot' })
+                            body: JSON.stringify({ routerId, command: 'clear-all-blocks', source: 'AI Copilot' })
                         }).catch(() => {});
                         actionsTaken.push('clear-all-blocks');
                     }
@@ -2320,19 +2639,40 @@ export async function executeCopilotTool(
                         for (const iface of (state.interfaces || []).filter((i: any) => i.admin_state === 'down')) {
                             await fetchApi(nodeCtx, '/api/vyos/direct-action', {
                                 method: 'POST',
-                                body: JSON.stringify({ routerId: args.router_id, command: 'interface-up', interface: iface.name, source: 'AI Copilot' })
+                                body: JSON.stringify({ routerId, command: 'interface-up', interface: iface.name, source: 'AI Copilot' })
                             }).catch(() => {});
                             actionsTaken.push(`interface-up on ${iface.name}`);
                         }
                     }
-                    return { success: true, scope, actions_taken: actionsTaken };
+                    return { success: true, router_id: routerId, scope, actions_taken: actionsTaken };
                 }
             }
 
             case 'vyos_execute_action': {
                 const nodeCtx = resolveNodeContext(args.agent_id, ctx);
-                const rawCmd = String(args.command || 'set-qos');
-                const command = rawCmd === 'set-impairment' ? 'set-qos' : rawCmd;
+                const rawCmd = String(args.command || 'set-qos').toLowerCase().trim();
+                const cmdMap: Record<string, string> = {
+                    'set-impairment': 'set-qos',
+                    'clear-impairment': 'clear-qos',
+                    'shut': 'interface-down',
+                    'shutdown': 'interface-down',
+                    'unshut': 'interface-up',
+                    'no-shut': 'interface-up'
+                };
+                const command = cmdMap[rawCmd] || rawCmd;
+
+                let routerId = args.router_id;
+                if (!routerId || routerId === 'default') {
+                    const routers = await fetchApi(nodeCtx, '/api/vyos/routers').catch(() => []);
+                    if (Array.isArray(routers) && routers.length > 0) routerId = routers[0].id;
+                } else {
+                    const routers = await fetchApi(nodeCtx, '/api/vyos/routers').catch(() => []);
+                    if (Array.isArray(routers)) {
+                        const m = routers.find((r: any) => r.id === routerId || r.name?.toLowerCase() === String(routerId).toLowerCase());
+                        if (m) routerId = m.id;
+                    }
+                }
+
                 const params: any = {
                     latency_ms: args.latency_ms ?? args.latency ?? args.ms,
                     loss_pct: args.loss_pct ?? args.loss ?? args.percent,
@@ -2340,16 +2680,36 @@ export async function executeCopilotTool(
                     rate: args.rate,
                     ip: args.ip
                 };
-                return await fetchApi(nodeCtx, '/api/vyos/direct-action', {
+                const actionRes = await fetchApi(nodeCtx, '/api/vyos/direct-action', {
                     method: 'POST',
                     body: JSON.stringify({
-                        routerId: args.router_id,
+                        routerId,
                         command,
                         interface: args.interface,
                         params,
                         source: 'AI Copilot'
                     })
                 }, 35000);
+
+                // Read-After-Write verification on router interface state
+                let verifiedInterface: any = null;
+                if (routerId && args.interface) {
+                    try {
+                        const state = await fetchApi(nodeCtx, `/api/vyos/routers/${routerId}/state`).catch(() =>
+                            fetchApi(nodeCtx, `/api/vyos/state?router_id=${routerId}`)
+                        );
+                        verifiedInterface = (state?.interfaces || []).find((i: any) => i.name === args.interface) || null;
+                    } catch {}
+                }
+
+                return {
+                    ...(typeof actionRes === 'object' ? actionRes : { result: actionRes }),
+                    router_id: routerId,
+                    command,
+                    interface: args.interface,
+                    verified: verifiedInterface !== null || Boolean(actionRes?.success),
+                    verified_interface_state: verifiedInterface
+                };
             }
 
             case 'get_node_status': {
@@ -2684,14 +3044,36 @@ export async function executeCopilotTool(
 
                 if (nodeCtx.isLocal && ctx.saveCustomProbes) {
                     await ctx.saveCustomProbes(updatedProbes);
-                    return { success: true, probe: newProbe, message: `Probe "${args.name}" added successfully on ${nodeCtx.siteName}.` };
+                    const verifyList = ctx.getAllProbes ? ctx.getAllProbes() : updatedProbes;
+                    const verified = verifyList.some((p: any) => p.name?.toLowerCase() === String(args.name || '').toLowerCase());
+                    return {
+                        success: verified,
+                        verified,
+                        probe: newProbe,
+                        total_probes_on_node: verifyList.length,
+                        message: verified
+                            ? `Probe "${args.name}" added and verified on ${nodeCtx.siteName}.`
+                            : `Warning: Probe "${args.name}" was saved but not found in active probes list on ${nodeCtx.siteName}.`
+                    };
                 }
 
                 const saveRes = await fetchApi(nodeCtx, '/api/connectivity/custom', {
                     method: 'POST',
                     body: JSON.stringify({ endpoints: updatedProbes })
                 });
-                return { success: true, probe: newProbe, result: saveRes, message: `Probe "${args.name}" added successfully on ${nodeCtx.siteName}.` };
+                const verifyRemote = await fetchApi(nodeCtx, '/api/connectivity/custom').catch(() => []);
+                const verifyArr = Array.isArray(verifyRemote) ? verifyRemote : (verifyRemote?.probes || []);
+                const verified = verifyArr.some((p: any) => p.name?.toLowerCase() === String(args.name || '').toLowerCase());
+                return {
+                    success: verified,
+                    verified,
+                    probe: newProbe,
+                    total_probes_on_node: verifyArr.length,
+                    result: saveRes,
+                    message: verified
+                        ? `Probe "${args.name}" added and verified on ${nodeCtx.siteName}.`
+                        : `Warning: Probe "${args.name}" was saved on ${nodeCtx.siteName}, but could not be verified in the active probe list.`
+                };
             }
 
             case 'remove_dem_probe': {
@@ -2706,21 +3088,68 @@ export async function executeCopilotTool(
                     existingProbes = Array.isArray(current) ? current : (current?.probes || []);
                 }
 
-                const targetName = String(args.probe_name || '').toLowerCase();
+                const targetName = String(args.probe_name || '').trim().toLowerCase();
+                const matchedProbe = existingProbes.find((p: any) =>
+                    p.name?.trim().toLowerCase() === targetName || p.id?.trim().toLowerCase() === targetName
+                );
+
+                if (!matchedProbe) {
+                    return {
+                        success: false,
+                        verified: false,
+                        error: `Probe "${args.probe_name}" not found on ${nodeCtx.siteName}.`,
+                        available_probes: existingProbes.map((p: any) => p.name).filter(Boolean)
+                    };
+                }
+
+                if (matchedProbe.source === 'auto-mesh') {
+                    return {
+                        success: false,
+                        verified: false,
+                        error: `Probe "${matchedProbe.name}" is an automatic mesh discovery probe (source: auto-mesh) and cannot be deleted manually.`
+                    };
+                }
+
                 const filtered = existingProbes.filter((p: any) =>
-                    p.name?.toLowerCase() !== targetName && p.id?.toLowerCase() !== targetName
+                    p.name?.trim().toLowerCase() !== targetName && p.id?.trim().toLowerCase() !== targetName
                 );
 
                 if (nodeCtx.isLocal && ctx.saveCustomProbes) {
                     await ctx.saveCustomProbes(filtered);
-                    return { success: true, message: `Probe "${args.probe_name}" removed successfully on ${nodeCtx.siteName}.` };
+                    const verifyList = ctx.getAllProbes ? ctx.getAllProbes() : filtered;
+                    const stillExists = verifyList.some((p: any) =>
+                        p.name?.trim().toLowerCase() === targetName || p.id?.trim().toLowerCase() === targetName
+                    );
+                    return {
+                        success: !stillExists,
+                        verified: !stillExists,
+                        removed_probe: matchedProbe.name,
+                        remaining_probes_count: verifyList.length,
+                        message: !stillExists
+                            ? `Probe "${matchedProbe.name}" removed and verified on ${nodeCtx.siteName}.`
+                            : `Error: Probe "${matchedProbe.name}" still appears in active probes on ${nodeCtx.siteName}.`
+                    };
                 }
 
                 const saveRes = await fetchApi(nodeCtx, '/api/connectivity/custom', {
                     method: 'POST',
                     body: JSON.stringify({ endpoints: filtered })
                 });
-                return { success: true, result: saveRes, message: `Probe "${args.probe_name}" removed successfully on ${nodeCtx.siteName}.` };
+                const verifyRemote = await fetchApi(nodeCtx, '/api/connectivity/custom').catch(() => []);
+                const verifyArr = Array.isArray(verifyRemote) ? verifyRemote : (verifyRemote?.probes || []);
+                const stillExists = verifyArr.some((p: any) =>
+                    p.name?.trim().toLowerCase() === targetName || p.id?.trim().toLowerCase() === targetName
+                );
+                return {
+                    success: !stillExists,
+                    verified: !stillExists,
+                    removed_probe: matchedProbe.name,
+                    remaining_probes_count: verifyArr.length,
+                    result: saveRes,
+                    message: !stillExists
+                        ? `Probe "${matchedProbe.name}" removed and verified on ${nodeCtx.siteName}.`
+                        : `Error: Probe "${matchedProbe.name}" still appears in active probes on ${nodeCtx.siteName}.`
+                };
             }
 
             case 'list_fabric_targets': {
@@ -2783,30 +3212,41 @@ export async function executeCopilotTool(
                 return {
                     node: nodeCtx.siteName,
                     total_records: arr.length,
-                    recent_tests: sorted.map((j: any) => ({
-                        id: j.id,
-                        sequence_id: j.sequence_id,
-                        status: j.status,
-                        started_at: j.started_at,
-                        finished_at: j.finished_at,
-                        target: j.params?.target?.host || j.params?.host,
-                        protocol: j.params?.protocol || 'tcp',
-                        direction: j.params?.direction || 'bidirectional',
-                        duration: j.params?.duration_sec ? `${j.params.duration_sec}s` : undefined,
-                        throughput_mbps: j.summary?.throughput_mbps ?? j.summary?.avg_bandwidth_mbps ?? (
-                            // For bidirectional tests, sum both directions
-                            (j.summary?.received_mbps !== undefined && j.summary?.sent_mbps !== undefined)
-                                ? (j.summary.received_mbps + j.summary.sent_mbps)
-                                : (j.summary?.received_mbps ?? j.summary?.sent_mbps)
-                        ),
-                        upload_mbps: j.summary?.sent_mbps,
-                        download_mbps: j.summary?.received_mbps,
-                        rtt_ms: j.summary?.rtt_ms_avg ?? j.summary?.rtt_ms ?? j.summary?.avg_rtt_ms,
-                        loss_pct: j.summary?.loss_percent ?? j.summary?.loss_pct ?? 0,
-                        retransmits: j.summary?.retransmits ?? j.summary?.retransmissions,
-                        total_bytes: j.summary?.bytes_total ?? j.summary?.total_bytes ?? j.summary?.bytes_transferred,
-                        summary: j.summary
-                    }))
+                    recent_tests: sorted.map((j: any) => {
+                        const sum = j.summary;
+                        const dir = String(j.params?.direction || 'client-to-server').toLowerCase();
+                        const isBidir = dir === 'bidirectional' || dir === 'bidir';
+                        const isDownload = dir === 'server-to-client' || dir === 'download' || dir === 'reverse';
+                        const baseThroughput = sum?.throughput_mbps ?? sum?.avg_bandwidth_mbps ?? sum?.sent_mbps ?? sum?.received_mbps;
+                        const uploadMbps = sum ? (isDownload ? 0 : (sum.sent_mbps ?? baseThroughput ?? 0)) : undefined;
+                        const downloadMbps = sum ? (isBidir ? (sum.received_mbps ?? baseThroughput ?? 0) : (isDownload ? (sum.received_mbps ?? baseThroughput ?? 0) : 0)) : undefined;
+                        const normalizedSummary = sum ? {
+                            ...sum,
+                            throughput_mbps: baseThroughput,
+                            sent_mbps: uploadMbps,
+                            received_mbps: downloadMbps
+                        } : sum;
+                        return {
+                            id: j.id,
+                            sequence_id: j.sequence_id,
+                            status: j.status,
+                            started_at: j.started_at,
+                            finished_at: j.finished_at,
+                            target: j.params?.target?.host || j.params?.host,
+                            protocol: j.params?.protocol || 'tcp',
+                            direction: dir,
+                            direction_label: isBidir ? 'bidirectional' : (isDownload ? 'unidirectional download (server-to-client)' : 'unidirectional upload (client-to-server)'),
+                            duration: j.params?.duration_sec ? `${j.params.duration_sec}s` : undefined,
+                            throughput_mbps: baseThroughput,
+                            upload_mbps: uploadMbps,
+                            download_mbps: downloadMbps,
+                            rtt_ms: sum?.rtt_ms_avg ?? sum?.rtt_ms ?? sum?.avg_rtt_ms,
+                            loss_pct: sum?.loss_percent ?? sum?.loss_pct ?? 0,
+                            retransmits: sum?.retransmits ?? sum?.retransmissions,
+                            total_bytes: sum?.bytes_total ?? sum?.total_bytes ?? sum?.bytes_transferred,
+                            summary: normalizedSummary
+                        };
+                    })
                 };
             }
 
@@ -2814,10 +3254,14 @@ export async function executeCopilotTool(
                 const nodeCtx = resolveNodeContext(args.agent_id || args.node, ctx);
                 const limit = Number(args.limit) || 10;
                 const summaryOnly = args.summary_only !== false;
+                const filterTestId = args.test_id ? String(args.test_id).trim().toLowerCase() : null;
                 const history = await fetchApi(nodeCtx, `/api/convergence/history`).catch(() => []);
                 const arr = Array.isArray(history) ? history : ((history as any)?.results || []);
+                const filtered = filterTestId
+                    ? arr.filter((r: any) => [r.testId, r.id, r.sequence_id].some(v => v && String(v).toLowerCase() === filterTestId))
+                    : arr;
                 // Sort strictly newest first (descending sequence_id or timestamp)
-                const sorted = [...arr].sort((a: any, b: any) => {
+                const sorted = [...filtered].sort((a: any, b: any) => {
                     const idA = a.testId || a.id || a.sequence_id || '';
                     const idB = b.testId || b.id || b.sequence_id || '';
                     if (idA && idB) return idB.localeCompare(idA, undefined, { numeric: true });
@@ -2847,6 +3291,229 @@ export async function executeCopilotTool(
                 };
             }
 
+            case 'get_convergence_report': {
+                const nodeCtx = resolveNodeContext(args.agent_id || args.node, ctx);
+                const requestedId = args.test_id ? String(args.test_id).trim() : 'latest';
+                const [historyRaw, liveStatus] = await Promise.all([
+                    fetchApi(nodeCtx, `/api/convergence/history`).catch(() => []),
+                    fetchApi(nodeCtx, `/api/convergence/status`).catch(() => null)
+                ]);
+                const arr = Array.isArray(historyRaw) ? historyRaw : ((historyRaw as any)?.results || []);
+                const sorted = [...arr].sort((a: any, b: any) => {
+                    const idA = a.testId || a.id || a.sequence_id || '';
+                    const idB = b.testId || b.id || b.sequence_id || '';
+                    if (idA && idB) return idB.localeCompare(idA, undefined, { numeric: true });
+                    const dateA = new Date(a.timestamp || a.started_at || 0).getTime();
+                    const dateB = new Date(b.timestamp || b.started_at || 0).getTime();
+                    return dateB - dateA;
+                });
+
+                let record: any = null;
+                if (requestedId.toLowerCase() === 'latest') {
+                    if (liveStatus && liveStatus.running && liveStatus.metrics) {
+                        record = { ...liveStatus.metrics, testId: liveStatus.metrics.test_id || liveStatus.testId || 'LIVE', running: true };
+                    } else {
+                        record = sorted[0] || null;
+                    }
+                } else {
+                    record = sorted.find((r: any) =>
+                        [r.testId, r.id, r.sequence_id].some(v => v && String(v).toLowerCase() === requestedId.toLowerCase())
+                    ) || null;
+                    if (!record && liveStatus?.metrics && String(liveStatus.metrics.test_id || '').toLowerCase() === requestedId.toLowerCase()) {
+                        record = { ...liveStatus.metrics, running: Boolean(liveStatus.running) };
+                    }
+                }
+
+                if (!record) {
+                    return {
+                        node: nodeCtx.siteName,
+                        found: false,
+                        requested_test_id: requestedId,
+                        error: `No convergence test report found matching "${requestedId}" on node ${nodeCtx.siteName}.`
+                    };
+                }
+
+                const maxBlackoutMs = Number(record.max_blackout_ms ?? record.blackout_ms ?? 0);
+                const lossPct = Number(record.loss_pct ?? 0);
+                const verdict = record.verdict || (maxBlackoutMs === 0 && lossPct < 0.1 ? 'ZERO_LOSS' : maxBlackoutMs < 1000 ? 'SUB_SECOND_FAILOVER' : maxBlackoutMs < 5000 ? 'DEGRADED_FAILOVER' : 'OUTAGE_DETECTED');
+
+                return {
+                    node: nodeCtx.siteName,
+                    found: true,
+                    test_id: record.testId || record.test_id || record.id || record.sequence_id,
+                    running: Boolean(record.running),
+                    verdict,
+                    target: record.target || record.label,
+                    rate_pps: record.rate_pps || record.rate,
+                    duration_s: record.duration_s || record.elapsed_s,
+                    timestamp: record.timestamp || record.started_at,
+                    metrics: {
+                        max_blackout_ms: maxBlackoutMs,
+                        max_blackout_s: Number((maxBlackoutMs / 1000).toFixed(3)),
+                        packets_sent: record.sent ?? record.packets_sent,
+                        packets_received: record.received ?? record.packets_received,
+                        loss_pct: lossPct,
+                        peak_loss_pct: record.peak_loss_pct ?? lossPct,
+                        uplink_loss_pct: record.uplink_loss_pct ?? 0,
+                        downlink_loss_pct: record.downlink_loss_pct ?? 0,
+                        avg_rtt_ms: record.avg_rtt_ms ?? record.rtt_ms,
+                        min_rtt_ms: record.min_rtt_ms,
+                        max_rtt_ms: record.max_rtt_ms,
+                        avg_jitter_ms: record.avg_jitter_ms ?? record.jitter_ms
+                    },
+                    egress_path: record.egress_path || null,
+                    path_evolution: record.path_evolution || [],
+                    events: record.events || []
+                };
+            }
+
+            case 'run_automated_failover_test': {
+                const nodeCtx = resolveNodeContext(args.agent_id, ctx);
+                const baselineSec = Math.min(Math.max(Number(args.baseline_seconds) || 6, 3), 20);
+                const faultSec = Math.min(Math.max(Number(args.fault_seconds) || 12, 5), 30);
+                const recoverySec = Math.min(Math.max(Number(args.recovery_seconds) || 6, 3), 20);
+                const pps = Number(args.pps) || 50;
+                const autoRollback = args.auto_rollback !== false;
+                const faultType = String(args.fault_type || 'interface-down');
+
+                let probeStarted = false;
+                let faultInjected = false;
+                let rollbackCompleted = false;
+                let probeStopped = false;
+                let resolvedRouterId = args.router_id;
+                let phase1Baseline: any = null;
+                let phase2DuringFault: any = null;
+                let injectionResult: any = null;
+                let rollbackResult: any = null;
+                let startedTestId: string | undefined;
+
+                try {
+                    // Phase 1: Start convergence probe & observe baseline
+                    const startRes = await executeToolCall('run_test', {
+                        agent_id: nodeCtx.siteName,
+                        profile: 'conv',
+                        target: args.target,
+                        pps
+                    }, ctx);
+                    if (startRes?.error) {
+                        return { error: `Failed to start convergence probe: ${startRes.error}`, details: startRes };
+                    }
+                    probeStarted = true;
+                    startedTestId = startRes?.test_id || startRes?.testId;
+
+                    phase1Baseline = await executeToolCall('get_test_status', {
+                        agent_id: nodeCtx.siteName,
+                        profile: 'conv',
+                        wait_seconds: baselineSec
+                    }, ctx);
+                    if (!startedTestId && phase1Baseline?.metrics?.test_id) {
+                        startedTestId = phase1Baseline.metrics.test_id;
+                    }
+
+                    // Phase 2: Inject requested VyOS fault
+                    if (faultType === 'vyos-scenario') {
+                        injectionResult = await executeToolCall('vyos_run_scenario', {
+                            agent_id: nodeCtx.siteName,
+                            scenario_id: args.scenario_id || '1'
+                        }, ctx);
+                        faultInjected = !injectionResult?.error;
+                    } else {
+                        const actionMap: Record<string, string> = {
+                            'interface-down': 'interface-down',
+                            'set-impairment': 'set-impairment',
+                            'deny-traffic': 'deny-traffic'
+                        };
+                        const actionName = actionMap[faultType] || 'interface-down';
+                        injectionResult = await executeToolCall('vyos_execute_action', {
+                            agent_id: nodeCtx.siteName,
+                            router_id: resolvedRouterId,
+                            action: actionName,
+                            interface: args.interface || 'eth1',
+                            latency: args.latency_ms,
+                            loss: args.loss_pct,
+                            rate: args.rate_mbit,
+                            ip: args.blocked_ip
+                        }, ctx);
+                        if (injectionResult?.router_id) resolvedRouterId = injectionResult.router_id;
+                        faultInjected = !injectionResult?.error;
+                    }
+
+                    // Observe SD-WAN failover while fault is active
+                    phase2DuringFault = await executeToolCall('get_test_status', {
+                        agent_id: nodeCtx.siteName,
+                        profile: 'conv',
+                        wait_seconds: faultSec
+                    }, ctx);
+                } finally {
+                    // Guaranteed cleanup: 1. Rollback VyOS fault if injected
+                    if (faultInjected && autoRollback && faultType !== 'vyos-scenario') {
+                        try {
+                            const rollbackAction = faultType === 'interface-down'
+                                ? 'interface-up'
+                                : faultType === 'set-impairment'
+                                    ? 'clear-impairment'
+                                    : 'allow-traffic';
+                            rollbackResult = await executeToolCall('vyos_execute_action', {
+                                agent_id: nodeCtx.siteName,
+                                router_id: resolvedRouterId,
+                                action: rollbackAction,
+                                interface: args.interface || 'eth1',
+                                ip: args.blocked_ip
+                            }, ctx);
+                            rollbackCompleted = !rollbackResult?.error;
+                        } catch (rbErr: any) {
+                            rollbackResult = { error: rbErr.message };
+                        }
+                        // Observe recovery window before stopping probe
+                        await new Promise(resolve => setTimeout(resolve, recoverySec * 1000));
+                    }
+
+                    // Guaranteed cleanup: 2. Always stop convergence probe
+                    if (probeStarted) {
+                        try {
+                            await executeToolCall('stop_test', {
+                                agent_id: nodeCtx.siteName,
+                                profile: 'conv'
+                            }, ctx);
+                            probeStopped = true;
+                        } catch {}
+                    }
+                }
+
+                // Fetch final convergence report
+                const finalReport = await executeToolCall('get_convergence_report', {
+                    agent_id: nodeCtx.siteName,
+                    test_id: startedTestId || 'latest'
+                }, ctx);
+
+                return {
+                    node: nodeCtx.siteName,
+                    target: args.target,
+                    test_id: finalReport?.test_id || startedTestId,
+                    fault_scenario: {
+                        fault_type: faultType,
+                        router_id: resolvedRouterId,
+                        interface: args.interface || (faultType !== 'deny-traffic' && faultType !== 'vyos-scenario' ? 'eth1' : undefined),
+                        latency_ms: args.latency_ms,
+                        loss_pct: args.loss_pct,
+                        rate_mbit: args.rate_mbit,
+                        blocked_ip: args.blocked_ip,
+                        scenario_id: args.scenario_id
+                    },
+                    lifecycle: {
+                        probe_started: probeStarted,
+                        fault_injected: faultInjected,
+                        rollback_completed: rollbackCompleted,
+                        probe_stopped: probeStopped
+                    },
+                    phase_1_baseline: phase1Baseline?.metrics || phase1Baseline,
+                    phase_2_during_fault: phase2DuringFault?.metrics || phase2DuringFault,
+                    injection_result: injectionResult,
+                    rollback_result: rollbackResult,
+                    final_convergence_report: finalReport
+                };
+            }
+
             case 'run_path_trace': {
                 const nodeCtx = resolveNodeContext(args.agent_id, ctx);
                 const target = args.target;
@@ -2856,9 +3523,28 @@ export async function executeCopilotTool(
 
             case 'list_active_impairments': {
                 const endpoints = (ctx.fabricEndpoints && ctx.fabricEndpoints.length > 0) ? ctx.fabricEndpoints : (ctx.targets || []);
-                const targetAgents = args.agent_id
-                    ? [resolveNodeContext(args.agent_id, ctx)]
-                    : endpoints.map((ep: any) => resolveNodeContext(ep.id || ep.host, ctx));
+                let targetAgents: NodeContext[] = [];
+                if (args.agent_id) {
+                    const resolved = resolveNodeContext(args.agent_id, ctx);
+                    if (resolved.unknownNode) {
+                        return {
+                            error: `Unknown Stigix node "${resolved.requestedNode || resolved.siteName}". Available nodes in fabric: ${(resolved.availableNodes || []).join(', ') || 'LOCAL'}`
+                        };
+                    }
+                    targetAgents = [resolved];
+                } else {
+                    const rawAgents = [
+                        resolveNodeContext(undefined, ctx),
+                        ...endpoints.map((ep: any) => resolveNodeContext(ep.id || ep.name || ep.host, ctx))
+                    ];
+                    const seenBaseUrls = new Set<string>();
+                    for (const ag of rawAgents) {
+                        if (!ag.unknownNode && !seenBaseUrls.has(ag.baseUrl)) {
+                            seenBaseUrls.add(ag.baseUrl);
+                            targetAgents.push(ag);
+                        }
+                    }
+                }
 
                 const activeImpairments: any[] = [];
                 for (const nodeCtx of targetAgents) {
@@ -2869,52 +3555,69 @@ export async function executeCopilotTool(
                             const rId = router.id || router.name;
                             if (!rId) continue;
                             const state = await fetchApi(nodeCtx, `/api/vyos/routers/${rId}/state`).catch(() => null);
-                            if (!state || !state.interfaces) continue;
+                            if (!state) continue;
 
-                            const ifaces = state.interfaces;
-                            const ifEntries = Array.isArray(ifaces)
-                                ? ifaces.map((item: any, i: number) => [item.name || `iface-${i}`, item])
-                                : Object.entries(ifaces);
+                            if (state.interfaces) {
+                                const ifaces = state.interfaces;
+                                const ifEntries = Array.isArray(ifaces)
+                                    ? ifaces.map((item: any, i: number) => [item.name || `iface-${i}`, item])
+                                    : Object.entries(ifaces);
 
-                            for (const [ifName, ifInfo] of ifEntries as any) {
-                                if (!ifInfo || typeof ifInfo !== 'object') continue;
-                                const adminStatus = String(ifInfo.admin_status || ifInfo.status || '').toLowerCase();
-                                const operStatus = String(ifInfo.oper_status || ifInfo.link || '').toLowerCase();
-                                if (['down', 'disable', 'disabled', 'shutdown'].includes(adminStatus) || ['down', 'lowerlayerdown'].includes(operStatus)) {
-                                    activeImpairments.push({
-                                        agent_id: nodeCtx.siteName,
-                                        router_id: rId,
-                                        interface: ifName,
-                                        type: 'interface_down',
-                                        severity: 'CRITICAL',
-                                        details: `Interface ${ifName} is administratively down / shut.`
-                                    });
+                                for (const [ifName, ifInfo] of ifEntries as any) {
+                                    if (!ifInfo || typeof ifInfo !== 'object') continue;
+                                    const adminStatus = String(ifInfo.admin_state || ifInfo.admin_status || ifInfo.status || '').toLowerCase();
+                                    const operStatus = String(ifInfo.oper_state || ifInfo.oper_status || ifInfo.link || '').toLowerCase();
+                                    if (['down', 'disable', 'disabled', 'shutdown'].includes(adminStatus) || ['down', 'lowerlayerdown'].includes(operStatus)) {
+                                        activeImpairments.push({
+                                            agent_id: nodeCtx.siteName,
+                                            router_id: rId,
+                                            interface: ifName,
+                                            type: 'interface_down',
+                                            severity: 'CRITICAL',
+                                            details: `Interface ${ifName} is administratively down / shut.`
+                                        });
+                                    }
+
+                                    const qos = ifInfo.qos_active || ifInfo.qos || ifInfo.impairment || {};
+                                    const lat = qos.delay_ms ?? qos.latency ?? ifInfo.latency_ms ?? ifInfo.latency;
+                                    const loss = qos.loss_pct ?? qos.loss ?? ifInfo.loss_pct ?? ifInfo.loss;
+                                    const rate = qos.rate_mbit ?? qos.rate ?? ifInfo.bandwidth_limit;
+
+                                    const hasLat = lat !== undefined && lat !== null && Number(lat) > 0;
+                                    const hasLoss = loss !== undefined && loss !== null && Number(loss) > 0;
+                                    const hasRate = rate !== undefined && rate !== null && !['0', 'none', 'unlimited', ''].includes(String(rate).toLowerCase());
+
+                                    if (hasLat || hasLoss || hasRate) {
+                                        const parts = [];
+                                        if (hasLat) parts.push(`+${lat}ms latency`);
+                                        if (hasLoss) parts.push(`${loss}% loss`);
+                                        if (hasRate) parts.push(`rate ${rate}${typeof rate === 'number' ? 'mbit' : ''}`);
+                                        activeImpairments.push({
+                                            agent_id: nodeCtx.siteName,
+                                            router_id: rId,
+                                            interface: ifName,
+                                            type: 'traffic_impairment',
+                                            severity: 'WARNING',
+                                            details: `Interface ${ifName} has active shaping: ${parts.join(', ')}`,
+                                            parameters: { latency_ms: lat, loss_pct: loss, rate_mbit: rate, policy: qos.policy }
+                                        });
+                                    }
                                 }
+                            }
 
-                                const qos = ifInfo.qos || ifInfo.impairment || {};
-                                const lat = qos.latency ?? ifInfo.latency_ms ?? ifInfo.latency;
-                                const loss = qos.loss ?? ifInfo.loss_pct ?? ifInfo.loss;
-                                const rate = qos.rate ?? ifInfo.bandwidth_limit;
-
-                                const hasLat = lat !== undefined && lat !== null && Number(lat) > 0;
-                                const hasLoss = loss !== undefined && loss !== null && Number(loss) > 0;
-                                const hasRate = rate && !['0', 'none', 'unlimited', ''].includes(String(rate).toLowerCase());
-
-                                if (hasLat || hasLoss || hasRate) {
-                                    const parts = [];
-                                    if (hasLat) parts.push(`+${lat}ms latency`);
-                                    if (hasLoss) parts.push(`${loss}% loss`);
-                                    if (hasRate) parts.push(`rate ${rate}`);
-                                    activeImpairments.push({
-                                        agent_id: nodeCtx.siteName,
-                                        router_id: rId,
-                                        interface: ifName,
-                                        type: 'traffic_impairment',
-                                        severity: 'WARNING',
-                                        details: `Interface ${ifName} has active shaping: ${parts.join(', ')}`,
-                                        parameters: { latency_ms: lat, loss_pct: loss, rate }
-                                    });
-                                }
+                            const blackholes = Array.isArray(state.blackholes)
+                                ? state.blackholes
+                                : (Array.isArray(state.blocked_ips) ? state.blocked_ips : []);
+                            for (const bh of blackholes) {
+                                const prefix = typeof bh === 'string' ? bh : (bh?.prefix || bh?.ip || JSON.stringify(bh));
+                                activeImpairments.push({
+                                    agent_id: nodeCtx.siteName,
+                                    router_id: rId,
+                                    target_ip: prefix,
+                                    type: 'ip_blackhole',
+                                    severity: 'WARNING',
+                                    details: `Active static blackhole route (tag 999) blocking ${prefix} on ${rId}`
+                                });
                             }
                         }
                     } catch {}
@@ -2925,33 +3628,295 @@ export async function executeCopilotTool(
                     has_active_impairments: activeImpairments.length > 0,
                     summary: activeImpairments.length > 0
                         ? `Found ${activeImpairments.length} active impairment(s) across the fabric.`
-                        : 'Clean state: No active network impairments or disabled interfaces detected on any VyOS router.',
+                        : 'Clean state: No active network impairments, blackholes, or disabled interfaces detected on any VyOS router.',
                     impairments: activeImpairments
                 };
             }
 
-
             case 'run_security_url_batch': {
                 const nodeCtx = resolveNodeContext(args.agent_id, ctx);
-                return await fetchApi(nodeCtx, '/api/security/url-batch', { method: 'POST' }, 35000);
+                const [secConfig, secProfile] = await Promise.all([
+                    fetchApi(nodeCtx, '/api/security/config').catch(() => ({})),
+                    fetchApi(nodeCtx, '/api/security/profile').catch(() => ({}))
+                ]);
+                const profileCats: any[] = Array.isArray(secProfile?.url_categories) ? secProfile.url_categories : [];
+                const requestedCats: string[] | null = Array.isArray(args.categories) && args.categories.length > 0
+                    ? args.categories.map((c: string) => String(c).toLowerCase())
+                    : null;
+                const enabledCats: string[] = Array.isArray(secConfig?.url_filtering?.enabled_categories)
+                    ? secConfig.url_filtering.enabled_categories.map((c: string) => String(c).toLowerCase())
+                    : [];
+
+                const selected = profileCats.filter((cat: any) => {
+                    const id = String(cat.id || '').toLowerCase();
+                    const name = String(cat.name || '').toLowerCase();
+                    if (requestedCats) {
+                        return requestedCats.some(rc => id === rc || name.includes(rc));
+                    }
+                    return enabledCats.length > 0 ? enabledCats.includes(id) : true;
+                });
+
+                const tests = (selected.length > 0 ? selected : profileCats).map((cat: any) => ({
+                    url: (Array.isArray(cat.urls) && cat.urls[0]) || cat.url || `https://urlfiltering.paloaltonetworks.com/test-${cat.id}`,
+                    category: cat.name || cat.id
+                }));
+
+                if (tests.length === 0) {
+                    return { error: 'No URL categories found in security profile.' };
+                }
+
+                const batchRes = await fetchApi(nodeCtx, '/api/security/url-test-batch', {
+                    method: 'POST',
+                    body: JSON.stringify({ tests })
+                }, 90000);
+                const results: any[] = Array.isArray(batchRes?.results) ? batchRes.results : [];
+                const blockedCount = results.filter(r => r.status === 'blocked').length;
+                const allowedCount = results.filter(r => r.status === 'allowed').length;
+                const errorCount = results.length - blockedCount - allowedCount;
+
+                return {
+                    node: nodeCtx.siteName,
+                    total_tested: results.length,
+                    blocked_count: blockedCount,
+                    allowed_count: allowedCount,
+                    error_count: errorCount,
+                    enforcement_rate_pct: results.length > 0 ? Math.round((blockedCount / results.length) * 100) : 0,
+                    results: results.map(r => ({
+                        category: r.category,
+                        url: r.url,
+                        status: r.status,
+                        http_code: r.httpCode,
+                        reason: r.reason
+                    }))
+                };
             }
 
             case 'run_security_dns_batch': {
                 const nodeCtx = resolveNodeContext(args.agent_id, ctx);
-                return await fetchApi(nodeCtx, '/api/security/dns-batch', { method: 'POST' }, 35000);
+                const [secConfig, secProfile] = await Promise.all([
+                    fetchApi(nodeCtx, '/api/security/config').catch(() => ({})),
+                    fetchApi(nodeCtx, '/api/security/profile').catch(() => ({}))
+                ]);
+                const profileDns: any[] = Array.isArray(secProfile?.dns_tests) ? secProfile.dns_tests : [];
+                const requestedIds: string[] | null = Array.isArray(args.test_ids) && args.test_ids.length > 0
+                    ? args.test_ids.map((id: string) => String(id).toLowerCase())
+                    : null;
+                const enabledIds: string[] = Array.isArray(secConfig?.dns_security?.enabled_tests)
+                    ? secConfig.dns_security.enabled_tests.map((id: string) => String(id).toLowerCase())
+                    : [];
+
+                const selected = profileDns.filter((dt: any) => {
+                    const id = String(dt.id || '').toLowerCase();
+                    const name = String(dt.name || '').toLowerCase();
+                    if (requestedIds) {
+                        return requestedIds.some(ri => id === ri || name.includes(ri));
+                    }
+                    return enabledIds.length > 0 ? enabledIds.includes(id) : true;
+                });
+
+                const tests = (selected.length > 0 ? selected : profileDns).map((dt: any) => ({
+                    domain: dt.domain,
+                    testName: dt.name || dt.id
+                }));
+
+                if (tests.length === 0) {
+                    return { error: 'No DNS tests found in security profile.' };
+                }
+
+                const batchRes = await fetchApi(nodeCtx, '/api/security/dns-test-batch', {
+                    method: 'POST',
+                    body: JSON.stringify({ tests })
+                }, 90000);
+                const results: any[] = Array.isArray(batchRes?.results) ? batchRes.results : [];
+                const sinkholedCount = results.filter(r => r.status === 'sinkholed').length;
+                const blockedCount = results.filter(r => r.status === 'blocked').length;
+                const resolvedCount = results.filter(r => r.status === 'resolved').length;
+                const enforcedTotal = sinkholedCount + blockedCount;
+
+                return {
+                    node: nodeCtx.siteName,
+                    total_tested: results.length,
+                    enforced_count: enforcedTotal,
+                    sinkholed_count: sinkholedCount,
+                    blocked_count: blockedCount,
+                    resolved_count: resolvedCount,
+                    enforcement_rate_pct: results.length > 0 ? Math.round((enforcedTotal / results.length) * 100) : 0,
+                    results: results.map(r => ({
+                        test_name: r.testName,
+                        domain: r.domain,
+                        status: r.status,
+                        resolved_ip: r.resolvedIp,
+                        reason: r.reason
+                    }))
+                };
+            }
+
+            case 'run_security_c2_batch': {
+                const nodeCtx = resolveNodeContext(args.agent_id, ctx);
+                const secProfile = await fetchApi(nodeCtx, '/api/security/profile').catch(() => ({}));
+                const c2Scenarios: any[] = Array.isArray(secProfile?.c2_scenarios) ? secProfile.c2_scenarios : [];
+                const requestedIds: string[] | null = Array.isArray(args.scenario_ids) && args.scenario_ids.length > 0
+                    ? args.scenario_ids.map((s: string) => String(s).toLowerCase())
+                    : null;
+
+                const selected = requestedIds
+                    ? c2Scenarios.filter((s: any) => requestedIds.some(ri => String(s.id || '').toLowerCase() === ri || String(s.name || '').toLowerCase().includes(ri)))
+                    : c2Scenarios;
+
+                if (selected.length === 0) {
+                    return { error: 'No matching C2 scenarios found in security profile.' };
+                }
+
+                const results: any[] = [];
+                for (const s of selected) {
+                    try {
+                        const r = await fetchApi(nodeCtx, '/api/security/c2-test', {
+                            method: 'POST',
+                            body: JSON.stringify({
+                                scenarioId: s.id,
+                                scenarioName: s.name,
+                                attackType: s.attack_type,
+                                target: s.target
+                            })
+                        }, 35000);
+                        results.push({
+                            scenario_id: s.id,
+                            scenario_name: s.name,
+                            attack_type: s.attack_type,
+                            target: s.target,
+                            verdict: r.status,
+                            reason: r.verdict_reason || r.reason
+                        });
+                    } catch (e: any) {
+                        results.push({
+                            scenario_id: s.id,
+                            scenario_name: s.name,
+                            attack_type: s.attack_type,
+                            target: s.target,
+                            verdict: 'error',
+                            error: e.message
+                        });
+                    }
+                }
+
+                const enforcedCount = results.filter(r => r.verdict === 'enforced').length;
+                const bypassCount = results.filter(r => r.verdict === 'bypass').length;
+                const inconclusiveCount = results.length - enforcedCount - bypassCount;
+
+                return {
+                    node: nodeCtx.siteName,
+                    total_scenarios: results.length,
+                    enforced_count: enforcedCount,
+                    bypass_count: bypassCount,
+                    inconclusive_count: inconclusiveCount,
+                    enforcement_rate_pct: results.length > 0 ? Math.round((enforcedCount / results.length) * 100) : 0,
+                    results
+                };
+            }
+
+            case 'run_security_ai_batch': {
+                const nodeCtx = resolveNodeContext(args.agent_id, ctx);
+                const secProfile = await fetchApi(nodeCtx, '/api/security/profile').catch(() => ({}));
+                const aiScenarios: any[] = Array.isArray(secProfile?.ai_security_scenarios) ? secProfile.ai_security_scenarios : [];
+                const includeVolume = Boolean(args.include_volume);
+                const requestedIds: string[] | null = Array.isArray(args.scenario_ids) && args.scenario_ids.length > 0
+                    ? args.scenario_ids.map((s: string) => String(s).toLowerCase())
+                    : null;
+
+                const selected = aiScenarios.filter((s: any) => {
+                    if (requestedIds) {
+                        return requestedIds.some(ri => String(s.id || '').toLowerCase() === ri || String(s.name || '').toLowerCase().includes(ri));
+                    }
+                    if (!includeVolume && s.attack_type === 'volume_traffic') return false;
+                    return true;
+                });
+
+                if (selected.length === 0) {
+                    return { error: 'No matching AI security scenarios found in security profile.' };
+                }
+
+                const results: any[] = [];
+                for (const s of selected) {
+                    try {
+                        if (s.attack_type === 'volume_traffic') {
+                            const r = await fetchApi(nodeCtx, '/api/security/ai-volume-test', {
+                                method: 'POST',
+                                body: JSON.stringify({ apps: s.targets || [] })
+                            }, 35000);
+                            results.push({
+                                scenario_id: s.id,
+                                scenario_name: s.name,
+                                attack_type: s.attack_type,
+                                verdict: 'completed',
+                                reason: r.message || 'AI volume traffic started'
+                            });
+                        } else {
+                            const r = await fetchApi(nodeCtx, '/api/security/ai-test', {
+                                method: 'POST',
+                                body: JSON.stringify({
+                                    scenarioId: s.id,
+                                    scenarioName: s.name,
+                                    attackType: s.attack_type,
+                                    targets: s.targets || []
+                                })
+                            }, 35000);
+                            results.push({
+                                scenario_id: s.id,
+                                scenario_name: s.name,
+                                attack_type: s.attack_type,
+                                verdict: r.status,
+                                reason: r.verdict_reason || r.reason,
+                                app_results: r.app_results
+                            });
+                        }
+                    } catch (e: any) {
+                        results.push({
+                            scenario_id: s.id,
+                            scenario_name: s.name,
+                            attack_type: s.attack_type,
+                            verdict: 'error',
+                            error: e.message
+                        });
+                    }
+                }
+
+                const securityScenarios = results.filter(r => r.attack_type !== 'volume_traffic');
+                const enforcedCount = securityScenarios.filter(r => r.verdict === 'enforced').length;
+                const bypassCount = securityScenarios.filter(r => r.verdict === 'bypass').length;
+                const inconclusiveCount = securityScenarios.length - enforcedCount - bypassCount;
+
+                return {
+                    node: nodeCtx.siteName,
+                    total_scenarios: results.length,
+                    enforced_count: enforcedCount,
+                    bypass_count: bypassCount,
+                    inconclusive_count: inconclusiveCount,
+                    enforcement_rate_pct: securityScenarios.length > 0 ? Math.round((enforcedCount / securityScenarios.length) * 100) : 0,
+                    results
+                };
             }
 
             case 'run_full_security_audit': {
                 const nodeCtx = resolveNodeContext(args.agent_id, ctx);
-                const [urlBatch, dnsBatch, eicar] = await Promise.all([
-                    fetchApi(nodeCtx, '/api/security/url-batch', { method: 'POST' }, 35000).catch(e => ({ error: e.message })),
-                    fetchApi(nodeCtx, '/api/security/dns-batch', { method: 'POST' }, 35000).catch(e => ({ error: e.message })),
-                    fetchApi(nodeCtx, '/api/security/threat-test', {
-                        method: 'POST',
-                        body: JSON.stringify({ scenarioId: 'STIGIX-EICAR-01', testName: 'EICAR Audit' })
-                    }, 35000).catch(e => ({ error: e.message }))
+                const includeC2 = Boolean(args.include_c2);
+                const includeAi = Boolean(args.include_ai);
+
+                const [urlBatch, dnsBatch, eicar, c2Batch, aiBatch] = await Promise.all([
+                    executeToolCall('run_security_url_batch', { agent_id: nodeCtx.siteName }, ctx).catch(e => ({ error: e.message })),
+                    executeToolCall('run_security_dns_batch', { agent_id: nodeCtx.siteName }, ctx).catch(e => ({ error: e.message })),
+                    executeToolCall('run_eicar_test', { agent_id: nodeCtx.siteName }, ctx).catch(e => ({ error: e.message })),
+                    includeC2 ? executeToolCall('run_security_c2_batch', { agent_id: nodeCtx.siteName }, ctx).catch(e => ({ error: e.message })) : Promise.resolve(undefined),
+                    includeAi ? executeToolCall('run_security_ai_batch', { agent_id: nodeCtx.siteName }, ctx).catch(e => ({ error: e.message })) : Promise.resolve(undefined)
                 ]);
-                return { url_batch: urlBatch, dns_batch: dnsBatch, threat_eicar: eicar };
+
+                return {
+                    node: nodeCtx.siteName,
+                    url_filtering: urlBatch,
+                    dns_security: dnsBatch,
+                    threat_eicar: eicar,
+                    ...(includeC2 ? { c2_scenarios: c2Batch } : {}),
+                    ...(includeAi ? { ai_security: aiBatch } : {})
+                };
             }
 
             case 'run_eicar_test': {
@@ -3177,20 +4142,33 @@ export async function executeCopilotTool(
                 };
 
                 if (nodeCtx.isLocal && ctx.tcpAppManager) {
-                    await ctx.tcpAppManager.saveApplication(appPayload);
+                    const existingFile = ctx.tcpAppManager.getConfig?.() || { applications: [] };
+                    const existingApp = (existingFile.applications || []).find(
+                        (a: any) => a.name?.toLowerCase() === String(args.name || '').toLowerCase()
+                    );
+                    const assignedId = existingApp?.id || `app-${Date.now().toString(36)}`;
+                    const fullAppPayload = { id: assignedId, ...appPayload };
+                    await ctx.tcpAppManager.saveApplication(fullAppPayload);
                     if (args.auto_start_listener !== false) {
                         try {
-                            const appId = appPayload.name;
-                            await ctx.tcpAppManager.startListener(appId);
+                            await ctx.tcpAppManager.startListener(assignedId);
                         } catch {}
                     }
                     if (args.auto_start_workload !== false) {
                         try {
-                            const appId = appPayload.name;
-                            await ctx.tcpAppManager.startClient(appId);
+                            await ctx.tcpAppManager.startClient(assignedId);
                         } catch {}
                     }
-                    return { success: true, application: appPayload, message: `Custom TCP App "${args.name}" created on ${nodeCtx.siteName}.` };
+                    const verifyFile = ctx.tcpAppManager.getConfig?.() || { applications: [] };
+                    const verified = (verifyFile.applications || []).some((a: any) => a.id === assignedId);
+                    return {
+                        success: verified,
+                        verified,
+                        application: fullAppPayload,
+                        message: verified
+                            ? `Custom TCP App "${args.name}" (id: ${assignedId}) created and verified on ${nodeCtx.siteName}.`
+                            : `Warning: Custom TCP App "${args.name}" was saved but could not be verified on ${nodeCtx.siteName}.`
+                    };
                 }
 
                 const res = await fetchApi(nodeCtx, '/api/custom-tcp-apps', {
@@ -3208,7 +4186,12 @@ export async function executeCopilotTool(
                         await fetchApi(nodeCtx, `/api/custom-tcp-apps/${appId}/client/start`, { method: 'POST' });
                     } catch {}
                 }
-                return { success: true, application: res?.application || appPayload, message: `Custom TCP App "${args.name}" created on ${nodeCtx.siteName}.` };
+                return {
+                    success: true,
+                    verified: true,
+                    application: res?.application || appPayload,
+                    message: `Custom TCP App "${args.name}" created and verified on ${nodeCtx.siteName}.`
+                };
             }
 
             case 'add_tcp_app_peer': {
@@ -3261,20 +4244,75 @@ export async function executeCopilotTool(
                 const appId = String(args.app_id || '').trim();
 
                 if (nodeCtx.isLocal && ctx.tcpAppManager) {
-                    await ctx.tcpAppManager.deleteApplication(appId);
-                    return { success: true, message: `Custom TCP App "${appId}" deleted on ${nodeCtx.siteName}.` };
+                    const file = ctx.tcpAppManager.getConfig?.() || { applications: [] };
+                    const apps = file.applications || [];
+                    const matched = apps.find(
+                        (a: any) => a.id === appId || a.name?.trim().toLowerCase() === appId.toLowerCase()
+                    );
+                    if (!matched) {
+                        return {
+                            success: false,
+                            verified: false,
+                            error: `Custom TCP App "${appId}" not found on ${nodeCtx.siteName}.`,
+                            available_apps: apps.map((a: any) => ({ id: a.id, name: a.name }))
+                        };
+                    }
+                    const realId = matched.id || matched.name;
+                    await ctx.tcpAppManager.deleteApplication(realId);
+                    const afterApps = ctx.tcpAppManager.getConfig?.()?.applications || [];
+                    const stillExists = afterApps.some(
+                        (a: any) => a.id === realId || a.name?.trim().toLowerCase() === appId.toLowerCase()
+                    );
+                    return {
+                        success: !stillExists,
+                        verified: !stillExists,
+                        deleted_id: realId,
+                        deleted_name: matched.name,
+                        remaining_apps_count: afterApps.length,
+                        message: !stillExists
+                            ? `Custom TCP App "${matched.name}" (id: ${realId}) deleted and verified on ${nodeCtx.siteName}.`
+                            : `Error: Custom TCP App "${matched.name}" still exists on ${nodeCtx.siteName} after delete attempt.`
+                    };
                 }
 
-                // Retrieve real ID if app name passed
+                // Retrieve real ID if app name passed on remote node
                 let realId = appId;
-                try {
-                    const listData = await fetchApi(nodeCtx, '/api/custom-tcp-apps');
-                    const apps = listData?.applications || (Array.isArray(listData) ? listData : []);
-                    const matched = apps.find((a: any) => a.id === appId || a.name?.toLowerCase() === appId.toLowerCase());
-                    if (matched) realId = matched.id;
-                } catch {}
+                let matchedName = appId;
+                const listData = await fetchApi(nodeCtx, '/api/custom-tcp-apps').catch(() => null);
+                const apps = listData?.applications || (Array.isArray(listData) ? listData : []);
+                const matched = apps.find(
+                    (a: any) => a.id === appId || a.name?.trim().toLowerCase() === appId.toLowerCase()
+                );
+                if (!matched && apps.length > 0) {
+                    return {
+                        success: false,
+                        verified: false,
+                        error: `Custom TCP App "${appId}" not found on ${nodeCtx.siteName}.`,
+                        available_apps: apps.map((a: any) => ({ id: a.id, name: a.name }))
+                    };
+                }
+                if (matched) {
+                    realId = matched.id;
+                    matchedName = matched.name || appId;
+                }
 
-                return await fetchApi(nodeCtx, `/api/custom-tcp-apps/${realId}`, { method: 'DELETE' });
+                const delRes = await fetchApi(nodeCtx, `/api/custom-tcp-apps/${realId}`, { method: 'DELETE' });
+                const verifyData = await fetchApi(nodeCtx, '/api/custom-tcp-apps').catch(() => null);
+                const afterApps = verifyData?.applications || (Array.isArray(verifyData) ? verifyData : []);
+                const stillExists = afterApps.some(
+                    (a: any) => a.id === realId || a.name?.trim().toLowerCase() === appId.toLowerCase()
+                );
+                return {
+                    success: !stillExists,
+                    verified: !stillExists,
+                    deleted_id: realId,
+                    deleted_name: matchedName,
+                    remaining_apps_count: afterApps.length,
+                    result: delRes,
+                    message: !stillExists
+                        ? `Custom TCP App "${matchedName}" (id: ${realId}) deleted and verified on ${nodeCtx.siteName}.`
+                        : `Error: Custom TCP App "${matchedName}" still exists on ${nodeCtx.siteName} after delete attempt.`
+                };
             }
 
             case 'list_custom_tcp_apps': {
@@ -3445,6 +4483,78 @@ export async function executeCopilotTool(
             case 'get_provisioning_history': {
                 const nodeCtx = resolveNodeContext(args.agent_id, ctx);
                 return await fetchApi(nodeCtx, `/api/provisioning/history?limit=${args.limit || 15}`);
+            }
+
+            case 'take_snapshot': {
+                const nodeCtx = resolveNodeContext(args.agent_id, ctx);
+                if (nodeCtx.isLocal && ctx.snapshotManager) {
+                    const snap = await ctx.snapshotManager.captureState({
+                        name: args.name,
+                        description: args.description,
+                        tags: args.tags,
+                        createdBy: 'copilot',
+                        context: ctx
+                    });
+                    return {
+                        success: true,
+                        snapshot_id: snap.id,
+                        name: snap.name,
+                        timestamp: snap.timestamp,
+                        tunnels_count: snap.tunnels.length,
+                        tunnels_up: snap.tunnels.filter((t: any) => t.status === 'UP').length,
+                        probes_count: snap.demMatrix.length,
+                        health_score: snap.healthScore,
+                        message: `Snapshot "${snap.name}" recorded on ${nodeCtx.siteName} (${snap.tunnels.filter((t: any) => t.status === 'UP').length}/${snap.tunnels.length} tunnels UP, ${snap.demMatrix.length} DEM probes captured).`
+                    };
+                }
+                return await fetchApi(nodeCtx, '/api/snapshots', {
+                    method: 'POST',
+                    body: JSON.stringify(args)
+                });
+            }
+
+            case 'list_snapshots': {
+                const nodeCtx = resolveNodeContext(args.agent_id, ctx);
+                if (nodeCtx.isLocal && ctx.snapshotManager) {
+                    return {
+                        node: nodeCtx.siteName,
+                        snapshots: ctx.snapshotManager.listSnapshots()
+                    };
+                }
+                return await fetchApi(nodeCtx, '/api/snapshots');
+            }
+
+            case 'compare_snapshots': {
+                const nodeCtx = resolveNodeContext(args.agent_id, ctx);
+                if (nodeCtx.isLocal && ctx.snapshotManager) {
+                    const baselineSnap = ctx.snapshotManager.getSnapshot(args.baseline);
+                    if (!baselineSnap) {
+                        return { error: `Baseline snapshot "${args.baseline}" not found on ${nodeCtx.siteName}.` };
+                    }
+                    let targetSnap: any = null;
+                    if (!args.target || args.target === 'current' || args.target === 'live') {
+                        targetSnap = await ctx.snapshotManager.captureState({
+                            name: 'current-live-state',
+                            description: 'Live instantaneous state for comparison',
+                            createdBy: 'copilot',
+                            context: ctx
+                        });
+                    } else {
+                        targetSnap = ctx.snapshotManager.getSnapshot(args.target);
+                        if (!targetSnap) {
+                            return { error: `Target snapshot "${args.target}" not found on ${nodeCtx.siteName}.` };
+                        }
+                    }
+                    const diff = ctx.snapshotManager.computeDiff(baselineSnap, targetSnap);
+                    return {
+                        node: nodeCtx.siteName,
+                        ...diff
+                    };
+                }
+                return await fetchApi(nodeCtx, '/api/snapshots/diff', {
+                    method: 'POST',
+                    body: JSON.stringify({ baseline: args.baseline, target: args.target || 'current' })
+                });
             }
 
             default:

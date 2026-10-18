@@ -16,6 +16,7 @@ import { CustomApps } from './CustomApps';
 import { MulticastOverlayTab } from './components/custom-tcp/MulticastOverlayTab';
 import { PcapReplay } from './PcapReplay';
 import PacketCapture from './PacketCapture';
+import ChangeGuard from './ChangeGuard';
 import Copilot from './Copilot';
 import Fleet from './Fleet';
 import { PeerContextProvider, GatewayDropdown, RemoteViewBanner, RemoteViewChip, usePeerContext } from './PeerContext';
@@ -247,7 +248,7 @@ interface SiteInfo {
 export default function App() {
   const [token, setToken] = useState<string | null>(localStorage.getItem('token'));
   const [username, setUsername] = useState<string | null>(localStorage.getItem('username'));
-  const [view, setView] = useState<'dashboard' | 'settings' | 'statistics' | 'security' | 'voice' | 'performance' | 'failover' | 'srt' | 'iot' | 'vyos' | 'speedtest' | 'topology' | 'convergence' | 'events' | 'custom_apps' | 'multicast' | 'pcap_replay' | 'packet_capture' | 'api_studio' | 'copilot' | 'fleet' | 'home'>(
+  const [view, setView] = useState<'dashboard' | 'settings' | 'statistics' | 'security' | 'voice' | 'performance' | 'failover' | 'srt' | 'iot' | 'vyos' | 'speedtest' | 'topology' | 'convergence' | 'events' | 'custom_apps' | 'multicast' | 'pcap_replay' | 'packet_capture' | 'api_studio' | 'copilot' | 'fleet' | 'home' | 'snapshots'>(
     () => {
       const saved = localStorage.getItem('activeView');
       if (saved && saved !== 'settings') {
@@ -273,7 +274,12 @@ export default function App() {
     } catch { }
   };
 
-  const [features, setFeatures] = useState<{ xfr_enabled: boolean }>({ xfr_enabled: false });
+  const [features, setFeatures] = useState<{ 
+    xfr_enabled: boolean;
+    pcap_enabled?: boolean;
+    copilot_enabled?: boolean;
+    snapshots_enabled?: boolean;
+  }>({ xfr_enabled: false });
   const [copilotDrawerOpen, setCopilotDrawerOpen] = useState(false);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [copilotConfig, setCopilotConfig] = useState<{ enabled: boolean; featureEnabled?: boolean; hasKey: boolean } | null>(null);
@@ -860,7 +866,11 @@ export default function App() {
     try {
       const res = await fetch('/api/features');
       const data = await res.json();
-      setFeatures(data);
+      setFeatures({
+        ...data,
+        pcap_enabled: data.pcap_enabled ?? data.enablePcapReplay ?? false,
+        snapshots_enabled: data.snapshots_enabled ?? data.enableChangeSnapshots ?? false
+      });
     } catch (e) {
       console.error("Failed to fetch features");
     }
@@ -1144,7 +1154,8 @@ export default function App() {
         features={{
           xfr_enabled: features.xfr_enabled,
           pcap_enabled: isPcapEnabled,
-          copilot_enabled: Boolean(copilotConfig?.featureEnabled && copilotConfig?.hasKey)
+          copilot_enabled: Boolean(copilotConfig?.featureEnabled && copilotConfig?.hasKey),
+          snapshots_enabled: features.snapshots_enabled
         }}
         activeTasks={activeTasks}
         copilotDrawerOpen={copilotDrawerOpen}
@@ -1871,6 +1882,7 @@ export default function App() {
       {view === 'pcap_replay' && isPcapEnabled && <PcapReplay token={token!} />}
       {view === 'packet_capture' && <PacketCapture token={token!} localSiteName={siteInfo?.detected_site_name || registryStatus?.site_name || (isLeader ? 'DC1' : 'BR8')} onNavigateToReplay={() => setView('pcap_replay')} />}
       {view === 'speedtest' && features.xfr_enabled && <Speedtest token={token!} />}
+      {view === 'snapshots' && <ChangeGuard token={token!} />}
       {view === 'events' && <LiveEvents token={token!} />}
       {copilotConfig?.featureEnabled && copilotConfig?.hasKey && view === 'copilot' && <Copilot token={token!} onOpenSettings={() => { setInitialSettingsTab('mcp'); setView('settings'); }} />}
       {view === 'fleet' && isLeader && <Fleet token={token!} onNavigate={setView} />}
@@ -1956,7 +1968,8 @@ export default function App() {
         features={{
           xfr_enabled: features.xfr_enabled,
           pcap_enabled: isPcapEnabled,
-          copilot_enabled: Boolean(copilotConfig?.featureEnabled && copilotConfig?.hasKey)
+          copilot_enabled: Boolean(copilotConfig?.featureEnabled && copilotConfig?.hasKey),
+          snapshots_enabled: features.snapshots_enabled
         }}
         onOpenMagicJoin={() => setShowMagicJoinModal(true)}
         onToggleCopilot={() => setCopilotDrawerOpen(prev => !prev)}

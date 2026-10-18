@@ -43,6 +43,7 @@ import multer from 'multer';
 import { FleetTunnelManager } from './fleet-tunnel.js';
 import { MagicJoinManager } from './magic-join-manager.js';
 import { CertificateManager } from './certificate-manager.js';
+import { SnapshotManager, StigixSnapshot } from './snapshot-manager.js';
 
 // Multer setup for EDL file uploads (memory storage)
 const upload = multer({
@@ -709,6 +710,7 @@ interface XfrTestParams {
 interface XfrTestResultSummary {
     protocol: string;
     duration_sec: number;
+    throughput_mbps?: number;
     sent_mbps: number;
     received_mbps: number;
     loss_percent: number;
@@ -1131,6 +1133,7 @@ class XfrJobManager {
             protocol: p.protocol || 'tcp',
             duration_sec: p.duration_sec || (p.duration_ms ? p.duration_ms / 1000 : 0),
             bytes_total: p.bytes_total || 0,
+            throughput_mbps: p.throughput_mbps || p.sent_mbps || p.received_mbps || 0,
             sent_mbps: p.throughput_mbps || p.sent_mbps || 0,
             received_mbps: p.throughput_mbps || p.received_mbps || 0,
             loss_percent: p.loss_percent || p.udp_stats?.lost_percent || 0,
@@ -2083,7 +2086,7 @@ const getDnsCommand = (domain: string, srcPort?: number, bindIp?: string): { com
 
     // Priority 2: nslookup (Universal and provides CNAME info which is vital for sinkhole detection)
     if (availableCommands.nslookup) {
-        const cmd = `nslookup -timeout=5 ${domain}.`;
+        const cmd = `nslookup -timeout=2 ${domain}.`;
         return { command: cmd, type: 'nslookup', port: srcPort };
     }
 
@@ -2097,7 +2100,7 @@ const getDnsCommand = (domain: string, srcPort?: number, bindIp?: string): { com
     }
 
     // Ultimate fallback
-    return { command: `nslookup -timeout=5 ${domain}.`, type: 'nslookup', port: srcPort };
+    return { command: `nslookup -timeout=2 ${domain}.`, type: 'nslookup', port: srcPort };
 };
 
 // Parse DNS command output based on command type
@@ -2979,7 +2982,9 @@ app.get('/api/features', (req, res) => {
         xfr_enabled: true,
         xfr_targets: XFR_QUICK_TARGETS,
         targets: targetsManager.getMergedTargets(),   // shared targets registry
-        enablePcapReplay: process.env.ENABLE_PCAP_REPLAY === 'true'
+        enablePcapReplay: process.env.ENABLE_PCAP_REPLAY === 'true',
+        snapshots_enabled: process.env.ENABLE_CHANGE_SNAPSHOTS === 'true',
+        enableChangeSnapshots: process.env.ENABLE_CHANGE_SNAPSHOTS === 'true'
     });
 });
 
@@ -3240,7 +3245,33 @@ let topologyCache: { data: any, timestamp: number } | null = null;
 const TOPO_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 let inFlightTopologyPromise: Promise<any> | null = null;
 
+let topologyBuildProgress: {
+    building: boolean;
+    stage: number;
+    stageKey: string;
+    stageLabel: string;
+    startedAt: number | null;
+    lastDurationMs: number | null;
+} = {
+    building: false,
+    stage: 0,
+    stageKey: 'idle',
+    stageLabel: 'Idle',
+    startedAt: null,
+    lastDurationMs: null,
+};
+
 async function executeTopologyBuild(): Promise<any> {
+    const buildStartedAt = Date.now();
+    topologyBuildProgress = {
+        building: true,
+        stage: 1,
+        stageKey: 'auth',
+        stageLabel: 'Authenticating with Prisma SASE OAuth2 API...',
+        startedAt: buildStartedAt,
+        lastDurationMs: topologyBuildProgress.lastDurationMs,
+    };
+
     return new Promise((resolve, reject) => {
         const scriptPath = path.join(PROJECT_ROOT, 'engines', 'getflow.py');
         const enginesDir = path.join(PROJECT_ROOT, 'engines');
@@ -3248,7 +3279,7 @@ async function executeTopologyBuild(): Promise<any> {
         // Check Env
         const hasId = !!process.env.PRISMA_SDWAN_CLIENT_ID;
         const hasSecret = !!process.env.PRISMA_SDWAN_CLIENT_SECRET;
-        const hasTsg = !!process.env.PRISMA_SDWAN_TSG_ID;
+        const hasTsg = !!(process.env.PRISMA_SDWAN_TSG_ID || process.env.PRISMA_SDWAN_TSGID);
         log('TOPO', `Spawn Env Check - ID: ${hasId}, Secret: ${hasSecret}, TSG: ${hasTsg}`);
 
         log('TOPO', `Spawning ${PYTHON_PATH} ${scriptPath} --build-topology --json`);
@@ -3267,14 +3298,28 @@ async function executeTopologyBuild(): Promise<any> {
             stdout += d.toString();
         });
         proc.stderr.on('data', (d) => {
-            stderr += d.toString();
-            console.error(`[TOPO-STDERR] ${d.toString().trim()}`);
+            const chunk = d.toString();
+            stderr += chunk;
+            const lines = chunk.split(/\r?\n/);
+            for (const line of lines) {
+                const match = line.match(/\[TOPO-STAGE\]\s*(\d+)\|([^|]+)\|(.+)/);
+                if (match) {
+                    topologyBuildProgress.stage = parseInt(match[1], 10) || topologyBuildProgress.stage;
+                    topologyBuildProgress.stageKey = match[2].trim();
+                    topologyBuildProgress.stageLabel = match[3].trim();
+                }
+            }
+            console.error(`[TOPO-STDERR] ${chunk.trim()}`);
         });
 
         proc.on('close', async (code) => {
             if (code === 0) {
                 try {
                     const data = JSON.parse(stdout);
+                    topologyBuildProgress.stage = 4;
+                    topologyBuildProgress.stageKey = 'underlay';
+                    topologyBuildProgress.stageLabel = 'Correlating VyOS Underlay & Stigix Mesh Agents...';
+
                     // Enrich with underlay resolution (additive, isolated from topology)
                     let underlay: any = null;
                     try {
@@ -3282,33 +3327,114 @@ async function executeTopologyBuild(): Promise<any> {
                     } catch (ue: any) {
                         log('UNDERLAY', `Underlay resolution failed (topology unaffected): ${ue.message}`, 'warn');
                     }
+                    const durationMs = Date.now() - buildStartedAt;
                     const enrichedData = underlay ? { ...data, underlay } : data;
                     topologyCache = { data: enrichedData, timestamp: Date.now() };
+                    topologyBuildProgress = {
+                        building: false,
+                        stage: 4,
+                        stageKey: 'complete',
+                        stageLabel: 'Topology Ready',
+                        startedAt: null,
+                        lastDurationMs: durationMs,
+                    };
                     resolve(enrichedData);
                 } catch (e: any) {
+                    topologyBuildProgress.building = false;
                     console.error('[TOPO] Failed to parse JSON:', e, 'STDOUT length:', stdout.length);
                     reject(new Error('Failed to parse topology data'));
                 }
             } else {
+                topologyBuildProgress.building = false;
                 console.error(`[TOPO] getflow.py exited with code ${code}. Stderr: ${stderr}`);
                 reject(new Error(`Failed to build topology (exit code ${code}): ${stderr || 'Unknown error'}`));
             }
         });
 
         proc.on('error', (err) => {
+            topologyBuildProgress.building = false;
             console.error('[TOPO] Failed to spawn process:', err);
             reject(err);
         });
     });
 }
 
+function triggerBackgroundTopologyBuild(): Promise<any> {
+    if (!inFlightTopologyPromise) {
+        inFlightTopologyPromise = executeTopologyBuild()
+            .catch((err) => {
+                log('TOPO', `Background topology build failed: ${err.message}`, 'warn');
+                throw err;
+            })
+            .finally(() => {
+                inFlightTopologyPromise = null;
+            });
+    }
+    return inFlightTopologyPromise;
+}
+
+// Pre-warm topology cache in background 12s after server start when Prisma SASE credentials exist
+setTimeout(() => {
+    const hasCreds = Boolean(
+        process.env.PRISMA_SDWAN_CLIENT_ID &&
+        process.env.PRISMA_SDWAN_CLIENT_SECRET &&
+        (process.env.PRISMA_SDWAN_TSG_ID || process.env.PRISMA_SDWAN_TSGID)
+    );
+    if (hasCreds && !topologyCache && !inFlightTopologyPromise) {
+        log('TOPO', '🚀 Pre-warming SD-WAN topology cache in background...');
+        triggerBackgroundTopologyBuild().catch(() => {});
+    }
+}, 12_000);
+
+app.get('/api/topology/status', authenticateToken, (req, res) => {
+    const now = Date.now();
+    const ageMs = topologyCache ? (now - topologyCache.timestamp) : null;
+    res.json({
+        building: Boolean(inFlightTopologyPromise),
+        stage: topologyBuildProgress.stage,
+        stageKey: topologyBuildProgress.stageKey,
+        stageLabel: topologyBuildProgress.stageLabel,
+        startedAt: topologyBuildProgress.startedAt,
+        elapsedMs: topologyBuildProgress.building && topologyBuildProgress.startedAt ? (now - topologyBuildProgress.startedAt) : 0,
+        lastDurationMs: topologyBuildProgress.lastDurationMs,
+        cached: Boolean(topologyCache),
+        cacheAgeSeconds: ageMs !== null ? Math.round(ageMs / 1000) : null,
+        stale: ageMs !== null ? (ageMs >= TOPO_CACHE_TTL) : false,
+    });
+});
+
 app.get('/api/topology', authenticateToken, async (req, res) => {
     const now = Date.now();
     const force = req.query.force === 'true';
 
-    if (!force && topologyCache && (now - topologyCache.timestamp < TOPO_CACHE_TTL)) {
-        dbg(`[TOPO] Returning cached topology (${Math.round((now - topologyCache.timestamp) / 1000)}s old)`);
-        return res.json(topologyCache.data);
+    if (!force && topologyCache) {
+        const ageMs = now - topologyCache.timestamp;
+        const ageSeconds = Math.round(ageMs / 1000);
+        if (ageMs < TOPO_CACHE_TTL) {
+            dbg(`[TOPO] Returning fresh cached topology (${ageSeconds}s old)`);
+            return res.json({
+                ...topologyCache.data,
+                _cache: {
+                    stale: false,
+                    refreshing: Boolean(inFlightTopologyPromise),
+                    ageSeconds,
+                    lastDurationMs: topologyBuildProgress.lastDurationMs,
+                }
+            });
+        }
+
+        // Stale-While-Revalidate: return stale cache immediately (<10ms) and trigger background refresh
+        dbg(`[TOPO] Returning stale topology (${ageSeconds}s old) and triggering background revalidate`);
+        triggerBackgroundTopologyBuild().catch(() => {});
+        return res.json({
+            ...topologyCache.data,
+            _cache: {
+                stale: true,
+                refreshing: true,
+                ageSeconds,
+                lastDurationMs: topologyBuildProgress.lastDurationMs,
+            }
+        });
     }
 
     // Reuse in-flight topology build promise if already running
@@ -3316,7 +3442,15 @@ app.get('/api/topology', authenticateToken, async (req, res) => {
         dbg('[TOPO] Piggybacking on active in-flight topology build');
         try {
             const data = await inFlightTopologyPromise;
-            return res.json(data);
+            return res.json({
+                ...data,
+                _cache: {
+                    stale: false,
+                    refreshing: false,
+                    ageSeconds: 0,
+                    lastDurationMs: topologyBuildProgress.lastDurationMs,
+                }
+            });
         } catch (e: any) {
             return res.status(500).json({ error: e.message });
         }
@@ -3329,14 +3463,17 @@ app.get('/api/topology', authenticateToken, async (req, res) => {
         return res.json(topologyCache.data);
     }
 
-    inFlightTopologyPromise = executeTopologyBuild()
-        .finally(() => {
-            inFlightTopologyPromise = null;
-        });
-
     try {
-        const data = await inFlightTopologyPromise;
-        res.json(data);
+        const data = await triggerBackgroundTopologyBuild();
+        res.json({
+            ...data,
+            _cache: {
+                stale: false,
+                refreshing: false,
+                ageSeconds: 0,
+                lastDurationMs: topologyBuildProgress.lastDurationMs,
+            }
+        });
     } catch (err: any) {
         res.status(500).json({ error: err.message });
     }
@@ -3355,6 +3492,324 @@ app.get('/api/topology/underlay-debug', authenticateToken, async (req, res) => {
         });
     } catch (e: any) {
         res.status(500).json({ error: e.message, stack: e.stack });
+    }
+});
+
+// --- Live Overlay VPN Link Deep Inspection API ---
+let cachedSdwanToken: { token: string; expiresAt: number } | null = null;
+
+async function getPrismaSdwanBearerToken(): Promise<string | null> {
+    if (cachedSdwanToken && Date.now() < cachedSdwanToken.expiresAt) {
+        return cachedSdwanToken.token;
+    }
+    const clientId = process.env.PRISMA_SDWAN_CLIENT_ID;
+    const clientSecret = process.env.PRISMA_SDWAN_CLIENT_SECRET;
+    const tsgId = process.env.PRISMA_SDWAN_TSG_ID || process.env.PRISMA_SDWAN_TSGID;
+    if (!clientId || !clientSecret || !tsgId) return null;
+
+    try {
+        const authUrl = 'https://auth.apps.paloaltonetworks.com/auth/v1/oauth2/access_token';
+        const auth = Buffer.from(`${clientId}:${clientSecret}`).toString('base64');
+        const res = await fetch(authUrl, {
+            method: 'POST',
+            headers: {
+                'Authorization': `Basic ${auth}`,
+                'Content-Type': 'application/x-www-form-urlencoded',
+                'Accept': 'application/json',
+            },
+            body: new URLSearchParams({
+                grant_type: 'client_credentials',
+                scope: `tsg_id:${tsgId}`,
+            }),
+        });
+        if (!res.ok) return null;
+        const data = (await res.json()) as any;
+        if (data?.access_token) {
+            cachedSdwanToken = {
+                token: data.access_token,
+                expiresAt: Date.now() + ((data.expires_in || 899) * 1000) - 60_000,
+            };
+            return cachedSdwanToken.token;
+        }
+    } catch (err) {
+        log('TOPO', `Failed to obtain Prisma SD-WAN token for live tunnel inspect: ${err}`, 'warn');
+    }
+    return null;
+}
+
+const LIVE_VPN_FAULT_REASON_MAP: Record<string, string> = {
+    NETWORK_VPNPEER_UNREACHABLE: 'Peer is unreachable',
+    NETWORK_VPNBFD_DOWN: 'BFD / Keepalive probe timeout',
+    NETWORK_VPNPEER_UNAVAILABLE: 'Peer WAN endpoint unavailable',
+    NETWORK_VPNSS_MISMATCH: 'IPsec Security Association (SA) mismatch',
+    NETWORK_VPNSS_UNAVAILABLE: 'IPsec Security Association (SA) unavailable',
+    NETWORK_VPNKEK_UNAVAILABLE: 'Key Encryption Key (KEK) unavailable',
+    NETWORK_VPNLINKCIPHERS_INCOMPATIBLE: 'Incompatible VPN tunnel ciphers',
+    INCONSISTENT_IPSEC_TUNNEL_HA_STATE: 'Inconsistent IPsec tunnel HA state',
+    NETWORK_VPNLINK_DOWN: 'VPN Link is down',
+    VPL_ACTION_INSUFFICIENT_VPE: 'Peer is unreachable',
+};
+
+function normalizePrismaTsMs(rawTs: any): number | null {
+    if (!rawTs) return null;
+    const val = Number(rawTs);
+    if (!Number.isFinite(val) || val <= 0) return null;
+    if (val > 1e15) return Math.floor(val / 10000);
+    if (val > 1e11) return Math.floor(val);
+    return Math.floor(val * 1000);
+}
+
+app.get('/api/topology/vpn-link/:vpnId/inspect', authenticateToken, async (req, res) => {
+    const vpnId = String(req.params.vpnId || '').trim();
+    const srcSiteName = String(req.query.srcSiteName || '').trim();
+    const dstSiteName = String(req.query.dstSiteName || '').trim();
+    if (!vpnId || vpnId === 'N/A') {
+        return res.status(400).json({ error: 'Valid vpnId is required' });
+    }
+
+    const token = await getPrismaSdwanBearerToken();
+    if (!token) {
+        return res.status(503).json({ error: 'Prisma SD-WAN credentials not available' });
+    }
+
+    const headers = {
+        'Authorization': `Bearer ${token}`,
+        'Accept': 'application/json',
+        'Content-Type': 'application/json',
+    };
+    const baseUrl = 'https://api.sase.paloaltonetworks.com';
+
+    try {
+        // Build site/element name lookups from cached topology if available
+        const siteIdToName: Record<string, string> = {};
+        const elIdToName: Record<string, string> = {};
+        const elNameToSiteId: Record<string, string> = {};
+        for (const s of (topologyCache?.data?.sites || [])) {
+            if (s.id && s.name) siteIdToName[String(s.id)] = s.name;
+            for (const d of (s.devices || [])) {
+                if (d.element_id && d.name) {
+                    elIdToName[String(d.element_id)] = d.name;
+                    elNameToSiteId[d.name] = String(s.id);
+                }
+            }
+        }
+
+        // Run parallel live queries to Prisma SD-WAN Controller
+        const [statusRes, stateRes, vqueryRes, corrRes, bgpRes] = await Promise.all([
+            fetch(`${baseUrl}/sdwan/v2.2/api/vpnlinks/${vpnId}/status`, { headers }).catch(() => null),
+            fetch(`${baseUrl}/sdwan/v2.0/api/vpnlinks/${vpnId}/state`, { headers }).catch(() => null),
+            fetch(`${baseUrl}/sdwan/v2.0/api/vpnlinks/query`, {
+                method: 'POST',
+                headers,
+                body: JSON.stringify({ filters: { id: [vpnId] } }),
+            }).catch(() => null),
+            fetch(`${baseUrl}/sdwan/v2.1/api/anynetlinks/correlationevents/query`, {
+                method: 'POST',
+                headers,
+                body: JSON.stringify({}),
+            }).catch(() => null),
+            fetch(`${baseUrl}/sdwan/v2.0/api/bgppeers/status/query`, {
+                method: 'POST',
+                headers,
+                body: JSON.stringify({}),
+            }).catch(() => null),
+        ]);
+
+        let statusData: any = null;
+        let statusErrorCode: string | null = null;
+        if (statusRes) {
+            const sJson = (await statusRes.json().catch(() => null)) as any;
+            if (statusRes.ok && sJson) {
+                statusData = sJson;
+            } else if (sJson?._error && Array.isArray(sJson._error) && sJson._error[0]?.code) {
+                statusErrorCode = sJson._error[0].code;
+            } else {
+                statusErrorCode = `HTTP_${statusRes.status}`;
+            }
+        }
+
+        const stateData: any = stateRes && stateRes.ok ? await stateRes.json().catch(() => ({})) : {};
+        const vqueryJson: any = vqueryRes && vqueryRes.ok ? await vqueryRes.json().catch(() => ({})) : {};
+        const corrJson: any = corrRes && corrRes.ok ? await corrRes.json().catch(() => ({})) : {};
+        const bgpJson: any = bgpRes && bgpRes.ok ? await bgpRes.json().catch(() => ({})) : {};
+
+        const vqueryItems: any[] = vqueryJson?.items || [];
+        const vmeta = vqueryItems.find((item: any) => String(item.id) === vpnId) || {};
+
+        const isUp = statusData ? Boolean(statusData.up ?? statusData.link_up ?? false) : false;
+        const isUsable = statusData ? Boolean(statusData.usable ?? false) : false;
+        const isActive = statusData ? Boolean(statusData.state === 'active' || statusData.active) : false;
+
+        let tunnelState: 'ACTIVE' | 'STANDBY' | 'NOT_USABLE' | 'DOWN' = 'DOWN';
+        if (isUp && isUsable && isActive) tunnelState = 'ACTIVE';
+        else if (isUp && isUsable && !isActive) tunnelState = 'STANDBY';
+        else if (isUp && !isUsable) tunnelState = 'NOT_USABLE';
+
+        const rawCipher = statusData?.common_cipher || statusData?.ep1_cipher || statusData?.ep2_cipher;
+        const cipher = typeof rawCipher === 'string' ? rawCipher.replace(/_/g, '-') : null;
+        const keepaliveIntervalMs = statusData?.ep1_keep_alive_interval || statusData?.ep2_keep_alive_interval || null;
+        const keepaliveRetries = statusData?.ep1_keep_alive_failure_count || statusData?.ep2_keep_alive_failure_count || null;
+
+        const alId = stateData?.al_id || vmeta?.al_id || null;
+
+        // Match correlation events for this vpnId or alId
+        let anynetType: string | null = null;
+        let flapCount = 0;
+        let bestEventCode: string | null = null;
+        let eventTsMs: number | null = null;
+        let corrVepId: string | null = null;
+
+        for (const cItem of (corrJson?.items || [])) {
+            const cAlId = cItem?.id;
+            const vpnEvents: any[] = cItem?.vpn_events || [];
+            for (const ve of vpnEvents) {
+                if (String(ve?.vpnlink_id) === vpnId || (alId && String(cAlId) === String(alId))) {
+                    if (!anynetType && cItem?.type) anynetType = cItem.type;
+                    if (!corrVepId && ve?.vep_id) corrVepId = String(ve.vep_id);
+                    const fc = ve?.flap_event_details?.flap_count;
+                    if (typeof fc === 'number' && fc > flapCount) flapCount = fc;
+                    const evCode = ve?.event_code;
+                    if (evCode) {
+                        if (!bestEventCode || (bestEventCode === 'NETWORK_VPNLINK_DOWN' && evCode !== 'NETWORK_VPNLINK_DOWN')) {
+                            bestEventCode = evCode;
+                        }
+                    }
+                    const tsCand = normalizePrismaTsMs(ve?.timestamp);
+                    if (tsCand && (!eventTsMs || tsCand > eventTsMs)) {
+                        eventTsMs = tsCand;
+                    }
+                }
+            }
+        }
+
+        const stateUpdatedMs = eventTsMs || normalizePrismaTsMs(statusData?._updated_on_utc) || normalizePrismaTsMs(stateData?._updated_on_utc);
+        const uptimeSec = stateUpdatedMs ? Math.max(0, Math.floor((Date.now() - stateUpdatedMs) / 1000)) : null;
+
+        // Core BGP peer check for NOT_USABLE tunnels
+        const ep1El = statusData?.ep1_element_id ? String(statusData.ep1_element_id) : '';
+        const ep2El = statusData?.ep2_element_id ? String(statusData.ep2_element_id) : '';
+        const ep1Site = statusData?.ep1_site_id ? String(statusData.ep1_site_id) : '';
+        const ep2Site = statusData?.ep2_site_id ? String(statusData.ep2_site_id) : '';
+
+        let statusReason: string | null = null;
+        let statusReasonCode: string | null = null;
+        let statusReasonDetail: string | null = null;
+
+        if (tunnelState === 'NOT_USABLE') {
+            const bgpMatches: any[] = [];
+            for (const bItem of (bgpJson?.items || [])) {
+                const dir = String(bItem?.direction || '').toLowerCase();
+                const bState = bItem?.peer_status?.state || 'Unknown';
+                if (dir !== 'wan' && bState !== 'Established') {
+                    const bEid = String(bItem?.element_id || '');
+                    const bSid = String(bItem?.site_id || '');
+                    const bSiteName = siteIdToName[bSid] || '';
+                    if (
+                        (ep1El && bEid === ep1El) ||
+                        (ep2El && bEid === ep2El) ||
+                        (ep1Site && bSid === ep1Site) ||
+                        (ep2Site && bSid === ep2Site) ||
+                        (srcSiteName && bSiteName === srcSiteName) ||
+                        (dstSiteName && bSiteName === dstSiteName)
+                    ) {
+                        bgpMatches.push({
+                            router_id: bItem?.router_id || bItem?.name || 'BGP Peer',
+                            state: bState,
+                            downtime: bItem?.peer_status?.downtime || 'N/A',
+                            element_name: elIdToName[bEid] || bSiteName || bEid,
+                        });
+                    }
+                }
+            }
+            if (bgpMatches.length > 0) {
+                const b0 = bgpMatches[0];
+                statusReason = 'Core Peering is down in DC';
+                statusReasonCode = 'PEERING_CORE_DOWN';
+                statusReasonDetail = `${b0.element_name} Core BGP peer ${b0.router_id} is ${b0.state} (down ${b0.downtime})`;
+            } else if (bestEventCode) {
+                statusReason = LIVE_VPN_FAULT_REASON_MAP[bestEventCode] || bestEventCode;
+                statusReasonCode = bestEventCode;
+            } else {
+                statusReason = 'Tunnel Up but marked Not Usable by controller';
+                statusReasonCode = 'VPN_NOT_USABLE';
+            }
+        } else if (tunnelState === 'DOWN') {
+            if (bestEventCode) {
+                statusReason = LIVE_VPN_FAULT_REASON_MAP[bestEventCode] || bestEventCode;
+                statusReasonCode = bestEventCode;
+            } else if (statusErrorCode) {
+                statusReason = LIVE_VPN_FAULT_REASON_MAP[statusErrorCode] || 'Peer is unreachable';
+                statusReasonCode = statusErrorCode;
+            } else {
+                statusReason = 'Peer is unreachable';
+                statusReasonCode = 'NETWORK_VPNLINK_DOWN';
+            }
+            if (statusErrorCode === 'VPL_ACTION_INSUFFICIENT_VPE') {
+                statusReasonDetail = `${dstSiteName || 'Remote peer'} VPE endpoint unavailable (VPL_ACTION_INSUFFICIENT_VPE)`;
+            }
+        }
+
+        // Map vep1 / vep2 to Source vs Destination site of the inspected link
+        const vep1Id = vmeta?.vep1_id || null;
+        const vep2Id = vmeta?.vep2_id || null;
+        const vep1Shim = vmeta?.vep1_shim_ipv4 || null;
+        const vep2Shim = vmeta?.vep2_shim_ipv4 || null;
+
+        let srcVepId = vep1Id;
+        let dstVepId = vep2Id;
+        let srcShimIp = vep1Shim;
+        let dstShimIp = vep2Shim;
+
+        const ep1SiteName = ep1Site ? siteIdToName[ep1Site] : '';
+        const ep2SiteName = ep2Site ? siteIdToName[ep2Site] : '';
+
+        if (srcSiteName && ep2SiteName && srcSiteName === ep2SiteName) {
+            srcVepId = vep2Id;
+            dstVepId = vep1Id;
+            srcShimIp = vep2Shim;
+            dstShimIp = vep1Shim;
+        } else if (dstSiteName && ep1SiteName && dstSiteName === ep1SiteName) {
+            srcVepId = vep2Id;
+            dstVepId = vep1Id;
+            srcShimIp = vep2Shim;
+            dstShimIp = vep1Shim;
+        } else if (corrVepId && corrVepId === vep2Id) {
+            // If correlation event reported vep2Id, keep vep1/vep2 available
+        }
+
+        res.json({
+            vpnId,
+            live: true,
+            inspectedAt: new Date().toISOString(),
+            tunnel_state: tunnelState,
+            active: isActive,
+            usable: isUsable,
+            link_up: isUp,
+            admin_up: stateData?.enabled ?? true,
+            status_reason: statusReason,
+            status_reason_code: statusReasonCode,
+            status_reason_detail: statusReasonDetail,
+            state_updated_at_ms: stateUpdatedMs,
+            uptime_sec: uptimeSec,
+            state_changes: statusData?._etag ?? stateData?._etag ?? null,
+            flap_count: flapCount,
+            cipher,
+            keepalive_interval_ms: keepaliveIntervalMs,
+            keepalive_retries: keepaliveRetries,
+            rekey_interval_minutes: vmeta?.rekey_interval_minutes ?? null,
+            anynet_type: anynetType,
+            al_id: alId,
+            vep1_id: vep1Id,
+            vep2_id: vep2Id,
+            vep1_shim_ipv4: vep1Shim,
+            vep2_shim_ipv4: vep2Shim,
+            src_vep_id: srcVepId,
+            dst_vep_id: dstVepId,
+            src_shim_ip: srcShimIp,
+            dst_shim_ip: dstShimIp,
+        });
+    } catch (e: any) {
+        res.status(500).json({ error: e.message || 'Live VPN link inspection failed' });
     }
 });
 
@@ -4826,6 +5281,14 @@ const getFullEffectiveConnectivityProbes = () => {
                 const idx = deduplicated.indexOf(existing);
                 if (idx !== -1) deduplicated[idx] = probe;
                 seenTargets.set(key, probe);
+            } else if (
+                probe.source !== 'discovery' &&
+                probe.source !== 'auto-mesh' &&
+                existing.source !== 'discovery' &&
+                existing.source !== 'auto-mesh' &&
+                String(probe.name || '').trim().toLowerCase() !== String(existing.name || '').trim().toLowerCase()
+            ) {
+                deduplicated.push(probe);
             }
         }
     }
@@ -8356,23 +8819,25 @@ const addTestResult = async (testType: string, testName: string, result: any, te
         runId
     };
 
-    // 4. Enrich with SCM / SASE telemetry if available
-    try {
-        let srcIp = process.env.STIGIX_IP || 'auto';
-        if (srcIp === 'auto') {
-            srcIp = await getLatestEgressIp() || 'auto';
-        }
-        await enrichWithSLS(testResult, srcIp);
-        if (testResult.slsDiagnostic) {
-            result.slsDiagnostic = testResult.slsDiagnostic;
-            if (details) details.slsDiagnostic = testResult.slsDiagnostic;
-        }
-    } catch (e: any) {
-        log('SLS', `Auto-enrichment skipped: ${e.message}`, 'warn');
-    }
-
     const previousStatus = await testLogger.getLatestStatus(testResult.type, testResult.name);
     await testLogger.logTest(testResult);
+
+    // 4. Enrich with SCM / SASE telemetry asynchronously in background (do not block test response)
+    (async () => {
+        try {
+            let srcIp = process.env.STIGIX_IP || 'auto';
+            if (srcIp === 'auto') {
+                srcIp = await getLatestEgressIp() || 'auto';
+            }
+            await enrichWithSLS(testResult, srcIp);
+            if (testResult.slsDiagnostic) {
+                result.slsDiagnostic = testResult.slsDiagnostic;
+                if (details) details.slsDiagnostic = testResult.slsDiagnostic;
+            }
+        } catch (e: any) {
+            log('SLS', `Auto-enrichment skipped: ${e.message}`, 'warn');
+        }
+    })();
 
     return { id, previousStatus, slsDiagnostic: testResult.slsDiagnostic };
 };
@@ -9583,8 +10048,11 @@ const getCurlErrorInfo = (exitCode: number, errMsg: string): {
     }
 };
 
+const preDnsCache = new Map<string, { ts: number; issue: { status: string; errorType: string; errorDescription: string; technicalDetail: string; likelyFirewallBlock: boolean } | null }>();
+const PRE_DNS_CACHE_TTL_MS = 60_000;
+
 /**
- * Pre-DNS check: resolves hostname via nslookup (4s timeout) BEFORE launching curl.
+ * Pre-DNS check: resolves hostname via nslookup (2s timeout, cached 60s per hostname) BEFORE launching curl.
  * Fixes the "first test = curl exit 28 timeout, second = exit 6" artifact caused by slow
  * DNS proxy resolution on first query (DNS result arrives after curl already gave up).
  * Returns null if DNS is fine, or a getCurlErrorInfo-compatible object if unresolvable.
@@ -9596,9 +10064,16 @@ const preDnsCheck = async (url: string): Promise<{
     let hostname: string;
     try { hostname = new URL(url).hostname; } catch { return null; }
     if (!hostname) return null;
+
+    const cached = preDnsCache.get(hostname);
+    if (cached && (Date.now() - cached.ts) < PRE_DNS_CACHE_TTL_MS) {
+        return cached.issue;
+    }
+
     try {
         const execP = promisify(exec);
-        await execP(`nslookup -timeout=4 ${hostname}.`, { timeout: 5000 });
+        await execP(`nslookup -timeout=2 ${hostname}.`, { timeout: 2500 });
+        preDnsCache.set(hostname, { ts: Date.now(), issue: null });
         return null; // resolved OK — proceed with curl
     } catch (e: any) {
         const out: string = (e.stdout || '') + (e.stderr || '') + (e.message || '');
@@ -9606,13 +10081,15 @@ const preDnsCheck = async (url: string): Promise<{
             out.includes("server can't find") || out.includes('Non-existent domain');
         const isTimeout  = out.includes('timed out') || out.includes('connection timeout');
         if (isNxDomain || isTimeout) {
-            return {
+            const issue = {
                 status: 'dns_error',
                 errorType: 'DNS_RESOLUTION_FAILURE',
                 likelyFirewallBlock: false,
                 errorDescription: `The hostname "${hostname}" could not be resolved${isNxDomain ? ' (NXDOMAIN)' : ' (DNS timeout)'}. The domain does not exist, is misspelled, or DNS is unavailable from this node.`,
-                technicalDetail: `nslookup pre-check failed for ${hostname} — ${isNxDomain ? 'NXDOMAIN returned' : 'DNS query timed out after 4s'}. Skipping curl to avoid misleading 10s timeout result.`
+                technicalDetail: `nslookup pre-check failed for ${hostname} — ${isNxDomain ? 'NXDOMAIN returned' : 'DNS query timed out after 2s'}. Skipping curl to avoid misleading timeout result.`
             };
+            preDnsCache.set(hostname, { ts: Date.now(), issue });
+            return issue;
         }
         return null; // other nslookup failure — let curl attempt anyway
     }
@@ -9635,7 +10112,7 @@ app.post('/api/security/url-test', authenticateToken, async (req, res) => {
         // util.promisify already imported as promisify
         const execPromise = promisify(exec);
 
-        // ── Pre-DNS check (avoids misleading 10s curl timeout on first query) ──
+        // ── Pre-DNS check (avoids misleading curl timeout on first query) ──
         const dnsIssue = await preDnsCheck(url);
         if (dnsIssue) {
             logTest(`[URL-TEST-${testId}] Pre-DNS check failed for ${url}: ${dnsIssue.errorType}`);
@@ -9647,7 +10124,7 @@ app.post('/api/security/url-test', authenticateToken, async (req, res) => {
                 error: dnsIssue.technicalDetail,
                 likelyFirewallBlock: dnsIssue.likelyFirewallBlock,
                 reason: `${dnsIssue.errorType}: ${dnsIssue.errorDescription}`,
-                command: `nslookup -timeout=4 ${new URL(url).hostname}.`,
+                command: `nslookup -timeout=2 ${new URL(url).hostname}.`,
                 ...(mcp_source && { mcp_source })
             };
             const { previousStatus } = await addTestResult('url_filtering', category || url, result, testId);
@@ -9656,7 +10133,7 @@ app.post('/api/security/url-test', authenticateToken, async (req, res) => {
 
         const { ifaceFlag } = getEgressConfig();
         const targetPort = getPredictiveSourcePort('url_filtering', testId);
-        const curlCommand = `curl -sSL --max-time 10 ${ifaceFlag} --local-port ${targetPort} -w '\n__HTTP__:%{http_code}\n__PORT__:%{local_port}' '${url}'`;
+        const curlCommand = `curl -sSL --connect-timeout 3 --max-time 4 ${ifaceFlag} --local-port ${targetPort} -w '\n__HTTP__:%{http_code}\n__PORT__:%{local_port}' '${url}'`;
         logTest(`[URL-TEST-${testId}] Executing URL test for ${url} (${category || 'Uncategorized'}): ${curlCommand}`);
 
         try {
@@ -9686,7 +10163,7 @@ app.post('/api/security/url-test', authenticateToken, async (req, res) => {
             }
 
             const status = (httpCode >= 200 && httpCode < 400 && !isBlockPage) || (httpCode === 404 && !isBlockPage) ? 'allowed' : 'blocked';
-            const executedCommand = `curl -sSL --max-time 10 ${ifaceFlag} --local-port ${srcPort} -w '\n__HTTP__:%{http_code}\n__PORT__:%{local_port}' '${url}'`;
+            const executedCommand = `curl -sSL --connect-timeout 3 --max-time 4 ${ifaceFlag} --local-port ${srcPort} -w '\n__HTTP__:%{http_code}\n__PORT__:%{local_port}' '${url}'`;
 
             const result = {
                 success: status === 'allowed',
@@ -9714,7 +10191,7 @@ app.post('/api/security/url-test', authenticateToken, async (req, res) => {
             const exitCode = parseCurlExitCode(curlError.message);
             const errInfo = getCurlErrorInfo(exitCode, curlError.message);
             const srcPort = targetPort;
-            const curlCmd = `curl -sSL --max-time 10 ${ifaceFlag} --local-port ${targetPort} -w '\n__HTTP__:%{http_code}\n__PORT__:%{local_port}' '${url}'`;
+            const curlCmd = `curl -sSL --connect-timeout 3 --max-time 4 ${ifaceFlag} --local-port ${targetPort} -w '\n__HTTP__:%{http_code}\n__PORT__:%{local_port}' '${url}'`;
 
             const result = {
                 success: false,
@@ -9745,7 +10222,7 @@ app.post('/api/security/url-test', authenticateToken, async (req, res) => {
     }
 });
 
-// API: URL Filtering Batch Test
+// API: URL Filtering Batch Test (parallel worker pool)
 app.post('/api/security/url-test-batch', authenticateToken, async (req, res) => {
     const { tests } = req.body; // Array of { url, category }
 
@@ -9754,155 +10231,168 @@ app.post('/api/security/url-test-batch', authenticateToken, async (req, res) => 
     }
 
     const runId = `manual-url-${Date.now()}`;
-    const results = [];
+    const results: any[] = new Array(tests.length);
     const { ifaceFlag } = getEgressConfig();
+    const execPromise = promisify(exec);
 
-    logTest(`[URL-BATCH-${runId}] Starting batch URL filtering test with ${tests.length} tests`);
+    logTest(`[URL-BATCH-${runId}] Starting parallel batch URL filtering test with ${tests.length} tests`);
 
-    for (let i = 0; i < tests.length; i++) {
-        const test = tests[i];
-        const testId = getNextTestId();
-        const targetPort = getPredictiveSourcePort('url_filtering', testId);
+    // Warm up preDnsCheck for the first URL hostname so workers share the cache
+    if (tests[0]?.url) {
+        await preDnsCheck(tests[0].url);
+    }
 
-        try {
-            logTest(`[URL-BATCH-${runId}][URL-TEST-${testId}] [${i + 1}/${tests.length}] Testing: ${test.url} (${test.category}, Port ${targetPort})`);
+    let cursor = 0;
+    const concurrency = Math.min(8, tests.length);
 
-            const execPromise = promisify(exec);
+    const runWorker = async () => {
+        while (true) {
+            const i = cursor++;
+            if (i >= tests.length) break;
 
-            // ── Pre-DNS check ──────────────────────────────────────────────────
-            const dnsIssue = await preDnsCheck(test.url);
-            if (dnsIssue) {
-                logTest(`[URL-TEST-${testId}] Pre-DNS check failed for ${test.url}: ${dnsIssue.errorType}`);
-                const dnsResult = {
-                    success: false, httpCode: 0,
-                    srcPort: targetPort,
-                    url: test.url, category: test.category,
-                    status: dnsIssue.status,
-                    errorType: dnsIssue.errorType,
-                    errorDescription: dnsIssue.errorDescription,
-                    error: dnsIssue.technicalDetail,
-                    likelyFirewallBlock: dnsIssue.likelyFirewallBlock,
-                    command: `nslookup -timeout=4 ${new URL(test.url).hostname}.`,
-                    reason: `${dnsIssue.errorType}: ${dnsIssue.errorDescription}`
-                };
-                results.push(dnsResult);
-                await addTestResult('url_filtering', test.category, dnsResult, testId, {
-                    url: test.url, error: dnsIssue.technicalDetail,
-                    errorType: dnsIssue.errorType, likelyFirewallBlock: dnsIssue.likelyFirewallBlock,
-                    command: dnsResult.command, srcPort: dnsResult.srcPort
-                }, runId);
-                continue;
-            }
-
-            const curlCommand = `curl -sSL --max-time 10 ${ifaceFlag} --local-port ${targetPort} -w '\n__HTTP__:%{http_code}\n__PORT__:%{local_port}' '${test.url}'`;
-            logTest(`[URL-TEST-${testId}] Executing URL test for ${test.url} (${test.category}): ${curlCommand}`);
+            const test = tests[i];
+            const testId = getNextTestId();
+            const targetPort = getPredictiveSourcePort('url_filtering', testId);
 
             try {
-                const { stdout, stderr } = await execPromise(curlCommand);
+                logTest(`[URL-BATCH-${runId}][URL-TEST-${testId}] [${i + 1}/${tests.length}] Testing: ${test.url} (${test.category}, Port ${targetPort})`);
 
-                const httpMatch = stdout.match(/__HTTP__:(\d+)/);
-                const portMatch = stdout.match(/__PORT__:(\d+)/);
-                const httpCode = httpMatch ? parseInt(httpMatch[1]) : (parseInt(stdout.trim().slice(-3)) || 0);
-                const srcPort = portMatch ? parseInt(portMatch[1]) : targetPort;
-                const executedCommand = `curl -sSL --max-time 10 ${ifaceFlag} --local-port ${srcPort} -w '\n__HTTP__:%{http_code}\n__PORT__:%{local_port}' '${test.url}'`;
-                const content = stdout.replace(/__HTTP__:\d+/g, '').replace(/__PORT__:\d+/g, '').toLowerCase();
+                // ── Pre-DNS check ──────────────────────────────────────────────────
+                const dnsIssue = await preDnsCheck(test.url);
+                if (dnsIssue) {
+                    logTest(`[URL-TEST-${testId}] Pre-DNS check failed for ${test.url}: ${dnsIssue.errorType}`);
+                    const dnsResult = {
+                        success: false, httpCode: 0,
+                        srcPort: targetPort,
+                        url: test.url, category: test.category,
+                        status: dnsIssue.status,
+                        errorType: dnsIssue.errorType,
+                        errorDescription: dnsIssue.errorDescription,
+                        error: dnsIssue.technicalDetail,
+                        likelyFirewallBlock: dnsIssue.likelyFirewallBlock,
+                        command: `nslookup -timeout=2 ${new URL(test.url).hostname}.`,
+                        reason: `${dnsIssue.errorType}: ${dnsIssue.errorDescription}`
+                    };
+                    results[i] = dnsResult;
+                    await addTestResult('url_filtering', test.category, dnsResult, testId, {
+                        url: test.url, error: dnsIssue.technicalDetail,
+                        errorType: dnsIssue.errorType, likelyFirewallBlock: dnsIssue.likelyFirewallBlock,
+                        command: dnsResult.command, srcPort: dnsResult.srcPort
+                    }, runId);
+                    continue;
+                }
 
-                logTest(`[URL-TEST-${testId}] HTTP response code: ${httpCode} (Port: ${srcPort})`);
+                const curlCommand = `curl -sSL --connect-timeout 3 --max-time 4 ${ifaceFlag} --local-port ${targetPort} -w '\n__HTTP__:%{http_code}\n__PORT__:%{local_port}' '${test.url}'`;
+                logTest(`[URL-TEST-${testId}] Executing URL test for ${test.url} (${test.category}): ${curlCommand}`);
 
-                const isTestPage = content.includes('pandb test page') ||
-                    content.includes('categorized as');
+                try {
+                    const { stdout } = await execPromise(curlCommand);
 
-                const isBlockPage = !isTestPage && (
-                    content.includes('palo alto networks') ||
-                    content.includes('access denied') ||
-                    content.includes('web-block-page'));
+                    const httpMatch = stdout.match(/__HTTP__:(\d+)/);
+                    const portMatch = stdout.match(/__PORT__:(\d+)/);
+                    const httpCode = httpMatch ? parseInt(httpMatch[1]) : (parseInt(stdout.trim().slice(-3)) || 0);
+                    const srcPort = portMatch ? parseInt(portMatch[1]) : targetPort;
+                    const executedCommand = `curl -sSL --connect-timeout 3 --max-time 4 ${ifaceFlag} --local-port ${srcPort} -w '\n__HTTP__:%{http_code}\n__PORT__:%{local_port}' '${test.url}'`;
+                    const content = stdout.replace(/__HTTP__:\d+/g, '').replace(/__PORT__:\d+/g, '').toLowerCase();
 
-                const status = (httpCode >= 200 && httpCode < 400 && !isBlockPage) || (httpCode === 404 && !isBlockPage) ? 'allowed' : 'blocked';
+                    logTest(`[URL-TEST-${testId}] HTTP response code: ${httpCode} (Port: ${srcPort})`);
 
-                const result = {
-                    success: status === 'allowed',
-                    httpCode,
-                    srcPort,
-                    status,
-                    url: test.url,
-                    category: test.category,
-                    blockPageDetected: isBlockPage,
-                    testPageDetected: isTestPage,
-                    testId,
-                    label: test.category || test.url,
-                    target: test.url,
-                    port: null,
-                    rate: null,
-                    timestamp: Date.now(),
-                    max_blackout_ms: 0,
-                    loss_pct: 0,
-                    source_port: srcPort,
-                    rate_pps: 0,
-                    reason: isTestPage ? 'Legitimate Palo Alto Test Page detected' :
-                        isBlockPage ? 'Security Block Page detected in response content' :
-                            (status === 'allowed') ? `Allowed (HTTP ${httpCode})` : `Blocked (HTTP ${httpCode})`
-                };
+                    const isTestPage = content.includes('pandb test page') ||
+                        content.includes('categorized as');
 
-                logTest(`[URL-TEST-${testId}] Final status: ${status} (HTTP ${httpCode}, Port ${srcPort})`);
+                    const isBlockPage = !isTestPage && (
+                        content.includes('palo alto networks') ||
+                        content.includes('access denied') ||
+                        content.includes('web-block-page'));
 
-                results.push(result);
-                await addTestResult('url_filtering', test.category, result, testId, {
-                    url: test.url,
-                    httpCode,
-                    srcPort,
-                    command: executedCommand,
-                    blockPageDetected: isBlockPage,
-                    testPageDetected: isTestPage
-                }, runId);
-            } catch (curlError: any) {
-                const exitCode = parseCurlExitCode(curlError.message);
-                const errInfo = getCurlErrorInfo(exitCode, curlError.message);
-                const srcPort = targetPort;
-                const curlCmd = `curl -sSL --max-time 10 ${ifaceFlag} --local-port ${targetPort} -w '\n__HTTP__:%{http_code}\n__PORT__:%{local_port}' '${test.url}'`;
+                    const status = (httpCode >= 200 && httpCode < 400 && !isBlockPage) || (httpCode === 404 && !isBlockPage) ? 'allowed' : 'blocked';
 
-                logTest(`[URL-TEST-${testId}] Final status: ${errInfo.status} (curl exit ${exitCode} — ${errInfo.errorType}, Port ${srcPort})`);
+                    const result = {
+                        success: status === 'allowed',
+                        httpCode,
+                        srcPort,
+                        status,
+                        url: test.url,
+                        category: test.category,
+                        blockPageDetected: isBlockPage,
+                        testPageDetected: isTestPage,
+                        testId,
+                        label: test.category || test.url,
+                        target: test.url,
+                        port: null,
+                        rate: null,
+                        timestamp: Date.now(),
+                        max_blackout_ms: 0,
+                        loss_pct: 0,
+                        source_port: srcPort,
+                        rate_pps: 0,
+                        reason: isTestPage ? 'Legitimate Palo Alto Test Page detected' :
+                            isBlockPage ? 'Security Block Page detected in response content' :
+                                (status === 'allowed') ? `Allowed (HTTP ${httpCode})` : `Blocked (HTTP ${httpCode})`
+                    };
+
+                    logTest(`[URL-TEST-${testId}] Final status: ${status} (HTTP ${httpCode}, Port ${srcPort})`);
+
+                    results[i] = result;
+                    await addTestResult('url_filtering', test.category, result, testId, {
+                        url: test.url,
+                        httpCode,
+                        srcPort,
+                        command: executedCommand,
+                        blockPageDetected: isBlockPage,
+                        testPageDetected: isTestPage
+                    }, runId);
+                } catch (curlError: any) {
+                    const exitCode = parseCurlExitCode(curlError.message);
+                    const errInfo = getCurlErrorInfo(exitCode, curlError.message);
+                    const srcPort = targetPort;
+                    const curlCmd = `curl -sSL --connect-timeout 3 --max-time 4 ${ifaceFlag} --local-port ${targetPort} -w '\n__HTTP__:%{http_code}\n__PORT__:%{local_port}' '${test.url}'`;
+
+                    logTest(`[URL-TEST-${testId}] Final status: ${errInfo.status} (curl exit ${exitCode} — ${errInfo.errorType}, Port ${srcPort})`);
+
+                    const result = {
+                        success: false,
+                        httpCode: 0,
+                        srcPort,
+                        status: errInfo.status,
+                        url: test.url,
+                        curlExitCode: exitCode,
+                        errorType: errInfo.errorType,
+                        errorDescription: errInfo.errorDescription,
+                        error: errInfo.technicalDetail,
+                        likelyFirewallBlock: errInfo.likelyFirewallBlock,
+                        command: curlCmd,
+                        reason: `${errInfo.errorType}: ${errInfo.errorDescription}`
+                    };
+
+                    results[i] = result;
+                    await addTestResult('url_filtering', test.category, result, testId, {
+                        url: test.url,
+                        error: errInfo.technicalDetail,
+                        errorType: errInfo.errorType,
+                        curlExitCode: exitCode,
+                        likelyFirewallBlock: errInfo.likelyFirewallBlock,
+                        command: curlCmd,
+                        srcPort
+                    }, runId);
+                }
+            } catch (e: any) {
+                logTest(`[URL-TEST-${testId}] Error: ${e.message}`);
 
                 const result = {
                     success: false,
-                    httpCode: 0,
-                    srcPort,
-                    status: errInfo.status,
+                    status: 'error',
                     url: test.url,
-                    curlExitCode: exitCode,
-                    errorType: errInfo.errorType,
-                    errorDescription: errInfo.errorDescription,
-                    error: errInfo.technicalDetail,
-                    likelyFirewallBlock: errInfo.likelyFirewallBlock,
-                    command: curlCmd,
-                    reason: `${errInfo.errorType}: ${errInfo.errorDescription}`
+                    category: test.category,
+                    error: e.message
                 };
-
-                results.push(result);
-                await addTestResult('url_filtering', test.category, result, testId, {
-                    url: test.url,
-                    error: errInfo.technicalDetail,
-                    errorType: errInfo.errorType,
-                    curlExitCode: exitCode,
-                    likelyFirewallBlock: errInfo.likelyFirewallBlock,
-                    command: curlCmd,
-                    srcPort
-                }, runId);
+                results[i] = result;
+                await addTestResult('url_filtering', test.category, result, testId, undefined, runId);
             }
-        } catch (e: any) {
-            logTest(`[URL-TEST-${testId}] Error: ${e.message}`);
-
-            const result = {
-                success: false,
-                status: 'error',
-                url: test.url,
-                category: test.category,
-                error: e.message
-            };
-            results.push(result);
-            // Needs generic logging even on outer catch
-            await addTestResult('url_filtering', test.category, result, testId, undefined, runId);
         }
-    }
+    };
+
+    await Promise.all(Array.from({ length: concurrency }, () => runWorker()));
 
     logTest(`[URL-BATCH-${runId}] Batch completed: ${results.length} tests executed`);
     await generateRunScore(runId, 'url', 'manual');
@@ -9948,12 +10438,15 @@ app.post('/api/security/dns-test', authenticateToken, async (req, res) => {
             // Parse output based on command type
             let resolvedIp = parseDnsOutput(stdout, commandType);
 
-            // If no IP found, try a second time (DNS can be flaky)
-            if (!resolvedIp) {
-                logTest(`[DNS-TEST-${testId}] No IP in first attempt, retrying after 500ms...`);
-                await wait(500);
+            // Only retry if the first attempt actually timed out (do not retry authoritative NXDOMAIN/NODATA/sinkhole)
+            const firstCombined = ((stdout || '') + (stderr || '')).toLowerCase();
+            const hadTimeout = firstCombined.includes('timed out') || firstCombined.includes('no servers could be reached');
+            if (!resolvedIp && hadTimeout) {
+                logTest(`[DNS-TEST-${testId}] DNS timeout on first attempt, retrying after 250ms...`);
+                await wait(250);
                 const result2 = await execPromise(dnsCommand);
                 stdout = result2.stdout;
+                stderr = result2.stderr;
                 logTest(`[DNS-TEST-${testId}] DNS command output (attempt 2):`, stdout || '(empty)');
                 resolvedIp = parseDnsOutput(stdout, commandType);
             }
@@ -10071,7 +10564,7 @@ app.post('/api/security/dns-test', authenticateToken, async (req, res) => {
     }
 });
 
-// API: DNS Security Batch Test
+// API: DNS Security Batch Test (parallel worker pool)
 app.post('/api/security/dns-test-batch', authenticateToken, async (req, res) => {
     const { tests } = req.body; // Array of { domain, testName }
 
@@ -10079,143 +10572,147 @@ app.post('/api/security/dns-test-batch', authenticateToken, async (req, res) => 
         return res.status(400).json({ error: 'Tests array is required' });
     }
 
-    const results = [];
+    const results: any[] = new Array(tests.length);
     const runId = `manual-dns-${Date.now()}`;
     const egress = getEgressConfig();
-
-    // Helper function to wait
+    const execPromise = promisify(exec);
     const wait = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
-    logTest(`[DNS-BATCH-${runId}] Starting batch test with ${tests.length} domains`);
+    logTest(`[DNS-BATCH-${runId}] Starting parallel batch test with ${tests.length} domains`);
 
-    for (let i = 0; i < tests.length; i++) {
-        const test = tests[i];
-        const testId = getNextTestId(); // Generate unique ID for each test
-        const dnsSrcPort = getPredictiveSourcePort('dns_security', testId);
+    let cursor = 0;
+    const concurrency = Math.min(8, tests.length);
 
-        logTest(`[DNS-BATCH-${runId}][DNS-TEST-${testId}] [${i + 1}/${tests.length}] Testing: ${test.domain} (${test.testName}, Port ${dnsSrcPort})`);
+    const runWorker = async () => {
+        while (true) {
+            const i = cursor++;
+            if (i >= tests.length) break;
 
-        try {
-            // exec already imported at top
-            // util.promisify already imported as promisify
-            const execPromise = promisify(exec);
+            const test = tests[i];
+            const testId = getNextTestId(); // Generate unique ID for each test
+            const dnsSrcPort = getPredictiveSourcePort('dns_security', testId);
 
-            // Get platform-specific DNS command
-            const { command: dnsCommand, type: commandType } = getDnsCommand(test.domain, dnsSrcPort, egress.ip);
+            logTest(`[DNS-BATCH-${runId}][DNS-TEST-${testId}] [${i + 1}/${tests.length}] Testing: ${test.domain} (${test.testName}, Port ${dnsSrcPort})`);
 
             try {
-                // First attempt
-                let { stdout, stderr } = await execPromise(dnsCommand);
+                // Get platform-specific DNS command
+                const { command: dnsCommand, type: commandType } = getDnsCommand(test.domain, dnsSrcPort, egress.ip);
 
-                logTest(`[DNS-TEST-${testId}] First query result: ${stdout.trim() || '(empty)'}`);
+                try {
+                    // First attempt
+                    let { stdout, stderr } = await execPromise(dnsCommand);
 
-                // If first attempt returns empty, retry after 1.5 seconds
-                if (!stdout.trim()) {
-                    logTest(`[DNS-TEST-${testId}] First query empty, retrying...`);
-                    await wait(1500);
-                    const retry = await execPromise(dnsCommand);
-                    stdout = retry.stdout;
-                    stderr = retry.stderr;
-                }
+                    logTest(`[DNS-TEST-${testId}] First query result: ${stdout.trim() || '(empty)'}`);
 
-                // Known sinkhole IPs and Keywords
-                const combinedOutput = (stdout + (stderr || '')).toLowerCase();
-                const sinkholeIPs = ['198.135.184.22', '72.5.65.111', '0.0.0.0', '127.0.0.1'];
+                    // Only retry if the first attempt actually timed out
+                    const firstCombined = ((stdout || '') + (stderr || '')).toLowerCase();
+                    const hadTimeout = firstCombined.includes('timed out') || firstCombined.includes('no servers could be reached');
+                    if (!stdout.trim() && hadTimeout) {
+                        logTest(`[DNS-TEST-${testId}] First query timed out, retrying...`);
+                        await wait(250);
+                        const retry = await execPromise(dnsCommand);
+                        stdout = retry.stdout;
+                        stderr = retry.stderr;
+                    }
 
-                const isSinkholed = sinkholeIPs.some(ip => combinedOutput.includes(ip)) ||
-                    combinedOutput.includes('sinkhole');
+                    // Known sinkhole IPs and Keywords
+                    const combinedOutput = (stdout + (stderr || '')).toLowerCase();
+                    const sinkholeIPs = ['198.135.184.22', '72.5.65.111', '0.0.0.0', '127.0.0.1'];
 
-                const isBlocked = !stdout.trim() ||
-                    combinedOutput.includes('can\'t find') ||
-                    combinedOutput.includes('not known') ||
-                    combinedOutput.includes('non-existent domain');
+                    const isSinkholed = sinkholeIPs.some(ip => combinedOutput.includes(ip)) ||
+                        combinedOutput.includes('sinkhole');
 
-                const status = isSinkholed ? 'sinkholed' : (isBlocked ? 'blocked' : 'resolved');
-                const resolvedIp = parseDnsOutput(stdout, commandType);
+                    const isBlocked = !stdout.trim() ||
+                        combinedOutput.includes('can\'t find') ||
+                        combinedOutput.includes('not known') ||
+                        combinedOutput.includes('non-existent domain');
 
-                logTest(`[DNS-TEST-${testId}] Final status: ${status} (isSinkholed=${isSinkholed}, isBlocked=${isBlocked})`);
+                    const status = isSinkholed ? 'sinkholed' : (isBlocked ? 'blocked' : 'resolved');
+                    const resolvedIp = parseDnsOutput(stdout, commandType);
 
-                const result = {
-                    id: testId,
-                    success: true,
-                    resolved: status === 'resolved',
-                    status,
-                    domain: test.domain,
-                    testName: test.testName,
-                    srcPort: dnsSrcPort,
-                    command: dnsCommand,
-                    output: stdout,
-                    resolvedIp,
-                    reason: status === 'sinkholed' ? 'Sinkhole IP/Keyword detected' :
-                        status === 'blocked' ? 'DNS Resolution failed/empty' : 'Normal resolution'
-                };
+                    logTest(`[DNS-TEST-${testId}] Final status: ${status} (isSinkholed=${isSinkholed}, isBlocked=${isBlocked})`);
 
-                const { previousStatus, slsDiagnostic } = await addTestResult('dns_security', test.testName, result, testId, {
-                    domain: test.domain, resolvedIp, srcPort: dnsSrcPort, command: dnsCommand, output: stdout, status
-                }, runId);
-
-                results.push({ ...result, previousStatus, slsDiagnostic });
-            } catch (dnsError: any) {
-                // Check if it's actually a sinkhole response masked as an error (e.g., nslookup SERVFAIL)
-                const combinedErrorOutput = ((dnsError.stdout || '') + (dnsError.stderr || '')).toLowerCase();
-
-                if (combinedErrorOutput.includes('sinkhole')) {
                     const result = {
                         id: testId,
                         success: true,
-                        status: 'sinkholed',
-                        resolved: false,
+                        resolved: status === 'resolved',
+                        status,
                         domain: test.domain,
                         testName: test.testName,
                         srcPort: dnsSrcPort,
                         command: dnsCommand,
-                        output: combinedErrorOutput,
-                        reason: 'Sinkhole keyword detected in error output'
+                        output: stdout,
+                        resolvedIp,
+                        reason: status === 'sinkholed' ? 'Sinkhole IP/Keyword detected' :
+                            status === 'blocked' ? 'DNS Resolution failed/empty' : 'Normal resolution'
                     };
-                    const { previousStatus, slsDiagnostic } = await addTestResult('dns_security', test.testName, result, testId, {
-                        domain: test.domain, srcPort: dnsSrcPort, command: dnsCommand, output: combinedErrorOutput, status: 'sinkholed'
-                    }, runId);
-                    results.push({ ...result, previousStatus, slsDiagnostic });
-                } else {
-                    const isCommandError = dnsError.message.includes('command not found') || dnsError.message.includes('not found');
-                    const result = {
-                        id: testId,
-                        success: false,
-                        resolved: false,
-                        status: isCommandError ? 'error' : 'blocked',
-                        domain: test.domain,
-                        testName: test.testName,
-                        srcPort: dnsSrcPort,
-                        command: dnsCommand,
-                        error: dnsError.message,
-                        reason: isCommandError ? 'DNS tool (dig/nslookup) not available' : `DNS Error: ${dnsError.message}`
-                    };
-                    const { previousStatus, slsDiagnostic } = await addTestResult('dns_security', test.testName, result, testId, {
-                        domain: test.domain, srcPort: dnsSrcPort, command: dnsCommand, error: dnsError.message, status: result.status
-                    }, runId);
-                    results.push({ ...result, previousStatus, slsDiagnostic });
-                }
-            }
-        } catch (e: any) {
-            const result = {
-                id: testId,
-                success: false,
-                status: 'error',
-                domain: test.domain,
-                testName: test.testName,
-                srcPort: dnsSrcPort,
-                error: e.message,
-                reason: `Execution Error: ${e.message}`
-            };
-            const { previousStatus, slsDiagnostic } = await addTestResult('dns_security', test.testName, result, testId, {
-                domain: test.domain, srcPort: dnsSrcPort, error: e.message
-            }, runId);
-            results.push({ ...result, previousStatus, slsDiagnostic });
-        }
 
-        // Add a small delay between tests to avoid triggering firewall flood protection
-        await wait(200);
-    }
+                    const { previousStatus, slsDiagnostic } = await addTestResult('dns_security', test.testName, result, testId, {
+                        domain: test.domain, resolvedIp, srcPort: dnsSrcPort, command: dnsCommand, output: stdout, status
+                    }, runId);
+
+                    results[i] = { ...result, previousStatus, slsDiagnostic };
+                } catch (dnsError: any) {
+                    // Check if it's actually a sinkhole response masked as an error (e.g., nslookup SERVFAIL)
+                    const combinedErrorOutput = ((dnsError.stdout || '') + (dnsError.stderr || '')).toLowerCase();
+
+                    if (combinedErrorOutput.includes('sinkhole')) {
+                        const result = {
+                            id: testId,
+                            success: true,
+                            status: 'sinkholed',
+                            resolved: false,
+                            domain: test.domain,
+                            testName: test.testName,
+                            srcPort: dnsSrcPort,
+                            command: dnsCommand,
+                            output: combinedErrorOutput,
+                            reason: 'Sinkhole keyword detected in error output'
+                        };
+                        const { previousStatus, slsDiagnostic } = await addTestResult('dns_security', test.testName, result, testId, {
+                            domain: test.domain, srcPort: dnsSrcPort, command: dnsCommand, output: combinedErrorOutput, status: 'sinkholed'
+                        }, runId);
+                        results[i] = { ...result, previousStatus, slsDiagnostic };
+                    } else {
+                        const isCommandError = dnsError.message.includes('command not found') || dnsError.message.includes('not found');
+                        const result = {
+                            id: testId,
+                            success: false,
+                            resolved: false,
+                            status: isCommandError ? 'error' : 'blocked',
+                            domain: test.domain,
+                            testName: test.testName,
+                            srcPort: dnsSrcPort,
+                            command: dnsCommand,
+                            error: dnsError.message,
+                            reason: isCommandError ? 'DNS tool (dig/nslookup) not available' : `DNS Error: ${dnsError.message}`
+                        };
+                        const { previousStatus, slsDiagnostic } = await addTestResult('dns_security', test.testName, result, testId, {
+                            domain: test.domain, srcPort: dnsSrcPort, command: dnsCommand, error: dnsError.message, status: result.status
+                        }, runId);
+                        results[i] = { ...result, previousStatus, slsDiagnostic };
+                    }
+                }
+            } catch (e: any) {
+                const result = {
+                    id: testId,
+                    success: false,
+                    status: 'error',
+                    domain: test.domain,
+                    testName: test.testName,
+                    srcPort: dnsSrcPort,
+                    error: e.message,
+                    reason: `Execution Error: ${e.message}`
+                };
+                const { previousStatus, slsDiagnostic } = await addTestResult('dns_security', test.testName, result, testId, {
+                    domain: test.domain, srcPort: dnsSrcPort, error: e.message
+                }, runId);
+                results[i] = { ...result, previousStatus, slsDiagnostic };
+            }
+        }
+    };
+
+    await Promise.all(Array.from({ length: concurrency }, () => runWorker()));
 
     await generateRunScore(runId, 'dns', 'manual');
 
@@ -15797,6 +16294,224 @@ app.post('/api/internal/log-event', (req, res) => {
 });
 log('SYSTEM', `⚡ API Studio & Real-Time Log Inspector mounted at /api/api-studio, /api/logs, /api/playground`);
 
+// --- Stigix ChangeGuard Snapshot & Delta API ---
+const snapshotManager = new SnapshotManager(APP_CONFIG.configDir);
+const getStigixVersion = () => {
+    try {
+        const vPath = fs.existsSync('/app/VERSION') ? '/app/VERSION' : path.join(PROJECT_ROOT, 'VERSION');
+        if (fs.existsSync(vPath)) return fs.readFileSync(vPath, 'utf8').trim();
+    } catch {}
+    return process.env.STIGIX_VERSION || '3.0.39';
+};
+
+app.get('/api/snapshots', authenticateToken, (req, res) => {
+    if (process.env.ENABLE_CHANGE_SNAPSHOTS !== 'true') {
+        return res.status(403).json({ error: 'ChangeGuard Snapshots feature is disabled (ENABLE_CHANGE_SNAPSHOTS=false)' });
+    }
+    const rawList = snapshotManager.listSnapshots();
+    const snapshots = rawList.map(s => ({
+        ...s,
+        timestamp: new Date(s.timestamp).getTime(),
+        iso_time: s.timestamp,
+        source: 'manual',
+        node: {
+            hostname: s.node?.nodeId || 'unknown',
+            site_name: s.node?.siteName || s.node?.nodeId || 'Unknown Site',
+            role: s.node?.role || 'peer',
+            stigix_version: s.node?.version || 'unknown'
+        },
+        tunnels_count: s.tunnelCount,
+        tunnels_up: s.tunnelsUpCount,
+        dem_probes_count: s.probeCount,
+        dem_healthy_count: Math.round((s.probeCount * (s.healthScore ?? 100)) / 100)
+    }));
+    res.json({ snapshots });
+});
+
+app.post('/api/snapshots', authenticateToken, async (req, res) => {
+    if (process.env.ENABLE_CHANGE_SNAPSHOTS !== 'true') {
+        return res.status(403).json({ error: 'ChangeGuard Snapshots feature is disabled (ENABLE_CHANGE_SNAPSHOTS=false)' });
+    }
+    const { name, description, tags } = req.body;
+    if (!name || typeof name !== 'string' || !name.trim()) {
+        return res.status(400).json({ error: 'Snapshot name is required' });
+    }
+    try {
+        const snapshot = await snapshotManager.captureState({
+            name,
+            description,
+            tags,
+            createdBy: (req as any).user?.username || 'api',
+            context: {
+                registryManager,
+                connectivityLogger,
+                getAllProbes: getFullEffectiveConnectivityProbes,
+                getSystemSettings,
+                underlayTopologyManager,
+                getTopology: () => topologyCache?.data,
+                version: getStigixVersion()
+            }
+        });
+        log('SNAPSHOT', `📸 Captured state snapshot "${snapshot.name}" (${snapshot.id}) with ${snapshot.tunnels.length} tunnels and ${snapshot.demMatrix.length} DEM probes`);
+        res.json({ 
+            success: true, 
+            snapshot: {
+                ...snapshot,
+                metadata: {
+                    ...snapshot.metadata,
+                    name: snapshot.name
+                }
+            }
+        });
+    } catch (e: any) {
+        res.status(500).json({ error: 'Failed to capture snapshot', detail: e.message });
+    }
+});
+
+app.get('/api/snapshots/:id', authenticateToken, (req, res) => {
+    if (process.env.ENABLE_CHANGE_SNAPSHOTS !== 'true') {
+        return res.status(403).json({ error: 'ChangeGuard Snapshots feature is disabled' });
+    }
+    const snapshot = snapshotManager.getSnapshot(req.params.id);
+    if (!snapshot) {
+        return res.status(404).json({ error: 'Snapshot not found' });
+    }
+    res.json({ snapshot });
+});
+
+app.delete('/api/snapshots/:id', authenticateToken, (req, res) => {
+    if (process.env.ENABLE_CHANGE_SNAPSHOTS !== 'true') {
+        return res.status(403).json({ error: 'ChangeGuard Snapshots feature is disabled' });
+    }
+    const success = snapshotManager.deleteSnapshot(req.params.id);
+    if (!success) {
+        return res.status(404).json({ error: 'Snapshot not found or could not be deleted' });
+    }
+    res.json({ success: true, message: `Snapshot ${req.params.id} deleted` });
+});
+
+app.post('/api/snapshots/diff', authenticateToken, async (req, res) => {
+    if (process.env.ENABLE_CHANGE_SNAPSHOTS !== 'true') {
+        return res.status(403).json({ error: 'ChangeGuard Snapshots feature is disabled' });
+    }
+    try {
+        const { baseline, target, baseline_id, current_id } = req.body;
+        const baseKey = baseline || baseline_id;
+        const targetKey = target || current_id;
+
+        if (!baseKey) {
+            return res.status(400).json({ error: 'Baseline snapshot ID or name is required' });
+        }
+
+        const baselineSnap = snapshotManager.getSnapshot(baseKey);
+        if (!baselineSnap) {
+            return res.status(404).json({ error: `Baseline snapshot "${baseKey}" not found` });
+        }
+
+        let targetSnap: StigixSnapshot | null = null;
+        if (!targetKey || targetKey === 'current' || targetKey === 'live') {
+            targetSnap = await snapshotManager.captureState({
+                name: 'current-live-state',
+                description: 'Live instantaneous state for comparison',
+                createdBy: 'system',
+                context: {
+                    registryManager,
+                    connectivityLogger,
+                    getAllProbes: getFullEffectiveConnectivityProbes,
+                    getSystemSettings,
+                    underlayTopologyManager,
+                    getTopology: () => topologyCache?.data,
+                    version: getStigixVersion()
+                }
+            });
+        } else {
+            targetSnap = snapshotManager.getSnapshot(targetKey);
+            if (!targetSnap) {
+                return res.status(404).json({ error: `Target snapshot "${targetKey}" not found` });
+            }
+        }
+
+        const rawDiff = snapshotManager.computeDiff(baselineSnap, targetSnap);
+
+        const tunnelComparisons = (rawDiff.tunnelDeltas || []).map(td => ({
+            peer_id: td.peerId,
+            baseline_status: td.statusBefore,
+            current_status: td.statusAfter,
+            status_changed: td.statusBefore !== td.statusAfter,
+            regression: td.stateChange === 'FAILED',
+            improvement: td.stateChange === 'RECOVERED'
+        }));
+
+        const demProbeComparisons = (rawDiff.demDeltas || []).map(dd => ({
+            target_id: (dd as any).targetId || dd.target,
+            target_label: (dd as any).targetLabel || dd.target,
+            baseline_latency_ms: (dd as any).latencyBeforeMs ?? dd.latencyBefore ?? 0,
+            current_latency_ms: (dd as any).latencyAfterMs ?? dd.latencyAfter ?? 0,
+            latency_delta_ms: dd.latencyDeltaMs ?? 0,
+            latency_delta_percent: dd.latencyPercentChange ?? 0,
+            baseline_loss_percent: dd.packetLossBefore ?? 0,
+            current_loss_percent: dd.packetLossAfter ?? 0,
+            loss_delta_percent: dd.packetLossDelta ?? 0,
+            baseline_jitter_ms: (dd as any).jitterBeforeMs ?? dd.jitterBefore ?? 0,
+            current_jitter_ms: (dd as any).jitterAfterMs ?? dd.jitterAfter ?? 0,
+            jitter_delta_ms: dd.jitterDeltaMs ?? 0,
+            status_regression: dd.state === 'REGRESSED' || (dd.packetLossDelta ?? 0) > 0,
+            status_improvement: dd.state === 'IMPROVED'
+        }));
+
+        const diff = {
+            ...rawDiff,
+            baseline_id: baselineSnap.id,
+            baseline_name: baselineSnap.name,
+            current_id: targetSnap.id,
+            current_name: targetSnap.name,
+            generated_at: new Date().toISOString(),
+            score: rawDiff.summary.score,
+            verdict: rawDiff.summary.verdict,
+            critical_regressions: rawDiff.regressions,
+            improvements: rawDiff.improvements,
+            tunnels: {
+                total_baseline: rawDiff.summary.totalTunnels.before,
+                total_current: rawDiff.summary.totalTunnels.after,
+                down_now: rawDiff.summary.totalTunnels.after - rawDiff.summary.tunnelsUp.after,
+                regressed: rawDiff.tunnelDeltas.filter(t => t.stateChange === 'FAILED').length,
+                improved: rawDiff.tunnelDeltas.filter(t => t.stateChange === 'RECOVERED').length,
+                comparisons: tunnelComparisons
+            },
+            dem: {
+                total_probes: rawDiff.summary.totalProbes.after,
+                regressed_probes: demProbeComparisons.filter(p => p.status_regression).length,
+                improved_probes: demProbeComparisons.filter(p => p.status_improvement).length,
+                average_latency_delta_ms: demProbeComparisons.length > 0
+                    ? parseFloat((demProbeComparisons.reduce((acc, p) => acc + p.latency_delta_ms, 0) / demProbeComparisons.length).toFixed(2))
+                    : 0,
+                average_loss_delta_percent: demProbeComparisons.length > 0
+                    ? parseFloat((demProbeComparisons.reduce((acc, p) => acc + p.loss_delta_percent, 0) / demProbeComparisons.length).toFixed(2))
+                    : 0,
+                probes: demProbeComparisons
+            },
+            sdwan: {
+                total_baseline: rawDiff.summary.sdwanSites?.before ?? 0,
+                total_current: rawDiff.summary.sdwanSites?.after ?? 0,
+                online_baseline: rawDiff.summary.sdwanSites?.onlineBefore ?? 0,
+                online_current: rawDiff.summary.sdwanSites?.onlineAfter ?? 0,
+                sites: rawDiff.sdwanDeltas || [],
+                underlay: rawDiff.sdwanUnderlayDelta
+            }
+        };
+
+        res.json({ success: true, diff });
+    } catch (err: any) {
+        log('SNAPSHOT', `❌ Failed to compute snapshot diff: ${err?.message || err}`, 'error');
+        console.error('[SNAPSHOT] Diff error stack:', err);
+        res.status(500).json({ 
+            error: 'Failed to compute snapshot diff', 
+            detail: err?.message || String(err)
+        });
+    }
+});
+log('SNAPSHOT', `📸 ChangeGuard Snapshot Engine mounted at /api/snapshots (Feature Flag: ENABLE_CHANGE_SNAPSHOTS=${process.env.ENABLE_CHANGE_SNAPSHOTS === 'true'})`);
+
 // --- Stigix In-App AI Copilot API ---
 const aiCopilotSystemToken = jwt.sign({ username: 'stigix-copilot-internal', role: 'admin' }, SECRET_KEY, { expiresIn: '365d' });
 const aiManager = new AiManager(APP_CONFIG.configDir);
@@ -15807,6 +16522,7 @@ aiManager.setExecutionContext({
     tcpAppManager,
     xfrManager,
     provisioningManager,
+    snapshotManager,
     getSystemSettings,
     systemToken: aiCopilotSystemToken,
     serverPort: PORT,

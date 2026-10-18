@@ -756,6 +756,150 @@ export class CopilotTestSuite {
             return { status: res.status, ok: true };
         });
 
+        // 44. Regression Test: remove_dem_probe on non-existent probe returns success: false
+        await this.runTest('44. Tool "remove_dem_probe" (Rejects non-existent probe without fake success)', async () => {
+            const res = await executeCopilotTool('remove_dem_probe', {
+                agent_id: this.host,
+                probe_name: 'FakeProbe_Does_Not_Exist_999'
+            }, remoteCtx);
+            if (res.success !== false || !res.error) {
+                throw new Error(`Expected success: false and error for non-existent probe, got: ${JSON.stringify(res)}`);
+            }
+            return { rejected: true, error: res.error };
+        });
+
+        // 45. Regression Test: Local Custom TCP App create & delete by name (ID resolution & verification)
+        await this.runTest('45. Tool "create/delete_custom_tcp_app" (Local name-to-ID resolution & verification)', async () => {
+            const appsStore: any[] = [];
+            const mockTcpMgr = {
+                getConfig: () => ({ applications: appsStore }),
+                saveApplication: async (app: any) => {
+                    const idx = appsStore.findIndex(a => a.id === app.id);
+                    if (idx >= 0) appsStore[idx] = app;
+                    else appsStore.push(app);
+                },
+                deleteApplication: async (id: string) => {
+                    // Real tcpAppManager only deletes by exact a.id === id!
+                    const idx = appsStore.findIndex(a => a.id === id);
+                    if (idx >= 0) appsStore.splice(idx, 1);
+                },
+                startListener: async () => {},
+                startClient: async () => {}
+            };
+            const localMockCtx: ToolExecutionContext = {
+                ...remoteCtx,
+                tcpAppManager: mockTcpMgr
+            };
+            const createRes = await executeCopilotTool('create_custom_tcp_app', {
+                agent_id: 'local',
+                name: 'YannTestApp',
+                port: 9876
+            }, localMockCtx);
+            if (!createRes.success || !createRes.verified || !createRes.application?.id) {
+                throw new Error(`Expected verified creation with generated id, got: ${JSON.stringify(createRes)}`);
+            }
+            // Now delete by NAME ('YannTestApp'), not ID
+            const delRes = await executeCopilotTool('delete_custom_tcp_app', {
+                agent_id: 'local',
+                app_id: 'YannTestApp'
+            }, localMockCtx);
+            if (!delRes.success || !delRes.verified || appsStore.length !== 0) {
+                throw new Error(`Expected verified deletion by name, got: ${JSON.stringify(delRes)} (remaining=${appsStore.length})`);
+            }
+            return { createdId: createRes.application.id, deletedVerified: delRes.verified };
+        });
+
+        // 46. Regression Test: Unknown node rejection (Anti-Hallucination)
+        await this.runTest('46. Unknown Node Rejection (Rejects unknown agent_id instead of falling back to local)', async () => {
+            const res = await executeCopilotTool('get_node_status', {
+                agent_id: 'DC99_NON_EXISTENT'
+            }, remoteCtx);
+            if (!res.error || (!res.error.includes('Unknown Stigix node') && !res.error.includes('Unknown target node'))) {
+                throw new Error(`Expected unknown node error, got: ${JSON.stringify(res)}`);
+            }
+            return { error: res.error };
+        });
+
+        // 47. Regression Test: get_test_status wait_seconds pause support
+        await this.runTest('47. Tool "get_test_status" (wait_seconds convergence pause support)', async () => {
+            const t0 = Date.now();
+            const res = await executeCopilotTool('get_test_status', {
+                agent_id: this.host,
+                wait_seconds: 1
+            }, remoteCtx);
+            const elapsed = Date.now() - t0;
+            if (res.error) throw new Error(res.error);
+            if (res.waited_seconds !== 1 || elapsed < 900) {
+                throw new Error(`Expected waited_seconds=1 and >=900ms elapsed, got waited_seconds=${res.waited_seconds}, elapsed=${elapsed}ms`);
+            }
+            return { waited_seconds: res.waited_seconds, elapsed_ms: elapsed };
+        });
+
+        // 48. Regression Test: XFR unidirectional speedtest does NOT double throughput_mbps (121 Mbps != 242 Mbps)
+        await this.runTest('48. Tool "get_test_status & list_speedtest_history" (Unidirectional XFR throughput no-doubling)', async () => {
+            const fakeJob = {
+                test_id: 'X01041',
+                status: 'completed',
+                created_at: new Date().toISOString(),
+                config: {
+                    target: '95.216.197.25',
+                    port: 5201,
+                    protocol: 'tcp',
+                    direction: 'client-to-server',
+                    duration_sec: 5,
+                    streams: 4,
+                    bitrate: '0'
+                },
+                // Simulate XfrJobManager.mapSummary legacy/UI shape where both sent_mbps & received_mbps = 121.3
+                summary: {
+                    sent_mbps: 121.3,
+                    received_mbps: 121.3,
+                    retransmits: 12,
+                    jitter_ms: 0,
+                    lost_percent: 0,
+                    rtt_ms: 18.4
+                }
+            };
+            const localXfrCtx: ToolExecutionContext = {
+                ...remoteCtx,
+                xfrJobManager: {
+                    getJob: (id: string) => id === 'X01041' ? fakeJob : null,
+                    getHistory: () => [fakeJob]
+                }
+            };
+
+            const statusRes = await executeCopilotTool('get_test_status', {
+                agent_id: 'local',
+                test_id: 'X01041'
+            }, localXfrCtx);
+            if (statusRes.error) throw new Error(statusRes.error);
+            if (statusRes.throughput_mbps !== 121.3) {
+                throw new Error(`Expected throughput_mbps=121.3 (not doubled to 242.6), got ${statusRes.throughput_mbps}`);
+            }
+            if (statusRes.upload_mbps !== 121.3 || statusRes.download_mbps !== 0) {
+                throw new Error(`Expected upload_mbps=121.3 and download_mbps=0 for client-to-server, got up=${statusRes.upload_mbps}, down=${statusRes.download_mbps}`);
+            }
+
+            const histRes = await executeCopilotTool('list_speedtest_history', {
+                agent_id: 'local',
+                limit: 5
+            }, localXfrCtx);
+            if (histRes.error) throw new Error(histRes.error);
+            const h0 = histRes.history?.[0];
+            if (!h0 || h0.throughput_mbps !== 121.3 || h0.upload_mbps !== 121.3 || h0.download_mbps !== 0) {
+                throw new Error(`Unexpected history item metrics: ${JSON.stringify(h0)}`);
+            }
+            return {
+                test_id: statusRes.test_id,
+                direction: statusRes.direction,
+                direction_label: statusRes.direction_label,
+                throughput_mbps: statusRes.throughput_mbps,
+                upload_mbps: statusRes.upload_mbps,
+                download_mbps: statusRes.download_mbps
+            };
+        });
+
+
         // Summary
         const passedCount = this.results.filter(r => r.passed).length;
         const totalCount = this.results.length;

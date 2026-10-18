@@ -394,26 +394,195 @@ CURRENT LAB CONTEXT:
 - Platform Capabilities: SaaS Traffic Generation, Real-Time APM/RUM, Digital Experience (DEM) Probes, SASE Security Testing (URL, DNS, C2, AI Security), Voice RTP Simulation, Custom TCP East-West Apps, VyOS Router Control, and Convergence Lab.
 - VyOS Router Control: By default, underlay VyOS routers ("vyosrouter", etc.) are managed locally on THIS node (${siteName}). When querying or controlling VyOS, always target this local node (or omit agent_id) unless the user explicitly requests another remote site.
 
-YOUR ROLE & BEHAVIOR:
+YOUR ROLE & MANDATORY RELIABILITY RULES:
 1. Assist network and security engineers with diagnosing paths, running validation tests, and analyzing telemetry.
-2. When asked to perform any configuration change, test, or query (e.g., adding or removing DEM synthetic probes, running speedtests or convergence tests, controlling VyOS routers, listing endpoints):
-   - You MUST ALWAYS invoke the corresponding tool (e.g., 'run_test', 'get_test_status', 'stop_test', 'add_dem_probe', 'remove_dem_probe', 'run_security_test', 'vyos_chaos', 'list_endpoints').
-   - You HAVE full capabilities to launch speedtests ('run_test' with profile 'xfr'), convergence tests ('run_test' with profile 'conv'), custom TCP apps, and DEM probes.
-   - NEVER invent or hallucinate metrics, throughput numbers (Mbps), latency (RTT), packet loss, timestamps, dates, or test states. Always retrieve the actual values directly from 'get_test_status' or 'list_speedtest_history'.
-   - If a test is still running, clearly state that it is in progress and do not make up final throughput or RTT figures.
-   - If a tool execution fails, report the exact error message received from the tool.
+2. MANDATORY TOOL INVOCATION (ZERO HALLUCINATION POLICY):
+   - You MUST ALWAYS invoke the corresponding tool for EVERY configuration change, action, status check, or follow-up question in the CURRENT turn.
+   - NEVER claim an action succeeded (e.g., "✅ Probe added", "✅ Probe removed", "🟢 Traffic started", "✅ App deleted", "✅ QoS applied") unless you actually invoked the mutation tool in THIS turn and verified its output.
+   - NEVER rely on previous conversation turns to assume a state is unchanged or that an action happens automatically. If the user says "remove them", "delete it", "relance le trafic", "c'est fini ?", or "es-tu sûr ?", you MUST invoke the corresponding tool right now.
+   - NEVER invent or hallucinate metrics, throughput numbers (Mbps), latency (RTT), packet loss, health scores, timestamps, or test states. Always retrieve actual values from tool outputs.
+   - When launching an XFR speedtest via 'run_test', ALWAYS call 'get_test_status' immediately after in the same turn to obtain the final completed metrics.
+   - When executing a multi-phase convergence or failover test ('CONV-*'), pass 'wait_seconds' (e.g., 15 or 30) to 'get_test_status' whenever you need to pause for a baseline, impairment, or recovery window before sampling live RTT/loss, and ALWAYS call 'stop_test' once the test is complete.
+   - If a tool returns an error (e.g., probe not found, node not found, app not found), report that exact error honestly. NEVER fabricate fallback metrics for non-existent probes or nodes, and NEVER invent CLI commands or flags (such as 'stigix-cli --prune-orphans').
 3. CONCISENESS & CLARITY (CRITICAL):
-   - Be concise, direct, and factual. Avoid conversational fluff, filler phrases, repetitive pleasantries, and unnecessary preamble or conclusion.
+   - Be concise, direct, and factual. Avoid conversational fluff, filler phrases, and unnecessary preamble.
    - Deliver the key data and diagnostic findings immediately.
    - Prioritize compact Markdown tables, short bullet points, and status indicators (🟢, 🟡, 🔴) instead of long explanatory text blocks.
 4. Respond in French or English matching the user's language.
-5. If the user requests high-impact or destructive actions (such as shutting down a VyOS router interface), explain what will be done succinctly and use the tool appropriately.`;
+5. If the user requests high-impact or destructive actions (such as shutting down a VyOS router interface), explain what will be done succinctly and execute the tool appropriately.`;
 
         if (this.config.systemPromptCustom && this.config.systemPromptCustom.trim().length > 0) {
-            prompt += `\n\nCUSTOM OPERATOR GUIDELINES (USER-DEFINED):\n${this.config.systemPromptCustom.trim()}`;
+            // Strip legacy misleading instruction asking to invent CLI commands
+            const sanitizedCustom = this.config.systemPromptCustom
+                .trim()
+                .replace(/alongside the recommended CLI troubleshooting command\.?/gi, 'and suggest the appropriate Stigix Copilot tool or check.');
+            prompt += `\n\nCUSTOM OPERATOR GUIDELINES (USER-DEFINED):\n${sanitizedCustom}`;
         }
 
         return prompt;
+    }
+
+    private sanitizeToolId(id: string | undefined, fallback: string): string {
+        const raw = (id || fallback).replace(/[^a-zA-Z0-9_-]/g, '_');
+        return raw.substring(0, 60) || fallback;
+    }
+
+    private stripReasoningAndDsml(content: string | undefined): string {
+        if (!content) return '';
+        return content
+            .replace(/^> 💭 \*\*DeepSeek Reasoning \(R1\):\*\*\n(?:> .*\n)*\n*/gm, '')
+            .replace(/<[｜|]DSML[｜|][\s\S]*$/g, '')
+            .trim();
+    }
+
+    private truncateHistoricalToolOutput(output: any, maxChars: number = 1800): string {
+        try {
+            const str = typeof output === 'string' ? output : JSON.stringify(output ?? {});
+            if (str.length <= maxChars) return str;
+            return `${str.substring(0, maxChars)}... [truncated]`;
+        } catch {
+            return '{}';
+        }
+    }
+
+    /**
+     * Reconstructs multi-turn Anthropic messages including historical tool_use and tool_result blocks
+     * so the model never suffers from multi-turn tool amnesia or mimics tool-free action confirmations.
+     */
+    private buildAnthropicMessages(session: CopilotSession): any[] {
+        const recent = session.messages.slice(-16);
+        const rawMessages: Array<{ role: 'user' | 'assistant'; content: any }> = [];
+
+        for (const m of recent) {
+            if (m.role === 'user') {
+                const text = (m.content || '').trim() || '...';
+                rawMessages.push({ role: 'user', content: text });
+            } else if (m.role === 'assistant') {
+                const cleanText = this.stripReasoningAndDsml(m.content);
+                const validTools = (m.toolCalls || []).filter(tc => Boolean(tc && (tc.tool || tc.name)));
+
+                if (validTools.length > 0) {
+                    const toolUseBlocks = validTools.map((tc, idx) => ({
+                        type: 'tool_use',
+                        id: this.sanitizeToolId(tc.id, `hist_${m.id}_${idx}`),
+                        name: tc.tool || tc.name,
+                        input: (tc.input && typeof tc.input === 'object') ? tc.input : {}
+                    }));
+
+                    const toolResultBlocks = validTools.map((tc, idx) => ({
+                        type: 'tool_result',
+                        tool_use_id: this.sanitizeToolId(tc.id, `hist_${m.id}_${idx}`),
+                        content: this.truncateHistoricalToolOutput(
+                            tc.output !== undefined ? tc.output : (tc.error ? { error: tc.error } : { status: tc.status || 'completed' })
+                        )
+                    }));
+
+                    rawMessages.push({ role: 'assistant', content: toolUseBlocks });
+                    rawMessages.push({ role: 'user', content: toolResultBlocks });
+                    rawMessages.push({ role: 'assistant', content: cleanText || 'Tool execution completed.' });
+                } else if (cleanText) {
+                    rawMessages.push({ role: 'assistant', content: cleanText });
+                }
+            }
+        }
+
+        // Ensure first message is 'user' and merge any consecutive text messages of the same role
+        const normalized: Array<{ role: 'user' | 'assistant'; content: any }> = [];
+        for (const msg of rawMessages) {
+            if (normalized.length === 0 && msg.role !== 'user') continue;
+            const prev = normalized[normalized.length - 1];
+            if (prev && prev.role === msg.role && typeof prev.content === 'string' && typeof msg.content === 'string') {
+                prev.content = `${prev.content}\n\n${msg.content}`;
+            } else {
+                normalized.push(msg);
+            }
+        }
+        return normalized;
+    }
+
+    /**
+     * Reconstructs multi-turn DeepSeek/OpenAI messages including historical tool_calls and tool results.
+     */
+    private buildDeepSeekMessages(systemPrompt: string, session: CopilotSession): any[] {
+        const recent = session.messages.slice(-16);
+        const messages: any[] = [{ role: 'system', content: systemPrompt }];
+
+        for (const m of recent) {
+            if (m.role === 'user') {
+                messages.push({ role: 'user', content: (m.content || '').trim() || '...' });
+            } else if (m.role === 'assistant') {
+                const cleanText = this.stripReasoningAndDsml(m.content);
+                const validTools = (m.toolCalls || []).filter(tc => Boolean(tc && (tc.tool || tc.name)));
+
+                if (validTools.length > 0) {
+                    messages.push({
+                        role: 'assistant',
+                        content: null,
+                        tool_calls: validTools.map((tc, idx) => ({
+                            id: this.sanitizeToolId(tc.id, `hist_${m.id}_${idx}`),
+                            type: 'function',
+                            function: {
+                                name: tc.tool || tc.name,
+                                arguments: JSON.stringify((tc.input && typeof tc.input === 'object') ? tc.input : {})
+                            }
+                        }))
+                    });
+
+                    for (let idx = 0; idx < validTools.length; idx++) {
+                        const tc = validTools[idx];
+                        messages.push({
+                            role: 'tool',
+                            tool_call_id: this.sanitizeToolId(tc.id, `hist_${m.id}_${idx}`),
+                            content: this.truncateHistoricalToolOutput(
+                                tc.output !== undefined ? tc.output : (tc.error ? { error: tc.error } : { status: tc.status || 'completed' })
+                            )
+                        });
+                    }
+
+                    messages.push({
+                        role: 'assistant',
+                        content: cleanText || 'Tool execution completed.'
+                    });
+                } else if (cleanText) {
+                    messages.push({ role: 'assistant', content: cleanText });
+                }
+            }
+        }
+
+        return messages;
+    }
+
+    /**
+     * Zero-Tool-Call Anti-Hallucination Guardrail:
+     * Detects when the model attempts to answer an operational query, mutation request,
+     * or status verification without invoking any tool on the current turn.
+     */
+    private shouldForceToolExecution(userPrompt: string, candidateText: string, session: CopilotSession): boolean {
+        const p = (userPrompt || '').trim();
+        const t = (candidateText || '').trim();
+
+        // Pure greeting / meta help exception
+        const isPureGreeting = /^(bonjour|salut|hello|hi|hey|merci|thanks|thank you|ok|d'accord|super|parfait|aide|help|qui es-tu|who are you)[.!?\s]*$/i.test(p);
+        if (isPureGreeting) return false;
+
+        // 1. Prompt contains operational verbs, Stigix entities, node names, or follow-up verification intent
+        const operationalPromptRegex = /\b(add|create|remove|delete|start|stop|run|launch|execute|set|update|enable|disable|reset|clear|shut|unshut|trace|check|verify|status|state|score|health|latency|throughput|speedtest|bandwidth|xfr|probe|probes|dem|traffic|vyos|interface|eth\d+|router|vyosrouter|app|apps|tcp|voice|voip|security|eicar|dns|url|mesh|peers|endpoints|targets|convergence|failover|history|logs|diagnostics|br\d+|dc\d+|local|ajoute|ajouter|crée|créer|supprime|supprimer|retire|retirer|efface|lance|lancer|démarre|démarrer|arrête|arrêter|stoppe|stopper|relance|relancer|active|activer|désactive|désactiver|vérifie|vérifier|regarde|montre|affiche|liste|donne|quel|quelle|quels|quelles|combien|état|statut|débit|latence|sonde|sondes|trafic|routeur|fini|terminé|résultat|résultats|done|sure|sûr|sur|vrai|really|again|encore|pareil|même|same)\b/i;
+        if (operationalPromptRegex.test(p)) {
+            return true;
+        }
+
+        // 2. Candidate response claims an action was performed or outputs telemetry metrics / status badges without calling a tool
+        const hallucinatedOutputRegex = /(✅|🟢|🔴|🟡|\b(added|removed|deleted|created|started|stopped|launched|updated|configured|applied|cleared|reset|ajouté|supprimé|retiré|créé|démarré|arrêté|lancé|relancé|terminé|appliqué|configuré)\b|\b\d+(\.\d+)?\s*(mbps|ms|pps|req\/s)\b)/i;
+        if (hallucinatedOutputRegex.test(t)) {
+            return true;
+        }
+
+        // 3. Multi-turn follow-up question in an active session
+        if (session.messages.length > 1 && p.endsWith('?')) {
+            return true;
+        }
+
+        return false;
     }
 
     /**
@@ -489,14 +658,17 @@ YOUR ROLE & BEHAVIOR:
             content: '',
             timestamp: Date.now(),
             model,
-            toolCalls: []
+            toolCalls: [],
+            usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 }
         };
 
+        const turnStart = Date.now();
         if (activeProvider === 'deepseek') {
-            await this.streamDeepSeekChat(model, activeApiKey, systemPrompt, session, assistantMsg, sendEvent, isAborted);
+            await this.streamDeepSeekChat(model, activeApiKey, systemPrompt, session, userPrompt, assistantMsg, sendEvent, isAborted);
         } else {
-            await this.streamAnthropicChat(model, activeApiKey, systemPrompt, session, assistantMsg, sendEvent, isAborted);
+            await this.streamAnthropicChat(model, activeApiKey, systemPrompt, session, userPrompt, assistantMsg, sendEvent, isAborted);
         }
+        assistantMsg.llmDurationMs = Date.now() - turnStart;
 
         session.messages.push(assistantMsg);
         session.updatedAt = Date.now();
@@ -506,48 +678,46 @@ YOUR ROLE & BEHAVIOR:
             type: 'done',
             messageId: assistantMsg.id,
             sessionId: session.id,
-            totalMessages: session.messages.length
+            totalMessages: session.messages.length,
+            llmDurationMs: assistantMsg.llmDurationMs,
+            usage: assistantMsg.usage,
+            guardrailTriggered: assistantMsg.guardrailTriggered
         });
     }
 
     /**
-     * DeepSeek execution loop (supports deepseek-chat with OpenAI tool calls, and deepseek-reasoner R1)
+     * DeepSeek execution loop (supports deepseek-chat and deepseek-reasoner with full tool calling)
      */
     private async streamDeepSeekChat(
         model: string,
         apiKey: string,
         systemPrompt: string,
         session: CopilotSession,
+        userPrompt: string,
         assistantMsg: CopilotMessage,
         sendEvent: (event: string, data: any) => void,
         isAborted?: () => boolean
     ): Promise<void> {
-        const deepseekMessages: any[] = [
-            { role: 'system', content: systemPrompt },
-            ...session.messages.map(m => ({
-                role: m.role,
-                content: m.content
-            }))
-        ];
+        const deepseekMessages: any[] = this.buildDeepSeekMessages(systemPrompt, session);
 
-        // DeepSeek-V3 supports function calling; DeepSeek-R1 reasoner does not currently support tools
-        const supportsTools = model === 'deepseek-chat';
-        const deepseekTools = supportsTools ? COPILOT_TOOLS.map(t => ({
+        const deepseekTools = COPILOT_TOOLS.map(t => ({
             type: 'function',
             function: {
                 name: t.name,
                 description: t.description,
                 parameters: t.input_schema
             }
-        })) : undefined;
+        }));
 
         let continueLoop = true;
         let loopCount = 0;
-        const MAX_TOOL_LOOPS = 10;
+        let forceRequiredToolChoice = false;
+        let guardrailRetried = false;
+        const MAX_TOOL_LOOPS = 20;
 
         while (continueLoop && loopCount < MAX_TOOL_LOOPS) {
             if (isAborted?.()) {
-                log('AI-COPILOT', 'Chat stream aborted by client');
+                console.log('[AI-COPILOT] DeepSeek chat stream aborted by client');
                 break;
             }
             loopCount++;
@@ -557,16 +727,17 @@ YOUR ROLE & BEHAVIOR:
                 let response: Response | null = null;
                 let lastFetchErr: any = null;
 
-                const payload: any = {
-                    model,
-                    messages: deepseekMessages,
-                    max_tokens: this.config.maxTokensPerRequest || 4096
-                };
+                // Use deepseek-chat for tool-calling turns so deepseek-reasoner never leaks raw DSML tags
+                const effectiveModel = model === 'deepseek-reasoner' ? 'deepseek-chat' : model;
 
-                if (supportsTools && deepseekTools && deepseekTools.length > 0) {
-                    payload.tools = deepseekTools;
-                    payload.tool_choice = 'auto';
-                }
+                const payload: any = {
+                    model: effectiveModel,
+                    messages: deepseekMessages,
+                    max_tokens: this.config.maxTokensPerRequest || 4096,
+                    tools: deepseekTools,
+                    tool_choice: forceRequiredToolChoice ? 'required' : 'auto'
+                };
+                forceRequiredToolChoice = false;
 
                 for (let attempt = 1; attempt <= 3; attempt++) {
                     try {
@@ -608,11 +779,38 @@ YOUR ROLE & BEHAVIOR:
                 }
 
                 const data: any = await response.json();
+                if (data.usage && assistantMsg.usage) {
+                    assistantMsg.usage.inputTokens = (assistantMsg.usage.inputTokens || 0) + (data.usage.prompt_tokens || 0);
+                    assistantMsg.usage.outputTokens = (assistantMsg.usage.outputTokens || 0) + (data.usage.completion_tokens || 0);
+                    assistantMsg.usage.totalTokens = (assistantMsg.usage.totalTokens || 0) + (data.usage.total_tokens || 0);
+                }
+
                 const choice = data.choices?.[0];
                 const resMsg = choice?.message;
 
                 if (!resMsg) {
                     throw new Error('Empty response from DeepSeek API');
+                }
+
+                const toolCalls = resMsg.tool_calls || [];
+                const cleanedContent = this.stripReasoningAndDsml(resMsg.content || '');
+
+                // Anti-Hallucination Zero-Tool Guardrail on first loop
+                if (
+                    toolCalls.length === 0 &&
+                    (assistantMsg.toolCalls?.length || 0) === 0 &&
+                    !guardrailRetried &&
+                    this.shouldForceToolExecution(userPrompt, cleanedContent, session)
+                ) {
+                    guardrailRetried = true;
+                    assistantMsg.guardrailTriggered = true;
+                    forceRequiredToolChoice = true;
+                    deepseekMessages.push({
+                        role: 'system',
+                        content: 'CRITICAL GUARDRAIL: You did not invoke any tool for this turn. You MUST call the appropriate Stigix tool to execute the action or verify live node state before answering. Never assume or fabricate results.'
+                    });
+                    continueLoop = true;
+                    continue;
                 }
 
                 // If DeepSeek-R1 returned reasoning_content, stream as formatted thought block
@@ -624,17 +822,16 @@ YOUR ROLE & BEHAVIOR:
                 }
 
                 // Emit regular text content
-                if (resMsg.content) {
-                    assistantMsg.content += resMsg.content;
-                    sendEvent('chunk', { type: 'chunk', text: resMsg.content, delta: resMsg.content });
+                if (cleanedContent) {
+                    assistantMsg.content += cleanedContent;
+                    sendEvent('chunk', { type: 'chunk', text: cleanedContent, delta: cleanedContent });
                 }
 
                 // Handle tool calls
-                const toolCalls = resMsg.tool_calls || [];
-                if (toolCalls.length > 0 && supportsTools) {
+                if (toolCalls.length > 0) {
                     deepseekMessages.push({
                         role: 'assistant',
-                        content: resMsg.content || null,
+                        content: cleanedContent || null,
                         tool_calls: toolCalls
                     });
 
@@ -701,22 +898,22 @@ YOUR ROLE & BEHAVIOR:
         apiKey: string,
         systemPrompt: string,
         session: CopilotSession,
+        userPrompt: string,
         assistantMsg: CopilotMessage,
         sendEvent: (event: string, data: any) => void,
         isAborted?: () => boolean
     ): Promise<void> {
-        const anthropicMessages: any[] = session.messages.map(m => ({
-            role: m.role,
-            content: m.content
-        }));
+        const anthropicMessages: any[] = this.buildAnthropicMessages(session);
 
         let continueLoop = true;
         let loopCount = 0;
-        const MAX_TOOL_LOOPS = 10;
+        let forceAnyToolChoice = false;
+        let guardrailRetried = false;
+        const MAX_TOOL_LOOPS = 20;
 
         while (continueLoop && loopCount < MAX_TOOL_LOOPS) {
             if (isAborted?.()) {
-                log('AI-COPILOT', 'Anthropic stream aborted by client');
+                console.log('[AI-COPILOT] Anthropic stream aborted by client');
                 break;
             }
             loopCount++;
@@ -725,6 +922,23 @@ YOUR ROLE & BEHAVIOR:
             try {
                 let response: Response | null = null;
                 let lastFetchErr: any = null;
+
+                const reqPayload: any = {
+                    model,
+                    max_tokens: this.config.maxTokensPerRequest || 4096,
+                    system: systemPrompt,
+                    messages: anthropicMessages,
+                    tools: COPILOT_TOOLS.map(t => ({
+                        name: t.name,
+                        description: t.description,
+                        input_schema: t.input_schema
+                    }))
+                };
+
+                if (forceAnyToolChoice) {
+                    reqPayload.tool_choice = { type: 'any' };
+                    forceAnyToolChoice = false;
+                }
 
                 for (let attempt = 1; attempt <= 3; attempt++) {
                     try {
@@ -735,17 +949,7 @@ YOUR ROLE & BEHAVIOR:
                                 'anthropic-version': '2023-06-01',
                                 'content-type': 'application/json'
                             },
-                            body: JSON.stringify({
-                                model,
-                                max_tokens: this.config.maxTokensPerRequest || 4096,
-                                system: systemPrompt,
-                                messages: anthropicMessages,
-                                tools: COPILOT_TOOLS.map(t => ({
-                                    name: t.name,
-                                    description: t.description,
-                                    input_schema: t.input_schema
-                                }))
-                            })
+                            body: JSON.stringify(reqPayload)
                         });
 
                         if (response.ok) break;
@@ -777,7 +981,39 @@ YOUR ROLE & BEHAVIOR:
                 }
 
                 const data: any = await response.json();
+                if (data.usage && assistantMsg.usage) {
+                    const inTok = data.usage.input_tokens || 0;
+                    const outTok = data.usage.output_tokens || 0;
+                    assistantMsg.usage.inputTokens = (assistantMsg.usage.inputTokens || 0) + inTok;
+                    assistantMsg.usage.outputTokens = (assistantMsg.usage.outputTokens || 0) + outTok;
+                    assistantMsg.usage.totalTokens = (assistantMsg.usage.totalTokens || 0) + inTok + outTok;
+                }
+
                 const contentBlocks = data.content || [];
+                const hasToolUse = contentBlocks.some((b: any) => b.type === 'tool_use');
+                const candidateText = contentBlocks
+                    .filter((b: any) => b.type === 'text')
+                    .map((b: any) => b.text || '')
+                    .join('');
+
+                // Anti-Hallucination Zero-Tool Guardrail on first loop
+                if (
+                    !hasToolUse &&
+                    (assistantMsg.toolCalls?.length || 0) === 0 &&
+                    !guardrailRetried &&
+                    this.shouldForceToolExecution(userPrompt, candidateText, session)
+                ) {
+                    guardrailRetried = true;
+                    assistantMsg.guardrailTriggered = true;
+                    forceAnyToolChoice = true;
+                    const lastMsg = anthropicMessages[anthropicMessages.length - 1];
+                    if (lastMsg && lastMsg.role === 'user' && typeof lastMsg.content === 'string') {
+                        lastMsg.content = `${lastMsg.content}\n\n[SYSTEM REMINDER: You MUST invoke the appropriate Stigix tool to execute this request or verify live state. Do not answer from memory or assume state.]`;
+                    }
+                    continueLoop = true;
+                    continue;
+                }
+
                 const toolResults: any[] = [];
 
                 for (const block of contentBlocks) {

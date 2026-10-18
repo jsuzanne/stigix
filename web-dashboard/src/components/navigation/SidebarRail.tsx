@@ -31,6 +31,7 @@ interface SidebarRailProps {
         xfr_enabled?: boolean;
         pcap_enabled?: boolean;
         copilot_enabled?: boolean;
+        snapshots_enabled?: boolean;
     };
     activeTasks?: Record<string, boolean>;
     copilotDrawerOpen?: boolean;
@@ -106,6 +107,7 @@ export const SidebarRail: React.FC<SidebarRailProps> = ({
                 if (item.featureFlag === 'xfr_enabled' && !features.xfr_enabled) return;
                 if (item.featureFlag === 'pcap_enabled' && !features.pcap_enabled) return;
                 if (item.featureFlag === 'copilot_enabled' && !features.copilot_enabled) return;
+                if (item.featureFlag === 'snapshots_enabled' && !features.snapshots_enabled) return;
                 itemMap.set(getNavItemKey(item), item);
             });
         });

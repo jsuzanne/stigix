@@ -4,6 +4,7 @@ import {
     Boxes,
     Cpu,
     Gauge,
+    GitCompare,
     GitFork,
     Globe,
     Home,
@@ -34,7 +35,7 @@ export interface NavItemConfig {
     description?: string;
     group?: string; // Group header in flyout (e.g. 'Module Configuration')
     leaderOnly?: boolean;
-    featureFlag?: 'xfr_enabled' | 'pcap_enabled' | 'copilot_enabled';
+    featureFlag?: 'xfr_enabled' | 'pcap_enabled' | 'copilot_enabled' | 'snapshots_enabled';
     runningKey?: string; // Key in active tasks state
     subTab?: string; // Target sub-tab when navigating to settings or vyos
     keywords?: string[]; // Searchable aliases, protocol names, and keywords
@@ -165,6 +166,15 @@ export const STIGIX_NAVIGATION_DOMAINS: NavDomainConfig[] = [
                 description: 'Sub-second blackout, path convergence and failover packet loss tracking',
                 runningKey: 'failover',
                 keywords: ['failover', 'blackout', 'convergence', 'sub-second', 'packet loss', 'sla breach', 'path recovery']
+            },
+            {
+                id: 'snapshots',
+                label: 'ChangeGuard (Before/After)',
+                icon: GitCompare,
+                route: '#/validate/snapshots',
+                description: 'Pre/post migration state capture, SD-WAN IPsec overlay verification & delta diffing',
+                featureFlag: 'snapshots_enabled',
+                keywords: ['snapshot', 'changeguard', 'before', 'after', 'diff', 'migration', 'delta', 'verification', 'rollback']
             }
         ]
     },
