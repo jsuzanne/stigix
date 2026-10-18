@@ -2,7 +2,7 @@
 
 # 🕸️ Stigix — Advanced Networking & Security Simulation Environment
 
-[![Version](https://img.shields.io/badge/Version-3.0.46-blue.svg)](https://github.com/jsuzanne/stigix/releases)
+[![Version](https://img.shields.io/badge/Version-3.0.49-blue.svg)](https://github.com/jsuzanne/stigix/releases)
 [![Last Updated](https://img.shields.io/badge/Updated-2026--10--18-brightgreen.svg)](CHANGELOG.md)
 [![Docker Pulls](https://img.shields.io/docker/pulls/jlsuzanne/stigix)](https://hub.docker.com/r/jlsuzanne/stigix)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)

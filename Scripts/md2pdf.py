@@ -95,11 +95,59 @@ img {
 }
 """
 
+def render_mermaid_to_png(code, cache_dir="/tmp/stigix_mermaid_cache"):
+    """Renders a Mermaid diagram into a high-res PNG image via Kroki."""
+    import zlib
+    import base64
+    import urllib.request
+    os.makedirs(cache_dir, exist_ok=True)
+    compressed = zlib.compress(code.strip().encode("utf-8"), 9)
+    kroki_b64 = base64.urlsafe_b64encode(compressed).decode("utf-8")
+    cache_path = os.path.join(cache_dir, f"{abs(hash(code))}.png")
+    if os.path.exists(cache_path) and os.path.getsize(cache_path) > 0:
+        return cache_path
+    
+    url = f"https://kroki.io/mermaid/png/{kroki_b64}"
+    req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+    with urllib.request.urlopen(req, timeout=15) as resp:
+        data = resp.read()
+    with open(cache_path, "wb") as f:
+        f.write(data)
+    return cache_path
+
 def convert_md_to_pdf(md_path, pdf_path, css_content=None):
     """Converts a single markdown file to PDF."""
     try:
         with open(md_path, "r", encoding="utf-8") as f:
-            md_content = f.read()
+            lines = f.readlines()
+
+        # Render Mermaid code blocks to PNG images
+        new_lines = []
+        mermaid_block = []
+        in_mermaid = False
+        diagram_idx = 0
+
+        for line in lines:
+            if line.strip().startswith("```mermaid"):
+                in_mermaid = True
+                mermaid_block = []
+            elif in_mermaid and line.strip().startswith("```"):
+                in_mermaid = False
+                code = "".join(mermaid_block)
+                try:
+                    img_path = render_mermaid_to_png(code)
+                    diagram_idx += 1
+                    new_lines.append(f"\n\n![Diagram {diagram_idx}]({img_path})\n\n")
+                    print(f"  🎨 Rendered Mermaid diagram {diagram_idx}")
+                except Exception as e:
+                    print(f"  ⚠️ Could not render Mermaid diagram {diagram_idx}: {e}")
+                    new_lines.append(f"\n```mermaid\n{code}```\n")
+            elif in_mermaid:
+                mermaid_block.append(line)
+            else:
+                new_lines.append(line)
+
+        md_content = "".join(new_lines)
 
         # Remove local/internal markdown anchor links (e.g. [Text](#anchor-name)) 
         # to prevent PyMuPDF layout engine failures on missing targets.
@@ -107,7 +155,7 @@ def convert_md_to_pdf(md_path, pdf_path, css_content=None):
         md_content = re.sub(r'\[([^\]]+)\]\(\s*#[^)]+\)', r'\1', md_content)
 
         pdf = MarkdownPdf(toc_level=2)
-        pdf.add_section(Section(md_content), user_css=css_content or DEFAULT_CSS)
+        pdf.add_section(Section(md_content, root="/"), user_css=css_content or DEFAULT_CSS)
         pdf.save(pdf_path)
         print(f"✓ Converted: {os.path.basename(md_path)} ➔ {os.path.basename(pdf_path)}")
         return True

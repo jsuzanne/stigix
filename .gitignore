@@ -10,6 +10,7 @@ playwright.config.ts
 *.pdf
 !docs/MCP Reports/*.pdf
 !site/reports/*.pdf
+docs/STIGIX_DATASHEET.md
 *.log
 *.log.*
 pcap samples/
