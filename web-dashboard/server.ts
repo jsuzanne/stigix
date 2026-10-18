@@ -3495,6 +3495,324 @@ app.get('/api/topology/underlay-debug', authenticateToken, async (req, res) => {
     }
 });
 
+// --- Live Overlay VPN Link Deep Inspection API ---
+let cachedSdwanToken: { token: string; expiresAt: number } | null = null;
+
+async function getPrismaSdwanBearerToken(): Promise<string | null> {
+    if (cachedSdwanToken && Date.now() < cachedSdwanToken.expiresAt) {
+        return cachedSdwanToken.token;
+    }
+    const clientId = process.env.PRISMA_SDWAN_CLIENT_ID;
+    const clientSecret = process.env.PRISMA_SDWAN_CLIENT_SECRET;
+    const tsgId = process.env.PRISMA_SDWAN_TSG_ID || process.env.PRISMA_SDWAN_TSGID;
+    if (!clientId || !clientSecret || !tsgId) return null;
+
+    try {
+        const authUrl = 'https://auth.apps.paloaltonetworks.com/auth/v1/oauth2/access_token';
+        const auth = Buffer.from(`${clientId}:${clientSecret}`).toString('base64');
+        const res = await fetch(authUrl, {
+            method: 'POST',
+            headers: {
+                'Authorization': `Basic ${auth}`,
+                'Content-Type': 'application/x-www-form-urlencoded',
+                'Accept': 'application/json',
+            },
+            body: new URLSearchParams({
+                grant_type: 'client_credentials',
+                scope: `tsg_id:${tsgId}`,
+            }),
+        });
+        if (!res.ok) return null;
+        const data = (await res.json()) as any;
+        if (data?.access_token) {
+            cachedSdwanToken = {
+                token: data.access_token,
+                expiresAt: Date.now() + ((data.expires_in || 899) * 1000) - 60_000,
+            };
+            return cachedSdwanToken.token;
+        }
+    } catch (err) {
+        log('TOPO', `Failed to obtain Prisma SD-WAN token for live tunnel inspect: ${err}`, 'warn');
+    }
+    return null;
+}
+
+const LIVE_VPN_FAULT_REASON_MAP: Record<string, string> = {
+    NETWORK_VPNPEER_UNREACHABLE: 'Peer is unreachable',
+    NETWORK_VPNBFD_DOWN: 'BFD / Keepalive probe timeout',
+    NETWORK_VPNPEER_UNAVAILABLE: 'Peer WAN endpoint unavailable',
+    NETWORK_VPNSS_MISMATCH: 'IPsec Security Association (SA) mismatch',
+    NETWORK_VPNSS_UNAVAILABLE: 'IPsec Security Association (SA) unavailable',
+    NETWORK_VPNKEK_UNAVAILABLE: 'Key Encryption Key (KEK) unavailable',
+    NETWORK_VPNLINKCIPHERS_INCOMPATIBLE: 'Incompatible VPN tunnel ciphers',
+    INCONSISTENT_IPSEC_TUNNEL_HA_STATE: 'Inconsistent IPsec tunnel HA state',
+    NETWORK_VPNLINK_DOWN: 'VPN Link is down',
+    VPL_ACTION_INSUFFICIENT_VPE: 'Peer is unreachable',
+};
+
+function normalizePrismaTsMs(rawTs: any): number | null {
+    if (!rawTs) return null;
+    const val = Number(rawTs);
+    if (!Number.isFinite(val) || val <= 0) return null;
+    if (val > 1e15) return Math.floor(val / 10000);
+    if (val > 1e11) return Math.floor(val);
+    return Math.floor(val * 1000);
+}
+
+app.get('/api/topology/vpn-link/:vpnId/inspect', authenticateToken, async (req, res) => {
+    const vpnId = String(req.params.vpnId || '').trim();
+    const srcSiteName = String(req.query.srcSiteName || '').trim();
+    const dstSiteName = String(req.query.dstSiteName || '').trim();
+    if (!vpnId || vpnId === 'N/A') {
+        return res.status(400).json({ error: 'Valid vpnId is required' });
+    }
+
+    const token = await getPrismaSdwanBearerToken();
+    if (!token) {
+        return res.status(503).json({ error: 'Prisma SD-WAN credentials not available' });
+    }
+
+    const headers = {
+        'Authorization': `Bearer ${token}`,
+        'Accept': 'application/json',
+        'Content-Type': 'application/json',
+    };
+    const baseUrl = 'https://api.sase.paloaltonetworks.com';
+
+    try {
+        // Build site/element name lookups from cached topology if available
+        const siteIdToName: Record<string, string> = {};
+        const elIdToName: Record<string, string> = {};
+        const elNameToSiteId: Record<string, string> = {};
+        for (const s of (topologyCache?.data?.sites || [])) {
+            if (s.id && s.name) siteIdToName[String(s.id)] = s.name;
+            for (const d of (s.devices || [])) {
+                if (d.element_id && d.name) {
+                    elIdToName[String(d.element_id)] = d.name;
+                    elNameToSiteId[d.name] = String(s.id);
+                }
+            }
+        }
+
+        // Run parallel live queries to Prisma SD-WAN Controller
+        const [statusRes, stateRes, vqueryRes, corrRes, bgpRes] = await Promise.all([
+            fetch(`${baseUrl}/sdwan/v2.2/api/vpnlinks/${vpnId}/status`, { headers }).catch(() => null),
+            fetch(`${baseUrl}/sdwan/v2.0/api/vpnlinks/${vpnId}/state`, { headers }).catch(() => null),
+            fetch(`${baseUrl}/sdwan/v2.0/api/vpnlinks/query`, {
+                method: 'POST',
+                headers,
+                body: JSON.stringify({ filters: { id: [vpnId] } }),
+            }).catch(() => null),
+            fetch(`${baseUrl}/sdwan/v2.1/api/anynetlinks/correlationevents/query`, {
+                method: 'POST',
+                headers,
+                body: JSON.stringify({}),
+            }).catch(() => null),
+            fetch(`${baseUrl}/sdwan/v2.0/api/bgppeers/status/query`, {
+                method: 'POST',
+                headers,
+                body: JSON.stringify({}),
+            }).catch(() => null),
+        ]);
+
+        let statusData: any = null;
+        let statusErrorCode: string | null = null;
+        if (statusRes) {
+            const sJson = (await statusRes.json().catch(() => null)) as any;
+            if (statusRes.ok && sJson) {
+                statusData = sJson;
+            } else if (sJson?._error && Array.isArray(sJson._error) && sJson._error[0]?.code) {
+                statusErrorCode = sJson._error[0].code;
+            } else {
+                statusErrorCode = `HTTP_${statusRes.status}`;
+            }
+        }
+
+        const stateData: any = stateRes && stateRes.ok ? await stateRes.json().catch(() => ({})) : {};
+        const vqueryJson: any = vqueryRes && vqueryRes.ok ? await vqueryRes.json().catch(() => ({})) : {};
+        const corrJson: any = corrRes && corrRes.ok ? await corrRes.json().catch(() => ({})) : {};
+        const bgpJson: any = bgpRes && bgpRes.ok ? await bgpRes.json().catch(() => ({})) : {};
+
+        const vqueryItems: any[] = vqueryJson?.items || [];
+        const vmeta = vqueryItems.find((item: any) => String(item.id) === vpnId) || {};
+
+        const isUp = statusData ? Boolean(statusData.up ?? statusData.link_up ?? false) : false;
+        const isUsable = statusData ? Boolean(statusData.usable ?? false) : false;
+        const isActive = statusData ? Boolean(statusData.state === 'active' || statusData.active) : false;
+
+        let tunnelState: 'ACTIVE' | 'STANDBY' | 'NOT_USABLE' | 'DOWN' = 'DOWN';
+        if (isUp && isUsable && isActive) tunnelState = 'ACTIVE';
+        else if (isUp && isUsable && !isActive) tunnelState = 'STANDBY';
+        else if (isUp && !isUsable) tunnelState = 'NOT_USABLE';
+
+        const rawCipher = statusData?.common_cipher || statusData?.ep1_cipher || statusData?.ep2_cipher;
+        const cipher = typeof rawCipher === 'string' ? rawCipher.replace(/_/g, '-') : null;
+        const keepaliveIntervalMs = statusData?.ep1_keep_alive_interval || statusData?.ep2_keep_alive_interval || null;
+        const keepaliveRetries = statusData?.ep1_keep_alive_failure_count || statusData?.ep2_keep_alive_failure_count || null;
+
+        const alId = stateData?.al_id || vmeta?.al_id || null;
+
+        // Match correlation events for this vpnId or alId
+        let anynetType: string | null = null;
+        let flapCount = 0;
+        let bestEventCode: string | null = null;
+        let eventTsMs: number | null = null;
+        let corrVepId: string | null = null;
+
+        for (const cItem of (corrJson?.items || [])) {
+            const cAlId = cItem?.id;
+            const vpnEvents: any[] = cItem?.vpn_events || [];
+            for (const ve of vpnEvents) {
+                if (String(ve?.vpnlink_id) === vpnId || (alId && String(cAlId) === String(alId))) {
+                    if (!anynetType && cItem?.type) anynetType = cItem.type;
+                    if (!corrVepId && ve?.vep_id) corrVepId = String(ve.vep_id);
+                    const fc = ve?.flap_event_details?.flap_count;
+                    if (typeof fc === 'number' && fc > flapCount) flapCount = fc;
+                    const evCode = ve?.event_code;
+                    if (evCode) {
+                        if (!bestEventCode || (bestEventCode === 'NETWORK_VPNLINK_DOWN' && evCode !== 'NETWORK_VPNLINK_DOWN')) {
+                            bestEventCode = evCode;
+                        }
+                    }
+                    const tsCand = normalizePrismaTsMs(ve?.timestamp);
+                    if (tsCand && (!eventTsMs || tsCand > eventTsMs)) {
+                        eventTsMs = tsCand;
+                    }
+                }
+            }
+        }
+
+        const stateUpdatedMs = eventTsMs || normalizePrismaTsMs(statusData?._updated_on_utc) || normalizePrismaTsMs(stateData?._updated_on_utc);
+        const uptimeSec = stateUpdatedMs ? Math.max(0, Math.floor((Date.now() - stateUpdatedMs) / 1000)) : null;
+
+        // Core BGP peer check for NOT_USABLE tunnels
+        const ep1El = statusData?.ep1_element_id ? String(statusData.ep1_element_id) : '';
+        const ep2El = statusData?.ep2_element_id ? String(statusData.ep2_element_id) : '';
+        const ep1Site = statusData?.ep1_site_id ? String(statusData.ep1_site_id) : '';
+        const ep2Site = statusData?.ep2_site_id ? String(statusData.ep2_site_id) : '';
+
+        let statusReason: string | null = null;
+        let statusReasonCode: string | null = null;
+        let statusReasonDetail: string | null = null;
+
+        if (tunnelState === 'NOT_USABLE') {
+            const bgpMatches: any[] = [];
+            for (const bItem of (bgpJson?.items || [])) {
+                const dir = String(bItem?.direction || '').toLowerCase();
+                const bState = bItem?.peer_status?.state || 'Unknown';
+                if (dir !== 'wan' && bState !== 'Established') {
+                    const bEid = String(bItem?.element_id || '');
+                    const bSid = String(bItem?.site_id || '');
+                    const bSiteName = siteIdToName[bSid] || '';
+                    if (
+                        (ep1El && bEid === ep1El) ||
+                        (ep2El && bEid === ep2El) ||
+                        (ep1Site && bSid === ep1Site) ||
+                        (ep2Site && bSid === ep2Site) ||
+                        (srcSiteName && bSiteName === srcSiteName) ||
+                        (dstSiteName && bSiteName === dstSiteName)
+                    ) {
+                        bgpMatches.push({
+                            router_id: bItem?.router_id || bItem?.name || 'BGP Peer',
+                            state: bState,
+                            downtime: bItem?.peer_status?.downtime || 'N/A',
+                            element_name: elIdToName[bEid] || bSiteName || bEid,
+                        });
+                    }
+                }
+            }
+            if (bgpMatches.length > 0) {
+                const b0 = bgpMatches[0];
+                statusReason = 'Core Peering is down in DC';
+                statusReasonCode = 'PEERING_CORE_DOWN';
+                statusReasonDetail = `${b0.element_name} Core BGP peer ${b0.router_id} is ${b0.state} (down ${b0.downtime})`;
+            } else if (bestEventCode) {
+                statusReason = LIVE_VPN_FAULT_REASON_MAP[bestEventCode] || bestEventCode;
+                statusReasonCode = bestEventCode;
+            } else {
+                statusReason = 'Tunnel Up but marked Not Usable by controller';
+                statusReasonCode = 'VPN_NOT_USABLE';
+            }
+        } else if (tunnelState === 'DOWN') {
+            if (bestEventCode) {
+                statusReason = LIVE_VPN_FAULT_REASON_MAP[bestEventCode] || bestEventCode;
+                statusReasonCode = bestEventCode;
+            } else if (statusErrorCode) {
+                statusReason = LIVE_VPN_FAULT_REASON_MAP[statusErrorCode] || 'Peer is unreachable';
+                statusReasonCode = statusErrorCode;
+            } else {
+                statusReason = 'Peer is unreachable';
+                statusReasonCode = 'NETWORK_VPNLINK_DOWN';
+            }
+            if (statusErrorCode === 'VPL_ACTION_INSUFFICIENT_VPE') {
+                statusReasonDetail = `${dstSiteName || 'Remote peer'} VPE endpoint unavailable (VPL_ACTION_INSUFFICIENT_VPE)`;
+            }
+        }
+
+        // Map vep1 / vep2 to Source vs Destination site of the inspected link
+        const vep1Id = vmeta?.vep1_id || null;
+        const vep2Id = vmeta?.vep2_id || null;
+        const vep1Shim = vmeta?.vep1_shim_ipv4 || null;
+        const vep2Shim = vmeta?.vep2_shim_ipv4 || null;
+
+        let srcVepId = vep1Id;
+        let dstVepId = vep2Id;
+        let srcShimIp = vep1Shim;
+        let dstShimIp = vep2Shim;
+
+        const ep1SiteName = ep1Site ? siteIdToName[ep1Site] : '';
+        const ep2SiteName = ep2Site ? siteIdToName[ep2Site] : '';
+
+        if (srcSiteName && ep2SiteName && srcSiteName === ep2SiteName) {
+            srcVepId = vep2Id;
+            dstVepId = vep1Id;
+            srcShimIp = vep2Shim;
+            dstShimIp = vep1Shim;
+        } else if (dstSiteName && ep1SiteName && dstSiteName === ep1SiteName) {
+            srcVepId = vep2Id;
+            dstVepId = vep1Id;
+            srcShimIp = vep2Shim;
+            dstShimIp = vep1Shim;
+        } else if (corrVepId && corrVepId === vep2Id) {
+            // If correlation event reported vep2Id, keep vep1/vep2 available
+        }
+
+        res.json({
+            vpnId,
+            live: true,
+            inspectedAt: new Date().toISOString(),
+            tunnel_state: tunnelState,
+            active: isActive,
+            usable: isUsable,
+            link_up: isUp,
+            admin_up: stateData?.enabled ?? true,
+            status_reason: statusReason,
+            status_reason_code: statusReasonCode,
+            status_reason_detail: statusReasonDetail,
+            state_updated_at_ms: stateUpdatedMs,
+            uptime_sec: uptimeSec,
+            state_changes: statusData?._etag ?? stateData?._etag ?? null,
+            flap_count: flapCount,
+            cipher,
+            keepalive_interval_ms: keepaliveIntervalMs,
+            keepalive_retries: keepaliveRetries,
+            rekey_interval_minutes: vmeta?.rekey_interval_minutes ?? null,
+            anynet_type: anynetType,
+            al_id: alId,
+            vep1_id: vep1Id,
+            vep2_id: vep2Id,
+            vep1_shim_ipv4: vep1Shim,
+            vep2_shim_ipv4: vep2Shim,
+            src_vep_id: srcVepId,
+            dst_vep_id: dstVepId,
+            src_shim_ip: srcShimIp,
+            dst_shim_ip: dstShimIp,
+        });
+    } catch (e: any) {
+        res.status(500).json({ error: e.message || 'Live VPN link inspection failed' });
+    }
+});
+
 // --- Query Flow Browser API ---
 app.post('/api/prisma/flows', authenticateToken, async (req, res) => {
     const {

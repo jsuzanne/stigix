@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.0.45] - 2026-10-18
+
+### Added & Enhanced
+- **SD-WAN Overlay Tunnel Live Root-Cause Diagnostics & 1-Click ION CLI VEP Inspector (`engines/getflow.py`, `Scripts/getflow.py`, `web-dashboard/server.ts`, `web-dashboard/src/Topology.tsx`)**:
+  - **4-State Tunnel Classification**: Distinguished between **`ACTIVE`** (forwarding traffic), **`STANDBY`** (`status: up, usable: true, active: false`), **`UP · NOT USABLE`** (`status: up, usable: false` rendered with amber dashed line `#f59e0b`), and **`DOWN`** (`status: down`).
+  - **3-Tier Root-Cause Fault Engine (`status_reason`, `status_reason_code`, `status_reason_detail`)**:
+    - **Tier 1 (Prisma Correlation Events)**: Queries `POST /sdwan/v2.1/api/anynetlinks/correlationevents/query` to map official controller fault codes (`PEERING_CORE_DOWN` ➔ `Core Peering is down in DC`, `NETWORK_VPNPEER_UNREACHABLE` ➔ `Peer is unreachable`, `NETWORK_VPNBFD_DOWN` ➔ `BFD session is down`).
+    - **Tier 2 (Real-Time Core BGP Peer Check)**: Queries `POST /sdwan/v2.0/api/bgppeers/status/query` across Hub/DC routers to detect down Core BGP peers (`scope: "core"`) causing `Not Usable` overlay states and surfaces the exact peer IP and down duration.
+    - **Tier 3 (State Fallback)**: Gracefully falls back to `GET /sdwan/v2.0/api/vpnlinks/{id}/state` when `/status` returns `400 VPL_ACTION_INSUFFICIENT_VPE` on unreachable tunnels.
+  - **VEP IDs, Tunnel Shim IPs & 1-Click ION CLI Copy (`dump vpn status VpnID=<vep_id>`)**:
+    - Queries `POST /sdwan/v2.0/api/vpnlinks/query` to extract endpoint-specific `vep1_id`, `vep2_id`, `vep1_shim_ipv4`, and `vep2_shim_ipv4`.
+    - Displays the exact local `VEP ID`, tunnel `Shim IP` (`100.64.x.x`), and a 1-click **`Copy ION CLI`** button on both the **SOURCE ENDPOINT** and **REMOTE ENDPOINT** cards (`dump vpn status VpnID=<vep_id>`).
+  - **On-Demand Live Tunnel Inspection Endpoint (`GET /api/topology/vpn-link/:vpnId/inspect`)**:
+    - Clicking any overlay tunnel on the topology canvas or in the Circuit Tunnels drawer triggers an instant (~150ms) live controller check to refresh operational status, uptime duration (`last_state_change`), flap count, cipher/BFD parameters, and fault reasons in real time.
+
 ## [3.0.44] - 2026-10-18
 
 ### Added & Enhanced
