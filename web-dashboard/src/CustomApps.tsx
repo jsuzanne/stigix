@@ -1421,7 +1421,7 @@ const secs = seconds % 60;
 
                             <div className="flex flex-wrap items-center gap-2">
                                 {/* View Layout Switcher */}
-                                <div className="inline-flex rounded-lg border border-border bg-card-secondary p-0.5 text-[11px]">
+                                <div className="inline-flex rounded-lg border border-border bg-card-secondary p-0.5 text-[11px] font-variant-numeric tabular-nums">
                                     <button
                                         onClick={() => setSessionViewMode(effectiveMode === 'outgoing' ? 'split' : 'outgoing')}
                                         className={`px-2 py-0.5 rounded-md font-semibold transition-all cursor-pointer flex items-center gap-1 ${
@@ -1461,8 +1461,8 @@ const secs = seconds % 60;
 
                                 <div className="hidden sm:block h-4 w-px bg-border" />
 
-                                {/* State Filter Pills */}
-                                <div className="flex items-center gap-1">
+                                {/* State Filter Pills (Static layout — never shifts horizontally) */}
+                                <div className="flex items-center gap-1 tabular-nums">
                                     <button
                                         onClick={() => setSessionStateFilter('all')}
                                         className={`px-2 py-1 rounded-lg text-[11px] font-semibold transition-all cursor-pointer flex items-center gap-1 ${
@@ -1472,7 +1472,7 @@ const secs = seconds % 60;
                                         }`}
                                     >
                                         <span>All</span>
-                                        <span className={`font-mono text-[10px] px-1 rounded ${sessionStateFilter === 'all' ? 'bg-white/20 text-white' : 'bg-card text-text-muted'}`}>{allSessCount}</span>
+                                        <span className={`font-mono text-[10px] min-w-[18px] text-center px-1 rounded ${sessionStateFilter === 'all' ? 'bg-white/20 text-white' : 'bg-card text-text-muted'}`}>{allSessCount}</span>
                                     </button>
                                     <button
                                         onClick={() => setSessionStateFilter('connected')}
@@ -1484,22 +1484,28 @@ const secs = seconds % 60;
                                     >
                                         <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
                                         <span>Up</span>
-                                        <span className={`font-mono text-[10px] px-1 rounded ${sessionStateFilter === 'connected' ? 'bg-white/20 text-white' : 'bg-card text-text-muted'}`}>{connectedCount}</span>
+                                        <span className={`font-mono text-[10px] min-w-[18px] text-center px-1 rounded ${sessionStateFilter === 'connected' ? 'bg-white/20 text-white' : 'bg-card text-text-muted'}`}>{connectedCount}</span>
                                     </button>
-                                    {issuesCount > 0 && (
-                                        <button
-                                            onClick={() => setSessionStateFilter('issues')}
-                                            className={`px-2 py-1 rounded-lg text-[11px] font-semibold transition-all cursor-pointer flex items-center gap-1 ${
-                                                sessionStateFilter === 'issues'
-                                                    ? 'bg-amber-600 text-white shadow-sm'
-                                                    : 'bg-card-secondary text-text-secondary hover:text-text-primary border border-border'
-                                            }`}
-                                        >
-                                            <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
-                                            <span>Issues</span>
-                                            <span className={`font-mono text-[10px] px-1 rounded ${sessionStateFilter === 'issues' ? 'bg-white/20 text-white' : 'bg-card text-text-muted'}`}>{issuesCount}</span>
-                                        </button>
-                                    )}
+                                    <button
+                                        onClick={() => setSessionStateFilter('issues')}
+                                        className={`px-2 py-1 rounded-lg text-[11px] font-semibold transition-all cursor-pointer flex items-center gap-1 ${
+                                            sessionStateFilter === 'issues'
+                                                ? 'bg-amber-600 text-white shadow-sm'
+                                                : issuesCount > 0
+                                                    ? 'bg-amber-500/10 text-amber-500 hover:bg-amber-500/20 border border-amber-500/30'
+                                                    : 'bg-card-secondary text-text-muted hover:text-text-secondary border border-border'
+                                        }`}
+                                    >
+                                        <span className={`w-1.5 h-1.5 rounded-full ${issuesCount > 0 ? 'bg-amber-400 animate-pulse' : 'bg-text-muted/40'}`} />
+                                        <span>Issues</span>
+                                        <span className={`font-mono text-[10px] min-w-[18px] text-center px-1 rounded ${
+                                            sessionStateFilter === 'issues'
+                                                ? 'bg-white/20 text-white'
+                                                : issuesCount > 0
+                                                    ? 'bg-amber-500/20 text-amber-400 font-bold'
+                                                    : 'bg-card text-text-muted'
+                                        }`}>{issuesCount}</span>
+                                    </button>
                                 </div>
                             </div>
                         </div>

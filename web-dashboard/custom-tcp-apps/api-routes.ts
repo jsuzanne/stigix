@@ -39,6 +39,7 @@ export function createCustomTcpApiRouter(tcpAppManager: TcpAppManager, onConfigC
                 app.id = `app-${crypto.randomUUID().substring(0, 6)}`;
             }
             await tcpAppManager.saveApplication(app);
+            if (onConfigChanged) onConfigChanged();
             res.json({ success: true, application: app });
         } catch (err: any) {
             res.status(400).json({ error: err.message });
@@ -135,6 +136,7 @@ export function createCustomTcpApiRouter(tcpAppManager: TcpAppManager, onConfigC
             }
 
             const result = await tcpAppManager.importApplications(appsToImport, mode === 'replace' ? 'replace' : 'merge');
+            if (onConfigChanged) onConfigChanged();
             res.json({ success: true, ...result });
         } catch (err: any) {
             res.status(400).json({ success: false, error: err.message });
@@ -640,6 +642,7 @@ export function createCustomTcpApiRouter(tcpAppManager: TcpAppManager, onConfigC
             const app = req.body;
             app.id = req.params.id;
             await tcpAppManager.saveApplication(app);
+            if (onConfigChanged) onConfigChanged();
             res.json({ success: true, application: app });
         } catch (err: any) {
             res.status(400).json({ error: err.message });
@@ -661,6 +664,7 @@ export function createCustomTcpApiRouter(tcpAppManager: TcpAppManager, onConfigC
             copy.listener.port = original.listener.port + 1; // Suggest next port
 
             await tcpAppManager.saveApplication(copy);
+            if (onConfigChanged) onConfigChanged();
             res.json({ success: true, duplicated: copy });
         } catch (err: any) {
             res.status(400).json({ error: err.message });
@@ -672,6 +676,7 @@ export function createCustomTcpApiRouter(tcpAppManager: TcpAppManager, onConfigC
         if (req.params.id === 'multicast') return next();
         try {
             await tcpAppManager.deleteApplication(req.params.id);
+            if (onConfigChanged) onConfigChanged();
             res.json({ success: true });
         } catch (err: any) {
             res.status(400).json({ error: err.message });
@@ -779,6 +784,7 @@ export function createCustomTcpApiRouter(tcpAppManager: TcpAppManager, onConfigC
             }
 
             await tcpAppManager.saveApplication(app);
+            if (onConfigChanged) onConfigChanged();
             res.json({ success: true, application: app, peer: newPeer });
         } catch (err: any) {
             res.status(400).json({ success: false, error: err.message });

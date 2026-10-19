@@ -630,21 +630,30 @@ export class TcpAppManager extends EventEmitter {
             if (ctx) {
                 const prevPort = ctx.config.listener?.port;
                 const newPort = app.listener?.port;
-                ctx.config = app;
-                ctx.metrics.appName = app.name;
-                ctx.metrics.port = app.listener?.port;
+                const wasListening = ctx.metrics.listenerState === 'listening';
+                const wasClientRunning = ctx.metrics.clientWorkloadRunning;
 
-                if (prevPort !== newPort && ctx.metrics.listenerState === 'listening') {
-                    await ctx.serverRuntime.stop();
+                if (prevPort !== newPort) {
+                    try { await ctx.clientRuntime.stop(); } catch {}
+                    try { await ctx.serverRuntime.stop(); } catch {}
                     this.registerAppInstance(app, file.instance);
-                    if (app.enabled && app.startup?.startListener !== false) {
-                        await this.startListener(app.id).catch(() => {});
+                    if (wasListening || (app.enabled && app.startup?.startListener !== false)) {
+                        await this.startListener(app.id, false).catch(() => {});
                     }
+                    if (wasClientRunning && app.enabled && (app.peers || []).length > 0) {
+                        await this.startClient(app.id, undefined, false).catch(() => {});
+                    }
+                } else {
+                    ctx.config = app;
+                    ctx.metrics.appName = app.name;
+                    ctx.metrics.port = app.listener?.port;
+                    ctx.serverRuntime.updateConfig(app);
+                    ctx.clientRuntime.updateConfig(app);
                 }
 
-                // If startClientWorkload is active and client is not running, auto-start client traffic
-                if (app.enabled && app.startup?.startClientWorkload === true && ctx.metrics.clientSessionCount === 0 && (app.peers || []).length > 0) {
-                    this.startClient(app.id).catch(err => {
+                // If startClientWorkload is active and client is not yet running, auto-start client traffic
+                if (app.enabled && app.startup?.startClientWorkload === true && !ctx.metrics.clientWorkloadRunning && (app.peers || []).length > 0) {
+                    this.startClient(app.id, undefined, false).catch(err => {
                         console.error(`[CUSTOM_TCP_MGR] Hot-reload client autostart failed for "${app.name}":`, err.message);
                     });
                 }

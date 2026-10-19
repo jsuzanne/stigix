@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.0.53] - 2026-10-19
+
+### Fixed
+- **Live Session Reconciliation & Fleet Hot-Reload for Custom TCP Applications (`tcp-client-runtime.ts`, `tcp-app-manager.ts`, `provisioning-manager.ts`, `api-routes.ts`)**:
+  - **Dynamic Runtime Session Reconciliation (`reconcileRunningSessions`)**: When a running Custom TCP Application's peer list or stream count is updated (locally or via Leader push), `TcpClientRuntime` now keeps existing sessions to unchanged peers open, immediately spawns new sessions for newly added/enabled peers (such as adding a new branch site), and cleanly closes obsolete sessions for removed/disabled peers—eliminating the need to manually Stop/Start the client on every peer in the fleet.
+  - **Complete `hotReload()` Propagation**: `TcpAppManager.hotReload()` now forwards updated application configurations directly to both `serverRuntime.updateConfig(app)` and `clientRuntime.updateConfig(app)` on existing app instances.
+  - **Authoritative Peer Topology Sync & Leader Auto-Sync**: `ProvisioningManager.applyGlobalBundle` now applies the Leader's `peers` topology authoritatively across peers, and Custom TCP App CRUD endpoints (`POST`, `PUT`, `DELETE`, `duplicate`, `import`, `peers`) now trigger the Leader's 2.5s fleet Auto-Sync automatically upon saving.
+- **Static Session Filter Bar without Horizontal Layout Shift (`CustomApps.tsx`)**:
+  - Made the `Issues` filter button always statically rendered with fixed-width `tabular-nums` counters so that transient `DELAYED` or `DEGRADED` session states never shift the `[ Outgoing | Split | Incoming ]` or `[ All | Up | Issues ]` controls horizontally.
+
 ## [3.0.52] - 2026-10-19
 
 ### Changed

@@ -791,20 +791,10 @@ export class ProvisioningManager {
                 for (const gApp of incomingApps) {
                     const localApp = localAppMap.get(gApp.id);
                     if (localApp) {
-                        // Merge application definition from Leader with local peer configurations
-                        let effectivePeers = localApp.peers ? [...localApp.peers] : [];
-                        if ((!effectivePeers || effectivePeers.length === 0) && gApp.peers && gApp.peers.length > 0) {
-                            effectivePeers = [...gApp.peers];
-                        } else if (gApp.peers && gApp.peers.length > 0) {
-                            // Merge: preserve local peer entries, but add any new global peer from Leader if not present locally
-                            const localPeerKeys = new Set(effectivePeers.map((p: any) => p.id || `${p.host}:${p.port}`));
-                            for (const gp of gApp.peers) {
-                                const gpKey = gp.id || `${gp.host}:${gp.port}`;
-                                if (!localPeerKeys.has(gpKey)) {
-                                    effectivePeers.push(gp);
-                                }
-                            }
-                        }
+                        // Use Leader's peer topology authoritatively when provided so peer additions, edits, and removals propagate across the mesh
+                        const effectivePeers = Array.isArray(gApp.peers)
+                            ? [...gApp.peers]
+                            : (localApp.peers ? [...localApp.peers] : []);
 
                         mergedApps.push({
                             ...gApp,

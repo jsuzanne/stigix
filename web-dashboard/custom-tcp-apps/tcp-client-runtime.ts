@@ -150,11 +150,113 @@ export class TcpClientRuntime extends EventEmitter {
 
     public updateConfig(newConfig: CustomTcpApplicationConfig): void {
         this.appConfig = newConfig;
+        if (this.isRunning) {
+            this.reconcileRunningSessions();
+        }
     }
 
     public updateIdentity(newIdentity: InstanceIdentityConfig): void {
         this.localIdentity.siteName = newIdentity.siteName;
         this.localIdentity.displayName = newIdentity.displayName;
+        if (this.isRunning) {
+            this.reconcileRunningSessions();
+        }
+    }
+
+    private getEffectiveEnabledPeers(targetPeerIds?: string[]): PeerConfig[] {
+        const allConfiguredPeers = (this.appConfig.peers || []).filter(
+            p => p.enabled !== false && (!targetPeerIds || targetPeerIds.includes(p.id))
+        );
+
+        // Auto-exclusion: if there are multiple peers in the mesh, filter out self to avoid local loopback traffic
+        let enabledPeers = allConfiguredPeers.filter(p => {
+            const isSelf = this.isSelfPeer(p);
+            if (isSelf && allConfiguredPeers.length > 1) {
+                console.log(`[CUSTOM_TCP_CLIENT] Auto-excluded local self peer "${p.name || p.siteName || p.host}" from outgoing workload for app "${this.appConfig.name}".`);
+                return false;
+            }
+            return true;
+        });
+
+        // Fallback: If only self was configured (e.g. standalone single-node test), keep it so user can still test
+        if (enabledPeers.length === 0 && allConfiguredPeers.length > 0) {
+            enabledPeers = allConfiguredPeers;
+        }
+        return enabledPeers;
+    }
+
+    private closeAndRemoveSession(session: ActiveClientSession, reason: string = 'Client stopping'): void {
+        session.isStopping = true;
+        if (session.reconnectTimer) clearTimeout(session.reconnectTimer);
+        if (session.workloadTimer) clearTimeout(session.workloadTimer);
+        for (const req of session.pendingRequests.values()) {
+            clearTimeout(req.timer);
+        }
+        session.pendingRequests.clear();
+
+        if (session.socket && !session.socket.destroyed) {
+            try {
+                if (this.appConfig.protocol !== 'http_1_1') {
+                    session.socket.write(encodeFrame(buildClientClose({ clientSessionId: session.sessionId, reason })));
+                }
+                session.socket.destroy();
+            } catch {}
+        }
+        this.sessions.delete(session.sessionId);
+    }
+
+    /**
+     * Dynamically reconciles active outgoing sessions when application config or peer list changes at runtime.
+     * - Spawns sessions for newly added or enabled peers immediately without restarting existing sessions.
+     * - Closes sessions for removed, disabled, or endpoint-changed peers.
+     * - Adjusts stream count if connectionsPerPeer / connectionsOverride changed.
+     */
+    private reconcileRunningSessions(): void {
+        if (!this.isRunning) return;
+
+        const desiredPeers = this.getEffectiveEnabledPeers();
+        const preExistingSessions = Array.from(this.sessions.entries());
+        const claimedSessionIds = new Set<string>();
+
+        for (const peer of desiredPeers) {
+            const desiredConns = peer.connectionsOverride || this.appConfig.clientDefaults?.connectionsPerPeer || 2;
+
+            // Find existing sessions matching this peer with the exact same host & port
+            const matchingSessions = preExistingSessions
+                .map(([, s]) => s)
+                .filter(s =>
+                    !claimedSessionIds.has(s.sessionId) &&
+                    s.peer.host === peer.host &&
+                    Number(s.peer.port) === Number(peer.port) &&
+                    (s.peer.id === peer.id || `${s.peer.host}:${s.peer.port}` === `${peer.host}:${peer.port}`)
+                );
+
+            // Keep up to desiredConns existing sessions and update their peer metadata
+            const keptSessions = matchingSessions.slice(0, desiredConns);
+            for (const s of keptSessions) {
+                claimedSessionIds.add(s.sessionId);
+                s.peer = peer;
+                s.state.peerId = peer.id;
+                s.state.peerName = peer.name;
+            }
+
+            // If we need more sessions (e.g. newly added peer like BR8, or increased stream count), spawn them now
+            const deficit = desiredConns - keptSessions.length;
+            if (deficit > 0) {
+                console.log(`[CUSTOM_TCP_CLIENT] ➕ Hot-spawning ${deficit} session(s) to peer "${peer.name || peer.host}:${peer.port}" for app "${this.appConfig.name}".`);
+                for (let i = 0; i < deficit; i++) {
+                    this.spawnSession(peer);
+                }
+            }
+        }
+
+        // Any pre-existing session not claimed by the desired peers (removed peer, disabled peer, or excess stream) is cleanly closed
+        for (const [sessionId, session] of preExistingSessions) {
+            if (!claimedSessionIds.has(sessionId)) {
+                console.log(`[CUSTOM_TCP_CLIENT] ➖ Closing obsolete session "${sessionId}" to peer "${session.peer.name || session.peer.host}:${session.peer.port}" for app "${this.appConfig.name}".`);
+                this.closeAndRemoveSession(session, 'Peer removed or configuration updated');
+            }
+        }
     }
 
     /**
@@ -218,24 +320,7 @@ export class TcpClientRuntime extends EventEmitter {
         this.isRunning = true;
         this.metricsTracker.clientWorkloadRunning = true;
 
-        const allConfiguredPeers = (this.appConfig.peers || []).filter(
-            p => p.enabled && (!targetPeerIds || targetPeerIds.includes(p.id))
-        );
-
-        // Auto-exclusion: if there are multiple peers in the mesh, filter out self to avoid local loopback traffic
-        let enabledPeers = allConfiguredPeers.filter(p => {
-            const isSelf = this.isSelfPeer(p);
-            if (isSelf && allConfiguredPeers.length > 1) {
-                console.log(`[CUSTOM_TCP_CLIENT] Auto-excluded local self peer "${p.name || p.siteName || p.host}" from outgoing workload for app "${this.appConfig.name}".`);
-                return false;
-            }
-            return true;
-        });
-
-        // Fallback: If only self was configured (e.g. standalone single-node test), keep it so user can still test
-        if (enabledPeers.length === 0 && allConfiguredPeers.length > 0) {
-            enabledPeers = allConfiguredPeers;
-        }
+        const enabledPeers = this.getEffectiveEnabledPeers(targetPeerIds);
 
         for (const peer of enabledPeers) {
             const conns = peer.connectionsOverride || this.appConfig.clientDefaults.connectionsPerPeer || 2;
@@ -249,21 +334,8 @@ export class TcpClientRuntime extends EventEmitter {
         this.isRunning = false;
         this.metricsTracker.clientWorkloadRunning = false;
 
-        for (const [id, session] of this.sessions.entries()) {
-            session.isStopping = true;
-            if (session.reconnectTimer) clearTimeout(session.reconnectTimer);
-            if (session.workloadTimer) clearTimeout(session.workloadTimer);
-            for (const req of session.pendingRequests.values()) {
-                clearTimeout(req.timer);
-            }
-            session.pendingRequests.clear();
-
-            if (session.socket && !session.socket.destroyed) {
-                try {
-                    session.socket.write(encodeFrame(buildClientClose({ clientSessionId: id, reason: 'Client stopping' })));
-                    session.socket.destroy();
-                } catch {}
-            }
+        for (const session of Array.from(this.sessions.values())) {
+            this.closeAndRemoveSession(session, 'Client stopping');
         }
         this.sessions.clear();
     }
