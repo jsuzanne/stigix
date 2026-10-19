@@ -1538,7 +1538,7 @@ func runIoTCLI(args []string) {
 
 	_ = fs.Parse(args)
 
-	iotJSONOutput = jsonOut
+	iotJSONOutput = jsonOut || daemonMode
 	iotBadBehaviorGlob.Store(enableBad)
 
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
