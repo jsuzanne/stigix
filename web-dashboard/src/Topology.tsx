@@ -664,9 +664,14 @@ const SiteNode = ({ data }: any) => {
                     <span className="text-[8.5px] px-1.5 py-0.2 rounded bg-amber-600/20 dark:bg-amber-500/20 border border-amber-600/45 dark:border-amber-400/30 text-amber-950 dark:text-amber-200 font-bold">
                         {lr.lanInterfaceName || 'LAN'}{shortVyosIp ? ` (${shortVyosIp})` : ''}
                     </span>
-                    {activeQos && (
-                        <span className="px-1.5 py-0.2 rounded bg-amber-600/25 dark:bg-amber-500/35 border border-amber-600/50 dark:border-amber-300/60 text-[8.5px] text-amber-950 dark:text-amber-100 font-black">
-                            +{activeQos.latency || 0}ms{activeQos.loss ? ` ${activeQos.loss}%` : ''}
+                    {(activeQos?.latency ?? 0) > 0 && (
+                        <span className="px-1.5 py-0.2 rounded bg-amber-600/25 dark:bg-amber-500/35 border border-amber-600/50 dark:border-amber-300/60 text-[8.5px] text-amber-950 dark:text-amber-100 font-black whitespace-nowrap">
+                            ⏱️ +{activeQos?.latency}ms
+                        </span>
+                    )}
+                    {(activeQos?.loss ?? 0) > 0 && (
+                        <span className="px-1.5 py-0.2 rounded bg-orange-600/25 dark:bg-orange-500/35 border border-orange-600/50 dark:border-orange-300/60 text-[8.5px] text-orange-950 dark:text-orange-100 font-black whitespace-nowrap">
+                            📉 {activeQos?.loss}%
                         </span>
                     )}
                     {hasShut && (
@@ -1205,7 +1210,7 @@ const VyOSRouterNode = ({ data }: any) => {
                     }
                 }}
                 className={cn(
-                    "relative px-4 py-3 rounded-2xl border text-[11px] transition-all flex flex-col justify-between group/port min-w-[195px] max-w-[230px] min-h-[76px] gap-1.5 shadow-sm",
+                    "relative px-4 py-3 rounded-2xl border text-[11px] transition-all flex flex-col justify-between group/port min-w-[205px] max-w-[260px] min-h-[76px] gap-1.5 shadow-sm",
                     isConnected 
                         ? (isBlocked
                             ? "bg-rose-950/20 border-rose-500 hover:border-rose-400 hover:bg-rose-950/30 shadow-md shadow-rose-500/20 ring-1 ring-rose-500/50 cursor-pointer"
@@ -1224,20 +1229,25 @@ const VyOSRouterNode = ({ data }: any) => {
                     className="!w-3.5 !h-1.5 !bg-amber-500 dark:!bg-amber-400 !border !border-card !rounded-sm"
                 />
 
-                <div className="flex items-center justify-between pb-1 border-b border-border/50">
-                    <span className="font-mono font-black text-amber-700 dark:text-amber-400 flex items-center gap-1.5">
+                <div className="flex items-center justify-between pb-1 border-b border-border/50 gap-1.5">
+                    <span className="font-mono font-black text-amber-700 dark:text-amber-400 flex items-center gap-1.5 shrink-0">
                         <span className={cn("w-2.5 h-2.5 rounded-full", isConnected ? (isIfaceUp ? "bg-green-500 shadow-[0_0_6px_rgba(34,197,94,0.8)]" : "bg-red-500 shadow-[0_0_6px_rgba(239,68,68,0.8)]") : "bg-slate-400 dark:bg-slate-600")} />
                         {iface.name}
                     </span>
-                    <div className="flex items-center gap-1">
+                    <div className="flex items-center gap-1 flex-wrap justify-end">
                         {isBlocked && (
-                            <span className="text-[8px] font-black px-1.5 py-0.2 rounded bg-rose-500/20 text-rose-700 dark:text-rose-400 border border-rose-500/40 flex items-center gap-0.5 animate-pulse" title="Traffic to this endpoint is blocked by router-level blackhole rule">
+                            <span className="text-[8px] font-black px-1.5 py-0.2 rounded bg-rose-500/20 text-rose-700 dark:text-rose-400 border border-rose-500/40 flex items-center gap-0.5 animate-pulse whitespace-nowrap" title="Traffic to this endpoint is blocked by router-level blackhole rule">
                                 <ShieldAlert size={9} /> DENIED
                             </span>
                         )}
-                        {hasQos && (
-                            <span className="text-[8px] font-black px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-800 dark:text-amber-300 border border-amber-600/45 dark:border-amber-500/40">
-                                ⏱️ +{portQos.latency || 0}ms
+                        {hasQos && (portQos?.latency ?? 0) > 0 && (
+                            <span className="text-[8px] font-black px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-800 dark:text-amber-300 border border-amber-600/45 dark:border-amber-500/40 whitespace-nowrap" title={`Injected Latency: +${portQos?.latency}ms`}>
+                                ⏱️ +{portQos?.latency}ms
+                            </span>
+                        )}
+                        {hasQos && (portQos?.loss ?? 0) > 0 && (
+                            <span className="text-[8px] font-black px-1.5 py-0.2 rounded bg-orange-500/20 text-orange-800 dark:text-orange-300 border border-orange-600/45 dark:border-orange-500/40 whitespace-nowrap" title={`Injected Packet Loss: ${portQos?.loss}%`}>
+                                📉 {portQos?.loss}%
                             </span>
                         )}
                         {isConnected && (
@@ -1428,15 +1438,20 @@ const VyOSLanRouterNode = ({ data }: any) => {
                         )} />
                         {item.name}
                     </span>
-                    <div className="flex items-center gap-1">
+                    <div className="flex items-center gap-1 flex-wrap justify-end">
                         {!isIfaceUp && (
-                            <span className="text-[8px] font-black px-1.5 py-0.2 rounded bg-rose-500/25 text-rose-700 dark:text-rose-400 border border-rose-500/40">
+                            <span className="text-[8px] font-black px-1.5 py-0.2 rounded bg-rose-500/25 text-rose-700 dark:text-rose-400 border border-rose-500/40 whitespace-nowrap">
                                 SHUT
                             </span>
                         )}
-                        {hasQos && (
-                            <span className="text-[8px] font-black px-1.5 py-0.2 rounded bg-amber-500/25 text-amber-800 dark:text-amber-300 border border-amber-600/45 dark:border-amber-500/40">
-                                ⏱️ +{portQos.latency || 0}ms{portQos.loss ? ` ${portQos.loss}%` : ''}
+                        {hasQos && (portQos?.latency ?? 0) > 0 && (
+                            <span className="text-[8px] font-black px-1.5 py-0.2 rounded bg-amber-500/25 text-amber-800 dark:text-amber-300 border border-amber-600/45 dark:border-amber-500/40 whitespace-nowrap" title={`Injected Latency: +${portQos?.latency}ms`}>
+                                ⏱️ +{portQos?.latency}ms
+                            </span>
+                        )}
+                        {hasQos && (portQos?.loss ?? 0) > 0 && (
+                            <span className="text-[8px] font-black px-1.5 py-0.2 rounded bg-orange-500/25 text-orange-800 dark:text-orange-300 border border-orange-600/45 dark:border-orange-500/40 whitespace-nowrap" title={`Injected Packet Loss: ${portQos?.loss}%`}>
+                                📉 {portQos?.loss}%
                             </span>
                         )}
                         <span className={cn("text-[8px] font-black px-1.5 py-0.2 rounded border uppercase whitespace-nowrap", badgeClass)}>
@@ -2132,18 +2147,23 @@ function TopologyContent({ token, theme }: TopologyProps) {
                     <span className="text-[10px] font-black uppercase text-amber-600 dark:text-amber-400 tracking-wider flex items-center gap-1.5">
                         <Zap size={13} className="fill-amber-500" /> VyOS Interactive Actions
                     </span>
-                    <div className="flex items-center gap-1.5">
-                        {hasActiveQos && (
-                            <span className="px-2 py-0.5 rounded-md bg-amber-500/20 text-amber-400 border border-amber-500/40 text-[9px] font-mono font-bold flex items-center gap-1">
-                                <Sliders size={10} /> +{activeQos?.latency || 0}ms{activeQos?.loss ? ` ${activeQos.loss}%` : ''}
+                    <div className="flex items-center gap-1.5 flex-wrap justify-end">
+                        {hasActiveQos && (activeQos?.latency ?? 0) > 0 && (
+                            <span className="px-2 py-0.5 rounded-md bg-amber-500/20 text-amber-400 border border-amber-500/40 text-[9px] font-mono font-bold flex items-center gap-1 whitespace-nowrap">
+                                ⏱️ +{activeQos?.latency}ms
+                            </span>
+                        )}
+                        {hasActiveQos && (activeQos?.loss ?? 0) > 0 && (
+                            <span className="px-2 py-0.5 rounded-md bg-orange-500/20 text-orange-400 border border-orange-500/40 text-[9px] font-mono font-bold flex items-center gap-1 whitespace-nowrap">
+                                📉 {activeQos?.loss}% loss
                             </span>
                         )}
                         {isShut && (
-                            <span className="px-2 py-0.5 rounded-md bg-rose-500/20 text-rose-500 border border-rose-500/30 text-[9px] font-mono font-bold flex items-center gap-1">
+                            <span className="px-2 py-0.5 rounded-md bg-rose-500/20 text-rose-500 border border-rose-500/30 text-[9px] font-mono font-bold flex items-center gap-1 whitespace-nowrap">
                                 <Power size={10} /> SHUT
                             </span>
                         )}
-                        <span className="text-[9px] font-mono px-2 py-0.5 rounded-md bg-amber-500/15 text-amber-700 dark:text-amber-300 font-bold border border-amber-500/20">
+                        <span className="text-[9px] font-mono px-2 py-0.5 rounded-md bg-amber-500/15 text-amber-700 dark:text-amber-300 font-bold border border-amber-500/20 whitespace-nowrap">
                             {routerName}:{iface}
                         </span>
                     </div>
@@ -2893,6 +2913,9 @@ function TopologyContent({ token, theme }: TopologyProps) {
                             ? existing.address
                             : (ipCidr ? [ipCidr] : []);
                         
+                        const liveStatus = getVyosInterfaceStatus(routerName, res.vyos.interfaceName);
+                        const liveQos = getVyosInterfaceQos(routerName, res.vyos.interfaceName);
+
                         ifaceMap.set(res.vyos.interfaceName, {
                             ...existing,
                             name: res.vyos.interfaceName,
@@ -2900,8 +2923,8 @@ function TopologyContent({ token, theme }: TopologyProps) {
                             address: addresses,
                             ipCidr: ipCidr,
                             ip: res.vyos.ip || existing.ip || (ipCidr ? ipCidr.split('/')[0] : undefined),
-                            status: res.vyos.status || existing.status || 'up',
-                            qos: res.vyos.qos || existing.qos || null
+                            status: liveStatus || res.vyos.status || existing.status || 'up',
+                            qos: liveQos !== undefined ? liveQos : (res.vyos.qos || existing.qos || null)
                         });
                     }
                 });
@@ -3483,7 +3506,7 @@ function TopologyContent({ token, theme }: TopologyProps) {
 
         setNodes(newNodes);
         setEdges(newEdges);
-    }, [logicalViewSiteId, selectedNetwork, setNodes, setEdges, visibleSiteIds, isHubLike, siteHubStatus, topologyViewMode, underlayData, fleetNodes, pathFilter, bgLayout, showBranchMesh, hasPureHubs, effectiveBgAsHub, getVyosInterfaceStatus, siteLanVyosMap]);
+    }, [logicalViewSiteId, selectedNetwork, setNodes, setEdges, visibleSiteIds, isHubLike, siteHubStatus, topologyViewMode, underlayData, fleetNodes, pathFilter, bgLayout, showBranchMesh, hasPureHubs, effectiveBgAsHub, getVyosInterfaceStatus, getVyosInterfaceQos, siteLanVyosMap]);
 
     const fetchTopology = useCallback(async () => {
         if (!topology) {

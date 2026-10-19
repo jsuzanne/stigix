@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.0.56] - 2026-10-19
+
+### Changed
+- **Distinct Latency & Packet Loss QoS Badges in Topology (`Topology.tsx`)**:
+  - Added separate single-line badges for injected **Latency** (`⏱️ +Xms` in amber) and **Packet Loss** (`📉 Y%` in orange) across WAN backbone port cards (`VyOSRouterNode`), LAN VyOS port cards (`VyOSLanRouterNode`), site LAN VyOS chips (`SiteNode`), and the interactive port control modal (`renderVyosControls`).
+  - Wired live optimistic `getVyosInterfaceQos` and `getVyosInterfaceStatus` state directly into `VyOSRouterNode` interface resolution so QoS/shut updates reflect immediately on the canvas.
+
 ## [3.0.55] - 2026-10-19
 
 ### Changed
