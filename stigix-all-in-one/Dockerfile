@@ -6,6 +6,12 @@ RUN npm ci
 COPY web-dashboard/ ./
 RUN npm run build
 
+# Build Stage for Native Go Engine (stigix-go)
+FROM golang:1.22-bookworm AS go-builder
+WORKDIR /src
+COPY engines/stigix-go/ ./
+RUN CGO_ENABLED=0 go build -ldflags="-s -w" -o /usr/local/bin/stigix-go .
+
 # Final Stage
 FROM python:3.12-slim
 
@@ -94,6 +100,7 @@ ENV BUILD_DATE=${BUILD_DATE}
 RUN if [ -n "$VERSION" ]; then echo "$VERSION" > VERSION; fi
 
 # Copy components
+COPY --from=go-builder /usr/local/bin/stigix-go /usr/local/bin/stigix-go
 COPY engines ./engines
 COPY vyos ./vyos
 COPY iot ./iot

@@ -557,6 +557,7 @@ interface SystemSettings {
     auto_sync_probes_to_fleet?: boolean; // Auto-push configuration bundles (probes, apps) to peers with debounce
     pcap_max_auto_sync_mb?: number;
     registry_mode?: 'auto' | 'leader' | 'peer';
+    engine_runtime?: 'legacy' | 'go'; // Data-plane engine runtime selector (requires ENABLE_GO_ENGINE=true)
 }
 const DEFAULT_SYSTEM_SETTINGS: SystemSettings = {
     auto_restart_iot: false,
@@ -568,15 +569,39 @@ const DEFAULT_SYSTEM_SETTINGS: SystemSettings = {
     auto_sync_probes_to_fleet: true, // Default enabled: auto-push changes to fleet with debounce
     pcap_max_auto_sync_mb: 10,     // Auto-sync threshold for PCAP profiles (<= 50MB, safety ratio of WS buffer)
     registry_mode: 'auto',
+    engine_runtime: 'legacy',
 };
+function isGoEngineFeatureEnabled(): boolean {
+    return process.env.ENABLE_GO_ENGINE === 'true' || process.env.ENABLE_GO_ENGINE === '1';
+}
+function resolveGoEngineBinary(): string | null {
+    const candidates = [
+        '/usr/local/bin/stigix-go',
+        path.join(PROJECT_ROOT, 'engines', 'stigix-go', 'stigix-go'),
+        '/tmp/stigix-go',
+    ];
+    for (const c of candidates) {
+        if (fs.existsSync(c)) return c;
+    }
+    return null;
+}
 function getSystemSettings(): SystemSettings {
     try {
         if (fs.existsSync(SYSTEM_SETTINGS_FILE)) {
             const raw = JSON.parse(fs.readFileSync(SYSTEM_SETTINGS_FILE, 'utf8'));
-            return { ...DEFAULT_SYSTEM_SETTINGS, ...raw };
+            const merged: SystemSettings = { ...DEFAULT_SYSTEM_SETTINGS, ...raw };
+            if (!isGoEngineFeatureEnabled()) {
+                merged.engine_runtime = 'legacy';
+            }
+            return merged;
         }
     } catch (e) { }
     return { ...DEFAULT_SYSTEM_SETTINGS };
+}
+function getEffectiveEngineRuntime(): 'legacy' | 'go' {
+    if (!isGoEngineFeatureEnabled()) return 'legacy';
+    const s = getSystemSettings();
+    return s.engine_runtime === 'go' && resolveGoEngineBinary() ? 'go' : 'legacy';
 }
 function saveSystemSettings(settings: Partial<SystemSettings>): SystemSettings {
     const current = getSystemSettings();
@@ -2984,7 +3009,9 @@ app.get('/api/features', (req, res) => {
         targets: targetsManager.getMergedTargets(),   // shared targets registry
         enablePcapReplay: process.env.ENABLE_PCAP_REPLAY === 'true',
         snapshots_enabled: process.env.ENABLE_CHANGE_SNAPSHOTS === 'true',
-        enableChangeSnapshots: process.env.ENABLE_CHANGE_SNAPSHOTS === 'true'
+        enableChangeSnapshots: process.env.ENABLE_CHANGE_SNAPSHOTS === 'true',
+        enableGoEngine: isGoEngineFeatureEnabled(),
+        engineRuntime: getEffectiveEngineRuntime()
     });
 });
 
@@ -3132,7 +3159,9 @@ app.get('/api/config/ui', (req, res) => {
         refreshInterval: parseInt(process.env.DASHBOARD_REFRESH_MS || '1000'),
         maxCaptures,
         globalScoreTypes,
-        enablePcapReplay: process.env.ENABLE_PCAP_REPLAY === 'true'
+        enablePcapReplay: process.env.ENABLE_PCAP_REPLAY === 'true',
+        enableGoEngine: isGoEngineFeatureEnabled(),
+        engineRuntime: getEffectiveEngineRuntime()
     });
 });
 
@@ -6585,26 +6614,40 @@ app.post('/api/convergence/start', authenticateToken, (req, res) => {
     const displayId = label ? `${testId} (${label})` : testId;
     const statsFile = `/tmp/convergence_stats_${testId}.json`;
 
+    const activeRuntime = getEffectiveEngineRuntime();
+    const goBin = activeRuntime === 'go' ? resolveGoEngineBinary() : null;
     const orchestratorPath = path.join(PROJECT_ROOT, 'engines', 'convergence_orchestrator.py');
 
-    if (!fs.existsSync(orchestratorPath)) {
+    if (!goBin && !fs.existsSync(orchestratorPath)) {
         return res.status(500).json({ error: `Convergence orchestrator script missing at ${orchestratorPath}` });
     }
 
-    const args = [
-        orchestratorPath,
-        '--target', target,
-        '--port', (port || 6100).toString(),
-        '--rate', (rate || 50).toString(),
-        '--id', displayId,
-        '--stats-file', statsFile
-    ];
+    const spawnBin = goBin ? goBin : PYTHON_PATH;
+    const args = goBin
+        ? [
+            'convergence',
+            '--target', target,
+            '--port', (port || 6100).toString(),
+            '--rate', (rate || 50).toString(),
+            '--id', displayId,
+            '--stats-file', statsFile
+        ]
+        : [
+            orchestratorPath,
+            '--target', target,
+            '--port', (port || 6100).toString(),
+            '--rate', (rate || 50).toString(),
+            '--id', displayId,
+            '--stats-file', statsFile
+        ];
 
-    const cmdStr = `python3 convergence_orchestrator.py -D ${target} -dport ${port || 6100} --rate ${rate || 50}pps --label "${label || ''}"`;
-    console.log(`[${testId}] [${timestamp}] 🚀 Executing: ${cmdStr}`);
+    const cmdStr = goBin
+        ? `stigix-go convergence -D ${target} -dport ${port || 6100} --rate ${rate || 50}pps --label "${label || ''}"`
+        : `python3 convergence_orchestrator.py -D ${target} -dport ${port || 6100} --rate ${rate || 50}pps --label "${label || ''}"`;
+    console.log(`[${testId}] [${timestamp}] 🚀 Executing (${activeRuntime}): ${cmdStr}`);
 
     try {
-        const proc = spawn(PYTHON_PATH, args, { env: { ...process.env, PYTHONUNBUFFERED: '1' } });
+        const proc = spawn(spawnBin, args, { env: { ...process.env, PYTHONUNBUFFERED: '1' } });
         convergenceProcesses.set(testId, proc);
         convergencePPS.set(testId, requestedPPS);
         if (effectiveGlobalId) {
@@ -17986,6 +18029,272 @@ app.post('/api/config/system-settings', authenticateToken, async (req, res) => {
         res.status(500).json({ error: 'Failed to save system settings', detail: e.message });
     }
 });
+
+// ── Engine Runtime Benchmark & Hot-Switch (Legacy Python/Bash vs Go Native) ──
+const ENGINE_BENCHMARK_SNAPSHOTS_FILE = '/tmp/engine-benchmark-snapshots.json';
+let standaloneGoProcess: any = null;
+
+interface EngineFootprintSnapshot {
+    mode: 'legacy' | 'go';
+    rss_mb: number;
+    cpu_pct: number;
+    process_count: number;
+    goroutines?: number;
+    heap_alloc_mb?: number;
+    sys_mem_mb?: number;
+    active_http_workers?: number;
+    active_voice_calls?: number;
+    active_echo_flows?: number;
+    total_http_reqs?: number;
+    total_rtp_packets?: number;
+    processes: Array<{ pid: number; name: string; rss_mb: number; cpu_pct: number; cmd: string }>;
+    captured_at: number;
+}
+
+function loadBenchmarkSnapshots(): { legacy?: EngineFootprintSnapshot; go?: EngineFootprintSnapshot } {
+    try {
+        if (fs.existsSync(ENGINE_BENCHMARK_SNAPSHOTS_FILE)) {
+            return JSON.parse(fs.readFileSync(ENGINE_BENCHMARK_SNAPSHOTS_FILE, 'utf8'));
+        }
+    } catch (e) { }
+    return {};
+}
+
+function saveBenchmarkSnapshot(snap: EngineFootprintSnapshot) {
+    try {
+        const cur = loadBenchmarkSnapshots();
+        cur[snap.mode] = snap;
+        fs.writeFileSync(ENGINE_BENCHMARK_SNAPSHOTS_FILE, JSON.stringify(cur, null, 2), 'utf8');
+    } catch (e) { }
+}
+
+function measureEngineFootprint(mode: 'legacy' | 'go'): EngineFootprintSnapshot {
+    const processes: Array<{ pid: number; name: string; rss_mb: number; cpu_pct: number; cmd: string }> = [];
+    let totalRssKb = 0;
+    let totalCpu = 0;
+
+    try {
+        const psOut = execSync('ps -eo pid,rss,pcpu,comm,args', { encoding: 'utf8', timeout: 2000 });
+        const lines = psOut.split('\n').slice(1);
+        for (const rawLine of lines) {
+            const line = rawLine.trim();
+            if (!line) continue;
+            const parts = line.split(/\s+/);
+            if (parts.length < 5) continue;
+            const pid = parseInt(parts[0], 10);
+            const rssKb = parseInt(parts[1], 10) || 0;
+            const cpu = parseFloat(parts[2]) || 0;
+            const comm = parts[3];
+            const args = parts.slice(4).join(' ');
+
+            if (pid === process.pid) continue;
+            if (args.includes('ps -eo')) continue;
+
+            if (mode === 'go') {
+                if (comm.includes('stigix-go') || args.includes('stigix-go')) {
+                    const rssMb = Math.round((rssKb / 1024) * 100) / 100;
+                    totalRssKb += rssKb;
+                    totalCpu += cpu;
+                    processes.push({ pid, name: 'stigix-go', rss_mb: rssMb, cpu_pct: Math.round(cpu * 10) / 10, cmd: args.slice(0, 90) });
+                }
+            } else {
+                const isLegacy =
+                    args.includes('traffic-generator.sh') ||
+                    args.includes('voice_orchestrator.py') ||
+                    args.includes('rtp.py') ||
+                    args.includes('echo_server.py') ||
+                    args.includes('http_server.py') ||
+                    args.includes('start_target.sh') ||
+                    args.includes('convergence_orchestrator.py') ||
+                    (comm === 'curl' && args.includes('--connect-timeout'));
+                if (isLegacy) {
+                    const rssMb = Math.round((rssKb / 1024) * 100) / 100;
+                    totalRssKb += rssKb;
+                    totalCpu += cpu;
+                    let label = comm;
+                    if (args.includes('traffic-generator.sh')) label = 'traffic-generator.sh';
+                    else if (args.includes('voice_orchestrator.py')) label = 'voice_orchestrator.py';
+                    else if (args.includes('rtp.py')) label = 'rtp.py (call)';
+                    else if (args.includes('echo_server.py')) label = 'echo_server.py';
+                    else if (args.includes('http_server.py')) label = 'http_server.py (Flask)';
+                    else if (args.includes('start_target.sh')) label = 'start_target.sh';
+                    else if (args.includes('convergence_orchestrator.py')) label = 'convergence_orchestrator.py';
+                    processes.push({ pid, name: label, rss_mb: rssMb, cpu_pct: Math.round(cpu * 10) / 10, cmd: args.slice(0, 90) });
+                }
+            }
+        }
+    } catch (e) { }
+
+    const snap: EngineFootprintSnapshot = {
+        mode,
+        rss_mb: Math.round((totalRssKb / 1024) * 100) / 100,
+        cpu_pct: Math.round(totalCpu * 10) / 10,
+        process_count: processes.length,
+        processes,
+        captured_at: Date.now(),
+    };
+
+    if (mode === 'go') {
+        try {
+            if (fs.existsSync('/tmp/stigix-go-metrics.json')) {
+                const gm = JSON.parse(fs.readFileSync('/tmp/stigix-go-metrics.json', 'utf8'));
+                snap.goroutines = gm.goroutines;
+                snap.heap_alloc_mb = Math.round((gm.heap_alloc_mb || 0) * 100) / 100;
+                snap.sys_mem_mb = Math.round((gm.sys_mem_mb || 0) * 100) / 100;
+                snap.active_http_workers = gm.active_http_workers;
+                snap.active_voice_calls = gm.active_voice_calls;
+                snap.active_echo_flows = gm.active_echo_flows;
+                snap.total_http_reqs = gm.total_http_reqs;
+                snap.total_rtp_packets = gm.total_rtp_packets;
+            }
+        } catch (e) { }
+    }
+
+    return snap;
+}
+
+async function applyEngineRuntimeSwitch(targetMode: 'legacy' | 'go'): Promise<{ switched: boolean; message: string }> {
+    if (targetMode === 'go' && !isGoEngineFeatureEnabled()) {
+        throw new Error('Mandatory feature flag ENABLE_GO_ENGINE=true is not enabled in .env');
+    }
+    const goBin = resolveGoEngineBinary();
+    if (targetMode === 'go' && !goBin) {
+        throw new Error('stigix-go binary not found (/usr/local/bin/stigix-go). Rebuild the container or compile engines/stigix-go.');
+    }
+
+    const hasSupervisor = fs.existsSync('/var/run/supervisor.sock');
+
+    if (targetMode === 'go') {
+        // Capture current legacy baseline before stopping
+        const legacySnap = measureEngineFootprint('legacy');
+        if (legacySnap.process_count > 0) {
+            saveBenchmarkSnapshot(legacySnap);
+        }
+
+        if (hasSupervisor) {
+            try { execSync('supervisorctl stop traffic-gen voice-gen voice-echo', { timeout: 8000 }); } catch (e) { }
+        }
+        // Clean up any lingering legacy worker processes
+        for (const pat of ['traffic-generator.sh', 'voice_orchestrator.py', 'rtp.py', 'echo_server.py', 'http_server.py']) {
+            try { execSync(`pkill -9 -f "${pat}" || true`, { timeout: 2000 }); } catch (e) { }
+        }
+
+        if (hasSupervisor) {
+            try { execSync('supervisorctl start stigix-go', { timeout: 8000 }); } catch (e) { }
+        } else if (goBin) {
+            if (standaloneGoProcess) {
+                try { standaloneGoProcess.kill('SIGTERM'); } catch (e) { }
+                standaloneGoProcess = null;
+            }
+            standaloneGoProcess = spawn(goBin, ['daemon'], {
+                env: { ...process.env, ENABLE_GO_ENGINE: 'true', CONFIG_DIR: APP_CONFIG.configDir, LOG_DIR: APP_CONFIG.logDir },
+                stdio: 'ignore',
+                detached: true
+            });
+            standaloneGoProcess.unref();
+        }
+
+        saveSystemSettings({ engine_runtime: 'go' });
+        log('SYSTEM', '🚀 Switched Data-Plane Engine Runtime to Native Go (stigix-go)');
+        return { switched: true, message: 'Switched to High-Performance Go Engine (stigix-go)' };
+    } else {
+        // Capture current go baseline before stopping
+        const goSnap = measureEngineFootprint('go');
+        if (goSnap.process_count > 0) {
+            saveBenchmarkSnapshot(goSnap);
+        }
+
+        if (hasSupervisor) {
+            try { execSync('supervisorctl stop stigix-go', { timeout: 8000 }); } catch (e) { }
+        }
+        if (standaloneGoProcess) {
+            try { standaloneGoProcess.kill('SIGTERM'); } catch (e) { }
+            standaloneGoProcess = null;
+        }
+        try { execSync('pkill -f "stigix-go daemon" || true', { timeout: 2000 }); } catch (e) { }
+
+        if (hasSupervisor) {
+            try { execSync('supervisorctl start traffic-gen voice-gen voice-echo', { timeout: 8000 }); } catch (e) { }
+        }
+
+        saveSystemSettings({ engine_runtime: 'legacy' });
+        log('SYSTEM', '🔄 Switched Data-Plane Engine Runtime to Legacy (Python/Bash)');
+        return { switched: true, message: 'Switched to Legacy Engine (Python + Bash)' };
+    }
+}
+
+app.get('/api/system/engine-runtime', authenticateToken, (_req, res) => {
+    const featureFlagEnabled = isGoEngineFeatureEnabled();
+    const goBinaryPath = resolveGoEngineBinary();
+    const activeRuntime = getEffectiveEngineRuntime();
+    const liveFootprint = measureEngineFootprint(activeRuntime);
+    if (liveFootprint.process_count > 0) {
+        saveBenchmarkSnapshot(liveFootprint);
+    }
+    const snapshots = loadBenchmarkSnapshots();
+
+    res.json({
+        feature_flag_enabled: featureFlagEnabled,
+        go_binary_available: !!goBinaryPath,
+        go_binary_path: goBinaryPath,
+        active_runtime: activeRuntime,
+        configured_runtime: getSystemSettings().engine_runtime || 'legacy',
+        live: liveFootprint,
+        snapshots,
+    });
+});
+
+app.post('/api/system/engine-runtime/baseline', authenticateToken, (_req, res) => {
+    const activeRuntime = getEffectiveEngineRuntime();
+    const snap = measureEngineFootprint(activeRuntime);
+    saveBenchmarkSnapshot(snap);
+    res.json({
+        success: true,
+        active_runtime: activeRuntime,
+        snapshot: snap,
+        snapshots: loadBenchmarkSnapshots(),
+    });
+});
+
+app.post('/api/system/engine-runtime', authenticateToken, async (req, res) => {
+    try {
+        const { runtime } = req.body;
+        if (runtime !== 'legacy' && runtime !== 'go') {
+            return res.status(400).json({ error: 'runtime must be "legacy" or "go"' });
+        }
+        if (runtime === 'go' && !isGoEngineFeatureEnabled()) {
+            return res.status(403).json({
+                error: 'Go Engine is locked by mandatory feature flag.',
+                detail: 'Set ENABLE_GO_ENGINE=true in your .env file and restart the container to unlock the Go Engine switcher.'
+            });
+        }
+        const result = await applyEngineRuntimeSwitch(runtime);
+        // Wait 600ms for new processes to settle and emit initial telemetry
+        await new Promise(r => setTimeout(r, 600));
+        const liveFootprint = measureEngineFootprint(runtime);
+        if (liveFootprint.process_count > 0) {
+            saveBenchmarkSnapshot(liveFootprint);
+        }
+        res.json({
+            success: true,
+            active_runtime: runtime,
+            message: result.message,
+            live: liveFootprint,
+            snapshots: loadBenchmarkSnapshots(),
+        });
+    } catch (e: any) {
+        res.status(500).json({ error: e.message || 'Failed to switch engine runtime' });
+    }
+});
+
+// Boot-time reconciliation: if ENABLE_GO_ENGINE=true and persisted setting is 'go', activate stigix-go after boot
+setTimeout(() => {
+    if (isGoEngineFeatureEnabled() && getSystemSettings().engine_runtime === 'go' && resolveGoEngineBinary()) {
+        applyEngineRuntimeSwitch('go').catch(err => {
+            log('SYSTEM', `Failed to auto-activate Go engine at boot: ${err.message}`, 'warn');
+        });
+    }
+}, 4000);
 
 if (process.env.NODE_ENV === 'production') {
     // Static files

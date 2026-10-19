@@ -118,3 +118,6 @@ docs/screenshots/Videos/
 # Captured and Correlated Traces
 traces/
 .traces/
+
+# Compiled Go binaries
+engines/stigix-go/stigix-go

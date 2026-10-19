@@ -2,8 +2,11 @@
 
 All notable changes made specifically on the `v2` branch are documented in this file.
 
-## [v2.2.8] - 2026-10-10 — Parallel Remote Fleet Upgrades, Leader Isolation & Interactive Circuit Spotlighting
+## [v2.2.8] - 2026-10-10 — Parallel Remote Fleet Upgrades, Leader Isolation, Circuit Spotlighting & Experimental Go Data-Plane Engine
 
+- **feat(go-engine)**: Built unified native Go data-plane engine (`engines/stigix-go/`) replacing Python/Bash workers (`traffic-generator.sh`, `voice_orchestrator.py`, `rtp.py`, `echo_server.py`, `http_server.py`, and `convergence_orchestrator.py`) in a single compiled binary (`stigix-go`) with zero external dependencies.
+- **feat(feature-flag)**: Enforced mandatory `ENABLE_GO_ENGINE=true` environment feature flag in both `stigix-go` binary (`os.Exit(2)` guard) and `web-dashboard/server.ts` so deployments remain on the Legacy Python/Bash engine unless explicitly unlocked.
+- **feat(engine-switcher)**: Added runtime engine hot-switcher and live benchmark telemetry API (`/api/system/engine-runtime`, `/api/system/engine-runtime/baseline`) and UI card in `Settings -> System` (`Hardware & Performance`) comparing RSS memory, CPU usage, process count, and Go runtime heap/goroutine metrics side-by-side.
 - **feat(settings)**: Dynamically excluded Leader node (`DC1-Ubuntu`) from the Fleet Nodes Maintenance table, avoiding accidental self-restarts while orchestrating remote nodes.
 - **feat(settings)**: Implemented parallel remote fleet upgrades with the new `⚡ Upgrade All Remote Nodes` header action, tracking per-node progress across 3 stages (`1/3 Pulling...`, `2/3 Restarting...`, `3/3 Reconnecting...`).
 - **feat(settings)**: Added unified polling loop and 1-click modal inspection for any active remote node upgrade stream.

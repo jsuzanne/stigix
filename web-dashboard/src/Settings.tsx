@@ -788,6 +788,10 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
     // System startup behaviour
     const [systemSettings, setSystemSettings] = useState<any>({ auto_restart_iot: false, auto_restart_voice: false, auto_restart_traffic: true, auto_restart_probes: true, auto_restart_custom_tcp: true, registry_mode: 'auto' });
     const [savingSystemSettings, setSavingSystemSettings] = useState(false);
+    // Engine Runtime Benchmark & Hot-Switcher (Legacy Python/Bash vs Go Native)
+    const [engineRuntimeInfo, setEngineRuntimeInfo] = useState<any>(null);
+    const [switchingEngineRuntime, setSwitchingEngineRuntime] = useState(false);
+    const [capturingBaseline, setCapturingBaseline] = useState(false);
     // Config validity for startup behaviour guards
     const [iotHasConfig, setIotHasConfig] = useState<boolean | null>(null);  // null = loading
     const [voiceHasConfig, setVoiceHasConfig] = useState<boolean | null>(null);
@@ -1062,6 +1066,22 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                 setStatus(maintenanceData);
             })
             .catch(() => { });
+    }, [token, activePeerId, activeTab]);
+
+    // Poll Engine Runtime telemetry & benchmark comparison when viewing System tab
+    useEffect(() => {
+        if (activeTab !== 'system') return;
+        const fetchEngineRuntime = () => {
+            apiFetch('/api/system/engine-runtime', { headers: authHeaders })
+                .then(r => r.json())
+                .then(data => {
+                    if (data && !data.error) setEngineRuntimeInfo(data);
+                })
+                .catch(() => { });
+        };
+        fetchEngineRuntime();
+        const timer = setInterval(fetchEngineRuntime, 3000);
+        return () => clearInterval(timer);
     }, [token, activePeerId, activeTab]);
 
     // Fetch system settings (startup behaviour)
@@ -2448,6 +2468,60 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
             setSystemSettings(systemSettings); // rollback
         } finally {
             setSavingSystemSettings(false);
+        }
+    };
+
+    const handleSwitchEngineRuntime = async (targetRuntime: 'legacy' | 'go') => {
+        if (switchingEngineRuntime) return;
+        setSwitchingEngineRuntime(true);
+        setErrorMsg(null);
+        try {
+            const res = await apiFetch('/api/system/engine-runtime', {
+                method: 'POST',
+                headers: authHeaders,
+                body: JSON.stringify({ runtime: targetRuntime })
+            });
+            const data = await res.json();
+            if (!res.ok) {
+                setErrorMsg(data.detail || data.error || 'Failed to switch engine runtime');
+                return;
+            }
+            setEngineRuntimeInfo((prev: any) => ({
+                ...prev,
+                active_runtime: data.active_runtime,
+                configured_runtime: data.active_runtime,
+                live: data.live,
+                snapshots: data.snapshots
+            }));
+            showSuccess(data.message || `Switched to ${targetRuntime.toUpperCase()} engine`);
+        } catch (e: any) {
+            setErrorMsg(e.message || 'Failed to switch engine runtime');
+        } finally {
+            setSwitchingEngineRuntime(false);
+        }
+    };
+
+    const handleCaptureEngineBaseline = async () => {
+        if (capturingBaseline) return;
+        setCapturingBaseline(true);
+        try {
+            const res = await apiFetch('/api/system/engine-runtime/baseline', {
+                method: 'POST',
+                headers: authHeaders
+            });
+            const data = await res.json();
+            if (res.ok) {
+                setEngineRuntimeInfo((prev: any) => ({
+                    ...prev,
+                    live: data.snapshot,
+                    snapshots: data.snapshots
+                }));
+                showSuccess(`Captured ${data.active_runtime === 'go' ? 'Go Native' : 'Legacy Python/Bash'} baseline snapshot`);
+            }
+        } catch (e) {
+            setErrorMsg('Failed to capture baseline snapshot');
+        } finally {
+            setCapturingBaseline(false);
         }
     };
 
@@ -5385,6 +5459,220 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                                     </div>
                                 </div>
                             </div>
+                        )}
+
+                        {(systemSubTab === 'all' || systemSubTab === 'hardware') && (
+                        <div className="rounded-2xl border border-border bg-card-secondary/40 overflow-hidden">
+                            {/* Header strip */}
+                            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 px-6 py-4 border-b border-border bg-card-secondary/60">
+                                <div className="flex items-center gap-3">
+                                    <div className="p-2 bg-cyan-500/15 rounded-lg">
+                                        <Zap size={18} className="text-cyan-400" />
+                                    </div>
+                                    <div>
+                                        <div className="flex items-center gap-2">
+                                            <h2 className="text-sm font-black text-text-primary tracking-tight">Data-Plane Engine Runtime & Live Benchmark</h2>
+                                            <span className={cn(
+                                                "px-2 py-0.5 rounded-full text-[9px] font-mono font-black uppercase tracking-wider border",
+                                                engineRuntimeInfo?.active_runtime === 'go'
+                                                    ? "bg-cyan-500/15 text-cyan-400 border-cyan-500/30"
+                                                    : "bg-amber-500/15 text-amber-400 border-amber-500/30"
+                                            )}>
+                                                {engineRuntimeInfo?.active_runtime === 'go' ? '⚡ Go Native (stigix-go)' : '🐍 Legacy (Python + Bash)'}
+                                            </span>
+                                        </div>
+                                        <p className="text-[10px] font-bold text-text-muted tracking-[0.15em] mt-0.5 uppercase">
+                                            Hot-switch Traffic, Voice RTP, UDP Echo & Convergence engines to compare RAM & CPU live
+                                        </p>
+                                    </div>
+                                </div>
+
+                                <div className="flex items-center gap-2">
+                                    <button
+                                        onClick={handleCaptureEngineBaseline}
+                                        disabled={capturingBaseline}
+                                        className="px-3.5 py-2 rounded-xl text-[10px] font-black uppercase tracking-wider bg-card hover:bg-card-hover border border-border text-text-secondary hover:text-text-primary transition-all flex items-center gap-1.5"
+                                        title="Snapshot current engine RAM, CPU & process count for side-by-side comparison"
+                                    >
+                                        <RefreshCw size={12} className={cn(capturingBaseline && "animate-spin text-cyan-400")} />
+                                        Capture Baseline
+                                    </button>
+                                </div>
+                            </div>
+
+                            <div className="p-6 space-y-6">
+                                {/* Mandatory Feature Flag Banner when ENABLE_GO_ENGINE is not enabled */}
+                                {!engineRuntimeInfo?.feature_flag_enabled && (
+                                    <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3.5 flex items-start gap-3">
+                                        <AlertTriangle size={18} className="text-amber-400 shrink-0 mt-0.5" />
+                                        <div className="text-xs text-text-secondary leading-relaxed">
+                                            <span className="font-black text-amber-400 uppercase tracking-wider mr-1.5">Mandatory Feature Flag Required:</span>
+                                            The native Go Engine (<code className="px-1.5 py-0.5 bg-card rounded font-mono text-[11px] text-amber-300">stigix-go</code>) is locked by default. Add{' '}
+                                            <code className="px-1.5 py-0.5 bg-card rounded font-mono text-[11px] text-cyan-300">ENABLE_GO_ENGINE=true</code> to your <code className="px-1.5 py-0.5 bg-card rounded font-mono text-[11px]">.env</code> file and restart the container to unlock live engine hot-switching.
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* Engine Selector Cards */}
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    {/* Legacy Python + Bash Card */}
+                                    <button
+                                        onClick={() => engineRuntimeInfo?.active_runtime !== 'legacy' && handleSwitchEngineRuntime('legacy')}
+                                        disabled={switchingEngineRuntime || engineRuntimeInfo?.active_runtime === 'legacy'}
+                                        className={cn(
+                                            "text-left p-5 rounded-2xl border transition-all relative overflow-hidden",
+                                            engineRuntimeInfo?.active_runtime !== 'go'
+                                                ? "bg-amber-500/10 border-amber-500/40 shadow-sm"
+                                                : "bg-card hover:bg-card-secondary/70 border-border cursor-pointer"
+                                        )}
+                                    >
+                                        <div className="flex items-center justify-between mb-2">
+                                            <span className="text-xs font-black uppercase tracking-wider text-text-primary flex items-center gap-2">
+                                                <span>🐍</span> Legacy Engine (Python + Bash)
+                                            </span>
+                                            {engineRuntimeInfo?.active_runtime !== 'go' ? (
+                                                <span className="px-2 py-0.5 rounded-md text-[9px] font-black uppercase bg-amber-500 text-black">Active</span>
+                                            ) : (
+                                                <span className="px-2.5 py-1 rounded-lg text-[9px] font-black uppercase bg-card-secondary border border-border text-text-secondary">
+                                                    {switchingEngineRuntime ? 'Switching...' : 'Switch to Legacy →'}
+                                                </span>
+                                            )}
+                                        </div>
+                                        <p className="text-[11px] text-text-secondary leading-relaxed">
+                                            Runs <code className="font-mono text-[10px]">traffic-generator.sh</code> (curl + jq subshells), <code className="font-mono text-[10px]">voice_orchestrator.py</code>, <code className="font-mono text-[10px]">rtp.py</code>, <code className="font-mono text-[10px]">echo_server.py</code>, <code className="font-mono text-[10px]">http_server.py</code>, and <code className="font-mono text-[10px]">convergence_orchestrator.py</code> as separate OS processes.
+                                        </p>
+                                    </button>
+
+                                    {/* Go Native Engine Card */}
+                                    <button
+                                        onClick={() => engineRuntimeInfo?.feature_flag_enabled && engineRuntimeInfo?.active_runtime !== 'go' && handleSwitchEngineRuntime('go')}
+                                        disabled={switchingEngineRuntime || !engineRuntimeInfo?.feature_flag_enabled || !engineRuntimeInfo?.go_binary_available || engineRuntimeInfo?.active_runtime === 'go'}
+                                        className={cn(
+                                            "text-left p-5 rounded-2xl border transition-all relative overflow-hidden",
+                                            engineRuntimeInfo?.active_runtime === 'go'
+                                                ? "bg-cyan-500/10 border-cyan-500/40 shadow-sm"
+                                                : (!engineRuntimeInfo?.feature_flag_enabled || !engineRuntimeInfo?.go_binary_available)
+                                                    ? "bg-card/50 border-border opacity-55 cursor-not-allowed"
+                                                    : "bg-card hover:bg-card-secondary/70 border-border cursor-pointer"
+                                        )}
+                                    >
+                                        <div className="flex items-center justify-between mb-2">
+                                            <span className="text-xs font-black uppercase tracking-wider text-text-primary flex items-center gap-2">
+                                                <span>⚡</span> Go Native Engine (stigix-go)
+                                            </span>
+                                            {engineRuntimeInfo?.active_runtime === 'go' ? (
+                                                <span className="px-2 py-0.5 rounded-md text-[9px] font-black uppercase bg-cyan-400 text-black">Active</span>
+                                            ) : !engineRuntimeInfo?.feature_flag_enabled ? (
+                                                <span className="px-2 py-0.5 rounded-md text-[9px] font-black uppercase bg-border text-text-muted">Locked (ENABLE_GO_ENGINE=false)</span>
+                                            ) : !engineRuntimeInfo?.go_binary_available ? (
+                                                <span className="px-2 py-0.5 rounded-md text-[9px] font-black uppercase bg-red-500/20 text-red-400">Binary Not Built</span>
+                                            ) : (
+                                                <span className="px-2.5 py-1 rounded-lg text-[9px] font-black uppercase bg-cyan-500/20 border border-cyan-500/40 text-cyan-300">
+                                                    {switchingEngineRuntime ? 'Switching...' : 'Switch to Go Engine →'}
+                                                </span>
+                                            )}
+                                        </div>
+                                        <p className="text-[11px] text-text-secondary leading-relaxed">
+                                            Unifies HTTP/S Traffic (<code className="font-mono text-[10px]">httptrace</code>), Voice RTP, UDP Echo, Target HTTP, and Convergence into a single static Go binary using lightweight goroutines (~2 KB/worker) and zero subshell forks.
+                                        </p>
+                                    </button>
+                                </div>
+
+                                {/* Side-by-Side Live Telemetry & Benchmark Comparison */}
+                                {(() => {
+                                    const live = engineRuntimeInfo?.live;
+                                    const legacySnap = engineRuntimeInfo?.active_runtime === 'legacy' ? live : engineRuntimeInfo?.snapshots?.legacy;
+                                    const goSnap = engineRuntimeInfo?.active_runtime === 'go' ? live : engineRuntimeInfo?.snapshots?.go;
+                                    const ramDeltaPct = (legacySnap?.rss_mb > 0 && goSnap?.rss_mb > 0)
+                                        ? Math.round(((goSnap.rss_mb - legacySnap.rss_mb) / legacySnap.rss_mb) * 1000) / 10
+                                        : null;
+
+                                    return (
+                                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                            {/* RAM Comparison */}
+                                            <div className="bg-card border border-border rounded-xl p-4 space-y-2">
+                                                <div className="flex items-center justify-between">
+                                                    <span className="text-[10px] font-black uppercase tracking-widest text-text-muted">Engine RAM (RSS)</span>
+                                                    {ramDeltaPct !== null && (
+                                                        <span className={cn(
+                                                            "px-2 py-0.5 rounded text-[10px] font-mono font-black",
+                                                            ramDeltaPct < 0 ? "bg-emerald-500/15 text-emerald-400" : "bg-amber-500/15 text-amber-400"
+                                                        )}>
+                                                            {ramDeltaPct > 0 ? `+${ramDeltaPct}%` : `${ramDeltaPct}%`} RAM
+                                                        </span>
+                                                    )}
+                                                </div>
+                                                <div className="grid grid-cols-2 gap-3 pt-1">
+                                                    <div className="p-2.5 rounded-lg bg-card-secondary/50 border border-border/60">
+                                                        <div className="text-[9px] font-bold text-amber-400 uppercase">🐍 Legacy</div>
+                                                        <div className="text-base font-mono font-black text-text-primary mt-0.5">
+                                                            {legacySnap ? `${legacySnap.rss_mb.toFixed(1)} MB` : '—'}
+                                                        </div>
+                                                    </div>
+                                                    <div className="p-2.5 rounded-lg bg-card-secondary/50 border border-border/60">
+                                                        <div className="text-[9px] font-bold text-cyan-400 uppercase">⚡ Go Native</div>
+                                                        <div className="text-base font-mono font-black text-text-primary mt-0.5">
+                                                            {goSnap ? `${goSnap.rss_mb.toFixed(1)} MB` : '—'}
+                                                        </div>
+                                                        {goSnap?.heap_alloc_mb !== undefined && (
+                                                            <div className="text-[9px] font-mono text-text-muted">Heap: {goSnap.heap_alloc_mb} MB</div>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            {/* CPU Comparison */}
+                                            <div className="bg-card border border-border rounded-xl p-4 space-y-2">
+                                                <div className="flex items-center justify-between">
+                                                    <span className="text-[10px] font-black uppercase tracking-widest text-text-muted">Engine CPU Load</span>
+                                                    <span className="text-[9px] font-mono text-text-muted">Live Poll (3s)</span>
+                                                </div>
+                                                <div className="grid grid-cols-2 gap-3 pt-1">
+                                                    <div className="p-2.5 rounded-lg bg-card-secondary/50 border border-border/60">
+                                                        <div className="text-[9px] font-bold text-amber-400 uppercase">🐍 Legacy</div>
+                                                        <div className="text-base font-mono font-black text-text-primary mt-0.5">
+                                                            {legacySnap ? `${legacySnap.cpu_pct.toFixed(1)}%` : '—'}
+                                                        </div>
+                                                    </div>
+                                                    <div className="p-2.5 rounded-lg bg-card-secondary/50 border border-border/60">
+                                                        <div className="text-[9px] font-bold text-cyan-400 uppercase">⚡ Go Native</div>
+                                                        <div className="text-base font-mono font-black text-text-primary mt-0.5">
+                                                            {goSnap ? `${goSnap.cpu_pct.toFixed(1)}%` : '—'}
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            {/* OS Processes vs Goroutines */}
+                                            <div className="bg-card border border-border rounded-xl p-4 space-y-2">
+                                                <div className="flex items-center justify-between">
+                                                    <span className="text-[10px] font-black uppercase tracking-widest text-text-muted">Concurrency Model</span>
+                                                    {goSnap?.goroutines !== undefined && (
+                                                        <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-cyan-500/15 text-cyan-400">
+                                                            {goSnap.goroutines} goroutines
+                                                        </span>
+                                                    )}
+                                                </div>
+                                                <div className="grid grid-cols-2 gap-3 pt-1">
+                                                    <div className="p-2.5 rounded-lg bg-card-secondary/50 border border-border/60">
+                                                        <div className="text-[9px] font-bold text-amber-400 uppercase">🐍 Legacy Procs</div>
+                                                        <div className="text-base font-mono font-black text-text-primary mt-0.5">
+                                                            {legacySnap ? `${legacySnap.process_count} procs` : '—'}
+                                                        </div>
+                                                    </div>
+                                                    <div className="p-2.5 rounded-lg bg-card-secondary/50 border border-border/60">
+                                                        <div className="text-[9px] font-bold text-cyan-400 uppercase">⚡ Go Daemon</div>
+                                                        <div className="text-base font-mono font-black text-text-primary mt-0.5">
+                                                            {goSnap ? `${goSnap.process_count} proc` : '—'}
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    );
+                                })()}
+                            </div>
+                        </div>
                         )}
 
                         {(systemSubTab === 'all' || systemSubTab === 'hardware') && (

@@ -13,6 +13,12 @@ COPY web-dashboard/ ./
 # Build the application
 RUN npm run build
 
+# Build Stage for Native Go Engine (stigix-go)
+FROM golang:1.22-bookworm AS go-builder
+WORKDIR /src
+COPY engines/stigix-go/ ./
+RUN CGO_ENABLED=0 go build -ldflags="-s -w" -o /usr/local/bin/stigix-go .
+
 # Runtime Stage
 FROM node:20-slim
 
@@ -67,7 +73,8 @@ COPY web-dashboard/tsconfig.json ./
 # Copy VERSION file from builder (already in web-dashboard/)
 COPY --from=builder /app/VERSION ./VERSION
 
-# Copy engines orchestration script
+# Copy engines orchestration script and native Go engine
+COPY --from=go-builder /usr/local/bin/stigix-go /usr/local/bin/stigix-go
 COPY engines ./engines
 # Copy VyOS orchestration script
 COPY vyos ./vyos

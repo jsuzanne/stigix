@@ -82,6 +82,8 @@ services:
       - PCAP_MAX_UPLOAD_MB=${PCAP_MAX_UPLOAD_MB:-100}
       # --- ChangeGuard Snapshot & Delta Engine ---
       - ENABLE_CHANGE_SNAPSHOTS=${ENABLE_CHANGE_SNAPSHOTS:-false}
+      # --- Experimental Go Data-Plane Engine ---
+      - ENABLE_GO_ENGINE=${ENABLE_GO_ENGINE:-false}
 
     healthcheck:
       test: [ "CMD-SHELL", "test -f /app/config/applications-config.json -o -f /app/config/applications.txt" ]
