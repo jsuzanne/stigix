@@ -431,8 +431,9 @@ export class IoTManager extends EventEmitter {
                     this.sendCommand({ cmd: 'disable_bad_behavior' });
                 }
                 for (const cfg of activeConfigs) {
+                    this.runningDevices.set(cfg.id, cfg);
                     const prevStats = this.cumulativeStats.get(cfg.id);
-                    const configWithStats = { ...cfg, previous_stats: prevStats || {} };
+                    const configWithStats = { ...cfg, enabled: true, previous_stats: prevStats || {} };
                     this.sendCommand({ cmd: 'start', device: configWithStats });
                 }
                 log('IOT', `Hot-migrated ${activeConfigs.length} active IoT device(s) to ${mode} daemon`);
@@ -476,6 +477,7 @@ export class IoTManager extends EventEmitter {
         this.daemonProcess = proc;
 
         proc.stdout?.on('data', (data: Buffer) => {
+            if (this.daemonProcess !== proc) return;
             const lines = data.toString().split('\n').filter(l => l.trim());
             for (const line of lines) {
                 try {
@@ -489,6 +491,7 @@ export class IoTManager extends EventEmitter {
         });
 
         proc.stderr?.on('data', (data: Buffer) => {
+            if (this.daemonProcess !== proc) return;
             const txt = data.toString();
             if (txt.includes('WARNING - Unknown protocol')) return;
             log(useGo ? 'IOT-GO' : 'IOT-PY-ERR', txt.trim(), useGo ? 'debug' : 'error');

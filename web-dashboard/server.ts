@@ -18235,11 +18235,11 @@ async function applyEngineRuntimeSwitch(targetMode: 'legacy' | 'go'): Promise<{ 
             try { standaloneGoProcess.kill('SIGTERM'); } catch (e) { }
             standaloneGoProcess = null;
         }
-        try { execSync('pkill -f "stigix-go daemon" || true', { timeout: 2000 }); } catch (e) { }
+        try { execSync('pkill -f "/stigix-go daemon" || true', { timeout: 2000 }); } catch (e) { }
 
         // Hot-switch IoT emulator back to Legacy Python/Scapy
         await iotManager.setEngineRuntime('legacy', goBin);
-        try { execSync('pkill -f "stigix-go iot" || true', { timeout: 2000 }); } catch (e) { }
+        try { execSync('pkill -f "/stigix-go iot" || true', { timeout: 2000 }); } catch (e) { }
 
         if (hasSupervisor) {
             try { execSync('supervisorctl start traffic-gen voice-gen voice-echo', { timeout: 8000 }); } catch (e) { }
