@@ -233,9 +233,6 @@ export const VyosTrafficControlModal: React.FC<VyosTrafficControlModalProps> = (
                                 <h3 className="text-base sm:text-lg font-black text-text-primary tracking-tight">
                                     VyOS Underlay Traffic Control
                                 </h3>
-                                <span className="px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-amber-500/15 border border-amber-500/30 text-amber-600 dark:text-amber-400">
-                                    Firewall Tag 999
-                                </span>
                             </div>
                             <p className="text-xs text-text-muted mt-0.5 font-mono">
                                 Router: <span className="text-text-primary font-bold">{router.name}</span> ({router.host})
@@ -309,7 +306,7 @@ export const VyosTrafficControlModal: React.FC<VyosTrafficControlModalProps> = (
                                 </div>
                                 <div>
                                     <div className="text-[10px] uppercase font-black text-text-muted tracking-wider">
-                                        Backbone Router
+                                        VyOS Router
                                     </div>
                                     <div className="text-xs font-bold text-text-primary mt-0.5 flex items-center gap-1.5">
                                         <span>{router.name}</span>
@@ -406,46 +403,6 @@ export const VyosTrafficControlModal: React.FC<VyosTrafficControlModalProps> = (
                                 <span>Deny Traffic</span>
                             </button>
                         </div>
-
-                        {/* Quick-Pick Chips from Discovered Sites */}
-                        {discoveredSites.length > 0 && (
-                            <div className="space-y-1.5 pt-1">
-                                <div className="text-[10px] font-bold text-text-muted uppercase tracking-wider flex items-center gap-1">
-                                    <span>Quick-Select Site / WAN Endpoint:</span>
-                                </div>
-                                <div className="flex flex-wrap gap-1.5 max-h-28 overflow-y-auto custom-scrollbar p-0.5">
-                                    {discoveredSites.map((s, idx) => {
-                                        const isAlreadyBlocked = activeBlocks.some(
-                                            b => b.prefix === s.ip || b.prefix === `${s.ip}/32` || (s.network && b.prefix === s.network)
-                                        );
-
-                                        return (
-                                            <button
-                                                key={`${s.siteName}-${s.ip}-${idx}`}
-                                                type="button"
-                                                onClick={() => setIpInput(s.ip)}
-                                                disabled={isGlobalBusy}
-                                                className={cn(
-                                                    "px-2.5 py-1 rounded-lg text-[10px] font-mono font-bold transition-all border flex items-center gap-1.5 cursor-pointer disabled:opacity-50",
-                                                    isAlreadyBlocked
-                                                        ? "bg-rose-500/15 border-rose-500/40 text-rose-600 dark:text-rose-400"
-                                                        : "bg-card hover:bg-card-hover border-border text-text-muted hover:text-text-primary"
-                                                )}
-                                                title={`${s.siteName} (${s.interfaceName || 'WAN'}) - IP: ${s.ip}`}
-                                            >
-                                                <span className="font-sans font-black text-text-primary">{s.siteName}</span>
-                                                <span className="opacity-70">{s.ip}</span>
-                                                {isAlreadyBlocked && (
-                                                    <span className="text-[8px] px-1 rounded bg-rose-500/20 text-rose-500 font-sans font-black uppercase">
-                                                        Blocked
-                                                    </span>
-                                                )}
-                                            </button>
-                                        );
-                                    })}
-                                </div>
-                            </div>
-                        )}
                     </div>
 
                     {/* Section 3: Active Denied Traffic Table */}
@@ -551,10 +508,7 @@ export const VyosTrafficControlModal: React.FC<VyosTrafficControlModalProps> = (
                 </div>
 
                 {/* Footer */}
-                <div className="p-4 sm:p-5 border-t border-border/60 bg-card-secondary/30 flex items-center justify-between">
-                    <span className="text-[11px] text-text-muted font-mono">
-                        Tag: <strong className="text-text-primary">999</strong> · Zero Interface Dependencies
-                    </span>
+                <div className="p-4 sm:p-5 border-t border-border/60 bg-card-secondary/30 flex items-center justify-end">
                     <button
                         type="button"
                         onClick={onClose}

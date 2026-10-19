@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.0.55] - 2026-10-19
+
+### Changed
+- **Simplified VyOS Port Control & Traffic Control Modals (`Topology.tsx`, `VyosTrafficControlModal.tsx`)**:
+  - **Port-Focused VyOS Action Modal (`Topology.tsx`)**: Removed the redundant multi-interface selector pill bar inside the port modal and hid both the `Prisma ION` blue correlation widget and `DENY SITE` button whenever the clicked VyOS port is not directly connected to a Prisma ION interface (e.g., standalone `DCI / MPLS`, `APP SUBNET`, or `INTERNET EXIT` interfaces on DC LAN VyOS routers).
+  - **Streamlined VyOS Traffic Control Modal (`VyosTrafficControlModal.tsx`)**: Removed the `Quick-Select Site / WAN Endpoint:` section, `Firewall Tag 999` header badge, and `Tag: 999 · Zero Interface Dependencies` footer text to reduce visual noise.
+
 ## [3.0.54] - 2026-10-19
 
 ### Changed
