@@ -127,7 +127,7 @@ func runMetricsReporter(ctx context.Context, startTime time.Time) {
 
 func main() {
 	if len(os.Args) < 2 {
-		fmt.Fprintf(os.Stderr, "Usage: stigix-go <daemon|convergence|version> [flags]\n")
+		fmt.Fprintf(os.Stderr, "Usage: stigix-go <daemon|iot|convergence|version> [flags]\n")
 		os.Exit(1)
 	}
 
@@ -139,6 +139,10 @@ func main() {
 
 	case "convergence":
 		runConvergenceCLI(os.Args[2:])
+		return
+
+	case "iot":
+		runIoTCLI(os.Args[2:])
 		return
 
 	case "daemon":
@@ -185,7 +189,7 @@ func main() {
 		time.Sleep(150 * time.Millisecond)
 
 	default:
-		fmt.Fprintf(os.Stderr, "Unknown subcommand %q. Expected: daemon, convergence, version\n", subcmd)
+		fmt.Fprintf(os.Stderr, "Unknown subcommand %q. Expected: daemon, iot, convergence, version\n", subcmd)
 		os.Exit(1)
 	}
 }

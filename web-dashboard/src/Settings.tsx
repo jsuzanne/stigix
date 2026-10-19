@@ -5539,7 +5539,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                                             )}
                                         </div>
                                         <p className="text-[11px] text-text-secondary leading-relaxed">
-                                            Runs <code className="font-mono text-[10px]">traffic-generator.sh</code> (curl + jq subshells), <code className="font-mono text-[10px]">voice_orchestrator.py</code>, <code className="font-mono text-[10px]">rtp.py</code>, <code className="font-mono text-[10px]">echo_server.py</code>, <code className="font-mono text-[10px]">http_server.py</code>, and <code className="font-mono text-[10px]">convergence_orchestrator.py</code> as separate OS processes.
+                                            Runs <code className="font-mono text-[10px]">traffic-generator.sh</code> (curl + jq subshells), <code className="font-mono text-[10px]">voice_orchestrator.py</code>, <code className="font-mono text-[10px]">rtp.py</code>, <code className="font-mono text-[10px]">echo_server.py</code>, <code className="font-mono text-[10px]">http_server.py</code>, <code className="font-mono text-[10px]">iot_emulator.py</code> (Scapy), and <code className="font-mono text-[10px]">convergence_orchestrator.py</code> as separate OS processes.
                                         </p>
                                     </button>
 
@@ -5573,7 +5573,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                                             )}
                                         </div>
                                         <p className="text-[11px] text-text-secondary leading-relaxed">
-                                            Unifies HTTP/S Traffic (<code className="font-mono text-[10px]">httptrace</code>), Voice RTP, UDP Echo, Target HTTP, and Convergence into a single static Go binary using lightweight goroutines (~2 KB/worker) and zero subshell forks.
+                                            Unifies HTTP/S Traffic (<code className="font-mono text-[10px]">httptrace</code>), Voice RTP, UDP Echo, Target HTTP, Convergence, and L2 IoT Emulation (<code className="font-mono text-[10px]">AF_PACKET</code> DHCP/ARP/LLDP/PAN Security) into a static Go binary using lightweight goroutines (~2 KB/worker).
                                         </p>
                                     </button>
                                 </div>

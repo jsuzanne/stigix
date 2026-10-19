@@ -77,6 +77,8 @@ export class IoTManager extends EventEmitter {
     // ── Global bad behavior state ─────────────────────────────────────────────
     // Tracks the last setBadBehavior() call so we can re-apply it after a daemon restart.
     private badBehaviorEnabled: boolean = true; // mirrors --enable-bad-behavior CLI flag
+    private engineRuntime: 'legacy' | 'go' = 'legacy';
+    private goBinaryPath: string | null = null;
 
     constructor(networkInterface: string = 'eth0', configDir?: string) {
         super();
@@ -400,23 +402,76 @@ export class IoTManager extends EventEmitter {
 
     // ── Daemon lifecycle ─────────────────────────────────────────────────────
 
+    getEngineRuntime(): 'legacy' | 'go' {
+        return this.engineRuntime;
+    }
+
+    async setEngineRuntime(mode: 'legacy' | 'go', goBinaryPath?: string | null): Promise<void> {
+        const prevMode = this.engineRuntime;
+        this.engineRuntime = mode;
+        if (goBinaryPath !== undefined) {
+            this.goBinaryPath = goBinaryPath;
+        }
+        if (prevMode === mode) return;
+
+        log('IOT', `Switching IoT Engine runtime: ${prevMode} → ${mode}`);
+        if (!this.daemonProcess) return;
+
+        const activeConfigs = Array.from(this.runningDevices.values());
+        this.shutdownDaemon();
+        await new Promise(r => setTimeout(r, 250));
+
+        if (activeConfigs.length > 0) {
+            this.restartAttempts = 0;
+            this.gaveUp = false;
+            this.spawnDaemon();
+            await this.waitForDaemonReady(5000);
+            if (this.daemonReady) {
+                if (!this.badBehaviorEnabled) {
+                    this.sendCommand({ cmd: 'disable_bad_behavior' });
+                }
+                for (const cfg of activeConfigs) {
+                    const prevStats = this.cumulativeStats.get(cfg.id);
+                    const configWithStats = { ...cfg, previous_stats: prevStats || {} };
+                    this.sendCommand({ cmd: 'start', device: configWithStats });
+                }
+                log('IOT', `Hot-migrated ${activeConfigs.length} active IoT device(s) to ${mode} daemon`);
+            }
+        }
+    }
+
     private spawnDaemon(): void {
         if (this.daemonProcess) return;
 
-        const args = [
-            this.pythonScriptPath,
-            '--daemon',
-            '--interface', this.daemonInterface,
-            '--dhcp-mode', 'auto',
-            '--json-output',
-            ...(this.badBehaviorEnabled ? ['--enable-bad-behavior'] : []),
-        ];
+        const useGo = this.engineRuntime === 'go' && !!this.goBinaryPath;
+        const bin = useGo ? this.goBinaryPath! : 'python3';
+        const args = useGo
+            ? [
+                'iot',
+                '--daemon',
+                '--interface', this.daemonInterface,
+                '--dhcp-mode', 'auto',
+                '--json-output',
+                ...(this.badBehaviorEnabled ? ['--enable-bad-behavior'] : []),
+            ]
+            : [
+                this.pythonScriptPath,
+                '--daemon',
+                '--interface', this.daemonInterface,
+                '--dhcp-mode', 'auto',
+                '--json-output',
+                ...(this.badBehaviorEnabled ? ['--enable-bad-behavior'] : []),
+            ];
 
-        log('IOT', `Spawning daemon: python3 ${args.join(' ')}`, 'debug');
+        log('IOT', `Spawning daemon (${useGo ? 'go' : 'legacy'}): ${bin} ${args.join(' ')}`, 'debug');
 
-        const proc = spawn('python3', args, {
+        const proc = spawn(bin, args, {
             stdio: ['pipe', 'pipe', 'pipe'],
             detached: false,
+            env: {
+                ...process.env,
+                DHCP_LEASE_FILE: path.join(this.configDir, 'dhcp_leases.json'),
+            },
         });
         this.daemonProcess = proc;
 
@@ -427,7 +482,7 @@ export class IoTManager extends EventEmitter {
                     this.handlePythonMessage(JSON.parse(line));
                 } catch {
                     if (line.includes('Permission denied')) {
-                        this.emit('daemon:error', { error: 'Permission denied: Scapy requires root/sudo' });
+                        this.emit('daemon:error', { error: 'Permission denied: Raw socket requires root/CAP_NET_RAW' });
                     }
                 }
             }
@@ -436,15 +491,17 @@ export class IoTManager extends EventEmitter {
         proc.stderr?.on('data', (data: Buffer) => {
             const txt = data.toString();
             if (txt.includes('WARNING - Unknown protocol')) return;
-            log('IOT-PY-ERR', txt, 'error');
+            log(useGo ? 'IOT-GO' : 'IOT-PY-ERR', txt.trim(), useGo ? 'debug' : 'error');
         });
 
         proc.on('exit', (code, signal) => {
-            log('IOT', `Daemon exited (code=${code}, signal=${signal})`, 'warn');
-            if (this.daemonProcess === proc) {
-                this.daemonProcess = null;
-                this.daemonReady = false;
+            if (this.daemonProcess !== proc) {
+                // Intentional shutdown or hot-switch
+                return;
             }
+            log('IOT', `Daemon exited (code=${code}, signal=${signal})`, 'warn');
+            this.daemonProcess = null;
+            this.daemonReady = false;
             for (const id of this.runningDevices.keys()) {
                 this.emit('device:stopped', { device_id: id, code });
             }

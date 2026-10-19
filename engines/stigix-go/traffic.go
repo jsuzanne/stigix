@@ -369,7 +369,7 @@ func runTrafficWorker(ctx context.Context, workerIdx int, configDir, logDir stri
 		}
 		stats.TelemetryByApp[domain] = smoothed
 
-		if err != nil || code < 200 || code >= 400 {
+		if err != nil || code == 0 {
 			stats.ErrorsByApp[domain]++
 			appendTrafficLog(logMu, trafficLog, "WARN",
 				fmt.Sprintf("[%s] [%s] FAIL %s via %s (HTTP %s, TTFB %.1fms)", clientID, domain, targetURL, iface, tData.LastCode, tData.TtfbMs))

@@ -1828,6 +1828,7 @@ if (fs.existsSync(INTERFACES_FILE)) {
 }
 
 const iotManager = new IoTManager(getInterface(), APP_CONFIG.configDir);
+iotManager.setEngineRuntime(getEffectiveEngineRuntime(), resolveGoEngineBinary()).catch(() => {});
 const vyosManager = new VyosManager(APP_CONFIG.configDir, PYTHON_PATH);
 const vyosScheduler = new VyosScheduler(vyosManager, APP_CONFIG.configDir, APP_CONFIG.logDir);
 const siteManager = new SiteManager(APP_CONFIG.configDir);
@@ -18045,8 +18046,10 @@ interface EngineFootprintSnapshot {
     active_http_workers?: number;
     active_voice_calls?: number;
     active_echo_flows?: number;
+    active_iot_devices?: number;
     total_http_reqs?: number;
     total_rtp_packets?: number;
+    total_iot_packets?: number;
     processes: Array<{ pid: number; name: string; rss_mb: number; cpu_pct: number; cmd: string }>;
     captured_at: number;
 }
@@ -18095,7 +18098,10 @@ function measureEngineFootprint(mode: 'legacy' | 'go'): EngineFootprintSnapshot 
                     const rssMb = Math.round((rssKb / 1024) * 100) / 100;
                     totalRssKb += rssKb;
                     totalCpu += cpu;
-                    processes.push({ pid, name: 'stigix-go', rss_mb: rssMb, cpu_pct: Math.round(cpu * 10) / 10, cmd: args.slice(0, 90) });
+                    const label = args.includes('stigix-go iot') || args.includes(' iot --daemon')
+                        ? 'stigix-go (iot)'
+                        : 'stigix-go (daemon)';
+                    processes.push({ pid, name: label, rss_mb: rssMb, cpu_pct: Math.round(cpu * 10) / 10, cmd: args.slice(0, 90) });
                 }
             } else {
                 const isLegacy =
@@ -18104,6 +18110,7 @@ function measureEngineFootprint(mode: 'legacy' | 'go'): EngineFootprintSnapshot 
                     args.includes('rtp.py') ||
                     args.includes('echo_server.py') ||
                     args.includes('http_server.py') ||
+                    args.includes('iot_emulator.py') ||
                     args.includes('start_target.sh') ||
                     args.includes('convergence_orchestrator.py') ||
                     (comm === 'curl' && args.includes('--connect-timeout'));
@@ -18117,6 +18124,7 @@ function measureEngineFootprint(mode: 'legacy' | 'go'): EngineFootprintSnapshot 
                     else if (args.includes('rtp.py')) label = 'rtp.py (call)';
                     else if (args.includes('echo_server.py')) label = 'echo_server.py';
                     else if (args.includes('http_server.py')) label = 'http_server.py (Flask)';
+                    else if (args.includes('iot_emulator.py')) label = 'iot_emulator.py (Scapy)';
                     else if (args.includes('start_target.sh')) label = 'start_target.sh';
                     else if (args.includes('convergence_orchestrator.py')) label = 'convergence_orchestrator.py';
                     processes.push({ pid, name: label, rss_mb: rssMb, cpu_pct: Math.round(cpu * 10) / 10, cmd: args.slice(0, 90) });
@@ -18138,7 +18146,7 @@ function measureEngineFootprint(mode: 'legacy' | 'go'): EngineFootprintSnapshot 
         try {
             if (fs.existsSync('/tmp/stigix-go-metrics.json')) {
                 const gm = JSON.parse(fs.readFileSync('/tmp/stigix-go-metrics.json', 'utf8'));
-                snap.goroutines = gm.goroutines;
+                snap.goroutines = gm.goroutines || 0;
                 snap.heap_alloc_mb = Math.round((gm.heap_alloc_mb || 0) * 100) / 100;
                 snap.sys_mem_mb = Math.round((gm.sys_mem_mb || 0) * 100) / 100;
                 snap.active_http_workers = gm.active_http_workers;
@@ -18147,7 +18155,19 @@ function measureEngineFootprint(mode: 'legacy' | 'go'): EngineFootprintSnapshot 
                 snap.total_http_reqs = gm.total_http_reqs;
                 snap.total_rtp_packets = gm.total_rtp_packets;
             }
+            if (fs.existsSync('/tmp/stigix-go-iot-metrics.json') && processes.some(p => p.name === 'stigix-go (iot)')) {
+                const im = JSON.parse(fs.readFileSync('/tmp/stigix-go-iot-metrics.json', 'utf8'));
+                snap.active_iot_devices = im.active_iot_devices || 0;
+                snap.total_iot_packets = im.total_iot_packets || 0;
+                snap.goroutines = (snap.goroutines || 0) + (im.goroutines || 0);
+                snap.heap_alloc_mb = Math.round(((snap.heap_alloc_mb || 0) + (im.heap_alloc_mb || 0)) * 100) / 100;
+                snap.sys_mem_mb = Math.round(((snap.sys_mem_mb || 0) + (im.sys_mem_mb || 0)) * 100) / 100;
+            } else {
+                snap.active_iot_devices = iotManager.getRunningDevices().length;
+            }
         } catch (e) { }
+    } else {
+        snap.active_iot_devices = iotManager.getRunningDevices().length;
     }
 
     return snap;
@@ -18179,6 +18199,10 @@ async function applyEngineRuntimeSwitch(targetMode: 'legacy' | 'go'): Promise<{ 
             try { execSync(`pkill -9 -f "${pat}" || true`, { timeout: 2000 }); } catch (e) { }
         }
 
+        // Hot-switch IoT emulator from Python/Scapy to native stigix-go iot
+        await iotManager.setEngineRuntime('go', goBin);
+        try { execSync('pkill -9 -f "iot_emulator.py" || true', { timeout: 2000 }); } catch (e) { }
+
         if (hasSupervisor) {
             try { execSync('supervisorctl start stigix-go', { timeout: 8000 }); } catch (e) { }
         } else if (goBin) {
@@ -18195,8 +18219,8 @@ async function applyEngineRuntimeSwitch(targetMode: 'legacy' | 'go'): Promise<{ 
         }
 
         saveSystemSettings({ engine_runtime: 'go' });
-        log('SYSTEM', '🚀 Switched Data-Plane Engine Runtime to Native Go (stigix-go)');
-        return { switched: true, message: 'Switched to High-Performance Go Engine (stigix-go)' };
+        log('SYSTEM', '🚀 Switched Data-Plane Engine Runtime to Native Go (stigix-go + stigix-go iot)');
+        return { switched: true, message: 'Switched to High-Performance Go Engine (stigix-go + IoT L2)' };
     } else {
         // Capture current go baseline before stopping
         const goSnap = measureEngineFootprint('go');
@@ -18213,13 +18237,17 @@ async function applyEngineRuntimeSwitch(targetMode: 'legacy' | 'go'): Promise<{ 
         }
         try { execSync('pkill -f "stigix-go daemon" || true', { timeout: 2000 }); } catch (e) { }
 
+        // Hot-switch IoT emulator back to Legacy Python/Scapy
+        await iotManager.setEngineRuntime('legacy', goBin);
+        try { execSync('pkill -f "stigix-go iot" || true', { timeout: 2000 }); } catch (e) { }
+
         if (hasSupervisor) {
             try { execSync('supervisorctl start traffic-gen voice-gen voice-echo', { timeout: 8000 }); } catch (e) { }
         }
 
         saveSystemSettings({ engine_runtime: 'legacy' });
-        log('SYSTEM', '🔄 Switched Data-Plane Engine Runtime to Legacy (Python/Bash)');
-        return { switched: true, message: 'Switched to Legacy Engine (Python + Bash)' };
+        log('SYSTEM', '🔄 Switched Data-Plane Engine Runtime to Legacy (Python/Bash/Scapy)');
+        return { switched: true, message: 'Switched to Legacy Engine (Python + Bash + Scapy)' };
     }
 }
 
