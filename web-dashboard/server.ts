@@ -4477,6 +4477,7 @@ app.post('/api/voice/config', authenticateToken, (req, res) => {
         }
 
         fs.writeFileSync(VOICE_CONFIG_FILE, JSON.stringify(currentConfig, null, 2));
+        triggerAutoSyncFleetBundle('voice-config');
         res.json({ success: true });
     } catch (e: any) {
         res.status(500).json({ success: false, error: e.message });
@@ -4520,6 +4521,7 @@ app.post('/api/voice/config/import', authenticateToken, (req, res) => {
             config.state = config.state || current.state;
         }
         fs.writeFileSync(VOICE_CONFIG_FILE, JSON.stringify(config, null, 2));
+        triggerAutoSyncFleetBundle('voice-config');
         res.json({ success: true });
     } catch (e: any) {
         res.status(500).json({ error: e.message });
@@ -7151,6 +7153,7 @@ app.post('/api/config/convergence', authenticateToken, (req, res) => {
             critical: Math.max(1, Math.min(100, parseInt(critical) || 10))
         };
         fs.writeFileSync(CONVERGENCE_CONFIG_FILE, JSON.stringify(config, null, 2));
+        triggerAutoSyncFleetBundle('convergence-sla');
         res.json({ success: true, config });
     } catch (e) {
         res.status(500).json({ error: 'Failed to save convergence config' });
@@ -9688,6 +9691,7 @@ app.post('/api/security/config', authenticateToken, (req, res) => {
         config.sls_config = sls_config;
         // Also save to global Prisma config for other managers
         savePrismaConfig(sls_config);
+        triggerAutoSyncFleetBundle('prisma-sase');
         // Hot-reload registry if credentials are now complete
         if (sls_config.tsg_id) tryReinitRegistry('Prisma config saved with TSG ID');
         // Auto-sync DEM probes from Prisma SD-WAN if client ID and secret are present

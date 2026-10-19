@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.0.54] - 2026-10-19
+
+### Changed
+- **Automatic Fleet Sync for Convergence SLA, Voice Config, and Prisma SASE (`web-dashboard/server.ts`)**:
+  - Wired `triggerAutoSyncFleetBundle` (2.5s debounce) on the Leader when saving or importing **Convergence SLA thresholds** (`convergence-sla`), **Voice / VoIP server & codec settings** (`voice-config`, while preserving each peer's local voice generator `enabled` state), and **Prisma SASE API credentials** (`prisma-sase`).
+  - Kept **`iot-config`** strictly manual on publish to prevent accidental duplicate MAC address (`macvlan` / DHCP) emulation conflicts across branch sites.
+
 ## [3.0.53] - 2026-10-19
 
 ### Fixed
