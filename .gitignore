@@ -11,6 +11,9 @@ playwright.config.ts
 !docs/MCP Reports/*.pdf
 !site/reports/*.pdf
 docs/STIGIX_DATASHEET.md
+docs/LAB_NETWORK_ARCHITECTURE_HLD_LLD.*
+docs/lab_network_topology.*
+*.enex
 *.log
 *.log.*
 pcap samples/

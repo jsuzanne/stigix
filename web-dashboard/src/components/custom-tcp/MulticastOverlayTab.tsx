@@ -952,7 +952,7 @@ export const MulticastOverlayTab: React.FC<MulticastOverlayTabProps> = ({
 
     const handleDeleteProfile = async () => {
         if (!selectedProfile) return;
-        if (!window.confirm(`Delete multicast profile "${selectedProfile.name}"?`)) return;
+        if (!window.confirm(`Delete multicast profile "${selectedProfile.name}"? This will also purge its STX_MC_${selectedProfile.name.replace(/[^a-zA-Z0-9_\-]/g, '_')} custom app from Prisma SD-WAN if synchronized.`)) return;
         try {
             const res = await fetch(`/api/custom-tcp-apps/multicast/${encodeURIComponent(selectedProfile.id)}`, {
                 method: 'DELETE',
@@ -962,7 +962,11 @@ export const MulticastOverlayTab: React.FC<MulticastOverlayTabProps> = ({
             if (!res.ok || !data.success) {
                 throw new Error(data.error || 'Failed to delete profile');
             }
-            toast.success(`Deleted "${selectedProfile.name}"`);
+            if (data.prisma_deleted) {
+                toast.success(`Deleted "${selectedProfile.name}" & purged from Prisma SD-WAN`);
+            } else {
+                toast.success(`Deleted "${selectedProfile.name}"`);
+            }
             setSelectedAppId('');
             fetchProfiles();
         } catch (err: any) {

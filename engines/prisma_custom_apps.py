@@ -94,6 +94,12 @@ Examples:
     )
 
     parser.add_argument(
+        '--purge-orphans',
+        action='store_true',
+        help='Delete Stigix custom applications from tenant that no longer exist in local Stigix config'
+    )
+
+    parser.add_argument(
         '--name',
         help='Application name (e.g. "SAP-ERP" or "STX_SAP-ERP")'
     )
@@ -630,21 +636,31 @@ def delete_custom_app(
     if not target_id:
         if not target_name:
             raise ValueError("Either --app-id or --name must be provided to delete an application")
-        std_name = sanitize_app_name(target_name)
-        mc_name = sanitize_app_name(f"STX_MC_{target_name}")[:32]
-        existing_apps = list_custom_apps(sdk, api_version=api_version)
-        match = next(
-            (a for a in existing_apps if a["name"].lower() in (target_name.lower(), std_name.lower(), mc_name.lower())),
-            None
-        )
-        if not match:
-            return {
-                "success": True,
-                "action": "not_found",
-                "message": f"Application '{target_name}' not found on Prisma SD-WAN tenant"
-            }
-        target_id = match["id"]
-        target_name = match["name"]
+        
+        target_str = str(target_name).strip()
+        if target_str.isdigit():
+            target_id = target_str
+        else:
+            target_norm = target_str.lower()
+            std_name = sanitize_app_name(target_str).lower()
+            mc_name = sanitize_app_name(f"STX_MC_{target_str}")[:32].lower()
+            existing_apps = list_custom_apps(sdk, api_version=api_version)
+            match = next(
+                (a for a in existing_apps if (
+                    str(a.get("id")) == target_str or
+                    (a.get("name") or "").lower() in (target_norm, std_name, mc_name) or
+                    (a.get("display_name") or "").lower() in (target_norm, std_name, mc_name)
+                )),
+                None
+            )
+            if not match:
+                return {
+                    "success": True,
+                    "action": "not_found",
+                    "message": f"Application '{target_name}' not found on Prisma SD-WAN tenant"
+                }
+            target_id = match["id"]
+            target_name = match.get("display_name") or match["name"]
 
     resp = sdk.delete.appdefs(appdef_id=target_id, api_version=api_version)
     if not resp.cgx_status:
@@ -846,6 +862,135 @@ def sync_multicast_from_config(
     }
 
 
+def purge_orphaned_apps(
+    sdk: API,
+    config_file: Optional[str] = None,
+    json_data: Optional[str] = None,
+    api_version: str = 'v2.6'
+) -> Dict[str, Any]:
+    """Identify and delete Stigix-created custom applications that no longer exist in Stigix config"""
+    apps_list = []
+    mc_list = []
+
+    if json_data:
+        try:
+            parsed = json.loads(json_data)
+            apps_list = parsed.get("applications", parsed if isinstance(parsed, list) else [])
+            mc_list = parsed.get("multicastApplications", [])
+        except Exception as e:
+            raise ValueError(f"Invalid JSON string in --json-data: {e}")
+    elif config_file:
+        if not os.path.exists(config_file):
+            raise FileNotFoundError(f"Configuration file not found: {config_file}")
+        with open(config_file, 'r', encoding='utf-8') as f:
+            parsed = json.load(f)
+            apps_list = parsed.get("applications", parsed if isinstance(parsed, list) else [])
+            mc_list = parsed.get("multicastApplications", [])
+    else:
+        default_paths = [
+            '/data/stigix/custom-tcp-applications.json',
+            os.path.join(os.getcwd(), 'config', 'custom-tcp-applications.json'),
+            os.path.join(os.getcwd(), 'custom-tcp-applications.json')
+        ]
+        for path in default_paths:
+            if os.path.exists(path):
+                with open(path, 'r', encoding='utf-8') as f:
+                    parsed = json.load(f)
+                    apps_list = parsed.get("applications", parsed if isinstance(parsed, list) else [])
+                    mc_list = parsed.get("multicastApplications", [])
+                break
+
+    # Build known active identifiers: normalized names, expected STX names, and ports
+    known_names = set()
+    known_tcp_ports = set()
+    known_udp_ports = set()
+
+    for app in apps_list:
+        raw_name = str(app.get("name") or app.get("id") or "").strip()
+        if raw_name:
+            known_names.add(raw_name.lower())
+            known_names.add(sanitize_app_name(raw_name).lower())
+            clean = re.sub(r'[^a-zA-Z0-9_\-]', '_', raw_name)
+            known_names.add(f"stx_{clean.lower()}")
+
+        listener = app.get("listener") or {}
+        port = listener.get("port") or app.get("port")
+        if not port and app.get("peers") and len(app["peers"]) > 0:
+            port = app["peers"][0].get("port")
+        if port:
+            try:
+                known_tcp_ports.add(int(port))
+            except (ValueError, TypeError):
+                pass
+
+    for mc in mc_list:
+        raw_name = str(mc.get("name") or mc.get("id") or "").strip()
+        if raw_name:
+            known_names.add(raw_name.lower())
+            clean = re.sub(r'[^a-zA-Z0-9_\-]', '_', raw_name)
+            known_names.add(f"stx_mc_{clean.lower()}"[:32])
+        port = mc.get("port")
+        if port:
+            try:
+                known_udp_ports.add(int(port))
+            except (ValueError, TypeError):
+                pass
+
+    # Query all tenant apps
+    existing_apps = list_custom_apps(sdk, api_version=api_version)
+    stigix_apps = [a for a in existing_apps if a.get("is_stigix")]
+
+    orphans = []
+    for a in stigix_apps:
+        app_name = (a.get("name") or "").lower()
+        disp_name = (a.get("display_name") or "").lower()
+        a_tcp_ports = set(a.get("tcp_ports") or [])
+        a_udp_ports = set(a.get("udp_ports") or [])
+
+        # Check if matched by name
+        name_match = (
+            app_name in known_names or
+            disp_name in known_names or
+            any(k in app_name or k in disp_name for k in known_names if len(k) > 3)
+        )
+        # Check if matched by port
+        port_match = bool((a_tcp_ports and a_tcp_ports.intersection(known_tcp_ports)) or
+                          (a_udp_ports and a_udp_ports.intersection(known_udp_ports)))
+
+        if not name_match and not port_match:
+            orphans.append(a)
+
+    purged = []
+    errors = []
+    for orphan in orphans:
+        orphan_id = orphan["id"]
+        orphan_name = orphan.get("display_name") or orphan["name"]
+        resp = sdk.delete.appdefs(appdef_id=orphan_id, api_version=api_version)
+        if resp.cgx_status:
+            purged.append({
+                "id": orphan_id,
+                "name": orphan_name,
+                "display_name": orphan.get("display_name"),
+                "tcp_ports": orphan.get("tcp_ports", []),
+                "udp_ports": orphan.get("udp_ports", [])
+            })
+        else:
+            errors.append({
+                "id": orphan_id,
+                "name": orphan_name,
+                "error": format_cgx_error(resp, f"delete orphan appdef {orphan_name}")
+            })
+
+    return {
+        "success": True if not errors else (len(purged) > 0),
+        "message": f"Successfully purged {len(purged)} orphaned Stigix custom application(s) from Prisma SD-WAN" if not errors else f"Purged {len(purged)} orphaned app(s) with {len(errors)} failure(s)",
+        "purged_count": len(purged),
+        "orphans_found": len(orphans),
+        "purged_apps": purged,
+        "errors": errors
+    }
+
+
 def clean_all_stigix_apps(sdk: API, api_version: str = 'v2.6') -> Dict[str, Any]:
     """Remove all Stigix-created apps from the tenant"""
     existing_apps = list_custom_apps(sdk, api_version=api_version)
@@ -985,6 +1130,18 @@ def main():
 
         elif args.clean_all:
             res = clean_all_stigix_apps(sdk, api_version=args.api_version)
+            if json_mode:
+                print(json.dumps(res, indent=2))
+            else:
+                print(f"🧹 {res.get('message')}")
+
+        elif args.purge_orphans:
+            res = purge_orphaned_apps(
+                sdk=sdk,
+                config_file=args.config_file,
+                json_data=args.json_data,
+                api_version=args.api_version
+            )
             if json_mode:
                 print(json.dumps(res, indent=2))
             else:

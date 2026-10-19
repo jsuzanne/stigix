@@ -246,12 +246,30 @@ export function createCustomTcpApiRouter(tcpAppManager: TcpAppManager, onConfigC
     router.post('/prisma/delete-app/:id', async (req: Request, res: Response) => {
         try {
             const file = tcpAppManager.getConfig();
-            const app = file.applications.find(a => a.id === req.params.id);
+            const app = file.applications?.find(a => a.id === req.params.id);
             const appName = app ? app.name : req.params.id;
 
+            const isNumericId = /^\d+$/.test(req.params.id);
+            const args = isNumericId
+                ? ['--delete', '--app-id', req.params.id]
+                : ['--delete', '--name', appName];
+
+            const result = await runPrismaCustomApps(args);
+
+            res.json(result);
+        } catch (err: any) {
+            res.status(500).json({ success: false, error: err.message });
+        }
+    });
+
+    // POST /api/custom-tcp-apps/prisma/purge-orphans — Purge orphaned apps from Prisma SD-WAN
+    router.post('/prisma/purge-orphans', async (_req: Request, res: Response) => {
+        try {
+            const file = tcpAppManager.getConfig();
+            const jsonString = JSON.stringify(file);
             const result = await runPrismaCustomApps([
-                '--delete',
-                '--name', appName
+                '--purge-orphans',
+                '--json-data', jsonString
             ]);
 
             res.json(result);
@@ -430,9 +448,28 @@ export function createCustomTcpApiRouter(tcpAppManager: TcpAppManager, onConfigC
     // DELETE /api/custom-tcp-apps/multicast/:id — Delete multicast profile
     router.delete('/multicast/:id', async (req: Request, res: Response) => {
         try {
+            const targetApp = mcManager.getApplication(req.params.id);
             await mcManager.deleteApplication(req.params.id);
             if (onConfigChanged) onConfigChanged();
-            res.json({ success: true });
+
+            let prismaResult: any = null;
+            const shouldPurgePrisma = req.query.purgePrisma !== 'false';
+            if (shouldPurgePrisma && targetApp?.name) {
+                try {
+                    prismaResult = await runPrismaCustomApps([
+                        '--delete',
+                        '--name', `STX_MC_${targetApp.name}`
+                    ]);
+                } catch (e: any) {
+                    prismaResult = { success: false, error: e.message };
+                }
+            }
+
+            res.json({
+                success: true,
+                prisma_deleted: prismaResult?.action === 'deleted',
+                prisma_result: prismaResult
+            });
         } catch (err: any) {
             res.status(400).json({ success: false, error: err.message });
         }
@@ -675,9 +712,30 @@ export function createCustomTcpApiRouter(tcpAppManager: TcpAppManager, onConfigC
     router.delete('/:id', async (req: Request, res: Response, next: NextFunction) => {
         if (req.params.id === 'multicast') return next();
         try {
+            const config = tcpAppManager.getConfig();
+            const targetApp = config.applications?.find(a => a.id === req.params.id);
+
             await tcpAppManager.deleteApplication(req.params.id);
             if (onConfigChanged) onConfigChanged();
-            res.json({ success: true });
+
+            let prismaResult: any = null;
+            const shouldPurgePrisma = req.query.purgePrisma !== 'false';
+            if (shouldPurgePrisma && targetApp?.name) {
+                try {
+                    prismaResult = await runPrismaCustomApps([
+                        '--delete',
+                        '--name', targetApp.name
+                    ]);
+                } catch (e: any) {
+                    prismaResult = { success: false, error: e.message };
+                }
+            }
+
+            res.json({
+                success: true,
+                prisma_deleted: prismaResult?.action === 'deleted',
+                prisma_result: prismaResult
+            });
         } catch (err: any) {
             res.status(400).json({ error: err.message });
         }
@@ -930,9 +988,12 @@ function findProjectRoot(): string {
 function getPythonPath(): string {
     const root = findProjectRoot();
     const candidates = [
+        path.join(root, '.venv', 'bin', 'python3'),
+        path.join(root, '.venv', 'bin', 'python'),
         path.join(root, 'engines', '.venv', 'bin', 'python3'),
         path.join(root, 'engines', '.venv', 'bin', 'python'),
         '/app/engines/.venv/bin/python3',
+        path.join(process.cwd(), '.venv', 'bin', 'python3'),
         path.join(process.cwd(), 'engines', '.venv', 'bin', 'python3'),
         'python3'
     ];

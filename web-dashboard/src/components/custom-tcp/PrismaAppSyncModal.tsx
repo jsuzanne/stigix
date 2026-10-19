@@ -3,7 +3,7 @@ import React, { useState, useEffect, Component } from 'react';
 import type { ErrorInfo, ReactNode } from 'react';
 import {
     Cloud, CheckCircle2, AlertCircle, RefreshCw, Trash2,
-    Plus, ExternalLink, ShieldCheck, X, Loader2, ArrowRight
+    Plus, ExternalLink, ShieldCheck, X, Loader2, ArrowRight, Flame
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import type { CustomTcpApplicationConfig } from '../../../custom-tcp-apps/types.js';
@@ -124,10 +124,10 @@ export const PrismaAppSyncModal: React.FC<PrismaAppSyncModalProps> = ({
         }
     };
 
-    const handleDeleteSingleApp = async (appId: string) => {
-        setActionLoadingId(appId);
+    const handleDeleteSingleApp = async (appIdOrName: string) => {
+        setActionLoadingId(appIdOrName);
         try {
-            const res = await gFetch(`/api/custom-tcp-apps/prisma/delete-app/${appId}`, {
+            const res = await gFetch(`/api/custom-tcp-apps/prisma/delete-app/${encodeURIComponent(appIdOrName)}`, {
                 method: 'POST',
                 headers: { 'Authorization': `Bearer ${token}` }
             });
@@ -142,6 +142,30 @@ export const PrismaAppSyncModal: React.FC<PrismaAppSyncModalProps> = ({
             toast.error(err.message || 'Network error');
         } finally {
             setActionLoadingId(null);
+        }
+    };
+
+    const handlePurgeOrphans = async () => {
+        if (!confirm(`Purge all ${orphanedApps.length} orphaned Stigix custom application(s) from Prisma SD-WAN? This will delete custom appdefs that no longer exist in Stigix.`)) {
+            return;
+        }
+        setIsGlobalActionLoading(true);
+        try {
+            const res = await gFetch('/api/custom-tcp-apps/prisma/purge-orphans', {
+                method: 'POST',
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            const data = await res.json();
+            if (res.ok && data.success) {
+                toast.success(data.message || `Purged ${data.deleted_count ?? orphanedApps.length} orphaned application(s) from Prisma SD-WAN`);
+                await loadPrismaStatus();
+            } else {
+                toast.error(typeof data.error === 'string' ? data.error : 'Failed to purge orphaned applications');
+            }
+        } catch (err: any) {
+            toast.error(err.message || 'Network error');
+        } finally {
+            setIsGlobalActionLoading(false);
         }
     };
 
@@ -190,10 +214,28 @@ export const PrismaAppSyncModal: React.FC<PrismaAppSyncModalProps> = ({
         }
     };
 
-    if (!isOpen) return null;
-
     const prismaAppsList = Array.isArray(prismaData?.apps) ? prismaData.apps : [];
     const applicationsList = Array.isArray(applications) ? applications : [];
+
+    // Find orphaned apps: apps in Prisma marked with is_stigix that don't match any active Stigix TCP application
+    const orphanedApps = prismaAppsList.filter(pa => {
+        if (!pa || !pa.is_stigix) return false;
+        const paName = String(pa.name || pa.display_name || '').toLowerCase();
+        const tcpPorts: number[] = Array.isArray(pa.tcp_ports) ? pa.tcp_ports : [];
+
+        const isMatched = applicationsList.some(app => {
+            const port = app?.listener?.port || app?.peers?.[0]?.port;
+            const rawName = app?.name || app?.id || 'App';
+            const expectedPrismaName = `stx_${String(rawName).replace(/[^a-zA-Z0-9_\-]/g, '_')}`.toLowerCase();
+            const rawAppName = String(rawName).toLowerCase();
+            const hasPortMatch = port ? tcpPorts.includes(Number(port)) : false;
+            return (paName && (paName === expectedPrismaName || paName === rawAppName)) || hasPortMatch;
+        });
+
+        return !isMatched;
+    });
+
+    if (!isOpen) return null;
 
     const getErrorMessage = () => {
         if (!prismaData?.error) return 'Unavailable / Check Credentials';
@@ -260,6 +302,9 @@ export const PrismaAppSyncModal: React.FC<PrismaAppSyncModalProps> = ({
                                     </div>
                                     <div className="text-[11px] text-text-muted mt-0.5">
                                         Total Tenant Apps: <strong className="text-text-secondary">{typeof prismaData?.total_apps === 'number' ? prismaData.total_apps : '—'}</strong> | Managed by Stigix: <strong className="text-blue-500">{typeof prismaData?.stigix_apps_count === 'number' ? prismaData.stigix_apps_count : '—'}</strong>
+                                        {orphanedApps.length > 0 && (
+                                            <> | Orphaned: <strong className="text-amber-500">{orphanedApps.length}</strong></>
+                                        )}
                                     </div>
                                 </div>
                             </div>
@@ -274,6 +319,17 @@ export const PrismaAppSyncModal: React.FC<PrismaAppSyncModalProps> = ({
                                     <RefreshCw size={14} className={isLoading ? 'animate-spin' : ''} />
                                     Refresh
                                 </button>
+                                {orphanedApps.length > 0 && (
+                                    <button
+                                        onClick={handlePurgeOrphans}
+                                        disabled={isGlobalActionLoading || isLoading || !prismaData?.success}
+                                        className="px-3.5 py-1.5 bg-amber-500/10 hover:bg-amber-500/20 disabled:opacity-50 text-amber-600 dark:text-amber-400 border border-amber-500/30 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all shadow-sm cursor-pointer"
+                                        title="Purge all orphaned Stigix apps from tenant"
+                                    >
+                                        {isGlobalActionLoading ? <Loader2 size={14} className="animate-spin" /> : <Flame size={14} />}
+                                        Purge Orphaned ({orphanedApps.length})
+                                    </button>
+                                )}
                                 <button
                                     onClick={handleSyncAll}
                                     disabled={isGlobalActionLoading || isLoading || !prismaData?.success}
@@ -403,6 +459,66 @@ export const PrismaAppSyncModal: React.FC<PrismaAppSyncModalProps> = ({
                                 )}
                             </div>
                         </div>
+
+                        {/* Orphaned Applications Section */}
+                        {orphanedApps.length > 0 && (
+                            <div className="space-y-3">
+                                <div className="flex items-center justify-between text-xs font-bold text-amber-500 uppercase tracking-wider">
+                                    <span className="flex items-center gap-1.5">
+                                        <Flame size={14} />
+                                        Orphaned Tenant Applications ({orphanedApps.length})
+                                    </span>
+                                    <span className="text-text-muted text-[11px] font-normal lowercase">
+                                        Stigix apps in Prisma with no local configuration
+                                    </span>
+                                </div>
+
+                                <div className="border border-amber-500/20 bg-amber-500/5 rounded-2xl overflow-hidden divide-y divide-amber-500/10">
+                                    {orphanedApps.map((orphan: any) => {
+                                        const orphanId = String(orphan.id || orphan.name);
+                                        const isOrphanLoading = actionLoadingId === orphanId;
+                                        const tcpPorts = Array.isArray(orphan.tcp_ports) && orphan.tcp_ports.length > 0 ? orphan.tcp_ports.join(', ') : 'None';
+                                        const udpPorts = Array.isArray(orphan.udp_ports) && orphan.udp_ports.length > 0 ? orphan.udp_ports.join(', ') : null;
+
+                                        return (
+                                            <div
+                                                key={orphanId}
+                                                className="p-4 bg-card/60 hover:bg-card-secondary/70 transition-colors flex flex-wrap items-center justify-between gap-4"
+                                            >
+                                                <div className="flex items-center gap-3 min-w-[240px]">
+                                                    <div className="w-9 h-9 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-500 flex items-center justify-center font-bold text-xs">
+                                                        <Flame size={16} />
+                                                    </div>
+                                                    <div>
+                                                        <div className="text-sm font-bold text-text-primary flex items-center gap-2">
+                                                            <span>{orphan.display_name || orphan.name}</span>
+                                                            <span className="px-2 py-0.5 rounded-md bg-amber-500/10 font-mono text-[11px] text-amber-600 dark:text-amber-400 font-bold border border-amber-500/20">
+                                                                TCP :{tcpPorts}{udpPorts ? ` | UDP :${udpPorts}` : ''}
+                                                            </span>
+                                                        </div>
+                                                        <div className="text-[11px] text-text-muted mt-0.5 font-mono">
+                                                            ID: {orphan.id || 'N/A'} {orphan.description ? `• ${orphan.description}` : ''}
+                                                        </div>
+                                                    </div>
+                                                </div>
+
+                                                <div className="flex items-center gap-2">
+                                                    <button
+                                                        onClick={() => handleDeleteSingleApp(orphanId)}
+                                                        disabled={isOrphanLoading}
+                                                        className="px-3 py-1.5 bg-rose-500/10 hover:bg-rose-500/20 text-rose-600 dark:text-rose-400 border border-rose-500/30 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer"
+                                                        title="Purge this orphaned app from Prisma SD-WAN"
+                                                    >
+                                                        {isOrphanLoading ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />}
+                                                        Purge
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+                        )}
 
                         {/* How It Works Explainer */}
                         <div className="bg-blue-500/5 border border-blue-500/20 rounded-2xl p-4 text-xs space-y-2 text-text-secondary">

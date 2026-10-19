@@ -414,21 +414,25 @@ export const CustomApps: React.FC<CustomAppsProps> = ({ token }) => {
 
     const handleDeleteApp = async () => {
         if (!currentApp || isActionLoading) return;
-        if (!window.confirm(`Delete custom application "${currentApp.name}" (Port ${currentApp.listener?.port})?`)) return;
+        if (!window.confirm(`Delete custom application "${currentApp.name}" (Port ${currentApp.listener?.port})? This will also purge its STX_${currentApp.name.replace(/[^a-zA-Z0-9_\-]/g, '_')} custom app from Prisma SD-WAN if synchronized.`)) return;
         setIsActionLoading(true);
         try {
             const res = await gFetch(`/api/custom-tcp-apps/${currentApp.id}`, {
                 method: 'DELETE',
                 headers: { 'Authorization': `Bearer ${token}` }
             });
+            const data = await res.json().catch(() => ({}));
             if (res.ok) {
-                toast.success(`Deleted "${currentApp.name}"`);
+                if (data.prisma_deleted) {
+                    toast.success(`Deleted "${currentApp.name}" & purged from Prisma SD-WAN`);
+                } else {
+                    toast.success(`Deleted "${currentApp.name}"`);
+                }
                 const remaining = applications.filter(a => a.id !== currentApp.id);
                 setApplications(remaining);
                 setSelectedAppId(remaining[0]?.id || '');
                 loadAllSummaries();
             } else {
-                const data = await res.json().catch(() => ({}));
                 toast.error(data.error || 'Failed to delete application');
             }
         } catch (e: any) {
