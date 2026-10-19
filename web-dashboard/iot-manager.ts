@@ -268,6 +268,12 @@ export class IoTManager extends EventEmitter {
         } else {
             log('IOT', `Device ${deviceId} removed from queue (was ${state || 'unknown'})`);
         }
+
+        if (this.managedDevices.size === 0 && this.daemonProcess) {
+            setTimeout(() => {
+                if (this.managedDevices.size === 0) this.shutdownDaemon();
+            }, 500);
+        }
     }
 
     async stopAll(): Promise<void> {
@@ -281,7 +287,34 @@ export class IoTManager extends EventEmitter {
         this.managedDevices.clear();
         this.deviceStates.clear();
         this.runningDevices.clear();
-        this.sendCommand({ cmd: 'stop_all' });
+        if (this.daemonProcess) {
+            this.sendCommand({ cmd: 'stop_all' });
+            setTimeout(() => {
+                if (this.managedDevices.size === 0) this.shutdownDaemon();
+            }, 300);
+        }
+    }
+
+    private shutdownDaemon(): void {
+        if (this.restartTimer) {
+            clearTimeout(this.restartTimer);
+            this.restartTimer = null;
+        }
+        const proc = this.daemonProcess;
+        if (!proc) return;
+        log('IOT', 'Shutting down idle IoT daemon process...');
+        this.daemonProcess = null;
+        this.daemonReady = false;
+        try {
+            proc.kill('SIGTERM');
+            setTimeout(() => {
+                try {
+                    if (proc.exitCode === null && !proc.killed) {
+                        proc.kill('SIGKILL');
+                    }
+                } catch {}
+            }, 2000);
+        } catch {}
     }
 
     setMaxConcurrent(max: number): void {
@@ -376,17 +409,18 @@ export class IoTManager extends EventEmitter {
             '--interface', this.daemonInterface,
             '--dhcp-mode', 'auto',
             '--json-output',
-            '--enable-bad-behavior',
+            ...(this.badBehaviorEnabled ? ['--enable-bad-behavior'] : []),
         ];
 
         log('IOT', `Spawning daemon: python3 ${args.join(' ')}`, 'debug');
 
-        this.daemonProcess = spawn('python3', args, {
+        const proc = spawn('python3', args, {
             stdio: ['pipe', 'pipe', 'pipe'],
             detached: false,
         });
+        this.daemonProcess = proc;
 
-        this.daemonProcess.stdout?.on('data', (data: Buffer) => {
+        proc.stdout?.on('data', (data: Buffer) => {
             const lines = data.toString().split('\n').filter(l => l.trim());
             for (const line of lines) {
                 try {
@@ -399,23 +433,25 @@ export class IoTManager extends EventEmitter {
             }
         });
 
-        this.daemonProcess.stderr?.on('data', (data: Buffer) => {
+        proc.stderr?.on('data', (data: Buffer) => {
             const txt = data.toString();
             if (txt.includes('WARNING - Unknown protocol')) return;
             log('IOT-PY-ERR', txt, 'error');
         });
 
-        this.daemonProcess.on('exit', (code, signal) => {
+        proc.on('exit', (code, signal) => {
             log('IOT', `Daemon exited (code=${code}, signal=${signal})`, 'warn');
-            this.daemonProcess = null;
-            this.daemonReady = false;
+            if (this.daemonProcess === proc) {
+                this.daemonProcess = null;
+                this.daemonReady = false;
+            }
             for (const id of this.runningDevices.keys()) {
                 this.emit('device:stopped', { device_id: id, code });
             }
-            if (!this.gaveUp) this.scheduleRestart();
+            if (!this.gaveUp && this.managedDevices.size > 0) this.scheduleRestart();
         });
 
-        this.daemonProcess.on('error', (err) => {
+        proc.on('error', (err) => {
             log('IOT', `Daemon process error: ${err.message}`, 'error');
             this.emit('daemon:error', { error: err.message });
         });
@@ -440,6 +476,7 @@ export class IoTManager extends EventEmitter {
         log('IOT', `Daemon restart attempt ${this.restartAttempts}/${MAX_RESTART_ATTEMPTS} in ${delay}ms`, 'warn');
 
         this.restartTimer = setTimeout(async () => {
+            if (this.managedDevices.size === 0) return;
             this.spawnDaemon();
             const recovered = new Map(this.runningDevices);
             await this.waitForDaemonReady(5000);
@@ -622,8 +659,11 @@ export class IoTManager extends EventEmitter {
     getRunningDevices(): string[] { return Array.from(this.runningDevices.keys()); }
 
     setBadBehavior(enabled: boolean): void {
-        if (!this.daemonProcess) { log('IOT', 'Cannot set bad behavior — daemon not running', 'warn'); return; }
         this.badBehaviorEnabled = enabled;
+        if (!this.daemonProcess) {
+            log('IOT', `Bad behavior ${enabled ? 'ENABLED' : 'DISABLED'} globally (saved for next daemon start)`);
+            return;
+        }
         this.sendCommand({ cmd: enabled ? 'enable_bad_behavior' : 'disable_bad_behavior' });
         log('IOT', `Bad behavior ${enabled ? 'ENABLED' : 'DISABLED'} globally`);
     }

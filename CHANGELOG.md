@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.0.57] - 2026-10-19
+
+### Fixed
+- **IoT Emulator Daemon Orphaned Thread & Shutdown Fix (`iot/iot_emulator.py`, `web-dashboard/iot-manager.ts`)**:
+  - Fixed a race condition in `iot_emulator.py` (`_staggered_start` and `_boot_sequence`) where stopping a device or calling `stop_all` during the initial stagger delay (`0–30s`) or DHCP handshake allowed the delayed startup thread to wake up afterward, set `self.running = True`, and spawn orphaned protocol/bad-behavior threads that could no longer be stopped.
+  - Updated `IoTManager` (`stopAll` and `stopDevice`) to cleanly terminate the background `iot_emulator.py --daemon` process once `managedDevices.size === 0` and prevent automatic daemon restarts when no IoT devices are active.
+
 ## [3.0.56] - 2026-10-19
 
 ### Changed

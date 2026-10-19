@@ -231,6 +231,8 @@ class IoTDevice:
         self.interface = interface
         self.gateway = device_config.get("gateway", None)  # Will be set from DHCP ACK
         self.running = False
+        self._cancelled = False
+        self._stop_event = threading.Event()
         self.dhcp_xid = random.randint(1, 0xFFFFFFFF)
         self.dhcp_offered_ip = None
         self.dhcp_server_ip = None
@@ -315,6 +317,8 @@ class IoTDevice:
         if not self.enabled:
             self.log("warning", "Device is disabled, skipping")
             return
+        if self._cancelled or self._stop_event.is_set():
+            return
         
         self.running = True
         self.start_time = time.time()
@@ -341,6 +345,9 @@ class IoTDevice:
             if "dhcp" in self.protocols:
                 self.do_dhcp_sequence()
 
+            if not self.running or self._cancelled or self._stop_event.is_set():
+                return
+
             if not self.ip:
                 self.log("error", "\u274c No IP obtained after DHCP — protocol threads and bad behavior will NOT start")
                 return
@@ -349,6 +356,8 @@ class IoTDevice:
 
             # 2. Protocol threads (non-DHCP)
             for protocol in self.protocols:
+                if not self.running or self._cancelled:
+                    return
                 if protocol == "snmp":
                     self.log("warning", "\u26a0\ufe0f SNMP deprecated — skipped")
                     continue
@@ -360,11 +369,11 @@ class IoTDevice:
                     ).start()
 
             # 3. DHCP renewal loop
-            if "dhcp" in self.protocols:
+            if "dhcp" in self.protocols and self.running and not self._cancelled:
                 threading.Thread(target=self.dhcp_renewal_loop, daemon=True).start()
 
             # 4. Bad behavior — only if IP is valid
-            if ENABLE_BAD_BEHAVIOR and self.bad_behavior:
+            if ENABLE_BAD_BEHAVIOR and self.bad_behavior and self.running and not self._cancelled:
                 self.stats["bad_behavior_active"] = True
                 self.log("warning", f"\u26a0\ufe0f  BAD BEHAVIOR ENABLED (types: {', '.join(self.behavior_types)}) — IP: {self.ip}")
                 if JSON_OUTPUT:
@@ -375,6 +384,8 @@ class IoTDevice:
 
     def stop(self):
         """Stop device emulation"""
+        self._cancelled = True
+        self._stop_event.set()
         self.running = False
         self.log("info", "⏹️ Simulation stopped")
         if JSON_OUTPUT:
@@ -1518,10 +1529,14 @@ def daemon_loop(interface: str, dhcp_mode: str = "auto"):
                 dev = IoTDevice(cfg, interface=interface, dhcp_mode=dhcp_mode)
                 devices[device_id] = dev
 
-                def _staggered_start(d=dev, delay=stagger_delay):
+                def _staggered_start(d=dev, delay=stagger_delay, did=device_id):
                     if delay > 0:
                         logger.info(f"⏳ Stagger: {d.id} queued — starting in {delay:.1f}s")
-                    time.sleep(delay)
+                        if d._stop_event.wait(timeout=delay):
+                            logger.info(f"⏹️  Stagger aborted for {d.id} (stopped before boot)")
+                            return
+                    if d._cancelled or devices.get(did) is not d:
+                        return
                     d.start()
 
                 threading.Thread(target=_staggered_start, daemon=True, name=f"dev-{device_id}").start()
