@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.0.52] - 2026-10-19
+
+### Changed
+- **Custom Applications Ergonomics & Visual Simplification (`CustomApps.tsx`)**:
+  - **Streamlined Top Header**: Removed redundant marketing subtitle and badge; grouped the local node identity badge (`siteName`), `LIVE` indicator, and `Refresh` button beside the title while cleanly separating Global Fleet Controls (`Start All` / `Stop All`) and Catalog Actions (`Import | Export` + `+ New App`) on the right.
+  - **Compact App Identity & Action Bar**: Consolidated protocol, port, traffic profile (`Client Mode -> Server Behavior`), health badge, and auto-start status onto a single scannable line; added a direct `Delete` action button alongside `Prisma SD-WAN` and `Edit`.
+  - **Contextual Engine Controls in KPI Cards**: Moved `Start/Stop Listener` and `Start/Stop Client` interactive pill buttons directly into the `Incoming (Server)` and `Outgoing (Client)` KPI card headers; replaced hardcoded static labels in `Stability & Failover` with actual application `Streams/Peer` and `Timeout` settings.
+  - **Adaptive Session View & Decluttered Tables**: Removed redundant table descriptions, shortened the search input placeholder, and added an adaptive layout (`Outgoing | Split | Incoming` switcher) that automatically expands active session tables to 100% width when only one direction is populated.
+- **Extended Daily Log & PCAP Retention Policy (`web-dashboard/server.ts`)**:
+  - Added `voice-stats.jsonl` to the daily 10 MB / 10,000-line pruning list alongside `convergence-history.jsonl` and `xfr-results.jsonl`.
+  - Added automatic cleanup for ad-hoc packet captures in `config/captures/*.pcap` (14-day retention and 500 MB FIFO cap, preserving `config/pcap-uploads/`).
+
 ## [3.0.51] - 2026-10-19
 
 ### Added

@@ -14113,7 +14113,7 @@ const runLogCleanup = async () => {
         const deletedConnCount = await connectivityLogger.cleanup();
         if (deletedConnCount > 0) console.log(`[LOG_CLEANUP] Deleted ${deletedConnCount} old connectivity-results log files`);
 
-        const filesToPrune10k = ['security-history.jsonl', 'traffic-history.jsonl', 'vyos-history.jsonl', 'score-history.jsonl', 'convergence-history.jsonl'];
+        const filesToPrune10k = ['security-history.jsonl', 'traffic-history.jsonl', 'vyos-history.jsonl', 'score-history.jsonl', 'convergence-history.jsonl', 'voice-stats.jsonl'];
         for (const file of filesToPrune10k) {
             await pruneLogFile(path.join(APP_CONFIG.logDir, file), 10000);
         }
@@ -14151,6 +14151,61 @@ const runLogCleanup = async () => {
         } catch (e: any) {
             console.warn('[LOG_CLEANUP] Warning during stale worker stats purge:', e.message);
         }
+
+        // Purge expired or excessive ad-hoc packet captures in config/captures (never touches config/pcap-uploads)
+        try {
+            const capturesDir = path.join(APP_CONFIG.configDir, 'captures');
+            if (fs.existsSync(capturesDir)) {
+                const pcapRetentionCutoff = Date.now() - (LOG_RETENTION_DAYS * 2 * 24 * 60 * 60 * 1000); // 14 days default
+                const maxCapturesBytes = 500 * 1024 * 1024; // 500 MB cap
+                const entries = fs.readdirSync(capturesDir)
+                    .filter(f => f.endsWith('.pcap'))
+                    .map(f => {
+                        const fp = path.join(capturesDir, f);
+                        try {
+                            const stat = fs.statSync(fp);
+                            return { name: f, path: fp, mtimeMs: stat.mtimeMs, size: stat.size };
+                        } catch {
+                            return null;
+                        }
+                    })
+                    .filter((item): item is { name: string; path: string; mtimeMs: number; size: number } => item !== null);
+
+                let deletedPcaps = 0;
+                const remaining: typeof entries = [];
+
+                // 1. Delete files older than 14 days
+                for (const item of entries) {
+                    if (item.mtimeMs < pcapRetentionCutoff) {
+                        try {
+                            fs.unlinkSync(item.path);
+                            deletedPcaps++;
+                        } catch {}
+                    } else {
+                        remaining.push(item);
+                    }
+                }
+
+                // 2. Enforce 500 MB cap (FIFO: oldest first)
+                remaining.sort((a, b) => a.mtimeMs - b.mtimeMs);
+                let totalSize = remaining.reduce((acc, item) => acc + item.size, 0);
+                for (const item of remaining) {
+                    if (totalSize <= maxCapturesBytes) break;
+                    try {
+                        fs.unlinkSync(item.path);
+                        totalSize -= item.size;
+                        deletedPcaps++;
+                    } catch {}
+                }
+
+                if (deletedPcaps > 0) {
+                    console.log(`[LOG_CLEANUP] Deleted ${deletedPcaps} expired/excess ad-hoc PCAP capture(s) from captures/`);
+                }
+            }
+        } catch (e: any) {
+            console.warn('[LOG_CLEANUP] Warning during ad-hoc PCAP captures cleanup:', e.message);
+        }
+
         console.log('[LOG_CLEANUP] ✅ Log cleanup routine complete.');
     } catch (e: any) {
         console.error('[LOG_CLEANUP] ❌ Error during log cleanup:', e);

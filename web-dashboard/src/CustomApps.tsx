@@ -98,6 +98,7 @@ export const CustomApps: React.FC<CustomAppsProps> = ({ token }) => {
     const [outgoingSessions, setOutgoingSessions] = useState<OutgoingSessionState[]>([]);
     const [sessionSearch, setSessionSearch] = useState<string>('');
     const [sessionStateFilter, setSessionStateFilter] = useState<'all' | 'connected' | 'issues'>('all');
+    const [sessionViewMode, setSessionViewMode] = useState<'auto' | 'split' | 'outgoing' | 'incoming'>('auto');
     const [isLoading, setIsLoading] = useState(false);
     const [isActionLoading, setIsActionLoading] = useState(false);
 
@@ -411,6 +412,32 @@ export const CustomApps: React.FC<CustomAppsProps> = ({ token }) => {
         if (!isEdit) setSelectedAppId(app.id);
     };
 
+    const handleDeleteApp = async () => {
+        if (!currentApp || isActionLoading) return;
+        if (!window.confirm(`Delete custom application "${currentApp.name}" (Port ${currentApp.listener?.port})?`)) return;
+        setIsActionLoading(true);
+        try {
+            const res = await gFetch(`/api/custom-tcp-apps/${currentApp.id}`, {
+                method: 'DELETE',
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            if (res.ok) {
+                toast.success(`Deleted "${currentApp.name}"`);
+                const remaining = applications.filter(a => a.id !== currentApp.id);
+                setApplications(remaining);
+                setSelectedAppId(remaining[0]?.id || '');
+                loadAllSummaries();
+            } else {
+                const data = await res.json().catch(() => ({}));
+                toast.error(data.error || 'Failed to delete application');
+            }
+        } catch (e: any) {
+            toast.error(e.message || 'Delete failed');
+        } finally {
+            setIsActionLoading(false);
+        }
+    };
+
     const handleTestPeer = async (peerId: string) => {
         if (!selectedAppId) return;
         setPeerTestResult({ loading: true });
@@ -663,110 +690,44 @@ const secs = seconds % 60;
 
     return (
         <div className="w-full space-y-4 pb-8 text-text-primary animate-fadeIn">
-            {/* Top Node Identity Bar */}
-            <div className="bg-card border border-border rounded-2xl px-4 py-3.5 flex flex-wrap items-center justify-between gap-4 shadow-sm">
-                <div className="flex flex-wrap items-center gap-3.5">
-                    <div className="p-2.5 bg-indigo-500/10 border border-indigo-500/20 rounded-xl text-indigo-600 dark:text-indigo-400">
-                        <Activity size={22} />
-                    </div>
-                    <div>
-                        <div className="flex items-center gap-2">
-                            <h1 className="text-xl font-bold text-text-primary tracking-wide">
-                                Custom Applications
-                            </h1>
-                            <span className="px-2 py-0.5 bg-indigo-500/10 border border-indigo-500/30 text-indigo-600 dark:text-indigo-400 rounded text-[10px] font-bold uppercase tracking-wider">
-                                Inter-Site & Cloud Simulator
-                            </span>
-                        </div>
-                        <p className="text-xs text-text-muted mt-0.5">
-                            Simulate stateful multi-site TCP &amp; HTTP application traffic across SD-WAN overlays with live telemetry.
-                        </p>
-                    </div>
-                </div>
-
+            {/* Top Node Identity & Global Control Bar */}
+            <div className="bg-card border border-border rounded-2xl px-4 py-3 flex flex-wrap items-center justify-between gap-3 shadow-sm">
+                {/* Left: Title + Node Context + Live Telemetry Indicator */}
                 <div className="flex flex-wrap items-center gap-2.5">
-                    {/* Catalog Management: New App, Import, Export */}
-                    <div className="flex items-center gap-2">
-                        {/* New App Button */}
-                        <button
-                            onClick={() => {
-                                setEditingApp(null);
-                                setIsWizardOpen(true);
-                            }}
-                            className="h-[32px] px-3 bg-indigo-600 hover:bg-indigo-500 text-white shadow-sm shadow-indigo-600/20 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer"
-                        >
-                            <Plus size={14} /> <span>New App</span>
-                        </button>
-
-                        {/* Import Button */}
-                        <button
-                            onClick={() => setIsImportModalOpen(true)}
-                            className="h-[32px] px-3 bg-card-secondary hover:bg-card-hover text-text-secondary hover:text-text-primary border border-border rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-colors shadow-sm cursor-pointer"
-                            title="Import Custom TCP applications from JSON"
-                        >
-                            <Upload size={13} />
-                            <span>Import</span>
-                        </button>
-
-                        {/* Export Dropdown Button */}
-                        <div className="relative">
-                            <button
-                                onClick={() => setExportMenuOpen(!exportMenuOpen)}
-                                className="h-[32px] px-3 bg-card-secondary hover:bg-card-hover text-text-secondary hover:text-text-primary border border-border rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-colors shadow-sm cursor-pointer"
-                                title="Export Custom TCP applications as JSON"
-                            >
-                                <Download size={13} />
-                                <span>Export</span>
-                                <ChevronDown size={11} className={cn("transition-transform duration-200", exportMenuOpen && "rotate-180")} />
-                            </button>
-
-                            {exportMenuOpen && (
-                                <div
-                                    className="absolute right-0 mt-1.5 w-64 bg-card border border-border rounded-xl shadow-xl z-50 py-1.5 animate-in fade-in zoom-in-95 duration-100"
-                                    onMouseLeave={() => setExportMenuOpen(false)}
-                                >
-                                    <div className="px-3 py-1 text-[10px] font-black uppercase tracking-wider text-text-muted">
-                                        Export Options
-                                    </div>
-                                    <button
-                                        onClick={() => { setExportMenuOpen(false); handleExportAll(); }}
-                                        className="w-full text-left px-3 py-2 text-xs text-text-primary hover:bg-card-secondary flex items-center gap-2.5 transition-colors cursor-pointer"
-                                    >
-                                        <FileJson size={14} className="text-indigo-500" />
-                                        <div>
-                                            <div className="font-bold">Export All Applications</div>
-                                            <div className="text-[10px] text-text-muted">Download full mesh bundle ({applications.length} apps)</div>
-                                        </div>
-                                    </button>
-                                    {currentApp && (
-                                        <button
-                                            onClick={() => { setExportMenuOpen(false); handleExportCurrent(); }}
-                                            className="w-full text-left px-3 py-2 text-xs text-text-primary hover:bg-card-secondary flex items-center gap-2.5 transition-colors cursor-pointer"
-                                        >
-                                            <Download size={14} className="text-emerald-500" />
-                                            <div>
-                                                <div className="font-bold">Export "{currentApp.name}" Only</div>
-                                                <div className="text-[10px] text-text-muted">Download single profile JSON</div>
-                                            </div>
-                                        </button>
-                                    )}
-                                </div>
-                            )}
-                        </div>
+                    <div className="p-2 bg-indigo-500/10 border border-indigo-500/20 rounded-xl text-indigo-600 dark:text-indigo-400">
+                        <Activity size={18} />
                     </div>
+                    <h1 className="text-base sm:text-lg font-bold text-text-primary tracking-tight">
+                        Custom Applications
+                    </h1>
 
-                    {/* Subtle Vertical Divider */}
-                    <div className="hidden sm:block h-5 w-px bg-border/80 mx-0.5" />
-
-                    {/* Local Site Badge */}
                     {instanceInfo && (
-                        <div className="flex items-center gap-2 bg-card-secondary border border-border px-3 py-1.5 rounded-xl text-xs shadow-sm">
-                            <span className="text-text-muted font-medium">Local Site:</span>
-                            <span className="font-bold text-text-primary font-mono">{instanceInfo.siteName}</span>
+                        <div className="flex items-center gap-1.5 bg-card-secondary border border-border px-2.5 py-1 rounded-lg text-xs shadow-sm" title={`Local Node: ${instanceInfo.hostname || instanceInfo.siteName}`}>
+                            <Server size={12} className="text-indigo-500 shrink-0" />
+                            <span className="font-bold text-text-primary font-mono text-[11px]">{instanceInfo.siteName}</span>
                         </div>
                     )}
 
-                    {/* Global Appliance Controls: Start All & Stop All */}
+                    <div className="flex items-center gap-1.5 px-2 py-1 bg-emerald-500/10 border border-emerald-500/25 rounded-lg text-[10px] font-mono font-bold text-emerald-500" title="Real-time telemetry active (1.5s interval)">
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                        <span>LIVE</span>
+                    </div>
+
+                    <button
+                        onClick={() => {
+                            if (selectedAppId) loadAppStatus(selectedAppId);
+                            loadAllSummaries();
+                        }}
+                        className="p-1.5 bg-card-secondary hover:bg-card-hover border border-border rounded-lg text-text-muted hover:text-text-primary transition-colors cursor-pointer"
+                        title="Refresh Telemetry Now"
+                    >
+                        <RefreshCw size={13} className={isActionLoading ? 'animate-spin' : ''} />
+                    </button>
+                </div>
+
+                {/* Right: Catalog Actions & Global Fleet Controls */}
+                <div className="flex flex-wrap items-center gap-2">
+                    {/* Global Fleet Controls: Start All & Stop All */}
                     <div className="flex items-center gap-1.5">
                         {/* Start All Split / Dropdown Button */}
                         <div className="relative">
@@ -774,26 +735,25 @@ const secs = seconds % 60;
                                 <button
                                     disabled={isActionLoading}
                                     onClick={() => handleGlobalAction('start-all')}
-                                    className="h-[32px] px-3 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer disabled:opacity-50"
+                                    className="h-[30px] px-2.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer disabled:opacity-50"
                                     title="Start all service listeners and all client workloads with configured peers"
                                 >
-                                    <Play size={12} fill="currentColor" />
+                                    <Play size={11} fill="currentColor" />
                                     <span>Start All</span>
                                 </button>
                                 <button
                                     disabled={isActionLoading}
                                     onClick={() => { setStartMenuOpen(!startMenuOpen); setStopMenuOpen(false); }}
-                                    className="h-[32px] px-2 bg-emerald-700 hover:bg-emerald-600 text-white border-l border-emerald-600 transition-colors cursor-pointer disabled:opacity-50"
+                                    className="h-[30px] px-1.5 bg-emerald-700 hover:bg-emerald-600 text-white border-l border-emerald-600 transition-colors cursor-pointer disabled:opacity-50"
                                     title="More start options"
                                 >
-                                    <ChevronDown size={12} className={cn("transition-transform duration-200", startMenuOpen && "rotate-180")} />
+                                    <ChevronDown size={11} className={cn("transition-transform duration-200", startMenuOpen && "rotate-180")} />
                                 </button>
                             </div>
 
-                            {/* Start Dropdown Menu */}
                             {startMenuOpen && (
                                 <div 
-                                    className="absolute right-0 mt-1.5 w-64 bg-card border border-border rounded-xl shadow-xl z-50 py-1.5 animate-in fade-in zoom-in-95 duration-100"
+                                    className="absolute right-0 mt-1.5 w-60 bg-card border border-border rounded-xl shadow-xl z-50 py-1.5 animate-in fade-in zoom-in-95 duration-100"
                                     onMouseLeave={() => setStartMenuOpen(false)}
                                 >
                                     <div className="px-3 py-1 text-[10px] font-black uppercase tracking-wider text-text-muted">
@@ -806,7 +766,7 @@ const secs = seconds % 60;
                                         <div className="w-2 h-2 rounded-full bg-emerald-500" />
                                         <div>
                                             <div className="font-bold">Start All Workloads</div>
-                                            <div className="text-[10px] text-text-muted">Listeners on all ports + Clients with peers</div>
+                                            <div className="text-[10px] text-text-muted">Listeners + Clients with peers</div>
                                         </div>
                                     </button>
                                     <button
@@ -816,7 +776,7 @@ const secs = seconds % 60;
                                         <div className="w-2 h-2 rounded-full bg-amber-500" />
                                         <div>
                                             <div className="font-bold">Start Clients Only</div>
-                                            <div className="text-[10px] text-text-muted">Generate traffic to configured target peers</div>
+                                            <div className="text-[10px] text-text-muted">Outbound traffic to peers</div>
                                         </div>
                                     </button>
                                     <button
@@ -826,7 +786,7 @@ const secs = seconds % 60;
                                         <div className="w-2 h-2 rounded-full bg-blue-500" />
                                         <div>
                                             <div className="font-bold">Start Listeners Only</div>
-                                            <div className="text-[10px] text-text-muted">Listen on all configured application ports</div>
+                                            <div className="text-[10px] text-text-muted">Local application ports</div>
                                         </div>
                                     </button>
                                 </div>
@@ -839,26 +799,25 @@ const secs = seconds % 60;
                                 <button
                                     disabled={isActionLoading}
                                     onClick={() => handleGlobalAction('stop-all')}
-                                    className="h-[32px] px-3 bg-rose-500/10 hover:bg-rose-500/20 text-rose-600 dark:text-rose-400 text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer disabled:opacity-50"
+                                    className="h-[30px] px-2.5 bg-rose-500/10 hover:bg-rose-500/20 text-rose-600 dark:text-rose-400 text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer disabled:opacity-50"
                                     title="Stop all running clients and listeners on this node"
                                 >
-                                    <Square size={12} fill="currentColor" />
+                                    <Square size={11} fill="currentColor" />
                                     <span>Stop All</span>
                                 </button>
                                 <button
                                     disabled={isActionLoading}
                                     onClick={() => { setStopMenuOpen(!stopMenuOpen); setStartMenuOpen(false); }}
-                                    className="h-[32px] px-2 bg-rose-500/15 hover:bg-rose-500/25 text-rose-600 dark:text-rose-400 border-l border-rose-500/20 transition-colors cursor-pointer disabled:opacity-50"
+                                    className="h-[30px] px-1.5 bg-rose-500/15 hover:bg-rose-500/25 text-rose-600 dark:text-rose-400 border-l border-rose-500/20 transition-colors cursor-pointer disabled:opacity-50"
                                     title="More stop options"
                                 >
-                                    <ChevronDown size={12} className={cn("transition-transform duration-200", stopMenuOpen && "rotate-180")} />
+                                    <ChevronDown size={11} className={cn("transition-transform duration-200", stopMenuOpen && "rotate-180")} />
                                 </button>
                             </div>
 
-                            {/* Stop Dropdown Menu */}
                             {stopMenuOpen && (
                                 <div 
-                                    className="absolute right-0 mt-1.5 w-60 bg-card border border-border rounded-xl shadow-xl z-50 py-1.5 animate-in fade-in zoom-in-95 duration-100"
+                                    className="absolute right-0 mt-1.5 w-56 bg-card border border-border rounded-xl shadow-xl z-50 py-1.5 animate-in fade-in zoom-in-95 duration-100"
                                     onMouseLeave={() => setStopMenuOpen(false)}
                                 >
                                     <div className="px-3 py-1 text-[10px] font-black uppercase tracking-wider text-text-muted">
@@ -868,21 +827,21 @@ const secs = seconds % 60;
                                         onClick={() => { setStopMenuOpen(false); handleGlobalAction('stop-all'); }}
                                         className="w-full text-left px-3 py-2 text-xs text-rose-600 dark:text-rose-400 hover:bg-card-secondary flex items-center gap-2 transition-colors cursor-pointer font-bold"
                                     >
-                                        <Square size={12} fill="currentColor" />
+                                        <Square size={11} fill="currentColor" />
                                         <span>Stop All (Clients + Listeners)</span>
                                     </button>
                                     <button
                                         onClick={() => { setStopMenuOpen(false); handleGlobalAction('stop-clients'); }}
                                         className="w-full text-left px-3 py-2 text-xs text-text-primary hover:bg-card-secondary flex items-center gap-2 transition-colors cursor-pointer"
                                     >
-                                        <Square size={12} />
+                                        <Square size={11} />
                                         <span>Stop Clients Only</span>
                                     </button>
                                     <button
                                         onClick={() => { setStopMenuOpen(false); handleGlobalAction('stop-listeners'); }}
                                         className="w-full text-left px-3 py-2 text-xs text-text-primary hover:bg-card-secondary flex items-center gap-2 transition-colors cursor-pointer"
                                     >
-                                        <Square size={12} />
+                                        <Square size={11} />
                                         <span>Stop Listeners Only</span>
                                     </button>
                                 </div>
@@ -890,26 +849,76 @@ const secs = seconds % 60;
                         </div>
                     </div>
 
-                    {/* Streamlined Live indicator */}
-                    <div className="flex items-center gap-1.5 px-2.5 py-1.5 bg-card-secondary border border-border rounded-xl text-xs font-mono shadow-sm" title="Real-time socket telemetry active (1.5s interval)">
-                        <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                        <span className="text-[10px] font-bold text-emerald-400">LIVE</span>
-                    </div>
+                    <div className="hidden sm:block h-4 w-px bg-border mx-0.5" />
 
-                    <button
-                        onClick={() => {
-                            if (selectedAppId) loadAppStatus(selectedAppId);
-                            loadAllSummaries();
-                        }}
-                        className="p-2 bg-card-secondary hover:bg-card-hover border border-border rounded-xl text-text-muted hover:text-text-primary transition-colors cursor-pointer shadow-sm"
-                        title="Refresh Telemetry Now"
-                    >
-                        <RefreshCw size={13} className={isActionLoading ? 'animate-spin' : ''} />
-                    </button>
+                    {/* Catalog Actions: Import / Export Group + New App */}
+                    <div className="flex items-center gap-1.5">
+                        <div className="inline-flex rounded-xl border border-border bg-card-secondary overflow-hidden shadow-sm">
+                            <button
+                                onClick={() => setIsImportModalOpen(true)}
+                                className="h-[30px] px-2.5 hover:bg-card-hover text-text-secondary hover:text-text-primary text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer"
+                                title="Import applications from JSON"
+                            >
+                                <Upload size={12} />
+                                <span>Import</span>
+                            </button>
+                            <button
+                                onClick={() => setExportMenuOpen(!exportMenuOpen)}
+                                className="h-[30px] px-2.5 hover:bg-card-hover text-text-secondary hover:text-text-primary border-l border-border text-xs font-semibold flex items-center gap-1 transition-colors cursor-pointer"
+                                title="Export applications as JSON"
+                            >
+                                <Download size={12} />
+                                <span>Export</span>
+                                <ChevronDown size={10} className={cn("transition-transform duration-200", exportMenuOpen && "rotate-180")} />
+                            </button>
+                        </div>
+
+                        {exportMenuOpen && (
+                            <div className="relative">
+                                <div
+                                    className="absolute right-0 mt-4 w-60 bg-card border border-border rounded-xl shadow-xl z-50 py-1.5 animate-in fade-in zoom-in-95 duration-100"
+                                    onMouseLeave={() => setExportMenuOpen(false)}
+                                >
+                                    <button
+                                        onClick={() => { setExportMenuOpen(false); handleExportAll(); }}
+                                        className="w-full text-left px-3 py-2 text-xs text-text-primary hover:bg-card-secondary flex items-center gap-2.5 transition-colors cursor-pointer"
+                                    >
+                                        <FileJson size={14} className="text-indigo-500" />
+                                        <div>
+                                            <div className="font-bold">Export All ({applications.length} apps)</div>
+                                            <div className="text-[10px] text-text-muted">Full catalog JSON bundle</div>
+                                        </div>
+                                    </button>
+                                    {currentApp && (
+                                        <button
+                                            onClick={() => { setExportMenuOpen(false); handleExportCurrent(); }}
+                                            className="w-full text-left px-3 py-2 text-xs text-text-primary hover:bg-card-secondary flex items-center gap-2.5 transition-colors cursor-pointer"
+                                        >
+                                            <Download size={14} className="text-emerald-500" />
+                                            <div>
+                                                <div className="font-bold">Export "{currentApp.name}"</div>
+                                                <div className="text-[10px] text-text-muted">Single profile JSON</div>
+                                            </div>
+                                        </button>
+                                    )}
+                                </div>
+                            </div>
+                        )}
+
+                        <button
+                            onClick={() => {
+                                setEditingApp(null);
+                                setIsWizardOpen(true);
+                            }}
+                            className="h-[30px] px-3 bg-indigo-600 hover:bg-indigo-500 text-white shadow-sm shadow-indigo-600/20 rounded-xl text-xs font-bold flex items-center gap-1 transition-all cursor-pointer"
+                        >
+                            <Plus size={13} /> <span>New App</span>
+                        </button>
+                    </div>
                 </div>
             </div>
 
-            {/* Global Fleet Telemetry Ribbon (Low-height, high-density compact bar) */}
+            {/* Global Fleet Telemetry Ribbon */}
             <div className="bg-card border border-border rounded-xl px-4 py-2 shadow-sm">
                 <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 sm:gap-4 items-center">
                     {/* KPI 1: Active Fleet Workload */}
@@ -918,12 +927,11 @@ const secs = seconds % 60;
                             <Layers size={14} />
                         </div>
                         <div className="min-w-0">
-                            <div className="text-[10px] font-bold uppercase tracking-wider text-text-muted truncate">Fleet Workload</div>
+                            <div className="text-[10px] font-bold uppercase tracking-wider text-text-muted truncate">Active Apps</div>
                             <div className="flex items-baseline gap-1.5">
                                 <span className="text-sm font-bold font-mono text-text-primary">
                                     {globalStats.totalActiveApps}<span className="text-xs text-text-muted font-normal">/{globalStats.totalApps}</span>
                                 </span>
-                                <span className="text-[10px] text-text-muted font-mono truncate">apps active</span>
                             </div>
                         </div>
                     </div>
@@ -982,14 +990,14 @@ const secs = seconds % 60;
                             <RotateCcw size={14} />
                         </div>
                         <div className="min-w-0">
-                            <div className="text-[10px] font-bold uppercase tracking-wider text-text-muted truncate">Resilience & Failover</div>
+                            <div className="text-[10px] font-bold uppercase tracking-wider text-text-muted truncate">Resilience</div>
                             <div className="flex items-baseline gap-1.5">
                                 <span className="text-sm font-bold font-mono text-text-primary">{globalStats.totalReconnects}</span>
-                                <span className="text-[10px] text-text-muted truncate">reconnects</span>
+                                <span className="text-[10px] text-text-muted truncate">rec</span>
                                 {globalStats.totalDrops > 0 ? (
-                                    <span className="text-[10px] font-bold text-rose-500 dark:text-rose-400">({globalStats.totalDrops} drops)</span>
+                                    <span className="text-[10px] font-bold text-rose-500 dark:text-rose-400">• {globalStats.totalDrops} drops</span>
                                 ) : (
-                                    <span className="text-[10px] text-emerald-500/80 dark:text-emerald-400/80 font-mono">(0 drops)</span>
+                                    <span className="text-[10px] text-emerald-500/80 dark:text-emerald-400/80 font-mono">• 0 drops</span>
                                 )}
                             </div>
                         </div>
@@ -1001,7 +1009,7 @@ const secs = seconds % 60;
             <div className="bg-card border border-border rounded-2xl p-3 space-y-2 shadow-sm">
                 <div className="flex items-center justify-between text-xs px-0.5">
                     <div className="flex items-center gap-1.5 text-text-primary font-semibold">
-                        <Layers size={14} className="text-indigo-500" />
+                        <Layers size={13} className="text-indigo-500" />
                         <span className="text-[11px] font-bold uppercase tracking-wider text-text-muted">Applications ({applications.length})</span>
                     </div>
                     <div className="hidden sm:flex items-center gap-3 text-[10px] text-text-muted">
@@ -1010,7 +1018,7 @@ const secs = seconds % 60;
                         <span className="flex items-center gap-1"><ArrowUpRight size={10} className="text-amber-400" /> TX Out</span>
                     </div>
                 </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-2">
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-2">
                     {applications.map(app => {
                         const isSel = app.id === selectedAppId;
                         const sum = allAppSummaries[app.id];
@@ -1026,25 +1034,25 @@ const secs = seconds % 60;
                             <button
                                 key={app.id}
                                 onClick={() => setSelectedAppId(app.id)}
-                                title={`${app.name} (Port ${app.listener?.port})`}
+                                title={`${app.name} (Port ${app.listener?.port}) — Listener: ${isL ? 'Active' : 'Stopped'} | Sessions: ${inSess} in, ${outSess} out`}
                                 className={`w-full min-w-0 h-[34px] px-2.5 rounded-xl border text-xs font-semibold flex items-center justify-between gap-2 transition-all cursor-pointer ${
                                     isSel
                                         ? 'bg-indigo-600 border-indigo-600 text-white shadow-md shadow-indigo-600/20'
                                         : 'bg-card-secondary hover:bg-card-hover border-border text-text-secondary hover:text-text-primary'
                                 }`}
                             >
-                                <div className="flex items-center gap-2 min-w-0 flex-1">
-                                    <span className={`w-2 h-2 rounded-full shrink-0 ${isL ? 'bg-emerald-400' : 'bg-text-muted'}`} />
+                                <div className="flex items-center gap-1.5 min-w-0 flex-1">
+                                    <span className={`w-2 h-2 rounded-full shrink-0 ${isL ? 'bg-emerald-400' : 'bg-text-muted/50'}`} />
                                     <span className="truncate font-semibold text-left">{app.name}</span>
                                 </div>
 
-                                <div className="flex items-center gap-1.5 shrink-0">
+                                <div className="flex items-center gap-1 shrink-0">
                                     <span className={`text-[11px] font-mono font-bold tracking-tight ${
                                         isSel
                                             ? 'text-indigo-100'
                                             : 'text-amber-500/90 dark:text-amber-400'
                                     }`}>
-                                        {app.listener?.port}
+                                        :{app.listener?.port}
                                     </span>
 
                                     {app.protocol === 'http_1_1' && (
@@ -1061,7 +1069,6 @@ const secs = seconds % 60;
                                             className={`text-[9px] px-1.5 py-0.5 rounded font-mono font-bold flex items-center gap-0.5 ${
                                                 isSel ? 'bg-white/20 text-white' : 'bg-indigo-500/20 text-indigo-400 border border-indigo-500/30'
                                             }`}
-                                            title={`Active RX & TX: ${inSess} in, ${outSess} out`}
                                         >
                                             <Activity size={9} className="animate-pulse" />
                                             <span>{totalSess}</span>
@@ -1071,7 +1078,6 @@ const secs = seconds % 60;
                                             className={`text-[9px] px-1.5 py-0.5 rounded font-mono font-bold flex items-center gap-0.5 ${
                                                 isSel ? 'bg-white/20 text-white' : 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
                                             }`}
-                                            title={`Receiving Server Traffic: ${inSess} active in`}
                                         >
                                             <ArrowDownRight size={9} className="animate-pulse" />
                                             <span>{inSess}</span>
@@ -1081,7 +1087,6 @@ const secs = seconds % 60;
                                             className={`text-[9px] px-1.5 py-0.5 rounded font-mono font-bold flex items-center gap-0.5 ${
                                                 isSel ? 'bg-white/20 text-white' : 'bg-amber-500/20 text-amber-400 border border-amber-500/30'
                                             }`}
-                                            title={`Transmitting Client Traffic: ${outSess} active out`}
                                         >
                                             <ArrowUpRight size={9} className={outSess > 0 ? "animate-pulse" : ""} />
                                             <span>{outSess}</span>
@@ -1094,112 +1099,89 @@ const secs = seconds % 60;
                 </div>
             </div>
 
-            {/* Application Toolbar & Primary Controls */}
-            <div className="bg-card border border-border rounded-2xl px-4 py-3 shadow-sm">
-                <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
-                    {/* Left: Active App Identity */}
-                    <div className="flex items-center gap-3">
-                        <div className="p-2 bg-indigo-500/10 border border-indigo-500/20 rounded-xl text-indigo-600 dark:text-indigo-400">
-                            <Server size={18} />
+            {/* Application Identity & Profile Actions Bar (Single-line compact) */}
+            <div className="bg-card border border-border rounded-2xl px-4 py-2.5 shadow-sm">
+                <div className="flex flex-wrap items-center justify-between gap-2.5">
+                    {/* Left: Active App Identity + Inline Metadata Badges */}
+                    <div className="flex items-center gap-2 flex-wrap">
+                        <div className="p-1.5 bg-indigo-500/10 border border-indigo-500/20 rounded-lg text-indigo-600 dark:text-indigo-400">
+                            <Server size={15} />
                         </div>
-                        <div>
-                            <div className="flex items-center gap-2 flex-wrap">
-                                <h2 className="text-sm font-bold text-text-primary">{currentApp?.name}</h2>
-                                <span className="font-mono text-[11px] text-indigo-500 font-bold bg-indigo-500/10 border border-indigo-500/30 px-2 py-0.5 rounded-lg">
-                                    Port {currentApp?.listener?.port}
-                                </span>
-                                <span className={`font-mono text-[10px] font-black px-2 py-0.5 rounded-lg border uppercase tracking-wider ${
-                                    currentApp?.protocol === 'http_1_1'
-                                        ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-600 dark:text-emerald-400'
-                                        : 'bg-indigo-500/10 border-indigo-500/30 text-indigo-600 dark:text-indigo-400'
-                                }`}>
-                                    {currentApp?.protocol === 'http_1_1' ? 'HTTP/1.1 REST' : 'TCP Native'}
-                                </span>
-                                {metrics && (() => {
-                                    const health = calculateHealthScore();
-                                    return (
-                                        <div
-                                            title={health.reason}
-                                            className={`h-5 px-2 rounded-md text-[10px] font-black border flex items-center gap-1 cursor-help transition-all ${
-                                                health.color === 'emerald'
-                                                    ? 'bg-emerald-500/10 border-emerald-500/40 text-emerald-600 dark:text-emerald-400'
-                                                    : health.color === 'amber'
-                                                    ? 'bg-amber-500/10 border-amber-500/40 text-amber-600 dark:text-amber-400'
-                                                    : 'bg-rose-500/15 border-rose-500/50 text-rose-600 dark:text-rose-400 animate-pulse'
-                                            }`}
-                                        >
-                                            <span className="font-mono">{health.score}/100</span>
-                                            <span className="uppercase tracking-wider font-extrabold">{health.label}</span>
-                                        </div>
-                                    );
-                                })()}
-                                {currentApp?.startup?.startClientWorkload && (
-                                    <span className="h-5 text-[10px] text-amber-500 bg-amber-500/10 border border-amber-500/30 px-2 rounded-md flex items-center gap-1 font-bold" title="Zero-Touch Auto-Start enabled: client workload starts automatically on sync and boot">
-                                        <Zap size={10} className="fill-amber-500" />
-                                        <span>ZTP Auto-Start</span>
-                                    </span>
-                                )}
-                            </div>
-                            <p className="text-[11px] text-text-muted mt-0.5">
-                                {currentApp?.peers?.length || 0} Target Peer(s) • Client Mode: <span className="capitalize text-text-secondary font-medium">{currentApp?.clientDefaults?.mode?.replace(/_/g, ' ')}</span> • Server Behavior: <span className="capitalize text-text-secondary font-medium">{currentApp?.serverBehavior?.mode?.replace(/_/g, ' ') || 'echo'}</span>
-                            </p>
-                        </div>
+                        <h2 className="text-sm font-bold text-text-primary">{currentApp?.name}</h2>
+                        <span className="font-mono text-[11px] text-indigo-500 font-bold bg-indigo-500/10 border border-indigo-500/30 px-2 py-0.5 rounded-md">
+                            Port {currentApp?.listener?.port}
+                        </span>
+                        <span className={`font-mono text-[10px] font-black px-2 py-0.5 rounded-md border uppercase tracking-wider ${
+                            currentApp?.protocol === 'http_1_1'
+                                ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-600 dark:text-emerald-400'
+                                : 'bg-indigo-500/10 border-indigo-500/30 text-indigo-600 dark:text-indigo-400'
+                        }`}>
+                            {currentApp?.protocol === 'http_1_1' ? 'HTTP/1.1' : 'TCP'}
+                        </span>
+                        <span className="text-[11px] text-text-muted font-mono bg-card-secondary border border-border px-2 py-0.5 rounded-md capitalize" title="Client Workload Mode → Server Response Behavior">
+                            {currentApp?.clientDefaults?.mode?.replace(/_/g, ' ') || 'periodic'} → {currentApp?.serverBehavior?.mode?.replace(/_/g, ' ') || 'echo'}
+                        </span>
+                        {metrics && (() => {
+                            const health = calculateHealthScore();
+                            return (
+                                <div
+                                    title={health.reason}
+                                    className={`h-5 px-2 rounded-md text-[10px] font-black border flex items-center gap-1 cursor-help transition-all ${
+                                        health.color === 'emerald'
+                                            ? 'bg-emerald-500/10 border-emerald-500/40 text-emerald-600 dark:text-emerald-400'
+                                            : health.color === 'amber'
+                                            ? 'bg-amber-500/10 border-amber-500/40 text-amber-600 dark:text-amber-400'
+                                            : 'bg-rose-500/15 border-rose-500/50 text-rose-600 dark:text-rose-400 animate-pulse'
+                                    }`}
+                                >
+                                    <span className="font-mono">{health.score}/100</span>
+                                    <span className="uppercase tracking-wider font-extrabold">{health.label}</span>
+                                </div>
+                            );
+                        })()}
+                        {currentApp?.startup?.startClientWorkload && (
+                            <span className="h-5 text-[10px] text-amber-500 bg-amber-500/10 border border-amber-500/30 px-2 rounded-md flex items-center gap-1 font-bold" title="Auto-Start enabled on boot/sync">
+                                <Zap size={10} className="fill-amber-500" />
+                                <span>Auto-Start</span>
+                            </span>
+                        )}
                     </div>
 
-                    {/* Right: Primary Control & Config Buttons */}
-                    <div className="flex flex-wrap items-center gap-2">
+                    {/* Right: Streamlined Profile Management Controls */}
+                    <div className="flex flex-wrap items-center gap-1.5">
                         <button
-                            onClick={handleToggleListener}
-                            disabled={isActionLoading}
-                            className={`h-[32px] px-3 py-1 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-all shadow-sm cursor-pointer ${
-                                metrics?.listenerState === 'listening'
-                                    ? 'bg-card-secondary hover:bg-card-hover text-amber-600 dark:text-amber-400 border border-amber-500/30'
-                                    : 'bg-indigo-600 hover:bg-indigo-500 text-white'
-                            }`}
+                            onClick={() => setIsPrismaModalOpen(true)}
+                            className="h-[30px] px-2.5 bg-blue-500/10 hover:bg-blue-500/20 text-blue-600 dark:text-blue-400 border border-blue-500/30 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-colors shadow-sm cursor-pointer"
+                            title="Push and register this custom application definition to Prisma SD-WAN via Cloud Controller API"
                         >
-                            <Server size={13} />
-                            {metrics?.listenerState === 'listening' ? 'Stop Listener' : 'Start Listener'}
+                            <Cloud size={13} />
+                            <span>Prisma SD-WAN</span>
                         </button>
-
-                        <button
-                            onClick={handleToggleClient}
-                            disabled={isActionLoading}
-                            title={!currentApp?.peers?.length ? 'No target peers configured — click to configure peers' : metrics?.clientWorkloadRunning ? 'Stop outgoing traffic generation' : 'Start outgoing traffic generation to configured targets'}
-                            className={`h-[32px] px-3 py-1 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-all shadow-sm cursor-pointer ${
-                                metrics?.clientWorkloadRunning
-                                    ? 'bg-rose-500/10 hover:bg-rose-500/20 text-rose-600 dark:text-rose-400 border border-rose-500/40'
-                                    : 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-emerald-600/20'
-                            }`}
-                        >
-                            {metrics?.clientWorkloadRunning ? <Square size={13} /> : <Play size={13} />}
-                            {metrics?.clientWorkloadRunning ? 'Stop Client' : 'Start Client'}
-                        </button>
-
-                        <div className="h-4 w-px bg-border mx-0.5 hidden sm:block" />
 
                         <button
                             onClick={() => {
                                 setEditingApp(currentApp || null);
                                 setIsWizardOpen(true);
                             }}
-                            className="h-[32px] px-3 py-1 bg-card-secondary hover:bg-card-hover text-text-primary border border-border rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-colors shadow-sm cursor-pointer"
+                            className="h-[30px] px-2.5 bg-card-secondary hover:bg-card-hover text-text-primary border border-border rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-colors shadow-sm cursor-pointer"
+                            title="Edit Application Profile & Target Peers"
                         >
-                            <Edit3 size={13} /> Edit Profile
+                            <Edit3 size={12} /> <span>Edit</span>
                         </button>
 
                         <button
-                            onClick={() => setIsPrismaModalOpen(true)}
-                            className="h-[32px] px-3 py-1 bg-blue-500/10 hover:bg-blue-500/20 text-blue-600 dark:text-blue-400 border border-blue-500/30 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-colors shadow-sm cursor-pointer"
-                            title="Push and register this custom application definition to Prisma SD-WAN via Cloud Controller API"
+                            onClick={handleDeleteApp}
+                            disabled={isActionLoading || !currentApp}
+                            className="h-[30px] px-2 bg-card-secondary hover:bg-rose-500/15 text-text-muted hover:text-rose-500 border border-border hover:border-rose-500/30 rounded-xl text-xs transition-colors shadow-sm cursor-pointer disabled:opacity-40"
+                            title={`Delete "${currentApp?.name || 'application'}"`}
                         >
-                            <Cloud size={13} />
-                            <span>Push to Prisma SD-WAN</span>
+                            <Trash2 size={13} />
                         </button>
                     </div>
                 </div>
             </div>
 
-            {/* Metrics Overview Cards */}
+            {/* Metrics Overview Cards with Embedded Contextual Start/Stop Controls */}
             {(() => {
                 const serverRx = incomingSessions.reduce((acc, s) => acc + (s.bytesReceived || 0), 0) || (metrics?.serverRxBytes ?? 0);
                 const serverTx = incomingSessions.reduce((acc, s) => acc + (s.bytesSent || 0), 0) || (metrics?.serverTxBytes ?? 0);
@@ -1218,21 +1200,43 @@ const secs = seconds % 60;
                     ? Number((outgoingSessions.reduce((acc, s) => acc + (s.rttMs?.jitterMs || 0), 0) / outgoingSessions.length).toFixed(1))
                     : 0);
 
+                const isListening = metrics?.listenerState === 'listening';
+                const isClientRunning = Boolean(metrics?.clientWorkloadRunning);
+
                 return (
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3.5">
-                        {/* 1. Incoming Sessions Card */}
-                        <div className="bg-card border border-border rounded-2xl p-4 shadow-sm hover:shadow-md transition-shadow flex flex-col justify-between">
-                            <div className="h-5 flex items-center justify-between text-xs">
+                        {/* 1. Incoming Sessions (Server Listener) Card */}
+                        <div className="bg-card border border-border rounded-2xl p-3.5 shadow-sm hover:shadow-md transition-shadow flex flex-col justify-between">
+                            <div className="flex items-center justify-between gap-2 text-xs">
                                 <span className="font-semibold flex items-center gap-1.5 text-indigo-600 dark:text-indigo-400">
-                                    <ArrowDownRight size={15} /> Incoming Sessions
+                                    <ArrowDownRight size={15} /> Incoming (Server)
                                 </span>
-                                <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded ${
-                                    metrics?.listenerState === 'listening' ? 'bg-emerald-500/10 text-emerald-500' : 'bg-zinc-500/10 text-text-muted'
-                                }`}>
-                                    {metrics?.listenerState === 'listening' ? 'Listening' : 'Stopped'}
-                                </span>
+                                <button
+                                    onClick={handleToggleListener}
+                                    disabled={isActionLoading}
+                                    title={isListening ? 'Click to stop local port listener' : 'Click to start local port listener'}
+                                    className={`px-2 py-0.5 rounded-lg text-[10px] font-bold uppercase tracking-wider flex items-center gap-1.5 border transition-all cursor-pointer disabled:opacity-50 ${
+                                        isListening
+                                            ? 'bg-emerald-500/10 hover:bg-rose-500/15 text-emerald-500 hover:text-rose-400 border-emerald-500/30 hover:border-rose-500/40 group'
+                                            : 'bg-indigo-600 hover:bg-indigo-500 text-white border-indigo-500 shadow-sm'
+                                    }`}
+                                >
+                                    {isListening ? (
+                                        <>
+                                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 group-hover:hidden" />
+                                            <Square size={9} fill="currentColor" className="hidden group-hover:inline" />
+                                            <span className="group-hover:hidden">Listening</span>
+                                            <span className="hidden group-hover:inline">Stop Listener</span>
+                                        </>
+                                    ) : (
+                                        <>
+                                            <Play size={9} fill="currentColor" />
+                                            <span>Start Listener</span>
+                                        </>
+                                    )}
+                                </button>
                             </div>
-                            <div className="my-2 min-h-[44px] flex items-center justify-between">
+                            <div className="my-2 min-h-[42px] flex items-center justify-between">
                                 <div className="text-2xl font-black font-mono leading-none text-text-primary">
                                     {incomingSessions.length} <span className="text-xs font-sans font-normal text-text-muted">active</span>
                                 </div>
@@ -1247,12 +1251,11 @@ const secs = seconds % 60;
                                 </div>
                             </div>
                             <div className="mt-auto text-[11px] text-text-muted flex items-center justify-between pt-2 border-t border-border">
-                                <span>Mode: <strong className="text-text-secondary capitalize">{currentApp?.serverBehavior?.mode ? currentApp.serverBehavior.mode.replace(/_/g, ' ') : 'echo'}</strong></span>
-                                <span>Handled: <strong className="text-text-secondary">{serverHandled}</strong> {liveServerTps > 0 && incomingSessions.length > 0 && <span className="text-indigo-500 font-mono text-[10px]">({liveServerTps} tps)</span>}</span>
+                                <span>Port <strong className="text-text-secondary font-mono">{currentApp?.listener?.port}</strong></span>
+                                <span>Handled: <strong className="text-text-secondary">{serverHandled}</strong> {liveServerTps > 0 && incomingSessions.length > 0 && <span className="text-indigo-500 font-mono text-[10px]">({liveServerTps}/s)</span>}</span>
                             </div>
                             {currentApp?.serverBehavior?.mode === 'eicar_response' && currentApp?.protocol === 'http_1_1' && (
                                 <div className="mt-2 p-2 bg-zinc-900/50 border border-zinc-700/40 rounded-lg">
-                                    <p className="text-[9px] font-bold text-text-muted uppercase tracking-widest mb-1">External curl test</p>
                                     <code className="block text-[10px] font-mono text-emerald-400 select-all break-all">
                                         curl -v http://&lt;node-ip&gt;:{currentApp.listener?.port}/
                                     </code>
@@ -1260,21 +1263,40 @@ const secs = seconds % 60;
                             )}
                         </div>
 
-                        {/* 2. Outgoing Sessions Card */}
-                        <div className="bg-card border border-border rounded-2xl p-4 shadow-sm hover:shadow-md transition-shadow flex flex-col justify-between">
-                            <div className="h-5 flex items-center justify-between text-xs">
+                        {/* 2. Outgoing Sessions (Client Workload) Card */}
+                        <div className="bg-card border border-border rounded-2xl p-3.5 shadow-sm hover:shadow-md transition-shadow flex flex-col justify-between">
+                            <div className="flex items-center justify-between gap-2 text-xs">
                                 <span className="font-semibold flex items-center gap-1.5 text-emerald-600 dark:text-emerald-400">
-                                    <ArrowUpRight size={15} /> Outgoing Sessions
+                                    <ArrowUpRight size={15} /> Outgoing (Client)
                                 </span>
-                                <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded ${
-                                    metrics?.clientWorkloadRunning ? 'bg-emerald-500/10 text-emerald-500' : 'bg-zinc-500/10 text-text-muted'
-                                }`}>
-                                    {metrics?.clientWorkloadRunning ? 'Transmitting' : 'Idle'}
-                                </span>
+                                <button
+                                    onClick={handleToggleClient}
+                                    disabled={isActionLoading}
+                                    title={isClientRunning ? 'Click to stop outgoing client traffic' : 'Click to start outgoing client traffic'}
+                                    className={`px-2 py-0.5 rounded-lg text-[10px] font-bold uppercase tracking-wider flex items-center gap-1.5 border transition-all cursor-pointer disabled:opacity-50 ${
+                                        isClientRunning
+                                            ? 'bg-emerald-500/10 hover:bg-rose-500/15 text-emerald-500 hover:text-rose-400 border-emerald-500/30 hover:border-rose-500/40 group'
+                                            : 'bg-emerald-600 hover:bg-emerald-500 text-white border-emerald-500 shadow-sm'
+                                    }`}
+                                >
+                                    {isClientRunning ? (
+                                        <>
+                                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse group-hover:hidden" />
+                                            <Square size={9} fill="currentColor" className="hidden group-hover:inline" />
+                                            <span className="group-hover:hidden">Transmitting</span>
+                                            <span className="hidden group-hover:inline">Stop Client</span>
+                                        </>
+                                    ) : (
+                                        <>
+                                            <Play size={9} fill="currentColor" />
+                                            <span>Start Client</span>
+                                        </>
+                                    )}
+                                </button>
                             </div>
-                            <div className="my-2 min-h-[44px] flex items-center justify-between">
+                            <div className="my-2 min-h-[42px] flex items-center justify-between">
                                 <div className="text-2xl font-black font-mono leading-none text-text-primary">
-                                    {outgoingSessions.filter(s => s.state === 'connected').length} <span className="text-xs font-sans font-normal text-text-muted">active</span>
+                                    {outgoingSessions.filter(s => s.state === 'connected').length}<span className="text-sm text-text-muted font-normal">/{currentApp?.peers?.length || 0}</span> <span className="text-xs font-sans font-normal text-text-muted">peers</span>
                                 </div>
                                 <div className="text-right text-[11px] font-mono space-y-0.5 leading-tight">
                                     <div className="text-text-muted">TX: <span className="text-indigo-400 font-bold">{formatBytes(clientTx)}</span></div>
@@ -1287,10 +1309,10 @@ const secs = seconds % 60;
                                 </div>
                             </div>
                             <div className="mt-auto text-[11px] text-text-muted flex items-center justify-between pt-2 border-t border-border">
-                                <span>Peers: <strong className="text-text-secondary font-medium">{currentApp?.peers?.length || 0} configured</strong></span>
+                                <span>Interval: <strong className="text-text-secondary font-mono">{currentApp?.clientDefaults?.intervalMs || 1000}ms</strong></span>
                                 <span className="whitespace-nowrap">
                                     Replies: <strong className="text-text-secondary">{clientReplies}</strong>{' '}
-                                    {liveClientTps > 0 && <span className="text-emerald-500 font-mono text-[10px] font-bold">({liveClientTps} tps)</span>}
+                                    {liveClientTps > 0 && <span className="text-emerald-500 font-mono text-[10px] font-bold">({liveClientTps}/s)</span>}
                                 </span>
                             </div>
                             {(() => {
@@ -1302,7 +1324,6 @@ const secs = seconds % 60;
                                         <div>
                                             <span className="text-[10px] font-bold text-rose-400 uppercase tracking-wider">EICAR not blocked</span>
                                             <span className="text-[10px] text-rose-300 ml-1.5">× {totalEicarReceived}</span>
-                                            <p className="text-[9px] text-rose-400/70 leading-tight mt-0.5">SASE/NGFW did not intercept the EICAR payload</p>
                                         </div>
                                     </div>
                                 );
@@ -1310,24 +1331,20 @@ const secs = seconds % 60;
                         </div>
 
                         {/* 3. Latency & Jitter Card */}
-                        <div className="bg-card border border-border rounded-2xl p-4 shadow-sm hover:shadow-md transition-shadow flex flex-col justify-between">
-                            <div className="h-5 flex items-center justify-between text-xs">
+                        <div className="bg-card border border-border rounded-2xl p-3.5 shadow-sm hover:shadow-md transition-shadow flex flex-col justify-between">
+                            <div className="flex items-center justify-between text-xs">
                                 <span className="font-semibold flex items-center gap-1.5 text-amber-500">
                                     <Zap size={15} /> App Latency (RTT)
                                 </span>
-                                <span className="font-mono text-[10px] text-text-muted">Live RTT</span>
+                                <span className="font-mono text-[10px] text-cyan-500 font-bold">Jitter: ±{avgJitter} ms</span>
                             </div>
-                            <div className="my-2 min-h-[44px] flex items-center justify-between">
+                            <div className="my-2 min-h-[42px] flex items-center justify-between">
                                 <div className="text-2xl font-black text-amber-500 font-mono leading-none">
                                     {metrics?.avgRttMs || 0} <span className="text-xs font-sans font-normal text-text-muted">ms avg</span>
                                 </div>
                                 <div className="text-right text-[11px] font-mono space-y-0.5 leading-tight">
-                                    <div className="text-text-muted">
-                                        p50: <span className="text-text-primary font-bold">{metrics?.p50RttMs || 0} ms</span> | p95: <span className="text-amber-500 font-bold">{metrics?.p95RttMs || 0} ms</span>
-                                    </div>
-                                    <div className="text-cyan-500 font-bold text-[10px]">
-                                        Jitter: ± {avgJitter} ms
-                                    </div>
+                                    <div className="text-text-muted">p50: <span className="text-text-primary font-bold">{metrics?.p50RttMs || 0} ms</span></div>
+                                    <div className="text-text-muted">p95: <span className="text-amber-500 font-bold">{metrics?.p95RttMs || 0} ms</span></div>
                                 </div>
                             </div>
                             <div className="mt-auto text-[11px] text-text-muted flex items-center justify-between pt-2 border-t border-border">
@@ -1336,32 +1353,31 @@ const secs = seconds % 60;
                             </div>
                         </div>
 
-                        {/* 4. Chaos & Stability Card */}
-                        <div className="bg-card border border-border rounded-2xl p-4 shadow-sm hover:shadow-md transition-shadow flex flex-col justify-between">
-                            <div className="h-5 flex items-center justify-between text-xs">
+                        {/* 4. Stability & Failover Card */}
+                        <div className="bg-card border border-border rounded-2xl p-3.5 shadow-sm hover:shadow-md transition-shadow flex flex-col justify-between">
+                            <div className="flex items-center justify-between text-xs">
                                 <span className="font-semibold flex items-center gap-1.5 text-cyan-500">
                                     <Activity size={15} /> Stability & Failover
                                 </span>
-                                <span className="font-mono text-[10px] text-text-muted">Disruptions</span>
+                                <span className="font-mono text-[10px] text-text-muted">
+                                    Drops: <strong className={metrics?.totalSimulatedDrops ? 'text-rose-500' : 'text-text-secondary'}>{metrics?.totalSimulatedDrops || 0}</strong>
+                                </span>
                             </div>
-                            <div className="my-2 min-h-[44px] flex items-center justify-between">
+                            <div className="my-2 min-h-[42px] flex items-center justify-between">
                                 <div className="text-2xl font-black text-text-primary font-mono leading-none">
                                     {metrics?.totalReconnects || 0} <span className="text-xs font-sans font-normal text-text-muted">reconnects</span>
                                 </div>
-                                <div className="text-right text-[11px] font-mono space-y-0.5 leading-tight">
-                                    <div className="text-text-muted">Drops: <span className={metrics?.totalSimulatedDrops ? 'text-rose-500 font-bold' : 'text-text-primary font-bold'}>{metrics?.totalSimulatedDrops || 0}</span></div>
-                                </div>
                             </div>
                             <div className="mt-auto text-[11px] text-text-muted flex items-center justify-between pt-2 border-t border-border">
-                                <span>Keepalive: <strong className="text-text-secondary">Enabled</strong></span>
-                                <span>Backoff: <strong className="text-text-secondary">Jittered</strong></span>
+                                <span>Streams/Peer: <strong className="text-text-secondary font-mono">{currentApp?.clientDefaults?.connectionsPerPeer || 1}</strong></span>
+                                <span>Timeout: <strong className="text-text-secondary font-mono">{currentApp?.clientDefaults?.requestTimeoutMs || 3000}ms</strong></span>
                             </div>
                         </div>
                     </div>
                 );
             })()}
 
-            {/* REAL-TIME SESSION SEARCH & STATE FILTER BAR */}
+            {/* REAL-TIME SESSION SEARCH, FILTER & VIEW MODE BAR */}
             {(() => {
                 const allSessCount = incomingSessions.length + outgoingSessions.length;
                 const connectedCount = incomingSessions.filter(s => s.state === 'connected').length + outgoingSessions.filter(s => s.state === 'connected').length;
@@ -1369,19 +1385,27 @@ const secs = seconds % 60;
 
                 const incomingEmpty = incomingSessions.length === 0 && outgoingSessions.length > 0;
                 const outgoingEmpty = outgoingSessions.length === 0 && incomingSessions.length > 0;
-                const incomingColSpan = incomingEmpty ? 'lg:col-span-4' : outgoingEmpty ? 'lg:col-span-8' : 'lg:col-span-6';
-                const outgoingColSpan = incomingEmpty ? 'lg:col-span-8' : outgoingEmpty ? 'lg:col-span-4' : 'lg:col-span-6';
+
+                // Determine active layout based on sessionViewMode ('auto' collapses empty side)
+                const effectiveMode = sessionViewMode === 'auto'
+                    ? (incomingEmpty ? 'outgoing' : outgoingEmpty ? 'incoming' : 'split')
+                    : sessionViewMode;
+
+                const showIncoming = effectiveMode === 'split' || effectiveMode === 'incoming';
+                const showOutgoing = effectiveMode === 'split' || effectiveMode === 'outgoing';
+                const incomingColSpan = effectiveMode === 'incoming' ? 'lg:col-span-12' : 'lg:col-span-5';
+                const outgoingColSpan = effectiveMode === 'outgoing' ? 'lg:col-span-12' : 'lg:col-span-7';
 
                 return (
                     <>
-                        <div className="bg-card border border-border rounded-2xl px-3.5 py-2.5 flex flex-wrap items-center justify-between gap-3 shadow-sm">
-                            <div className="relative flex-1 min-w-[260px]">
+                        <div className="bg-card border border-border rounded-2xl px-3.5 py-2 flex flex-wrap items-center justify-between gap-2.5 shadow-sm">
+                            <div className="relative flex-1 min-w-[220px]">
                                 <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-text-muted" />
                                 <input
                                     type="text"
                                     value={sessionSearch}
                                     onChange={e => setSessionSearch(e.target.value)}
-                                    placeholder="Filter sessions by origin, site, peer, IP, port, or state (e.g. DC1, BR5, connected)..."
+                                    placeholder="Filter by peer, IP, port or state..."
                                     className="w-full pl-8 pr-8 py-1.5 bg-card-secondary/70 border border-border focus:border-indigo-500 rounded-xl text-xs text-text-primary placeholder:text-text-muted outline-none transition-all font-sans"
                                 />
                                 {sessionSearch && (
@@ -1395,84 +1419,125 @@ const secs = seconds % 60;
                                 )}
                             </div>
 
-                            <div className="flex items-center gap-1.5">
-                                <button
-                                    onClick={() => setSessionStateFilter('all')}
-                                    className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold transition-all cursor-pointer flex items-center gap-1.5 ${
-                                        sessionStateFilter === 'all'
-                                            ? 'bg-indigo-600 text-white shadow-sm'
-                                            : 'bg-card-secondary text-text-secondary hover:text-text-primary border border-border'
-                                    }`}
-                                >
-                                    <span>All</span>
-                                    <span className={`font-mono text-[10px] px-1 rounded ${sessionStateFilter === 'all' ? 'bg-white/20 text-white' : 'bg-card text-text-muted'}`}>{allSessCount}</span>
-                                </button>
-                                <button
-                                    onClick={() => setSessionStateFilter('connected')}
-                                    className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold transition-all cursor-pointer flex items-center gap-1.5 ${
-                                        sessionStateFilter === 'connected'
-                                            ? 'bg-emerald-600 text-white shadow-sm'
-                                            : 'bg-card-secondary text-text-secondary hover:text-text-primary border border-border'
-                                    }`}
-                                >
-                                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-                                    <span>Connected</span>
-                                    <span className={`font-mono text-[10px] px-1 rounded ${sessionStateFilter === 'connected' ? 'bg-white/20 text-white' : 'bg-card text-text-muted'}`}>{connectedCount}</span>
-                                </button>
-                                <button
-                                    onClick={() => setSessionStateFilter('issues')}
-                                    className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold transition-all cursor-pointer flex items-center gap-1.5 ${
-                                        sessionStateFilter === 'issues'
-                                            ? 'bg-amber-600 text-white shadow-sm'
-                                            : 'bg-card-secondary text-text-secondary hover:text-text-primary border border-border'
-                                    }`}
-                                >
-                                    <span className={`w-1.5 h-1.5 rounded-full ${issuesCount > 0 ? 'bg-amber-400 animate-pulse' : 'bg-zinc-500'}`} />
-                                    <span>Paused / Retry</span>
-                                    <span className={`font-mono text-[10px] px-1 rounded ${sessionStateFilter === 'issues' ? 'bg-white/20 text-white' : 'bg-card text-text-muted'}`}>{issuesCount}</span>
-                                </button>
+                            <div className="flex flex-wrap items-center gap-2">
+                                {/* View Layout Switcher */}
+                                <div className="inline-flex rounded-lg border border-border bg-card-secondary p-0.5 text-[11px]">
+                                    <button
+                                        onClick={() => setSessionViewMode(effectiveMode === 'outgoing' ? 'split' : 'outgoing')}
+                                        className={`px-2 py-0.5 rounded-md font-semibold transition-all cursor-pointer flex items-center gap-1 ${
+                                            effectiveMode === 'outgoing'
+                                                ? 'bg-emerald-600 text-white shadow-sm'
+                                                : 'text-text-secondary hover:text-text-primary'
+                                        }`}
+                                        title="Focus Outgoing Client Sessions"
+                                    >
+                                        <ArrowUpRight size={11} />
+                                        <span>Outgoing ({outgoingSessions.length})</span>
+                                    </button>
+                                    <button
+                                        onClick={() => setSessionViewMode('split')}
+                                        className={`px-2 py-0.5 rounded-md font-semibold transition-all cursor-pointer ${
+                                            effectiveMode === 'split'
+                                                ? 'bg-indigo-600 text-white shadow-sm'
+                                                : 'text-text-secondary hover:text-text-primary'
+                                        }`}
+                                        title="Show both Incoming and Outgoing tables side-by-side"
+                                    >
+                                        Split
+                                    </button>
+                                    <button
+                                        onClick={() => setSessionViewMode(effectiveMode === 'incoming' ? 'split' : 'incoming')}
+                                        className={`px-2 py-0.5 rounded-md font-semibold transition-all cursor-pointer flex items-center gap-1 ${
+                                            effectiveMode === 'incoming'
+                                                ? 'bg-indigo-600 text-white shadow-sm'
+                                                : 'text-text-secondary hover:text-text-primary'
+                                        }`}
+                                        title="Focus Incoming Server Sessions"
+                                    >
+                                        <ArrowDownRight size={11} />
+                                        <span>Incoming ({incomingSessions.length})</span>
+                                    </button>
+                                </div>
+
+                                <div className="hidden sm:block h-4 w-px bg-border" />
+
+                                {/* State Filter Pills */}
+                                <div className="flex items-center gap-1">
+                                    <button
+                                        onClick={() => setSessionStateFilter('all')}
+                                        className={`px-2 py-1 rounded-lg text-[11px] font-semibold transition-all cursor-pointer flex items-center gap-1 ${
+                                            sessionStateFilter === 'all'
+                                                ? 'bg-indigo-600 text-white shadow-sm'
+                                                : 'bg-card-secondary text-text-secondary hover:text-text-primary border border-border'
+                                        }`}
+                                    >
+                                        <span>All</span>
+                                        <span className={`font-mono text-[10px] px-1 rounded ${sessionStateFilter === 'all' ? 'bg-white/20 text-white' : 'bg-card text-text-muted'}`}>{allSessCount}</span>
+                                    </button>
+                                    <button
+                                        onClick={() => setSessionStateFilter('connected')}
+                                        className={`px-2 py-1 rounded-lg text-[11px] font-semibold transition-all cursor-pointer flex items-center gap-1 ${
+                                            sessionStateFilter === 'connected'
+                                                ? 'bg-emerald-600 text-white shadow-sm'
+                                                : 'bg-card-secondary text-text-secondary hover:text-text-primary border border-border'
+                                        }`}
+                                    >
+                                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                                        <span>Up</span>
+                                        <span className={`font-mono text-[10px] px-1 rounded ${sessionStateFilter === 'connected' ? 'bg-white/20 text-white' : 'bg-card text-text-muted'}`}>{connectedCount}</span>
+                                    </button>
+                                    {issuesCount > 0 && (
+                                        <button
+                                            onClick={() => setSessionStateFilter('issues')}
+                                            className={`px-2 py-1 rounded-lg text-[11px] font-semibold transition-all cursor-pointer flex items-center gap-1 ${
+                                                sessionStateFilter === 'issues'
+                                                    ? 'bg-amber-600 text-white shadow-sm'
+                                                    : 'bg-card-secondary text-text-secondary hover:text-text-primary border border-border'
+                                            }`}
+                                        >
+                                            <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
+                                            <span>Issues</span>
+                                            <span className={`font-mono text-[10px] px-1 rounded ${sessionStateFilter === 'issues' ? 'bg-white/20 text-white' : 'bg-card text-text-muted'}`}>{issuesCount}</span>
+                                        </button>
+                                    )}
+                                </div>
                             </div>
                         </div>
 
-                        {/* LIVE TABLES SECTION (Dynamic Asymmetric 12-Col Grid) */}
-                        <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
+                        {/* LIVE TABLES SECTION (Adaptive Grid) */}
+                        <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
                             {/* 📥 INCOMING SESSIONS TABLE */}
+                            {showIncoming && (
                             <div className={`${incomingColSpan} bg-card border border-border rounded-2xl p-4 shadow-sm flex flex-col transition-all duration-300`}>
-                                <div className="flex items-center justify-between pb-3 border-b border-border">
-                                    <div className="flex items-center gap-2.5 min-w-0">
-                                        <div className="p-2 bg-indigo-500/10 border border-indigo-500/20 rounded-lg text-indigo-600 dark:text-indigo-400 shrink-0">
-                                            <ArrowDownRight size={16} />
+                                <div className="flex items-center justify-between pb-2.5 border-b border-border">
+                                    <div className="flex items-center gap-2 min-w-0">
+                                        <div className="p-1.5 bg-indigo-500/10 border border-indigo-500/20 rounded-lg text-indigo-600 dark:text-indigo-400 shrink-0">
+                                            <ArrowDownRight size={15} />
                                         </div>
-                                        <div className="min-w-0">
-                                            <h3 className="text-sm font-bold text-text-primary truncate">Incoming Sessions</h3>
-                                            <p className="text-[11px] text-text-muted truncate">Remote nodes connecting to local port {currentApp?.listener?.port}</p>
-                                        </div>
+                                        <h3 className="text-sm font-bold text-text-primary truncate">Incoming Sessions</h3>
+                                        <span className="text-[11px] font-mono text-text-muted">:{currentApp?.listener?.port}</span>
                                     </div>
-                                    <span className="text-xs bg-card-secondary border border-border px-2.5 py-1 rounded-xl text-indigo-600 dark:text-indigo-400 font-bold shadow-sm shrink-0">
-                                        {(sessionSearch || sessionStateFilter !== 'all') ? `${filteredIncomingSessions.length} / ${incomingSessions.length}` : `${incomingSessions.length}`} Connected
+                                    <span className="text-[11px] bg-card-secondary border border-border px-2 py-0.5 rounded-lg text-indigo-600 dark:text-indigo-400 font-bold font-mono shrink-0">
+                                        {(sessionSearch || sessionStateFilter !== 'all') ? `${filteredIncomingSessions.length}/${incomingSessions.length}` : `${incomingSessions.length}`} connected
                                     </span>
                                 </div>
 
-                                <div className="overflow-x-auto mt-3 flex-1">
+                                <div className="overflow-x-auto mt-2 flex-1">
                                     {incomingSessions.length === 0 ? (
-                                        <div className="py-10 px-4 text-center text-xs text-text-muted flex flex-col items-center justify-center gap-2">
-                                            <div className="w-8 h-8 rounded-full bg-indigo-500/5 border border-indigo-500/15 flex items-center justify-center text-indigo-400/60">
-                                                <ArrowDownRight size={15} />
-                                            </div>
-                                            <span className="italic">No incoming sessions connected to local port {currentApp?.listener?.port}.</span>
-                                            <span className="text-[10px] text-text-muted/70">Acting primarily as Client node or waiting for remote peers.</span>
+                                        <div className="py-8 px-4 text-center text-xs text-text-muted flex flex-col items-center justify-center gap-1.5">
+                                            <span className="italic">No incoming sessions on port {currentApp?.listener?.port}.</span>
                                         </div>
                                     ) : filteredIncomingSessions.length === 0 ? (
-                                        <div className="py-10 text-center text-xs text-text-muted italic">
+                                        <div className="py-8 text-center text-xs text-text-muted italic">
                                             No incoming sessions match current filter.
                                         </div>
                                     ) : (
                                         <table className="w-full text-left text-xs border-collapse table-fixed">
                                             <thead>
                                                 <tr className="border-b border-border text-text-muted font-semibold text-[11px]">
-                                                    <th className="pb-2.5 px-2.5 whitespace-nowrap w-[36%]">Declared Origin</th>
-                                                    <th className="pb-2.5 px-2.5 whitespace-nowrap w-[24%]">State & Uptime</th>
-                                                    <th className="pb-2.5 px-2.5 text-right whitespace-nowrap w-[40%]">Throughput (RX / TX)</th>
+                                                    <th className="pb-2 px-2.5 whitespace-nowrap w-[38%]">Origin Peer</th>
+                                                    <th className="pb-2 px-2.5 whitespace-nowrap w-[24%]">State</th>
+                                                    <th className="pb-2 px-2.5 text-right whitespace-nowrap w-[38%]">Throughput (RX / TX)</th>
                                                 </tr>
                                             </thead>
                                             <tbody className="divide-y divide-border/60">
@@ -1487,7 +1552,7 @@ const secs = seconds % 60;
                                                             key={s.sessionId}
                                                             onClick={() => setDeepDiveSession({ ...s, isIncoming: true })}
                                                             className="hover:bg-card-secondary/70 cursor-pointer transition-colors group"
-                                                            title="Click to open full Session Deep Dive"
+                                                            title="Click to open Session Deep Dive"
                                                         >
                                                             <td className="py-2.5 px-2.5 whitespace-nowrap truncate">
                                                                 <div className="font-semibold text-text-primary truncate">
@@ -1538,58 +1603,57 @@ const secs = seconds % 60;
                                     )}
                                 </div>
                             </div>
+                            )}
 
                             {/* 📤 OUTGOING SESSIONS TABLE */}
+                            {showOutgoing && (
                             <div className={`${outgoingColSpan} bg-card border border-border rounded-2xl p-4 shadow-sm flex flex-col transition-all duration-300`}>
-                                <div className="flex items-center justify-between pb-3 border-b border-border">
-                                    <div className="flex items-center gap-2.5 min-w-0">
-                                        <div className="p-2 bg-emerald-500/10 border border-emerald-500/20 rounded-lg text-emerald-600 dark:text-emerald-400 shrink-0">
-                                            <ArrowUpRight size={16} />
+                                <div className="flex items-center justify-between pb-2.5 border-b border-border">
+                                    <div className="flex items-center gap-2 min-w-0">
+                                        <div className="p-1.5 bg-emerald-500/10 border border-emerald-500/20 rounded-lg text-emerald-600 dark:text-emerald-400 shrink-0">
+                                            <ArrowUpRight size={15} />
                                         </div>
-                                        <div className="min-w-0">
-                                            <h3 className="text-sm font-bold text-text-primary truncate">Outgoing Sessions</h3>
-                                            <p className="text-[11px] text-text-muted truncate">Active streams opened from this node to remote peers</p>
-                                        </div>
+                                        <h3 className="text-sm font-bold text-text-primary truncate">Outgoing Sessions</h3>
                                     </div>
-                                    <span className="text-xs bg-card-secondary border border-border px-2.5 py-1 rounded-xl text-emerald-600 dark:text-emerald-400 font-bold shadow-sm shrink-0">
-                                        {(sessionSearch || sessionStateFilter !== 'all') ? `${filteredOutgoingSessions.length} / ${outgoingSessions.length}` : `${outgoingSessions.length}`} Targets
+                                    <span className="text-[11px] bg-card-secondary border border-border px-2 py-0.5 rounded-lg text-emerald-600 dark:text-emerald-400 font-bold font-mono shrink-0">
+                                        {(sessionSearch || sessionStateFilter !== 'all') ? `${filteredOutgoingSessions.length}/${outgoingSessions.length}` : `${outgoingSessions.length}`} targets
                                     </span>
                                 </div>
 
-                                <div className="overflow-x-auto mt-3 flex-1">
+                                <div className="overflow-x-auto mt-2 flex-1">
                                     {outgoingSessions.length === 0 ? (
-                                        <div className="py-10 text-center text-xs text-text-muted">
+                                        <div className="py-8 text-center text-xs text-text-muted">
                                             {metrics?.clientWorkloadRunning ? (
                                                 <div className="italic">Connecting to configured peers...</div>
                                             ) : (!currentApp?.peers || currentApp.peers.length === 0) ? (
-                                                <div className="space-y-2.5">
-                                                    <p className="text-text-muted">No remote target peers configured for this application.</p>
+                                                <div className="space-y-2">
+                                                    <p className="text-text-muted">No target peers configured.</p>
                                                     <button
                                                         onClick={() => {
                                                              setEditingApp(currentApp || null);
                                                              setIsWizardOpen(true);
                                                         }}
-                                                        className="px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-semibold inline-flex items-center gap-1.5 transition-colors shadow-sm cursor-pointer"
+                                                        className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-semibold inline-flex items-center gap-1.5 transition-colors shadow-sm cursor-pointer"
                                                     >
-                                                        <Plus size={14} /> Add Target Peer
+                                                        <Plus size={13} /> Add Target Peer
                                                     </button>
                                                 </div>
                                             ) : (
-                                                <div className="italic">Client is currently stopped. Click "Start Client" above.</div>
+                                                <div className="italic">Client stopped. Click "Start Client" on the Outgoing card above.</div>
                                             )}
                                         </div>
                                     ) : filteredOutgoingSessions.length === 0 ? (
-                                        <div className="py-10 text-center text-xs text-text-muted italic">
+                                        <div className="py-8 text-center text-xs text-text-muted italic">
                                             No outgoing sessions match current filter.
                                         </div>
                                     ) : (
                                         <table className="w-full text-left text-xs border-collapse table-fixed">
                                             <thead>
                                                 <tr className="border-b border-border text-text-muted font-semibold text-[11px]">
-                                                    <th className="pb-2.5 px-2.5 whitespace-nowrap w-[25%]">Target Peer</th>
-                                                    <th className="pb-2.5 px-2.5 whitespace-nowrap w-[21%]">State & Uptime</th>
-                                                    <th className="pb-2.5 px-2.5 text-right whitespace-nowrap w-[22%]">Throughput (TX / RX)</th>
-                                                    <th className="pb-2.5 px-2.5 whitespace-nowrap w-[32%]">
+                                                    <th className="pb-2 px-2.5 whitespace-nowrap w-[26%]">Target Peer</th>
+                                                    <th className="pb-2 px-2.5 whitespace-nowrap w-[20%]">State</th>
+                                                    <th className="pb-2 px-2.5 text-right whitespace-nowrap w-[22%]">Throughput (TX / RX)</th>
+                                                    <th className="pb-2 px-2.5 whitespace-nowrap w-[32%]">
                                                         <div className="flex items-center justify-between">
                                                             <span className="text-text-muted">RTT Trend</span>
                                                             <span className="text-right">
@@ -1685,6 +1749,7 @@ const secs = seconds % 60;
                                     )}
                                 </div>
                             </div>
+                            )}
                         </div>
                     </>
                 );
