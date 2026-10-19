@@ -899,6 +899,109 @@ export class CopilotTestSuite {
             };
         });
 
+        // 49. Regression Test: run_security_probe & run_security_url_batch category slug resolution ("adult" -> test-adult URL)
+        await this.runTest('49. Tool "run_security_probe & run_security_url_batch" (Category slug resolution)', async () => {
+            const probeRes = await executeCopilotTool('run_security_probe', {
+                agent_id: this.host,
+                probe_type: 'url',
+                target: 'adult'
+            }, remoteCtx);
+            if (!probeRes.url || !probeRes.url.includes('urlfiltering.paloaltonetworks.com/test-adult')) {
+                throw new Error(`Expected target="adult" to resolve to test-adult URL, got url=${probeRes.url}`);
+            }
+            const batchRes = await executeCopilotTool('run_security_url_batch', {
+                agent_id: this.host,
+                categories: ['adult', 'nudity']
+            }, remoteCtx);
+            if (batchRes.error) {
+                throw new Error(`Expected run_security_url_batch to succeed, got error: ${batchRes.error}`);
+            }
+            if (batchRes.total_tested < 2) {
+                throw new Error(`Expected at least 2 categories tested in batch, got ${batchRes.total_tested}`);
+            }
+            return {
+                probeUrl: probeRes.url,
+                probeStatus: probeRes.status,
+                batchTotalTested: batchRes.total_tested,
+                batchBlocked: batchRes.blocked_count
+            };
+        });
+
+        // 50. Regression Test: create_custom_tcp_app & add_tcp_app_peer (Registry/Targets peer resolution + delay defaults)
+        await this.runTest('50. Tool "create_custom_tcp_app & add_tcp_app_peer" (Peer IP resolution & delay defaults)', async () => {
+            const savedApps: any[] = [];
+            const prodLikeCtx: any = {
+                registryManager: {
+                    getSiteName: () => 'BR8-Ubuntu',
+                    getStatus: () => ({
+                        site_name: 'BR8-Ubuntu',
+                        instance_id: 'br8-ubuntu',
+                        detected_ip: '192.168.219.1',
+                        role: 'branch'
+                    }),
+                    getPeers: () => [
+                        {
+                            site_name: 'DC1-Ubuntu',
+                            instance_id: 'dc1-ubuntu',
+                            ip_private: '192.168.123.100',
+                            role: 'hub'
+                        }
+                    ]
+                },
+                targetsManager: {
+                    getMergedTargets: () => [
+                        { id: 'BR2-Ubuntu', name: 'BR2-Ubuntu', host: '192.168.202.1', enabled: true }
+                    ]
+                },
+                tcpAppManager: {
+                    getConfig: () => ({ applications: savedApps }),
+                    saveApplication: async (app: any) => {
+                        const idx = savedApps.findIndex(a => a.id === app.id);
+                        if (idx >= 0) savedApps[idx] = app;
+                        else savedApps.push(app);
+                    },
+                    startListener: async () => {},
+                    startClient: async () => {}
+                }
+            };
+
+            const createRes = await executeCopilotTool('create_custom_tcp_app', {
+                agent_id: 'BR8-Ubuntu',
+                name: 'onprem8097',
+                port: 8097,
+                server_behavior: 'random_delay',
+                target_peers: 'DC1-Ubuntu'
+            }, prodLikeCtx);
+
+            const createdApp = createRes.application;
+            if (!createdApp || !Array.isArray(createdApp.peers) || createdApp.peers.length !== 1) {
+                throw new Error(`Expected 1 resolved peer from target_peers="DC1-Ubuntu", got ${JSON.stringify(createdApp?.peers)}`);
+            }
+            if (createdApp.peers[0].host !== '192.168.123.100') {
+                throw new Error(`Expected DC1-Ubuntu peer host to resolve to 192.168.123.100, got ${createdApp.peers[0].host}`);
+            }
+            if (createdApp.serverBehavior?.randomDelayMinMs !== 100 || createdApp.serverBehavior?.randomDelayMaxMs !== 1000) {
+                throw new Error(`Expected random delay defaults 100..1000ms, got ${JSON.stringify(createdApp.serverBehavior)}`);
+            }
+
+            const addPeerRes = await executeCopilotTool('add_tcp_app_peer', {
+                agent_id: 'BR8-Ubuntu',
+                app_id: createdApp.id,
+                peer_name_or_host: 'BR2'
+            }, prodLikeCtx);
+
+            if (!addPeerRes.success || addPeerRes.peer?.host !== '192.168.202.1') {
+                throw new Error(`Expected add_tcp_app_peer("BR2") to resolve to 192.168.202.1, got ${JSON.stringify(addPeerRes.peer)}`);
+            }
+
+            return {
+                appId: createdApp.id,
+                peersCount: addPeerRes.application?.peers?.length,
+                resolvedHosts: addPeerRes.application?.peers?.map((p: any) => `${p.siteName}=${p.host}`),
+                serverBehavior: createdApp.serverBehavior
+            };
+        });
+
 
         // Summary
         const passedCount = this.results.filter(r => r.passed).length;

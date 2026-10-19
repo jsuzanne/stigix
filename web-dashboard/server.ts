@@ -10130,16 +10130,45 @@ const preDnsCheck = async (url: string): Promise<{
 };
 
 app.post('/api/security/url-test', authenticateToken, async (req, res) => {
-    const { url, category, mcp_source } = req.body;
+    let { url, category, mcp_source } = req.body;
 
     const testId = getNextTestId();
 
-    logTest(`[URL-TEST-${testId}] URL filtering test request: ${url} (${category || 'Uncategorized'})`);
+    if (!url && category) {
+        url = category;
+    }
 
     if (!url) {
         logTest(`[URL-TEST-${testId}] Test failed: No URL provided`);
         return res.status(400).json({ error: 'URL is required' });
     }
+
+    // Auto-resolve category ID or friendly name (e.g. 'adult' or 'Adult Content') to its Palo Alto test URL
+    const rawUrl = String(url).trim();
+    if (!rawUrl.startsWith('http://') && !rawUrl.startsWith('https://')) {
+        const lower = rawUrl.toLowerCase().replace(/^test-/, '');
+        const profileItems: any[] = getSecurityProfile()?.url_filtering?.items || URL_CATEGORIES;
+        const matched = profileItems.find((item: any) =>
+            String(item.id || '').toLowerCase() === lower ||
+            String(item.name || '').toLowerCase() === rawUrl.toLowerCase() ||
+            String(item.name || '').toLowerCase().includes(lower)
+        );
+        if (matched) {
+            url = matched.url;
+            category = matched.name || category || matched.id;
+        } else if (!rawUrl.includes('.')) {
+            url = `http://urlfiltering.paloaltonetworks.com/test-${lower}`;
+            if (!category || category === rawUrl) category = rawUrl;
+        } else {
+            url = `http://${rawUrl}`;
+        }
+    } else if (!category || category === url) {
+        const profileItems: any[] = getSecurityProfile()?.url_filtering?.items || URL_CATEGORIES;
+        const matched = profileItems.find((item: any) => String(item.url || '').replace(/\/$/, '') === rawUrl.replace(/\/$/, ''));
+        if (matched?.name) category = matched.name;
+    }
+
+    logTest(`[URL-TEST-${testId}] URL filtering test request: ${url} (${category || 'Uncategorized'})`);
 
     try {
         // exec already imported at top
@@ -10436,18 +10465,40 @@ app.post('/api/security/url-test-batch', authenticateToken, async (req, res) => 
 
 // API: DNS Security Test
 app.post('/api/security/dns-test', authenticateToken, async (req, res) => {
-    const { domain, testName, mcp_source } = req.body;
+    let { domain, testName, mcp_source } = req.body;
 
     // Generate unique test ID
     const testId = getNextTestId();
 
-
-    logTest(`[DNS-TEST-${testId}] DNS security test request: ${domain} (${testName || 'Custom Test'})`);
+    if (!domain && testName) {
+        domain = testName;
+    }
 
     if (!domain) {
         logTest(`[DNS-TEST-${testId}] Test failed: No domain provided`);
         return res.status(400).json({ error: 'Domain is required' });
     }
+
+    // Auto-resolve DNS test ID or friendly name (e.g. 'dns-tunneling' or 'DNS Tunneling') to FQDN
+    const rawDomain = String(domain).trim();
+    const profileDnsItems: any[] = getSecurityProfile()?.dns_security?.items || DNS_TEST_DOMAINS;
+    if (!rawDomain.includes('.')) {
+        const lower = rawDomain.toLowerCase();
+        const matched = profileDnsItems.find((item: any) =>
+            String(item.id || '').toLowerCase() === lower ||
+            String(item.name || '').toLowerCase() === lower ||
+            String(item.name || '').toLowerCase().includes(lower)
+        );
+        if (matched) {
+            domain = matched.domain;
+            testName = matched.name || testName || matched.id;
+        }
+    } else if (!testName || testName === domain) {
+        const matched = profileDnsItems.find((item: any) => String(item.domain || '').replace(/\.$/, '') === rawDomain.replace(/\.$/, ''));
+        if (matched?.name) testName = matched.name;
+    }
+
+    logTest(`[DNS-TEST-${testId}] DNS security test request: ${domain} (${testName || 'Custom Test'})`);
 
     try {
         // exec already imported at top

@@ -196,6 +196,93 @@ export function resolveTargetEndpoint(targetQuery: string | undefined, ctx: Tool
     return { host: raw, port: 9000, name: raw };
 }
 
+function collectFabricEndpoints(ctx: ToolExecutionContext): Array<{ id: string; name: string; siteName: string; host: string; role: string; meta?: any; test_ip?: string; api_base_url?: string }> {
+    const out: Array<{ id: string; name: string; siteName: string; host: string; role: string; meta?: any; test_ip?: string; api_base_url?: string }> = [];
+    const seenHosts = new Set<string>();
+
+    const addEp = (id: string | undefined, name: string | undefined, host: string | undefined, role: string = 'branch') => {
+        const cleanHost = String(host || '').trim();
+        if (!cleanHost || cleanHost === '127.0.0.1' || cleanHost === 'localhost') return;
+        const cleanName = String(name || id || cleanHost).trim();
+        const cleanId = String(id || cleanName).trim();
+        const key = `${cleanName.toLowerCase()}|${cleanHost.toLowerCase()}`;
+        if (seenHosts.has(key)) return;
+        seenHosts.add(key);
+        out.push({
+            id: cleanId,
+            name: cleanName,
+            siteName: cleanName,
+            host: cleanHost,
+            test_ip: cleanHost,
+            role,
+            meta: { site_name: cleanName }
+        });
+    };
+
+    // 1. Explicit context arrays (used by test harness or custom injection)
+    const explicit = ((ctx as any).fabricEndpoints && (ctx as any).fabricEndpoints.length > 0)
+        ? (ctx as any).fabricEndpoints
+        : ((ctx as any).targets || []);
+    for (const ep of explicit) {
+        const h = ep.test_ip || ep.host || ep.ip || (ep.api_base_url ? String(ep.api_base_url).replace(/https?:\/\//, '').split(':')[0] : '');
+        const n = ep.meta?.site_name || ep.site_name || ep.name || ep.id;
+        addEp(ep.id || n, n, h, ep.role || 'branch');
+    }
+
+    // 2. Local node from registry status (so local node has a routable overlay IP when added as a peer on a remote node)
+    const regStatus = typeof ctx.registryManager?.getStatus === 'function' ? ctx.registryManager.getStatus() : null;
+    if (regStatus) {
+        const localIp = regStatus.detected_ip || regStatus.ip_private || regStatus.ip_public;
+        const localName = regStatus.site_name || ctx.registryManager?.getSiteName?.() || regStatus.instance_id;
+        if (localIp && localName) {
+            addEp(regStatus.instance_id || localName, localName, localIp, regStatus.role || 'branch');
+        }
+    }
+
+    // 3. Registry peers
+    const peers = typeof ctx.registryManager?.getPeers === 'function' ? ctx.registryManager.getPeers() : [];
+    for (const p of peers) {
+        const h = p.ip_private || p.ip_public || p.host;
+        const n = p.site_name || p.name || p.instance_id;
+        addEp(p.instance_id || n, n, h, p.role || 'branch');
+    }
+
+    // 4. Merged targets from TargetsManager
+    const managedTargets = typeof ctx.targetsManager?.getMergedTargets === 'function' ? ctx.targetsManager.getMergedTargets() : [];
+    for (const t of managedTargets) {
+        const h = t.host || t.ip;
+        const n = t.name || t.meta?.site_name || t.id;
+        addEp(t.id || n, n, h, t.role || (n && /^dc/i.test(String(n)) ? 'hub' : 'branch'));
+    }
+
+    return out;
+}
+
+function matchFabricEndpoint(
+    query: string,
+    endpoints: Array<{ id: string; name: string; siteName: string; host: string; role: string }>
+) {
+    const q = String(query || '').trim().toLowerCase();
+    if (!q) return undefined;
+    // Exact match first
+    const exact = endpoints.find(ep =>
+        ep.id?.toLowerCase() === q ||
+        ep.name?.toLowerCase() === q ||
+        ep.siteName?.toLowerCase() === q ||
+        ep.host?.toLowerCase() === q
+    );
+    if (exact) return exact;
+    // Prefix / substring match (e.g., "BR8" -> "BR8-Ubuntu")
+    return endpoints.find(ep => {
+        const id = (ep.id || '').toLowerCase();
+        const name = (ep.name || '').toLowerCase();
+        const site = (ep.siteName || '').toLowerCase();
+        return (name && (name.includes(q) || q.includes(name))) ||
+            (site && (site.includes(q) || q.includes(site))) ||
+            (id && (id.includes(q) || q.includes(id)));
+    });
+}
+
 async function fetchApi(
     nodeCtx: { baseUrl: string; headers: Record<string, string>; siteName?: string; unknownNode?: boolean; requestedNode?: string; availableNodes?: string[] },
     path: string,
@@ -1547,11 +1634,14 @@ export const COPILOT_TOOLS: AnthropicToolDefinition[] = [
                 description: { type: 'string', description: 'Description of the application purpose.' },
                 protocol: { type: 'string', enum: ['stigix_tcp', 'http_1_1'], description: 'Wire protocol ("stigix_tcp" or "http_1_1").' },
                 server_behavior: { type: 'string', enum: ['echo', 'acknowledge', 'fixed_delay', 'random_delay', 'drop_response', 'error_response'], description: 'Server responder behavior.' },
+                fixed_delay_ms: { type: 'integer', description: 'Server response delay in ms when server_behavior is "fixed_delay" (default: 500).' },
+                random_delay_min_ms: { type: 'integer', description: 'Minimum server response delay in ms when server_behavior is "random_delay" (default: 100).' },
+                random_delay_max_ms: { type: 'integer', description: 'Maximum server response delay in ms when server_behavior is "random_delay" (default: 1000).' },
                 client_mode: { type: 'string', enum: ['heartbeat', 'transactional', 'persistent_request_reply', 'bulk_burst', 'continuous_stream'], description: 'Client traffic generation mode.' },
                 payload_bytes: { type: 'integer', description: 'Payload size in bytes per transaction (default: 1024).' },
                 interval_ms: { type: 'integer', description: 'Request interval in ms (default: 1000).' },
                 connections_per_peer: { type: 'integer', description: 'Concurrent sessions per peer (default: 2).' },
-                target_peers: { type: 'string', description: 'Comma-separated target node IDs or "all" to automatically attach all mesh peers (default: "all").' },
+                target_peers: { type: 'string', description: 'Comma-separated target node IDs/names/IPs or "all" to automatically attach mesh peers (default: "all"). Use "none" for listener-only with no peers.' },
                 auto_start_listener: { type: 'boolean', description: 'Automatically start TCP listener immediately (default: true).' },
                 auto_start_workload: { type: 'boolean', description: 'Automatically start client workload on all peers (default: true).' }
             },
@@ -2503,22 +2593,54 @@ export async function executeCopilotTool(
             case 'run_security_probe': {
                 const nodeCtx = resolveNodeContext(args.agent_id, ctx);
                 const pType = String(args.probe_type || '').toLowerCase();
-                const target = args.target;
+                const rawTarget = String(args.target || '').trim();
 
                 if (pType === 'dns') {
+                    let domain = rawTarget;
+                    let testName = rawTarget;
+                    const lower = rawTarget.toLowerCase();
+                    const matched = DNS_TEST_DOMAINS.find(d =>
+                        d.id.toLowerCase() === lower ||
+                        d.name.toLowerCase() === lower ||
+                        d.domain.toLowerCase() === lower ||
+                        d.name.toLowerCase().includes(lower)
+                    );
+                    if (matched) {
+                        domain = matched.domain;
+                        testName = matched.name;
+                    }
                     return await fetchApi(nodeCtx, '/api/security/dns-test', {
                         method: 'POST',
-                        body: JSON.stringify({ domain: target, testName: target, mcp_source: 'copilot' })
+                        body: JSON.stringify({ domain, testName, mcp_source: 'copilot' })
                     });
                 } else if (pType === 'url') {
+                    let url = rawTarget;
+                    let category = rawTarget;
+                    const lower = rawTarget.toLowerCase().replace(/^test-/, '');
+                    const matched = URL_CATEGORIES.find(c =>
+                        c.id.toLowerCase() === lower ||
+                        c.name.toLowerCase() === rawTarget.toLowerCase() ||
+                        c.url.toLowerCase().replace(/\/$/, '') === rawTarget.toLowerCase().replace(/\/$/, '') ||
+                        c.name.toLowerCase().includes(lower)
+                    );
+                    if (matched) {
+                        url = matched.url;
+                        category = matched.name;
+                    } else if (!rawTarget.startsWith('http://') && !rawTarget.startsWith('https://')) {
+                        if (!rawTarget.includes('.')) {
+                            url = `http://urlfiltering.paloaltonetworks.com/test-${lower}`;
+                        } else {
+                            url = `http://${rawTarget}`;
+                        }
+                    }
                     return await fetchApi(nodeCtx, '/api/security/url-test', {
                         method: 'POST',
-                        body: JSON.stringify({ url: target, category: target, mcp_source: 'copilot' })
+                        body: JSON.stringify({ url, category, mcp_source: 'copilot' })
                     });
                 } else if (pType === 'threat') {
                     return await fetchApi(nodeCtx, '/api/security/threat-test', {
                         method: 'POST',
-                        body: JSON.stringify({ endpoint: target, testName: `EICAR Test (${target})`, mcp_source: 'copilot' })
+                        body: JSON.stringify({ endpoint: rawTarget, testName: `EICAR Test (${rawTarget})`, mcp_source: 'copilot' })
                     });
                 }
                 return { error: `Invalid probe_type: ${pType}` };
@@ -3522,7 +3644,7 @@ export async function executeCopilotTool(
             }
 
             case 'list_active_impairments': {
-                const endpoints = (ctx.fabricEndpoints && ctx.fabricEndpoints.length > 0) ? ctx.fabricEndpoints : (ctx.targets || []);
+                const endpoints = collectFabricEndpoints(ctx);
                 let targetAgents: NodeContext[] = [];
                 if (args.agent_id) {
                     const resolved = resolveNodeContext(args.agent_id, ctx);
@@ -3639,25 +3761,33 @@ export async function executeCopilotTool(
                     fetchApi(nodeCtx, '/api/security/config').catch(() => ({})),
                     fetchApi(nodeCtx, '/api/security/profile').catch(() => ({}))
                 ]);
-                const profileCats: any[] = Array.isArray(secProfile?.url_categories) ? secProfile.url_categories : [];
+                const profileCats: any[] = Array.isArray(secProfile?.url_filtering?.items) && secProfile.url_filtering.items.length > 0
+                    ? secProfile.url_filtering.items
+                    : (Array.isArray(secProfile?.url_categories) && secProfile.url_categories.length > 0
+                        ? secProfile.url_categories
+                        : URL_CATEGORIES);
                 const requestedCats: string[] | null = Array.isArray(args.categories) && args.categories.length > 0
-                    ? args.categories.map((c: string) => String(c).toLowerCase())
+                    ? args.categories.map((c: string) => String(c).toLowerCase().trim())
                     : null;
                 const enabledCats: string[] = Array.isArray(secConfig?.url_filtering?.enabled_categories)
-                    ? secConfig.url_filtering.enabled_categories.map((c: string) => String(c).toLowerCase())
+                    ? secConfig.url_filtering.enabled_categories.map((c: string) => String(c).toLowerCase().trim())
                     : [];
 
                 const selected = profileCats.filter((cat: any) => {
                     const id = String(cat.id || '').toLowerCase();
                     const name = String(cat.name || '').toLowerCase();
                     if (requestedCats) {
-                        return requestedCats.some(rc => id === rc || name.includes(rc));
+                        return requestedCats.some(rc => id === rc || name === rc || name.includes(rc) || rc.includes(id));
                     }
                     return enabledCats.length > 0 ? enabledCats.includes(id) : true;
                 });
 
-                const tests = (selected.length > 0 ? selected : profileCats).map((cat: any) => ({
-                    url: (Array.isArray(cat.urls) && cat.urls[0]) || cat.url || `https://urlfiltering.paloaltonetworks.com/test-${cat.id}`,
+                const tests = (selected.length > 0 ? selected : (requestedCats ? requestedCats.map(rc => ({
+                    id: rc.replace(/^test-/, ''),
+                    name: rc,
+                    url: `http://urlfiltering.paloaltonetworks.com/test-${rc.replace(/^test-/, '')}`
+                })) : profileCats)).map((cat: any) => ({
+                    url: (Array.isArray(cat.urls) && cat.urls[0]) || cat.url || `http://urlfiltering.paloaltonetworks.com/test-${cat.id}`,
                     category: cat.name || cat.id
                 }));
 
@@ -3697,19 +3827,24 @@ export async function executeCopilotTool(
                     fetchApi(nodeCtx, '/api/security/config').catch(() => ({})),
                     fetchApi(nodeCtx, '/api/security/profile').catch(() => ({}))
                 ]);
-                const profileDns: any[] = Array.isArray(secProfile?.dns_tests) ? secProfile.dns_tests : [];
+                const profileDns: any[] = Array.isArray(secProfile?.dns_security?.items) && secProfile.dns_security.items.length > 0
+                    ? secProfile.dns_security.items
+                    : (Array.isArray(secProfile?.dns_tests) && secProfile.dns_tests.length > 0
+                        ? secProfile.dns_tests
+                        : DNS_TEST_DOMAINS);
                 const requestedIds: string[] | null = Array.isArray(args.test_ids) && args.test_ids.length > 0
-                    ? args.test_ids.map((id: string) => String(id).toLowerCase())
+                    ? args.test_ids.map((id: string) => String(id).toLowerCase().trim())
                     : null;
                 const enabledIds: string[] = Array.isArray(secConfig?.dns_security?.enabled_tests)
-                    ? secConfig.dns_security.enabled_tests.map((id: string) => String(id).toLowerCase())
+                    ? secConfig.dns_security.enabled_tests.map((id: string) => String(id).toLowerCase().trim())
                     : [];
 
                 const selected = profileDns.filter((dt: any) => {
                     const id = String(dt.id || '').toLowerCase();
                     const name = String(dt.name || '').toLowerCase();
+                    const domain = String(dt.domain || '').toLowerCase();
                     if (requestedIds) {
-                        return requestedIds.some(ri => id === ri || name.includes(ri));
+                        return requestedIds.some(ri => id === ri || name === ri || domain === ri || name.includes(ri) || ri.includes(id));
                     }
                     return enabledIds.length > 0 ? enabledIds.includes(id) : true;
                 });
@@ -4068,32 +4203,55 @@ export async function executeCopilotTool(
             case 'create_custom_tcp_app': {
                 const nodeCtx = resolveNodeContext(args.agent_id, ctx);
                 const port = Number(args.port);
-                
-                let resolvedPeers = Array.isArray(args.peers) ? args.peers : [];
-                if (resolvedPeers.length === 0 && args.target_peers !== 'none') {
-                    const endpoints = (ctx.fabricEndpoints && ctx.fabricEndpoints.length > 0) ? ctx.fabricEndpoints : (ctx.targets || []);
-                    const targetFilter = (args.target_peers && args.target_peers !== 'all' && args.target_peers !== '*')
-                        ? args.target_peers.split(',').map((s: string) => s.trim().toLowerCase())
-                        : null;
 
-                    for (const ep of endpoints) {
-                        const host = ep.test_ip || ep.host || (ep.api_base_url ? ep.api_base_url.replace(/https?:\/\//, '').split(':')[0] : null);
-                        if (!host) continue;
-                        const siteName = ep.meta?.site_name || ep.name || ep.id;
-                        if (targetFilter && !targetFilter.includes(ep.id?.toLowerCase()) && !targetFilter.includes(siteName?.toLowerCase()) && !targetFilter.includes(host?.toLowerCase())) {
-                            continue;
-                        }
+                let resolvedPeers = Array.isArray(args.peers) ? [...args.peers] : [];
+                if (resolvedPeers.length === 0 && args.target_peers !== 'none') {
+                    const endpoints = collectFabricEndpoints(ctx);
+                    const seenPeerHosts = new Set<string>();
+                    const pushPeer = (id: string, siteName: string, host: string, role: string = 'branch') => {
+                        const key = host.toLowerCase();
+                        if (!host || seenPeerHosts.has(key)) return;
+                        seenPeerHosts.add(key);
                         resolvedPeers.push({
-                            id: `peer-${ep.id || host}`.toLowerCase().replace(/[^a-z0-9_-]/g, '-'),
+                            id: `peer-${id || siteName || host}`.toLowerCase().replace(/[^a-z0-9_-]/g, '-'),
                             name: siteName,
                             siteName: siteName,
                             host: host,
                             port: port,
                             enabled: true,
-                            role: ep.role || 'branch'
+                            role: role || (/^dc/i.test(siteName) ? 'hub' : 'branch')
                         });
+                    };
+
+                    if (args.target_peers && args.target_peers !== 'all' && args.target_peers !== '*') {
+                        const tokens = String(args.target_peers).split(',').map((s: string) => s.trim()).filter(Boolean);
+                        for (const token of tokens) {
+                            const matched = matchFabricEndpoint(token, endpoints);
+                            if (matched) {
+                                pushPeer(matched.id, matched.siteName || matched.name, matched.host, matched.role);
+                            } else if (/^\d{1,3}(\.\d{1,3}){3}$/.test(token)) {
+                                pushPeer(token, token, token, 'branch');
+                            }
+                        }
+                    } else {
+                        for (const ep of endpoints) {
+                            const host = ep.test_ip || ep.host;
+                            if (!host) continue;
+                            const siteName = ep.siteName || ep.meta?.site_name || ep.name || ep.id;
+                            const isSelf = endpoints.length > 1 && (
+                                siteName.toLowerCase() === (nodeCtx.siteName || '').toLowerCase() ||
+                                ep.id.toLowerCase() === (nodeCtx.siteName || '').toLowerCase() ||
+                                (nodeCtx.baseUrl && nodeCtx.baseUrl.includes(host))
+                            );
+                            if (isSelf) continue;
+                            pushPeer(ep.id || host, siteName, host, ep.role || 'branch');
+                        }
                     }
                 }
+
+                const fixedDelayMs = args.fixed_delay_ms !== undefined ? Number(args.fixed_delay_ms) : 500;
+                const randomDelayMinMs = args.random_delay_min_ms !== undefined ? Number(args.random_delay_min_ms) : 100;
+                const randomDelayMaxMs = args.random_delay_max_ms !== undefined ? Number(args.random_delay_max_ms) : 1000;
 
                 const appPayload = {
                     name: args.name,
@@ -4112,9 +4270,9 @@ export async function executeCopilotTool(
                     },
                     serverBehavior: {
                         mode: args.server_behavior || 'echo',
-                        fixedDelayMs: 0,
-                        randomDelayMinMs: 0,
-                        randomDelayMaxMs: 0,
+                        fixedDelayMs: fixedDelayMs,
+                        randomDelayMinMs: randomDelayMinMs,
+                        randomDelayMaxMs: randomDelayMaxMs,
                         loopingNormalSec: 10,
                         loopingSlowSec: 5,
                         loopingSlowDelayMs: 200,
@@ -4175,21 +4333,24 @@ export async function executeCopilotTool(
                     method: 'POST',
                     body: JSON.stringify(appPayload)
                 });
-                const appId = res?.application?.id || args.name;
+                let latestApp = res?.application || appPayload;
+                const appId = latestApp?.id || args.name;
                 if (args.auto_start_listener !== false && appId) {
                     try {
-                        await fetchApi(nodeCtx, `/api/custom-tcp-apps/${appId}/listener/start`, { method: 'POST' });
+                        const startRes = await fetchApi(nodeCtx, `/api/custom-tcp-apps/${appId}/listener/start`, { method: 'POST' });
+                        if (startRes?.application) latestApp = startRes.application;
                     } catch {}
                 }
                 if (args.auto_start_workload !== false && appId) {
                     try {
-                        await fetchApi(nodeCtx, `/api/custom-tcp-apps/${appId}/client/start`, { method: 'POST' });
+                        const clientRes = await fetchApi(nodeCtx, `/api/custom-tcp-apps/${appId}/client/start`, { method: 'POST' });
+                        if (clientRes?.application) latestApp = clientRes.application;
                     } catch {}
                 }
                 return {
                     success: true,
                     verified: true,
-                    application: res?.application || appPayload,
+                    application: latestApp,
                     message: `Custom TCP App "${args.name}" created and verified on ${nodeCtx.siteName}.`
                 };
             }
@@ -4199,23 +4360,19 @@ export async function executeCopilotTool(
                 const appId = String(args.app_id || '').trim();
                 const peerTarget = String(args.peer_name_or_host || '').trim();
 
-                const endpoints = (ctx.fabricEndpoints && ctx.fabricEndpoints.length > 0) ? ctx.fabricEndpoints : (ctx.targets || []);
-                const matchedEp = endpoints.find((ep: any) =>
-                    ep.id?.toLowerCase() === peerTarget.toLowerCase() ||
-                    ep.name?.toLowerCase() === peerTarget.toLowerCase() ||
-                    ep.meta?.site_name?.toLowerCase() === peerTarget.toLowerCase() ||
-                    ep.test_ip === peerTarget || ep.host === peerTarget
-                );
+                const endpoints = collectFabricEndpoints(ctx);
+                const matchedEp = matchFabricEndpoint(peerTarget, endpoints);
 
-                const host = matchedEp ? (matchedEp.test_ip || matchedEp.host || (matchedEp.api_base_url ? matchedEp.api_base_url.replace(/https?:\/\//, '').split(':')[0] : peerTarget)) : peerTarget;
-                const siteName = args.site_name || matchedEp?.meta?.site_name || matchedEp?.name || peerTarget;
+                const host = matchedEp ? (matchedEp.test_ip || matchedEp.host) : peerTarget;
+                const siteName = args.site_name || matchedEp?.siteName || matchedEp?.meta?.site_name || matchedEp?.name || peerTarget;
+                const role = args.role || matchedEp?.role || (/^dc/i.test(siteName) ? 'hub' : 'branch');
 
                 const peerPayload = {
                     name: siteName,
                     siteName: siteName,
                     host: host,
                     port: args.port ? Number(args.port) : undefined,
-                    role: args.role || 'branch',
+                    role: role,
                     enabled: true
                 };
 

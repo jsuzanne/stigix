@@ -368,6 +368,24 @@ export class TcpAppManager extends EventEmitter {
         const ctx = this.getAppContext(appId);
         if (!ctx) throw new Error(`Application ${appId} not registered`);
 
+        // Idempotent check: if this application's own listener is already bound and listening,
+        // do not probe host port availability (which would collide with our own socket).
+        if (ctx.serverRuntime.isListening() || ctx.metrics.listenerState === 'listening') {
+            ctx.metrics.listenerState = 'listening';
+            ctx.metrics.listenerError = undefined;
+            if (persist) {
+                ctx.config.startup = {
+                    startListener: true,
+                    startClientWorkload: ctx.config.startup?.startClientWorkload ?? false
+                };
+                if (ctx.config.manualOverride) {
+                    ctx.config.manualOverride.listenerStopped = false;
+                }
+                await this.persistAppStartupState(ctx.config.id);
+            }
+            return;
+        }
+
         // Check if port is free before starting
         const port = ctx.config.listener.port;
         const available = await checkHostPortAvailable(port, ctx.config.listener.bindAddress);

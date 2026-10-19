@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.0.58] - 2026-10-19
+
+### Added
+- **Prisma SD-WAN Orphan App Cleanup & Auto-Purge on Deletion (`custom-tcp-apps/api-routes.ts`, `custom-tcp-apps/prisma-sdwan-app-service.ts`, `PrismaAppSyncModal.tsx`)**:
+  - Automatically purges the corresponding `stgx-` Custom App Definition on the Prisma SASE controller when a local Custom TCP Application is deleted.
+  - Added orphan detection and one-click cleanup in the Prisma SD-WAN App Sync modal for `stgx-` application definitions on the controller that no longer match any local application.
+
+### Fixed
+- **AI Copilot Security Probe & Batch Category Resolution (`web-dashboard/server.ts`, `web-dashboard/ai-copilot/ai-tools.ts`, `mcp-server/src/lib/orchestrator.py`)**:
+  - Fixed `/api/security/profile` so `url_categories` and `dns_categories` are populated on the `securityProfile` response object (preventing `run_security_url_batch` and `run_security_dns_batch` from failing with `"No URL/DNS categories found in security profile."`).
+  - Added automatic category slug/name resolution in `run_security_probe` (e.g., passing `target: "adult"` resolves to `https://urlfiltering.paloaltonetworks.com/test-adult` instead of failing with `Could not resolve host: adult`).
+- **AI Copilot Custom TCP Application Creation, Peer IP Resolution & Listener Idempotency (`tcp-app-manager.ts`, `tcp-server-runtime.ts`, `ai-tools.ts`, `orchestrator.py`)**:
+  - Made `TcpAppManager.startListener` idempotent when the application's own listener is already bound and listening, eliminating false `Port <N> is occupied on the host` (`listenerState: "port_conflict"`) errors when `create_custom_tcp_app` starts an already auto-started listener.
+  - Added `collectFabricEndpoints` and `matchFabricEndpoint` in `ai-tools.ts` to resolve peer names (`target_peers` in `create_custom_tcp_app` and `peer_name_or_host` in `add_tcp_app_peer`) against `registryManager` status/peers and `targetsManager` merged targets, ensuring peer overlay IPs (e.g., `192.168.219.1` instead of hostname `"BR8-Ubuntu"`) are attached automatically.
+  - Exposed `fixed_delay_ms`, `random_delay_min_ms`, and `random_delay_max_ms` parameters in `create_custom_tcp_app` with realistic non-zero defaults (`500 ms` fixed delay, `100–1000 ms` random delay).
+
 ## [3.0.57] - 2026-10-19
 
 ### Fixed

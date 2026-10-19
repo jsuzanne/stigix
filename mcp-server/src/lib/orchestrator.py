@@ -697,8 +697,10 @@ class TestOrchestrator:
             pass
         return ""
 
-    async def _get_dns_test_name(self, agent: any, domain: str) -> str:
-        """Look up the friendly test name for a DNS domain from the security profile."""
+    async def _resolve_dns_target(self, agent: any, target: str) -> tuple[str, str]:
+        """Resolve a DNS domain, test ID, or friendly name from the security profile into (domain, testName)."""
+        raw = str(target or "").strip()
+        lower = raw.lower()
         try:
             headers = {"Authorization": f"Bearer {self._generate_token()}"}
             async with httpx.AsyncClient(timeout=5.0) as client:
@@ -707,14 +709,19 @@ class TestOrchestrator:
                     profile = r.json()
                     items = profile.get("dns_security", {}).get("items", [])
                     for item in items:
-                        if item.get("domain", "").rstrip(".") == domain.rstrip("."):
-                            return item['name']
+                        dom = str(item.get("domain", "")).rstrip(".")
+                        iid = str(item.get("id", "")).lower()
+                        name = str(item.get("name", ""))
+                        if dom.lower() == lower.rstrip(".") or iid == lower or name.lower() == lower or lower in name.lower():
+                            return item.get("domain", raw), name or raw
         except Exception:
             pass
-        return domain
+        return raw, raw
 
-    async def _get_url_category_name(self, agent: any, target_url: str) -> str:
-        """Look up the friendly category name for a URL from the security profile."""
+    async def _resolve_url_target(self, agent: any, target: str) -> tuple[str, str]:
+        """Resolve a URL, category ID, or friendly name from the security profile into (url, categoryName)."""
+        raw = str(target or "").strip()
+        lower = raw.lower().removeprefix("test-")
         try:
             headers = {"Authorization": f"Bearer {self._generate_token()}"}
             async with httpx.AsyncClient(timeout=5.0) as client:
@@ -723,17 +730,23 @@ class TestOrchestrator:
                     profile = r.json()
                     items = profile.get("url_filtering", {}).get("items", [])
                     for item in items:
-                        if item.get("url", "").rstrip("/") == target_url.rstrip("/"):
-                            return item['name']
+                        item_url = str(item.get("url", "")).rstrip("/")
+                        iid = str(item.get("id", "")).lower()
+                        name = str(item.get("name", ""))
+                        if item_url.lower() == raw.lower().rstrip("/") or iid == lower or name.lower() == raw.lower() or lower in name.lower():
+                            return item.get("url", raw), name or raw
         except Exception:
             pass
-        # Fallback: use domain as label
+        if not raw.startswith("http://") and not raw.startswith("https://"):
+            if "." not in raw:
+                return f"http://urlfiltering.paloaltonetworks.com/test-{lower}", raw
+            return f"http://{raw}", raw
         try:
             from urllib.parse import urlparse
-            domain = urlparse(target_url).netloc or target_url
-            return domain
+            domain = urlparse(raw).netloc or raw
+            return raw, domain
         except Exception:
-            return target_url
+            return raw, raw
 
     async def trigger_security_test(self, agent_id: str, test_type: str, target: str) -> Dict[str, Any]:
         """Trigger a security test (DNS, URL, or Threat)."""
@@ -746,14 +759,12 @@ class TestOrchestrator:
         # Route mapping
         if test_type == "dns":
             url = f"{agent.api_base_url}/api/security/dns-test"
-            # Look up friendly test name from security profile
-            dns_label = await self._get_dns_test_name(agent, target)
-            payload = {"domain": target, "testName": dns_label, "mcp_source": "mcp"}
+            resolved_domain, dns_label = await self._resolve_dns_target(agent, target)
+            payload = {"domain": resolved_domain, "testName": dns_label, "mcp_source": "mcp"}
         elif test_type == "url":
             url = f"{agent.api_base_url}/api/security/url-test"
-            # Look up friendly category name from security profile
-            category_label = await self._get_url_category_name(agent, target)
-            payload = {"url": target, "category": category_label, "mcp_source": "mcp"}
+            resolved_url, category_label = await self._resolve_url_target(agent, target)
+            payload = {"url": resolved_url, "category": category_label, "mcp_source": "mcp"}
         elif test_type == "threat":
             url = f"{agent.api_base_url}/api/security/threat-test"
             if target.startswith("STIGIX-"): # Scenario ID — resolve actual cloud URL for label
@@ -3682,7 +3693,14 @@ class TestOrchestrator:
                 else:
                     targets = [t.strip().lower() for t in target_peers.split(",") if t.strip()]
                     for t in targets:
-                        matched = next((ep for ep in endpoints if ep.id.lower() == t or (ep.meta.get("site_name") or "").lower() == t or ep.test_ip == t), None)
+                        matched = next((
+                            ep for ep in endpoints
+                            if ep.id.lower() == t
+                            or (ep.meta.get("site_name") or "").lower() == t
+                            or ep.test_ip == t
+                            or t in ep.id.lower()
+                            or t in (ep.meta.get("site_name") or "").lower()
+                        ), None)
                         if matched:
                             host = matched.test_ip or (matched.api_base_url.split("://")[1].split(":")[0] if "://" in matched.api_base_url else matched.api_base_url)
                             site_name = matched.meta.get("site_name") or matched.id
@@ -3726,9 +3744,9 @@ class TestOrchestrator:
             },
             "serverBehavior": {
                 "mode": server_behavior,
-                "fixedDelayMs": 0,
-                "randomDelayMinMs": 0,
-                "randomDelayMaxMs": 0,
+                "fixedDelayMs": 500,
+                "randomDelayMinMs": 100,
+                "randomDelayMaxMs": 1000,
                 "loopingNormalSec": 10,
                 "loopingSlowSec": 5,
                 "loopingSlowDelayMs": 200,
@@ -3792,7 +3810,15 @@ class TestOrchestrator:
         target_name = site_name or peer_name_or_host
         try:
             endpoints = await self.registry.list_endpoints()
-            matched_ep = next((ep for ep in endpoints if ep.id.lower() == peer_name_or_host.lower() or (ep.meta.get("site_name") or "").lower() == peer_name_or_host.lower() or ep.test_ip == peer_name_or_host), None)
+            q = peer_name_or_host.lower()
+            matched_ep = next((
+                ep for ep in endpoints
+                if ep.id.lower() == q
+                or (ep.meta.get("site_name") or "").lower() == q
+                or ep.test_ip == peer_name_or_host
+                or q in ep.id.lower()
+                or q in (ep.meta.get("site_name") or "").lower()
+            ), None)
             if matched_ep:
                 target_host = matched_ep.test_ip or (matched_ep.api_base_url.split("://")[1].split(":")[0] if "://" in matched_ep.api_base_url else matched_ep.api_base_url)
                 target_name = matched_ep.meta.get("site_name") or matched_ep.id

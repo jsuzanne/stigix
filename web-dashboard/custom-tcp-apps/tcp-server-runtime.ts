@@ -82,6 +82,10 @@ export class TcpServerRuntime extends EventEmitter {
         this.localIdentity.displayName = newIdentity.displayName;
     }
 
+    public isListening(): boolean {
+        return this.isRunning;
+    }
+
     public async start(): Promise<void> {
         if (this.isRunning) return;
 
