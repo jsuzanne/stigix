@@ -1364,6 +1364,8 @@ func runIoTDaemonLoop(ctx context.Context, rawEng *iotRawEngine, dhcpMode string
 			switch cmd.Cmd {
 			case "start":
 				spec := cmd.Device
+				enabledTrue := true
+				spec.Enabled = &enabledTrue
 				if spec.ID == "" {
 					emitIoTJSON("daemon_error", map[string]any{"error": "start command missing device.id"})
 					continue

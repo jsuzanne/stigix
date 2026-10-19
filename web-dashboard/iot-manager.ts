@@ -163,7 +163,7 @@ export class IoTManager extends EventEmitter {
         await this.waitForDaemonReady(8000);
         this.runningDevices.set(config.id, config);
         const prevStats = this.cumulativeStats.get(config.id);
-        const configWithStats = { ...config, previous_stats: prevStats || {} };
+        const configWithStats = { ...config, enabled: true, previous_stats: prevStats || {} };
         this.sendCommand({ cmd: 'start', device: configWithStats });
         this.activatedAt.set(config.id, Date.now());
         this.idledAt.delete(config.id);
