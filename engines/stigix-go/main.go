@@ -45,7 +45,7 @@ func isFeatureFlagEnabled(force bool) bool {
 		return true
 	}
 	val := os.Getenv("ENABLE_GO_ENGINE")
-	return val == "true" || val == "1"
+	return val != "false" && val != "0"
 }
 
 func getConfigDir() string {

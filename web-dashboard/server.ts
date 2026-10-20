@@ -561,11 +561,12 @@ interface SystemSettings {
     auto_sync_probes_to_fleet?: boolean; // Auto-push configuration bundles (probes, apps) to peers with debounce
     pcap_max_auto_sync_mb?: number;
     registry_mode?: 'auto' | 'leader' | 'peer';
-    engine_runtime?: 'legacy' | 'go'; // Data-plane engine runtime selector (requires ENABLE_GO_ENGINE=true)
+    engine_runtime?: 'legacy' | 'go'; // Data-plane engine runtime selector (defaults to 'go')
+    engine_runtime_explicit?: boolean; // Set to true when explicitly toggled via Web UI
     mcp_server_enabled?: boolean; // External FastMCP SSE server on port 3100 (disabled by default to save ~95MB RAM)
 }
 function isGoEngineFeatureEnabled(): boolean {
-    return process.env.ENABLE_GO_ENGINE === 'true' || process.env.ENABLE_GO_ENGINE === '1';
+    return process.env.ENABLE_GO_ENGINE !== 'false' && process.env.ENABLE_GO_ENGINE !== '0';
 }
 const DEFAULT_SYSTEM_SETTINGS: SystemSettings = {
     auto_restart_iot: false,
@@ -598,6 +599,8 @@ function getSystemSettings(): SystemSettings {
             const merged: SystemSettings = { ...DEFAULT_SYSTEM_SETTINGS, ...raw };
             if (!isGoEngineFeatureEnabled()) {
                 merged.engine_runtime = 'legacy';
+            } else if (!raw.engine_runtime_explicit && resolveGoEngineBinary()) {
+                merged.engine_runtime = 'go';
             }
             return merged;
         }
@@ -18756,9 +18759,9 @@ function measureEngineFootprint(mode: 'legacy' | 'go'): EngineFootprintSnapshot 
     return snap;
 }
 
-async function applyEngineRuntimeSwitch(targetMode: 'legacy' | 'go'): Promise<{ switched: boolean; message: string }> {
+async function applyEngineRuntimeSwitch(targetMode: 'legacy' | 'go', explicitUserChoice: boolean = false): Promise<{ switched: boolean; message: string }> {
     if (targetMode === 'go' && !isGoEngineFeatureEnabled()) {
-        throw new Error('Mandatory feature flag ENABLE_GO_ENGINE=true is not enabled in .env');
+        throw new Error('Go Engine is disabled via ENABLE_GO_ENGINE=false in .env');
     }
     const goBin = resolveGoEngineBinary();
     if (targetMode === 'go' && !goBin) {
@@ -18801,7 +18804,7 @@ async function applyEngineRuntimeSwitch(targetMode: 'legacy' | 'go'): Promise<{ 
             standaloneGoProcess.unref();
         }
 
-        saveSystemSettings({ engine_runtime: 'go' });
+        saveSystemSettings({ engine_runtime: 'go', ...(explicitUserChoice ? { engine_runtime_explicit: true } : {}) });
         log('SYSTEM', '🚀 Switched Data-Plane Engine Runtime to Native Go (stigix-go + stigix-go iot)');
         return { switched: true, message: 'Switched to High-Performance Go Engine (stigix-go + IoT L2)' };
     } else {
@@ -18828,7 +18831,7 @@ async function applyEngineRuntimeSwitch(targetMode: 'legacy' | 'go'): Promise<{ 
             try { execSync('supervisorctl start traffic-gen voice-gen voice-echo', { timeout: 8000 }); } catch (e) { }
         }
 
-        saveSystemSettings({ engine_runtime: 'legacy' });
+        saveSystemSettings({ engine_runtime: 'legacy', ...(explicitUserChoice ? { engine_runtime_explicit: true } : {}) });
         log('SYSTEM', '🔄 Switched Data-Plane Engine Runtime to Legacy (Python/Bash/Scapy)');
         return { switched: true, message: 'Switched to Legacy Engine (Python + Bash + Scapy)' };
     }
@@ -18849,7 +18852,7 @@ app.get('/api/system/engine-runtime', authenticateToken, (_req, res) => {
         go_binary_available: !!goBinaryPath,
         go_binary_path: goBinaryPath,
         active_runtime: activeRuntime,
-        configured_runtime: getSystemSettings().engine_runtime || 'legacy',
+        configured_runtime: getSystemSettings().engine_runtime || 'go',
         live: liveFootprint,
         snapshots,
     });
@@ -18875,11 +18878,11 @@ app.post('/api/system/engine-runtime', authenticateToken, async (req, res) => {
         }
         if (runtime === 'go' && !isGoEngineFeatureEnabled()) {
             return res.status(403).json({
-                error: 'Go Engine is locked by mandatory feature flag.',
-                detail: 'Set ENABLE_GO_ENGINE=true in your .env file and restart the container to unlock the Go Engine switcher.'
+                error: 'Go Engine is disabled via ENABLE_GO_ENGINE=false.',
+                detail: 'Remove ENABLE_GO_ENGINE=false from your .env file to re-enable the Go Engine.'
             });
         }
-        const result = await applyEngineRuntimeSwitch(runtime);
+        const result = await applyEngineRuntimeSwitch(runtime, true);
         // Wait 600ms for new processes to settle and emit initial telemetry
         await new Promise(r => setTimeout(r, 600));
         const liveFootprint = measureEngineFootprint(runtime);
@@ -18899,15 +18902,14 @@ app.post('/api/system/engine-runtime', authenticateToken, async (req, res) => {
 });
 
 // Boot-time reconciliation:
-// 1. If ENABLE_GO_ENGINE=true and persisted setting is 'go', activate stigix-go after boot
+// 1. Reconcile data-plane engine runtime ('go' by default, or 'legacy' if explicitly switched in UI)
 // 2. Ensure external MCP server matches persisted mcp_server_enabled setting (disabled by default)
 setTimeout(() => {
     const bootSettings = getSystemSettings();
-    if (isGoEngineFeatureEnabled() && bootSettings.engine_runtime === 'go' && resolveGoEngineBinary()) {
-        applyEngineRuntimeSwitch('go').catch(err => {
-            log('SYSTEM', `Failed to auto-activate Go engine at boot: ${err.message}`, 'warn');
-        });
-    }
+    const desiredRuntime = (isGoEngineFeatureEnabled() && resolveGoEngineBinary() && bootSettings.engine_runtime !== 'legacy') ? 'go' : 'legacy';
+    applyEngineRuntimeSwitch(desiredRuntime, false).catch(err => {
+        log('SYSTEM', `Failed to reconcile engine runtime (${desiredRuntime}) at boot: ${err.message}`, 'warn');
+    });
     try {
         applyMcpServerState(Boolean(bootSettings.mcp_server_enabled));
     } catch (err: any) {
