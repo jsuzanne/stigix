@@ -121,8 +121,64 @@ var (
 	reCall = regexp.MustCompile(`(CALL-\d+)`)
 )
 
+func runSRTResponderServer(ctx context.Context, port int) {
+	if port <= 0 {
+		port = 8081
+		if v := os.Getenv("SRT_HTTP_PORT"); v != "" {
+			if p, err := strconv.Atoi(v); err == nil && p > 0 {
+				port = p
+			}
+		}
+	}
+	mux := http.NewServeMux()
+	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		delayMs := 0
+		if strings.Contains(r.URL.Path, "/api/slow-app/delay/") {
+			parts := strings.Split(strings.TrimSuffix(r.URL.Path, "/"), "/")
+			if len(parts) > 0 {
+				if d, err := strconv.Atoi(parts[len(parts)-1]); err == nil {
+					delayMs = d
+				}
+			}
+		}
+		if delayMs < 0 {
+			delayMs = 0
+		} else if delayMs > 10000 {
+			delayMs = 10000
+		}
+		if delayMs > 0 {
+			select {
+			case <-ctx.Done():
+				return
+			case <-time.After(time.Duration(delayMs) * time.Millisecond):
+			}
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"message":    "Hello from SD-WAN Light Responder",
+			"delayed_ms": delayMs,
+			"timestamp":  float64(time.Now().UnixNano()) / 1e9,
+		})
+	})
+
+	srv := &http.Server{
+		Addr:              fmt.Sprintf("0.0.0.0:%d", port),
+		Handler:           mux,
+		ReadHeaderTimeout: 5 * time.Second,
+	}
+	go func() {
+		<-ctx.Done()
+		shutCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+		_ = srv.Shutdown(shutCtx)
+	}()
+	fmt.Printf("[STIGIX-GO SRT] Serving SRT Light Responder on 0.0.0.0:%d\n", port)
+	_ = srv.ListenAndServe()
+}
+
 func runEchoServer(ctx context.Context, portsArg string) {
 	go runTargetHTTPServer(ctx)
+	go runSRTResponderServer(ctx, 0)
 	go ensureIperf3Server(ctx)
 
 	var ports []int

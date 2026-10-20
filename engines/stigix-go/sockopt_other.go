@@ -24,3 +24,6 @@ func applySocketOptions(conn *net.UDPConn, _ string, tos int, rcvBuf int, sndBuf
 		}
 	})
 }
+
+func bindToDevice(_ int, _ string) {}
+

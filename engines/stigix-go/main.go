@@ -127,7 +127,7 @@ func runMetricsReporter(ctx context.Context, startTime time.Time) {
 
 func main() {
 	if len(os.Args) < 2 {
-		fmt.Fprintf(os.Stderr, "Usage: stigix-go <daemon|iot|convergence|version> [flags]\n")
+		fmt.Fprintf(os.Stderr, "Usage: stigix-go <daemon|iot|convergence|probe|srt|pcap-capture|pcap-parse|pcap-replay|version> [flags]\n")
 		os.Exit(1)
 	}
 
@@ -143,6 +143,26 @@ func main() {
 
 	case "iot":
 		runIoTCLI(os.Args[2:])
+		return
+
+	case "probe":
+		runProbeCmd(os.Args[2:])
+		return
+
+	case "srt":
+		runSRTCLI(os.Args[2:])
+		return
+
+	case "pcap-capture":
+		runPcapCaptureCLI(os.Args[2:])
+		return
+
+	case "pcap-parse":
+		runPcapParseCLI(os.Args[2:])
+		return
+
+	case "pcap-replay":
+		runPcapReplayCLI(os.Args[2:])
 		return
 
 	case "daemon":
@@ -189,7 +209,8 @@ func main() {
 		time.Sleep(150 * time.Millisecond)
 
 	default:
-		fmt.Fprintf(os.Stderr, "Unknown subcommand %q. Expected: daemon, iot, convergence, version\n", subcmd)
+		fmt.Fprintf(os.Stderr, "Unknown subcommand %q. Expected: daemon, iot, convergence, probe, srt, pcap-capture, pcap-parse, pcap-replay, version\n", subcmd)
 		os.Exit(1)
 	}
 }
+

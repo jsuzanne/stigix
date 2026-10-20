@@ -24,6 +24,27 @@ export function createPcapApiRouter(
     if (!fs.existsSync(profilesDir)) fs.mkdirSync(profilesDir, { recursive: true });
 
     const parserScript = path.join(projectRoot, 'engines', 'pcap_parser.py');
+    const systemSettingsFile = path.join(configDir, 'system-settings.json');
+    const resolveStigixGoBin = (): string | null => {
+        const candidates = [
+            '/usr/local/bin/stigix-go',
+            path.join(projectRoot, 'engines', 'stigix-go', 'stigix-go')
+        ];
+        for (const c of candidates) {
+            if (fs.existsSync(c)) return c;
+        }
+        return null;
+    };
+    const shouldUseGoEngine = (): boolean => {
+        try {
+            if (fs.existsSync(systemSettingsFile)) {
+                const s = JSON.parse(fs.readFileSync(systemSettingsFile, 'utf8'));
+                if (s.engine_runtime === 'go') return true;
+                if (s.engine_runtime === 'legacy') return false;
+            }
+        } catch {}
+        return process.env.ENABLE_GO_ENGINE === 'true' || process.env.ENABLE_GO_ENGINE === '1';
+    };
 
     // Multer upload config
     const storage = multer.diskStorage({
@@ -54,10 +75,12 @@ export function createPcapApiRouter(
     // GET /api/pcap/status (Public / unauthenticated check for feature flag status)
     router.get('/status', (_req: Request, res: Response) => {
         const thresholdMb = getAutoSyncThresholdMb ? getAutoSyncThresholdMb() : 10;
+        const goBin = shouldUseGoEngine() ? resolveStigixGoBin() : null;
         res.json({
             enabled: isEnabled(),
             max_upload_mb: maxUploadMb,
-            parser_available: fs.existsSync(parserScript),
+            parser_available: Boolean(goBin) || fs.existsSync(parserScript),
+            engine_runtime: goBin ? 'go' : 'legacy',
             auto_sync_threshold_mb: thresholdMb,
             ws_buffer_limit_mb: 100
         });
@@ -73,11 +96,14 @@ export function createPcapApiRouter(
         const scrub = req.body.scrub === 'true' || req.body.scrub === true;
         const password = req.body.password ? String(req.body.password).trim() : '';
 
-        const args = [parserScript, filePath, '--inspect', '--json'];
-        if (scrub) args.push('--scrub');
-        if (password) args.push('--password', password);
+        const commonArgs = [filePath, '--inspect', '--json'];
+        if (scrub) commonArgs.push('--scrub');
+        if (password) commonArgs.push('--password', password);
 
-        const proc = spawn(pythonPath, args);
+        const goBin = shouldUseGoEngine() ? resolveStigixGoBin() : null;
+        const proc = goBin
+            ? spawn(goBin, ['pcap-parse', ...commonArgs])
+            : spawn(pythonPath, [parserScript, ...commonArgs]);
         let stdout = '';
         let stderr = '';
 
@@ -142,19 +168,22 @@ export function createPcapApiRouter(
         const outName = `${safeToken}.stx-replay`;
         const outPath = path.join(profilesDir, outName);
 
-        const args = [parserScript, filePath, '--out', outPath, '--json'];
-        if (name) args.push('--name', name);
-        if (category) args.push('--category', category);
-        if (app_id) args.push('--app-id', app_id);
-        if (threat_id) args.push('--threat-id', threat_id);
-        if (port) args.push('--port', String(port));
-        if (scrub) args.push('--scrub');
-        if (password) args.push('--password', String(password).trim());
+        const commonArgs = [filePath, '--out', outPath, '--json'];
+        if (name) commonArgs.push('--name', name);
+        if (category) commonArgs.push('--category', category);
+        if (app_id) commonArgs.push('--app-id', app_id);
+        if (threat_id) commonArgs.push('--threat-id', threat_id);
+        if (port) commonArgs.push('--port', String(port));
+        if (scrub) commonArgs.push('--scrub');
+        if (password) commonArgs.push('--password', String(password).trim());
         if (Array.isArray(flow_ids)) {
-            flow_ids.forEach((id: number) => args.push('--flow-id', String(id)));
+            flow_ids.forEach((id: any) => commonArgs.push('--flow-id', String(id)));
         }
 
-        const proc = spawn(pythonPath, args);
+        const goBin = shouldUseGoEngine() ? resolveStigixGoBin() : null;
+        const proc = goBin
+            ? spawn(goBin, ['pcap-parse', ...commonArgs])
+            : spawn(pythonPath, [parserScript, ...commonArgs]);
         let stdout = '';
         let stderr = '';
 
@@ -396,13 +425,16 @@ export function createPcapApiRouter(
         }
 
         const jobId = `job-${role}-${Date.now()}`;
-        const args = [runtimeScript, profilePath, '--role', role];
-        if (target) args.push('--target', target);
-        if (port) args.push('--port', String(port));
-        if (loop) args.push('--loop');
-        if (interval) args.push('--interval', String(interval));
+        const commonArgs = [profilePath, '--role', role];
+        if (target) commonArgs.push('--target', target);
+        if (port) commonArgs.push('--port', String(port));
+        if (loop) commonArgs.push('--loop');
+        if (interval) commonArgs.push('--interval', String(interval));
 
-        const proc = spawn(pythonPath, args);
+        const goBin = shouldUseGoEngine() ? resolveStigixGoBin() : null;
+        const proc = goBin
+            ? spawn(goBin, ['pcap-replay', ...commonArgs])
+            : spawn(pythonPath, [runtimeScript, ...commonArgs]);
         const job: ActiveReplayJob = {
             id: jobId,
             role,

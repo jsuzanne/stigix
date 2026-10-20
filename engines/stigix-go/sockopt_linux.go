@@ -27,3 +27,10 @@ func applySocketOptions(conn *net.UDPConn, iface string, tos int, rcvBuf int, sn
 		}
 	})
 }
+
+func bindToDevice(fd int, iface string) {
+	if iface != "" && iface != "auto" && iface != "default" {
+		_ = syscall.SetsockoptString(fd, syscall.SOL_SOCKET, syscall.SO_BINDTODEVICE, iface)
+	}
+}
+

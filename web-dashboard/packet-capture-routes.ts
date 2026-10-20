@@ -16,14 +16,39 @@ export function createCaptureApiRouter(
     if (!fs.existsSync(pcapUploadsDir)) fs.mkdirSync(pcapUploadsDir, { recursive: true });
 
     const captureScript = path.join(projectRoot, 'engines', 'pcap_capture_engine.py');
+    const systemSettingsFile = path.join(configDir, 'system-settings.json');
+    const resolveStigixGoBin = (): string | null => {
+        const candidates = [
+            '/usr/local/bin/stigix-go',
+            path.join(projectRoot, 'engines', 'stigix-go', 'stigix-go')
+        ];
+        for (const c of candidates) {
+            if (fs.existsSync(c)) return c;
+        }
+        return null;
+    };
+    const shouldUseGoEngine = (): boolean => {
+        try {
+            if (fs.existsSync(systemSettingsFile)) {
+                const s = JSON.parse(fs.readFileSync(systemSettingsFile, 'utf8'));
+                if (s.engine_runtime === 'go') return true;
+                if (s.engine_runtime === 'legacy') return false;
+            }
+        } catch {}
+        return process.env.ENABLE_GO_ENGINE === 'true' || process.env.ENABLE_GO_ENGINE === '1';
+    };
 
     const runEngine = (args: string[]): Promise<any> => {
         return new Promise((resolve, reject) => {
             const env = {
                 ...process.env,
+                CONFIG_DIR: configDir,
                 STIGIX_CAPTURES_DIR: capturesDir
             };
-            const proc = spawn(pythonPath, [captureScript, ...args], { env });
+            const goBin = shouldUseGoEngine() ? resolveStigixGoBin() : null;
+            const proc = goBin
+                ? spawn(goBin, ['pcap-capture', ...args], { env })
+                : spawn(pythonPath, [captureScript, ...args], { env });
             let stdout = '';
             let stderr = '';
 

@@ -2,7 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
 import os from 'os';
-import { exec } from 'child_process';
+import { exec, execFile } from 'child_process';
 import { promisify } from 'util';
 import { log } from './utils/logger.js';
 
@@ -319,66 +319,130 @@ export class TargetManager {
         const startTime = Date.now();
         let tmpFile: string | null = null;
         try {
-            const execPromise = promisify(exec);
-            tmpFile = path.join(os.tmpdir(), `stigix_cloud_${Date.now()}_${Math.random().toString(36).substring(7)}.tmp`);
-            
             const timeoutSec = timeoutMs ? Math.max(1, Math.floor(timeoutMs / 1000)) : 15;
             const retryDelaySec = Math.max(1, Math.min(5, Math.floor(timeoutSec / 10)));
-            // Add native curl retries: -f (fail fast on HTTP error), -sS (silent but show errors to stderr for tracking retries)
-            const curlCmd = `curl -f -sS -L -w "%{time_namelookup},%{time_connect},%{time_appconnect},%{time_starttransfer},%{time_total},%{http_code},%{size_download},%{speed_download},%{remote_ip},%{remote_port}" -o "${tmpFile}" --connect-timeout 5 --max-time ${timeoutSec} --retry 2 --retry-delay ${retryDelaySec} --retry-max-time ${timeoutSec} "${signedUrl}"`;
-            
-            log('TARGET', `[CLOUD PROBE] Executing: ${curlCmd}`, 'debug');
-            this.recordCloudRequest();
-            
-            let stdout = '';
-            let stderr = '';
-            let curlExitCode = 0;
-            
-            try {
-                const res = await execPromise(curlCmd, { maxBuffer: 1024 * 1024 });
-                stdout = res.stdout;
-                stderr = res.stderr;
-            } catch (execErr: any) {
-                // exec throws if curl exit code != 0 (e.g. 22 on HTTP 4xx/5xx due to -f, or 7/28 on network failure)
-                stdout = execErr.stdout || '';
-                stderr = execErr.stderr || '';
-                curlExitCode = execErr.code || 1;
-            }
-            
-            // Extract retry attempts from stderr. Each failed attempt logs a 'curl: (X)' line.
-            const curlErrorsCount = (stderr.match(/curl:\s*\(\d+\)/g) || []).length;
-            // If it succeeded eventually (exitCode 0), the number of retries is exactly the number of logged errors.
-            // If it completely failed (exitCode != 0), the last logged error corresponds to the final failed attempt.
-            const retries = curlExitCode === 0 ? curlErrorsCount : Math.max(0, curlErrorsCount - 1);
-            
-            // If stdout is completely empty, curl failed before even producing the -w format
-            if (!stdout.trim()) {
-                throw new Error(`Curl failed completely (Code ${curlExitCode}): ${stderr.split('\n')[0]}`);
-            }
-            
-            const [t_name, t_conn, t_app, t_start, t_tot, codeStr, sizeStr, speedStr, r_ip, r_port] = stdout.trim().split(',');
-            const statusCode = parseInt(codeStr) || 0;
-            const latency = parseFloat(t_tot) * 1000 || (Date.now() - startTime);
 
-            const dns_ms = parseFloat(t_name) * 1000;
-            const tcp_ms = (parseFloat(t_conn) - parseFloat(t_name)) * 1000;
-            const tls_ms = parseFloat(t_app) > 0 ? (parseFloat(t_app) - parseFloat(t_conn)) * 1000 : 0;
-            const ttfb_ms = (parseFloat(t_start) - Math.max(parseFloat(t_app), parseFloat(t_conn))) * 1000;
-            
-            const metrics = {
-                dns_ms: Math.max(0, dns_ms),
-                tcp_ms: Math.max(0, tcp_ms),
-                tls_ms: Math.max(0, tls_ms),
-                ttfb_ms: Math.max(0, ttfb_ms),
-                total_ms: latency,
-                size_bytes: parseInt(sizeStr) || 0,
-                speed_bps: parseFloat(speedStr) || 0
+            let statusCode = 0;
+            let latency = 0;
+            let retries = 0;
+            let r_ip = '';
+            let r_port = 0;
+            let bodyStr = '';
+            let metrics = {
+                dns_ms: 0,
+                tcp_ms: 0,
+                tls_ms: 0,
+                ttfb_ms: 0,
+                total_ms: 0,
+                size_bytes: 0,
+                speed_bps: 0
             };
 
-            let bodyStr = '';
-            if (tmpFile && fs.existsSync(tmpFile)) {
+            const settingsPath = path.join(this.configDir, 'system-settings.json');
+            let useGo = process.env.ENABLE_GO_ENGINE === 'true' || process.env.ENABLE_GO_ENGINE === '1';
+            try {
+                if (fs.existsSync(settingsPath)) {
+                    const s = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
+                    if (s.engine_runtime === 'go') useGo = true;
+                    else if (s.engine_runtime === 'legacy') useGo = false;
+                }
+            } catch {}
+
+            const goBinCandidates = ['/usr/local/bin/stigix-go', path.resolve(this.configDir, '..', 'engines', 'stigix-go', 'stigix-go')];
+            const goBin = useGo ? goBinCandidates.find(c => fs.existsSync(c)) : undefined;
+
+            if (goBin) {
+                const execFilePromise = promisify(execFile);
+                const probeArgs = [
+                    'probe',
+                    '--type', signedUrl.startsWith('https') ? 'https' : 'http',
+                    '--target', signedUrl,
+                    '--timeout-ms', String(timeoutSec * 1000),
+                    '--retries', '2',
+                    '--retry-delay-ms', String(retryDelaySec * 1000)
+                ];
                 if (scenario.category === 'info') {
-                    bodyStr = fs.readFileSync(tmpFile, 'utf8');
+                    probeArgs.push('--include-body', '--body-max-bytes', '8192');
+                }
+                log('TARGET', `[CLOUD PROBE GO] Executing: ${goBin} ${probeArgs.join(' ')}`, 'debug');
+                this.recordCloudRequest();
+
+                const { stdout } = await execFilePromise(goBin, probeArgs, { maxBuffer: 1024 * 1024 });
+                const parsed = JSON.parse(stdout.trim());
+                if (!parsed.reachable && !parsed.http_code) {
+                    throw new Error(`Go probe failed (Code ${parsed.curl_exit_code || 1}): ${parsed.error || 'Unreachable'}`);
+                }
+                statusCode = parsed.http_code || 0;
+                retries = parsed.retries || 0;
+                r_ip = parsed.remote_ip || '';
+                r_port = parsed.remote_port || 0;
+                bodyStr = parsed.body_snippet || '';
+                if (parsed.metrics) {
+                    metrics = {
+                        dns_ms: Math.max(0, parsed.metrics.dns_ms || 0),
+                        tcp_ms: Math.max(0, parsed.metrics.tcp_ms || 0),
+                        tls_ms: Math.max(0, parsed.metrics.tls_ms || 0),
+                        ttfb_ms: Math.max(0, parsed.metrics.ttfb_ms || 0),
+                        total_ms: Math.max(0, parsed.metrics.total_ms || (Date.now() - startTime)),
+                        size_bytes: parsed.metrics.size_bytes || 0,
+                        speed_bps: parsed.metrics.speed_bps || 0
+                    };
+                }
+                latency = metrics.total_ms || (Date.now() - startTime);
+            } else {
+                const execPromise = promisify(exec);
+                tmpFile = path.join(os.tmpdir(), `stigix_cloud_${Date.now()}_${Math.random().toString(36).substring(7)}.tmp`);
+                const curlCmd = `curl -f -sS -L -w "%{time_namelookup},%{time_connect},%{time_appconnect},%{time_starttransfer},%{time_total},%{http_code},%{size_download},%{speed_download},%{remote_ip},%{remote_port}" -o "${tmpFile}" --connect-timeout 5 --max-time ${timeoutSec} --retry 2 --retry-delay ${retryDelaySec} --retry-max-time ${timeoutSec} "${signedUrl}"`;
+
+                log('TARGET', `[CLOUD PROBE] Executing: ${curlCmd}`, 'debug');
+                this.recordCloudRequest();
+
+                let stdout = '';
+                let stderr = '';
+                let curlExitCode = 0;
+
+                try {
+                    const res = await execPromise(curlCmd, { maxBuffer: 1024 * 1024 });
+                    stdout = res.stdout;
+                    stderr = res.stderr;
+                } catch (execErr: any) {
+                    stdout = execErr.stdout || '';
+                    stderr = execErr.stderr || '';
+                    curlExitCode = execErr.code || 1;
+                }
+
+                const curlErrorsCount = (stderr.match(/curl:\s*\(\d+\)/g) || []).length;
+                retries = curlExitCode === 0 ? curlErrorsCount : Math.max(0, curlErrorsCount - 1);
+
+                if (!stdout.trim()) {
+                    throw new Error(`Curl failed completely (Code ${curlExitCode}): ${stderr.split('\n')[0]}`);
+                }
+
+                const [t_name, t_conn, t_app, t_start, t_tot, codeStr, sizeStr, speedStr, ripStr, rportStr] = stdout.trim().split(',');
+                statusCode = parseInt(codeStr) || 0;
+                latency = parseFloat(t_tot) * 1000 || (Date.now() - startTime);
+                r_ip = ripStr;
+                r_port = parseInt(rportStr) || 0;
+
+                const dns_ms = parseFloat(t_name) * 1000;
+                const tcp_ms = (parseFloat(t_conn) - parseFloat(t_name)) * 1000;
+                const tls_ms = parseFloat(t_app) > 0 ? (parseFloat(t_app) - parseFloat(t_conn)) * 1000 : 0;
+                const ttfb_ms = (parseFloat(t_start) - Math.max(parseFloat(t_app), parseFloat(t_conn))) * 1000;
+
+                metrics = {
+                    dns_ms: Math.max(0, dns_ms),
+                    tcp_ms: Math.max(0, tcp_ms),
+                    tls_ms: Math.max(0, tls_ms),
+                    ttfb_ms: Math.max(0, ttfb_ms),
+                    total_ms: latency,
+                    size_bytes: parseInt(sizeStr) || 0,
+                    speed_bps: parseFloat(speedStr) || 0
+                };
+
+                if (tmpFile && fs.existsSync(tmpFile)) {
+                    if (scenario.category === 'info') {
+                        bodyStr = fs.readFileSync(tmpFile, 'utf8');
+                    }
                 }
             }
 
