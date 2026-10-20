@@ -18338,7 +18338,9 @@ function measureEngineFootprint(mode: 'legacy' | 'go'): EngineFootprintSnapshot 
             if (args.includes('ps -eo')) continue;
 
             if (mode === 'go') {
-                if (comm.includes('stigix-go') || args.includes('stigix-go')) {
+                const isGoDaemon = (comm.includes('stigix-go') || args.includes('stigix-go')) &&
+                    (args.includes(' daemon') || args.includes(' iot'));
+                if (isGoDaemon) {
                     const rssMb = Math.round((rssKb / 1024) * 100) / 100;
                     totalRssKb += rssKb;
                     totalCpu += cpu;
