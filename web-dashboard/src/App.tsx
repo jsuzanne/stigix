@@ -334,7 +334,7 @@ export default function App() {
     } catch (e) { }
   };
 
-  // Global shortcuts: Cmd+K / Ctrl+K for Search Palette, Cmd+J / Ctrl+J for AI Copilot
+  // Global shortcuts: Cmd+K / Ctrl+K for Search Palette, Cmd+J / Ctrl+J for AI Copilot, Shift+H / Alt+H for Home Overview
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && (e.key === 'k' || e.key === 'K')) {
@@ -344,6 +344,19 @@ export default function App() {
         if (!copilotConfig?.featureEnabled || !copilotConfig?.hasKey) return; // Only toggle if feature is enabled and key is configured
         e.preventDefault();
         setCopilotDrawerOpen(prev => !prev);
+      } else if (!e.metaKey && !e.ctrlKey && (e.shiftKey || e.altKey) && (e.key === 'h' || e.key === 'H' || e.code === 'KeyH')) {
+        const target = e.target as HTMLElement | null;
+        const isEditable = target && (
+          target.tagName === 'INPUT' ||
+          target.tagName === 'TEXTAREA' ||
+          target.tagName === 'SELECT' ||
+          target.isContentEditable
+        );
+        if (!isEditable) {
+          e.preventDefault();
+          setIsSearchOpen(false);
+          setView('home');
+        }
       } else if (e.key === 'Escape') {
         if (isSearchOpen) {
           setIsSearchOpen(false);
@@ -1054,22 +1067,6 @@ export default function App() {
     };
   }, [token]); // Only re-run when token changes (login/logout), NOT on tab changes
 
-  // Failover fast polling — separate effect so it doesn't disrupt other intervals
-  useEffect(() => {
-    if (!token || (view !== 'failover' && view !== 'convergence')) return;
-    const fastInterval = setInterval(async () => {
-      if (isRemoteViewRef.current) return;
-      try {
-        const res = await fetch('/api/convergence/status', { headers: authHeaders() });
-        if (res.ok) {
-          const data = await res.json();
-          setGlobalConvStatus(data);
-        }
-      } catch {}
-    }, 500);
-    return () => clearInterval(fastInterval);
-  }, [token, view]);
-
   useEffect(() => {
     if (token) {
       // Immediately show cached history for this range while API loads
@@ -1529,6 +1526,7 @@ export default function App() {
           onNavigate={handleNavigate}
           onOpenDiagnostics={() => setShowHealthModal(true)}
           onOpenNodeRoleModal={() => setShowNodeRoleModal(true)}
+          onOpenSearch={() => setIsSearchOpen(true)}
         />
       )}
 

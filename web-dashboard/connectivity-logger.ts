@@ -202,9 +202,10 @@ export class ConnectivityLogger {
     async getResults(options: { limit?: number; offset?: number; type?: string; endpointId?: string; timeRange?: string } = {}): Promise<{ results: ConnectivityResult[]; total: number }> {
         try {
             const cutoff = this.parseTimeRangeCutoff(options.timeRange);
+            const hasFilter = Boolean(options.type || options.endpointId || cutoff > 0);
 
             const allResults = await this.getEffectiveResults(
-                options.limit ? (options.limit + (options.offset || 0)) * 2 : undefined, 
+                hasFilter ? undefined : (options.limit ? (options.limit + (options.offset || 0)) * 2 : undefined),
                 cutoff
             );
             let filtered = allResults;
@@ -218,8 +219,32 @@ export class ConnectivityLogger {
             filtered.sort((a, b) => b.timestamp - a.timestamp);
             const offset = options.offset || 0;
             const limit = options.limit || 100;
+            let sliced = filtered.slice(offset, offset + limit);
+
+            // Prevent high-frequency probes (e.g. 60s PING/DNS across 60+ probes) from starving
+            // lower-frequency probes (e.g. 300s HTTP or 600s CLOUD) out of the first page of a timeRange query.
+            if (offset === 0 && !options.endpointId && filtered.length > limit) {
+                const seenEndpoints = new Set<string>();
+                for (const r of sliced) {
+                    if (r.endpointId) seenEndpoints.add(r.endpointId);
+                }
+                const missingLatest: ConnectivityResult[] = [];
+                for (const r of filtered) {
+                    if (r.endpointId && !seenEndpoints.has(r.endpointId)) {
+                        seenEndpoints.add(r.endpointId);
+                        missingLatest.push(r);
+                    }
+                }
+                if (missingLatest.length > 0) {
+                    // Keep the slice bounded to `limit` by replacing the oldest duplicate-endpoint entries at the tail
+                    const keepCount = Math.max(0, limit - missingLatest.length);
+                    sliced = [...sliced.slice(0, keepCount), ...missingLatest];
+                    sliced.sort((a, b) => b.timestamp - a.timestamp);
+                }
+            }
+
             return {
-                results: filtered.slice(offset, offset + limit),
+                results: sliced,
                 total: filtered.length
             };
         } catch (error) {

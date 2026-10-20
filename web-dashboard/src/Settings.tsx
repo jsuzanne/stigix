@@ -750,7 +750,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
     const [cloudDirty, setCloudDirty] = useState(false);
 
     // Convergence & Traffic SLA State
-    const [convergenceThresholds, setConvergenceThresholds] = useState({ good: 1, degraded: 5, critical: 10 });
+    const [convergenceThresholds, setConvergenceThresholds] = useState({ good: 1, degraded: 5, critical: 10, retention_days: 7 });
     const [trafficThresholds, setTrafficThresholds] = useState({
         good_latency_ms: 80,
         degraded_latency_ms: 200,
@@ -781,6 +781,21 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
     const [uploadPem, setUploadPem] = useState('');
     const [uploadCertName, setUploadCertName] = useState('');
     const [viewPemModal, setViewPemModal] = useState<{ open: boolean; name: string; pem: string }>({ open: false, name: '', pem: '' });
+    
+    // Prisma Remote Networks & Hetzner Whitelist States
+    const [remoteNetworksData, setRemoteNetworksData] = useState<any>(null);
+    const [isSyncingNetworks, setIsSyncingNetworks] = useState(false);
+    const [showAddNetworkModal, setShowAddNetworkModal] = useState(false);
+    const [showExportFormatsModal, setShowExportFormatsModal] = useState(false);
+    const [selectedFormatTab, setSelectedFormatTab] = useState<'hetzner' | 'comma' | 'iptables' | 'ufw' | 'json'>('hetzner');
+    const [copiedFormatKey, setCopiedFormatKey] = useState<string | null>(null);
+    const [newNetworkForm, setNewNetworkForm] = useState({
+        name: '',
+        region: '',
+        gateway_ips: '',
+        egress_ips: '',
+        notes: ''
+    });
     const [probeFilterType, setProbeFilterType] = useState('ALL');
     const [probeSearchQuery, setProbeSearchQuery] = useState('');
     const [maxCaptures, setMaxCaptures] = useState(uiConfig?.maxCaptures || 10);
@@ -855,7 +870,12 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                     .then(r => r.json())
                     .then(data => {
                         if (data && typeof data === 'object' && 'good' in data) {
-                            setConvergenceThresholds(data);
+                            setConvergenceThresholds({
+                                good: Number(data.good) || 1,
+                                degraded: Number(data.degraded) || 5,
+                                critical: Number(data.critical) || 10,
+                                retention_days: Number(data.retention_days) || 7
+                            });
                         }
                     })
                     .catch(() => { });
@@ -933,6 +953,19 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                 .catch(e => console.error("Failed to fetch certificates status", e));
         };
         fetchCertificates();
+
+        // Fetch Prisma Remote Networks Status
+        const fetchRemoteNetworks = () => {
+            apiFetch('/api/sase/remote-networks', { headers: authHeaders })
+                .then(r => r.json())
+                .then(data => {
+                    if (data && data.success) {
+                        setRemoteNetworksData(data);
+                    }
+                })
+                .catch(e => console.error("Failed to fetch remote networks status", e));
+        };
+        fetchRemoteNetworks();
 
         const fetchCopilotConfig = () => {
             apiFetch('/api/copilot/config', { headers: authHeaders })
@@ -2104,7 +2137,16 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
         if ((newProbe.type === 'HTTP' || newProbe.type === 'HTTPS') && !formattedTarget.startsWith('http://') && !formattedTarget.startsWith('https://')) {
             formattedTarget = `${newProbe.type.toLowerCase()}://${formattedTarget}`;
         }
-        const probeToSave = { ...newProbe, target: formattedTarget, enabled: newProbe.enabled ?? true };
+        const defaultFreq = newProbe.type === 'CLOUD' ? 600 : (['HTTP', 'HTTPS'].includes(newProbe.type) ? 300 : 60);
+        const rawTimeout = parseInt(String(newProbe.timeout));
+        const rawFreq = parseInt(String(newProbe.frequency));
+        const probeToSave = {
+            ...newProbe,
+            target: formattedTarget,
+            timeout: isNaN(rawTimeout) ? 5000 : Math.min(60000, Math.max(1000, rawTimeout)),
+            frequency: isNaN(rawFreq) ? defaultFreq : Math.min(3600, Math.max(30, rawFreq)),
+            enabled: newProbe.enabled ?? true
+        };
         let updatedProbes: CustomProbe[];
         if (editingIndex !== null) {
             updatedProbes = [...customProbes];
@@ -2370,7 +2412,8 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
             const sanitized = {
                 good: Math.max(1, Math.min(100, Number(convergenceThresholds.good) || 1)),
                 degraded: Math.max(1, Math.min(100, Number(convergenceThresholds.degraded) || 5)),
-                critical: Math.max(1, Math.min(100, Number(convergenceThresholds.critical) || 10))
+                critical: Math.max(1, Math.min(100, Number(convergenceThresholds.critical) || 10)),
+                retention_days: Math.max(1, Math.min(365, Math.round(Number(convergenceThresholds.retention_days) || 7)))
             };
             setConvergenceThresholds(sanitized);
             const res = await apiFetch('/api/config/convergence', {
@@ -2382,7 +2425,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                 body: JSON.stringify(sanitized)
             });
             if (res.ok) {
-                showSuccess('Failover thresholds saved');
+                showSuccess(`Failover config saved (retention: ${sanitized.retention_days} days)`);
             } else {
                 setErrorMsg('Failed to save thresholds');
             }
@@ -2697,6 +2740,92 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
         }
     };
 
+    const handleSyncRemoteNetworks = async () => {
+        setIsSyncingNetworks(true);
+        try {
+            const res = await apiFetch('/api/sase/remote-networks/sync', {
+                method: 'POST',
+                headers: authHeaders,
+                body: JSON.stringify({ sls_config: slsConfig })
+            });
+            const data = await res.json();
+            if (data && data.success) {
+                showSuccess(`Successfully synchronized ${data.count} Remote Network(s)`);
+                const r = await apiFetch('/api/sase/remote-networks', { headers: authHeaders });
+                const updated = await r.json();
+                if (updated && updated.success) setRemoteNetworksData(updated);
+            } else {
+                setErrorMsg(`Failed to sync Remote Networks: ${data?.error || 'Unknown error'}`);
+            }
+        } catch (err: any) {
+            setErrorMsg(`Network error: ${err.message}`);
+        } finally {
+            setIsSyncingNetworks(false);
+        }
+    };
+
+    const handleAddCustomRemoteNetwork = async () => {
+        if (!newNetworkForm.name.trim()) {
+            setErrorMsg('Network name is required');
+            return;
+        }
+        try {
+            const gwIps = newNetworkForm.gateway_ips.split(/[\n,]+/).map(s => s.trim()).filter(Boolean);
+            const egIps = newNetworkForm.egress_ips.split(/[\n,]+/).map(s => s.trim()).filter(Boolean);
+
+            const res = await apiFetch('/api/sase/remote-networks/custom', {
+                method: 'POST',
+                headers: authHeaders,
+                body: JSON.stringify({
+                    name: newNetworkForm.name.trim(),
+                    region: newNetworkForm.region.trim() || undefined,
+                    gateway_ips: gwIps,
+                    egress_ips: egIps,
+                    notes: newNetworkForm.notes.trim() || undefined
+                })
+            });
+            const data = await res.json();
+            if (data && data.success) {
+                showSuccess(`Remote Network "${newNetworkForm.name}" added`);
+                setNewNetworkForm({ name: '', region: '', gateway_ips: '', egress_ips: '', notes: '' });
+                setShowAddNetworkModal(false);
+                const r = await apiFetch('/api/sase/remote-networks', { headers: authHeaders });
+                const updated = await r.json();
+                if (updated && updated.success) setRemoteNetworksData(updated);
+            } else {
+                setErrorMsg(`Failed to add: ${data?.error || 'Unknown error'}`);
+            }
+        } catch (err: any) {
+            setErrorMsg(`Error: ${err.message}`);
+        }
+    };
+
+    const handleDeleteRemoteNetwork = async (id: string) => {
+        try {
+            const res = await apiFetch(`/api/sase/remote-networks/${encodeURIComponent(id)}`, {
+                method: 'DELETE',
+                headers: authHeaders
+            });
+            const data = await res.json();
+            if (data && data.success) {
+                showSuccess('Remote Network entry removed');
+                const r = await apiFetch('/api/sase/remote-networks', { headers: authHeaders });
+                const updated = await r.json();
+                if (updated && updated.success) setRemoteNetworksData(updated);
+            }
+        } catch (err: any) {
+            setErrorMsg(`Failed to delete: ${err.message}`);
+        }
+    };
+
+    const handleCopyText = (text: string, label: string) => {
+        if (!text) return;
+        navigator.clipboard.writeText(text);
+        setCopiedFormatKey(label);
+        showSuccess(`Copied ${label} to clipboard!`);
+        setTimeout(() => setCopiedFormatKey(null), 2500);
+    };
+
     const saveCloudConfig = async () => {
         setIsSavingCloud(true);
         try {
@@ -2853,8 +2982,8 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                                 <Zap size={20} />
                             </div>
                             <div>
-                                <h2 className="text-lg font-black text-text-primary tracking-tight">Failover Thresholds</h2>
-                                <p className="text-[10px] font-bold text-text-muted tracking-widest mt-1 opacity-70">Define failover performance criteria</p>
+                                <h2 className="text-lg font-black text-text-primary tracking-tight">Failover Thresholds &amp; History Retention</h2>
+                                <p className="text-[10px] font-bold text-text-muted tracking-widest mt-1 opacity-70">Define failover performance criteria and automatic test history retention</p>
                             </div>
                         </div>
 
@@ -2921,6 +3050,76 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                                         <span className="font-bold text-text-secondary">Critical:</span>
                                         <span className="text-text-muted">Max blackout exceeds <span className="text-text-primary font-black">{convergenceThresholds.critical}s</span></span>
                                     </div>
+                                </div>
+                            </div>
+
+                            {/* Test History Retention */}
+                            <div className="pt-2 border-t border-border/60 space-y-4">
+                                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                                    <div className="space-y-1">
+                                        <div className="flex items-center gap-2">
+                                            <Clock size={14} className="text-purple-500 dark:text-purple-400" />
+                                            <span className="text-xs font-black text-text-primary uppercase tracking-wider">Test History Retention</span>
+                                            <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-purple-500/10 text-purple-400 border border-purple-500/20">
+                                                Default: 7 Days
+                                            </span>
+                                        </div>
+                                        <p className="text-[10px] text-text-muted leading-relaxed">
+                                            Automatically purge completed Failover Lab tests older than <span className="text-text-primary font-bold">{convergenceThresholds.retention_days || 7} day{Number(convergenceThresholds.retention_days || 7) > 1 ? 's' : ''}</span> to keep history loading instant across the fleet.
+                                        </p>
+                                    </div>
+
+                                    <div className="relative w-full sm:w-36 shrink-0">
+                                        <input
+                                            type="number"
+                                            min="1"
+                                            max="365"
+                                            value={convergenceThresholds.retention_days ?? ''}
+                                            onChange={e => {
+                                                const raw = e.target.value;
+                                                setConvergenceThresholds(prev => ({
+                                                    ...prev,
+                                                    retention_days: raw === '' ? ('' as any) : Number(raw)
+                                                }));
+                                            }}
+                                            onBlur={() => {
+                                                setConvergenceThresholds(prev => {
+                                                    const current = Number(prev.retention_days);
+                                                    const clamped = isNaN(current) || current <= 0 ? 7 : Math.max(1, Math.min(365, Math.round(current)));
+                                                    return { ...prev, retention_days: clamped };
+                                                });
+                                            }}
+                                            className="w-full bg-card-secondary border border-border text-text-primary rounded-xl px-4 py-2.5 text-sm font-black outline-none focus:ring-1 focus:ring-purple-500 transition-all shadow-inner"
+                                        />
+                                        <span className="absolute right-3.5 top-1/2 -translate-y-1/2 text-[10px] font-black text-text-muted opacity-40">DAYS</span>
+                                    </div>
+                                </div>
+
+                                <div className="flex items-center gap-2 flex-wrap">
+                                    <span className="text-[9px] font-bold text-text-muted uppercase tracking-wider mr-1">Quick Presets:</span>
+                                    {[
+                                        { days: 1, label: '24 Hours (1d)' },
+                                        { days: 3, label: '3 Days' },
+                                        { days: 7, label: '1 Week (7d)' },
+                                        { days: 14, label: '2 Weeks (14d)' },
+                                        { days: 30, label: '1 Month (30d)' },
+                                    ].map(preset => {
+                                        const isSelected = Number(convergenceThresholds.retention_days) === preset.days;
+                                        return (
+                                            <button
+                                                key={preset.days}
+                                                type="button"
+                                                onClick={() => setConvergenceThresholds(prev => ({ ...prev, retention_days: preset.days }))}
+                                                className={`px-3 py-1.5 rounded-lg text-[10px] font-bold transition-all border cursor-pointer ${
+                                                    isSelected
+                                                        ? 'bg-purple-600 text-white border-purple-500 shadow-sm shadow-purple-500/20'
+                                                        : 'bg-card-secondary hover:bg-card text-text-secondary border-border hover:border-purple-500/40'
+                                                }`}
+                                            >
+                                                {preset.label}
+                                            </button>
+                                        );
+                                    })}
                                 </div>
                             </div>
 
@@ -3434,9 +3633,13 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                                                     max="60000"
                                                     step="1000"
                                                     className="w-full bg-card-secondary border border-border text-text-primary rounded-xl px-4 py-3 outline-none focus:ring-1 focus:ring-blue-500 text-[11px] font-black tracking-widest shadow-inner transition-all"
-                                                    value={newProbe.timeout || 5000}
+                                                    value={newProbe.timeout ?? ''}
                                                     onChange={e => {
-                                                        const val = parseInt(e.target.value);
+                                                        const raw = e.target.value;
+                                                        setNewProbe({ ...newProbe, timeout: (raw === '' ? '' : parseInt(raw)) as any });
+                                                    }}
+                                                    onBlur={() => {
+                                                        const val = parseInt(String(newProbe.timeout));
                                                         setNewProbe({ ...newProbe, timeout: isNaN(val) ? 5000 : Math.min(60000, Math.max(1000, val)) });
                                                     }}
                                                 />
@@ -3452,10 +3655,14 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                                                     max="3600"
                                                     step="10"
                                                     className="w-full bg-card-secondary border border-border text-text-primary rounded-xl px-4 py-3 outline-none focus:ring-1 focus:ring-blue-500 text-[11px] font-black tracking-widest shadow-inner transition-all"
-                                                    value={newProbe.frequency || (newProbe.type === 'CLOUD' ? 600 : 300)}
+                                                    value={newProbe.frequency ?? ''}
                                                     onChange={e => {
-                                                        const val = parseInt(e.target.value);
-                                                        const fallback = newProbe.type === 'CLOUD' ? 600 : 300;
+                                                        const raw = e.target.value;
+                                                        setNewProbe({ ...newProbe, frequency: (raw === '' ? '' : parseInt(raw)) as any });
+                                                    }}
+                                                    onBlur={() => {
+                                                        const val = parseInt(String(newProbe.frequency));
+                                                        const fallback = newProbe.type === 'CLOUD' ? 600 : (['HTTP', 'HTTPS'].includes(newProbe.type) ? 300 : 60);
                                                         setNewProbe({ ...newProbe, frequency: isNaN(val) ? fallback : Math.min(3600, Math.max(30, val)) });
                                                     }}
                                                 />
@@ -8150,6 +8357,254 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                                 </div>
                             )}
                         </div>
+
+                        {/* ─── Prisma Access Remote Networks & Egress Whitelist Section ───────── */}
+                        <div className="border-t border-border/60 pt-8 space-y-6">
+                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                                <div className="flex items-center gap-3">
+                                    <div className="p-2.5 bg-blue-500/10 text-blue-500 rounded-xl border border-blue-500/20">
+                                        <Globe size={22} />
+                                    </div>
+                                    <div>
+                                        <div className="flex items-center gap-2.5">
+                                            <h3 className="text-base font-black text-text-primary tracking-tight">Prisma Access Remote Networks & Egress Allowlist</h3>
+                                            {remoteNetworksData && remoteNetworksData.total_count > 0 ? (
+                                                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-emerald-500/10 text-emerald-400 border border-emerald-500/30">
+                                                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                                                    Active ({remoteNetworksData.total_count} RN · {remoteNetworksData.total_egress_ips} IPs)
+                                                </span>
+                                            ) : (
+                                                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-zinc-500/10 text-text-muted border border-border">
+                                                    Not Synced
+                                                </span>
+                                            )}
+                                        </div>
+                                        <p className="text-[11px] font-bold text-text-muted tracking-wide mt-0.5 opacity-80">
+                                            Public IPsec endpoints and source NAT egress IPs for Remote Networks. Once allocated, these IPs remain stable and are used to whitelist traffic on external firewalls (Hetzner, AWS, on-prem).
+                                        </p>
+                                    </div>
+                                </div>
+
+                                <div className="flex items-center gap-2 flex-wrap">
+                                    <button
+                                        onClick={handleSyncRemoteNetworks}
+                                        disabled={isSyncingNetworks}
+                                        className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-black uppercase tracking-wider flex items-center gap-2 transition-all shadow-lg shadow-blue-500/20 disabled:opacity-50 cursor-pointer"
+                                    >
+                                        <RefreshCw size={14} className={cn(isSyncingNetworks && "animate-spin")} />
+                                        {isSyncingNetworks ? 'Syncing...' : 'Sync Remote Networks'}
+                                    </button>
+                                    <button
+                                        onClick={() => setShowExportFormatsModal(true)}
+                                        disabled={!remoteNetworksData || remoteNetworksData.total_egress_ips === 0}
+                                        className="px-3.5 py-2 bg-card hover:bg-card-hover text-text-primary border border-border rounded-xl text-xs font-black uppercase tracking-wider flex items-center gap-2 transition-all disabled:opacity-40 cursor-pointer"
+                                        title="Export firewall formats (Hetzner, iptables, ufw, JSON)"
+                                    >
+                                        <Download size={14} />
+                                        Export Formats
+                                    </button>
+                                    <button
+                                        onClick={() => setShowAddNetworkModal(true)}
+                                        className="p-2.5 bg-card hover:bg-card-hover text-text-primary border border-border rounded-xl transition-all cursor-pointer"
+                                        title="Add custom or manual remote network entry"
+                                    >
+                                        <Plus size={14} />
+                                    </button>
+                                </div>
+                            </div>
+
+                            {/* Hetzner Cloud Fast Whitelist Banner */}
+                            {remoteNetworksData && remoteNetworksData.total_egress_ips > 0 && (
+                                <div className="bg-gradient-to-r from-blue-900/20 via-card-secondary/40 to-emerald-950/20 border border-blue-500/30 rounded-2xl p-5 space-y-3">
+                                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
+                                        <div className="flex items-center gap-2.5">
+                                            <div className="p-2 bg-blue-500/20 text-blue-400 rounded-lg">
+                                                <ShieldCheck size={18} />
+                                            </div>
+                                            <div>
+                                                <h4 className="text-xs font-black text-text-primary uppercase tracking-wider flex items-center gap-2">
+                                                    Hetzner Cloud Firewall Whitelist
+                                                    <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-blue-500/20 text-blue-300 font-bold">
+                                                        {remoteNetworksData.total_egress_ips} IPs ready
+                                                    </span>
+                                                </h4>
+                                                <p className="text-[10px] text-text-muted mt-0.5">
+                                                    Paste these CIDRs (/32) directly into Hetzner Cloud Firewall inbound rules (e.g. ports 22, 443, 8080) to only allow traffic from your Prisma Access Remote Networks.
+                                                </p>
+                                            </div>
+                                        </div>
+
+                                        <div className="flex items-center gap-2 shrink-0">
+                                            <button
+                                                onClick={() => handleCopyText(remoteNetworksData.formats?.hetzner_cidrs, 'Hetzner CIDRs (/32)')}
+                                                className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-[10px] font-black uppercase tracking-wider flex items-center gap-1.5 transition-all shadow-sm cursor-pointer"
+                                            >
+                                                {copiedFormatKey === 'Hetzner CIDRs (/32)' ? <Check size={12} /> : <Copy size={12} />}
+                                                Copy CIDRs (/32)
+                                            </button>
+                                            <button
+                                                onClick={() => handleCopyText(remoteNetworksData.formats?.hetzner_comma_separated, 'Comma-Separated IPs')}
+                                                className="px-3 py-1.5 bg-card hover:bg-card-hover text-text-primary border border-border rounded-lg text-[10px] font-black uppercase tracking-wider flex items-center gap-1.5 transition-all cursor-pointer"
+                                            >
+                                                {copiedFormatKey === 'Comma-Separated IPs' ? <Check size={12} /> : <Copy size={12} />}
+                                                Comma-Separated
+                                            </button>
+                                        </div>
+                                    </div>
+
+                                    {/* Preview Snippet */}
+                                    <div className="bg-black/30 border border-border/60 rounded-xl p-3 font-mono text-[11px] text-emerald-400 overflow-x-auto flex items-center justify-between gap-4">
+                                        <span className="truncate">
+                                            {remoteNetworksData.formats?.hetzner_comma_separated || 'No IPs found'}
+                                        </span>
+                                        <span className="text-[9px] text-text-muted shrink-0 uppercase tracking-widest font-sans">
+                                            {remoteNetworksData.total_egress_ips} Egress · {remoteNetworksData.total_gateway_ips} Gateway
+                                        </span>
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Remote Networks Table / Grid */}
+                            {!remoteNetworksData || remoteNetworksData.networks.length === 0 ? (
+                                <div className="bg-card-secondary/20 border border-border/60 rounded-2xl p-8 text-center space-y-4">
+                                    <div className="w-12 h-12 rounded-full bg-blue-500/10 text-blue-400 mx-auto flex items-center justify-center">
+                                        <Globe size={24} />
+                                    </div>
+                                    <div className="max-w-md mx-auto space-y-1">
+                                        <h4 className="text-xs font-black text-text-primary uppercase tracking-wider">No Remote Networks Discovered Yet</h4>
+                                        <p className="text-[11px] text-text-muted leading-relaxed">
+                                            Click the sync button above to query your Prisma SASE API or extract active Remote Network service endpoints from your live SD-WAN topology.
+                                        </p>
+                                    </div>
+                                    <button
+                                        onClick={handleSyncRemoteNetworks}
+                                        disabled={isSyncingNetworks}
+                                        className="inline-flex items-center gap-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-black uppercase tracking-wider shadow-lg shadow-blue-500/20 transition-all disabled:opacity-50 cursor-pointer"
+                                    >
+                                        <RefreshCw size={14} className={cn(isSyncingNetworks && "animate-spin")} />
+                                        Sync Now
+                                    </button>
+                                </div>
+                            ) : (
+                                <div className="space-y-3">
+                                    <div className="overflow-x-auto rounded-2xl border border-border">
+                                        <table className="w-full text-left border-collapse">
+                                            <thead>
+                                                <tr className="bg-card-secondary/50 border-b border-border text-[10px] font-black uppercase tracking-wider text-text-muted">
+                                                    <th className="py-3 px-4">Remote Network / Region</th>
+                                                    <th className="py-3 px-4">Gateway (IPsec)</th>
+                                                    <th className="py-3 px-4">Egress / NAT (Whitelist)</th>
+                                                    <th className="py-3 px-4">Connected Sites</th>
+                                                    <th className="py-3 px-4">Status</th>
+                                                    <th className="py-3 px-4">Source</th>
+                                                    <th className="py-3 px-4 text-right">Actions</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody className="divide-y divide-border/60 text-xs">
+                                                {remoteNetworksData.networks.map((rn: any) => (
+                                                    <tr key={rn.id} className="hover:bg-card-secondary/30 transition-colors">
+                                                        <td className="py-3 px-4">
+                                                            <div className="font-bold text-text-primary flex items-center gap-2">
+                                                                <span>{rn.name}</span>
+                                                                {rn.region && (
+                                                                    <span className="px-1.5 py-0.5 rounded bg-blue-500/10 text-blue-400 border border-blue-500/20 text-[9px] font-mono">
+                                                                        {rn.region}
+                                                                    </span>
+                                                                )}
+                                                            </div>
+                                                            {rn.folder && (
+                                                                <span className="text-[10px] text-text-muted">{rn.folder}</span>
+                                                            )}
+                                                        </td>
+                                                        <td className="py-3 px-4 font-mono text-[11px]">
+                                                            {rn.gateway_ips && rn.gateway_ips.length > 0 ? (
+                                                                <div className="flex flex-wrap gap-1.5">
+                                                                    {rn.gateway_ips.map((ip: string) => (
+                                                                        <button
+                                                                            key={ip}
+                                                                            onClick={() => handleCopyText(ip, `IP ${ip}`)}
+                                                                            title="Click to copy IP"
+                                                                            className="px-2 py-0.5 rounded bg-card hover:bg-card-hover border border-border text-text-secondary hover:text-text-primary text-[10px] flex items-center gap-1 transition-all cursor-pointer"
+                                                                        >
+                                                                            <span>{ip}</span>
+                                                                            <Copy size={10} className="opacity-50" />
+                                                                        </button>
+                                                                    ))}
+                                                                </div>
+                                                            ) : (
+                                                                <span className="text-text-muted italic text-[10px]">None</span>
+                                                            )}
+                                                        </td>
+                                                        <td className="py-3 px-4 font-mono text-[11px]">
+                                                            {rn.egress_ips && rn.egress_ips.length > 0 ? (
+                                                                <div className="flex flex-wrap gap-1.5">
+                                                                    {rn.egress_ips.map((ip: string) => (
+                                                                        <button
+                                                                            key={ip}
+                                                                            onClick={() => handleCopyText(`${ip}/32`, `CIDR ${ip}/32`)}
+                                                                            title="Click to copy CIDR for Hetzner"
+                                                                            className="px-2 py-0.5 rounded bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 text-emerald-400 font-bold text-[10px] flex items-center gap-1 transition-all cursor-pointer"
+                                                                        >
+                                                                            <span>{ip}</span>
+                                                                            <Copy size={10} className="opacity-60" />
+                                                                        </button>
+                                                                    ))}
+                                                                </div>
+                                                            ) : (
+                                                                <span className="text-text-muted italic text-[10px]">None</span>
+                                                            )}
+                                                        </td>
+                                                        <td className="py-3 px-4 text-[10px]">
+                                                            {rn.connected_sites && rn.connected_sites.length > 0 ? (
+                                                                <div className="flex flex-wrap gap-1">
+                                                                    {rn.connected_sites.map((st: string) => (
+                                                                        <span key={st} className="px-1.5 py-0.5 rounded bg-card border border-border text-text-muted font-bold">
+                                                                            {st}
+                                                                        </span>
+                                                                    ))}
+                                                                </div>
+                                                            ) : (
+                                                                <span className="text-text-muted italic">All</span>
+                                                            )}
+                                                        </td>
+                                                        <td className="py-3 px-4">
+                                                            <span className={cn(
+                                                                "px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider",
+                                                                rn.status === 'active' ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/30" :
+                                                                rn.status === 'degraded' ? "bg-amber-500/10 text-amber-400 border border-amber-500/30" :
+                                                                "bg-zinc-500/10 text-text-muted border border-border"
+                                                            )}>
+                                                                {rn.status}
+                                                            </span>
+                                                        </td>
+                                                        <td className="py-3 px-4">
+                                                            <span className="text-[10px] font-mono text-text-muted uppercase">
+                                                                {rn.source === 'sdwan_topology' ? 'Topology' : rn.source === 'prisma_sase_api' ? 'Prisma API' : rn.source}
+                                                            </span>
+                                                        </td>
+                                                        <td className="py-3 px-4 text-right">
+                                                            <button
+                                                                onClick={() => handleDeleteRemoteNetwork(rn.id)}
+                                                                className="p-1.5 hover:bg-rose-500/20 text-text-muted hover:text-rose-400 rounded-lg transition-all cursor-pointer"
+                                                                title="Delete this Remote Network entry"
+                                                            >
+                                                                <Trash2 size={13} />
+                                                            </button>
+                                                        </td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    </div>
+
+                                    {remoteNetworksData.last_updated && (
+                                        <div className="text-[10px] text-text-muted text-right font-mono">
+                                            Last Synced: {new Date(remoteNetworksData.last_updated).toLocaleString()}
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+                        </div>
                     </div>
                 )}
                 </div>
@@ -8282,6 +8737,167 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                                 className="px-5 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest bg-card hover:bg-card-hover text-text-primary border border-border transition-all"
                             >
                                 Close
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* ─── Export Remote Networks Whitelist Formats Modal ────────────────── */}
+            {showExportFormatsModal && remoteNetworksData && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-in fade-in duration-200">
+                    <div className="bg-card border border-border rounded-2xl w-full max-w-2xl p-6 space-y-6 shadow-2xl animate-in zoom-in-95 duration-200">
+                        <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-3">
+                                <div className="p-2 bg-blue-500/10 text-blue-400 rounded-xl">
+                                    <Download size={20} />
+                                </div>
+                                <div>
+                                    <h3 className="text-sm font-black text-text-primary tracking-tight">Export Remote Networks Whitelist</h3>
+                                    <p className="text-[10px] text-text-muted">Choose your firewall or cloud platform export syntax</p>
+                                </div>
+                            </div>
+                            <button onClick={() => setShowExportFormatsModal(false)} className="p-1.5 hover:bg-card-hover rounded-lg text-text-muted cursor-pointer">
+                                <X size={16} />
+                            </button>
+                        </div>
+
+                        {/* Format Tabs */}
+                        <div className="flex gap-2 border-b border-border/80 pb-2">
+                            {[
+                                { id: 'hetzner', label: 'Hetzner CIDRs (/32)' },
+                                { id: 'comma', label: 'Comma-Separated' },
+                                { id: 'iptables', label: 'iptables Rules' },
+                                { id: 'ufw', label: 'UFW Rules' },
+                                { id: 'json', label: 'JSON Array' }
+                            ].map(tab => (
+                                <button
+                                    key={tab.id}
+                                    onClick={() => setSelectedFormatTab(tab.id as any)}
+                                    className={cn(
+                                        "px-3 py-1.5 rounded-lg text-xs font-black uppercase tracking-wider transition-all cursor-pointer",
+                                        selectedFormatTab === tab.id ? "bg-blue-600 text-white" : "text-text-muted hover:text-text-primary hover:bg-card-hover"
+                                    )}
+                                >
+                                    {tab.label}
+                                </button>
+                            ))}
+                        </div>
+
+                        {/* Content Area */}
+                        <div className="relative">
+                            <pre className="w-full bg-card-secondary/70 border border-border rounded-xl p-4 text-[11px] font-mono text-emerald-300 max-h-80 overflow-y-auto select-all whitespace-pre-wrap break-all">
+                                {selectedFormatTab === 'hetzner' ? remoteNetworksData.formats?.hetzner_cidrs :
+                                 selectedFormatTab === 'comma' ? remoteNetworksData.formats?.hetzner_comma_separated :
+                                 selectedFormatTab === 'iptables' ? remoteNetworksData.formats?.iptables :
+                                 selectedFormatTab === 'ufw' ? remoteNetworksData.formats?.ufw :
+                                 remoteNetworksData.formats?.json_array}
+                            </pre>
+                            <button
+                                onClick={() => {
+                                    const text = selectedFormatTab === 'hetzner' ? remoteNetworksData.formats?.hetzner_cidrs :
+                                                 selectedFormatTab === 'comma' ? remoteNetworksData.formats?.hetzner_comma_separated :
+                                                 selectedFormatTab === 'iptables' ? remoteNetworksData.formats?.iptables :
+                                                 selectedFormatTab === 'ufw' ? remoteNetworksData.formats?.ufw :
+                                                 remoteNetworksData.formats?.json_array;
+                                    handleCopyText(text, 'Rules format');
+                                }}
+                                className="absolute top-3 right-3 p-2 bg-card/80 hover:bg-card text-text-muted hover:text-text-primary border border-border rounded-lg shadow transition-all flex items-center gap-1 text-[9px] font-bold uppercase cursor-pointer"
+                            >
+                                <Copy size={12} />
+                                Copy
+                            </button>
+                        </div>
+
+                        <div className="flex justify-end">
+                            <button
+                                onClick={() => setShowExportFormatsModal(false)}
+                                className="px-5 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest bg-card hover:bg-card-hover text-text-primary border border-border transition-all cursor-pointer"
+                            >
+                                Close
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* ─── Add Custom Remote Network Modal ──────────────────────────────── */}
+            {showAddNetworkModal && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-in fade-in duration-200">
+                    <div className="bg-card border border-border rounded-2xl w-full max-w-lg p-6 space-y-5 shadow-2xl animate-in zoom-in-95 duration-200">
+                        <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-3">
+                                <div className="p-2 bg-blue-500/10 text-blue-400 rounded-xl">
+                                    <Plus size={20} />
+                                </div>
+                                <div>
+                                    <h3 className="text-sm font-black text-text-primary tracking-tight">Add Remote Network Entry</h3>
+                                    <p className="text-[10px] text-text-muted">Register a custom Remote Network or external Gateway/Egress IP</p>
+                                </div>
+                            </div>
+                            <button onClick={() => setShowAddNetworkModal(false)} className="p-1.5 hover:bg-card-hover rounded-lg text-text-muted cursor-pointer">
+                                <X size={16} />
+                            </button>
+                        </div>
+
+                        <div className="space-y-4">
+                            <div className="space-y-1.5">
+                                <label className="text-[10px] font-black uppercase tracking-wider text-text-muted">Network Name</label>
+                                <input
+                                    type="text"
+                                    placeholder="e.g. Prisma Access France South"
+                                    value={newNetworkForm.name}
+                                    onChange={e => setNewNetworkForm({ ...newNetworkForm, name: e.target.value })}
+                                    className="w-full bg-card-secondary border border-border rounded-xl px-4 py-2.5 text-xs font-bold text-text-primary outline-none focus:border-blue-500"
+                                />
+                            </div>
+
+                            <div className="space-y-1.5">
+                                <label className="text-[10px] font-black uppercase tracking-wider text-text-muted">Region (Optional)</label>
+                                <input
+                                    type="text"
+                                    placeholder="e.g. France South, Ireland, Europe West"
+                                    value={newNetworkForm.region}
+                                    onChange={e => setNewNetworkForm({ ...newNetworkForm, region: e.target.value })}
+                                    className="w-full bg-card-secondary border border-border rounded-xl px-4 py-2.5 text-xs font-bold text-text-primary outline-none focus:border-blue-500"
+                                />
+                            </div>
+
+                            <div className="space-y-1.5">
+                                <label className="text-[10px] font-black uppercase tracking-wider text-text-muted">Egress / Whitelist IPs (comma or line separated)</label>
+                                <textarea
+                                    rows={2}
+                                    placeholder="130.41.124.164, 74.221.137.55"
+                                    value={newNetworkForm.egress_ips}
+                                    onChange={e => setNewNetworkForm({ ...newNetworkForm, egress_ips: e.target.value })}
+                                    className="w-full bg-card-secondary border border-border rounded-xl px-4 py-2.5 text-xs font-mono text-emerald-400 outline-none focus:border-blue-500"
+                                />
+                            </div>
+
+                            <div className="space-y-1.5">
+                                <label className="text-[10px] font-black uppercase tracking-wider text-text-muted">Gateway / IPsec IPs (Optional)</label>
+                                <textarea
+                                    rows={2}
+                                    placeholder="130.41.124.164"
+                                    value={newNetworkForm.gateway_ips}
+                                    onChange={e => setNewNetworkForm({ ...newNetworkForm, gateway_ips: e.target.value })}
+                                    className="w-full bg-card-secondary border border-border rounded-xl px-4 py-2.5 text-xs font-mono text-text-primary outline-none focus:border-blue-500"
+                                />
+                            </div>
+                        </div>
+
+                        <div className="flex justify-end gap-2 pt-2">
+                            <button
+                                onClick={() => setShowAddNetworkModal(false)}
+                                className="px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider bg-card hover:bg-card-hover text-text-muted border border-border cursor-pointer"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                onClick={handleAddCustomRemoteNetwork}
+                                className="px-5 py-2 rounded-xl text-xs font-black uppercase tracking-wider bg-blue-600 hover:bg-blue-500 text-white font-bold transition-all shadow-md shadow-blue-500/20 cursor-pointer"
+                            >
+                                Save Network
                             </button>
                         </div>
                     </div>

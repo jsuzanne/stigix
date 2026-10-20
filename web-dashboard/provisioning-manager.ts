@@ -573,9 +573,12 @@ export class ProvisioningManager {
                 if (oldObj.good !== newObj.good) changes.push(`good: ${oldObj.good || '—'} ➔ ${newObj.good || '—'}`);
                 if (oldObj.degraded !== newObj.degraded) changes.push(`degraded: ${oldObj.degraded || '—'} ➔ ${newObj.degraded || '—'}`);
                 if (oldObj.critical !== newObj.critical) changes.push(`critical: ${oldObj.critical || '—'} ➔ ${newObj.critical || '—'}`);
+                if ((oldObj.retention_days ?? 7) !== (newObj.retention_days ?? 7)) {
+                    changes.push(`retention: ${oldObj.retention_days ?? 7}d ➔ ${newObj.retention_days ?? 7}d`);
+                }
                 if (changes.length === 0 && JSON.stringify(oldObj) !== JSON.stringify(newObj)) changes.push(`SLA Thresholds updated`);
                 if (changes.length > 0) {
-                    diff.push({ id: 'sla', name: 'Convergence SLA Thresholds', action: 'modified', details: changes.join(', ') });
+                    diff.push({ id: 'sla', name: 'Convergence SLA & Retention', action: 'modified', details: changes.join(', ') });
                 }
             } else if (type === 'prisma-sase') {
                 if (oldObj.tsg_id !== newObj.tsg_id) changes.push(`TSG ID: ${oldObj.tsg_id || '—'} ➔ ${newObj.tsg_id || '—'}`);

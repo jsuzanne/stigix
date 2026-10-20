@@ -3,7 +3,7 @@
  * 100% Feature & Signature Parity with the Python MCP Server (mcp-server/src/server.py).
  */
 
-import { AnthropicToolDefinition } from './types.js';
+import { AnthropicToolDefinition, ApiCallTrace } from './types.js';
 import { URL_CATEGORIES, DNS_TEST_DOMAINS } from '../shared/security-categories.js';
 
 export interface ToolExecutionContext {
@@ -29,12 +29,13 @@ export interface ToolExecutionContext {
     systemToken?: string;
     serverPort?: number;
     runCommand?: (cmd: string) => Promise<string>;
+    _apiTrace?: ApiCallTrace[];
 }
 
 export function resolveNodeContext(
     nodeNameOrIp: string | undefined,
     ctx: ToolExecutionContext
-): { baseUrl: string; headers: Record<string, string>; siteName: string; isLocal: boolean; unknownNode?: boolean; requestedNode?: string; availableNodes?: string[] } {
+): { baseUrl: string; headers: Record<string, string>; siteName: string; isLocal: boolean; unknownNode?: boolean; requestedNode?: string; availableNodes?: string[]; _apiTrace?: ApiCallTrace[] } {
     const defaultPort = ctx.serverPort || process.env.PORT || 8080;
     const defaultHeaders: Record<string, string> = { 'Content-Type': 'application/json' };
     const activeToken = ctx.systemToken || (ctx as any).token;
@@ -53,7 +54,7 @@ export function resolveNodeContext(
         (query.includes('br8') && localSite.includes('br8'));
 
     if (isExplicitLocal) {
-        return { baseUrl: `http://127.0.0.1:${defaultPort}`, headers: defaultHeaders, siteName: localSite.toUpperCase(), isLocal: true };
+        return { baseUrl: `http://127.0.0.1:${defaultPort}`, headers: defaultHeaders, siteName: localSite.toUpperCase(), isLocal: true, _apiTrace: ctx._apiTrace };
     }
 
     if (query.startsWith('http://') || query.startsWith('https://')) {
@@ -61,7 +62,8 @@ export function resolveNodeContext(
             baseUrl: query.replace(/\/+$/, ''),
             headers: defaultHeaders,
             siteName: query,
-            isLocal: false
+            isLocal: false,
+            _apiTrace: ctx._apiTrace
         };
     }
 
@@ -70,7 +72,8 @@ export function resolveNodeContext(
             baseUrl: `http://${query}`,
             headers: defaultHeaders,
             siteName: query,
-            isLocal: false
+            isLocal: false,
+            _apiTrace: ctx._apiTrace
         };
     }
 
@@ -92,7 +95,8 @@ export function resolveNodeContext(
             baseUrl: `http://${ip}:${port}`,
             headers: defaultHeaders,
             siteName: matchedPeer.site_name || matchedPeer.instance_id || ip,
-            isLocal: false
+            isLocal: false,
+            _apiTrace: ctx._apiTrace
         };
     }
 
@@ -113,7 +117,8 @@ export function resolveNodeContext(
             baseUrl: `http://${host}:${port}`,
             headers: defaultHeaders,
             siteName: matchedTarget.name || host,
-            isLocal: false
+            isLocal: false,
+            _apiTrace: ctx._apiTrace
         };
     }
 
@@ -132,7 +137,8 @@ export function resolveNodeContext(
             isLocal: false,
             unknownNode: true,
             requestedNode: String(nodeNameOrIp || query),
-            availableNodes
+            availableNodes,
+            _apiTrace: ctx._apiTrace
         };
     }
 
@@ -141,11 +147,12 @@ export function resolveNodeContext(
             baseUrl: `http://${query}:8080`,
             headers: defaultHeaders,
             siteName: query,
-            isLocal: false
+            isLocal: false,
+            _apiTrace: ctx._apiTrace
         };
     }
 
-    return { baseUrl: `http://127.0.0.1:${defaultPort}`, headers: defaultHeaders, siteName: localSite, isLocal: true };
+    return { baseUrl: `http://127.0.0.1:${defaultPort}`, headers: defaultHeaders, siteName: localSite, isLocal: true, _apiTrace: ctx._apiTrace };
 }
 
 export function resolveTargetEndpoint(targetQuery: string | undefined, ctx: ToolExecutionContext): { host: string; port: number; name: string } {
@@ -283,8 +290,32 @@ function matchFabricEndpoint(
     });
 }
 
+function sanitizeProbeConfig(p: any): any {
+    if (!p || typeof p !== 'object') return p;
+    const { _wasGlobal, _source, ...clean } = p;
+    return clean;
+}
+
+function traceLocalApi(
+    nodeCtx: { baseUrl?: string; _apiTrace?: ApiCallTrace[] },
+    method: string,
+    path: string,
+    requestBody?: any
+) {
+    if (nodeCtx._apiTrace) {
+        nodeCtx._apiTrace.push({
+            method: method.toUpperCase(),
+            path,
+            url: `${nodeCtx.baseUrl || 'http://127.0.0.1:8080'}${path}`,
+            status: 200,
+            durationMs: 1,
+            ...(requestBody !== undefined ? { requestBody } : {})
+        });
+    }
+}
+
 async function fetchApi(
-    nodeCtx: { baseUrl: string; headers: Record<string, string>; siteName?: string; unknownNode?: boolean; requestedNode?: string; availableNodes?: string[] },
+    nodeCtx: { baseUrl: string; headers: Record<string, string>; siteName?: string; unknownNode?: boolean; requestedNode?: string; availableNodes?: string[]; _apiTrace?: ApiCallTrace[] },
     path: string,
     options: RequestInit = {},
     timeoutMs: number = 25000
@@ -295,6 +326,16 @@ async function fetchApi(
         );
     }
     const url = `${nodeCtx.baseUrl}${path}`;
+    const method = (options.method || 'GET').toUpperCase();
+    let requestBody: any = undefined;
+    if (options.body && typeof options.body === 'string') {
+        try {
+            requestBody = JSON.parse(options.body);
+        } catch {
+            requestBody = options.body;
+        }
+    }
+    const reqStart = Date.now();
     const signal = options.signal || AbortSignal.timeout(timeoutMs);
     const res = await fetch(url, {
         ...options,
@@ -304,6 +345,16 @@ async function fetchApi(
             ...(options.headers || {})
         }
     });
+    if (nodeCtx._apiTrace) {
+        nodeCtx._apiTrace.push({
+            method,
+            path,
+            url,
+            status: res.status,
+            durationMs: Date.now() - reqStart,
+            ...(requestBody !== undefined ? { requestBody } : {})
+        });
+    }
     if (!res.ok) {
         const text = await res.text();
         throw new Error(`HTTP ${res.status} on ${path}: ${text}`);
@@ -852,13 +903,17 @@ export const COPILOT_TOOLS: AnthropicToolDefinition[] = [
     },
     {
         name: 'get_dem_summary',
-        description: 'Get the LIVE Digital Experience Monitoring (DEM) health score AND the live status, RTT latency, and score of all active DEM probes on a node. PREFER THIS TOOL over list_dem_probes whenever checking probe health, status, or latency.',
+        description: 'Get the LIVE Digital Experience Monitoring (DEM) health score AND the live status, RTT latency, and score of active DEM probes on a node. Supports optional probe_name_filter to return only matching probes (e.g. "MS -"). PREFER THIS TOOL over list_dem_probes whenever checking probe health, status, or latency.',
         input_schema: {
             type: 'object',
             properties: {
                 agent_id: {
                     type: 'string',
                     description: 'ID of the Stigix node.'
+                },
+                probe_name_filter: {
+                    type: 'string',
+                    description: 'Optional substring to filter returned probes by name (e.g. "MS -", "Exchange", "Azure"). Always provide this when the user asks about a specific subset of probes.'
                 }
             },
             required: ['agent_id']
@@ -898,13 +953,17 @@ export const COPILOT_TOOLS: AnthropicToolDefinition[] = [
     },
     {
         name: 'run_dem_probes_now',
-        description: 'Trigger an immediate on-demand run of all DEM experience probes on a node.',
+        description: 'Trigger an immediate on-demand live run of DEM experience probes on a node, with optional filtering by probe name.',
         input_schema: {
             type: 'object',
             properties: {
                 agent_id: {
                     type: 'string',
                     description: 'ID of the Stigix node.'
+                },
+                probe_name_filter: {
+                    type: 'string',
+                    description: 'Optional substring to filter returned probe results by name (e.g. "MS -", "Microsoft").'
                 }
             },
             required: ['agent_id']
@@ -2002,6 +2061,8 @@ export async function executeCopilotTool(
     try {
         switch (normalizedTool) {
             case 'list_endpoints': {
+                const localNodeCtx = resolveNodeContext('LOCAL', ctx);
+                traceLocalApi(localNodeCtx, 'GET', '/api/registry/status');
                 const kind = args.kind;
                 const peers = typeof ctx.registryManager?.getPeers === 'function' ? ctx.registryManager.getPeers() : [];
                 const managedTargets = typeof ctx.targetsManager?.getMergedTargets === 'function' ? ctx.targetsManager.getMergedTargets() : [];
@@ -2093,6 +2154,7 @@ export async function executeCopilotTool(
                         };
 
                         if (sourceNodeContext.isLocal && ctx.xfrManager) {
+                            traceLocalApi(sourceNodeContext, 'POST', '/api/xfr/run', payload);
                             const { id, sequence_id } = ctx.xfrManager.createJob({
                                 mode: payload.mode,
                                 host: targetEndpoint.host,
@@ -2844,6 +2906,7 @@ export async function executeCopilotTool(
             case 'get_traffic_stats': {
                 const nodeCtx = resolveNodeContext(args.agent_id || args.node, ctx);
                 if (nodeCtx.isLocal && ctx.getTrafficStats) {
+                    traceLocalApi(nodeCtx, 'GET', '/api/traffic/status');
                     return await ctx.getTrafficStats();
                 }
                 return await fetchApi(nodeCtx, '/api/traffic/status');
@@ -2852,6 +2915,7 @@ export async function executeCopilotTool(
             case 'get_traffic_logs': {
                 const nodeCtx = resolveNodeContext(args.agent_id, ctx);
                 if (nodeCtx.isLocal && ctx.getRecentApiLogs) {
+                    traceLocalApi(nodeCtx, 'GET', `/api/traffic/logs?limit=${args.limit || 50}`);
                     return ctx.getRecentApiLogs(args.limit || 50);
                 }
                 return await fetchApi(nodeCtx, `/api/traffic/logs?limit=${args.limit || 50}`);
@@ -2860,6 +2924,7 @@ export async function executeCopilotTool(
             case 'get_security_results_stats': {
                 const nodeCtx = resolveNodeContext(args.agent_id, ctx);
                 if (nodeCtx.isLocal && ctx.getSecurityStats) {
+                    traceLocalApi(nodeCtx, 'GET', '/api/security/results/stats');
                     return ctx.getSecurityStats();
                 }
                 return await fetchApi(nodeCtx, '/api/security/results/stats').catch(async () => {
@@ -2876,6 +2941,9 @@ export async function executeCopilotTool(
                 const nodeCtx = resolveNodeContext(args.agent_id, ctx);
                 let arr: any[] = [];
                 let stats: any = null;
+                if (nodeCtx.isLocal && ctx.getAllProbes) {
+                    traceLocalApi(nodeCtx, 'GET', '/api/connectivity/custom');
+                }
                 const [probesRes, statsRes, resultsRes] = await Promise.all([
                     (nodeCtx.isLocal && ctx.getAllProbes)
                         ? Promise.resolve(ctx.getAllProbes())
@@ -2897,7 +2965,8 @@ export async function executeCopilotTool(
                     if (rSlug && !latestByKey.has(rSlug)) latestByKey.set(rSlug, r);
                 }
 
-                const enrichedProbes = arr.map((p: any) => {
+                const enrichedProbes = arr.map((rawProbe: any) => {
+                    const p = sanitizeProbeConfig(rawProbe);
                     const pName = String(p.name || '').trim().toLowerCase();
                     const pId = String(p.id || '').trim().toLowerCase();
                     const pSlug = pName.replace(/\s+/g, '-');
@@ -2922,6 +2991,11 @@ export async function executeCopilotTool(
                     };
                 });
 
+                const filterStr = String(args.probe_name_filter || '').trim().toLowerCase();
+                const filteredProbes = filterStr
+                    ? enrichedProbes.filter((p: any) => String(p.name || p.id || '').toLowerCase().includes(filterStr))
+                    : enrichedProbes;
+
                 return {
                     node: nodeCtx.siteName,
                     health_score: stats?.globalHealth ?? (arr.length > 0 ? 100 : null),
@@ -2929,7 +3003,8 @@ export async function executeCopilotTool(
                     flaky_endpoints: stats?.flakyEndpoints || [],
                     total_probes: enrichedProbes.length,
                     active_probes: enrichedProbes.filter((p: any) => p.enabled !== false).length,
-                    probes: enrichedProbes
+                    ...(filterStr ? { probe_name_filter: args.probe_name_filter, matched_probes: filteredProbes.length } : {}),
+                    probes: filteredProbes
                 };
             }
 
@@ -2937,6 +3012,7 @@ export async function executeCopilotTool(
                 const nodeCtx = resolveNodeContext(args.agent_id, ctx);
                 let probes: any[] = [];
                 if (nodeCtx.isLocal && ctx.getAllProbes) {
+                    traceLocalApi(nodeCtx, 'GET', '/api/connectivity/custom');
                     probes = ctx.getAllProbes();
                 } else {
                     const res = await fetchApi(nodeCtx, '/api/connectivity/custom').catch(async () => {
@@ -2945,14 +3021,15 @@ export async function executeCopilotTool(
                     probes = Array.isArray(res) ? res : (res?.probes || []);
                 }
                 const pName = String(args.probe_name || '').toLowerCase();
-                const matched = probes.find((p: any) => {
+                const rawMatched = probes.find((p: any) => {
                     const name = (p.name || '').toLowerCase();
                     const id = (p.id || '').toLowerCase();
                     return name === pName || name.includes(pName) || pName.includes(name) || id === pName;
                 });
-                if (!matched) {
+                if (!rawMatched) {
                     return { error: `Probe "${args.probe_name}" not found.` };
                 }
+                const matched = sanitizeProbeConfig(rawMatched);
 
                 // Enrich with latest live measurement & metrics from /api/connectivity/results
                 try {
@@ -3017,22 +3094,41 @@ export async function executeCopilotTool(
             case 'list_dem_probes': {
                 const nodeCtx = resolveNodeContext(args.agent_id, ctx);
                 if (nodeCtx.isLocal && ctx.getAllProbes) {
-                    return ctx.getAllProbes();
+                    traceLocalApi(nodeCtx, 'GET', '/api/connectivity/custom');
+                    return (ctx.getAllProbes() || []).map(sanitizeProbeConfig);
                 }
                 const res = await fetchApi(nodeCtx, '/api/connectivity/custom').catch(async () => {
                     return await fetchApi(nodeCtx, '/api/connectivity/active-probes');
                 });
-                return Array.isArray(res) ? res : (res?.probes || []);
+                const list = Array.isArray(res) ? res : (res?.probes || []);
+                return list.map(sanitizeProbeConfig);
             }
 
             case 'run_dem_probes_now': {
                 const nodeCtx = resolveNodeContext(args.agent_id, ctx);
-                return await fetchApi(nodeCtx, '/api/connectivity/test');
+                const testRes = await fetchApi(nodeCtx, '/api/connectivity/test?live=true');
+                const filterStr = String(args.probe_name_filter || '').trim().toLowerCase();
+                if (filterStr && testRes && Array.isArray(testRes.results)) {
+                    const filteredResults = testRes.results.filter((r: any) =>
+                        String(r.name || r.endpointName || r.id || '').toLowerCase().includes(filterStr)
+                    );
+                    return {
+                        ...testRes,
+                        probe_name_filter: args.probe_name_filter,
+                        total_tested: testRes.results.length,
+                        matched_count: filteredResults.length,
+                        results: filteredResults
+                    };
+                }
+                return testRes;
             }
 
             case 'get_dem_probe_stats': {
                 const nodeCtx = resolveNodeContext(args.agent_id, ctx);
                 const timeRange = args.window_minutes ? `${args.window_minutes}m` : (args.range || '1h');
+                if (nodeCtx.isLocal && ctx.getAllProbes) {
+                    traceLocalApi(nodeCtx, 'GET', '/api/connectivity/custom');
+                }
                 const [statsRes, resultsRes, customRes] = await Promise.all([
                     fetchApi(nodeCtx, `/api/connectivity/stats?range=${timeRange}`).catch(() => ({})),
                     fetchApi(nodeCtx, `/api/connectivity/results?timeRange=${timeRange}&limit=1000`).catch(() => []),

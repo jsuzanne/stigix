@@ -15,7 +15,7 @@ interface FailoverProps {
 export default function Failover(props: FailoverProps) {
     const { token, externalStatus } = props;
     const [endpoints, setEndpoints] = useState<any[]>([]);
-    const [thresholds, setThresholds] = useState({ good: 1000, degraded: 5000, critical: 10000 });
+    const [thresholds, setThresholds] = useState({ good: 1000, degraded: 5000, critical: 10000, retentionDays: 7 });
     const [showAddModal, setShowAddModal] = useState(false);
     const [newTarget, setNewTarget] = useState({ label: '', target: '', port: 6200 });
     const [convergenceTargets, setConvergenceTargets] = useState<any[]>([]);
@@ -48,6 +48,9 @@ export default function Failover(props: FailoverProps) {
     const [activeInterfaces, setActiveInterfaces] = useState<string[]>([]);
     const [history, setHistory] = useState<any[]>([]);
     const [loadingHistory, setLoadingHistory] = useState(true);
+    const [loadingTargets, setLoadingTargets] = useState(true);
+    const [expandedSeriesCache, setExpandedSeriesCache] = useState<Record<string, any[]>>({});
+    const [loadingSeriesKey, setLoadingSeriesKey] = useState<string | null>(null);
     const [sortConfig, setSortConfig] = useState<{ key: string, direction: 'asc' | 'desc' } | null>({ key: 'timestamp', direction: 'desc' });
     const [expandedHistory, setExpandedHistory] = useState<string | null>(null);
     const [isStarting, setIsStarting] = useState(false);
@@ -76,6 +79,7 @@ export default function Failover(props: FailoverProps) {
     }, []);
 
     const { gFetch, activePeerId } = usePeerContext();
+    const peerCacheKey = activePeerId || 'local';
     const authHeaders = () => ({ 'Authorization': `Bearer ${token}` });
 
     const fetchEndpoints = async () => {
@@ -85,16 +89,20 @@ export default function Failover(props: FailoverProps) {
                 gFetch('/api/config/interfaces', { headers: authHeaders() })
             ]);
             const data = await res.json();
-            setEndpoints(prev => {
-                if (JSON.stringify(prev) === JSON.stringify(data)) return prev;
-                return data;
-            });
+            if (Array.isArray(data)) {
+                setEndpoints(prev => {
+                    if (JSON.stringify(prev) === JSON.stringify(data)) return prev;
+                    return data;
+                });
+            }
 
             const ifaceData = await ifaceRes.json();
-            setActiveInterfaces(prev => {
-                if (JSON.stringify(prev) === JSON.stringify(ifaceData)) return prev;
-                return ifaceData;
-            });
+            if (Array.isArray(ifaceData)) {
+                setActiveInterfaces(prev => {
+                    if (JSON.stringify(prev) === JSON.stringify(ifaceData)) return prev;
+                    return ifaceData;
+                });
+            }
         } catch (e) { }
     };
 
@@ -118,9 +126,43 @@ export default function Failover(props: FailoverProps) {
         try {
             const res = await gFetch('/api/convergence/history', { headers: authHeaders() });
             const data = await res.json();
-            setHistory(data);
+            if (Array.isArray(data)) {
+                setHistory(prev => {
+                    if (prev.length === data.length && JSON.stringify(prev) === JSON.stringify(data)) return prev;
+                    return data;
+                });
+                try {
+                    // Persist compact history (top 30 items without bulky metrics_series) for 0ms instant paint
+                    const compact = data.slice(-30).map((item: any, idx: number, arr: any[]) =>
+                        idx >= arr.length - 3 ? item : { ...item, metrics_series: undefined, has_metrics_series: Boolean(item.has_metrics_series || (item.metrics_series && item.metrics_series.length > 0)) }
+                    );
+                    localStorage.setItem(`stigix_failover_history_${peerCacheKey}`, JSON.stringify(compact));
+                } catch {}
+            }
         } catch (e) { } finally {
             setLoadingHistory(false);
+        }
+    };
+
+    const fetchHistorySeriesOnDemand = async (test: any) => {
+        const testId = test.test_id || test.testId || '';
+        const ts = test.timestamp || '';
+        const rowKey = testId + ts;
+        if (!testId || expandedSeriesCache[rowKey]) return;
+        if (Array.isArray(test.metrics_series) && test.metrics_series.length > 0) return;
+        setLoadingSeriesKey(rowKey);
+        try {
+            const res = await gFetch(`/api/convergence/history/${encodeURIComponent(testId)}/series?timestamp=${encodeURIComponent(ts)}`, {
+                headers: authHeaders()
+            });
+            if (res.ok) {
+                const data = await res.json();
+                if (Array.isArray(data.metrics_series) && data.metrics_series.length > 0) {
+                    setExpandedSeriesCache(prev => ({ ...prev, [rowKey]: data.metrics_series }));
+                }
+            }
+        } catch {} finally {
+            setLoadingSeriesKey(prev => (prev === rowKey ? null : prev));
         }
     };
 
@@ -136,7 +178,12 @@ export default function Failover(props: FailoverProps) {
 
     useEffect(() => {
         if (externalStatus) {
-            setActiveTests(externalStatus.filter((t: any) => t.running !== false));
+            const running = externalStatus.filter((t: any) => t.running !== false);
+            setActiveTests(prev => {
+                if (prev.length === 0 && running.length === 0) return prev;
+                if (prev.length === running.length && JSON.stringify(prev) === JSON.stringify(running)) return prev;
+                return running;
+            });
         }
     }, [externalStatus]);
 
@@ -196,6 +243,32 @@ export default function Failover(props: FailoverProps) {
     }, [activeTests]);
 
     useEffect(() => {
+        // Hydrate from localStorage for 0ms instant render on tab switch or peer context change
+        let hadCachedTargets = false;
+        let hadCachedHistory = false;
+        try {
+            const cachedTargets = localStorage.getItem(`stigix_failover_targets_${peerCacheKey}`);
+            if (cachedTargets) {
+                const parsed = JSON.parse(cachedTargets);
+                if (Array.isArray(parsed) && parsed.length > 0) {
+                    setConvergenceTargets(parsed);
+                    setLoadingTargets(false);
+                    hadCachedTargets = true;
+                }
+            }
+            const cachedHist = localStorage.getItem(`stigix_failover_history_${peerCacheKey}`);
+            if (cachedHist) {
+                const parsed = JSON.parse(cachedHist);
+                if (Array.isArray(parsed) && parsed.length > 0) {
+                    setHistory(parsed);
+                    setLoadingHistory(false);
+                    hadCachedHistory = true;
+                }
+            }
+        } catch {}
+        if (!hadCachedTargets) setLoadingTargets(true);
+        if (!hadCachedHistory) setLoadingHistory(true);
+
         fetchEndpoints();
         fetchHistory();
         // Fetch Thresholds once on mount or active peer change
@@ -209,7 +282,8 @@ export default function Failover(props: FailoverProps) {
                     setThresholds({
                         good: (data.good || 1) * 1000,
                         degraded: (data.degraded || 5) * 1000,
-                        critical: (data.critical || 10) * 1000
+                        critical: (data.critical || 10) * 1000,
+                        retentionDays: Math.max(1, Math.min(365, Math.round(Number(data.retention_days) || 7)))
                     });
                 }
             } catch (e) { }
@@ -225,8 +299,12 @@ export default function Failover(props: FailoverProps) {
                     if (JSON.stringify(prev) === JSON.stringify(filtered)) return prev;
                     return filtered;
                 });
+                try {
+                    localStorage.setItem(`stigix_failover_targets_${peerCacheKey}`, JSON.stringify(filtered));
+                } catch {}
             })
-            .catch(() => { });
+            .catch(() => { })
+            .finally(() => setLoadingTargets(false));
 
         // Poll endpoints and history every 5s to pick up async enrichments (egress path)
         const interval = setInterval(() => {
@@ -246,33 +324,25 @@ export default function Failover(props: FailoverProps) {
 
         const checkReachability = async () => {
             if (allTargets.length === 0) return;
-            await Promise.all(allTargets.map(async (target) => {
-                let isReachable = false;
-                for (let attempt = 0; attempt < 2; attempt++) {
-                    if (isCancelled) return;
-                    try {
-                        const res = await gFetch('/api/convergence/reachability', {
-                            method: 'POST',
-                            headers: { ...authHeaders(), 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ target: target.target, port: target.port })
+            try {
+                const res = await gFetch('/api/convergence/reachability/batch', {
+                    method: 'POST',
+                    headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        targets: allTargets.map(t => ({ id: t.id, target: t.target, port: t.port }))
+                    })
+                });
+                if (res.ok && !isCancelled) {
+                    const data = await res.json();
+                    if (data && data.results && typeof data.results === 'object') {
+                        setReachability(prev => {
+                            const next = { ...prev, ...data.results };
+                            if (JSON.stringify(prev) === JSON.stringify(next)) return prev;
+                            return next;
                         });
-                        if (res.ok) {
-                            const data = await res.json();
-                            if (data.reachable) {
-                                isReachable = true;
-                                break;
-                            }
-                        }
-                    } catch {}
-                    if (attempt < 1 && !isCancelled) await new Promise(r => setTimeout(r, 600));
+                    }
                 }
-                if (!isCancelled) {
-                    setReachability(prev => {
-                        if (prev[target.id] === isReachable) return prev;
-                        return { ...prev, [target.id]: isReachable };
-                    });
-                }
-            }));
+            } catch {}
         };
 
         checkReachability();
@@ -666,7 +736,7 @@ export default function Failover(props: FailoverProps) {
         }
     };
 
-    if (loadingHistory && endpoints.length === 0 && sortedHistory.length === 0) {
+    if (loadingTargets && loadingHistory && allTargets.length === 0 && sortedHistory.length === 0) {
         return <FailoverSkeleton />;
     }
 
@@ -1468,6 +1538,12 @@ export default function Failover(props: FailoverProps) {
                                 {historySearch.trim() ? `${sortedHistory.length} / ${history.length}` : history.length} Tests
                             </span>
                         )}
+                        <span
+                            className="text-[10px] font-bold text-blue-400/90 bg-blue-500/10 px-2 py-0.5 rounded border border-blue-500/20 uppercase tracking-wider font-mono"
+                            title={`Test history retention window (${thresholds.retentionDays} days). Configurable in Settings ➔ Failover.`}
+                        >
+                            Last {thresholds.retentionDays}d
+                        </span>
 
                         {/* Hover Info Popover for Thresholds */}
                         <div className="relative group/thresh inline-block">
@@ -1482,7 +1558,7 @@ export default function Failover(props: FailoverProps) {
                             <div className="absolute left-0 top-full mt-1.5 hidden group-hover/thresh:block z-50 w-80 p-3 bg-slate-950/95 border border-slate-700/80 rounded-xl shadow-2xl backdrop-blur-md text-left animate-in fade-in zoom-in-95 duration-150">
                                 <div className="flex items-center justify-between pb-1.5 mb-2 border-b border-slate-800">
                                     <span className="text-[10px] font-bold uppercase tracking-wider text-slate-200">Failover Thresholds</span>
-                                    <span className="text-[8px] text-blue-400 font-mono">Settings ➔ Convergence</span>
+                                    <span className="text-[8px] text-blue-400 font-mono">Settings ➔ Failover</span>
                                 </div>
                                 <div className="space-y-1.5">
                                     {[
@@ -1500,7 +1576,7 @@ export default function Failover(props: FailoverProps) {
                                     ))}
                                 </div>
                                 <div className="mt-2.5 pt-1.5 border-t border-slate-800/80 text-[8px] text-slate-500 italic">
-                                    💡 Thresholds can be customized in Settings ➔ Failover Thresholds.
+                                    💡 Thresholds &amp; History Retention ({thresholds.retentionDays}d) can be customized in Settings ➔ Failover.
                                 </div>
                             </div>
                         </div>
@@ -1599,13 +1675,21 @@ export default function Failover(props: FailoverProps) {
                                 ) : (
                                     sortedHistory.map((test, idx) => {
                                         const verdict = getVerdict(test.max_blackout_ms);
-                                        const isExpanded = expandedHistory === (test.test_id + test.timestamp);
+                                        const rowKey = (test.test_id || test.testId || '') + (test.timestamp || '');
+                                        const isExpanded = expandedHistory === rowKey;
                                         const dateInfo = formatTestDate(test.timestamp || test.start_time);
                                         return (
                                             <React.Fragment key={idx}>
                                                 <tr
                                                     className={`hover:bg-card-secondary transition-colors cursor-pointer ${isExpanded ? 'bg-blue-600/5' : ''}`}
-                                                    onClick={() => setExpandedHistory(isExpanded ? null : (test.test_id + test.timestamp))}
+                                                    onClick={() => {
+                                                        if (isExpanded) {
+                                                            setExpandedHistory(null);
+                                                        } else {
+                                                            setExpandedHistory(rowKey);
+                                                            fetchHistorySeriesOnDemand(test);
+                                                        }
+                                                    }}
                                                 >
                                                     <td className="px-6 py-4">
                                                         <div className="font-medium text-text-primary flex items-center gap-2">
@@ -1697,7 +1781,7 @@ export default function Failover(props: FailoverProps) {
                                                             {(() => {
                                                                 const testKey = test.test_id || test.testId || '';
                                                                 const convId = test.test_id?.match(/CONV-\d+/)?.[0] || testKey;
-                                                                let series = test.metrics_series || liveMetricsSeries[testKey] || liveMetricsSeries[convId] || [];
+                                                                let series = expandedSeriesCache[rowKey] || test.metrics_series || liveMetricsSeries[testKey] || liveMetricsSeries[convId] || [];
 
                                                                 // If series is empty but 100-packet history exists, synthesize a fallback curve
                                                                 if ((!series || series.length === 0) && Array.isArray(test.history) && test.history.length > 0) {

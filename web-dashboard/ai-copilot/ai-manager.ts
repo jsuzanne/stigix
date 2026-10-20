@@ -11,6 +11,7 @@ import {
     AiConfig,
     AiPublicConfig,
     AiProvider,
+    ApiCallTrace,
     CopilotSession,
     CopilotMessage,
     CopilotToolCall
@@ -404,10 +405,12 @@ YOUR ROLE & MANDATORY RELIABILITY RULES:
    - When launching an XFR speedtest via 'run_test', ALWAYS call 'get_test_status' immediately after in the same turn to obtain the final completed metrics.
    - When executing a multi-phase convergence or failover test ('CONV-*'), pass 'wait_seconds' (e.g., 15 or 30) to 'get_test_status' whenever you need to pause for a baseline, impairment, or recovery window before sampling live RTT/loss, and ALWAYS call 'stop_test' once the test is complete.
    - If a tool returns an error (e.g., probe not found, node not found, app not found), report that exact error honestly. NEVER fabricate fallback metrics for non-existent probes or nodes, and NEVER invent CLI commands or flags (such as 'stigix-cli --prune-orphans').
-3. CONCISENESS & CLARITY (CRITICAL):
+3. CONCISENESS, STRICT SCOPE & ZERO INTERNAL PLUMBING (CRITICAL):
    - Be concise, direct, and factual. Avoid conversational fluff, filler phrases, and unnecessary preamble.
-   - Deliver the key data and diagnostic findings immediately.
-   - Prioritize compact Markdown tables, short bullet points, and status indicators (🟢, 🟡, 🔴) instead of long explanatory text blocks.
+   - Deliver the key data and diagnostic findings immediately using compact Markdown tables, short bullet points, and status indicators (🟢, 🟡, 🔴).
+   - STRICT SCOPE DISCIPLINE: Answer ONLY what the user asked. If the user asks about a specific subset (e.g., "Microsoft probes", "Teams", a specific site, or a specific interface), filter and present ONLY that subset—do not dump unrelated probes, apps, or interfaces unless explicitly requested. Use tool filter parameters (such as 'probe_name_filter') whenever applicable.
+   - NO UNSOLICITED INTERNAL PLUMBING: By default, NEVER mention internal tool function names (e.g., 'get_dem_summary', 'run_dem_probes_now', 'get_dem_probe_stats'), raw JSON field names ('_wasGlobal', '_source', 'flakyEndpoints', 'samples_count'), or internal storage mechanics in your prose.
+   - ON-DEMAND TOOL & API TRANSPARENCY: If (and ONLY if) the user explicitly asks to see the executed tools, HTTP API calls, or raw JSON responses (e.g., "montre les appels API", "quels outils as-tu utilisé ?", "affiche la réponse JSON"), provide the exact tool names, HTTP method & endpoint ('GET /api/...', 'POST /api/...'), input parameters, and JSON payload.
 4. Respond in French or English matching the user's language.
 5. If the user requests high-impact or destructive actions (such as shutting down a VyOS router interface), explain what will be done succinctly and execute the tool appropriately.`;
 
@@ -435,9 +438,12 @@ YOUR ROLE & MANDATORY RELIABILITY RULES:
             .trim();
     }
 
-    private truncateHistoricalToolOutput(output: any, maxChars: number = 1800): string {
+    private truncateHistoricalToolOutput(output: any, apiCalls?: ApiCallTrace[], maxChars: number = 1800): string {
         try {
-            const str = typeof output === 'string' ? output : JSON.stringify(output ?? {});
+            const payload = (apiCalls && apiCalls.length > 0 && output && typeof output === 'object')
+                ? { _api_calls: apiCalls, ...output }
+                : output;
+            const str = typeof payload === 'string' ? payload : JSON.stringify(payload ?? {});
             if (str.length <= maxChars) return str;
             return `${str.substring(0, maxChars)}... [truncated]`;
         } catch {
@@ -473,7 +479,8 @@ YOUR ROLE & MANDATORY RELIABILITY RULES:
                         type: 'tool_result',
                         tool_use_id: this.sanitizeToolId(tc.id, `hist_${m.id}_${idx}`),
                         content: this.truncateHistoricalToolOutput(
-                            tc.output !== undefined ? tc.output : (tc.error ? { error: tc.error } : { status: tc.status || 'completed' })
+                            tc.output !== undefined ? tc.output : (tc.error ? { error: tc.error } : { status: tc.status || 'completed' }),
+                            tc.apiCalls
                         )
                     }));
 
@@ -534,7 +541,8 @@ YOUR ROLE & MANDATORY RELIABILITY RULES:
                             role: 'tool',
                             tool_call_id: this.sanitizeToolId(tc.id, `hist_${m.id}_${idx}`),
                             content: this.truncateHistoricalToolOutput(
-                                tc.output !== undefined ? tc.output : (tc.error ? { error: tc.error } : { status: tc.status || 'completed' })
+                                tc.output !== undefined ? tc.output : (tc.error ? { error: tc.error } : { status: tc.status || 'completed' }),
+                                tc.apiCalls
                             )
                         });
                     }
@@ -564,6 +572,10 @@ YOUR ROLE & MANDATORY RELIABILITY RULES:
         // Pure greeting / meta help exception
         const isPureGreeting = /^(bonjour|salut|hello|hi|hey|merci|thanks|thank you|ok|d'accord|super|parfait|aide|help|qui es-tu|who are you)[.!?\s]*$/i.test(p);
         if (isPureGreeting) return false;
+
+        // Meta inspection exception: user explicitly asking to inspect the tools, API calls, or raw JSON of the previous turn
+        const isMetaToolInspection = /\b(quel(s)? outil(s)?|quelle(s)? api|appel(s)? api|call(s)? api|api call(s)?|tool call(s)?|raw json|json brut|payload|réponse brute|reponse brute)\b/i.test(p);
+        if (isMetaToolInspection && session.messages.length > 1) return false;
 
         // 1. Prompt contains operational verbs, Stigix entities, node names, or follow-up verification intent
         const operationalPromptRegex = /\b(add|create|remove|delete|start|stop|run|launch|execute|set|update|enable|disable|reset|clear|shut|unshut|trace|check|verify|status|state|score|health|latency|throughput|speedtest|bandwidth|xfr|probe|probes|dem|traffic|vyos|interface|eth\d+|router|vyosrouter|app|apps|tcp|voice|voip|security|eicar|dns|url|mesh|peers|endpoints|targets|convergence|failover|history|logs|diagnostics|br\d+|dc\d+|local|ajoute|ajouter|crée|créer|supprime|supprimer|retire|retirer|efface|lance|lancer|démarre|démarrer|arrête|arrêter|stoppe|stopper|relance|relancer|active|activer|désactive|désactiver|vérifie|vérifier|regarde|montre|affiche|liste|donne|quel|quelle|quels|quelles|combien|état|statut|débit|latence|sonde|sondes|trafic|routeur|fini|terminé|résultat|résultats|done|sure|sûr|sur|vrai|really|again|encore|pareil|même|same)\b/i;
@@ -860,11 +872,16 @@ YOUR ROLE & MANDATORY RELIABILITY RULES:
                         });
 
                         const execStart = Date.now();
-                        const result = await executeCopilotTool(toolCall.tool, parsedInput, this.executionContext);
+                        const apiTrace: ApiCallTrace[] = [];
+                        const result = await executeCopilotTool(toolCall.tool, parsedInput, {
+                            ...this.executionContext,
+                            _apiTrace: apiTrace
+                        });
                         const dur = Date.now() - execStart;
 
                         toolCall.output = result;
                         toolCall.durationMs = dur;
+                        toolCall.apiCalls = apiTrace;
                         toolCall.status = result?.error ? 'failed' : 'completed';
                         toolCall.error = result?.error;
 
@@ -876,7 +893,7 @@ YOUR ROLE & MANDATORY RELIABILITY RULES:
                         deepseekMessages.push({
                             role: 'tool',
                             tool_call_id: tc.id,
-                            content: JSON.stringify(result)
+                            content: JSON.stringify(apiTrace.length > 0 && result && typeof result === 'object' ? { _api_calls: apiTrace, ...result } : result)
                         });
                     }
 
@@ -1036,11 +1053,16 @@ YOUR ROLE & MANDATORY RELIABILITY RULES:
                         });
 
                         const execStart = Date.now();
-                        const result = await executeCopilotTool(block.name, block.input || {}, this.executionContext);
+                        const apiTrace: ApiCallTrace[] = [];
+                        const result = await executeCopilotTool(block.name, block.input || {}, {
+                            ...this.executionContext,
+                            _apiTrace: apiTrace
+                        });
                         const dur = Date.now() - execStart;
 
                         toolCall.output = result;
                         toolCall.durationMs = dur;
+                        toolCall.apiCalls = apiTrace;
                         toolCall.status = result?.error ? 'failed' : 'completed';
                         toolCall.error = result?.error;
 
@@ -1052,7 +1074,7 @@ YOUR ROLE & MANDATORY RELIABILITY RULES:
                         toolResults.push({
                             type: 'tool_result',
                             tool_use_id: block.id,
-                            content: JSON.stringify(result)
+                            content: JSON.stringify(apiTrace.length > 0 && result && typeof result === 'object' ? { _api_calls: apiTrace, ...result } : result)
                         });
                     }
                 }

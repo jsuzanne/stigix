@@ -34,13 +34,25 @@ import {
 import toast from 'react-hot-toast';
 import { StigixSelect } from './components/common/StigixSelect';
 
+interface ApiCallTrace {
+    method: string;
+    path: string;
+    url?: string;
+    status?: number;
+    durationMs?: number;
+    requestBody?: any;
+}
+
 interface CopilotToolCall {
     id: string;
     name: string;
+    tool?: string;
     input: any;
     output?: any;
-    status: 'running' | 'completed' | 'error';
+    status: 'running' | 'completed' | 'error' | 'failed';
     error?: string;
+    durationMs?: number;
+    apiCalls?: ApiCallTrace[];
 }
 
 interface CopilotMessage {
@@ -537,6 +549,11 @@ export default function Copilot({ token, onOpenSettings, isDrawer = false, onClo
     };
 
     const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null);
+    const [expandedToolsMsgIds, setExpandedToolsMsgIds] = useState<Record<string, boolean>>({});
+
+    const toggleMessageTools = (msgId: string) => {
+        setExpandedToolsMsgIds(prev => ({ ...prev, [msgId]: !prev[msgId] }));
+    };
 
     const handleCopyMessage = (msgId: string, text: string) => {
         if (!text) return;
@@ -805,14 +822,88 @@ export default function Copilot({ token, onOpenSettings, isDrawer = false, onClo
                                             : 'bg-card-secondary/50 border border-border text-text-primary rounded-tl-sm w-full'
                                     }`}
                                 >
-                                    {/* Tool Calls Execution Cards */}
-                                    {m.toolCalls && m.toolCalls.length > 0 && (
-                                        <div className="mb-4 space-y-2">
-                                            {m.toolCalls.map(tool => (
-                                                <ToolCallCard key={tool.id} tool={tool} onCopy={copyToClipboard} />
-                                            ))}
-                                        </div>
-                                    )}
+                                    {/* On-Demand Tool Calls & API Inspector */}
+                                    {m.toolCalls && m.toolCalls.length > 0 && (() => {
+                                        const runningTools = m.toolCalls.filter(t => t.status === 'running');
+                                        const totalApiCalls = m.toolCalls.reduce((acc, t) => acc + (t.apiCalls?.length || 0), 0);
+                                        const totalDurationMs = m.toolCalls.reduce((acc, t) => acc + (t.durationMs || 0), 0);
+                                        const hasErrors = m.toolCalls.some(t => t.status === 'error' || t.status === 'failed');
+                                        const isToolsExpanded = Boolean(expandedToolsMsgIds[m.id]);
+                                        const allApiCalls = m.toolCalls.flatMap(t => t.apiCalls || []);
+
+                                        return (
+                                            <div className="mb-3">
+                                                {/* Compact On-Demand Toggle Bar */}
+                                                <button
+                                                    type="button"
+                                                    onClick={() => toggleMessageTools(m.id)}
+                                                    className={`w-full flex items-center justify-between gap-2 px-3 py-2 rounded-xl border text-[11px] transition-all cursor-pointer ${
+                                                        runningTools.length > 0
+                                                            ? 'bg-blue-500/10 border-blue-500/30 text-blue-300'
+                                                            : hasErrors
+                                                                ? 'bg-red-500/10 border-red-500/30 text-red-300 hover:bg-red-500/15'
+                                                                : isToolsExpanded
+                                                                    ? 'bg-blue-500/10 border-blue-500/30 text-text-primary'
+                                                                    : 'bg-card/60 hover:bg-card border-border/80 text-text-secondary hover:text-text-primary'
+                                                    }`}
+                                                >
+                                                    <div className="flex items-center gap-2 flex-wrap min-w-0">
+                                                        {runningTools.length > 0 ? (
+                                                            <Loader2 size={13} className="animate-spin text-blue-400 shrink-0" />
+                                                        ) : hasErrors ? (
+                                                            <XCircle size={13} className="text-red-400 shrink-0" />
+                                                        ) : (
+                                                            <Terminal size={13} className="text-blue-400 shrink-0" />
+                                                        )}
+                                                        <span className="font-bold">
+                                                            {runningTools.length > 0
+                                                                ? `Exécution en cours (${runningTools.map(t => t.name || t.tool).join(', ')})...`
+                                                                : `${m.toolCalls.length} outil${m.toolCalls.length > 1 ? 's' : ''}${totalApiCalls > 0 ? ` • ${totalApiCalls} appel${totalApiCalls > 1 ? 's' : ''} API` : ''}`}
+                                                        </span>
+                                                        {runningTools.length === 0 && allApiCalls.length > 0 && !isToolsExpanded && (
+                                                            <div className="hidden sm:flex items-center gap-1.5 overflow-hidden">
+                                                                {allApiCalls.slice(0, 2).map((api, idx) => (
+                                                                    <span
+                                                                        key={idx}
+                                                                        className="px-1.5 py-0.5 rounded bg-black/25 border border-border/60 font-mono text-[10px] text-text-muted truncate max-w-[220px]"
+                                                                    >
+                                                                        <span className={api.method === 'POST' ? 'text-amber-400 font-bold' : api.method === 'DELETE' ? 'text-red-400 font-bold' : 'text-cyan-400 font-bold'}>
+                                                                            {api.method}
+                                                                        </span>{' '}
+                                                                        {api.path}
+                                                                    </span>
+                                                                ))}
+                                                                {allApiCalls.length > 2 && (
+                                                                    <span className="text-[10px] text-text-muted font-mono">+{allApiCalls.length - 2}</span>
+                                                                )}
+                                                            </div>
+                                                        )}
+                                                    </div>
+
+                                                    <div className="flex items-center gap-2 shrink-0">
+                                                        {totalDurationMs > 0 && (
+                                                            <span className="text-[10px] font-mono text-text-muted hidden sm:inline">
+                                                                {totalDurationMs >= 1000 ? `${(totalDurationMs / 1000).toFixed(1)}s` : `${totalDurationMs}ms`}
+                                                            </span>
+                                                        )}
+                                                        <span className="text-[10px] font-bold text-blue-400 flex items-center gap-1">
+                                                            {isToolsExpanded ? 'Masquer' : 'Outils & API'}
+                                                            {isToolsExpanded ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
+                                                        </span>
+                                                    </div>
+                                                </button>
+
+                                                {/* Expanded Tool & API Call Cards */}
+                                                {isToolsExpanded && (
+                                                    <div className="mt-2 space-y-2 animate-in fade-in duration-200">
+                                                        {m.toolCalls.map(tool => (
+                                                            <ToolCallCard key={tool.id} tool={tool} onCopy={copyToClipboard} defaultExpanded={true} />
+                                                        ))}
+                                                    </div>
+                                                )}
+                                            </div>
+                                        );
+                                    })()}
 
                                     {/* Quick floating copy button on hover for assistant messages */}
                                     {m.role === 'assistant' && m.content && (
@@ -842,12 +933,31 @@ export default function Copilot({ token, onOpenSettings, isDrawer = false, onClo
                                     )}
                                 </div>
 
-                                <div className="flex items-center gap-2 text-[10px] text-text-muted mt-1.5 px-1">
+                                <div className="flex items-center gap-2 text-[10px] text-text-muted mt-1.5 px-1 flex-wrap">
                                     <span>{new Date(m.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
                                     {m.model && (
                                         <>
                                             <span>•</span>
                                             <span className="font-mono">{m.model}</span>
+                                        </>
+                                    )}
+                                    {m.role === 'assistant' && m.toolCalls && m.toolCalls.length > 0 && (
+                                        <>
+                                            <span>•</span>
+                                            <button
+                                                onClick={() => toggleMessageTools(m.id)}
+                                                className={`flex items-center gap-1 px-1.5 py-0.5 rounded transition-colors cursor-pointer ${
+                                                    expandedToolsMsgIds[m.id]
+                                                        ? 'bg-blue-500/20 text-blue-400 font-bold'
+                                                        : 'hover:bg-card-secondary hover:text-text-primary text-text-muted'
+                                                }`}
+                                                title="Afficher / masquer les outils, appels API et réponses JSON"
+                                            >
+                                                <Terminal size={11} />
+                                                <span>
+                                                    {expandedToolsMsgIds[m.id] ? 'Masquer API & JSON' : `Outils & API (${m.toolCalls.length})`}
+                                                </span>
+                                            </button>
                                         </>
                                     )}
                                     {m.role === 'assistant' && m.content && (
@@ -1088,12 +1198,63 @@ export default function Copilot({ token, onOpenSettings, isDrawer = false, onClo
     );
 }
 
-// ── Tool Call Card Component ──
-function ToolCallCard({ tool, onCopy }: { tool: CopilotToolCall; onCopy: (text: string) => void }) {
-    const [expanded, setExpanded] = useState(false);
+const TOOL_FALLBACK_API_MAP: Record<string, { method: string; path: string }> = {
+    get_dem_summary: { method: 'GET', path: '/api/connectivity/summary' },
+    get_probe_details: { method: 'GET', path: '/api/connectivity/probes/:id' },
+    list_dem_probes: { method: 'GET', path: '/api/connectivity/custom' },
+    get_dem_probe_stats: { method: 'GET', path: '/api/connectivity/stats' },
+    run_dem_probes_now: { method: 'POST', path: '/api/connectivity/test?live=true' },
+    add_dem_probe: { method: 'POST', path: '/api/connectivity/custom' },
+    delete_dem_probe: { method: 'DELETE', path: '/api/connectivity/custom/:id' },
+    toggle_dem_probe: { method: 'POST', path: '/api/connectivity/toggle' },
+    get_traffic_stats: { method: 'GET', path: '/api/stats' },
+    get_traffic_logs: { method: 'GET', path: '/api/logs' },
+    get_traffic_status: { method: 'GET', path: '/api/traffic/status' },
+    start_traffic: { method: 'POST', path: '/api/traffic/start' },
+    stop_traffic: { method: 'POST', path: '/api/traffic/stop' },
+    get_security_results_stats: { method: 'GET', path: '/api/security/stats' },
+    run_security_test: { method: 'POST', path: '/api/security/run' },
+    list_endpoints: { method: 'GET', path: '/api/registry/endpoints' },
+    run_test: { method: 'POST', path: '/api/tests/start' },
+    get_test_status: { method: 'GET', path: '/api/tests/status' },
+    stop_test: { method: 'POST', path: '/api/tests/stop' },
+    get_convergence_history: { method: 'GET', path: '/api/tests/convergence-history' },
+    list_custom_apps: { method: 'GET', path: '/api/iot/devices' },
+    get_vyos_status: { method: 'GET', path: '/api/vyos/routers' },
+    discover_vyos_interfaces: { method: 'POST', path: '/api/vyos/discover' },
+    execute_vyos_RawCommand: { method: 'POST', path: '/api/vyos/command' }
+};
 
+// ── Tool Call Card Component ──
+function ToolCallCard({
+    tool,
+    onCopy,
+    defaultExpanded = false
+}: {
+    tool: CopilotToolCall;
+    onCopy: (text: string) => void;
+    defaultExpanded?: boolean;
+}) {
+    const [expanded, setExpanded] = useState(defaultExpanded);
+    const [fullJson, setFullJson] = useState(false);
+
+    const toolName = tool.name || tool.tool || 'unknown_tool';
     const isRunning = tool.status === 'running';
-    const isError = tool.status === 'error' || (tool as any).status === 'failed';
+    const isError = tool.status === 'error' || tool.status === 'failed';
+
+    const apiCalls: ApiCallTrace[] = (tool.apiCalls && tool.apiCalls.length > 0)
+        ? tool.apiCalls
+        : (TOOL_FALLBACK_API_MAP[toolName]
+            ? [{
+                method: TOOL_FALLBACK_API_MAP[toolName].method,
+                path: TOOL_FALLBACK_API_MAP[toolName].path,
+                status: isError ? 500 : 200,
+                durationMs: tool.durationMs
+            }]
+            : []);
+
+    const formattedOutput = tool.output !== undefined ? JSON.stringify(tool.output, null, 2) : '';
+    const isLongOutput = formattedOutput.split('\n').length > 14;
 
     return (
         <div className={`rounded-xl border transition-all text-xs ${
@@ -1105,18 +1266,49 @@ function ToolCallCard({ tool, onCopy }: { tool: CopilotToolCall; onCopy: (text: 
         }`}>
             <div
                 onClick={() => setExpanded(!expanded)}
-                className="p-2.5 flex items-center justify-between cursor-pointer hover:bg-card-hover/40 rounded-xl"
+                className="p-2.5 flex items-center justify-between gap-2 cursor-pointer hover:bg-card-hover/40 rounded-xl flex-wrap"
             >
-                <div className="flex items-center gap-2">
-                    <div className={`p-1 rounded-md ${isError ? 'text-red-400' : isRunning ? 'text-blue-400 animate-spin' : 'text-emerald-400'}`}>
+                <div className="flex items-center gap-2 flex-wrap min-w-0">
+                    <div className={`p-1 rounded-md shrink-0 ${isError ? 'text-red-400' : isRunning ? 'text-blue-400 animate-spin' : 'text-emerald-400'}`}>
                         {isRunning ? <Loader2 size={13} /> : isError ? <XCircle size={13} /> : <Wrench size={13} />}
                     </div>
                     <span className="font-mono font-bold text-text-primary text-[11px]">
-                        tool: <span className="text-blue-400">{tool.name || (tool as any).tool}</span>
+                        tool: <span className="text-blue-400">{toolName}</span>
                     </span>
+                    {apiCalls.map((api, idx) => (
+                        <span
+                            key={idx}
+                            className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-black/30 border border-border/70 font-mono text-[10px]"
+                        >
+                            <span className={
+                                api.method === 'POST'
+                                    ? 'text-amber-400 font-black'
+                                    : api.method === 'DELETE'
+                                        ? 'text-red-400 font-black'
+                                        : 'text-cyan-400 font-black'
+                            }>
+                                {api.method}
+                            </span>
+                            <span className="text-text-secondary">{api.path}</span>
+                            {api.status && (
+                                <span className={`px-1 rounded text-[9px] font-bold ${
+                                    api.status >= 400
+                                        ? 'bg-red-500/20 text-red-300'
+                                        : 'bg-emerald-500/20 text-emerald-300'
+                                }`}>
+                                    {api.status}
+                                </span>
+                            )}
+                        </span>
+                    ))}
                 </div>
 
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 shrink-0">
+                    {tool.durationMs !== undefined && (
+                        <span className="text-[10px] font-mono text-text-muted">
+                            {tool.durationMs}ms
+                        </span>
+                    )}
                     <span className={`text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full border ${
                         isRunning 
                             ? 'bg-blue-500/20 text-blue-300 border-blue-500/30' 
@@ -1131,29 +1323,93 @@ function ToolCallCard({ tool, onCopy }: { tool: CopilotToolCall; onCopy: (text: 
             </div>
 
             {expanded && (
-                <div className="p-3 border-t border-border space-y-2 bg-black/20 rounded-b-xl text-[11px] font-mono">
+                <div className="p-3 border-t border-border space-y-2.5 bg-black/20 rounded-b-xl text-[11px] font-mono">
+                    {/* HTTP API Calls Trace */}
+                    {apiCalls.length > 0 && (
+                        <div>
+                            <div className="text-[9px] text-text-muted uppercase font-sans font-black mb-1">
+                                Appel{apiCalls.length > 1 ? 's' : ''} API HTTP :
+                            </div>
+                            <div className="space-y-1">
+                                {apiCalls.map((api, idx) => (
+                                    <div
+                                        key={idx}
+                                        className="flex items-center justify-between gap-2 bg-card px-2.5 py-1.5 rounded-lg border border-border/50 text-[11px]"
+                                    >
+                                        <div className="flex items-center gap-2 overflow-x-auto">
+                                            <span className={`px-1.5 py-0.5 rounded text-[10px] font-black ${
+                                                api.method === 'POST'
+                                                    ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
+                                                    : api.method === 'DELETE'
+                                                        ? 'bg-red-500/20 text-red-300 border border-red-500/30'
+                                                        : 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/30'
+                                            }`}>
+                                                {api.method}
+                                            </span>
+                                            <span className="text-text-primary font-bold">{api.path}</span>
+                                        </div>
+                                        <div className="flex items-center gap-2 shrink-0">
+                                            {api.status && (
+                                                <span className={`text-[10px] font-bold ${api.status >= 400 ? 'text-red-400' : 'text-emerald-400'}`}>
+                                                    HTTP {api.status}
+                                                </span>
+                                            )}
+                                            {api.durationMs !== undefined && (
+                                                <span className="text-[10px] text-text-muted">{api.durationMs}ms</span>
+                                            )}
+                                            <button
+                                                type="button"
+                                                onClick={() => onCopy(`${api.method} ${api.path}`)}
+                                                className="text-[10px] text-blue-400 hover:underline flex items-center gap-1 font-sans cursor-pointer"
+                                                title="Copier l'endpoint API"
+                                            >
+                                                <Copy size={10} />
+                                            </button>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Input Arguments */}
                     {tool.input && Object.keys(tool.input).length > 0 && (
                         <div>
-                            <div className="text-[9px] text-text-muted uppercase font-sans font-black mb-1">Arguments:</div>
+                            <div className="text-[9px] text-text-muted uppercase font-sans font-black mb-1">Paramètres (Input) :</div>
                             <pre className="bg-card p-2 rounded-lg text-text-secondary overflow-x-auto border border-border/50">
                                 {JSON.stringify(tool.input, null, 2)}
                             </pre>
                         </div>
                     )}
 
-                    {tool.output && (
+                    {/* Output JSON Response */}
+                    {tool.output !== undefined && (
                         <div>
                             <div className="flex items-center justify-between mb-1">
-                                <span className="text-[9px] text-text-muted uppercase font-sans font-black">Output Result:</span>
-                                <button
-                                    onClick={() => onCopy(JSON.stringify(tool.output, null, 2))}
-                                    className="text-[10px] text-blue-400 hover:underline flex items-center gap-1 font-sans"
-                                >
-                                    <Copy size={10} /> Copy
-                                </button>
+                                <span className="text-[9px] text-text-muted uppercase font-sans font-black">Réponse API / Outil (JSON) :</span>
+                                <div className="flex items-center gap-3 font-sans">
+                                    {isLongOutput && (
+                                        <button
+                                            type="button"
+                                            onClick={() => setFullJson(!fullJson)}
+                                            className="text-[10px] text-text-secondary hover:text-text-primary hover:underline cursor-pointer"
+                                        >
+                                            {fullJson ? 'Réduire' : 'Tout afficher'}
+                                        </button>
+                                    )}
+                                    <button
+                                        type="button"
+                                        onClick={() => onCopy(formattedOutput)}
+                                        className="text-[10px] text-blue-400 hover:underline flex items-center gap-1 cursor-pointer"
+                                    >
+                                        <Copy size={10} /> Copier JSON
+                                    </button>
+                                </div>
                             </div>
-                            <pre className="bg-card p-2 rounded-lg text-emerald-300/90 overflow-x-auto max-h-48 border border-border/50 custom-scrollbar">
-                                {JSON.stringify(tool.output, null, 2)}
+                            <pre className={`bg-card p-2.5 rounded-lg text-emerald-300/90 overflow-x-auto border border-border/50 custom-scrollbar ${
+                                fullJson ? 'max-h-[520px]' : 'max-h-56'
+                            }`}>
+                                {formattedOutput}
                             </pre>
                         </div>
                     )}

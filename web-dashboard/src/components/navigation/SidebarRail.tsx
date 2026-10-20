@@ -256,8 +256,11 @@ export const SidebarRail: React.FC<SidebarRailProps> = ({
 
                                 {/* Tooltip when flyout is closed */}
                                 {!isFlyoutOpen && (
-                                    <div className="absolute left-full ml-2 px-2.5 py-1 bg-slate-900 dark:bg-[#0f172a] text-white text-[11px] font-bold rounded-lg border border-slate-700 dark:border-[#1e293b] shadow-2xl opacity-0 scale-95 pointer-events-none group-hover/rail:opacity-100 group-hover/rail:scale-100 transition-all z-50 whitespace-nowrap">
-                                        {domain.label}
+                                    <div className="absolute left-full ml-2 px-2.5 py-1 bg-slate-900 dark:bg-[#0f172a] text-white text-[11px] font-bold rounded-lg border border-slate-700 dark:border-[#1e293b] shadow-2xl opacity-0 scale-95 pointer-events-none group-hover/rail:opacity-100 group-hover/rail:scale-100 transition-all z-50 whitespace-nowrap flex items-center gap-1.5">
+                                        <span>{domain.label}</span>
+                                        {domain.id === 'home' && (
+                                            <kbd className="px-1.5 py-0.2 text-[9px] font-mono bg-slate-800 dark:bg-slate-700/60 rounded border border-slate-600 text-slate-300">⇧H</kbd>
+                                        )}
                                     </div>
                                 )}
                             </div>

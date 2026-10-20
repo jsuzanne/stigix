@@ -48,6 +48,15 @@ export interface CopilotMessage {
     };
 }
 
+export interface ApiCallTrace {
+    method: string;
+    path: string;
+    url?: string;
+    status?: number;
+    durationMs?: number;
+    requestBody?: any;
+}
+
 export interface CopilotToolCall {
     id: string;
     tool: string;
@@ -57,6 +66,7 @@ export interface CopilotToolCall {
     status: 'pending' | 'running' | 'confirm_required' | 'completed' | 'failed' | 'error' | 'cancelled';
     error?: string;
     durationMs?: number;
+    apiCalls?: ApiCallTrace[];
 }
 
 export interface CopilotSession {

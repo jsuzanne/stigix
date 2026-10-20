@@ -711,12 +711,16 @@ export default function ConnectivityPerformance({ token, uiConfig, onManage, isL
                 formattedTarget = `${editingProbe.type.toLowerCase()}://${formattedTarget}`;
             }
 
+            const defaultFreq = editingProbe.type === 'CLOUD' ? 600 : ['HTTP', 'HTTPS'].includes(editingProbe.type) ? 300 : 60;
+            const rawTimeout = parseInt(String(editingProbe.timeout));
+            const rawFreq = parseInt(String(editingProbe.frequency));
+
             const updatedProbe: any = {
                 name: editingProbe.name.trim(),
                 type: editingProbe.type,
                 target: formattedTarget,
-                timeout: Number(editingProbe.timeout) || 5000,
-                frequency: Number(editingProbe.frequency) || (editingProbe.type === 'CLOUD' ? 600 : ['HTTP', 'HTTPS'].includes(editingProbe.type) ? 300 : 60),
+                timeout: isNaN(rawTimeout) ? 5000 : Math.min(60000, Math.max(1000, rawTimeout)),
+                frequency: isNaN(rawFreq) ? defaultFreq : Math.min(3600, Math.max(30, rawFreq)),
                 enabled: editingProbe.enabled ?? true,
                 ...(editingProbe.content_match?.enabled ? { content_match: editingProbe.content_match } : { content_match: { enabled: false } })
             };
@@ -752,6 +756,10 @@ export default function ConnectivityPerformance({ token, uiConfig, onManage, isL
             setEditingProbe(null);
             await fetchProbesConfig();
             await fetchStatsAndResults();
+            // Refresh again shortly after so the immediate backend probe execution result appears right away
+            setTimeout(() => {
+                fetchStatsAndResults();
+            }, 2500);
         } catch (err) {
             console.error('Failed to update probe:', err);
         } finally {
@@ -2232,9 +2240,13 @@ export default function ConnectivityPerformance({ token, uiConfig, onManage, isL
                                         max="60000"
                                         step="1000"
                                         className="w-full bg-card-secondary border border-border text-text-primary rounded-xl px-4 py-3 outline-none focus:ring-1 focus:ring-blue-500 text-[11px] font-black tracking-widest shadow-inner transition-all"
-                                        value={editingProbe.timeout || 5000}
+                                        value={editingProbe.timeout ?? ''}
                                         onChange={e => {
-                                            const val = parseInt(e.target.value);
+                                            const raw = e.target.value;
+                                            setEditingProbe({ ...editingProbe, timeout: raw === '' ? '' : parseInt(raw) });
+                                        }}
+                                        onBlur={() => {
+                                            const val = parseInt(String(editingProbe.timeout));
                                             setEditingProbe({ ...editingProbe, timeout: isNaN(val) ? 5000 : Math.min(60000, Math.max(1000, val)) });
                                         }}
                                     />
@@ -2250,10 +2262,14 @@ export default function ConnectivityPerformance({ token, uiConfig, onManage, isL
                                         max="3600"
                                         step="10"
                                         className="w-full bg-card-secondary border border-border text-text-primary rounded-xl px-4 py-3 outline-none focus:ring-1 focus:ring-blue-500 text-[11px] font-black tracking-widest shadow-inner transition-all"
-                                        value={editingProbe.frequency || (editingProbe.type === 'CLOUD' ? 600 : 300)}
+                                        value={editingProbe.frequency ?? ''}
                                         onChange={e => {
-                                            const val = parseInt(e.target.value);
-                                            const fallback = editingProbe.type === 'CLOUD' ? 600 : 300;
+                                            const raw = e.target.value;
+                                            setEditingProbe({ ...editingProbe, frequency: raw === '' ? '' : parseInt(raw) });
+                                        }}
+                                        onBlur={() => {
+                                            const val = parseInt(String(editingProbe.frequency));
+                                            const fallback = editingProbe.type === 'CLOUD' ? 600 : (['HTTP', 'HTTPS'].includes(editingProbe.type) ? 300 : 60);
                                             setEditingProbe({ ...editingProbe, frequency: isNaN(val) ? fallback : Math.min(3600, Math.max(30, val)) });
                                         }}
                                     />

@@ -43,6 +43,7 @@ import multer from 'multer';
 import { FleetTunnelManager } from './fleet-tunnel.js';
 import { MagicJoinManager } from './magic-join-manager.js';
 import { CertificateManager } from './certificate-manager.js';
+import { RemoteNetworksManager } from './remote-networks-manager.js';
 import { SnapshotManager, StigixSnapshot } from './snapshot-manager.js';
 
 // Multer setup for EDL file uploads (memory storage)
@@ -107,6 +108,9 @@ if (!fs.existsSync(APP_CONFIG.logDir)) fs.mkdirSync(APP_CONFIG.logDir, { recursi
 
 // Certificate Manager for Forward Trust CA & Enterprise PKI
 const certificateManager = new CertificateManager(PROJECT_ROOT);
+
+// Remote Networks Manager for Prisma Access & Hetzner Whitelist
+const remoteNetworksManager = new RemoteNetworksManager(PROJECT_ROOT);
 
 const PRISMA_CONFIG_FILE = path.join(APP_CONFIG.configDir, 'prisma-config.json');
 const UI_CONFIG_FILE = path.join(APP_CONFIG.configDir, 'ui-config.json');
@@ -506,6 +510,7 @@ async function enrichConvergenceHistory(testId: string, extra: Record<string, an
         const tmp = CONVERGENCE_HISTORY_FILE + '.tmp';
         await fs.promises.writeFile(tmp, updated.join('\n') + '\n', 'utf-8');
         await fs.promises.rename(tmp, CONVERGENCE_HISTORY_FILE);
+        invalidateConvergenceHistoryCache();
         return true;
     } catch (e: any) {
         log('CONV', `enrichConvergenceHistory failed: ${e.message}`, 'warn');
@@ -6432,10 +6437,26 @@ const applyCustomConnectivityEndpoints = async (endpoints: any[]): Promise<boole
         return true;
     });
 
-    // Detect newly added probes (not previously in the saved config) for immediate trigger
+    // Detect newly added or modified/re-enabled probes for immediate trigger
     const existing = getCustomConnectivityEndpoints();
-    const existingKeys = new Set(existing.map((p: any) => `${p.type}:${p.name}`));
-    const newProbes = cleanedCustomAndEnv.filter(p => !existingKeys.has(`${p.type}:${p.name}`) && p.enabled !== false);
+    const existingMap = new Map<string, any>(existing.map((p: any) => [`${p.type}:${p.name}`, p]));
+    const probesToTrigger = cleanedCustomAndEnv.filter(p => {
+        if (p.enabled === false) return false;
+        const key = `${p.type}:${p.name}`;
+        const prev = existingMap.get(key);
+        if (!prev) return true; // brand new probe
+        if (prev.enabled === false) return true; // re-enabled probe
+        if (
+            prev.target !== p.target ||
+            Number(prev.frequency) !== Number(p.frequency) ||
+            Number(prev.timeout) !== Number(p.timeout) ||
+            JSON.stringify(prev.content_match || {}) !== JSON.stringify(p.content_match || {}) ||
+            JSON.stringify(prev.expectedStatusCodes || []) !== JSON.stringify(p.expectedStatusCodes || [])
+        ) {
+            return true; // configuration modified
+        }
+        return false;
+    });
 
     const customSuccess = saveCustomConnectivityEndpoints(cleanedCustomAndEnv);
     if (discoveryManager) {
@@ -6452,13 +6473,13 @@ const applyCustomConnectivityEndpoints = async (endpoints: any[]): Promise<boole
         triggerAutoSyncFleetBundle('connectivity-probes');
     }
 
-    if (customSuccess && newProbes.length > 0) {
+    if (customSuccess && probesToTrigger.length > 0) {
         setImmediate(async () => {
-            for (const probe of newProbes) {
+            for (const probe of probesToTrigger) {
                 const key = `${probe.type}:${probe.name}`;
                 if (isRunning.has(key)) continue;
                 try {
-                    log('DEM', `Immediate trigger for new probe: ${key}`);
+                    log('DEM', `Immediate trigger for new/modified probe: ${key}`);
                     isRunning.add(key);
                     lastRunMap.set(key, Date.now()); // prevent double-run on next tick
                     const checkResult = await performConnectivityCheck(probe);
@@ -6757,48 +6778,74 @@ if (getSystemSettings().auto_restart_probes) {
 
 // --- Phase 7: Convergence & Failover Testing ---
 
-app.post('/api/convergence/reachability', authenticateToken, (req, res) => {
-    const { target, port } = req.body;
-    if (!target) return res.status(400).json({ error: 'Target required' });
-    const targetPort = port || 6200;
-    
-    const client = dgram.createSocket('udp4');
-    let answered = false;
+const reachabilityProbeCache = new Map<string, { reachable: boolean; timestamp: number }>();
+const REACHABILITY_CACHE_TTL_MS = 15000;
 
-    client.on('message', (msg) => {
-        if (answered) return;
-        answered = true;
-        client.close();
-        res.json({ reachable: true });
-    });
-
-    client.on('error', (err) => {
-        if (answered) return;
-        answered = true;
-        client.close();
-        res.json({ reachable: false });
-    });
-
-    const timestamp = Date.now();
-    const payload = Buffer.from(`CONV:PING:ReachabilityTest:1:${timestamp}`);
-    
-    client.send(payload, targetPort, target, (err) => {
-        if (err) {
+function probeSingleUdpOnce(target: string, targetPort: number, timeoutMs: number): Promise<boolean> {
+    return new Promise<boolean>((resolve) => {
+        const client = dgram.createSocket('udp4');
+        let answered = false;
+        const finish = (reachable: boolean) => {
             if (answered) return;
             answered = true;
-            client.close();
-            res.json({ reachable: false });
-        }
-    });
+            try { client.close(); } catch {}
+            resolve(reachable);
+        };
 
-    setTimeout(() => {
-        if (!answered) {
-            answered = true;
-            client.close();
-            res.json({ reachable: false });
+        client.on('message', () => finish(true));
+        client.on('error', () => finish(false));
+
+        const payload = Buffer.from(`CONV:PING:ReachabilityTest:1:${Date.now()}`);
+        client.send(payload, targetPort, target, (err) => {
+            if (err) finish(false);
+        });
+
+        setTimeout(() => finish(false), timeoutMs);
+    });
+}
+
+async function probeUdpReachability(target: string, targetPort: number, timeoutMs = 650, bypassCache = false): Promise<boolean> {
+    const cacheKey = `${target}:${targetPort}`;
+    if (!bypassCache) {
+        const cached = reachabilityProbeCache.get(cacheKey);
+        if (cached && (Date.now() - cached.timestamp) < REACHABILITY_CACHE_TTL_MS) {
+            return cached.reachable;
         }
-    }, 1000);
+    }
+
+    let reachable = await probeSingleUdpOnce(target, targetPort, timeoutMs);
+    if (!reachable) {
+        // Single fast retry in case of single UDP packet drop
+        reachable = await probeSingleUdpOnce(target, targetPort, timeoutMs);
+    }
+    reachabilityProbeCache.set(cacheKey, { reachable, timestamp: Date.now() });
+    return reachable;
+}
+
+app.post('/api/convergence/reachability', authenticateToken, async (req, res) => {
+    const { target, port, force } = req.body;
+    if (!target) return res.status(400).json({ error: 'Target required' });
+    const targetPort = port || 6200;
+    const reachable = await probeUdpReachability(String(target), Number(targetPort), 650, Boolean(force));
+    res.json({ reachable });
 });
+
+app.post('/api/convergence/reachability/batch', authenticateToken, async (req, res) => {
+    const { targets, force } = req.body;
+    if (!Array.isArray(targets)) return res.status(400).json({ error: 'targets array required' });
+
+    const results: Record<string, boolean> = {};
+    await Promise.all(targets.map(async (item: any) => {
+        if (!item || !item.target) return;
+        const key = String(item.id || `${item.target}:${item.port || 6200}`);
+        const targetHost = String(item.target);
+        const targetPort = Number(item.port || 6200);
+        results[key] = await probeUdpReachability(targetHost, targetPort, 650, Boolean(force));
+    }));
+
+    res.json({ results });
+});
+
 
 
 app.get('/api/convergence/endpoints', authenticateToken, (req, res) => {
@@ -7190,6 +7237,8 @@ app.post('/api/convergence/start', authenticateToken, (req, res) => {
                     }) + '\n');
                     // Cleanup tmp file
                     fs.unlinkSync(statsFile);
+                    invalidateConvergenceHistoryCache();
+                    pruneConvergenceHistoryFile().catch(() => {});
 
                     // ─── Fire-and-forget egress path enrichment (1st check at 60s, 2nd at 180s) ───────────────
                     const testNum = parseInt(testId.replace('CONV-', ''));
@@ -7338,6 +7387,200 @@ const lastConvergenceStatsCache = new Map<string, any>();
 let lastIdleConvergenceScanTime = 0;
 let cachedIdleConvergenceResults: any[] = [];
 
+const DEFAULT_CONVERGENCE_CONFIG = {
+    good: 1,
+    degraded: 5,
+    critical: 10,
+    retention_days: 7
+};
+
+function getConvergenceConfig(): { good: number; degraded: number; critical: number; retention_days: number } {
+    try {
+        if (fs.existsSync(CONVERGENCE_CONFIG_FILE)) {
+            const raw = JSON.parse(fs.readFileSync(CONVERGENCE_CONFIG_FILE, 'utf8'));
+            const parsedRet = Number(raw?.retention_days);
+            return {
+                good: Math.max(1, Math.min(100, Number(raw?.good) || DEFAULT_CONVERGENCE_CONFIG.good)),
+                degraded: Math.max(1, Math.min(100, Number(raw?.degraded) || DEFAULT_CONVERGENCE_CONFIG.degraded)),
+                critical: Math.max(1, Math.min(100, Number(raw?.critical) || DEFAULT_CONVERGENCE_CONFIG.critical)),
+                retention_days: Math.max(1, Math.min(365, !isNaN(parsedRet) && parsedRet > 0 ? Math.round(parsedRet) : DEFAULT_CONVERGENCE_CONFIG.retention_days))
+            };
+        }
+    } catch {}
+    return { ...DEFAULT_CONVERGENCE_CONFIG };
+}
+
+function getConvergenceRecordTimestampMs(obj: any): number {
+    const raw = obj?.timestamp ?? obj?.start_time;
+    if (typeof raw === 'number' && Number.isFinite(raw)) {
+        return raw > 1e11 ? raw : raw * 1000;
+    }
+    if (typeof raw === 'string' && raw.trim()) {
+        const trimmed = raw.trim();
+        if (/^\d+(\.\d+)?$/.test(trimmed)) {
+            const num = parseFloat(trimmed);
+            return num > 1e11 ? num : num * 1000;
+        }
+        const parsed = Date.parse(trimmed);
+        if (!isNaN(parsed)) return parsed;
+    }
+    return 0;
+}
+
+let convergenceHistoryCache: {
+    mtimeMs: number;
+    size: number;
+    retentionDays: number;
+    fullItems: any[];
+    liteItems: any[];
+    liteJson: string;
+} = { mtimeMs: 0, size: 0, retentionDays: 7, fullItems: [], liteItems: [], liteJson: '[]' };
+
+function invalidateConvergenceHistoryCache() {
+    convergenceHistoryCache.mtimeMs = 0;
+    convergenceHistoryCache.size = 0;
+    convergenceHistoryCache.liteJson = '[]';
+}
+
+function downsampleConvergenceSeries(series: any[], maxPoints = 40): any[] {
+    if (!Array.isArray(series) || series.length <= maxPoints) return series;
+    const step = Math.ceil(series.length / maxPoints);
+    return series.filter((pt, idx) =>
+        idx === 0 ||
+        idx === series.length - 1 ||
+        (pt && typeof pt.loss === 'number' && pt.loss > 0) ||
+        idx % step === 0
+    ).slice(0, maxPoints + 20);
+}
+
+let isPruningConvergenceHistory = false;
+async function pruneConvergenceHistoryFile(): Promise<{ kept: number; removed: number }> {
+    if (isPruningConvergenceHistory) return { kept: 0, removed: 0 };
+    isPruningConvergenceHistory = true;
+    try {
+        if (!fs.existsSync(CONVERGENCE_HISTORY_FILE)) {
+            return { kept: 0, removed: 0 };
+        }
+        const raw = await fs.promises.readFile(CONVERGENCE_HISTORY_FILE, 'utf-8');
+        const lines = raw.split('\n').filter(Boolean);
+        if (lines.length === 0) return { kept: 0, removed: 0 };
+
+        const { retention_days } = getConvergenceConfig();
+        const cutoffMs = Date.now() - retention_days * 24 * 60 * 60 * 1000;
+        let removed = 0;
+        let compactedSeries = 0;
+        const keptLines: string[] = [];
+
+        for (const line of lines) {
+            try {
+                const obj = JSON.parse(line);
+                const tsMs = getConvergenceRecordTimestampMs(obj);
+                if (tsMs > 0 && tsMs < cutoffMs) {
+                    removed++;
+                    continue;
+                }
+                if (Array.isArray(obj.metrics_series) && obj.metrics_series.length > 200) {
+                    obj.metrics_series = downsampleConvergenceSeries(obj.metrics_series, 180);
+                    compactedSeries++;
+                    keptLines.push(JSON.stringify(obj));
+                } else {
+                    keptLines.push(line);
+                }
+            } catch {
+                removed++;
+            }
+        }
+
+        if (removed > 0 || compactedSeries > 0) {
+            const tmp = CONVERGENCE_HISTORY_FILE + '.prune.tmp';
+            await fs.promises.writeFile(tmp, keptLines.length > 0 ? keptLines.join('\n') + '\n' : '', 'utf-8');
+            await fs.promises.rename(tmp, CONVERGENCE_HISTORY_FILE);
+            invalidateConvergenceHistoryCache();
+            log('CONV', `Pruned convergence history (retention: ${retention_days}d): kept ${keptLines.length}, removed ${removed} expired record(s), compacted ${compactedSeries} series`);
+        }
+        return { kept: keptLines.length, removed };
+    } catch (e: any) {
+        log('CONV', `Failed to prune convergence history: ${e.message}`, 'warn');
+        return { kept: 0, removed: 0 };
+    } finally {
+        isPruningConvergenceHistory = false;
+    }
+}
+
+function getConvergenceHistoryCached(includeFullSeries = false): any[] {
+    if (!fs.existsSync(CONVERGENCE_HISTORY_FILE)) {
+        invalidateConvergenceHistoryCache();
+        return [];
+    }
+    const stat = fs.statSync(CONVERGENCE_HISTORY_FILE);
+    if (stat.size === 0) {
+        invalidateConvergenceHistoryCache();
+        return [];
+    }
+
+    const { retention_days } = getConvergenceConfig();
+    if (
+        stat.mtimeMs !== convergenceHistoryCache.mtimeMs ||
+        stat.size !== convergenceHistoryCache.size ||
+        retention_days !== convergenceHistoryCache.retentionDays
+    ) {
+        const cutoffMs = Date.now() - retention_days * 24 * 60 * 60 * 1000;
+        // Read only the tail (~4MB max) to extract up to 250 JSONL records within the retention window
+        const tailLines = readLastLinesSync(CONVERGENCE_HISTORY_FILE, 250, 4 * 1024 * 1024);
+        const fullItems = tailLines
+            .map(l => {
+                try { return JSON.parse(l); } catch { return null; }
+            })
+            .filter((obj: any) => {
+                if (!obj) return false;
+                const tsMs = getConvergenceRecordTimestampMs(obj);
+                return tsMs === 0 || tsMs >= cutoffMs;
+            })
+            .reverse()
+            .slice(0, 200);
+
+        const liteItems = fullItems.map((item: any, idx: number) => {
+            if (!Array.isArray(item.metrics_series)) return item;
+            // Keep a compact 40-point series on the 5 most recent tests for instant expand;
+            // strip bulky series on older rows (fetched on-demand via /api/convergence/history/:id/series)
+            if (idx < 5) {
+                return {
+                    ...item,
+                    has_metrics_series: item.metrics_series.length > 0,
+                    metrics_series: downsampleConvergenceSeries(item.metrics_series, 40)
+                };
+            }
+            const { metrics_series, ...rest } = item;
+            return {
+                ...rest,
+                has_metrics_series: metrics_series.length > 0
+            };
+        });
+
+        convergenceHistoryCache = {
+            mtimeMs: stat.mtimeMs,
+            size: stat.size,
+            retentionDays: retention_days,
+            fullItems,
+            liteItems,
+            liteJson: JSON.stringify(liteItems)
+        };
+    }
+
+    return includeFullSeries ? convergenceHistoryCache.fullItems : convergenceHistoryCache.liteItems;
+}
+
+// Prune expired records and warm the convergence history cache asynchronously at startup & every 6 hours
+setTimeout(async () => {
+    try {
+        await pruneConvergenceHistoryFile();
+        getConvergenceHistoryCached(false);
+    } catch {}
+}, 150);
+setInterval(() => {
+    pruneConvergenceHistoryFile().catch(() => {});
+}, 6 * 60 * 60 * 1000);
+
 app.get('/api/convergence/status', authenticateToken, (req, res) => {
     const now = Date.now();
     // Fast path: if no tests are actively running, reuse cached idle results for up to 2.5s
@@ -7352,15 +7595,19 @@ app.get('/api/convergence/status', authenticateToken, (req, res) => {
         const files = fs.readdirSync('/tmp').filter(f => f.startsWith('convergence_stats_') && f.endsWith('.json') && !f.includes('.tmp.'));
         for (const file of files) {
             const testId = file.replace('convergence_stats_', '').replace('.json', '');
+            const isRunningTest = convergenceProcesses.has(testId);
             try {
                 const content = fs.readFileSync(path.join('/tmp', file), 'utf8');
                 if (content && content.trim()) {
                     const stats = JSON.parse(content);
-                    lastConvergenceStatsCache.set(testId, stats);
+                    const compactStats = Array.isArray(stats.metrics_series)
+                        ? { ...stats, metrics_series: isRunningTest ? stats.metrics_series.slice(-60) : [] }
+                        : stats;
+                    lastConvergenceStatsCache.set(testId, compactStats);
                     results.push({
-                        ...stats,
+                        ...compactStats,
                         testId,
-                        running: convergenceProcesses.has(testId)
+                        running: isRunningTest
                     });
                     continue;
                 }
@@ -7371,7 +7618,7 @@ app.get('/api/convergence/status', authenticateToken, (req, res) => {
                 results.push({
                     ...lastConvergenceStatsCache.get(testId),
                     testId,
-                    running: convergenceProcesses.has(testId)
+                    running: isRunningTest
                 });
             }
         }
@@ -7474,15 +7721,46 @@ app.post('/api/convergence/live-path', authenticateToken, async (req, res) => {
 
 app.get('/api/convergence/history', authenticateToken, (req, res) => {
     try {
-        if (!fs.existsSync(CONVERGENCE_HISTORY_FILE)) return res.json([]);
-        const lines = fs.readFileSync(CONVERGENCE_HISTORY_FILE, 'utf8').split('\n').filter(l => l.trim());
-        const history = lines.map(l => {
-            try { return JSON.parse(l); } catch { return null; }
-        }).filter(Boolean).reverse().slice(0, 100);
+        const includeFull = req.query.full === 'true' || req.query.includeSeries === 'true';
+        const history = getConvergenceHistoryCached(includeFull);
+        if (!includeFull && convergenceHistoryCache.liteJson) {
+            return res.type('application/json').send(convergenceHistoryCache.liteJson);
+        }
         res.json(history);
     } catch (e: any) {
         log('CONV', `Error reading convergence history: ${e.message}`, 'error');
         res.status(500).json({ error: 'Failed to read history' });
+    }
+});
+
+app.get('/api/convergence/history/:id/series', authenticateToken, (req, res) => {
+    try {
+        const { id } = req.params;
+        const reqTimestamp = req.query.timestamp;
+        const cleanTargetId = String(id).split(' (')[0].trim().toUpperCase();
+        const fullHistory = getConvergenceHistoryCached(true);
+
+        const matched = fullHistory.find((obj: any) => {
+            const recordId: string = obj.test_id || obj.testId || '';
+            const cleanRecordId = String(recordId).split(' (')[0].trim().toUpperCase();
+            const idMatches = (cleanRecordId === cleanTargetId || recordId === id || recordId.startsWith(id + ' ') || recordId.startsWith(id + '('));
+            if (!idMatches) return false;
+            if (reqTimestamp) {
+                const objTs = obj.timestamp || obj.start_time;
+                return String(objTs) === String(reqTimestamp);
+            }
+            return true;
+        });
+
+        if (!matched) {
+            return res.json({ test_id: id, metrics_series: [] });
+        }
+        res.json({
+            test_id: matched.test_id || matched.testId || id,
+            metrics_series: downsampleConvergenceSeries(matched.metrics_series || [], 180)
+        });
+    } catch (e: any) {
+        res.status(500).json({ error: 'Failed to read history series' });
     }
 });
 
@@ -7491,6 +7769,7 @@ app.delete('/api/convergence/history', authenticateToken, async (req, res) => {
         if (fs.existsSync(CONVERGENCE_HISTORY_FILE)) {
             await fs.promises.writeFile(CONVERGENCE_HISTORY_FILE, '', 'utf8');
         }
+        invalidateConvergenceHistoryCache();
         res.json({ success: true });
     } catch (e: any) {
         res.status(500).json({ success: false, error: e.message });
@@ -7534,6 +7813,7 @@ app.delete('/api/convergence/history/:id', authenticateToken, async (req, res) =
         const tmp = CONVERGENCE_HISTORY_FILE + '.tmp';
         await fs.promises.writeFile(tmp, filtered.length > 0 ? filtered.join('\n') + '\n' : '', 'utf-8');
         await fs.promises.rename(tmp, CONVERGENCE_HISTORY_FILE);
+        invalidateConvergenceHistoryCache();
         res.json({ success: true, deleted: lines.length - filtered.length });
     } catch (e: any) {
         res.status(500).json({ success: false, error: e.message });
@@ -7684,12 +7964,7 @@ app.post('/api/convergence/history/refresh-path', authenticateToken, async (req,
 // API: GET Convergence Configuration
 app.get('/api/config/convergence', authenticateToken, (req, res) => {
     try {
-        if (!fs.existsSync(CONVERGENCE_CONFIG_FILE)) {
-            const defaults = { good: 1, degraded: 5, critical: 10 };
-            return res.json(defaults);
-        }
-        const data = JSON.parse(fs.readFileSync(CONVERGENCE_CONFIG_FILE, 'utf8'));
-        res.json(data);
+        res.json(getConvergenceConfig());
     } catch (e) {
         res.status(500).json({ error: 'Failed to read convergence config' });
     }
@@ -7698,13 +7973,18 @@ app.get('/api/config/convergence', authenticateToken, (req, res) => {
 // API: POST Convergence Configuration
 app.post('/api/config/convergence', authenticateToken, (req, res) => {
     try {
-        const { good, degraded, critical } = req.body;
+        const existing = getConvergenceConfig();
+        const { good, degraded, critical, retention_days } = req.body;
+        const parsedRet = retention_days !== undefined ? parseInt(retention_days, 10) : existing.retention_days;
         const config = {
-            good: Math.max(1, Math.min(100, parseInt(good) || 1)),
-            degraded: Math.max(1, Math.min(100, parseInt(degraded) || 5)),
-            critical: Math.max(1, Math.min(100, parseInt(critical) || 10))
+            good: Math.max(1, Math.min(100, parseInt(good) || existing.good || 1)),
+            degraded: Math.max(1, Math.min(100, parseInt(degraded) || existing.degraded || 5)),
+            critical: Math.max(1, Math.min(100, parseInt(critical) || existing.critical || 10)),
+            retention_days: Math.max(1, Math.min(365, !isNaN(parsedRet) && parsedRet > 0 ? parsedRet : 7))
         };
         fs.writeFileSync(CONVERGENCE_CONFIG_FILE, JSON.stringify(config, null, 2));
+        invalidateConvergenceHistoryCache();
+        pruneConvergenceHistoryFile().catch(() => {});
         triggerAutoSyncFleetBundle('convergence-sla');
         res.json({ success: true, config });
     } catch (e) {
@@ -10635,6 +10915,72 @@ app.delete('/api/security/certificates', authenticateToken, (req, res) => {
             });
         }
 
+        res.json(result);
+    } catch (e: any) {
+        res.status(500).json({ success: false, error: e.message });
+    }
+});
+
+// ─── Prisma Access Remote Networks & Hetzner Whitelist API ──────────────────
+
+// GET /api/sase/remote-networks - Status, list, and export formats
+app.get('/api/sase/remote-networks', authenticateToken, (req, res) => {
+    try {
+        const status = remoteNetworksManager.getStatus();
+        res.json({ success: true, ...status });
+    } catch (e: any) {
+        res.status(500).json({ success: false, error: e.message });
+    }
+});
+
+// POST /api/sase/remote-networks/sync - Sync from Prisma SASE API and SD-WAN topology
+app.post('/api/sase/remote-networks/sync', authenticateToken, async (req, res) => {
+    try {
+        const { sls_config: reqConfig } = req.body || {};
+
+        const prismaCfgPath = path.join(PROJECT_ROOT, 'config', 'prisma-config.json');
+        let savedPrisma: any = {};
+        try { savedPrisma = JSON.parse(fs.readFileSync(prismaCfgPath, 'utf8')); } catch {}
+
+        const creds = {
+            tsg_id: reqConfig?.tsg_id || savedPrisma.tsg_id || process.env.PRISMA_SDWAN_TSGID,
+            client_id: reqConfig?.client_id || savedPrisma.client_id || process.env.PRISMA_SDWAN_CLIENT_ID,
+            client_secret: reqConfig?.client_secret || savedPrisma.client_secret || process.env.PRISMA_SDWAN_CLIENT_SECRET
+        };
+
+        const currentTopology = topologyCache?.data || null;
+        const result = await remoteNetworksManager.fetchFromPrisma(creds, currentTopology);
+        res.json(result);
+    } catch (e: any) {
+        res.status(500).json({ success: false, error: e.message });
+    }
+});
+
+// POST /api/sase/remote-networks/custom - Add manual / custom Remote Network or IP
+app.post('/api/sase/remote-networks/custom', authenticateToken, (req, res) => {
+    try {
+        const { name, region, gateway_ips, egress_ips, notes } = req.body || {};
+        if (!name) {
+            return res.status(400).json({ success: false, error: 'Network name is required' });
+        }
+        const result = remoteNetworksManager.addCustomNetwork({
+            name,
+            region,
+            gateway_ips: Array.isArray(gateway_ips) ? gateway_ips : (gateway_ips ? [gateway_ips] : []),
+            egress_ips: Array.isArray(egress_ips) ? egress_ips : (egress_ips ? [egress_ips] : []),
+            notes
+        });
+        res.json(result);
+    } catch (e: any) {
+        res.status(500).json({ success: false, error: e.message });
+    }
+});
+
+// DELETE /api/sase/remote-networks/:id - Delete a remote network
+app.delete('/api/sase/remote-networks/:id', authenticateToken, (req, res) => {
+    try {
+        const { id } = req.params;
+        const result = remoteNetworksManager.deleteNetwork(id);
         res.json(result);
     } catch (e: any) {
         res.status(500).json({ success: false, error: e.message });
@@ -17497,6 +17843,37 @@ provisioningManager.onBundleApplied((type, payload) => {
     } else if (type === 'security-config') {
         log('PROVISIONING', `⚡ Hot-reloading Security configuration and schedulers on peer...`);
         startSchedulers();
+    } else if (type === 'convergence-sla') {
+        log('PROVISIONING', `⚡ Hot-reloading Convergence SLA & History Retention on peer...`);
+        invalidateConvergenceHistoryCache();
+        pruneConvergenceHistoryFile().catch(() => {});
+    } else if (type === 'connectivity-probes') {
+        log('PROVISIONING', `⚡ Hot-reloading Connectivity Probes on peer...`);
+        setImmediate(async () => {
+            if (!isConnectivityMonitorActive) return;
+            const now = Date.now();
+            const activeProbes = getFullEffectiveConnectivityProbes().filter((p: any) => p.enabled !== false);
+            for (const probe of activeProbes) {
+                const key = `${probe.type}:${probe.name}`;
+                if (isRunning.has(key)) continue;
+                const defaultFreqSec = probe.type === 'CLOUD' ? 600 : (['HTTP', 'HTTPS'].includes(probe.type) ? 300 : 60);
+                const freqMs = (probe.frequency || defaultFreqSec) * 1000;
+                const lastRun = lastRunMap.get(key) || 0;
+                if (now - lastRun >= freqMs) {
+                    try {
+                        log('DEM', `Immediate peer sync trigger for due probe: ${key}`);
+                        isRunning.add(key);
+                        lastRunMap.set(key, Date.now());
+                        const checkResult = await performConnectivityCheck(probe);
+                        await connectivityLogger.logResult(checkResult);
+                    } catch (e) {
+                        console.error(`[DEM] Peer sync trigger error for ${key}:`, e);
+                    } finally {
+                        isRunning.delete(key);
+                    }
+                }
+            }
+        });
     }
 });
 
