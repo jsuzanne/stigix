@@ -121,8 +121,12 @@ func runProbeCmd(args []string) {
 	out.LatencyMS = out.Metrics.TotalMS
 	out.BodySnippet = out.Body
 	if len(out.DNSIPs) > 0 {
-		out.DNSRecords = out.DNSIPs
-		out.ResolvedIP = out.DNSIPs[0]
+		if len(out.DNSRecords) == 0 {
+			out.DNSRecords = out.DNSIPs
+		}
+		if out.ResolvedIP == "" {
+			out.ResolvedIP = out.DNSIPs[0]
+		}
 	}
 
 	enc := json.NewEncoder(os.Stdout)
@@ -367,6 +371,7 @@ func singleHTTPAttempt(
 	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(timeoutMS)*time.Millisecond)
 	defer cancel()
 
+	var dnsMS, tcpMS, tlsMS, ttfbMS float64
 	trace := &httptrace.ClientTrace{
 		DNSStart: func(_ httptrace.DNSStartInfo) {
 			currentPhase = "dns"
@@ -374,15 +379,19 @@ func singleHTTPAttempt(
 		},
 		DNSDone: func(info httptrace.DNSDoneInfo) {
 			dnsEnd = time.Now()
+			if !dnsStart.IsZero() {
+				dnsMS = float64(dnsEnd.Sub(dnsStart).Microseconds()) / 1000.0
+			}
 		},
 		ConnectStart: func(_, _ string) {
 			currentPhase = "connect"
-			if tcpStart.IsZero() {
-				tcpStart = time.Now()
-			}
+			tcpStart = time.Now()
 		},
 		ConnectDone: func(_, _ string, err error) {
 			tcpEnd = time.Now()
+			if !tcpStart.IsZero() {
+				tcpMS = float64(tcpEnd.Sub(tcpStart).Microseconds()) / 1000.0
+			}
 		},
 		TLSHandshakeStart: func() {
 			currentPhase = "tls"
@@ -390,6 +399,9 @@ func singleHTTPAttempt(
 		},
 		TLSHandshakeDone: func(state tls.ConnectionState, err error) {
 			tlsEnd = time.Now()
+			if !tlsStart.IsZero() {
+				tlsMS = float64(tlsEnd.Sub(tlsStart).Microseconds()) / 1000.0
+			}
 			if err != nil {
 				sslVerifyResult = 1
 			}
@@ -399,8 +411,19 @@ func singleHTTPAttempt(
 			wroteReq = time.Now()
 		},
 		GotFirstResponseByte: func() {
-			if firstByte.IsZero() {
-				firstByte = time.Now()
+			firstByte = time.Now()
+			ref := wroteReq
+			if ref.IsZero() {
+				if !tlsEnd.IsZero() {
+					ref = tlsEnd
+				} else if !tcpEnd.IsZero() {
+					ref = tcpEnd
+				} else {
+					ref = startTime
+				}
+			}
+			if firstByte.After(ref) {
+				ttfbMS = float64(firstByte.Sub(ref).Microseconds()) / 1000.0
 			}
 		},
 	}
@@ -482,32 +505,6 @@ func singleHTTPAttempt(
 
 	endTime := time.Now()
 	totalMS := float64(endTime.Sub(startTime).Microseconds()) / 1000.0
-
-	var dnsMS, tcpMS, tlsMS, ttfbMS float64
-	if !dnsStart.IsZero() && !dnsEnd.IsZero() {
-		dnsMS = float64(dnsEnd.Sub(dnsStart).Microseconds()) / 1000.0
-	}
-	if !tcpStart.IsZero() && !tcpEnd.IsZero() {
-		tcpMS = float64(tcpEnd.Sub(tcpStart).Microseconds()) / 1000.0
-	}
-	if !tlsStart.IsZero() && !tlsEnd.IsZero() {
-		tlsMS = float64(tlsEnd.Sub(tlsStart).Microseconds()) / 1000.0
-	}
-	if !firstByte.IsZero() {
-		ref := wroteReq
-		if ref.IsZero() {
-			if !tlsEnd.IsZero() {
-				ref = tlsEnd
-			} else if !tcpEnd.IsZero() {
-				ref = tcpEnd
-			} else {
-				ref = startTime
-			}
-		}
-		if firstByte.After(ref) {
-			ttfbMS = float64(firstByte.Sub(ref).Microseconds()) / 1000.0
-		}
-	}
 
 	var speedBps float64
 	if totalMS > 0 {
@@ -648,20 +645,22 @@ func singleICMPPing(target string, iface string, timeoutMS int) (float64, string
 		return 0, "", fmt.Errorf("no IPv4 address for %s", target)
 	}
 
-	start := time.Now()
-	conn, err := net.DialTimeout("ip4:icmp", dstIP.String(), time.Duration(timeoutMS)*time.Millisecond)
+	dialer := &net.Dialer{
+		Timeout: time.Duration(timeoutMS) * time.Millisecond,
+		Control: func(network, address string, c syscall.RawConn) error {
+			if iface != "" && iface != "eth0" {
+				_ = c.Control(func(fd uintptr) {
+					bindToDevice(int(fd), iface)
+				})
+			}
+			return nil
+		},
+	}
+	conn, err := dialer.Dial("ip4:icmp", dstIP.String())
 	if err != nil {
 		return 0, dstIP.String(), err
 	}
 	defer conn.Close()
-
-	if ipConn, ok := conn.(*net.IPConn); ok && iface != "" && iface != "eth0" {
-		if rc, err := ipConn.SyscallConn(); err == nil {
-			_ = rc.Control(func(fd uintptr) {
-				bindToDevice(int(fd), iface)
-			})
-		}
-	}
 
 	_ = conn.SetDeadline(time.Now().Add(time.Duration(timeoutMS) * time.Millisecond))
 
@@ -676,6 +675,7 @@ func singleICMPPing(target string, iface string, timeoutMS int) (float64, string
 	csum := ipv4Checksum(pkt)
 	binary.BigEndian.PutUint16(pkt[2:4], csum)
 
+	start := time.Now()
 	if _, err := conn.Write(pkt); err != nil {
 		return 0, dstIP.String(), err
 	}
@@ -775,19 +775,86 @@ func executeTCPProbe(target string, iface string, localPort int, timeoutMS int, 
 	}
 }
 
+func getSystemDNSServers() []string {
+	var servers []string
+	data, err := os.ReadFile("/etc/resolv.conf")
+	if err == nil {
+		for _, line := range strings.Split(string(data), "\n") {
+			line = strings.TrimSpace(line)
+			if strings.HasPrefix(line, "#") || line == "" {
+				continue
+			}
+			fields := strings.Fields(line)
+			if len(fields) >= 2 && fields[0] == "nameserver" {
+				ip := net.ParseIP(fields[1])
+				if ip != nil && ip.To4() != nil {
+					servers = append(servers, ip.String()+":53")
+				}
+			}
+		}
+	}
+	if len(servers) == 0 {
+		servers = []string{"8.8.8.8:53", "1.1.1.1:53"}
+	}
+	return servers
+}
+
+func parseDNSName(packet []byte, offset int) (string, int) {
+	var labels []string
+	pos := offset
+	nextOffset := -1
+	jumps := 0
+	n := len(packet)
+
+	for pos < n && jumps < 10 {
+		b := packet[pos]
+		if b == 0 {
+			if nextOffset == -1 {
+				nextOffset = pos + 1
+			}
+			break
+		}
+		if (b & 0xc0) == 0xc0 {
+			if pos+1 >= n {
+				return "", n
+			}
+			if nextOffset == -1 {
+				nextOffset = pos + 2
+			}
+			pos = ((int(b) & 0x3f) << 8) | int(packet[pos+1])
+			jumps++
+			continue
+		}
+		labelLen := int(b)
+		pos++
+		if pos+labelLen > n {
+			return "", n
+		}
+		labels = append(labels, string(packet[pos:pos+labelLen]))
+		pos += labelLen
+	}
+	if nextOffset == -1 {
+		nextOffset = pos
+	}
+	return strings.Join(labels, "."), nextOffset
+}
+
 func executeDNSProbe(dnsServer string, domain string, iface string, localPort int, timeoutMS int, maxRetries int, retryDelayMS int) ProbeOutput {
 	if timeoutMS <= 0 {
 		timeoutMS = 2000
 	}
+	var dnsServers []string
 	rawHost := strings.Split(strings.TrimSpace(dnsServer), ":")[0]
 	if rawHost != "" && net.ParseIP(rawHost) == nil {
 		// --target was passed a domain name (e.g. malware.testcategory.com) rather than a DNS server IP
 		domain = strings.TrimSpace(dnsServer)
-		dnsServer = "8.8.8.8:53"
+		dnsServers = getSystemDNSServers()
 	} else if dnsServer == "" {
-		dnsServer = "8.8.8.8:53"
+		dnsServers = getSystemDNSServers()
 	} else if !strings.Contains(dnsServer, ":") {
-		dnsServer = dnsServer + ":53"
+		dnsServers = []string{dnsServer + ":53"}
+	} else {
+		dnsServers = []string{dnsServer}
 	}
 	if domain == "" {
 		domain = "google.com"
@@ -805,48 +872,60 @@ func executeDNSProbe(dnsServer string, domain string, iface string, localPort in
 			time.Sleep(time.Duration(retryDelayMS) * time.Millisecond)
 		}
 
-		effPort := localPort
-		if effPort > 0 && attempt > 0 {
-			effPort += attempt
-		}
+		for srvIdx, srv := range dnsServers {
+			effPort := localPort
+			if effPort > 0 && (attempt > 0 || srvIdx > 0) {
+				effPort = 0 // Use ephemeral source port on retry/fallback so stale conntrack state never blocks retry
+			}
 
-		ips, rcode, actualLPort, rttMS, err := singleDNSQuery(dnsServer, domain, iface, effPort, timeoutMS)
-		lastRCode = rcode
-		if err == nil && rcode == 0 && len(ips) > 0 {
-			return ProbeOutput{
-				Reachable:    true,
-				LocalPort:    actualLPort,
-				Retries:      attempt,
-				CurlExitCode: 0,
-				DNSIPs:       ips,
-				DNSRCode:     rcode,
-				Metrics: ProbeMetrics{
-					DNSMS:   rttMS,
-					TotalMS: rttMS,
-				},
+			ips, records, rcode, actualLPort, rttMS, err := singleDNSQuery(srv, domain, iface, effPort, timeoutMS)
+			lastRCode = rcode
+			if err == nil && rcode == 0 && (len(ips) > 0 || len(records) > 0) {
+				resolvedIP := ""
+				if len(ips) > 0 {
+					resolvedIP = ips[0]
+				}
+				return ProbeOutput{
+					Reachable:    len(ips) > 0,
+					LocalPort:    actualLPort,
+					Retries:      attempt + srvIdx,
+					CurlExitCode: 0,
+					DNSIPs:       ips,
+					DNSRecords:   records,
+					ResolvedIP:   resolvedIP,
+					DNSRCode:     rcode,
+					Metrics: ProbeMetrics{
+						DNSMS:   rttMS,
+						TotalMS: rttMS,
+					},
+				}
 			}
-		}
-		if err == nil && rcode == 3 {
-			// NXDOMAIN is a definitive DNS response — do not retry
-			return ProbeOutput{
-				Reachable:    false,
-				LocalPort:    actualLPort,
-				Retries:      attempt,
-				CurlExitCode: 6,
-				DNSRCode:     rcode,
-				Error:        "NXDOMAIN",
-				Metrics: ProbeMetrics{
-					DNSMS:   rttMS,
-					TotalMS: rttMS,
-				},
+			if err == nil && rcode == 3 {
+				// NXDOMAIN is a definitive DNS response — do not retry
+				return ProbeOutput{
+					Reachable:    false,
+					LocalPort:    actualLPort,
+					Retries:      attempt,
+					CurlExitCode: 6,
+					DNSRCode:     rcode,
+					Error:        "NXDOMAIN",
+					Metrics: ProbeMetrics{
+						DNSMS:   rttMS,
+						TotalMS: rttMS,
+					},
+				}
 			}
+			lastErr = err
 		}
-		lastErr = err
 	}
 
 	errMsg := "DNS query returned empty or SERVFAIL"
 	if lastErr != nil {
-		errMsg = lastErr.Error()
+		if strings.Contains(strings.ToLower(lastErr.Error()), "timeout") {
+			errMsg = "DNS query timed out (no servers could be reached)"
+		} else {
+			errMsg = lastErr.Error()
+		}
 	}
 	return ProbeOutput{
 		Reachable:    false,
@@ -858,7 +937,7 @@ func executeDNSProbe(dnsServer string, domain string, iface string, localPort in
 	}
 }
 
-func singleDNSQuery(dnsServer string, domain string, iface string, localPort int, timeoutMS int) ([]string, int, int, float64, error) {
+func singleDNSQuery(dnsServer string, domain string, iface string, localPort int, timeoutMS int) ([]string, []string, int, int, float64, error) {
 	dialer := &net.Dialer{
 		Timeout: time.Duration(timeoutMS) * time.Millisecond,
 		Control: func(network, address string, c syscall.RawConn) error {
@@ -882,7 +961,7 @@ func singleDNSQuery(dnsServer string, domain string, iface string, localPort int
 		conn, err = dialer.Dial("udp4", dnsServer)
 	}
 	if err != nil {
-		return nil, -1, localPort, 0, err
+		return nil, nil, -1, localPort, 0, err
 	}
 	defer conn.Close()
 
@@ -914,45 +993,31 @@ func singleDNSQuery(dnsServer string, domain string, iface string, localPort int
 	_ = binary.Write(&qBuf, binary.BigEndian, uint16(1)) // Class IN
 
 	if _, err := conn.Write(qBuf.Bytes()); err != nil {
-		return nil, -1, actualPort, 0, err
+		return nil, nil, -1, actualPort, 0, err
 	}
 
 	resp := make([]byte, 512)
 	n, err := conn.Read(resp)
 	rttMS := float64(time.Since(start).Microseconds()) / 1000.0
 	if err != nil {
-		return nil, -1, actualPort, rttMS, err
+		return nil, nil, -1, actualPort, rttMS, err
 	}
 	if n < 12 {
-		return nil, -1, actualPort, rttMS, fmt.Errorf("short DNS response (%d bytes)", n)
+		return nil, nil, -1, actualPort, rttMS, fmt.Errorf("short DNS response (%d bytes)", n)
 	}
+	resp = resp[:n]
 
 	rcode := int(resp[3] & 0x0f)
 	ancount := int(binary.BigEndian.Uint16(resp[6:8]))
 
 	// Skip header (12 bytes) and question section
-	pos := 12
-	for pos < n && resp[pos] != 0 {
-		if (resp[pos] & 0xc0) == 0xc0 {
-			pos += 2
-			goto afterQName
-		}
-		pos += int(resp[pos]) + 1
-	}
-	pos++ // skip null root label
-afterQName:
+	_, pos := parseDNSName(resp, 12)
 	pos += 4 // skip QTYPE + QCLASS
 
 	var ips []string
+	var records []string
 	for i := 0; i < ancount && pos+10 <= n; i++ {
-		if (resp[pos] & 0xc0) == 0xc0 {
-			pos += 2
-		} else {
-			for pos < n && resp[pos] != 0 {
-				pos += int(resp[pos]) + 1
-			}
-			pos++
-		}
+		_, pos = parseDNSName(resp, pos)
 		if pos+10 > n {
 			break
 		}
@@ -965,11 +1030,17 @@ afterQName:
 		if rType == 1 && rdLen == 4 {
 			ip := net.IPv4(resp[pos], resp[pos+1], resp[pos+2], resp[pos+3]).String()
 			ips = append(ips, ip)
+			records = append(records, ip)
+		} else if rType == 5 {
+			cname, _ := parseDNSName(resp, pos)
+			if cname != "" {
+				records = append(records, cname+".")
+			}
 		}
 		pos += rdLen
 	}
 
-	return ips, rcode, actualPort, rttMS, nil
+	return ips, records, rcode, actualPort, rttMS, nil
 }
 
 func runSRTCLI(args []string) {
