@@ -193,6 +193,7 @@ func main() {
 			EngineVersion, os.Getpid(), *enableTraffic, *enableVoice, *enableEcho)
 
 		go runMetricsReporter(ctx, startTime)
+		go runProbeRPCServer(ctx, "127.0.0.1:19090")
 
 		if *enableEcho {
 			go runEchoServer(ctx, *echoPorts)

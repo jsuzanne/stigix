@@ -367,8 +367,26 @@ export class TargetManager {
                 log('TARGET', `[CLOUD PROBE GO] Executing: ${goBin} ${probeArgs.join(' ')}`, 'debug');
                 this.recordCloudRequest();
 
-                const { stdout } = await execFilePromise(goBin, probeArgs, { maxBuffer: 1024 * 1024 });
-                const parsed = JSON.parse(stdout.trim());
+                let parsed: any = null;
+                try {
+                    const controller = new AbortController();
+                    const timer = setTimeout(() => controller.abort(), (timeoutSec * 1000) + 5000);
+                    const resp = await fetch('http://127.0.0.1:19090/probe', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ args: probeArgs }),
+                        signal: controller.signal
+                    });
+                    clearTimeout(timer);
+                    if (resp.ok) {
+                        parsed = await resp.json();
+                    }
+                } catch {}
+
+                if (!parsed) {
+                    const { stdout } = await execFilePromise(goBin, probeArgs, { maxBuffer: 1024 * 1024 });
+                    parsed = JSON.parse(stdout.trim());
+                }
                 if (!parsed.reachable && !parsed.http_code) {
                     throw new Error(`Go probe failed (Code ${parsed.curl_exit_code || 1}): ${parsed.error || 'Unreachable'}`);
                 }

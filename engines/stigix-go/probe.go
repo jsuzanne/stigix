@@ -67,8 +67,9 @@ func (h *headerFlags) Set(val string) error {
 	return nil
 }
 
-func runProbeCmd(args []string) {
-	fs := flag.NewFlagSet("probe", flag.ExitOnError)
+func executeProbeArgs(args []string) ProbeOutput {
+	fs := flag.NewFlagSet("probe", flag.ContinueOnError)
+	fs.SetOutput(io.Discard)
 	probeType := fs.String("type", "http", "Probe type: http, https, ping, tcp, dns")
 	target := fs.String("target", "", "Target URL, IP, IP:Port, or DNS server")
 	domain := fs.String("domain", "google.com", "Domain to query for DNS probe")
@@ -92,6 +93,9 @@ func runProbeCmd(args []string) {
 
 	var headers headerFlags
 	fs.Var(&headers, "header", "Custom HTTP header 'Key: Value'")
+	if len(args) > 0 && args[0] == "probe" {
+		args = args[1:]
+	}
 	_ = fs.Parse(args)
 
 	effMaxBody := *maxBodyBytes
@@ -129,8 +133,55 @@ func runProbeCmd(args []string) {
 		}
 	}
 
+	return out
+}
+
+func runProbeCmd(args []string) {
+	out := executeProbeArgs(args)
 	enc := json.NewEncoder(os.Stdout)
 	_ = enc.Encode(out)
+}
+
+func runProbeRPCServer(ctx context.Context, addr string) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/probe", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		var req struct {
+			Args []string `json:"args"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		out := executeProbeArgs(req.Args)
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(out)
+	})
+	mux.HandleFunc("/health", func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"ok":true}`))
+	})
+
+	srv := &http.Server{
+		Addr:              addr,
+		Handler:           mux,
+		ReadHeaderTimeout: 5 * time.Second,
+	}
+
+	go func() {
+		<-ctx.Done()
+		shutCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+		_ = srv.Shutdown(shutCtx)
+	}()
+
+	fmt.Printf("[STIGIX-GO] Resident Probe RPC listening on http://%s/probe\n", addr)
+	if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+		fmt.Fprintf(os.Stderr, "[STIGIX-GO] Probe RPC server error on %s: %v\n", addr, err)
+	}
 }
 
 func classifyGoNetError(err error, phase string) (int, string) {

@@ -615,6 +615,67 @@ function getEffectiveEngineRuntime(): 'legacy' | 'go' {
 function isGoEngineEnabled(): boolean {
     return getEffectiveEngineRuntime() === 'go';
 }
+
+/**
+ * Executes a `stigix-go probe` via the resident `stigix-go daemon` loopback RPC
+ * (`http://127.0.0.1:19090/probe`) to avoid fork/exec overhead, <defunct> zombies,
+ * and repeated Root CA reloading. Falls back to CLI `execFile` if the daemon RPC is unreachable.
+ */
+async function execGoProbe(stigixGoBin: string, goArgs: string[], timeoutMs = 10000): Promise<string> {
+    try {
+        const rpcArgs = goArgs[0] === 'probe' ? goArgs.slice(1) : goArgs;
+        const resp = await fetch('http://127.0.0.1:19090/probe', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ args: rpcArgs }),
+            signal: AbortSignal.timeout(timeoutMs),
+        });
+        if (resp.ok) {
+            return await resp.text();
+        }
+    } catch {
+        // Fallback to CLI process if resident daemon RPC is not listening
+    }
+    return await new Promise<string>((resolve, reject) => {
+        execFile(stigixGoBin, goArgs, { timeout: timeoutMs, maxBuffer: 2 * 1024 * 1024 }, (err, out) => {
+            if (out && out.trim()) return resolve(out);
+            if (err) return reject(err);
+            resolve('');
+        });
+    });
+}
+
+/**
+ * Reads the last N non-empty lines of a file directly in memory without spawning `tail` via `execSync`.
+ * Eliminates Node.js Event Loop blocking during WebSocket telemetry and health intervals.
+ */
+function readLastLinesSync(filePath: string, maxLines: number, maxBytes = 65536): string[] {
+    if (!fs.existsSync(filePath)) return [];
+    let fd: number | null = null;
+    try {
+        fd = fs.openSync(filePath, 'r');
+        const stat = fs.fstatSync(fd);
+        if (stat.size === 0) return [];
+        const readSize = Math.min(stat.size, maxBytes);
+        const startPos = Math.max(0, stat.size - readSize);
+        const buf = Buffer.allocUnsafe(readSize);
+        const bytesRead = fs.readSync(fd, buf, 0, readSize, startPos);
+        const chunk = buf.toString('utf8', 0, bytesRead);
+        const lines = chunk.split('\n').filter(l => l.trim());
+        // If we started mid-file, the first line fragment may be partial unless it fits within maxLines
+        if (startPos > 0 && lines.length > maxLines) {
+            lines.shift();
+        }
+        return lines.slice(-maxLines);
+    } catch {
+        return [];
+    } finally {
+        if (fd !== null) {
+            try { fs.closeSync(fd); } catch {}
+        }
+    }
+}
+
 function saveSystemSettings(settings: Partial<SystemSettings>): SystemSettings {
     const current = getSystemSettings();
     const merged = { ...current, ...settings };
@@ -1307,7 +1368,15 @@ try {
     console.error('[MAINTENANCE-BOOT] Failed to check persistent upgrade status:', e.message);
 }
 
+let _cachedInterfaceName: string | null = null;
+let _cachedInterfaceTs = 0;
+
 const getInterface = (): string => {
+    const now = Date.now();
+    if (_cachedInterfaceName && (now - _cachedInterfaceTs) < 15000) {
+        return _cachedInterfaceName;
+    }
+
     const interfacesFile = path.join(APP_CONFIG.configDir, 'interfaces.txt');
 
     // 1. Primary Source: interfaces.txt
@@ -1320,6 +1389,8 @@ const getInterface = (): string => {
 
             if (cleanLines.length > 0) {
                 if (DEBUG) log('SYSTEM', `Using interface: ${cleanLines[0]} (Source: interfaces.txt)`, 'debug');
+                _cachedInterfaceName = cleanLines[0];
+                _cachedInterfaceTs = now;
                 return cleanLines[0];
             }
         } catch (e) {
@@ -1327,9 +1398,24 @@ const getInterface = (): string => {
         }
     }
 
-    // 2. Auto-detect fallback (Host Mode) - Prefer ip route
-    try {
+    // 2. Fast non-blocking Linux /proc/net/route lookup (Default gateway = Destination 00000000)
+    if (!isMac && fs.existsSync('/proc/net/route')) {
+        try {
+            const routeContent = fs.readFileSync('/proc/net/route', 'utf8');
+            const lines = routeContent.split('\n').slice(1);
+            for (const line of lines) {
+                const cols = line.trim().split(/\s+/);
+                if (cols.length >= 2 && cols[1] === '00000000' && cols[0]) {
+                    _cachedInterfaceName = cols[0];
+                    _cachedInterfaceTs = now;
+                    return cols[0];
+                }
+            }
+        } catch {}
+    }
 
+    // 3. Auto-detect fallback (Host Mode) - Prefer ip route
+    try {
         const cmd = isMac 
             ? "route get default | grep interface | awk '{print $2}'"
             : "ip route | grep '^default' | awk '{print $5}' | head -n 1";
@@ -1339,13 +1425,15 @@ const getInterface = (): string => {
         }).trim();
         if (output) {
             if (DEBUG) log('SYSTEM', `Auto-detected interface: ${output} (Source: ${isMac ? 'route get' : 'ip route'})`, 'debug');
+            _cachedInterfaceName = output;
+            _cachedInterfaceTs = now;
             return output;
         }
     } catch (e) {
         // Silently fail to next step
     }
 
-    // 3. Last Resort Fallback - os.networkInterfaces()
+    // 4. Last Resort Fallback - os.networkInterfaces()
     try {
         const nets = os.networkInterfaces();
         const candidates: string[] = [];
@@ -1369,12 +1457,16 @@ const getInterface = (): string => {
 
         if (best) {
             if (DEBUG) log('SYSTEM', `Auto-detected interface: ${best} (Source: os.networkInterfaces fallback)`, 'debug');
+            _cachedInterfaceName = best;
+            _cachedInterfaceTs = now;
             return best;
         }
     } catch (e) { }
 
-    // 4. Absolute Fallback
+    // 5. Absolute Fallback
     log('SYSTEM', 'No interface detected. Defaulting to eth0', 'warn');
+    _cachedInterfaceName = 'eth0';
+    _cachedInterfaceTs = now;
     return 'eth0';
 };
 
@@ -5192,7 +5284,7 @@ const performConnectivityCheck = async (endpoint: any): Promise<ConnectivityResu
             }
             if (DEBUG) log('CONNECTIVITY', `[DEBUG] Executing Go Probe: ${stigixGoBin} ${probeArgs.join(' ')}`, 'debug');
 
-            const { stdout } = await execFilePromise(stigixGoBin, probeArgs, { timeout: timeoutMs * 3 + 5000 });
+            const stdout = await execGoProbe(stigixGoBin, probeArgs, timeoutMs * 3 + 5000);
             const goOut = JSON.parse(stdout.trim());
             const retriesUsed = goOut.retries || 0;
 
@@ -8773,8 +8865,7 @@ const getSecurityUIConfig = () => {
     // 1. Populate History from .jsonl (last 50 for UI)
     try {
         if (fs.existsSync(SECURITY_HISTORY_FILE)) {
-            const data = execSync(`tail -n 50 "${SECURITY_HISTORY_FILE}"`, { encoding: 'utf8' });
-            const lines = data.trim().split('\n').filter(l => l.trim());
+            const lines = readLastLinesSync(SECURITY_HISTORY_FILE, 50);
             uiConfig.test_history = lines.map(l => {
                 try { return JSON.parse(l); } catch { return null; }
             }).filter(Boolean).reverse();
@@ -9472,16 +9563,13 @@ const execSecurityUrlProbe = async (url: string, targetPort: number, maxTimeSec 
             goArgs.push('--interface', egress.interface);
         }
         const executedCommand = `stigix-go ${goArgs.join(' ')}`;
-        const stdout = await new Promise<string>((resolve, reject) => {
-            execFile(stigixGoBin, goArgs, { timeout: (maxTimeSec + 3) * 1000, maxBuffer: 2 * 1024 * 1024 }, (err, out) => {
-                if (out && out.trim()) return resolve(out);
-                if (err) {
-                    (err as any).executedCommand = executedCommand;
-                    return reject(err);
-                }
-                resolve('');
-            });
-        });
+        let stdout = '';
+        try {
+            stdout = await execGoProbe(stigixGoBin, goArgs, (maxTimeSec + 3) * 1000);
+        } catch (err: any) {
+            err.executedCommand = executedCommand;
+            throw err;
+        }
         const data = JSON.parse(stdout.trim());
         if (data.curl_exit_code && data.curl_exit_code !== 0) {
             const err: any = new Error(`Command failed: curl: (${data.curl_exit_code}) ${data.error || 'probe error'}`);
@@ -9532,12 +9620,7 @@ const execSecurityDnsProbe = async (domain: string, dnsSrcPort: number, egressIp
             goArgs.push('--interface', egress.interface);
         }
         const dnsCommand = `stigix-go ${goArgs.join(' ')}`;
-        const rawOut = await new Promise<string>((resolve) => {
-            execFile(stigixGoBin, goArgs, { timeout: 10000 }, (_err, out) => {
-                if (out && out.trim()) return resolve(out);
-                resolve('');
-            });
-        });
+        const rawOut = await execGoProbe(stigixGoBin, goArgs, 10000).catch(() => '');
         let data: any = {};
         if (rawOut && rawOut.trim()) {
             try {
@@ -9592,16 +9675,13 @@ const execSecurityThreatProbe = async (endpoint: string, eicarPort: number): Pro
             goArgs.push('--interface', egress.interface);
         }
         const command = `stigix-go ${goArgs.join(' ')}`;
-        const rawOut = await new Promise<string>((resolve, reject) => {
-            execFile(stigixGoBin, goArgs, { timeout: 23000 }, (err, out) => {
-                if (out && out.trim()) return resolve(out);
-                if (err) {
-                    (err as any).executedCommand = command;
-                    return reject(err);
-                }
-                resolve('');
-            });
-        });
+        let rawOut = '';
+        try {
+            rawOut = await execGoProbe(stigixGoBin, goArgs, 23000);
+        } catch (err: any) {
+            err.executedCommand = command;
+            throw err;
+        }
         const data = JSON.parse(rawOut.trim());
         if (!data.reachable || (data.curl_exit_code && data.curl_exit_code !== 0) || (data.http_status && data.http_status >= 400)) {
             const err: any = new Error(data.error || `HTTP ${data.http_status}`);
@@ -10682,13 +10762,7 @@ const preDnsCheck = async (url: string): Promise<{
     try {
         const stigixGoBin = '/usr/local/bin/stigix-go';
         if (isGoEngineEnabled() && fs.existsSync(stigixGoBin)) {
-            const rawOut = await new Promise<string>((resolve, reject) => {
-                execFile(stigixGoBin, ['probe', '--type', 'dns', '--target', hostname, '--timeout-ms', '2000'], { timeout: 3000 }, (err, out) => {
-                    if (out && out.trim()) return resolve(out);
-                    if (err) return reject(err);
-                    resolve('');
-                });
-            });
+            const rawOut = await execGoProbe(stigixGoBin, ['probe', '--type', 'dns', '--target', hostname, '--timeout-ms', '2000'], 3000);
             const data = JSON.parse(rawOut.trim());
             if (!data.reachable) {
                 throw new Error(data.error || 'NXDOMAIN');
@@ -11381,13 +11455,7 @@ const runCurlHelper = async (url: string, method = 'GET', jsonBody?: string, ext
                     goArgs.push('--form-file', `file=${formMatch[1]}`);
                 }
             }
-            const rawOut = await new Promise<string>((resolve, reject) => {
-                execFile(stigixGoBin, goArgs, { timeout: 8000 }, (err, out) => {
-                    if (out && out.trim()) return resolve(out);
-                    if (err) return reject(err);
-                    resolve('');
-                });
-            });
+            const rawOut = await execGoProbe(stigixGoBin, goArgs, 8000);
             const data = JSON.parse(rawOut.trim());
             if (!data.reachable && data.error) {
                 if (data.curl_exit_code === 7 || data.curl_exit_code === 28 || data.curl_exit_code === 52 || data.curl_exit_code === 56) {
@@ -12567,13 +12635,7 @@ app.post('/api/security/threat-test', authenticateToken, async (req, res) => {
             const stigixGoBin = '/usr/local/bin/stigix-go';
             if (isGoEngineEnabled() && fs.existsSync(stigixGoBin)) {
                 try {
-                    const pingOut = await new Promise<string>((resolve, reject) => {
-                        execFile(stigixGoBin, ['probe', '--type', 'ping', '--target', hostname, '--timeout-ms', '2000'], { timeout: 3000 }, (err, out) => {
-                            if (out && out.trim()) return resolve(out);
-                            if (err) return reject(err);
-                            resolve('');
-                        });
-                    });
+                    const pingOut = await execGoProbe(stigixGoBin, ['probe', '--type', 'ping', '--target', hostname, '--timeout-ms', '2000'], 3000);
                     const pingData = JSON.parse(pingOut.trim());
                     isReachable = !!pingData.reachable;
                 } catch (_) {
@@ -14975,9 +15037,25 @@ function parseUdpErrors(): number {
 }
 
 function getPythonStateDCount(): number {
+    if (isGoEngineEnabled()) return 0;
     try {
-        const out = execSync("ps -eo stat,comm | grep -c '^D.*python' 2>/dev/null || echo 0", { encoding: 'utf8', timeout: 2000 });
-        return parseInt(out.trim()) || 0;
+        if (!fs.existsSync('/proc')) return 0;
+        let count = 0;
+        const entries = fs.readdirSync('/proc');
+        for (const entry of entries) {
+            if (entry.charCodeAt(0) < 48 || entry.charCodeAt(0) > 57) continue;
+            try {
+                const stat = fs.readFileSync(`/proc/${entry}/stat`, 'utf8');
+                // Format: pid (comm) state ...
+                const closeParen = stat.lastIndexOf(')');
+                if (closeParen > 0) {
+                    const comm = stat.slice(stat.indexOf('(') + 1, closeParen);
+                    const state = stat.slice(closeParen + 2, closeParen + 3);
+                    if (state === 'D' && comm.includes('python')) count++;
+                }
+            } catch {}
+        }
+        return count;
     } catch { return 0; }
 }
 
@@ -15048,8 +15126,7 @@ setInterval(async () => {
         let avgMos: number | null = null;
         try {
             if (fs.existsSync(VOICE_STATS_FILE)) {
-                const out = execSync(`tail -n 20 ${VOICE_STATS_FILE}`, { encoding: 'utf8' });
-                const lines = out.trim().split('\n').filter(l => l.trim());
+                const lines = readLastLinesSync(VOICE_STATS_FILE, 20);
                 const stats = lines.map(l => { try { return JSON.parse(l); } catch { return null; } }).filter(Boolean);
                 const mosCalls = stats.filter((c: any) => (c.mos_score ?? 0) > 0);
                 if (mosCalls.length > 0) {
@@ -15400,8 +15477,7 @@ const collectFleetTelemetrySummary = async () => {
             voiceActive = !!vCfg.control?.enabled;
         }
         if (fs.existsSync(VOICE_STATS_FILE)) {
-            const out = execSync(`tail -n 20 ${VOICE_STATS_FILE}`, { encoding: 'utf8' });
-            const lines = out.trim().split('\n').filter(l => l.trim());
+            const lines = readLastLinesSync(VOICE_STATS_FILE, 20);
             const stats = lines.map(l => { try { return JSON.parse(l); } catch { return null; } }).filter(Boolean);
             const mosCalls = stats.filter((c: any) => (c.mos_score ?? 0) > 0);
             if (mosCalls.length > 0) {

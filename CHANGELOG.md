@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.0.59] - 2026-10-20
+
+### Changed
+- **Resident Go Probe RPC Server & Zero-Blocking Event Loop Optimization (`engines/stigix-go/probe.go`, `engines/stigix-go/main.go`, `web-dashboard/server.ts`, `web-dashboard/target-manager.ts`, `stigix-all-in-one/supervisord.conf`)**:
+  - **Resident Probe RPC Server (`127.0.0.1:19090/probe`)**: Embedded a local loopback HTTP RPC server inside `stigix-go daemon` so all connectivity, security (HTTP/DNS/Threat), and cloud probes execute as lightweight goroutines (`~4 KB` stack) reusing the resident TLS Root CA pool instead of spawning short-lived `/usr/local/bin/stigix-go probe` OS processes (`10.8 MB RSS`, `22–24% CPU`, and `<defunct>` zombies), with transparent CLI fallback.
+  - **Zero-Blocking Node.js Event Loop for WebSocket Fleet Tunnels**: Replaced all synchronous `execSync` calls in `server.ts` background intervals and telemetry collectors (`tail -n 20/50`, `ip route`, `ps -eo stat,comm | grep`) with pure in-memory/filesystem readers (`readLastLinesSync`, `/proc/net/route` with 15s TTL cache, and `/proc` stat reader), reducing WebSocket tunnel Ping/Pong RTT on loaded nodes from `133–171 ms` down to `6–8 ms` (`-94%`).
+  - **Direct Node Execution in `supervisord.conf`**: Replaced `npx tsx server.ts` with direct `/usr/bin/node` execution using `tsx` preflight/loader hooks, eliminating 3 idle wrapper processes (`npm exec`, `sh`, `node .bin/tsx`) and saving `~90–108 MB RSS` and `23–35 OS threads` per container.
+  - **Go Engine Default & External MCP Server Toggle**: Enabled the native Go Engine (`stigix-go`) out-of-the-box by default with hot-swappable UI runtime switching (`System > Settings > Engine Runtime`), and disabled the external FastMCP server by default (`autostart=false`) with an on-demand UI toggle (`System > Settings > External MCP Server`).
+
 ## [3.0.58] - 2026-10-19
 
 ### Added
