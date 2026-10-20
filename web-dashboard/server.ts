@@ -562,6 +562,10 @@ interface SystemSettings {
     pcap_max_auto_sync_mb?: number;
     registry_mode?: 'auto' | 'leader' | 'peer';
     engine_runtime?: 'legacy' | 'go'; // Data-plane engine runtime selector (requires ENABLE_GO_ENGINE=true)
+    mcp_server_enabled?: boolean; // External FastMCP SSE server on port 3100 (disabled by default to save ~95MB RAM)
+}
+function isGoEngineFeatureEnabled(): boolean {
+    return process.env.ENABLE_GO_ENGINE === 'true' || process.env.ENABLE_GO_ENGINE === '1';
 }
 const DEFAULT_SYSTEM_SETTINGS: SystemSettings = {
     auto_restart_iot: false,
@@ -573,11 +577,9 @@ const DEFAULT_SYSTEM_SETTINGS: SystemSettings = {
     auto_sync_probes_to_fleet: true, // Default enabled: auto-push changes to fleet with debounce
     pcap_max_auto_sync_mb: 10,     // Auto-sync threshold for PCAP profiles (<= 50MB, safety ratio of WS buffer)
     registry_mode: 'auto',
-    engine_runtime: 'legacy',
+    engine_runtime: isGoEngineFeatureEnabled() ? 'go' : 'legacy',
+    mcp_server_enabled: process.env.ENABLE_MCP_SERVER === 'true',
 };
-function isGoEngineFeatureEnabled(): boolean {
-    return process.env.ENABLE_GO_ENGINE === 'true' || process.env.ENABLE_GO_ENGINE === '1';
-}
 function resolveGoEngineBinary(): string | null {
     const candidates = [
         '/usr/local/bin/stigix-go',
@@ -13524,6 +13526,30 @@ app.get('/api/containers/stats', authenticateToken, async (req, res) => {
 });
 
 /**
+ * Controls the external Python FastMCP SSE Server (port 3100) via supervisord.
+ * Disabled by default across the fleet to save ~95MB RAM per node; can be enabled on-demand on the Leader.
+ */
+function applyMcpServerState(enabled: boolean): { message: string } {
+    const hasSupervisor = fs.existsSync('/var/run/supervisor.sock');
+    if (enabled) {
+        if (hasSupervisor) {
+            try { execSync('supervisorctl start mcp-server', { timeout: 8000 }); } catch (e) { }
+        }
+        saveSystemSettings({ mcp_server_enabled: true });
+        log('SYSTEM', '🟢 External MCP Server (port 3100 SSE) started');
+        return { message: 'External MCP Server started (port 3100 SSE)' };
+    } else {
+        if (hasSupervisor) {
+            try { execSync('supervisorctl stop mcp-server', { timeout: 8000 }); } catch (e) { }
+        }
+        try { execSync('pkill -f "python3 -m src.server" || true', { timeout: 2000 }); } catch (e) { }
+        saveSystemSettings({ mcp_server_enabled: false });
+        log('SYSTEM', '⚪ External MCP Server (port 3100 SSE) stopped (Standby — ~95MB RAM freed)');
+        return { message: 'External MCP Server stopped (~95MB RAM freed)' };
+    }
+}
+
+/**
  * Model Context Protocol (MCP) Status Reporting
  * Reports whether the MCP server is listening on port 3100 (SSE).
  */
@@ -13531,11 +13557,13 @@ app.get('/api/admin/system/mcp-status', authenticateToken, async (req, res) => {
     try {
         const mcpPort = parseInt(process.env.MCP_PORT || '3100');
         const isOnline = await isPortActive('127.0.0.1', mcpPort);
+        const settings = getSystemSettings();
 
         if (DEBUG) log('SYSTEM', `MCP Health Check: port=${mcpPort} online=${isOnline}`, 'debug');
 
         res.json({
             online: isOnline,
+            enabled: Boolean(settings.mcp_server_enabled),
             status: isOnline ? 'Active' : 'Offline',
             transport: 'SSE',
             url: `http://${req.hostname}:${mcpPort}/sse`
@@ -13544,9 +13572,32 @@ app.get('/api/admin/system/mcp-status', authenticateToken, async (req, res) => {
         log('SYSTEM', `MCP status check failed: ${e.message}`, 'error');
         res.status(200).json({ 
             online: false, 
+            enabled: Boolean(getSystemSettings().mcp_server_enabled),
             status: 'Error',
             error: e.message 
         });
+    }
+});
+
+app.post('/api/admin/system/mcp-toggle', authenticateToken, async (req, res) => {
+    try {
+        const enabled = Boolean(req.body?.enabled);
+        const result = applyMcpServerState(enabled);
+        // Wait briefly for supervisor / Python FastMCP to bind or release port 3100
+        await new Promise(r => setTimeout(r, 1500));
+        const mcpPort = parseInt(process.env.MCP_PORT || '3100');
+        const isOnline = await isPortActive('127.0.0.1', mcpPort);
+        res.json({
+            success: true,
+            enabled,
+            online: isOnline,
+            status: isOnline ? 'Active' : 'Offline',
+            transport: 'SSE',
+            url: `http://${req.hostname}:${mcpPort}/sse`,
+            message: result.message
+        });
+    } catch (e: any) {
+        res.status(500).json({ error: e.message || 'Failed to toggle MCP server' });
     }
 });
 
@@ -18847,12 +18898,20 @@ app.post('/api/system/engine-runtime', authenticateToken, async (req, res) => {
     }
 });
 
-// Boot-time reconciliation: if ENABLE_GO_ENGINE=true and persisted setting is 'go', activate stigix-go after boot
+// Boot-time reconciliation:
+// 1. If ENABLE_GO_ENGINE=true and persisted setting is 'go', activate stigix-go after boot
+// 2. Ensure external MCP server matches persisted mcp_server_enabled setting (disabled by default)
 setTimeout(() => {
-    if (isGoEngineFeatureEnabled() && getSystemSettings().engine_runtime === 'go' && resolveGoEngineBinary()) {
+    const bootSettings = getSystemSettings();
+    if (isGoEngineFeatureEnabled() && bootSettings.engine_runtime === 'go' && resolveGoEngineBinary()) {
         applyEngineRuntimeSwitch('go').catch(err => {
             log('SYSTEM', `Failed to auto-activate Go engine at boot: ${err.message}`, 'warn');
         });
+    }
+    try {
+        applyMcpServerState(Boolean(bootSettings.mcp_server_enabled));
+    } catch (err: any) {
+        log('SYSTEM', `Failed to reconcile MCP server state at boot: ${err.message}`, 'warn');
     }
 }, 4000);
 

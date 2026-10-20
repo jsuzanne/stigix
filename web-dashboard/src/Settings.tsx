@@ -758,7 +758,8 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
         ttfb_warning_ms: 150,
         error_rate_warning_pct: 5
     });
-    const [mcpStatus, setMcpStatus] = useState<{ online: boolean; status?: string; transport?: string; url?: string; error?: string } | null>(null);
+    const [mcpStatus, setMcpStatus] = useState<{ online: boolean; enabled?: boolean; status?: string; transport?: string; url?: string; error?: string } | null>(null);
+    const [isTogglingMcp, setIsTogglingMcp] = useState(false);
     const [mcpHistory, setMcpHistory] = useState<{ entries: any[]; stats: { totalCalls: number; errorCount: number; avgDuration: number } } | null>(null);
     const [copilotConfig, setCopilotConfig] = useState<any>(null);
     const [copilotProvider, setCopilotProvider] = useState<'anthropic' | 'deepseek'>('anthropic');
@@ -7615,17 +7616,58 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
 
                         {/* ── MCP Server Card ── */}
                         <div className="bg-card border border-border rounded-2xl p-6 shadow-sm">
-                            <div className="flex items-center gap-4 mb-6">
-                                <div className="p-3 bg-amber-500/10 rounded-xl">
-                                    <Terminal size={24} className="text-amber-500" />
-                                </div>
-                                <div>
-                                    <div className="flex items-center gap-3">
-                                        <h2 className="text-lg font-black text-text-primary tracking-tight">Model Context Protocol</h2>
-                                        <BetaBadge />
+                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
+                                <div className="flex items-center gap-4">
+                                    <div className="p-3 bg-amber-500/10 rounded-xl">
+                                        <Terminal size={24} className="text-amber-500" />
                                     </div>
-                                    <p className="text-[10px] font-bold text-text-muted tracking-widest mt-0.5 opacity-70">Natural Language Orchestration Service</p>
+                                    <div>
+                                        <div className="flex items-center gap-3">
+                                            <h2 className="text-lg font-black text-text-primary tracking-tight">Model Context Protocol (External SSE)</h2>
+                                            <BetaBadge />
+                                        </div>
+                                        <p className="text-[10px] font-bold text-text-muted tracking-widest mt-0.5 opacity-70">
+                                            External FastMCP Server for Claude Desktop (Port 3100) — Disabled by default (~95 MB RAM saved). Built-in AI Copilot works without this.
+                                        </p>
+                                    </div>
                                 </div>
+                                <button
+                                    type="button"
+                                    disabled={isTogglingMcp}
+                                    onClick={async () => {
+                                        const nextEnabled = !(mcpStatus?.online || mcpStatus?.enabled);
+                                        setIsTogglingMcp(true);
+                                        try {
+                                            const res = await apiFetch('/api/admin/system/mcp-toggle', {
+                                                method: 'POST',
+                                                headers: { ...authHeaders, 'Content-Type': 'application/json' },
+                                                body: JSON.stringify({ enabled: nextEnabled })
+                                            });
+                                            const data = await res.json();
+                                            if (!res.ok) throw new Error(data.error || 'Failed to toggle MCP server');
+                                            setMcpStatus(data);
+                                            toast.success(data.message || (nextEnabled ? 'External MCP Server enabled' : 'External MCP Server stopped'));
+                                        } catch (e: any) {
+                                            toast.error(e.message || 'Error toggling MCP server');
+                                        } finally {
+                                            setIsTogglingMcp(false);
+                                        }
+                                    }}
+                                    className={cn(
+                                        "px-4 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-2 border shrink-0",
+                                        (mcpStatus?.online || mcpStatus?.enabled)
+                                            ? "bg-red-500/10 hover:bg-red-500/20 text-red-400 border-red-500/25"
+                                            : "bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-400 border-emerald-500/30",
+                                        isTogglingMcp && "opacity-60 cursor-wait"
+                                    )}
+                                >
+                                    <Power size={13} className={cn(isTogglingMcp && "animate-spin")} />
+                                    {isTogglingMcp
+                                        ? 'Switching...'
+                                        : (mcpStatus?.online || mcpStatus?.enabled)
+                                            ? 'Disable MCP Server'
+                                            : 'Enable MCP Server'}
+                                </button>
                             </div>
 
                             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
@@ -7635,10 +7677,10 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                                         "flex items-center gap-2 px-3 py-1 rounded-full text-[10px] font-black tracking-widest uppercase border",
                                         mcpStatus?.online 
                                             ? "bg-emerald-500/10 text-emerald-500 border-emerald-500/20" 
-                                            : "bg-red-500/10 text-red-500 border-red-500/20"
+                                            : "bg-slate-500/10 text-slate-400 border-slate-500/20"
                                     )}>
-                                        <div className={cn("w-2 h-2 rounded-full", mcpStatus?.online ? "bg-emerald-500 animate-pulse" : "bg-red-500")} />
-                                        {mcpStatus?.online ? "Online" : "Offline"}
+                                        <div className={cn("w-2 h-2 rounded-full", mcpStatus?.online ? "bg-emerald-500 animate-pulse" : "bg-slate-500")} />
+                                        {mcpStatus?.online ? "Online (Active)" : "Standby (Disabled)"}
                                     </div>
                                 </div>
                                 <div className="bg-card-secondary/30 border border-border rounded-2xl p-4 flex flex-col items-center justify-center text-center space-y-2">
