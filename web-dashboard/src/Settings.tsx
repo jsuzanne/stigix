@@ -782,12 +782,12 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
     const [uploadCertName, setUploadCertName] = useState('');
     const [viewPemModal, setViewPemModal] = useState<{ open: boolean; name: string; pem: string }>({ open: false, name: '', pem: '' });
     
-    // Prisma Remote Networks & Hetzner Whitelist States
+    // Prisma Remote Networks & Firewall Whitelist States
     const [remoteNetworksData, setRemoteNetworksData] = useState<any>(null);
     const [isSyncingNetworks, setIsSyncingNetworks] = useState(false);
     const [showAddNetworkModal, setShowAddNetworkModal] = useState(false);
     const [showExportFormatsModal, setShowExportFormatsModal] = useState(false);
-    const [selectedFormatTab, setSelectedFormatTab] = useState<'hetzner' | 'comma' | 'iptables' | 'ufw' | 'json'>('hetzner');
+    const [selectedFormatTab, setSelectedFormatTab] = useState<'cidr' | 'comma' | 'iptables' | 'ufw' | 'json'>('cidr');
     const [copiedFormatKey, setCopiedFormatKey] = useState<string | null>(null);
     const [newNetworkForm, setNewNetworkForm] = useState({
         name: '',
@@ -8380,7 +8380,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                                             )}
                                         </div>
                                         <p className="text-[11px] font-bold text-text-muted tracking-wide mt-0.5 opacity-80">
-                                            Public IPsec endpoints and source NAT egress IPs for Remote Networks. Once allocated, these IPs remain stable and are used to whitelist traffic on external firewalls (Hetzner, AWS, on-prem).
+                                            Public IPsec endpoints and source NAT egress IPs for Remote Networks. Once allocated, these IPs remain stable and can be whitelisted on external firewalls, cloud providers, and on-premises gateways.
                                         </p>
                                     </div>
                                 </div>
@@ -8398,7 +8398,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                                         onClick={() => setShowExportFormatsModal(true)}
                                         disabled={!remoteNetworksData || remoteNetworksData.total_egress_ips === 0}
                                         className="px-3.5 py-2 bg-card hover:bg-card-hover text-text-primary border border-border rounded-xl text-xs font-black uppercase tracking-wider flex items-center gap-2 transition-all disabled:opacity-40 cursor-pointer"
-                                        title="Export firewall formats (Hetzner, iptables, ufw, JSON)"
+                                        title="Export firewall formats (CIDRs, iptables, ufw, JSON)"
                                     >
                                         <Download size={14} />
                                         Export Formats
@@ -8413,7 +8413,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                                 </div>
                             </div>
 
-                            {/* Hetzner Cloud Fast Whitelist Banner */}
+                            {/* Firewall Inbound Whitelist Banner */}
                             {remoteNetworksData && remoteNetworksData.total_egress_ips > 0 && (
                                 <div className="bg-gradient-to-r from-blue-900/20 via-card-secondary/40 to-emerald-950/20 border border-blue-500/30 rounded-2xl p-5 space-y-3">
                                     <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
@@ -8423,27 +8423,33 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                                             </div>
                                             <div>
                                                 <h4 className="text-xs font-black text-text-primary uppercase tracking-wider flex items-center gap-2">
-                                                    Hetzner Cloud Firewall Whitelist
+                                                    Inbound Firewall Whitelist
                                                     <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-blue-500/20 text-blue-300 font-bold">
                                                         {remoteNetworksData.total_egress_ips} IPs ready
                                                     </span>
                                                 </h4>
                                                 <p className="text-[10px] text-text-muted mt-0.5">
-                                                    Paste these CIDRs (/32) directly into Hetzner Cloud Firewall inbound rules (e.g. ports 22, 443, 8080) to only allow traffic from your Prisma Access Remote Networks.
+                                                    Paste these CIDRs (/32) directly into cloud firewall inbound rules (e.g. ports 22, 443, 8080) to only allow traffic from your Prisma Access Remote Networks.
                                                 </p>
                                             </div>
                                         </div>
 
                                         <div className="flex items-center gap-2 shrink-0">
                                             <button
-                                                onClick={() => handleCopyText(remoteNetworksData.formats?.hetzner_cidrs, 'Hetzner CIDRs (/32)')}
+                                                onClick={() => {
+                                                    const cidrText = remoteNetworksData.formats?.cidr_list || remoteNetworksData.formats?.cidrs || remoteNetworksData.export_formats?.cidr_list || (remoteNetworksData.all_egress_ips || []).map((ip: string) => `${ip}/32`).join('\n');
+                                                    handleCopyText(cidrText, 'CIDRs (/32)');
+                                                }}
                                                 className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-[10px] font-black uppercase tracking-wider flex items-center gap-1.5 transition-all shadow-sm cursor-pointer"
                                             >
-                                                {copiedFormatKey === 'Hetzner CIDRs (/32)' ? <Check size={12} /> : <Copy size={12} />}
+                                                {copiedFormatKey === 'CIDRs (/32)' ? <Check size={12} /> : <Copy size={12} />}
                                                 Copy CIDRs (/32)
                                             </button>
                                             <button
-                                                onClick={() => handleCopyText(remoteNetworksData.formats?.hetzner_comma_separated, 'Comma-Separated IPs')}
+                                                onClick={() => {
+                                                    const commaText = remoteNetworksData.formats?.comma_separated || remoteNetworksData.export_formats?.comma_separated || (remoteNetworksData.all_egress_ips || []).join(', ');
+                                                    handleCopyText(commaText, 'Comma-Separated IPs');
+                                                }}
                                                 className="px-3 py-1.5 bg-card hover:bg-card-hover text-text-primary border border-border rounded-lg text-[10px] font-black uppercase tracking-wider flex items-center gap-1.5 transition-all cursor-pointer"
                                             >
                                                 {copiedFormatKey === 'Comma-Separated IPs' ? <Check size={12} /> : <Copy size={12} />}
@@ -8455,7 +8461,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                                     {/* Preview Snippet */}
                                     <div className="bg-black/30 border border-border/60 rounded-xl p-3 font-mono text-[11px] text-emerald-400 overflow-x-auto flex items-center justify-between gap-4">
                                         <span className="truncate">
-                                            {remoteNetworksData.formats?.hetzner_comma_separated || 'No IPs found'}
+                                            {remoteNetworksData.formats?.comma_separated || remoteNetworksData.export_formats?.comma_separated || (remoteNetworksData.all_egress_ips && remoteNetworksData.all_egress_ips.length > 0 ? remoteNetworksData.all_egress_ips.join(', ') : 'No IPs found')}
                                         </span>
                                         <span className="text-[9px] text-text-muted shrink-0 uppercase tracking-widest font-sans">
                                             {remoteNetworksData.total_egress_ips} Egress · {remoteNetworksData.total_gateway_ips} Gateway
@@ -8542,7 +8548,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                                                                         <button
                                                                             key={ip}
                                                                             onClick={() => handleCopyText(`${ip}/32`, `CIDR ${ip}/32`)}
-                                                                            title="Click to copy CIDR for Hetzner"
+                                                                            title="Click to copy CIDR (/32)"
                                                                             className="px-2 py-0.5 rounded bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 text-emerald-400 font-bold text-[10px] flex items-center gap-1 transition-all cursor-pointer"
                                                                         >
                                                                             <span>{ip}</span>
@@ -8765,7 +8771,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                         {/* Format Tabs */}
                         <div className="flex gap-2 border-b border-border/80 pb-2">
                             {[
-                                { id: 'hetzner', label: 'Hetzner CIDRs (/32)' },
+                                { id: 'cidr', label: 'CIDR List (/32)' },
                                 { id: 'comma', label: 'Comma-Separated' },
                                 { id: 'iptables', label: 'iptables Rules' },
                                 { id: 'ufw', label: 'UFW Rules' },
@@ -8785,29 +8791,37 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                         </div>
 
                         {/* Content Area */}
-                        <div className="relative">
-                            <pre className="w-full bg-card-secondary/70 border border-border rounded-xl p-4 text-[11px] font-mono text-emerald-300 max-h-80 overflow-y-auto select-all whitespace-pre-wrap break-all">
-                                {selectedFormatTab === 'hetzner' ? remoteNetworksData.formats?.hetzner_cidrs :
-                                 selectedFormatTab === 'comma' ? remoteNetworksData.formats?.hetzner_comma_separated :
-                                 selectedFormatTab === 'iptables' ? remoteNetworksData.formats?.iptables :
-                                 selectedFormatTab === 'ufw' ? remoteNetworksData.formats?.ufw :
-                                 remoteNetworksData.formats?.json_array}
-                            </pre>
-                            <button
-                                onClick={() => {
-                                    const text = selectedFormatTab === 'hetzner' ? remoteNetworksData.formats?.hetzner_cidrs :
-                                                 selectedFormatTab === 'comma' ? remoteNetworksData.formats?.hetzner_comma_separated :
-                                                 selectedFormatTab === 'iptables' ? remoteNetworksData.formats?.iptables :
-                                                 selectedFormatTab === 'ufw' ? remoteNetworksData.formats?.ufw :
-                                                 remoteNetworksData.formats?.json_array;
-                                    handleCopyText(text, 'Rules format');
-                                }}
-                                className="absolute top-3 right-3 p-2 bg-card/80 hover:bg-card text-text-muted hover:text-text-primary border border-border rounded-lg shadow transition-all flex items-center gap-1 text-[9px] font-bold uppercase cursor-pointer"
-                            >
-                                <Copy size={12} />
-                                Copy
-                            </button>
-                        </div>
+                        {(() => {
+                            const formats = remoteNetworksData.formats || remoteNetworksData.export_formats || {};
+                            const egressIps = remoteNetworksData.all_egress_ips || [];
+                            let textContent = '';
+                            if (selectedFormatTab === 'cidr') {
+                                textContent = formats.cidr_list || formats.cidrs || formats.hetzner_cidrs || egressIps.map((ip: string) => `${ip}/32`).join('\n');
+                            } else if (selectedFormatTab === 'comma') {
+                                textContent = formats.comma_separated || formats.hetzner_comma_separated || egressIps.join(', ');
+                            } else if (selectedFormatTab === 'iptables') {
+                                textContent = formats.iptables || egressIps.map((ip: string) => `iptables -A INPUT -s ${ip} -j ACCEPT`).join('\n');
+                            } else if (selectedFormatTab === 'ufw') {
+                                textContent = formats.ufw || egressIps.map((ip: string) => `ufw allow from ${ip}`).join('\n');
+                            } else if (selectedFormatTab === 'json') {
+                                textContent = formats.json_array || JSON.stringify(egressIps, null, 2);
+                            }
+
+                            return (
+                                <div className="relative">
+                                    <pre className="w-full bg-card-secondary/70 border border-border rounded-xl p-4 text-[11px] font-mono text-emerald-300 max-h-80 overflow-y-auto select-all whitespace-pre-wrap break-all">
+                                        {textContent}
+                                    </pre>
+                                    <button
+                                        onClick={() => handleCopyText(textContent, 'Rules format')}
+                                        className="absolute top-3 right-3 p-2 bg-card/80 hover:bg-card text-text-muted hover:text-text-primary border border-border rounded-lg shadow transition-all flex items-center gap-1 text-[9px] font-bold uppercase cursor-pointer"
+                                    >
+                                        <Copy size={12} />
+                                        Copy
+                                    </button>
+                                </div>
+                            );
+                        })()}
 
                         <div className="flex justify-end">
                             <button

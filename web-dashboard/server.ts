@@ -109,7 +109,7 @@ if (!fs.existsSync(APP_CONFIG.logDir)) fs.mkdirSync(APP_CONFIG.logDir, { recursi
 // Certificate Manager for Forward Trust CA & Enterprise PKI
 const certificateManager = new CertificateManager(PROJECT_ROOT);
 
-// Remote Networks Manager for Prisma Access & Hetzner Whitelist
+// Remote Networks Manager for Prisma Access & Firewall Whitelist
 const remoteNetworksManager = new RemoteNetworksManager(PROJECT_ROOT);
 
 const PRISMA_CONFIG_FILE = path.join(APP_CONFIG.configDir, 'prisma-config.json');
@@ -10921,7 +10921,7 @@ app.delete('/api/security/certificates', authenticateToken, (req, res) => {
     }
 });
 
-// ─── Prisma Access Remote Networks & Hetzner Whitelist API ──────────────────
+// ─── Prisma Access Remote Networks & Firewall Whitelist API ─────────────────
 
 // GET /api/sase/remote-networks - Status, list, and export formats
 app.get('/api/sase/remote-networks', authenticateToken, (req, res) => {

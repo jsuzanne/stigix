@@ -93,11 +93,21 @@ export class RemoteNetworksManager {
         const allEgress = Array.from(egressSet).sort();
         const allGateways = Array.from(gwSet).sort();
 
-        // Formats for Hetzner and firewall whitelisting
-        const hetznerCidrs = allEgress.map(ip => ip.includes('/') ? ip : `${ip}/32`).join('\n');
-        const hetznerCommaSeparated = allEgress.join(', ');
+        // Formats for firewall whitelisting (CIDRs, iptables, ufw, JSON)
+        const cidrList = allEgress.map(ip => ip.includes('/') ? ip : `${ip}/32`).join('\n');
+        const commaSeparated = allEgress.join(', ');
         const iptablesRules = allEgress.map(ip => `iptables -A INPUT -s ${ip.includes('/') ? ip : `${ip}/32`} -j ACCEPT`).join('\n');
         const ufwRules = allEgress.map(ip => `ufw allow from ${ip.includes('/') ? ip : `${ip}/32`} to any`).join('\n');
+        const jsonArray = JSON.stringify(allEgress, null, 2);
+
+        const formatObj = {
+            cidr_list: cidrList,
+            cidrs: cidrList,
+            comma_separated: commaSeparated,
+            json_array: jsonArray,
+            iptables: iptablesRules,
+            ufw: ufwRules
+        };
 
         return {
             last_updated: this.metadata.last_updated,
@@ -107,13 +117,8 @@ export class RemoteNetworksManager {
             networks: this.metadata.networks,
             all_egress_ips: allEgress,
             all_gateway_ips: allGateways,
-            export_formats: {
-                hetzner_cidrs: hetznerCidrs,
-                hetzner_comma: hetznerCommaSeparated,
-                json_array: JSON.stringify(allEgress, null, 2),
-                iptables: iptablesRules,
-                ufw: ufwRules
-            }
+            export_formats: formatObj,
+            formats: formatObj
         };
     }
 

@@ -457,7 +457,7 @@ export const HomeOverview: React.FC<HomeOverviewProps> = ({
                                         e.stopPropagation();
                                         onNavigate('settings', 'prisma-api');
                                     }}
-                                    title="View Remote Networks & Hetzner Whitelist"
+                                    title="View Remote Networks & Firewall Whitelist"
                                     className="px-2 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 transition-colors flex items-center gap-1 cursor-pointer"
                                 >
                                     <Globe size={10} />
