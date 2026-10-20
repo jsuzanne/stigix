@@ -1868,6 +1868,70 @@ function TopologyContent({ token, theme }: TopologyProps) {
     const [diagnosticsSearch, setDiagnosticsSearch] = useState('');
     const [tracerouteTarget, setTracerouteTarget] = useState<string | null>(null);
     const [inspectedLink, setInspectedLink] = useState<any | null>(null);
+    const [isInspectingLink, setIsInspectingLink] = useState(false);
+
+    // On-demand live VPN tunnel & LQM telemetry inspection (only triggered when user clicks an overlay tunnel)
+    const inspectedVpnId = inspectedLink?.isOverlayTunnel
+        ? String(inspectedLink.debug_vpn_id || inspectedLink.id || '').trim()
+        : '';
+    useEffect(() => {
+        if (!inspectedVpnId || inspectedVpnId === 'N/A' || inspectedLink?._liveInspectedVpnId === inspectedVpnId) {
+            return;
+        }
+        let cancelled = false;
+        setIsInspectingLink(true);
+        const params = new URLSearchParams();
+        if (inspectedLink?.sourceSiteName) params.set('srcSiteName', String(inspectedLink.sourceSiteName));
+        if (inspectedLink?.peer_site_name) params.set('dstSiteName', String(inspectedLink.peer_site_name));
+        if (inspectedLink?.sourceSiteId) params.set('srcSiteId', String(inspectedLink.sourceSiteId));
+        if (inspectedLink?.peer_site_id) params.set('dstSiteId', String(inspectedLink.peer_site_id));
+
+        gFetch(`/api/topology/vpn-link/${encodeURIComponent(inspectedVpnId)}/inspect?${params.toString()}`)
+            .then(r => (r.ok ? r.json() : null))
+            .then(liveData => {
+                if (cancelled || !liveData) return;
+                setInspectedLink((prev: any) => {
+                    if (!prev) return prev;
+                    const curId = String(prev.debug_vpn_id || prev.id || '').trim();
+                    if (curId !== inspectedVpnId) return prev;
+                    return {
+                        ...prev,
+                        _liveInspectedVpnId: inspectedVpnId,
+                        inspectedAt: liveData.inspectedAt,
+                        status_reason: liveData.status_reason ?? prev.status_reason,
+                        status_reason_code: liveData.status_reason_code ?? prev.status_reason_code,
+                        status_reason_detail: liveData.status_reason_detail ?? prev.status_reason_detail,
+                        uptime_sec: liveData.uptime_sec ?? prev.uptime_sec,
+                        flap_count: liveData.flap_count ?? prev.flap_count,
+                        cipher: liveData.cipher || prev.cipher,
+                        keepalive_interval_ms: liveData.keepalive_interval_ms ?? prev.keepalive_interval_ms,
+                        keepalive_retries: liveData.keepalive_retries ?? prev.keepalive_retries,
+                        anynet_type: liveData.anynet_type || prev.anynet_type,
+                        local_vep_id: liveData.src_vep_id || prev.local_vep_id,
+                        peer_vep_id: liveData.dst_vep_id || prev.peer_vep_id,
+                        latency: liveData.latency ?? prev.latency,
+                        packet_loss: liveData.packet_loss ?? prev.packet_loss,
+                        packet_loss_ingress: liveData.packet_loss_ingress ?? prev.packet_loss_ingress,
+                        packet_loss_egress: liveData.packet_loss_egress ?? prev.packet_loss_egress,
+                        jitter: liveData.jitter ?? prev.jitter,
+                        jitter_ingress: liveData.jitter_ingress ?? prev.jitter_ingress,
+                        jitter_egress: liveData.jitter_egress ?? prev.jitter_egress,
+                        mos: liveData.mos ?? prev.mos,
+                        mos_ingress: liveData.mos_ingress ?? prev.mos_ingress,
+                        mos_egress: liveData.mos_egress ?? prev.mos_egress,
+                    };
+                });
+            })
+            .catch(() => {})
+            .finally(() => {
+                if (!cancelled) setIsInspectingLink(false);
+            });
+
+        return () => {
+            cancelled = true;
+        };
+    }, [inspectedVpnId]);
+
     const [hoveredEdge, setHoveredEdge] = useState<{ data: any; x: number; y: number } | null>(null);
     const [popTunnelFilter, setPopTunnelFilter] = useState<'ALL' | 'ACTIVE' | 'BACKUP' | 'DOWN'>('ALL');
     const [saseTunnelTypeFilter, setSaseTunnelTypeFilter] = useState<'ALL' | 'ACTIVE' | 'BACKUP' | 'DOWN'>('ALL');
@@ -5737,13 +5801,80 @@ function TopologyContent({ token, theme }: TopologyProps) {
                                                     {String(cipher).replace('aes-', 'AES').replace('-cbc', '')} · {keepaliveInterval}ms
                                                 </div>
                                             </div>
-                                            <div className="bg-card-secondary/30 p-2 rounded-xl border border-border/40 min-w-0 overflow-hidden">
-                                                <div className="text-[8px] font-black text-text-muted uppercase tracking-wider truncate whitespace-nowrap">LATENCY / LOSS</div>
-                                                <div className="text-[10px] font-bold text-emerald-400 truncate whitespace-nowrap">
-                                                    {inspectedLink.latency ? `${inspectedLink.latency}ms` : 'Optimal'} · {inspectedLink.packet_loss != null ? `${inspectedLink.packet_loss}%` : '0%'}
+                                            <div className={cn(
+                                                "p-2 rounded-xl border min-w-0 overflow-hidden transition-colors",
+                                                (inspectedLink.packet_loss ?? 0) >= 5 || (inspectedLink.latency ?? 0) >= 150 || (inspectedLink.mos != null && inspectedLink.mos < 3.0)
+                                                    ? "bg-rose-500/15 border-rose-500/40"
+                                                    : (inspectedLink.packet_loss ?? 0) >= 1 || (inspectedLink.latency ?? 0) >= 80 || (inspectedLink.mos != null && inspectedLink.mos < 3.6)
+                                                        ? "bg-amber-500/15 border-amber-500/40"
+                                                        : "bg-card-secondary/30 border-border/40"
+                                            )}>
+                                                <div className="flex items-center justify-between gap-1">
+                                                    <span className="text-[8px] font-black text-text-muted uppercase tracking-wider truncate whitespace-nowrap">LATENCY / LOSS</span>
+                                                    {isInspectingLink && <RefreshCw size={8} className="animate-spin text-cyan-400 shrink-0" />}
+                                                </div>
+                                                <div className={cn(
+                                                    "text-[10px] font-bold truncate whitespace-nowrap",
+                                                    (inspectedLink.packet_loss ?? 0) >= 5 || (inspectedLink.latency ?? 0) >= 150 || (inspectedLink.mos != null && inspectedLink.mos < 3.0)
+                                                        ? "text-rose-400"
+                                                        : (inspectedLink.packet_loss ?? 0) >= 1 || (inspectedLink.latency ?? 0) >= 80 || (inspectedLink.mos != null && inspectedLink.mos < 3.6)
+                                                            ? "text-amber-400"
+                                                            : "text-emerald-400"
+                                                )}>
+                                                    {isInspectingLink && inspectedLink.latency == null && inspectedLink.packet_loss == null
+                                                        ? 'Probing LQM...'
+                                                        : `${inspectedLink.latency != null ? `${inspectedLink.latency}ms` : 'Optimal'} · ${inspectedLink.packet_loss != null ? `${inspectedLink.packet_loss}%` : '0%'}`}
                                                 </div>
                                             </div>
                                         </div>
+
+                                        {/* Live LQM Directional Telemetry Strip (Ingress / Egress Loss, Jitter, MOS) */}
+                                        {(inspectedLink.latency != null || inspectedLink.packet_loss != null || inspectedLink.jitter != null || inspectedLink.mos != null) && (
+                                            <div className="grid grid-cols-4 gap-1.5 mb-2.5 px-2.5 py-2 rounded-xl bg-card-secondary/40 border border-border/50 text-[10px] font-mono">
+                                                <div className="min-w-0">
+                                                    <div className="text-[8px] font-black text-text-muted uppercase tracking-wider">RTT LATENCY</div>
+                                                    <div className={cn(
+                                                        "font-bold truncate",
+                                                        (inspectedLink.latency ?? 0) >= 150 ? "text-rose-400" : (inspectedLink.latency ?? 0) >= 80 ? "text-amber-400" : "text-emerald-400"
+                                                    )}>
+                                                        {inspectedLink.latency != null ? `${inspectedLink.latency} ms` : '—'}
+                                                    </div>
+                                                </div>
+                                                <div className="min-w-0">
+                                                    <div className="text-[8px] font-black text-text-muted uppercase tracking-wider">LOSS (IN / OUT)</div>
+                                                    <div className={cn(
+                                                        "font-bold truncate",
+                                                        (inspectedLink.packet_loss ?? 0) >= 5 ? "text-rose-400" : (inspectedLink.packet_loss ?? 0) >= 1 ? "text-amber-400" : "text-emerald-400"
+                                                    )}>
+                                                        {inspectedLink.packet_loss_ingress != null ? `${inspectedLink.packet_loss_ingress}%` : '0%'}
+                                                        <span className="text-text-muted mx-1">/</span>
+                                                        {inspectedLink.packet_loss_egress != null ? `${inspectedLink.packet_loss_egress}%` : '0%'}
+                                                    </div>
+                                                </div>
+                                                <div className="min-w-0">
+                                                    <div className="text-[8px] font-black text-text-muted uppercase tracking-wider">JITTER (IN / OUT)</div>
+                                                    <div className={cn(
+                                                        "font-bold truncate",
+                                                        (inspectedLink.jitter ?? 0) >= 30 ? "text-rose-400" : (inspectedLink.jitter ?? 0) >= 15 ? "text-amber-400" : "text-cyan-300"
+                                                    )}>
+                                                        {inspectedLink.jitter_ingress != null ? `${inspectedLink.jitter_ingress}ms` : '0ms'}
+                                                        <span className="text-text-muted mx-1">/</span>
+                                                        {inspectedLink.jitter_egress != null ? `${inspectedLink.jitter_egress}ms` : '0ms'}
+                                                    </div>
+                                                </div>
+                                                <div className="min-w-0">
+                                                    <div className="text-[8px] font-black text-text-muted uppercase tracking-wider">LINK MOS (IN / OUT)</div>
+                                                    <div className={cn(
+                                                        "font-bold truncate",
+                                                        (inspectedLink.mos ?? 4.4) < 3.0 ? "text-rose-400" : (inspectedLink.mos ?? 4.4) < 3.6 ? "text-amber-400" : "text-emerald-400"
+                                                    )}>
+                                                        {inspectedLink.mos_ingress != null ? inspectedLink.mos_ingress : '—'}
+                                                        <span className="text-text-muted mx-1">/</span>
+                                                        {inspectedLink.mos_egress != null ? inspectedLink.mos_egress : '—'}
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        )}
 
                                         {/* Status Pill */}
                                         <div className="flex items-center justify-between pt-2 border-t border-border/40 text-xs">
@@ -5761,6 +5892,15 @@ function TopologyContent({ token, theme }: TopologyProps) {
                                                             : `Inactive Tunnel (${statusReason || 'Standby Path'})`}
                                                 </span>
                                             </div>
+                                            <button
+                                                onClick={() => setInspectedLink((prev: any) => prev ? { ...prev, _liveInspectedVpnId: undefined } : prev)}
+                                                disabled={isInspectingLink}
+                                                className="px-2 py-0.5 rounded bg-card-secondary hover:bg-border/60 border border-border/50 text-[8px] font-mono font-bold text-text-secondary hover:text-text-primary flex items-center gap-1 cursor-pointer transition-colors shrink-0"
+                                                title="Refresh live LQM telemetry from Prisma SD-WAN Controller"
+                                            >
+                                                <RefreshCw size={9} className={cn(isInspectingLink && "animate-spin text-cyan-400")} />
+                                                {isInspectingLink ? 'Refreshing...' : 'Refresh LQM'}
+                                            </button>
                                         </div>
                                     </div>
                                 );

@@ -119,7 +119,10 @@ function loadPrismaConfig() {
         if (fs.existsSync(PRISMA_CONFIG_FILE)) {
             const data = fs.readFileSync(PRISMA_CONFIG_FILE, 'utf8');
             const config = JSON.parse(data);
-            if (config.tsg_id) process.env.PRISMA_SDWAN_TSGID = config.tsg_id;
+            if (config.tsg_id) {
+                process.env.PRISMA_SDWAN_TSGID = config.tsg_id;
+                process.env.PRISMA_SDWAN_TSG_ID = config.tsg_id;
+            }
             if (config.client_id) process.env.PRISMA_SDWAN_CLIENT_ID = config.client_id;
             if (config.client_secret) process.env.PRISMA_SDWAN_CLIENT_SECRET = config.client_secret;
             if (config.region) process.env.PRISMA_SDWAN_REGION = config.region;
@@ -146,6 +149,7 @@ function savePrismaConfig(config: any) {
         
         // Propagate to process.env immediately
         process.env.PRISMA_SDWAN_TSGID = data.tsg_id;
+        process.env.PRISMA_SDWAN_TSG_ID = data.tsg_id;
         process.env.PRISMA_SDWAN_CLIENT_ID = data.client_id;
         process.env.PRISMA_SDWAN_CLIENT_SECRET = data.client_secret;
         process.env.PRISMA_SDWAN_REGION = data.region;
@@ -1831,7 +1835,7 @@ if (fs.existsSync(INTERFACES_FILE)) {
 }
 
 const iotManager = new IoTManager(getInterface(), APP_CONFIG.configDir);
-iotManager.setEngineRuntime(getEffectiveEngineRuntime(), resolveGoEngineBinary()).catch(() => {});
+iotManager.setEngineRuntime?.(getEffectiveEngineRuntime(), resolveGoEngineBinary())?.catch(() => {});
 const vyosManager = new VyosManager(APP_CONFIG.configDir, PYTHON_PATH);
 const vyosScheduler = new VyosScheduler(vyosManager, APP_CONFIG.configDir, APP_CONFIG.logDir);
 const siteManager = new SiteManager(APP_CONFIG.configDir);
@@ -3535,10 +3539,17 @@ async function getPrismaSdwanBearerToken(): Promise<string | null> {
     if (cachedSdwanToken && Date.now() < cachedSdwanToken.expiresAt) {
         return cachedSdwanToken.token;
     }
-    const clientId = process.env.PRISMA_SDWAN_CLIENT_ID;
-    const clientSecret = process.env.PRISMA_SDWAN_CLIENT_SECRET;
-    const tsgId = process.env.PRISMA_SDWAN_TSG_ID || process.env.PRISMA_SDWAN_TSGID;
+    let clientId = process.env.PRISMA_SDWAN_CLIENT_ID || '';
+    let clientSecret = process.env.PRISMA_SDWAN_CLIENT_SECRET || '';
+    const tsgId = process.env.PRISMA_SDWAN_TSGID || process.env.PRISMA_SDWAN_TSG_ID || '';
     if (!clientId || !clientSecret || !tsgId) return null;
+
+    // Auto-heal swapped clientId / clientSecret if needed
+    if (clientSecret.includes('@') && !clientId.includes('@')) {
+        const tmp = clientId;
+        clientId = clientSecret;
+        clientSecret = tmp;
+    }
 
     try {
         const authUrl = 'https://auth.apps.paloaltonetworks.com/auth/v1/oauth2/access_token';
@@ -3552,12 +3563,20 @@ async function getPrismaSdwanBearerToken(): Promise<string | null> {
             },
             body: new URLSearchParams({
                 grant_type: 'client_credentials',
-                scope: `tsg_id:${tsgId}`,
+                scope: `tsg_id:${tsgId} email profile`,
             }),
         });
         if (!res.ok) return null;
         const data = (await res.json()) as any;
         if (data?.access_token) {
+            // Activate operator profile session for this JWT on Prisma SD-WAN controller
+            await fetch('https://api.sase.paloaltonetworks.com/sdwan/v2.1/api/profile', {
+                headers: {
+                    'Authorization': `Bearer ${data.access_token}`,
+                    'Accept': 'application/json',
+                },
+            }).catch(() => null);
+
             cachedSdwanToken = {
                 token: data.access_token,
                 expiresAt: Date.now() + ((data.expires_in || 899) * 1000) - 60_000,
@@ -3596,6 +3615,8 @@ app.get('/api/topology/vpn-link/:vpnId/inspect', authenticateToken, async (req, 
     const vpnId = String(req.params.vpnId || '').trim();
     const srcSiteName = String(req.query.srcSiteName || '').trim();
     const dstSiteName = String(req.query.dstSiteName || '').trim();
+    const reqSrcSiteId = String(req.query.srcSiteId || '').trim();
+    const reqDstSiteId = String(req.query.dstSiteId || '').trim();
     if (!vpnId || vpnId === 'N/A') {
         return res.status(400).json({ error: 'Valid vpnId is required' });
     }
@@ -3605,20 +3626,28 @@ app.get('/api/topology/vpn-link/:vpnId/inspect', authenticateToken, async (req, 
         return res.status(503).json({ error: 'Prisma SD-WAN credentials not available' });
     }
 
-    const headers = {
+    const rawRegion = (process.env.PRISMA_SDWAN_REGION || 'de').toLowerCase();
+    const panwRegion = ['eu', 'europe', 'germany', 'de'].includes(rawRegion) ? 'de' : 'us';
+
+    const headers: Record<string, string> = {
         'Authorization': `Bearer ${token}`,
         'Accept': 'application/json',
         'Content-Type': 'application/json',
+        'x-panw-region': panwRegion,
     };
     const baseUrl = 'https://api.sase.paloaltonetworks.com';
 
     try {
         // Build site/element name lookups from cached topology if available
         const siteIdToName: Record<string, string> = {};
+        const nameToSiteId: Record<string, string> = {};
         const elIdToName: Record<string, string> = {};
         const elNameToSiteId: Record<string, string> = {};
         for (const s of (topologyCache?.data?.sites || [])) {
-            if (s.id && s.name) siteIdToName[String(s.id)] = s.name;
+            if (s.id && s.name) {
+                siteIdToName[String(s.id)] = s.name;
+                nameToSiteId[s.name] = String(s.id);
+            }
             for (const d of (s.devices || [])) {
                 if (d.element_id && d.name) {
                     elIdToName[String(d.element_id)] = d.name;
@@ -3627,8 +3656,57 @@ app.get('/api/topology/vpn-link/:vpnId/inspect', authenticateToken, async (req, 
             }
         }
 
+        const initialSiteIds = Array.from(new Set(
+            [
+                reqSrcSiteId,
+                reqDstSiteId,
+                srcSiteName ? nameToSiteId[srcSiteName] : '',
+                dstSiteName ? nameToSiteId[dstSiteName] : '',
+            ].filter(Boolean)
+        ));
+
+        const fetchLqmMetrics = async (siteIdsForLqm: string[]) => {
+            if (!siteIdsForLqm.length) return { latJson: null, dirJson: null };
+            const endTime = new Date();
+            const startTime = new Date(endTime.getTime() - 10 * 60 * 1000);
+            const commonFilter = { site: siteIdsForLqm, path: [vpnId] };
+            const [latRes, dirRes] = await Promise.all([
+                fetch(`${baseUrl}/sdwan/monitor/v2.7/api/monitor/metrics`, {
+                    method: 'POST',
+                    headers,
+                    body: JSON.stringify({
+                        start_time: startTime.toISOString(),
+                        end_time: endTime.toISOString(),
+                        interval: '1min',
+                        view: {},
+                        filter: commonFilter,
+                        metrics: [{ name: 'LqmLatency', statistics: ['average'], unit: 'milliseconds' }],
+                    }),
+                }).catch(() => null),
+                fetch(`${baseUrl}/sdwan/monitor/v2.7/api/monitor/metrics`, {
+                    method: 'POST',
+                    headers,
+                    body: JSON.stringify({
+                        start_time: startTime.toISOString(),
+                        end_time: endTime.toISOString(),
+                        interval: '1min',
+                        view: { summary: false, individual: 'direction' },
+                        filter: commonFilter,
+                        metrics: [
+                            { name: 'LqmPacketLoss', statistics: ['average'], unit: 'Percentage' },
+                            { name: 'LqmJitter', statistics: ['average'], unit: 'milliseconds' },
+                            { name: 'LqmMos', statistics: ['average'], unit: 'count' },
+                        ],
+                    }),
+                }).catch(() => null),
+            ]);
+            const latJson = latRes && latRes.ok ? await latRes.json().catch(() => null) : null;
+            const dirJson = dirRes && dirRes.ok ? await dirRes.json().catch(() => null) : null;
+            return { latJson, dirJson };
+        };
+
         // Run parallel live queries to Prisma SD-WAN Controller
-        const [statusRes, stateRes, vqueryRes, corrRes, bgpRes] = await Promise.all([
+        const [statusRes, stateRes, vqueryRes, corrRes, bgpRes, initialLqm] = await Promise.all([
             fetch(`${baseUrl}/sdwan/v2.2/api/vpnlinks/${vpnId}/status`, { headers }).catch(() => null),
             fetch(`${baseUrl}/sdwan/v2.0/api/vpnlinks/${vpnId}/state`, { headers }).catch(() => null),
             fetch(`${baseUrl}/sdwan/v2.0/api/vpnlinks/query`, {
@@ -3646,6 +3724,7 @@ app.get('/api/topology/vpn-link/:vpnId/inspect', authenticateToken, async (req, 
                 headers,
                 body: JSON.stringify({}),
             }).catch(() => null),
+            initialSiteIds.length >= 2 ? fetchLqmMetrics(initialSiteIds) : Promise.resolve({ latJson: null, dirJson: null }),
         ]);
 
         let statusData: any = null;
@@ -3668,6 +3747,104 @@ app.get('/api/topology/vpn-link/:vpnId/inspect', authenticateToken, async (req, 
 
         const vqueryItems: any[] = vqueryJson?.items || [];
         const vmeta = vqueryItems.find((item: any) => String(item.id) === vpnId) || {};
+
+        const ep1El = statusData?.ep1_element_id ? String(statusData.ep1_element_id) : '';
+        const ep2El = statusData?.ep2_element_id ? String(statusData.ep2_element_id) : '';
+        const ep1Site = statusData?.ep1_site_id ? String(statusData.ep1_site_id) : '';
+        const ep2Site = statusData?.ep2_site_id ? String(statusData.ep2_site_id) : '';
+
+        // If initialSiteIds didn't include both endpoint sites, fetch LQM using ep1Site + ep2Site
+        let lqmResult = initialLqm;
+        const resolvedSiteIds = Array.from(new Set([...initialSiteIds, ep1Site, ep2Site].filter(Boolean)));
+        if ((!lqmResult.latJson || !lqmResult.dirJson) && resolvedSiteIds.length > 0) {
+            lqmResult = await fetchLqmMetrics(resolvedSiteIds);
+        }
+
+        // Parse LQM metrics (filtering out trailing unclosed minute bucket where MOS/Latency == 0)
+        let latencyMs: number | null = null;
+        let lossIngress: number | null = null;
+        let lossEgress: number | null = null;
+        let jitterIngress: number | null = null;
+        let jitterEgress: number | null = null;
+        let mosIngress: number | null = null;
+        let mosEgress: number | null = null;
+
+        const validTimestamps = new Set<string>();
+        const latMetrics: any[] = lqmResult.latJson?.metrics || [];
+        for (const m of latMetrics) {
+            for (const s of (m?.series || [])) {
+                const validPts = (s?.data?.[0]?.datapoints || []).filter((dp: any) => typeof dp?.value === 'number' && dp.value > 0);
+                for (const dp of validPts) {
+                    if (dp.time) validTimestamps.add(String(dp.time));
+                }
+                if (validPts.length > 0) {
+                    const tail = validPts.slice(-3);
+                    const avg = tail.reduce((acc: number, dp: any) => acc + Number(dp.value), 0) / tail.length;
+                    latencyMs = Math.round(avg * 10) / 10;
+                }
+            }
+        }
+
+        const dirMetrics: any[] = lqmResult.dirJson?.metrics || [];
+        // First pass: collect valid timestamps from LqmMos (> 0) so 0% packet loss is distinguished from unclosed trailing 0 bucket
+        for (const m of dirMetrics) {
+            for (const s of (m?.series || [])) {
+                const metricName = s?.name || m?.name;
+                if (metricName === 'LqmMos') {
+                    const dir = String(s?.view?.direction || '').toLowerCase();
+                    const validPts = (s?.data?.[0]?.datapoints || []).filter((dp: any) => typeof dp?.value === 'number' && dp.value > 0);
+                    for (const dp of validPts) {
+                        if (dp.time) validTimestamps.add(String(dp.time));
+                    }
+                    if (validPts.length > 0) {
+                        const tail = validPts.slice(-3);
+                        const avg = Math.round((tail.reduce((acc: number, dp: any) => acc + Number(dp.value), 0) / tail.length) * 100) / 100;
+                        if (dir === 'ingress') mosIngress = avg;
+                        else if (dir === 'egress') mosEgress = avg;
+                    }
+                }
+            }
+        }
+
+        // Second pass: compute LqmPacketLoss and LqmJitter on completed timestamps
+        for (const m of dirMetrics) {
+            for (const s of (m?.series || [])) {
+                const metricName = s?.name || m?.name;
+                if (metricName === 'LqmPacketLoss' || metricName === 'LqmJitter') {
+                    const dir = String(s?.view?.direction || '').toLowerCase();
+                    const rawPts: any[] = (s?.data?.[0]?.datapoints || []).filter((dp: any) => typeof dp?.value === 'number');
+                    const filteredPts = validTimestamps.size > 0
+                        ? rawPts.filter((dp: any) => validTimestamps.has(String(dp.time)))
+                        : rawPts.slice(0, -1);
+                    const pts = filteredPts.length > 0 ? filteredPts : rawPts;
+                    if (pts.length > 0) {
+                        const tail = pts.slice(-3);
+                        const avg = Math.round((tail.reduce((acc: number, dp: any) => acc + Number(dp.value), 0) / tail.length) * 100) / 100;
+                        if (metricName === 'LqmPacketLoss') {
+                            if (dir === 'ingress') lossIngress = avg;
+                            else if (dir === 'egress') lossEgress = avg;
+                        } else if (metricName === 'LqmJitter') {
+                            const jVal = Math.round(avg * 10) / 10;
+                            if (dir === 'ingress') jitterIngress = jVal;
+                            else if (dir === 'egress') jitterEgress = jVal;
+                        }
+                    }
+                }
+            }
+        }
+
+        const worstPacketLoss =
+            lossIngress != null && lossEgress != null
+                ? Math.max(lossIngress, lossEgress)
+                : (lossIngress ?? lossEgress ?? null);
+        const worstJitter =
+            jitterIngress != null && jitterEgress != null
+                ? Math.max(jitterIngress, jitterEgress)
+                : (jitterIngress ?? jitterEgress ?? null);
+        const worstMos =
+            mosIngress != null && mosEgress != null
+                ? Math.min(mosIngress, mosEgress)
+                : (mosIngress ?? mosEgress ?? null);
 
         const isUp = statusData ? Boolean(statusData.up ?? statusData.link_up ?? false) : false;
         const isUsable = statusData ? Boolean(statusData.usable ?? false) : false;
@@ -3717,12 +3894,6 @@ app.get('/api/topology/vpn-link/:vpnId/inspect', authenticateToken, async (req, 
 
         const stateUpdatedMs = eventTsMs || normalizePrismaTsMs(statusData?._updated_on_utc) || normalizePrismaTsMs(stateData?._updated_on_utc);
         const uptimeSec = stateUpdatedMs ? Math.max(0, Math.floor((Date.now() - stateUpdatedMs) / 1000)) : null;
-
-        // Core BGP peer check for NOT_USABLE tunnels
-        const ep1El = statusData?.ep1_element_id ? String(statusData.ep1_element_id) : '';
-        const ep2El = statusData?.ep2_element_id ? String(statusData.ep2_element_id) : '';
-        const ep1Site = statusData?.ep1_site_id ? String(statusData.ep1_site_id) : '';
-        const ep2Site = statusData?.ep2_site_id ? String(statusData.ep2_site_id) : '';
 
         let statusReason: string | null = null;
         let statusReasonCode: string | null = null;
@@ -3840,6 +4011,16 @@ app.get('/api/topology/vpn-link/:vpnId/inspect', authenticateToken, async (req, 
             dst_vep_id: dstVepId,
             src_shim_ip: srcShimIp,
             dst_shim_ip: dstShimIp,
+            latency: latencyMs,
+            packet_loss: worstPacketLoss,
+            packet_loss_ingress: lossIngress,
+            packet_loss_egress: lossEgress,
+            jitter: worstJitter,
+            jitter_ingress: jitterIngress,
+            jitter_egress: jitterEgress,
+            mos: worstMos,
+            mos_ingress: mosIngress,
+            mos_egress: mosEgress,
         });
     } catch (e: any) {
         res.status(500).json({ error: e.message || 'Live VPN link inspection failed' });
