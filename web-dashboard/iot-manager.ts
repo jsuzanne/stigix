@@ -325,18 +325,9 @@ export class IoTManager extends EventEmitter {
         this.saveSettings();
 
         if (max > prev) {
-            const slots = max - this.getActiveCount();
-            let promoted = 0;
-            for (const [id, state] of this.deviceStates.entries()) {
-                if (promoted >= slots) break;
-                if (state === 'QUEUED') {
-                    const cfg = this.managedDevices.get(id);
-                    if (cfg) {
-                        this.activateDevice(cfg).catch(e => log('IOT', `Promote failed: ${e}`, 'error'));
-                        promoted++;
-                    }
-                }
-            }
+            const beforeActive = this.getActiveCount();
+            this.promoteNextQueued();
+            const promoted = this.getActiveCount() - beforeActive;
             if (promoted > 0) log('IOT', `Promoted ${promoted} queued devices (limit → ${max})`);
         } else {
             log('IOT', `Limit reduced to ${max} — active devices finish naturally (no SIGKILL)`);
