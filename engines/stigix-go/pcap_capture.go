@@ -812,6 +812,36 @@ func dissectPCAPFile(pcapFile string, offset int, limit int) map[string]any {
 	}
 }
 
+type orderedKV struct {
+	Key   string
+	Value any
+}
+
+type orderedObject []orderedKV
+
+func (o orderedObject) MarshalJSON() ([]byte, error) {
+	var buf bytes.Buffer
+	buf.WriteByte('{')
+	for i, kv := range o {
+		if i > 0 {
+			buf.WriteByte(',')
+		}
+		kBytes, err := json.Marshal(kv.Key)
+		if err != nil {
+			return nil, err
+		}
+		vBytes, err := json.Marshal(kv.Value)
+		if err != nil {
+			return nil, err
+		}
+		buf.Write(kBytes)
+		buf.WriteByte(':')
+		buf.Write(vBytes)
+	}
+	buf.WriteByte('}')
+	return buf.Bytes(), nil
+}
+
 func dissectOnePacket(linkType uint32, pkt rawPCAPPacket, seqNo int, relTs float64) map[string]any {
 	raw := pkt.Data
 	length := len(raw)
@@ -821,7 +851,17 @@ func dissectOnePacket(linkType uint32, pkt rawPCAPPacket, seqNo int, relTs float
 	var dport any = nil
 	proto := "OTHER"
 	info := fmt.Sprintf("Frame %d bytes", length)
-	var tree []map[string]any
+	var tree orderedObject
+
+	tree = append(tree, orderedKV{
+		Key: "Frame",
+		Value: orderedObject{
+			{"Frame Number", seqNo},
+			{"Frame Length", fmt.Sprintf("%d bytes (%d bits)", length, length*8)},
+			{"Capture Length", fmt.Sprintf("%d bytes", length)},
+			{"Time Delta", fmt.Sprintf("%.6f seconds", relTs)},
+		},
+	})
 
 	l3Offset := 0
 	var etherType uint16
@@ -833,46 +873,58 @@ func dissectOnePacket(linkType uint32, pkt rawPCAPPacket, seqNo int, relTs float
 			srcMAC := net.HardwareAddr(raw[6:12]).String()
 			etherType = binary.BigEndian.Uint16(raw[12:14])
 			l3Offset = 14
+			ethFields := orderedObject{
+				{"Source MAC", srcMAC},
+				{"Destination MAC", dstMAC},
+				{"Type", fmt.Sprintf("0x%04x", etherType)},
+			}
 			// Handle 802.1Q VLAN tag
 			if etherType == 0x8100 && length >= 18 {
+				vlanTCI := binary.BigEndian.Uint16(raw[14:16])
+				vlanID := vlanTCI & 0x0fff
 				etherType = binary.BigEndian.Uint16(raw[16:18])
 				l3Offset = 18
+				ethFields = append(ethFields,
+					orderedKV{"802.1Q VLAN ID", int(vlanID)},
+					orderedKV{"Encapsulated Type", fmt.Sprintf("0x%04x", etherType)},
+				)
 			}
 			src = srcMAC
 			dst = dstMAC
-			tree = append(tree, map[string]any{
-				"layer":   "Ethernet II",
-				"summary": fmt.Sprintf("Src: %s -> Dst: %s (0x%04x)", srcMAC, dstMAC, etherType),
-				"fields": map[string]any{
-					"Source MAC":      srcMAC,
-					"Destination MAC": dstMAC,
-					"EtherType":       fmt.Sprintf("0x%04x", etherType),
-				},
+			tree = append(tree, orderedKV{
+				Key:   "Ethernet II",
+				Value: ethFields,
 			})
 		}
 	case 113: // DLT_LINUX_SLL (Linux cooked v1, used by `-i any`)
 		if length >= 16 {
 			pktType := binary.BigEndian.Uint16(raw[0:2])
+			llAddrType := binary.BigEndian.Uint16(raw[2:4])
+			llAddrLen := binary.BigEndian.Uint16(raw[4:6])
 			etherType = binary.BigEndian.Uint16(raw[14:16])
 			l3Offset = 16
-			tree = append(tree, map[string]any{
-				"layer":   "Linux Cooked Capture (SLL)",
-				"summary": fmt.Sprintf("PktType: %d, Proto: 0x%04x", pktType, etherType),
-				"fields": map[string]any{
-					"Packet Type": pktType,
-					"Protocol":    fmt.Sprintf("0x%04x", etherType),
+			tree = append(tree, orderedKV{
+				Key: "Linux Cooked Capture (SLL)",
+				Value: orderedObject{
+					{"Packet Type", int(pktType)},
+					{"Link-Layer Address Type", int(llAddrType)},
+					{"Link-Layer Address Length", int(llAddrLen)},
+					{"Protocol", fmt.Sprintf("0x%04x", etherType)},
 				},
 			})
 		}
 	case 276: // DLT_LINUX_SLL2 (Linux cooked v2)
 		if length >= 20 {
 			etherType = binary.BigEndian.Uint16(raw[0:2])
+			ifIndex := binary.BigEndian.Uint32(raw[4:8])
+			pktType := raw[10]
 			l3Offset = 20
-			tree = append(tree, map[string]any{
-				"layer":   "Linux Cooked Capture v2 (SLL2)",
-				"summary": fmt.Sprintf("Proto: 0x%04x", etherType),
-				"fields": map[string]any{
-					"Protocol": fmt.Sprintf("0x%04x", etherType),
+			tree = append(tree, orderedKV{
+				Key: "Linux Cooked Capture v2 (SLL2)",
+				Value: orderedObject{
+					{"Packet Type", int(pktType)},
+					{"Protocol", fmt.Sprintf("0x%04x", etherType)},
+					{"Interface Index", int(ifIndex)},
 				},
 			})
 		}
@@ -893,6 +945,10 @@ func dissectOnePacket(linkType uint32, pkt rawPCAPPacket, seqNo int, relTs float
 	case 0x0806: // ARP
 		proto = "ARP"
 		if len(l3Data) >= 28 {
+			hwType := binary.BigEndian.Uint16(l3Data[0:2])
+			pType := binary.BigEndian.Uint16(l3Data[2:4])
+			hwLen := l3Data[4]
+			pLen := l3Data[5]
 			op := binary.BigEndian.Uint16(l3Data[6:8])
 			sha := net.HardwareAddr(l3Data[8:14]).String()
 			spa := net.IP(l3Data[14:18]).String()
@@ -900,56 +956,80 @@ func dissectOnePacket(linkType uint32, pkt rawPCAPPacket, seqNo int, relTs float
 			tpa := net.IP(l3Data[24:28]).String()
 			src = spa
 			dst = tpa
-			opStr := fmt.Sprintf("Opcode %d", op)
+			opStr := fmt.Sprintf("Opcode (%d)", op)
 			switch op {
 			case 1:
-				opStr = "Request"
-				info = fmt.Sprintf("Who has %s? Tell %s", tpa, spa)
+				opStr = "Request (1)"
+				info = fmt.Sprintf("ARP: Who has %s? Tell %s", tpa, spa)
 			case 2:
-				opStr = "Reply"
-				info = fmt.Sprintf("%s is at %s", spa, sha)
+				opStr = "Reply (2)"
+				info = fmt.Sprintf("ARP: %s is at %s", spa, sha)
 			}
-			tree = append(tree, map[string]any{
-				"layer":   "Address Resolution Protocol (ARP)",
-				"summary": fmt.Sprintf("%s (%s)", opStr, info),
-				"fields": map[string]any{
-					"Operation":  opStr,
-					"Sender MAC": sha,
-					"Sender IP":  spa,
-					"Target MAC": tha,
-					"Target IP":  tpa,
+			tree = append(tree, orderedKV{
+				Key: "Address Resolution Protocol",
+				Value: orderedObject{
+					{"Hardware Type", int(hwType)},
+					{"Protocol Type", fmt.Sprintf("0x%04x", pType)},
+					{"Hardware Size", int(hwLen)},
+					{"Protocol Size", int(pLen)},
+					{"Opcode", opStr},
+					{"Sender MAC", sha},
+					{"Sender IP", spa},
+					{"Target MAC", tha},
+					{"Target IP", tpa},
 				},
 			})
 		}
 
 	case 0x0800: // IPv4
 		if len(l3Data) >= 20 {
-			ihl := int(l3Data[0]&0x0f) * 4
+			ihlWords := int(l3Data[0] & 0x0f)
+			ihl := ihlWords * 4
 			if ihl < 20 || len(l3Data) < ihl {
 				ihl = 20
+				ihlWords = 5
 			}
 			tos := l3Data[1]
 			dscp := tos >> 2
+			ecn := tos & 0x03
 			totalLen := binary.BigEndian.Uint16(l3Data[2:4])
 			id := binary.BigEndian.Uint16(l3Data[4:6])
+			flagsFrag := binary.BigEndian.Uint16(l3Data[6:8])
+			ipFlags := (flagsFrag >> 13) & 0x07
+			var ipFlagStrs []string
+			if ipFlags&0x02 != 0 {
+				ipFlagStrs = append(ipFlagStrs, "Don't Fragment (DF)")
+			}
+			if ipFlags&0x01 != 0 {
+				ipFlagStrs = append(ipFlagStrs, "More Fragments (MF)")
+			}
+			flagsDesc := "None"
+			if len(ipFlagStrs) > 0 {
+				flagsDesc = strings.Join(ipFlagStrs, ", ")
+			}
 			ttl := l3Data[8]
 			ipProto := l3Data[9]
+			hdrChksum := binary.BigEndian.Uint16(l3Data[10:12])
 			srcIP := net.IP(l3Data[12:16]).String()
 			dstIP := net.IP(l3Data[16:20]).String()
 			src = srcIP
 			dst = dstIP
+			proto = "IPv4"
 
-			tree = append(tree, map[string]any{
-				"layer":   "Internet Protocol Version 4 (IPv4)",
-				"summary": fmt.Sprintf("%s -> %s (TTL=%d, DSCP=%d, Len=%d)", srcIP, dstIP, ttl, dscp, totalLen),
-				"fields": map[string]any{
-					"Source IP":      srcIP,
-					"Destination IP": dstIP,
-					"TTL":            int(ttl),
-					"DSCP":           int(dscp),
-					"Total Length":   int(totalLen),
-					"Identification": fmt.Sprintf("0x%04x", id),
-					"Protocol":       int(ipProto),
+			tree = append(tree, orderedKV{
+				Key: "Internet Protocol Version 4",
+				Value: orderedObject{
+					{"Version", 4},
+					{"Header Length", fmt.Sprintf("%d bytes (%d)", ihl, ihlWords)},
+					{"Differentiated Services Field", fmt.Sprintf("0x%02x (DSCP: %d, ECN: %d)", tos, dscp, ecn)},
+					{"Total Length", int(totalLen)},
+					{"Identification", fmt.Sprintf("0x%04x (%d)", id, id)},
+					{"Flags", flagsDesc},
+					{"Time to Live (TTL)", int(ttl)},
+					{"Protocol", fmt.Sprintf("%d", ipProto)},
+					{"Header Checksum", fmt.Sprintf("0x%04x", hdrChksum)},
+					{"Source Address", srcIP},
+					{"Destination Address", dstIP},
 				},
 			})
 
@@ -959,6 +1039,10 @@ func dissectOnePacket(linkType uint32, pkt rawPCAPPacket, seqNo int, relTs float
 
 	case 0x86dd: // IPv6
 		if len(l3Data) >= 40 {
+			vcf := binary.BigEndian.Uint32(l3Data[0:4])
+			tc := (vcf >> 20) & 0xff
+			fl := vcf & 0xfffff
+			payloadLen := binary.BigEndian.Uint16(l3Data[4:6])
 			nextHdr := l3Data[6]
 			hopLimit := l3Data[7]
 			srcIP := net.IP(l3Data[8:24]).String()
@@ -968,14 +1052,17 @@ func dissectOnePacket(linkType uint32, pkt rawPCAPPacket, seqNo int, relTs float
 			proto = "IPv6"
 			info = fmt.Sprintf("IPv6 NextHeader=%d", nextHdr)
 
-			tree = append(tree, map[string]any{
-				"layer":   "Internet Protocol Version 6 (IPv6)",
-				"summary": fmt.Sprintf("%s -> %s (HopLimit=%d)", srcIP, dstIP, hopLimit),
-				"fields": map[string]any{
-					"Source IPv6":      srcIP,
-					"Destination IPv6": dstIP,
-					"Hop Limit":        int(hopLimit),
-					"Next Header":      int(nextHdr),
+			tree = append(tree, orderedKV{
+				Key: "Internet Protocol Version 6",
+				Value: orderedObject{
+					{"Version", 6},
+					{"Traffic Class", fmt.Sprintf("0x%02x", tc)},
+					{"Flow Label", fmt.Sprintf("0x%05x", fl)},
+					{"Payload Length", int(payloadLen)},
+					{"Next Header", int(nextHdr)},
+					{"Hop Limit", int(hopLimit)},
+					{"Source Address", srcIP},
+					{"Destination Address", dstIP},
 				},
 			})
 
@@ -1003,7 +1090,7 @@ func dissectOnePacket(linkType uint32, pkt rawPCAPPacket, seqNo int, relTs float
 	}
 }
 
-func dissectL4(ipProto uint8, l4Data []byte, tree []map[string]any) (string, any, any, string, []map[string]any) {
+func dissectL4(ipProto uint8, l4Data []byte, tree orderedObject) (string, any, any, string, orderedObject) {
 	switch ipProto {
 	case 1: // ICMP
 		proto := "ICMP"
@@ -1011,6 +1098,7 @@ func dissectL4(ipProto uint8, l4Data []byte, tree []map[string]any) (string, any
 		if len(l4Data) >= 4 {
 			icmpType := l4Data[0]
 			icmpCode := l4Data[1]
+			chksum := binary.BigEndian.Uint16(l4Data[2:4])
 			var id, seq uint16
 			if len(l4Data) >= 8 {
 				id = binary.BigEndian.Uint16(l4Data[4:6])
@@ -1027,17 +1115,21 @@ func dissectL4(ipProto uint8, l4Data []byte, tree []map[string]any) (string, any
 			if !ok {
 				tDesc = fmt.Sprintf("Type %d", icmpType)
 			}
-			info = fmt.Sprintf("%s (code=%d, id=%d, seq=%d)", tDesc, icmpCode, id, seq)
-			tree = append(tree, map[string]any{
-				"layer":   "Internet Control Message Protocol (ICMP)",
-				"summary": info,
-				"fields": map[string]any{
-					"Type":       fmt.Sprintf("%d (%s)", icmpType, tDesc),
-					"Code":       int(icmpCode),
-					"Identifier": int(id),
-					"Sequence":   int(seq),
+			info = fmt.Sprintf("%s id=0x%04x seq=%d", tDesc, id, seq)
+			tree = append(tree, orderedKV{
+				Key: "Internet Control Message Protocol",
+				Value: orderedObject{
+					{"Type", fmt.Sprintf("%d (%s)", icmpType, tDesc)},
+					{"Code", int(icmpCode)},
+					{"Checksum", fmt.Sprintf("0x%04x", chksum)},
+					{"Identifier", fmt.Sprintf("0x%04x (%d)", id, id)},
+					{"Sequence Number", int(seq)},
 				},
 			})
+			if len(l4Data) > 8 {
+				rawPayload := l4Data[8:]
+				tree = appendPayloadLayer(tree, rawPayload)
+			}
 		}
 		return proto, nil, nil, info, tree
 
@@ -1050,12 +1142,15 @@ func dissectL4(ipProto uint8, l4Data []byte, tree []map[string]any) (string, any
 		dp := int(binary.BigEndian.Uint16(l4Data[2:4]))
 		seq := binary.BigEndian.Uint32(l4Data[4:8])
 		ack := binary.BigEndian.Uint32(l4Data[8:12])
-		dataOff := int(l4Data[12]>>4) * 4
+		dataOffWords := int(l4Data[12] >> 4)
+		dataOff := dataOffWords * 4
 		if dataOff < 20 || len(l4Data) < dataOff {
 			dataOff = 20
 		}
 		flags := l4Data[13]
 		win := binary.BigEndian.Uint16(l4Data[14:16])
+		chksum := binary.BigEndian.Uint16(l4Data[16:18])
+		urgPtr := binary.BigEndian.Uint16(l4Data[18:20])
 
 		var flagNames []string
 		if flags&0x02 != 0 {
@@ -1073,22 +1168,29 @@ func dissectL4(ipProto uint8, l4Data []byte, tree []map[string]any) (string, any
 		if flags&0x08 != 0 {
 			flagNames = append(flagNames, "PSH")
 		}
-		flagStr := strings.Join(flagNames, ", ")
+		if flags&0x20 != 0 {
+			flagNames = append(flagNames, "URG")
+		}
+		flagStr := "None"
+		if len(flagNames) > 0 {
+			flagStr = strings.Join(flagNames, ", ")
+		}
 		payload := l4Data[dataOff:]
 		payloadLen := len(payload)
 
-		info := fmt.Sprintf("%d -> %d [%s] Seq=%d Ack=%d Win=%d Len=%d", sp, dp, flagStr, seq, ack, win, payloadLen)
-		tree = append(tree, map[string]any{
-			"layer":   "Transmission Control Protocol (TCP)",
-			"summary": fmt.Sprintf("Src Port: %d -> Dst Port: %d [%s]", sp, dp, flagStr),
-			"fields": map[string]any{
-				"Source Port":      sp,
-				"Destination Port": dp,
-				"Flags":            flagStr,
-				"Sequence Number":  seq,
-				"Ack Number":       ack,
-				"Window Size":      int(win),
-				"Payload Length":   payloadLen,
+		info := fmt.Sprintf("%d → %d [%s] Seq=%d Ack=%d Win=%d Len=%d", sp, dp, flagStr, seq, ack, win, payloadLen)
+		tree = append(tree, orderedKV{
+			Key: "Transmission Control Protocol",
+			Value: orderedObject{
+				{"Source Port", sp},
+				{"Destination Port", dp},
+				{"Sequence Number", seq},
+				{"Acknowledgment Number", ack},
+				{"Header Length", fmt.Sprintf("%d bytes", dataOff)},
+				{"Flags", fmt.Sprintf("0x%03x (%s)", flags, flagStr)},
+				{"Window Size", int(win)},
+				{"Checksum", fmt.Sprintf("0x%04x", chksum)},
+				{"Urgent Pointer", int(urgPtr)},
 			},
 		})
 
@@ -1100,27 +1202,68 @@ func dissectL4(ipProto uint8, l4Data []byte, tree []map[string]any) (string, any
 			headStr := string(payload[:headLen])
 			if strings.HasPrefix(headStr, "GET ") || strings.HasPrefix(headStr, "POST ") || strings.HasPrefix(headStr, "PUT ") || strings.HasPrefix(headStr, "DELETE ") || strings.HasPrefix(headStr, "HEAD ") || strings.HasPrefix(headStr, "HTTP/1.") {
 				proto = "HTTP"
-				firstLine := strings.Split(strings.ReplaceAll(headStr, "\r\n", "\n"), "\n")[0]
+				lines := strings.Split(strings.ReplaceAll(headStr, "\r\n", "\n"), "\n")
+				firstLine := lines[0]
 				if len(firstLine) > 100 {
 					firstLine = firstLine[:100]
 				}
-				info = firstLine
-				tree = append(tree, map[string]any{
-					"layer":   "Hypertext Transfer Protocol (HTTP)",
-					"summary": firstLine,
-					"fields":  map[string]any{"Payload Preview": headStr},
-				})
-			} else if dp == 443 || sp == 443 {
-				proto = "TLS"
-				if payloadLen > 5 && payload[0] == 0x16 {
-					info = fmt.Sprintf("TLS Handshake (%d -> %d, %d bytes)", sp, dp, payloadLen)
-				} else if payloadLen > 5 && payload[0] == 0x17 {
-					info = fmt.Sprintf("TLS Application Data (%d -> %d, %d bytes)", sp, dp, payloadLen)
+				info = fmt.Sprintf("%d → %d %s", sp, dp, firstLine)
+				httpFields := orderedObject{
+					{"Request / Status Line", firstLine},
+					{"Payload Length", fmt.Sprintf("%d bytes", payloadLen)},
 				}
+				for _, l := range lines[1:] {
+					if idx := strings.Index(l, ":"); idx > 0 {
+						k := strings.TrimSpace(l[:idx])
+						v := strings.TrimSpace(l[idx+1:])
+						if k != "" && v != "" && len(httpFields) < 8 {
+							httpFields = append(httpFields, orderedKV{k, v})
+						}
+					}
+				}
+				tree = append(tree, orderedKV{
+					Key:   "Hypertext Transfer Protocol (HTTP)",
+					Value: httpFields,
+				})
+			} else if len(payload) > 5 && (payload[0] == 0x16 || payload[0] == 0x17 || payload[0] == 0x14 || payload[0] == 0x15) && payload[1] == 0x03 {
+				proto = "TLS"
+				recType := "Record"
+				switch payload[0] {
+				case 0x16:
+					recType = "Handshake"
+					if payload[5] == 1 {
+						recType = "Client Hello"
+					} else if payload[5] == 2 {
+						recType = "Server Hello"
+					}
+				case 0x17:
+					recType = "Application Data"
+				case 0x15:
+					recType = "Alert"
+				case 0x14:
+					recType = "Change Cipher Spec"
+				}
+				recLen := int(binary.BigEndian.Uint16(payload[3:5]))
+				info = fmt.Sprintf("%d → %d TLSv1.x %s (%d bytes)", sp, dp, recType, payloadLen)
+				tree = append(tree, orderedKV{
+					Key: "Transport Layer Security (TLS)",
+					Value: orderedObject{
+						{"Content Type", fmt.Sprintf("%s (%d)", recType, payload[0])},
+						{"Version", fmt.Sprintf("0x03%02x", payload[2])},
+						{"Record Length", fmt.Sprintf("%d bytes", recLen)},
+					},
+				})
 			} else if dp == 179 || sp == 179 {
 				proto = "BGP"
-				info = fmt.Sprintf("BGP Message (%d -> %d, %d bytes)", sp, dp, payloadLen)
+				info = fmt.Sprintf("BGP Message (%d → %d, %d bytes)", sp, dp, payloadLen)
+				tree = append(tree, orderedKV{
+					Key: "Border Gateway Protocol (BGP)",
+					Value: orderedObject{
+						{"Payload Length", fmt.Sprintf("%d bytes", payloadLen)},
+					},
+				})
 			}
+			tree = appendPayloadLayer(tree, payload)
 		}
 
 		return proto, sp, dp, info, tree
@@ -1133,72 +1276,112 @@ func dissectL4(ipProto uint8, l4Data []byte, tree []map[string]any) (string, any
 		sp := int(binary.BigEndian.Uint16(l4Data[0:2]))
 		dp := int(binary.BigEndian.Uint16(l4Data[2:4]))
 		uLen := int(binary.BigEndian.Uint16(l4Data[4:6]))
+		chksum := binary.BigEndian.Uint16(l4Data[6:8])
 		payload := l4Data[8:]
 		payloadLen := len(payload)
 
-		info := fmt.Sprintf("%d -> %d Len=%d", sp, dp, payloadLen)
-		tree = append(tree, map[string]any{
-			"layer":   "User Datagram Protocol (UDP)",
-			"summary": fmt.Sprintf("Src Port: %d -> Dst Port: %d (Len=%d)", sp, dp, payloadLen),
-			"fields": map[string]any{
-				"Source Port":      sp,
-				"Destination Port": dp,
-				"UDP Length":       uLen,
-				"Payload Length":   payloadLen,
+		info := fmt.Sprintf("%d → %d Len=%d", sp, dp, uLen)
+		tree = append(tree, orderedKV{
+			Key: "User Datagram Protocol",
+			Value: orderedObject{
+				{"Source Port", sp},
+				{"Destination Port", dp},
+				{"Length", uLen},
+				{"Checksum", fmt.Sprintf("0x%04x", chksum)},
 			},
 		})
 
 		if sp == 53 || dp == 53 {
 			proto = "DNS"
 			qname, qr := parseDNSPayloadSummary(payload)
-			if qr == 0 {
-				info = fmt.Sprintf("Standard query %s", qname)
-			} else {
-				info = fmt.Sprintf("Standard query response %s", qname)
+			var txID, qdCount, anCount uint16
+			if len(payload) >= 12 {
+				txID = binary.BigEndian.Uint16(payload[0:2])
+				qdCount = binary.BigEndian.Uint16(payload[4:6])
+				anCount = binary.BigEndian.Uint16(payload[6:8])
 			}
-			tree = append(tree, map[string]any{
-				"layer":   "Domain Name System (DNS)",
-				"summary": info,
-				"fields": map[string]any{
-					"Type":       map[int]string{0: "Query", 1: "Response"}[qr],
-					"Query Name": qname,
+			if qr == 0 {
+				info = fmt.Sprintf("DNS: %d → %d Standard query %s", sp, dp, qname)
+			} else {
+				info = fmt.Sprintf("DNS: %d → %d Standard query response %s", sp, dp, qname)
+			}
+			tree = append(tree, orderedKV{
+				Key: "Domain Name System (DNS)",
+				Value: orderedObject{
+					{"Transaction ID", fmt.Sprintf("0x%04x", txID)},
+					{"Type", map[int]string{0: "Query (0)", 1: "Response (1)"}[qr]},
+					{"Questions", int(qdCount)},
+					{"Answer RRs", int(anCount)},
+					{"Query Name", qname},
 				},
 			})
-		} else if sp == 6100 || dp == 6100 || sp == 6200 || dp == 6200 {
-			proto = "STIGIX-VOICE"
-			headLen := payloadLen
-			if headLen > 120 {
-				headLen = 120
+		} else if sp == 6100 || dp == 6100 || sp == 6101 || dp == 6101 || sp == 6200 || dp == 6200 {
+			proto = "RTP"
+			rtpFields := orderedObject{}
+			tagOffset := 0
+			if payloadLen >= 12 && (payload[0]>>6) == 2 {
+				rtpVer := int(payload[0] >> 6)
+				rtpPT := int(payload[1] & 0x7f)
+				rtpSeq := int(binary.BigEndian.Uint16(payload[2:4]))
+				rtpTS := binary.BigEndian.Uint32(payload[4:8])
+				rtpSSRC := binary.BigEndian.Uint32(payload[8:12])
+				ptName := fmt.Sprintf("PT %d", rtpPT)
+				switch rtpPT {
+				case 0:
+					ptName = "ITU-T G.711 PCMU (0)"
+				case 8:
+					ptName = "ITU-T G.711 PCMA (8)"
+				case 9:
+					ptName = "ITU-T G.722 (9)"
+				case 18:
+					ptName = "ITU-T G.729 (18)"
+				}
+				rtpFields = append(rtpFields,
+					orderedKV{"Version", rtpVer},
+					orderedKV{"Payload Type", ptName},
+					orderedKV{"Sequence Number", rtpSeq},
+					orderedKV{"Timestamp", rtpTS},
+					orderedKV{"Synchronization Source (SSRC)", fmt.Sprintf("0x%08x", rtpSSRC)},
+				)
+				tagOffset = 12
 			}
-			asciiPart := toPrintableASCII(payload[:headLen])
-			if strings.Contains(asciiPart, "CONV:") {
+			cleanTag := extractContiguousTag(payload[tagOffset:])
+			if strings.HasPrefix(cleanTag, "CONV:") {
 				proto = "STIGIX-CONV"
-				info = fmt.Sprintf("Convergence Probe (%d -> %d) %s", sp, dp, truncateStr(asciiPart, 70))
-			} else if strings.Contains(asciiPart, "CID:") || strings.Contains(asciiPart, "CALL-") || strings.Contains(asciiPart, "TEST-") {
-				info = fmt.Sprintf("RTP Voice / Echo (%d -> %d) %s", sp, dp, truncateStr(asciiPart, 70))
+				info = fmt.Sprintf("Convergence Probe: %d → %d [%s]", sp, dp, cleanTag)
+			} else if cleanTag != "" {
+				info = fmt.Sprintf("RTP Audio: %d → %d [%s] Len=%d", sp, dp, cleanTag, uLen)
 			} else {
-				info = fmt.Sprintf("Stigix UDP Stream (%d -> %d, %dB)", sp, dp, payloadLen)
+				info = fmt.Sprintf("RTP Audio: %d → %d Len=%d", sp, dp, uLen)
 			}
-			tree = append(tree, map[string]any{
-				"layer":   "Stigix SD-WAN Telemetry / RTP",
-				"summary": info,
-				"fields":  map[string]any{"Tag Header": truncateStr(asciiPart, 120)},
+			rtpFields = append(rtpFields, orderedKV{"Stream Protocol", proto})
+			if cleanTag != "" {
+				rtpFields = append(rtpFields, orderedKV{"Stigix Tag", cleanTag})
+			}
+			rtpFields = append(rtpFields, orderedKV{"Payload Size", fmt.Sprintf("%d bytes", payloadLen)})
+			tree = append(tree, orderedKV{
+				Key:   "Real-Time Transport Protocol / Stigix Telemetry",
+				Value: rtpFields,
 			})
 		} else if sp == 500 || dp == 500 || sp == 4500 || dp == 4500 {
 			proto = "IKE/IPsec"
-			info = fmt.Sprintf("IKEv2 / NAT-T (%d -> %d, %dB)", sp, dp, payloadLen)
+			info = fmt.Sprintf("IKEv2 / NAT-T (%d → %d, %dB)", sp, dp, payloadLen)
 		} else if sp == 3784 || dp == 3784 || sp == 3785 || dp == 3785 || sp == 4784 || dp == 4784 {
 			proto = "BFD"
-			info = fmt.Sprintf("BFD Control Packet (%d -> %d)", sp, dp)
+			info = fmt.Sprintf("BFD Control Packet (%d → %d)", sp, dp)
 		} else if sp == 67 || dp == 67 || sp == 68 || dp == 68 {
 			proto = "DHCP"
-			info = fmt.Sprintf("DHCP Message (%d -> %d)", sp, dp)
+			info = fmt.Sprintf("DHCP Message (%d → %d)", sp, dp)
 		} else if sp == 123 || dp == 123 {
 			proto = "NTP"
-			info = fmt.Sprintf("NTP Time Sync (%d -> %d)", sp, dp)
+			info = fmt.Sprintf("NTP Time Sync (%d → %d)", sp, dp)
 		} else if sp == 47808 || dp == 47808 {
 			proto = "BACnet"
-			info = fmt.Sprintf("BACnet/IP IoT Broadcast (%d -> %d)", sp, dp)
+			info = fmt.Sprintf("BACnet/IP IoT Broadcast (%d → %d)", sp, dp)
+		}
+
+		if payloadLen > 0 {
+			tree = appendPayloadLayer(tree, payload)
 		}
 
 		return proto, sp, dp, info, tree
@@ -1208,6 +1391,31 @@ func dissectL4(ipProto uint8, l4Data []byte, tree []map[string]any) (string, any
 	default:
 		return fmt.Sprintf("IP-Proto-%d", ipProto), nil, nil, fmt.Sprintf("IP Protocol %d (%d bytes)", ipProto, len(l4Data)), tree
 	}
+}
+
+func appendPayloadLayer(tree orderedObject, rawPayload []byte) orderedObject {
+	if len(rawPayload) == 0 {
+		return tree
+	}
+	previewLen := len(rawPayload)
+	if previewLen > 64 {
+		previewLen = 64
+	}
+	var previewBuf bytes.Buffer
+	for _, b := range rawPayload[:previewLen] {
+		if b >= 32 && b < 127 {
+			previewBuf.WriteByte(b)
+		} else {
+			previewBuf.WriteByte('.')
+		}
+	}
+	return append(tree, orderedKV{
+		Key: "Payload Data",
+		Value: orderedObject{
+			{"Length", fmt.Sprintf("%d bytes", len(rawPayload))},
+			{"Preview", previewBuf.String()},
+		},
+	})
 }
 
 func parseDNSPayloadSummary(payload []byte) (string, int) {
@@ -1238,6 +1446,28 @@ func parseDNSPayloadSummary(payload []byte) (string, int) {
 		return ".", qr
 	}
 	return strings.Join(labels, "."), qr
+}
+
+func extractContiguousTag(b []byte) string {
+	var buf bytes.Buffer
+	for _, c := range b {
+		if c >= 32 && c < 127 {
+			buf.WriteByte(c)
+			if buf.Len() >= 96 {
+				break
+			}
+		} else {
+			if buf.Len() >= 4 {
+				break
+			}
+			buf.Reset()
+		}
+	}
+	res := strings.TrimSuffix(buf.String(), ":")
+	if strings.HasPrefix(res, "CID:") || strings.HasPrefix(res, "CONV:") || strings.HasPrefix(res, "CALL-") || strings.HasPrefix(res, "TEST-") {
+		return res
+	}
+	return ""
 }
 
 func toPrintableASCII(b []byte) string {
