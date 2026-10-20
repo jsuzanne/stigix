@@ -2296,7 +2296,7 @@ io.on('connection', (socket) => {
     socket.on('join-device-logs', (deviceId) => {
         socket.join(`logs:${deviceId}`);
         // Send initial cache
-        const status = iotManager.getDeviceStatus(deviceId);
+        const status = iotManager.getDeviceStatus(deviceId, true);
         if (status && status.logs) {
             socket.emit('initial-logs', { device_id: deviceId, logs: status.logs });
         }
@@ -2584,11 +2584,18 @@ if (getUsers().length === 0) {
 initializeDefaultConfigs();
 
 // --- IoT Helpers ---
+let iotConfigCache: { mtimeMs: number; data: { devices: IoTDeviceConfig[], network?: any } } | null = null;
+
 const getIoTConfig = (): { devices: IoTDeviceConfig[], network?: any } => {
     try {
         if (!fs.existsSync(IOT_DEVICES_FILE)) {
             log('IOT', `Config file NOT found: ${IOT_DEVICES_FILE}`, 'warn');
+            iotConfigCache = null;
             return { devices: [] }; // Ensure consistent return type
+        }
+        const stat = fs.statSync(IOT_DEVICES_FILE);
+        if (iotConfigCache && iotConfigCache.mtimeMs === stat.mtimeMs) {
+            return iotConfigCache.data;
         }
         const content = fs.readFileSync(IOT_DEVICES_FILE, 'utf8');
         if (process.env.DEBUG_IOT === 'true') {
@@ -2597,11 +2604,9 @@ const getIoTConfig = (): { devices: IoTDeviceConfig[], network?: any } => {
         const data = JSON.parse(content);
 
         // Handle legacy format (either flat array or object with network block)
-        if (Array.isArray(data)) {
-            return { devices: data };
-        }
-
-        return { devices: data.devices || [] };
+        const parsed = Array.isArray(data) ? { devices: data } : { devices: data.devices || [] };
+        iotConfigCache = { mtimeMs: stat.mtimeMs, data: parsed };
+        return parsed;
     } catch (e: any) {
         log('IOT', `Failed to parse ${IOT_DEVICES_FILE}: ${e.message}`, 'error');
         return { devices: [] };
@@ -2615,6 +2620,7 @@ const getIoTDevices = (): IoTDeviceConfig[] => {
 const saveIoTConfig = (config: { devices: IoTDeviceConfig[], network?: any }) => {
     // We strictly ONLY save devices. No more network block.
     fs.writeFileSync(IOT_DEVICES_FILE, JSON.stringify({ devices: config.devices }, null, 2));
+    iotConfigCache = null;
 
     // Auto-sync manager with current "One Truth" interface
     iotManager.setInterface(getInterface());
@@ -5843,26 +5849,31 @@ app.get('/api/connectivity/engine-status', authenticateToken, (_req, res) => {
 });
 
 app.get('/api/connectivity/test', authenticateToken, async (req, res) => {
-    // console.log('[CONNECTIVITY] Starting internet connectivity test...'); // Silenced to reduce noise
-
+    const forceLive = req.query.live === 'true';
     const testEndpoints: any[] = getFullEffectiveConnectivityProbes().filter((p: any) => p.enabled !== false);
 
     const results = [];
     for (const endpoint of testEndpoints) {
-        const checkResult = await performConnectivityCheck(endpoint);
+        let checkResult: ConnectivityResult | undefined;
+        if (!forceLive) {
+            checkResult = await connectivityLogger.getLatestResult(endpoint.id || endpoint.name)
+                || await connectivityLogger.getLatestResult(endpoint.name);
+        }
+        if (!checkResult) {
+            checkResult = await performConnectivityCheck(endpoint);
+        }
         const legacyFormat = {
             name: checkResult.endpointName,
             type: checkResult.endpointType.toLowerCase(),
             status: checkResult.reachable ? 'connected' : 'failed',
-            latency: Math.round(checkResult.metrics.total_ms),
+            latency: Math.round(checkResult.metrics?.total_ms || 0),
             score: checkResult.score,
             details: checkResult.httpCode ? `HTTP ${checkResult.httpCode}` :
                 (checkResult.endpointType === 'PING' ? 'ICMP' :
-                    (checkResult.endpointType === 'UDP' ? `Jitter: ${checkResult.metrics.jitter_ms?.toFixed(1)}ms` : 'TCP')),
+                    (checkResult.endpointType === 'UDP' ? `Jitter: ${checkResult.metrics?.jitter_ms?.toFixed(1)}ms` : 'TCP')),
             metrics: checkResult.metrics
         };
         results.push(legacyFormat);
-        // await connectivityLogger.logResult(checkResult); // Disabled duplicate logging from UI
 
         const key = `${legacyFormat.type}:${legacyFormat.name}`;
         const lastStatus = lastConnectivityStatusMap.get(key);
@@ -5897,7 +5908,20 @@ const CF_POP_CITIES: Record<string, string> = {
     SYD: 'Sydney', MEL: 'Melbourne', BOM: 'Mumbai', DEL: 'New Delhi', DXB: 'Dubai', GRU: 'São Paulo'
 };
 
+let publicIpCache: { data: any; timestamp: number } | null = null;
+const PUBLIC_IP_CACHE_TTL = 60 * 1000;
+
 app.get(['/api/connectivity/public-ip', '/api/system/public-ip'], authenticateToken, async (req, res) => {
+    const now = Date.now();
+    if (req.query.refresh !== 'true' && publicIpCache && (now - publicIpCache.timestamp < PUBLIC_IP_CACHE_TTL)) {
+        return res.json(publicIpCache.data);
+    }
+
+    const sendAndCache = (payload: any) => {
+        publicIpCache = { data: payload, timestamp: Date.now() };
+        return res.json(payload);
+    };
+
     // Helper to fetch Cloudflare trace (ip, colo/PoP, loc/country) in <1.5s
     const fetchCfTrace = async (): Promise<{ ip?: string; pop?: string; countryCode?: string; city?: string }> => {
         try {
@@ -5931,7 +5955,7 @@ app.get(['/api/connectivity/public-ip', '/api/system/public-ip'], authenticateTo
                 if (probeResult.success && probeResult.data && probeResult.data.ip) {
                     const pop = probeResult.data.pop ? String(probeResult.data.pop).toUpperCase() : null;
                     const city = probeResult.data.city || (pop ? CF_POP_CITIES[pop] || null : null);
-                    return res.json({
+                    return sendAndCache({
                         ip: probeResult.data.ip,
                         countryCode: probeResult.data.country || null,
                         country: probeResult.data.country || null,
@@ -5949,7 +5973,7 @@ app.get(['/api/connectivity/public-ip', '/api/system/public-ip'], authenticateTo
         // 1b. Fast Cloudflare 1.1.1.1 trace (provides IP + exact Edge PoP IATA code)
         const cfTrace = await fetchCfTrace();
         if (cfTrace.ip && cfTrace.pop) {
-            return res.json({
+            return sendAndCache({
                 ip: cfTrace.ip,
                 countryCode: cfTrace.countryCode || null,
                 country: cfTrace.countryCode || null,
@@ -5968,7 +5992,7 @@ app.get(['/api/connectivity/public-ip', '/api/system/public-ip'], authenticateTo
             if (ifconfigRes.ok) {
                 const data = await ifconfigRes.json() as any;
                 if (data && data.ip) {
-                    return res.json({
+                    return sendAndCache({
                         ip: data.ip,
                         countryCode: data.country_iso || cfTrace.countryCode || null,
                         country: data.country || null,
@@ -5991,7 +6015,7 @@ app.get(['/api/connectivity/public-ip', '/api/system/public-ip'], authenticateTo
             if (ipifyRes.ok) {
                 const data = await ipifyRes.json() as any;
                 if (data && data.ip) {
-                    return res.json({
+                    return sendAndCache({
                         ip: data.ip,
                         countryCode: cfTrace.countryCode || null,
                         country: null,
@@ -6013,7 +6037,7 @@ app.get(['/api/connectivity/public-ip', '/api/system/public-ip'], authenticateTo
             });
             if (response.ok) {
                 const data = await response.json() as any;
-                return res.json({
+                return sendAndCache({
                     ip: data.ip,
                     countryCode: data.country_code || cfTrace.countryCode || null,
                     country: data.country_name || null,
@@ -6030,138 +6054,161 @@ app.get(['/api/connectivity/public-ip', '/api/system/public-ip'], authenticateTo
     }
 });
 
+let gatewayIpProbeCache: { data: any; timestamp: number } | null = null;
+const GATEWAY_IP_CACHE_TTL = 15 * 1000;
+
 app.get('/api/system/gateway-ip', authenticateToken, async (req, res) => {
     try {
-        const platform = os.platform();
-        const execPromise = promisify(exec);
+        const now = Date.now();
+        let baseInfo: any;
+        if (req.query.refresh !== 'true' && gatewayIpProbeCache && (now - gatewayIpProbeCache.timestamp < GATEWAY_IP_CACHE_TTL)) {
+            baseInfo = gatewayIpProbeCache.data;
+        } else {
+            const platform = os.platform();
+            const execPromise = promisify(exec);
 
-        // Helper to check OS link state on Linux (/sys/class/net/<iface>/operstate & carrier)
-        const isInterfaceUp = (ifaceName: string, hasIp: boolean): boolean => {
-            if (!ifaceName) return false;
-            if (platform === 'linux') {
+            // Helper to check OS link state on Linux (/sys/class/net/<iface>/operstate & carrier)
+            const isInterfaceUp = (ifaceName: string, hasIp: boolean): boolean => {
+                if (!ifaceName) return false;
+                if (platform === 'linux') {
+                    try {
+                        const operFile = `/sys/class/net/${ifaceName}/operstate`;
+                        if (fs.existsSync(operFile)) {
+                            const oper = fs.readFileSync(operFile, 'utf8').trim().toLowerCase();
+                            if (oper === 'down') return false;
+                            if (oper === 'up') return true;
+                        }
+                        const carrierFile = `/sys/class/net/${ifaceName}/carrier`;
+                        if (fs.existsSync(carrierFile)) {
+                            const carrier = fs.readFileSync(carrierFile, 'utf8').trim();
+                            return carrier === '1';
+                        }
+                    } catch {}
+                }
+                return hasIp;
+            };
+
+            // 1. Enumerate all non-virtual host IPv4 interfaces
+            const rawInterfaces = os.networkInterfaces();
+            const hostIfaces: { name: string; ip: string; up: boolean }[] = [];
+            for (const name of Object.keys(rawInterfaces)) {
+                if (
+                    name.startsWith('lo') ||
+                    name.startsWith('docker') ||
+                    name.startsWith('br-') ||
+                    name.startsWith('veth') ||
+                    name.startsWith('virbr') ||
+                    name.startsWith('vnet') ||
+                    name.startsWith('utun') ||
+                    name.startsWith('awdl') ||
+                    name.startsWith('llw') ||
+                    name.startsWith('bridge')
+                ) {
+                    continue;
+                }
+                for (const details of rawInterfaces[name] || []) {
+                    if (
+                        details.family === 'IPv4' &&
+                        !details.internal &&
+                        !details.address.startsWith('127.') &&
+                        !details.address.startsWith('169.254.') &&
+                        !details.address.startsWith('172.17.') &&
+                        !details.address.startsWith('172.18.')
+                    ) {
+                        hostIfaces.push({
+                            name,
+                            ip: details.address,
+                            up: isInterfaceUp(name, true)
+                        });
+                    }
+                }
+            }
+
+            // 2. Determine Default Gateway IP, Default Route Interface, and Traffic Interface
+            let gwIp = '';
+            let defaultIface = '';
+            let routeSrcIp = '';
+
+            if (platform === 'darwin') {
                 try {
-                    const operFile = `/sys/class/net/${ifaceName}/operstate`;
-                    if (fs.existsSync(operFile)) {
-                        const oper = fs.readFileSync(operFile, 'utf8').trim().toLowerCase();
-                        if (oper === 'down') return false;
-                        if (oper === 'up') return true;
-                    }
-                    const carrierFile = `/sys/class/net/${ifaceName}/carrier`;
-                    if (fs.existsSync(carrierFile)) {
-                        const carrier = fs.readFileSync(carrierFile, 'utf8').trim();
-                        return carrier === '1';
-                    }
+                    const { stdout } = await execPromise("route -n get default 2>/dev/null");
+                    const gwMatch = stdout.match(/gateway:\s+(\S+)/);
+                    const ifMatch = stdout.match(/interface:\s+(\S+)/);
+                    if (gwMatch) gwIp = gwMatch[1].trim();
+                    if (ifMatch) defaultIface = ifMatch[1].trim();
+                } catch {}
+            } else if (platform === 'linux') {
+                try {
+                    const { stdout } = await execPromise("ip route show default 2>/dev/null | head -n 1");
+                    const viaMatch = stdout.match(/via\s+(\S+)/);
+                    const devMatch = stdout.match(/dev\s+(\S+)/);
+                    if (viaMatch) gwIp = viaMatch[1].trim();
+                    if (devMatch) defaultIface = devMatch[1].trim();
+                } catch {}
+                try {
+                    const { stdout: srcOut } = await execPromise("ip route get 1.1.1.1 2>/dev/null | head -n 1");
+                    const srcMatch = srcOut.match(/src\s+(\S+)/);
+                    const devMatch = srcOut.match(/dev\s+(\S+)/);
+                    const viaMatch = srcOut.match(/via\s+(\S+)/);
+                    if (srcMatch) routeSrcIp = srcMatch[1].trim();
+                    if (!defaultIface && devMatch) defaultIface = devMatch[1].trim();
+                    if (!gwIp && viaMatch) gwIp = viaMatch[1].trim();
                 } catch {}
             }
-            return hasIp;
-        };
 
-        // 1. Enumerate all non-virtual host IPv4 interfaces
-        const rawInterfaces = os.networkInterfaces();
-        const hostIfaces: { name: string; ip: string; up: boolean }[] = [];
-        for (const name of Object.keys(rawInterfaces)) {
-            if (
-                name.startsWith('lo') ||
-                name.startsWith('docker') ||
-                name.startsWith('br-') ||
-                name.startsWith('veth') ||
-                name.startsWith('virbr') ||
-                name.startsWith('vnet') ||
-                name.startsWith('utun') ||
-                name.startsWith('awdl') ||
-                name.startsWith('llw') ||
-                name.startsWith('bridge')
-            ) {
-                continue;
-            }
-            for (const details of rawInterfaces[name] || []) {
-                if (
-                    details.family === 'IPv4' &&
-                    !details.internal &&
-                    !details.address.startsWith('127.') &&
-                    !details.address.startsWith('169.254.') &&
-                    !details.address.startsWith('172.17.') &&
-                    !details.address.startsWith('172.18.')
-                ) {
-                    hostIfaces.push({
-                        name,
-                        ip: details.address,
-                        up: isInterfaceUp(name, true)
-                    });
-                }
-            }
-        }
+            // Configured Stigix traffic interface (from interfaces.txt or default route)
+            const configuredIface = (() => {
+                try { return getInterface(); } catch { return ''; }
+            })();
+            const trafficIface = defaultIface || configuredIface || hostIfaces[0]?.name || '';
+            const matchedTrafficEntry = hostIfaces.find(i => i.name === trafficIface) ||
+                (routeSrcIp ? hostIfaces.find(i => i.ip === routeSrcIp) : undefined) ||
+                hostIfaces[0];
 
-        // 2. Determine Default Gateway IP, Default Route Interface, and Traffic Interface
-        let gwIp = '';
-        let defaultIface = '';
-        let routeSrcIp = '';
+            const trafficIp = routeSrcIp || matchedTrafficEntry?.ip || '';
+            const trafficIfaceUp = isInterfaceUp(trafficIface, Boolean(trafficIp));
 
-        if (platform === 'darwin') {
-            try {
-                const { stdout } = await execPromise("route -n get default 2>/dev/null");
-                const gwMatch = stdout.match(/gateway:\s+(\S+)/);
-                const ifMatch = stdout.match(/interface:\s+(\S+)/);
-                if (gwMatch) gwIp = gwMatch[1].trim();
-                if (ifMatch) defaultIface = ifMatch[1].trim();
-            } catch {}
-        } else if (platform === 'linux') {
-            try {
-                const { stdout } = await execPromise("ip route show default 2>/dev/null | head -n 1");
-                const viaMatch = stdout.match(/via\s+(\S+)/);
-                const devMatch = stdout.match(/dev\s+(\S+)/);
-                if (viaMatch) gwIp = viaMatch[1].trim();
-                if (devMatch) defaultIface = devMatch[1].trim();
-            } catch {}
-            try {
-                const { stdout: srcOut } = await execPromise("ip route get 1.1.1.1 2>/dev/null | head -n 1");
-                const srcMatch = srcOut.match(/src\s+(\S+)/);
-                const devMatch = srcOut.match(/dev\s+(\S+)/);
-                const viaMatch = srcOut.match(/via\s+(\S+)/);
-                if (srcMatch) routeSrcIp = srcMatch[1].trim();
-                if (!defaultIface && devMatch) defaultIface = devMatch[1].trim();
-                if (!gwIp && viaMatch) gwIp = viaMatch[1].trim();
-            } catch {}
-        }
-
-        // Configured Stigix traffic interface (from interfaces.txt or default route)
-        const configuredIface = (() => {
-            try { return getInterface(); } catch { return ''; }
-        })();
-        const trafficIface = defaultIface || configuredIface || hostIfaces[0]?.name || '';
-        const matchedTrafficEntry = hostIfaces.find(i => i.name === trafficIface) ||
-            (routeSrcIp ? hostIfaces.find(i => i.ip === routeSrcIp) : undefined) ||
-            hostIfaces[0];
-
-        const trafficIp = routeSrcIp || matchedTrafficEntry?.ip || '';
-        const trafficIfaceUp = isInterfaceUp(trafficIface, Boolean(trafficIp));
-
-        // 3. Active ICMP Ping check against the SD-WAN Gateway (timeout 1s)
-        let gwReachable: boolean | null = null;
-        let gwLatencyMs: number | null = null;
-        if (gwIp && /^(\d{1,3}\.){3}\d{1,3}$/.test(gwIp)) {
-            if (!trafficIfaceUp) {
-                gwReachable = false;
-            } else {
-                try {
-                    const pingCmd = platform === 'darwin'
-                        ? `ping -c 1 -t 1 ${gwIp} 2>/dev/null`
-                        : `ping -c 1 -W 1 ${gwIp} 2>/dev/null`;
-                    const { stdout: pingOut } = await execPromise(pingCmd, { timeout: 1500 });
-                    gwReachable = true;
-                    const timeMatch = pingOut.match(/time[=<]([\d.]+)\s*ms/i);
-                    if (timeMatch) {
-                        gwLatencyMs = Math.round(parseFloat(timeMatch[1]) * 10) / 10;
-                    }
-                } catch {
+            // 3. Active ICMP Ping check against the SD-WAN Gateway (timeout 1s)
+            let gwReachable: boolean | null = null;
+            let gwLatencyMs: number | null = null;
+            if (gwIp && /^(\d{1,3}\.){3}\d{1,3}$/.test(gwIp)) {
+                if (!trafficIfaceUp) {
                     gwReachable = false;
+                } else {
+                    try {
+                        const pingCmd = platform === 'darwin'
+                            ? `ping -c 1 -t 1 ${gwIp} 2>/dev/null`
+                            : `ping -c 1 -W 1 ${gwIp} 2>/dev/null`;
+                        const { stdout: pingOut } = await execPromise(pingCmd, { timeout: 1500 });
+                        gwReachable = true;
+                        const timeMatch = pingOut.match(/time[=<]([\d.]+)\s*ms/i);
+                        if (timeMatch) {
+                            gwLatencyMs = Math.round(parseFloat(timeMatch[1]) * 10) / 10;
+                        }
+                    } catch {
+                        gwReachable = false;
+                    }
                 }
             }
+
+            // 4. Secondary / Out-of-Band Management Interface detection (if VM has 2+ NICs)
+            const secondaryIfaces = hostIfaces.filter(i => i.name !== trafficIface && i.ip !== trafficIp);
+            const mgmtEntry = secondaryIfaces[0] || null;
+
+            baseInfo = {
+                gwIp,
+                trafficIface,
+                trafficIp,
+                trafficIfaceUp,
+                gwReachable,
+                gwLatencyMs,
+                mgmtEntry,
+                hostIfaces
+            };
+            gatewayIpProbeCache = { data: baseInfo, timestamp: Date.now() };
         }
 
-        // 4. Secondary / Out-of-Band Management Interface detection (if VM has 2+ NICs)
-        const secondaryIfaces = hostIfaces.filter(i => i.name !== trafficIface && i.ip !== trafficIp);
-        const mgmtEntry = secondaryIfaces[0] || null;
+        const { gwIp, trafficIface, trafficIp, trafficIfaceUp, gwReachable, gwLatencyMs, mgmtEntry, hostIfaces } = baseInfo;
 
         // 5. Determine how the operator is currently accessing the Stigix UI
         const gwSourceHeader = String(req.headers['x-gateway-source'] || '');
@@ -6191,7 +6238,7 @@ app.get('/api/system/gateway-ip', authenticateToken, async (req, res) => {
             accessIface = trafficIface || null;
             accessLabel = trafficIface ? `In-Band (${trafficIface})` : `In-Band (${trafficIp})`;
         } else {
-            const matchedArrival = hostIfaces.find(i => i.ip === arrivalIp);
+            const matchedArrival = hostIfaces.find((i: any) => i.ip === arrivalIp);
             if (matchedArrival) {
                 const isTraffic = matchedArrival.name === trafficIface || matchedArrival.ip === trafficIp;
                 accessMode = isTraffic ? 'in_band' : 'out_of_band';
@@ -12955,9 +13002,17 @@ app.get('/api/admin/system/info', authenticateToken, async (req, res) => {
  * API: System Health Matrix Aggregator
  * Gathers in-memory statuses across all 9 Stigix subsystems in < 5ms.
  */
+let healthMatrixCache: { data: any; timestamp: number } | null = null;
+const HEALTH_MATRIX_CACHE_TTL = 3000;
+let diskUsageCache: { data: { total: number; used: number; free: number; usagePercent: number }; timestamp: number } | null = null;
+const DISK_USAGE_CACHE_TTL = 60 * 1000;
+
 app.get('/api/system/health-matrix', authenticateToken, async (req, res) => {
     try {
         const now = Date.now();
+        if (req.query.refresh !== 'true' && healthMatrixCache && (now - healthMatrixCache.timestamp < HEALTH_MATRIX_CACHE_TTL)) {
+            return res.json(healthMatrixCache.data);
+        }
 
         // 1. Prisma SD-WAN Cloud
         let prismaStatus: any = {
@@ -13260,8 +13315,7 @@ app.get('/api/system/health-matrix', authenticateToken, async (req, res) => {
         };
         try {
             if (fs.existsSync(VOICE_STATS_FILE)) {
-                const raw = fs.readFileSync(VOICE_STATS_FILE, 'utf8').trim();
-                const lines = raw.split('\n').filter(l => l.trim()).slice(-100);
+                const lines = readLastLinesSync(VOICE_STATS_FILE, 100);
                 const calls = lines.map(l => { try { return JSON.parse(l); } catch { return null; } }).filter(Boolean);
                 if (calls.length > 0) {
                     const mosCalls = calls.filter((c: any) => (c.mos_score && c.mos_score > 0) || (c.mos && c.mos > 0));
@@ -13308,20 +13362,24 @@ app.get('/api/system/health-matrix', authenticateToken, async (req, res) => {
         } catch {}
         const usedMem = Math.max(0, totalMem - freeMem);
         const cpus = os.cpus();
-        const loadAvg = os.loadavg();
         const cpuSample = sampleCpuPercent();
 
         let disk = { total: 0, used: 0, free: 0, usagePercent: 0 };
-        try {
-            const { stdout } = await promisify(exec)('df -k / | tail -n 1');
-            const parts = stdout.trim().split(/\s+/);
-            if (parts.length >= 5) {
-                disk.total = parseInt(parts[1], 10) * 1024;
-                disk.used = parseInt(parts[2], 10) * 1024;
-                disk.free = parseInt(parts[3], 10) * 1024;
-                disk.usagePercent = parseInt(parts[4].replace('%', ''), 10);
-            }
-        } catch {}
+        if (diskUsageCache && (now - diskUsageCache.timestamp < DISK_USAGE_CACHE_TTL)) {
+            disk = diskUsageCache.data;
+        } else {
+            try {
+                const { stdout } = await promisify(exec)('df -k / | tail -n 1');
+                const parts = stdout.trim().split(/\s+/);
+                if (parts.length >= 5) {
+                    disk.total = parseInt(parts[1], 10) * 1024;
+                    disk.used = parseInt(parts[2], 10) * 1024;
+                    disk.free = parseInt(parts[3], 10) * 1024;
+                    disk.usagePercent = parseInt(parts[4].replace('%', ''), 10);
+                    diskUsageCache = { data: disk, timestamp: now };
+                }
+            } catch {}
+        }
 
         const nets = os.networkInterfaces();
         const hasHostInterfaces = Object.keys(nets).some(name =>
@@ -13467,7 +13525,7 @@ app.get('/api/system/health-matrix', authenticateToken, async (req, res) => {
             ? tcpAppManager.multicastManager.getActiveStreamSummary()
             : { running: false, activeStreamsCount: 0, totalProfilesCount: 0, activeProfiles: [] };
 
-        res.json({
+        const responsePayload = {
             success: true,
             timestamp: now,
             overall_score: overallScore,
@@ -13487,7 +13545,9 @@ app.get('/api/system/health-matrix', authenticateToken, async (req, res) => {
                 events: eventsStatus,
                 host: hostStatus
             }
-        });
+        };
+        healthMatrixCache = { data: responsePayload, timestamp: now };
+        res.json(responsePayload);
     } catch (e: any) {
         res.status(500).json({ success: false, error: e.message });
     }
@@ -15177,6 +15237,7 @@ app.get('/api/system/iot-health', authenticateToken, (req, res) => {
 });
 app.get('/api/iot/devices', authenticateToken, (req, res) => {
     const devices = getIoTDevices();
+    const includeLogs = req.query.includeLogs === 'true';
 
     // Logger uniquement en mode DEBUG
     if (process.env.DEBUG_IOT === 'true') {
@@ -15189,7 +15250,7 @@ app.get('/api/iot/devices', authenticateToken, (req, res) => {
         running: deviceStates[d.id] === 'ACTIVE',
         deviceState: deviceStates[d.id] || 'STOPPED',
         timing: timings[d.id] || null,
-        status: iotManager.getDeviceStatus(d.id)
+        status: iotManager.getDeviceStatus(d.id, includeLogs)
     }));
     res.json(result);
 });

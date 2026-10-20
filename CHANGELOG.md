@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.0.60] - 2026-10-20
+
+### Performance
+- **Digital Experience, IoT & Peer Context Switch Acceleration (`web-dashboard/server.ts`, `web-dashboard/connectivity-logger.ts`, `web-dashboard/iot-manager.ts`)**:
+  - **Instant `/api/connectivity/test` via `latestByEndpoint` Index**: Added an $O(1)$ `latestByEndpoint` map (`getLatestResult(idOrName)`) in `ConnectivityLogger` and updated `GET /api/connectivity/test` to return the latest background probe results immediately (`< 20 ms` instead of executing all 35+ probes sequentially for `104.9 s` and triggering `504 Gateway Timeout` on Peer context switches), while preserving on-demand live probing via `?live=true`.
+  - **Zero-Disk-Read `ConnectivityLogger` Tail & Multi-Range Stats Cache**: Increased `MAX_IN_MEMORY` from `8,000` to `15,000` samples with a `memoryCoversFullTail` tracking flag so `getEffectiveResults()` serves `15m`/`1h` queries directly from RAM without re-reading and parsing the `4 MB` JSONL tail from disk on every poll (`1,050 ms` $\rightarrow$ `7.4 ms`), and converted `statsCache` into a per-range `Map` so `15m`, `1h`, and `24h` queries never evict each other.
+  - **Lightweight `/api/iot/devices` Payload & `mtimeMs` Config Cache**: Updated `IoTManager.getDeviceStatus(id, includeLogs = false)` to omit the 50-entry per-device `logs` history array on list polling (still included when joining the live device log room or via `?includeLogs=true`) and cached `iot-devices.json` by `stat.mtimeMs`, shrinking the `/api/iot/devices` payload on 100-device nodes by `-90.7%` (`1.54 MB` $\rightarrow$ `143 KB`) and cutting response time from `891 ms` down to `17 ms`.
+  - **Cached `/api/system/health-matrix`, `/api/system/gateway-ip` & `/api/connectivity/public-ip`**: Added a `3 s` response cache on `health-matrix` with `60 s` `df -k /` caching and tail-only reading (`readLastLinesSync`) of `voice_stats.jsonl` (`365 ms` $\rightarrow$ `6.8 ms`), a `15 s` OS route/ping probe cache on `gateway-ip`, and a `60 s` cache on `public-ip`.
+
+### Fixed
+- **AI Copilot & FastMCP Digital Experience Summary Accuracy (`web-dashboard/ai-copilot/ai-tools.ts`, `mcp-server/src/lib/orchestrator.py`)**:
+  - Aligned `get_digital_experience_summary` with `ConnectivityLogger` schema (`endpointId`, `endpointName`, `httpCode`, `metrics.total_ms`, `score`, `reachable`) and newest-first sample ordering so active probes accurately report `samples_count`, `avg_rtt_ms`, `p95_rtt_ms`, and `avg_score`.
+
 ## [3.0.59] - 2026-10-20
 
 ### Changed

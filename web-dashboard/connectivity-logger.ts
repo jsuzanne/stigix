@@ -71,6 +71,8 @@ export class ConnectivityLogger {
             if (this.memoryResults.length > this.MAX_IN_MEMORY) {
                 this.memoryResults.pop();
             }
+            if (result.endpointId) this.latestByEndpoint.set(result.endpointId, result);
+            if (result.endpointName) this.latestByEndpoint.set(result.endpointName, result);
 
             // Note: statsCache uses a 5s TTL in getStats(); do not wipe it on every probe write
         } catch (error) {
@@ -119,9 +121,11 @@ export class ConnectivityLogger {
         }
     }
 
-    private statsCache: { data: any, timestamp: number, range: string } | null = null;
+    private statsCache: Map<string, { data: any, timestamp: number }> = new Map();
     private memoryResults: ConnectivityResult[] = [];
-    private readonly MAX_IN_MEMORY = 8000;
+    private latestByEndpoint: Map<string, ConnectivityResult> = new Map();
+    private readonly MAX_IN_MEMORY = 15000;
+    private memoryCoversFullTail: boolean = false;
     private initialized: boolean = false;
     private initPromise: Promise<void> | null = null;
 
@@ -134,7 +138,16 @@ export class ConnectivityLogger {
                 if (fs.existsSync(this.currentLogFile)) {
                     const tail = await this.loadTailFromFile(this.currentLogFile, this.MAX_IN_MEMORY);
                     this.memoryResults = tail.results;
+                    for (const r of this.memoryResults) {
+                        if (r.endpointId && !this.latestByEndpoint.has(r.endpointId)) {
+                            this.latestByEndpoint.set(r.endpointId, r);
+                        }
+                        if (r.endpointName && !this.latestByEndpoint.has(r.endpointName)) {
+                            this.latestByEndpoint.set(r.endpointName, r);
+                        }
+                    }
                 }
+                this.memoryCoversFullTail = true;
             } catch (err) {
                 log('CONNECTIVITY_LOGGER', `Failed to initialize memory buffer: ${err}`, 'error');
             } finally {
@@ -143,6 +156,11 @@ export class ConnectivityLogger {
         })();
 
         return this.initPromise;
+    }
+
+    async getLatestResult(idOrName: string): Promise<ConnectivityResult | undefined> {
+        await this.ensureInitialized();
+        return this.latestByEndpoint.get(idOrName);
     }
 
     private parseTimeRangeCutoff(timeRange?: string): number {
@@ -165,11 +183,11 @@ export class ConnectivityLogger {
         const hasData = this.memoryResults.length > 0;
         const oldestMemoryTs = hasData ? this.memoryResults[this.memoryResults.length - 1].timestamp : Infinity;
 
-        // Check if the in-memory ring buffer fully covers the request
+        // Check if the in-memory ring buffer covers the request or already holds the full 4MB tail chunk
         const coversTimeRange = minTimestamp !== undefined && minTimestamp > 0 && hasData && oldestMemoryTs <= minTimestamp;
-        const coversCount = (!minTimestamp || minTimestamp <= 0) && maxResults !== undefined && this.memoryResults.length >= maxResults;
+        const coversCount = maxResults !== undefined && this.memoryResults.length >= maxResults;
 
-        if (coversTimeRange || coversCount) {
+        if (coversTimeRange || coversCount || this.memoryCoversFullTail) {
             if (minTimestamp && minTimestamp > 0) {
                 const filtered = this.memoryResults.filter(r => r.timestamp >= minTimestamp);
                 return maxResults && filtered.length > maxResults ? filtered.slice(0, maxResults) : filtered;
@@ -211,12 +229,14 @@ export class ConnectivityLogger {
     }
 
     async getStats(options: { timeRange?: string, activeProbeIds?: string[], globalScoreTypes?: string[] } = {}): Promise<any> {
-        // Cache aligned with probe interval (5 seconds TTL)
+        // Cache aligned with probe interval (5 seconds TTL), keyed per timeRange + filter signature
         const STATS_CACHE_TTL = 5 * 1000;
         const now = Date.now();
         const cacheRange = options.timeRange || '24h';
-        if (this.statsCache && (now - this.statsCache.timestamp < STATS_CACHE_TTL) && (this.statsCache.range === cacheRange)) {
-            return this.statsCache.data;
+        const cacheKey = `${cacheRange}:${(options.activeProbeIds || []).length}:${(options.globalScoreTypes || []).join(',')}`;
+        const cached = this.statsCache.get(cacheKey);
+        if (cached && (now - cached.timestamp < STATS_CACHE_TTL)) {
+            return cached.data;
         }
 
         try {
@@ -266,21 +286,24 @@ export class ConnectivityLogger {
                 lastLatency?: number
             }>();
             filtered.forEach(r => {
+                const rType = r.endpointType || (r as any).type;
+                const rTarget = r.url || (r as any).target;
+                const rLatency = r.metrics?.total_ms ?? (r as any).latency;
                 const stats = endpointStats.get(r.endpointId) || { 
                     name: r.endpointName, 
-                    type: r.type,
-                    target: r.target,
+                    type: rType,
+                    target: rTarget,
                     count: 0, 
                     success: 0, 
                     totalScore: 0,
                     lastError: r.error,
-                    lastLatency: r.latency
+                    lastLatency: rLatency
                 };
                 stats.count++;
                 if (r.reachable) stats.success++;
                 if (r.error && !stats.lastError) stats.lastError = r.error;
-                if (r.type && !stats.type) stats.type = r.type;
-                if (r.target && !stats.target) stats.target = r.target;
+                if (rType && !stats.type) stats.type = rType;
+                if (rTarget && !stats.target) stats.target = rTarget;
                 stats.totalScore += r.score;
                 endpointStats.set(r.endpointId, stats);
             });
@@ -316,7 +339,7 @@ export class ConnectivityLogger {
                 lastCheckTime: allResults.length > 0 ? allResults[0].timestamp : null
             };
 
-            this.statsCache = { data: computedStats, timestamp: now, range: cacheRange };
+            this.statsCache.set(cacheKey, { data: computedStats, timestamp: now });
             return computedStats;
         } catch (error) {
             log('CONNECTIVITY_LOGGER', `Failed to compute stats: ${error}`, 'error');

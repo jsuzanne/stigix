@@ -2876,21 +2876,60 @@ export async function executeCopilotTool(
                 const nodeCtx = resolveNodeContext(args.agent_id, ctx);
                 let arr: any[] = [];
                 let stats: any = null;
-                const [probesRes, statsRes] = await Promise.all([
+                const [probesRes, statsRes, resultsRes] = await Promise.all([
                     (nodeCtx.isLocal && ctx.getAllProbes)
                         ? Promise.resolve(ctx.getAllProbes())
                         : fetchApi(nodeCtx, '/api/connectivity/custom').catch(async () => fetchApi(nodeCtx, '/api/connectivity/active-probes')).catch(() => []),
-                    fetchApi(nodeCtx, '/api/connectivity/stats?range=1h').catch(() => null)
+                    fetchApi(nodeCtx, '/api/connectivity/stats?range=1h').catch(() => null),
+                    fetchApi(nodeCtx, '/api/connectivity/results?limit=300').catch(() => [])
                 ]);
-                arr = Array.isArray(probesRes) ? probesRes : (probesRes?.probes || []);
+                arr = Array.isArray(probesRes) ? probesRes : (probesRes?.probes || probesRes?.targets || []);
                 stats = statsRes;
+                const rawResults = Array.isArray(resultsRes) ? resultsRes : ((resultsRes as any)?.results || []);
+
+                const latestByKey = new Map<string, any>();
+                for (const r of rawResults) {
+                    const rName = String(r.endpointName || r.name || '').trim().toLowerCase();
+                    const rId = String(r.endpointId || r.id || '').trim().toLowerCase();
+                    const rSlug = rName.replace(/\s+/g, '-');
+                    if (rName && !latestByKey.has(rName)) latestByKey.set(rName, r);
+                    if (rId && !latestByKey.has(rId)) latestByKey.set(rId, r);
+                    if (rSlug && !latestByKey.has(rSlug)) latestByKey.set(rSlug, r);
+                }
+
+                const enrichedProbes = arr.map((p: any) => {
+                    const pName = String(p.name || '').trim().toLowerCase();
+                    const pId = String(p.id || '').trim().toLowerCase();
+                    const pSlug = pName.replace(/\s+/g, '-');
+                    const latest = latestByKey.get(pName) || latestByKey.get(pId) || latestByKey.get(pSlug);
+                    if (!latest) {
+                        return {
+                            ...p,
+                            score: null,
+                            status: p.enabled !== false ? 'pending_execution' : 'disabled',
+                            latency_ms: null,
+                            last_run: null
+                        };
+                    }
+                    const rtt = latest.metrics?.total_ms ?? latest.latency_ms ?? latest.rtt ?? latest.responseTime;
+                    return {
+                        ...p,
+                        score: typeof latest.score === 'number' ? latest.score : (latest.reachable ? 100 : 0),
+                        status: latest.reachable ? 'healthy' : 'failed',
+                        latency_ms: typeof rtt === 'number' ? Math.round(rtt * 10) / 10 : null,
+                        http_code: latest.httpCode ?? latest.statusCode ?? null,
+                        last_run: latest.timestamp ? new Date(latest.timestamp).toISOString() : null
+                    };
+                });
 
                 return {
                     node: nodeCtx.siteName,
                     health_score: stats?.globalHealth ?? (arr.length > 0 ? 100 : null),
-                    total_probes: arr.length,
-                    active_probes: arr.filter((p: any) => p.enabled !== false).length,
-                    probes: arr
+                    http_endpoints: stats?.httpEndpoints || null,
+                    flaky_endpoints: stats?.flakyEndpoints || [],
+                    total_probes: enrichedProbes.length,
+                    active_probes: enrichedProbes.filter((p: any) => p.enabled !== false).length,
+                    probes: enrichedProbes
                 };
             }
 
@@ -2997,64 +3036,110 @@ export async function executeCopilotTool(
                 const [statsRes, resultsRes, customRes] = await Promise.all([
                     fetchApi(nodeCtx, `/api/connectivity/stats?range=${timeRange}`).catch(() => ({})),
                     fetchApi(nodeCtx, `/api/connectivity/results?timeRange=${timeRange}&limit=1000`).catch(() => []),
-                    fetchApi(nodeCtx, '/api/connectivity/custom').catch(async () => fetchApi(nodeCtx, '/api/connectivity/active-probes')).catch(() => [])
+                    (nodeCtx.isLocal && ctx.getAllProbes)
+                        ? Promise.resolve(ctx.getAllProbes())
+                        : fetchApi(nodeCtx, '/api/connectivity/custom').catch(async () => fetchApi(nodeCtx, '/api/connectivity/active-probes')).catch(() => [])
                 ]);
 
                 const rawResults = Array.isArray(resultsRes) ? resultsRes : ((resultsRes as any)?.results || []);
                 const probesCfg = Array.isArray(customRes) ? customRes : ((customRes as any)?.targets || (customRes as any)?.probes || []);
 
-                // Group by probe name
+                const toSlug = (text: string) => String(text || '').trim().toLowerCase().replace(/\s+/g, '-');
+                const cfgByName = new Map<string, any>();
+                const cfgBySlug = new Map<string, any>();
+                const cfgById = new Map<string, any>();
+
+                for (const p of probesCfg) {
+                    if (p && p.name) {
+                        cfgByName.set(p.name, p);
+                        cfgBySlug.set(toSlug(p.name), p);
+                        if (p.id) cfgById.set(String(p.id).trim().toLowerCase(), p);
+                    }
+                }
+
+                // Group samples strictly by canonical probe name / endpointName / endpointId
                 const grouped: Record<string, any[]> = {};
                 for (const item of rawResults) {
-                    const pName = item.name || item.probe_name || item.target || 'unknown';
-                    if (!grouped[pName]) grouped[pName] = [];
-                    grouped[pName].push(item);
+                    const sName = String(item.endpointName || item.name || item.probe_name || '').trim();
+                    const sId = String(item.endpointId || item.id || '').trim().toLowerCase();
+                    const sSlug = toSlug(sName);
+
+                    const matchedCfg =
+                        (sName && cfgByName.get(sName)) ||
+                        (sId && cfgById.get(sId)) ||
+                        (sId && cfgBySlug.get(sId)) ||
+                        (sSlug && cfgBySlug.get(sSlug)) ||
+                        null;
+
+                    const canonicalName = matchedCfg?.name || sName || item.endpointId || 'unknown';
+                    if (!grouped[canonicalName]) grouped[canonicalName] = [];
+                    grouped[canonicalName].push(item);
                 }
 
                 const filter = (args.probe_name_filter || '').toLowerCase();
-                const cfgMap = new Map(probesCfg.map((p: any) => [p.name, p]));
-                const allNames = Array.from(new Set([...Object.keys(grouped), ...cfgMap.keys()])).sort();
+                const allNames = Array.from(new Set([...Object.keys(grouped), ...cfgByName.keys()])).sort();
 
                 const probesSummary = [];
                 for (const name of allNames) {
                     if (filter && !name.toLowerCase().includes(filter)) continue;
                     const samples = grouped[name] || [];
-                    const cfg = cfgMap.get(name) || {};
+                    const cfg = cfgByName.get(name) || {};
                     const rtts: number[] = [];
+                    const scores: number[] = [];
                     let successCount = 0;
+                    const expectedCodes: number[] = cfg.expectedStatusCodes || [200, 201, 202, 204, 301, 302, 304, 307, 308];
 
                     for (const s of samples) {
-                        const isSuccess = s.success === true || s.status === 'success' || [200, 204, 301, 302].includes(Number(s.statusCode));
+                        const code = Number(s.httpCode ?? s.statusCode);
+                        const isCodeOk = !isNaN(code) && code > 0 && expectedCodes.includes(code);
+                        const isSuccess =
+                            isCodeOk ||
+                            (s.reachable === true && (s.score === undefined || s.score === null || s.score > 0)) ||
+                            s.success === true ||
+                            s.status === 'success';
                         if (isSuccess) successCount++;
-                        const rtt = s.rtt ?? s.responseTime ?? s.latency;
+
+                        const rtt = s.metrics?.total_ms ?? s.latency_ms ?? s.rtt ?? s.responseTime ?? s.latency;
                         if (typeof rtt === 'number' && !isNaN(rtt)) rtts.push(rtt);
+                        if (typeof s.score === 'number' && !isNaN(s.score)) scores.push(s.score);
                     }
 
                     rtts.sort((a, b) => a - b);
                     const sampleCount = samples.length;
                     const successRate = sampleCount > 0
                         ? Math.round((1000 * successCount) / sampleCount) / 10
-                        : (cfg.enabled !== false ? 100.0 : 0.0);
+                        : null;
 
                     const p95Idx = Math.min(Math.floor(rtts.length * 0.95), Math.max(0, rtts.length - 1));
-                    const lastSample = samples[samples.length - 1] || {};
+                    // /api/connectivity/results returns newest samples first (samples[0] is latest)
+                    const lastSample = samples[0] || {};
+                    const probeType = String(cfg.type || lastSample.endpointType || lastSample.type || 'HTTP').toUpperCase();
+                    const avgScore = scores.length > 0
+                        ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length)
+                        : null;
+                    const lastScore = typeof lastSample.score === 'number'
+                        ? lastSample.score
+                        : (sampleCount > 0 ? (lastSample.reachable ? 100 : 0) : null);
 
                     probesSummary.push({
                         name,
-                        type: cfg.type || lastSample.type || 'http',
-                        target: cfg.target || cfg.url || lastSample.target || '',
+                        type: probeType,
+                        target: cfg.target || cfg.url || lastSample.url || lastSample.target || '',
+                        enabled: cfg.enabled !== false,
                         samples_count: sampleCount,
                         success_count: successCount,
                         success_rate_pct: successRate,
+                        last_score: lastScore,
+                        avg_score: avgScore,
                         min_rtt_ms: rtts.length ? Math.round(rtts[0] * 100) / 100 : null,
                         max_rtt_ms: rtts.length ? Math.round(rtts[rtts.length - 1] * 100) / 100 : null,
                         avg_rtt_ms: rtts.length ? Math.round((rtts.reduce((a, b) => a + b, 0) / rtts.length) * 100) / 100 : null,
                         median_rtt_ms: rtts.length ? Math.round(rtts[Math.floor(rtts.length / 2)] * 100) / 100 : null,
                         p95_rtt_ms: rtts.length ? Math.round(rtts[p95Idx] * 100) / 100 : null,
                         expected_status_codes: cfg.expectedStatusCodes || [200],
-                        last_status_code: lastSample.statusCode,
-                        last_error: lastSample.error,
-                        last_timestamp: lastSample.timestamp
+                        last_status_code: lastSample.httpCode ?? lastSample.statusCode ?? null,
+                        last_error: lastSample.error || (lastSample.score === 0 ? lastSample.message : null) || null,
+                        last_timestamp: lastSample.timestamp || null
                     });
                 }
 

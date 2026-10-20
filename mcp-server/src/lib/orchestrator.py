@@ -1521,6 +1521,7 @@ class TestOrchestrator:
                         samples = grouped.get(name, [])
                         cfg = cfg_by_name.get(name, {})
                         rtts: List[float] = []
+                        scores: List[float] = []
                         success_count = 0
 
                         expected_codes = cfg.get("expectedStatusCodes") or [200, 201, 202, 204, 301, 302, 304, 307, 308]
@@ -1544,6 +1545,9 @@ class TestOrchestrator:
                                     rtts.append(float(rtt))
                                 except (ValueError, TypeError):
                                     pass
+                            score_val = s.get("score")
+                            if isinstance(score_val, (int, float)):
+                                scores.append(float(score_val))
 
                         sample_count = len(samples)
                         success_rate = round(100.0 * success_count / sample_count, 1) if sample_count > 0 else None
@@ -1564,6 +1568,12 @@ class TestOrchestrator:
 
                         last_sample = samples[0] if samples else {}
                         p_type = (cfg.get("type") or last_sample.get("endpointType") or last_sample.get("type") or "HTTP").upper()
+                        avg_score = round(sum(scores) / len(scores)) if scores else None
+                        last_score = (
+                            last_sample.get("score")
+                            if isinstance(last_sample.get("score"), (int, float))
+                            else ((100 if last_sample.get("reachable") else 0) if sample_count > 0 else None)
+                        )
                         
                         summary_entry: Dict[str, Any] = {
                             "name": name,
@@ -1572,6 +1582,8 @@ class TestOrchestrator:
                             "samples_count": sample_count,
                             "success_count": success_count,
                             "success_rate_pct": success_rate,
+                            "last_score": last_score,
+                            "avg_score": avg_score,
                             "min_rtt_ms": min_val,
                             "max_rtt_ms": max_val,
                             "avg_rtt_ms": avg_val,

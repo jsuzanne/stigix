@@ -698,13 +698,16 @@ export class IoTManager extends EventEmitter {
         };
     }
 
-    getDeviceStatus(id: string): any {
-        return {
+    getDeviceStatus(id: string, includeLogs: boolean = false): any {
+        const status: any = {
             running: this.runningDevices.has(id),
             state: this.deviceStates.get(id) || 'STOPPED',
             stats: this.statsCache.get(id) || null,
-            logs: this.logsCache.get(id) || [],
         };
+        if (includeLogs) {
+            status.logs = this.logsCache.get(id) || [];
+        }
+        return status;
     }
 
     getRunningDevices(): string[] { return Array.from(this.runningDevices.keys()); }
