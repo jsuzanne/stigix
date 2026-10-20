@@ -3644,14 +3644,18 @@ app.get('/api/topology/vpn-link/:vpnId/inspect', authenticateToken, async (req, 
         const elIdToName: Record<string, string> = {};
         const elNameToSiteId: Record<string, string> = {};
         for (const s of (topologyCache?.data?.sites || [])) {
-            if (s.id && s.name) {
-                siteIdToName[String(s.id)] = s.name;
-                nameToSiteId[s.name] = String(s.id);
+            const sid = s.site_id || s.id;
+            const sname = s.site_name || s.name;
+            if (sid && sname) {
+                siteIdToName[String(sid)] = String(sname);
+                nameToSiteId[String(sname)] = String(sid);
             }
             for (const d of (s.devices || [])) {
-                if (d.element_id && d.name) {
-                    elIdToName[String(d.element_id)] = d.name;
-                    elNameToSiteId[d.name] = String(s.id);
+                const eid = d.device_id || d.element_id || d.id;
+                const ename = d.device_name || d.name;
+                if (eid && ename) {
+                    elIdToName[String(eid)] = String(ename);
+                    if (sid) elNameToSiteId[String(ename)] = String(sid);
                 }
             }
         }
@@ -3660,8 +3664,8 @@ app.get('/api/topology/vpn-link/:vpnId/inspect', authenticateToken, async (req, 
             [
                 reqSrcSiteId,
                 reqDstSiteId,
-                srcSiteName ? nameToSiteId[srcSiteName] : '',
-                dstSiteName ? nameToSiteId[dstSiteName] : '',
+                srcSiteName ? (nameToSiteId[srcSiteName] || elNameToSiteId[srcSiteName]) : '',
+                dstSiteName ? (nameToSiteId[dstSiteName] || elNameToSiteId[dstSiteName]) : '',
             ].filter(Boolean)
         ));
 

@@ -1870,33 +1870,33 @@ function TopologyContent({ token, theme }: TopologyProps) {
     const [inspectedLink, setInspectedLink] = useState<any | null>(null);
     const [isInspectingLink, setIsInspectingLink] = useState(false);
 
-    // On-demand live VPN tunnel & LQM telemetry inspection (only triggered when user clicks an overlay tunnel)
+    // On-demand live VPN tunnel & LQM telemetry inspection (triggered on tunnel selection or manual Refresh LQM click)
     const inspectedVpnId = inspectedLink?.isOverlayTunnel
         ? String(inspectedLink.debug_vpn_id || inspectedLink.id || '').trim()
         : '';
-    useEffect(() => {
-        if (!inspectedVpnId || inspectedVpnId === 'N/A' || inspectedLink?._liveInspectedVpnId === inspectedVpnId) {
-            return;
-        }
+
+    const probeLiveTunnelLqm = useCallback((targetVpnId: string, linkSnapshot: any) => {
+        if (!targetVpnId || targetVpnId === 'N/A') return () => {};
         let cancelled = false;
         setIsInspectingLink(true);
         const params = new URLSearchParams();
-        if (inspectedLink?.sourceSiteName) params.set('srcSiteName', String(inspectedLink.sourceSiteName));
-        if (inspectedLink?.peer_site_name) params.set('dstSiteName', String(inspectedLink.peer_site_name));
-        if (inspectedLink?.sourceSiteId) params.set('srcSiteId', String(inspectedLink.sourceSiteId));
-        if (inspectedLink?.peer_site_id) params.set('dstSiteId', String(inspectedLink.peer_site_id));
+        if (linkSnapshot?.sourceSiteName) params.set('srcSiteName', String(linkSnapshot.sourceSiteName));
+        if (linkSnapshot?.peer_site_name) params.set('dstSiteName', String(linkSnapshot.peer_site_name));
+        if (linkSnapshot?.sourceSiteId) params.set('srcSiteId', String(linkSnapshot.sourceSiteId));
+        if (linkSnapshot?.peer_site_id) params.set('dstSiteId', String(linkSnapshot.peer_site_id));
+        params.set('_t', String(Date.now()));
 
-        gFetch(`/api/topology/vpn-link/${encodeURIComponent(inspectedVpnId)}/inspect?${params.toString()}`)
+        gFetch(`/api/topology/vpn-link/${encodeURIComponent(targetVpnId)}/inspect?${params.toString()}`)
             .then(r => (r.ok ? r.json() : null))
             .then(liveData => {
                 if (cancelled || !liveData) return;
                 setInspectedLink((prev: any) => {
                     if (!prev) return prev;
                     const curId = String(prev.debug_vpn_id || prev.id || '').trim();
-                    if (curId !== inspectedVpnId) return prev;
+                    if (curId !== targetVpnId) return prev;
                     return {
                         ...prev,
-                        _liveInspectedVpnId: inspectedVpnId,
+                        _liveInspectedVpnId: targetVpnId,
                         inspectedAt: liveData.inspectedAt,
                         status_reason: liveData.status_reason ?? prev.status_reason,
                         status_reason_code: liveData.status_reason_code ?? prev.status_reason_code,
@@ -1930,7 +1930,12 @@ function TopologyContent({ token, theme }: TopologyProps) {
         return () => {
             cancelled = true;
         };
-    }, [inspectedVpnId]);
+    }, []);
+
+    useEffect(() => {
+        if (!inspectedVpnId || inspectedVpnId === 'N/A') return;
+        return probeLiveTunnelLqm(inspectedVpnId, inspectedLink);
+    }, [inspectedVpnId, probeLiveTunnelLqm]);
 
     const [hoveredEdge, setHoveredEdge] = useState<{ data: any; x: number; y: number } | null>(null);
     const [popTunnelFilter, setPopTunnelFilter] = useState<'ALL' | 'ACTIVE' | 'BACKUP' | 'DOWN'>('ALL');
@@ -5821,7 +5826,7 @@ function TopologyContent({ token, theme }: TopologyProps) {
                                                             ? "text-amber-400"
                                                             : "text-emerald-400"
                                                 )}>
-                                                    {isInspectingLink && inspectedLink.latency == null && inspectedLink.packet_loss == null
+                                                    {isInspectingLink
                                                         ? 'Probing LQM...'
                                                         : `${inspectedLink.latency != null ? `${inspectedLink.latency}ms` : 'Optimal'} · ${inspectedLink.packet_loss != null ? `${inspectedLink.packet_loss}%` : '0%'}`}
                                                 </div>
@@ -5893,7 +5898,11 @@ function TopologyContent({ token, theme }: TopologyProps) {
                                                 </span>
                                             </div>
                                             <button
-                                                onClick={() => setInspectedLink((prev: any) => prev ? { ...prev, _liveInspectedVpnId: undefined } : prev)}
+                                                type="button"
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    probeLiveTunnelLqm(inspectedVpnId, inspectedLink);
+                                                }}
                                                 disabled={isInspectingLink}
                                                 className="px-2 py-0.5 rounded bg-card-secondary hover:bg-border/60 border border-border/50 text-[8px] font-mono font-bold text-text-secondary hover:text-text-primary flex items-center gap-1 cursor-pointer transition-colors shrink-0"
                                                 title="Refresh live LQM telemetry from Prisma SD-WAN Controller"
