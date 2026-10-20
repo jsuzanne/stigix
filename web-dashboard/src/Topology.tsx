@@ -1855,7 +1855,58 @@ function TopologyContent({ token, theme }: TopologyProps) {
     const [topologyViewMode, setTopologyViewMode] = useState<'physical' | 'overlay' | 'sase' | 'underlay'>('physical');
     const [selectedNetwork, setSelectedNetwork] = useState<'INTERNET' | 'MPLS' | null>(null);
     const [networkTunnelFilter, setNetworkTunnelFilter] = useState<'ALL' | 'ACTIVE' | 'INACTIVE' | 'DOWN'>('ALL');
-    const [overlayTunnelStateFilter, setOverlayTunnelStateFilter] = useState<'ALL' | 'ACTIVE' | 'INACTIVE' | 'DOWN'>('ALL');
+    const [overlayTunnelStates, setOverlayTunnelStates] = useState<Set<'ACTIVE' | 'INACTIVE' | 'DOWN'>>(
+        new Set(['ACTIVE', 'INACTIVE', 'DOWN'])
+    );
+    const isOverlayFilterActive = overlayTunnelStates.size < 3;
+
+    const toggleOverlayTunnelState = useCallback((state: 'ACTIVE' | 'INACTIVE' | 'DOWN', e?: React.MouseEvent) => {
+        e?.stopPropagation();
+        setOverlayTunnelStates(prev => {
+            const next = new Set(prev);
+            if (next.has(state)) {
+                next.delete(state);
+            } else {
+                next.add(state);
+            }
+            return next;
+        });
+    }, []);
+
+    const isolateOverlayTunnelState = useCallback((state: 'ACTIVE' | 'INACTIVE' | 'DOWN', e?: React.MouseEvent) => {
+        e?.stopPropagation();
+        setOverlayTunnelStates(new Set([state]));
+        setNetworkTunnelFilter(state);
+    }, []);
+
+    const resetOverlayTunnelStates = useCallback(() => {
+        setOverlayTunnelStates(new Set(['ACTIVE', 'INACTIVE', 'DOWN']));
+        setNetworkTunnelFilter('ALL');
+    }, []);
+
+    const setOverlayTunnelStateFilter = useCallback((filter: 'ALL' | 'ACTIVE' | 'INACTIVE' | 'DOWN') => {
+        if (filter === 'ALL') {
+            setOverlayTunnelStates(new Set(['ACTIVE', 'INACTIVE', 'DOWN']));
+        } else {
+            setOverlayTunnelStates(new Set([filter]));
+        }
+    }, []);
+
+    const overlayTunnelCounts = useMemo(() => {
+        let active = 0;
+        let inactive = 0;
+        let down = 0;
+        edges.forEach(e => {
+            const edgeData = e.data as any;
+            if (edgeData?.isOverlayTunnel) {
+                const state = edgeData.tunnelState || (edgeData.active ? 'ACTIVE' : (edgeData.status === 'DOWN' ? 'DOWN' : 'INACTIVE'));
+                if (state === 'ACTIVE') active++;
+                else if (state === 'DOWN') down++;
+                else inactive++;
+            }
+        });
+        return { active, inactive, down, total: active + inactive + down };
+    }, [edges]);
     const [networkTunnelSearch, setNetworkTunnelSearch] = useState('');
     const [underlayData, setUnderlayData] = useState<UnderlayPayload | null>(null);
     const [underlayMode, setUnderlayMode] = useState<'off' | 'badges'>('off');
@@ -1896,6 +1947,7 @@ function TopologyContent({ token, theme }: TopologyProps) {
                     if (!prev) return prev;
                     const curId = String(prev.debug_vpn_id || prev.id || '').trim();
                     if (curId !== targetVpnId) return prev;
+                    const isLiveDown = liveData.tunnel_state === 'DOWN' || liveData.link_up === false;
                     return {
                         ...prev,
                         _liveInspectedVpnId: targetVpnId,
@@ -1911,16 +1963,18 @@ function TopologyContent({ token, theme }: TopologyProps) {
                         anynet_type: liveData.anynet_type || prev.anynet_type,
                         local_vep_id: liveData.src_vep_id || prev.local_vep_id,
                         peer_vep_id: liveData.dst_vep_id || prev.peer_vep_id,
-                        latency: liveData.latency ?? prev.latency,
-                        packet_loss: liveData.packet_loss ?? prev.packet_loss,
-                        packet_loss_ingress: liveData.packet_loss_ingress ?? prev.packet_loss_ingress,
-                        packet_loss_egress: liveData.packet_loss_egress ?? prev.packet_loss_egress,
-                        jitter: liveData.jitter ?? prev.jitter,
-                        jitter_ingress: liveData.jitter_ingress ?? prev.jitter_ingress,
-                        jitter_egress: liveData.jitter_egress ?? prev.jitter_egress,
-                        mos: liveData.mos ?? prev.mos,
-                        mos_ingress: liveData.mos_ingress ?? prev.mos_ingress,
-                        mos_egress: liveData.mos_egress ?? prev.mos_egress,
+                        latency: isLiveDown ? null : (liveData.latency ?? prev.latency ?? null),
+                        packet_loss: isLiveDown ? null : (liveData.packet_loss ?? prev.packet_loss ?? null),
+                        packet_loss_ingress: isLiveDown ? null : (liveData.packet_loss_ingress ?? prev.packet_loss_ingress ?? null),
+                        packet_loss_egress: isLiveDown ? null : (liveData.packet_loss_egress ?? prev.packet_loss_egress ?? null),
+                        jitter: isLiveDown ? null : (liveData.jitter ?? prev.jitter ?? null),
+                        jitter_ingress: isLiveDown ? null : (liveData.jitter_ingress ?? prev.jitter_ingress ?? null),
+                        jitter_egress: isLiveDown ? null : (liveData.jitter_egress ?? prev.jitter_egress ?? null),
+                        mos: isLiveDown ? null : (liveData.mos ?? prev.mos ?? null),
+                        mos_ingress: isLiveDown ? null : (liveData.mos_ingress ?? prev.mos_ingress ?? null),
+                        mos_egress: isLiveDown ? null : (liveData.mos_egress ?? prev.mos_egress ?? null),
+                        lqm_estimated: isLiveDown ? false : Boolean(liveData.lqm_estimated),
+                        lqm_estimated_source: isLiveDown ? null : (liveData.lqm_estimated_source || null),
                     };
                 });
             })
@@ -1936,6 +1990,10 @@ function TopologyContent({ token, theme }: TopologyProps) {
 
     useEffect(() => {
         if (!inspectedVpnId || inspectedVpnId === 'N/A') return;
+        const rawSt = String(inspectedLink?.status || '').toUpperCase();
+        const isTunnelDown = rawSt === 'DOWN' || inspectedLink?.tunnelState === 'DOWN';
+        // Do not run LQM queries on DOWN tunnels
+        if (isTunnelDown) return;
         return probeLiveTunnelLqm(inspectedVpnId, inspectedLink);
     }, [inspectedVpnId, probeLiveTunnelLqm]);
 
@@ -4223,9 +4281,9 @@ function TopologyContent({ token, theme }: TopologyProps) {
                 }
             }
 
-            if (edgeData?.isOverlayTunnel && overlayTunnelStateFilter !== 'ALL') {
+            if (edgeData?.isOverlayTunnel && isOverlayFilterActive) {
                 const edgeState = edgeData.tunnelState || (edgeData.active ? 'ACTIVE' : (edgeData.status === 'DOWN' ? 'DOWN' : 'INACTIVE'));
-                const isMatch = edgeState === overlayTunnelStateFilter;
+                const isMatch = overlayTunnelStates.has(edgeState);
                 if (!isMatch) {
                     currentEdge = {
                         ...currentEdge,
@@ -4268,7 +4326,7 @@ function TopologyContent({ token, theme }: TopologyProps) {
 
             return currentEdge;
         });
-    }, [edges, topologyViewMode, searchScope, selectedObject, saseTunnelTypeFilter, selectedCircuit, overlayTunnelStateFilter, logicalViewSiteId, isDark]);
+    }, [edges, topologyViewMode, searchScope, selectedObject, saseTunnelTypeFilter, selectedCircuit, overlayTunnelStates, isOverlayFilterActive, logicalViewSiteId, isDark]);
 
     const handleFitView = useCallback(() => {
         fitView({ padding: 0.12, duration: 450, minZoom: 0.12 });
@@ -5265,12 +5323,9 @@ function TopologyContent({ token, theme }: TopologyProps) {
                             <div className="bg-card/80 backdrop-blur-md border border-border p-3.5 rounded-2xl shadow-xl flex flex-col gap-1.5 min-w-[170px]">
                                 <div className="flex items-center justify-between gap-2 mb-1">
                                     <div className="text-[9px] font-black text-text-muted uppercase tracking-[0.2em]">Topology Legend</div>
-                                    {(logicalViewSiteId || topologyViewMode === 'overlay') && overlayTunnelStateFilter !== 'ALL' && (
+                                    {(logicalViewSiteId || topologyViewMode === 'overlay') && isOverlayFilterActive && (
                                         <button
-                                            onClick={() => {
-                                                setOverlayTunnelStateFilter('ALL');
-                                                setNetworkTunnelFilter('ALL');
-                                            }}
+                                            onClick={resetOverlayTunnelStates}
                                             className="text-[8px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-400 hover:bg-blue-500/30 transition-colors cursor-pointer"
                                         >
                                             Show All
@@ -5287,74 +5342,113 @@ function TopologyContent({ token, theme }: TopologyProps) {
                                 </div>
                                 {(logicalViewSiteId || topologyViewMode === 'overlay') ? (
                                     <>
-                                        <button
-                                            onClick={() => {
-                                                const next = overlayTunnelStateFilter === 'ACTIVE' ? 'ALL' : 'ACTIVE';
-                                                setOverlayTunnelStateFilter(next);
-                                                setNetworkTunnelFilter(next);
-                                            }}
+                                        <div
+                                            onClick={() => toggleOverlayTunnelState('ACTIVE')}
                                             className={cn(
-                                                "flex items-center justify-between gap-2 px-2 py-1.5 rounded-xl text-[10px] font-bold text-left transition-all cursor-pointer border",
-                                                overlayTunnelStateFilter === 'ACTIVE'
-                                                    ? "bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 border-emerald-500/50 shadow-sm shadow-emerald-500/20"
-                                                    : "text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-white/5 border-transparent"
+                                                "group flex items-center justify-between gap-2 px-2 py-1.5 rounded-xl text-[10px] font-bold text-left transition-all cursor-pointer border select-none",
+                                                overlayTunnelStates.has('ACTIVE')
+                                                    ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/40 shadow-sm shadow-emerald-500/10"
+                                                    : "text-text-muted hover:bg-slate-100 dark:hover:bg-white/5 border-transparent opacity-60"
                                             )}
-                                            title="Click to isolate Active tunnels"
+                                            title="Click to toggle Active tunnels"
                                         >
-                                            <div className="flex items-center gap-2">
-                                                <div className="w-5 h-1 bg-emerald-500 rounded-full" />
-                                                <span>Overlay: Active (UP)</span>
+                                            <div className="flex items-center gap-1.5 min-w-0">
+                                                {overlayTunnelStates.has('ACTIVE') ? (
+                                                    <CheckSquare className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                                                ) : (
+                                                    <Square className="w-3.5 h-3.5 text-text-muted shrink-0" />
+                                                )}
+                                                <div className="w-3.5 h-1 bg-emerald-500 rounded-full shrink-0" />
+                                                <span className="truncate">Active (UP)</span>
                                             </div>
-                                            {overlayTunnelStateFilter === 'ACTIVE' && (
-                                                <span className="text-[8px] font-black uppercase px-1 py-0.2 rounded bg-emerald-500/30 text-emerald-800 dark:text-emerald-300">Filtered</span>
-                                            )}
-                                        </button>
+                                            <div className="flex items-center gap-1 shrink-0">
+                                                <span className={cn(
+                                                    "text-[9px] font-mono px-1.5 py-0.2 rounded-full font-bold",
+                                                    overlayTunnelStates.has('ACTIVE') ? "bg-emerald-500/20 text-emerald-700 dark:text-emerald-300" : "bg-muted text-text-muted"
+                                                )}>
+                                                    {overlayTunnelCounts.active}
+                                                </span>
+                                                <button
+                                                    onClick={(e) => isolateOverlayTunnelState('ACTIVE', e)}
+                                                    className="text-[8px] font-black uppercase tracking-wider px-1 py-0.5 rounded opacity-0 group-hover:opacity-100 hover:bg-emerald-500/30 text-emerald-600 dark:text-emerald-400 transition-opacity"
+                                                    title="Show only Active tunnels"
+                                                >
+                                                    only
+                                                </button>
+                                            </div>
+                                        </div>
 
-                                        <button
-                                            onClick={() => {
-                                                const next = overlayTunnelStateFilter === 'INACTIVE' ? 'ALL' : 'INACTIVE';
-                                                setOverlayTunnelStateFilter(next);
-                                                setNetworkTunnelFilter(next);
-                                            }}
+                                        <div
+                                            onClick={() => toggleOverlayTunnelState('INACTIVE')}
                                             className={cn(
-                                                "flex items-center justify-between gap-2 px-2 py-1.5 rounded-xl text-[10px] font-bold text-left transition-all cursor-pointer border",
-                                                overlayTunnelStateFilter === 'INACTIVE'
-                                                    ? "bg-blue-500/20 text-blue-700 dark:text-blue-300 border-blue-500/50 shadow-sm shadow-blue-500/20"
-                                                    : "text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-white/5 border-transparent"
+                                                "group flex items-center justify-between gap-2 px-2 py-1.5 rounded-xl text-[10px] font-bold text-left transition-all cursor-pointer border select-none",
+                                                overlayTunnelStates.has('INACTIVE')
+                                                    ? "bg-blue-500/15 text-blue-700 dark:text-blue-300 border-blue-500/40 shadow-sm shadow-blue-500/10"
+                                                    : "text-text-muted hover:bg-slate-100 dark:hover:bg-white/5 border-transparent opacity-60"
                                             )}
-                                            title="Click to isolate Inactive / Standby tunnels"
+                                            title="Click to toggle Inactive / Standby tunnels"
                                         >
-                                            <div className="flex items-center gap-2">
-                                                <div className="w-5 h-1 border-t-2 border-dashed border-blue-500 dark:border-blue-400" />
-                                                <span>Overlay: Inactive (Standby)</span>
+                                            <div className="flex items-center gap-1.5 min-w-0">
+                                                {overlayTunnelStates.has('INACTIVE') ? (
+                                                    <CheckSquare className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400 shrink-0" />
+                                                ) : (
+                                                    <Square className="w-3.5 h-3.5 text-text-muted shrink-0" />
+                                                )}
+                                                <div className="w-3.5 h-1 border-t-2 border-dashed border-blue-500 dark:border-blue-400 shrink-0" />
+                                                <span className="truncate">Inactive (Standby)</span>
                                             </div>
-                                            {overlayTunnelStateFilter === 'INACTIVE' && (
-                                                <span className="text-[8px] font-black uppercase px-1 py-0.2 rounded bg-blue-500/30 text-blue-800 dark:text-blue-300">Filtered</span>
-                                            )}
-                                        </button>
+                                            <div className="flex items-center gap-1 shrink-0">
+                                                <span className={cn(
+                                                    "text-[9px] font-mono px-1.5 py-0.2 rounded-full font-bold",
+                                                    overlayTunnelStates.has('INACTIVE') ? "bg-blue-500/20 text-blue-700 dark:text-blue-300" : "bg-muted text-text-muted"
+                                                )}>
+                                                    {overlayTunnelCounts.inactive}
+                                                </span>
+                                                <button
+                                                    onClick={(e) => isolateOverlayTunnelState('INACTIVE', e)}
+                                                    className="text-[8px] font-black uppercase tracking-wider px-1 py-0.5 rounded opacity-0 group-hover:opacity-100 hover:bg-blue-500/30 text-blue-600 dark:text-blue-400 transition-opacity"
+                                                    title="Show only Inactive tunnels"
+                                                >
+                                                    only
+                                                </button>
+                                            </div>
+                                        </div>
 
-                                        <button
-                                            onClick={() => {
-                                                const next = overlayTunnelStateFilter === 'DOWN' ? 'ALL' : 'DOWN';
-                                                setOverlayTunnelStateFilter(next);
-                                                setNetworkTunnelFilter(next);
-                                            }}
+                                        <div
+                                            onClick={() => toggleOverlayTunnelState('DOWN')}
                                             className={cn(
-                                                "flex items-center justify-between gap-2 px-2 py-1.5 rounded-xl text-[10px] font-bold text-left transition-all cursor-pointer border",
-                                                overlayTunnelStateFilter === 'DOWN'
-                                                    ? "bg-rose-500/20 text-rose-700 dark:text-rose-300 border-rose-500/50 shadow-sm shadow-rose-500/20"
-                                                    : "text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-white/5 border-transparent"
+                                                "group flex items-center justify-between gap-2 px-2 py-1.5 rounded-xl text-[10px] font-bold text-left transition-all cursor-pointer border select-none",
+                                                overlayTunnelStates.has('DOWN')
+                                                    ? "bg-rose-500/15 text-rose-700 dark:text-rose-300 border-rose-500/40 shadow-sm shadow-rose-500/10"
+                                                    : "text-text-muted hover:bg-slate-100 dark:hover:bg-white/5 border-transparent opacity-60"
                                             )}
-                                            title="Click to isolate Down tunnels"
+                                            title="Click to toggle Down tunnels"
                                         >
-                                            <div className="flex items-center gap-2">
-                                                <div className="w-5 h-1 bg-rose-500 rounded-full" />
-                                                <span>Overlay: Down</span>
+                                            <div className="flex items-center gap-1.5 min-w-0">
+                                                {overlayTunnelStates.has('DOWN') ? (
+                                                    <CheckSquare className="w-3.5 h-3.5 text-rose-600 dark:text-rose-400 shrink-0" />
+                                                ) : (
+                                                    <Square className="w-3.5 h-3.5 text-text-muted shrink-0" />
+                                                )}
+                                                <div className="w-3.5 h-1 bg-rose-500 rounded-full shrink-0" />
+                                                <span className="truncate">Down</span>
                                             </div>
-                                            {overlayTunnelStateFilter === 'DOWN' && (
-                                                <span className="text-[8px] font-black uppercase px-1 py-0.2 rounded bg-rose-500/30 text-rose-800 dark:text-rose-300">Filtered</span>
-                                            )}
-                                        </button>
+                                            <div className="flex items-center gap-1 shrink-0">
+                                                <span className={cn(
+                                                    "text-[9px] font-mono px-1.5 py-0.2 rounded-full font-bold",
+                                                    overlayTunnelStates.has('DOWN') ? "bg-rose-500/20 text-rose-700 dark:text-rose-300" : "bg-muted text-text-muted"
+                                                )}>
+                                                    {overlayTunnelCounts.down}
+                                                </span>
+                                                <button
+                                                    onClick={(e) => isolateOverlayTunnelState('DOWN', e)}
+                                                    className="text-[8px] font-black uppercase tracking-wider px-1 py-0.5 rounded opacity-0 group-hover:opacity-100 hover:bg-rose-500/30 text-rose-600 dark:text-rose-400 transition-opacity"
+                                                    title="Show only Down tunnels"
+                                                >
+                                                    only
+                                                </button>
+                                            </div>
+                                        </div>
 
                                         <div className="pt-1 mt-1 border-t border-border/50 flex items-center justify-between text-[9px] text-text-muted font-mono gap-2">
                                             <span className="text-sky-600 dark:text-sky-400 font-bold">Circuits: Cyan (Internet)</span>
@@ -5808,76 +5902,118 @@ function TopologyContent({ token, theme }: TopologyProps) {
                                                     {String(cipher).replace('aes-', 'AES').replace('-cbc', '')} · {keepaliveInterval}ms
                                                 </div>
                                             </div>
-                                            <div className={cn(
-                                                "p-2 rounded-xl border min-w-0 overflow-hidden transition-colors",
-                                                (inspectedLink.packet_loss ?? 0) >= 5 || (inspectedLink.latency ?? 0) >= 150 || (inspectedLink.mos != null && inspectedLink.mos < 3.0)
-                                                    ? "bg-rose-500/15 border-rose-500/40"
-                                                    : (inspectedLink.packet_loss ?? 0) >= 1 || (inspectedLink.latency ?? 0) >= 80 || (inspectedLink.mos != null && inspectedLink.mos < 3.6)
-                                                        ? "bg-amber-500/15 border-amber-500/40"
-                                                        : "bg-card-secondary/30 border-border/40"
-                                            )}>
-                                                <div className="flex items-center justify-between gap-1">
-                                                    <span className="text-[8px] font-black text-text-muted uppercase tracking-wider truncate whitespace-nowrap">LATENCY / LOSS</span>
-                                                    {isInspectingLink && <RefreshCw size={8} className="animate-spin text-cyan-400 shrink-0" />}
-                                                </div>
-                                                <div className={cn(
-                                                    "text-[10px] font-bold truncate whitespace-nowrap",
-                                                    (inspectedLink.packet_loss ?? 0) >= 5 || (inspectedLink.latency ?? 0) >= 150 || (inspectedLink.mos != null && inspectedLink.mos < 3.0)
-                                                        ? "text-rose-400"
-                                                        : (inspectedLink.packet_loss ?? 0) >= 1 || (inspectedLink.latency ?? 0) >= 80 || (inspectedLink.mos != null && inspectedLink.mos < 3.6)
-                                                            ? "text-amber-400"
-                                                            : "text-emerald-400"
-                                                )}>
-                                                    {isInspectingLink
-                                                        ? 'Probing LQM...'
-                                                        : `${inspectedLink.latency != null ? `${inspectedLink.latency}ms` : 'Optimal'} · ${inspectedLink.packet_loss != null ? `${inspectedLink.packet_loss}%` : '0%'}`}
-                                                </div>
-                                            </div>
+                                            {(() => {
+                                                const hasLqmData = resolvedState !== 'DOWN' && (inspectedLink.latency != null || inspectedLink.packet_loss != null || inspectedLink.mos != null);
+                                                const isEstimatedLqm = Boolean(inspectedLink.lqm_estimated);
+                                                const isSevereLqm = hasLqmData && ((inspectedLink.packet_loss ?? 0) >= 5 || (inspectedLink.latency ?? 0) >= 150 || (inspectedLink.mos != null && inspectedLink.mos < 3.0));
+                                                const isWarnLqm = hasLqmData && !isSevereLqm && ((inspectedLink.packet_loss ?? 0) >= 1 || (inspectedLink.latency ?? 0) >= 80 || (inspectedLink.mos != null && inspectedLink.mos < 3.6));
+                                                const estPrefix = isEstimatedLqm ? '~' : '';
+                                                return (
+                                                    <div
+                                                        className={cn(
+                                                            "p-2 rounded-xl border min-w-0 overflow-hidden transition-colors",
+                                                            resolvedState === 'DOWN'
+                                                                ? "bg-rose-500/10 border-rose-500/30"
+                                                                : isSevereLqm
+                                                                    ? "bg-rose-500/15 border-rose-500/40"
+                                                                    : isWarnLqm
+                                                                        ? "bg-amber-500/15 border-amber-500/40"
+                                                                        : "bg-card-secondary/30 border-border/40"
+                                                        )}
+                                                        title={
+                                                            resolvedState === 'DOWN'
+                                                                ? 'Tunnel is Down — no LQM probes active'
+                                                                : isEstimatedLqm
+                                                                    ? `Estimated from active tunnel sharing circuit ${inspectedLink.lqm_estimated_source || 'WAN'}`
+                                                                    : hasLqmData
+                                                                        ? 'Live Prisma SD-WAN LQM telemetry'
+                                                                        : 'No active LQM probes reported for this standby/inactive tunnel'
+                                                        }
+                                                    >
+                                                        <div className="flex items-center justify-between gap-1">
+                                                            <span className="text-[8px] font-black text-text-muted uppercase tracking-wider truncate whitespace-nowrap">
+                                                                {isEstimatedLqm ? 'LATENCY / LOSS (EST.)' : 'LATENCY / LOSS'}
+                                                            </span>
+                                                            {isInspectingLink && resolvedState !== 'DOWN' && <RefreshCw size={8} className="animate-spin text-cyan-400 shrink-0" />}
+                                                        </div>
+                                                        <div className={cn(
+                                                            "text-[10px] font-bold truncate whitespace-nowrap",
+                                                            resolvedState === 'DOWN'
+                                                                ? "text-rose-400/90"
+                                                                : isInspectingLink
+                                                                    ? "text-cyan-400"
+                                                                    : !hasLqmData
+                                                                        ? "text-text-muted"
+                                                                        : isSevereLqm
+                                                                            ? "text-rose-400"
+                                                                            : isWarnLqm
+                                                                                ? "text-amber-400"
+                                                                                : "text-emerald-400"
+                                                        )}>
+                                                            {resolvedState === 'DOWN'
+                                                                ? 'N/A · Offline'
+                                                                : isInspectingLink
+                                                                    ? 'Probing LQM...'
+                                                                    : hasLqmData
+                                                                        ? `${inspectedLink.latency != null ? `${estPrefix}${inspectedLink.latency}ms` : '—'} · ${inspectedLink.packet_loss != null ? `${estPrefix}${inspectedLink.packet_loss}%` : '0%'}`
+                                                                        : (resolvedState === 'INACTIVE' ? 'No LQM · Standby' : 'No LQM Data')}
+                                                        </div>
+                                                    </div>
+                                                );
+                                            })()}
                                         </div>
 
                                         {/* Live LQM Directional Telemetry Strip (Ingress / Egress Loss, Jitter, MOS) */}
-                                        {(inspectedLink.latency != null || inspectedLink.packet_loss != null || inspectedLink.jitter != null || inspectedLink.mos != null) && (
-                                            <div className="grid grid-cols-4 gap-1.5 mb-2.5 px-2.5 py-2 rounded-xl bg-card-secondary/40 border border-border/50 text-[10px] font-mono">
-                                                <div className="min-w-0">
-                                                    <div className="text-[8px] font-black text-text-muted uppercase tracking-wider">RTT LATENCY</div>
-                                                    <div className={cn(
-                                                        "font-bold truncate",
-                                                        (inspectedLink.latency ?? 0) >= 150 ? "text-rose-400" : (inspectedLink.latency ?? 0) >= 80 ? "text-amber-400" : "text-emerald-400"
-                                                    )}>
-                                                        {inspectedLink.latency != null ? `${inspectedLink.latency} ms` : '—'}
+                                        {resolvedState !== 'DOWN' && (inspectedLink.latency != null || inspectedLink.packet_loss != null || inspectedLink.jitter != null || inspectedLink.mos != null) && (
+                                            <div className="mb-2.5 px-2.5 py-2 rounded-xl bg-card-secondary/40 border border-border/50 text-[10px] font-mono">
+                                                {inspectedLink.lqm_estimated && (
+                                                    <div className="flex items-center justify-between text-[8px] text-amber-300/90 font-sans font-bold uppercase tracking-wider mb-1 pb-1 border-b border-border/40">
+                                                        <span>Estimated from shared WAN circuit ({inspectedLink.lqm_estimated_source || 'Same WAN'})</span>
+                                                        <span className="font-mono text-[8px] px-1 rounded bg-amber-500/15 border border-amber-500/30 text-amber-300">CIRCUIT EST.</span>
                                                     </div>
-                                                </div>
-                                                <div className="min-w-0">
-                                                    <div className="text-[8px] font-black text-text-muted uppercase tracking-wider">LOSS (IN / OUT)</div>
-                                                    <div className={cn(
-                                                        "font-bold truncate",
-                                                        (inspectedLink.packet_loss ?? 0) >= 5 ? "text-rose-400" : (inspectedLink.packet_loss ?? 0) >= 1 ? "text-amber-400" : "text-emerald-400"
-                                                    )}>
-                                                        {inspectedLink.packet_loss_ingress != null ? `${inspectedLink.packet_loss_ingress}%` : '0%'}
-                                                        <span className="text-text-muted mx-1">/</span>
-                                                        {inspectedLink.packet_loss_egress != null ? `${inspectedLink.packet_loss_egress}%` : '0%'}
+                                                )}
+                                                <div className="grid grid-cols-4 gap-1.5">
+                                                    <div className="min-w-0">
+                                                        <div className="text-[8px] font-black text-text-muted uppercase tracking-wider">RTT LATENCY</div>
+                                                        <div className={cn(
+                                                            "font-bold truncate",
+                                                            (inspectedLink.latency ?? 0) >= 150 ? "text-rose-400" : (inspectedLink.latency ?? 0) >= 80 ? "text-amber-400" : "text-emerald-400"
+                                                        )}>
+                                                            {inspectedLink.latency != null ? `${inspectedLink.lqm_estimated ? '~' : ''}${inspectedLink.latency} ms` : '—'}
+                                                        </div>
                                                     </div>
-                                                </div>
-                                                <div className="min-w-0">
-                                                    <div className="text-[8px] font-black text-text-muted uppercase tracking-wider">JITTER (IN / OUT)</div>
-                                                    <div className={cn(
-                                                        "font-bold truncate",
-                                                        (inspectedLink.jitter ?? 0) >= 30 ? "text-rose-400" : (inspectedLink.jitter ?? 0) >= 15 ? "text-amber-400" : "text-cyan-300"
-                                                    )}>
-                                                        {inspectedLink.jitter_ingress != null ? `${inspectedLink.jitter_ingress}ms` : '0ms'}
-                                                        <span className="text-text-muted mx-1">/</span>
-                                                        {inspectedLink.jitter_egress != null ? `${inspectedLink.jitter_egress}ms` : '0ms'}
+                                                    <div className="min-w-0">
+                                                        <div className="text-[8px] font-black text-text-muted uppercase tracking-wider">LOSS (IN / OUT)</div>
+                                                        <div className={cn(
+                                                            "font-bold truncate",
+                                                            (inspectedLink.packet_loss ?? 0) >= 5 ? "text-rose-400" : (inspectedLink.packet_loss ?? 0) >= 1 ? "text-amber-400" : "text-emerald-400"
+                                                        )}>
+                                                            {inspectedLink.packet_loss_ingress != null ? `${inspectedLink.lqm_estimated ? '~' : ''}${inspectedLink.packet_loss_ingress}%` : '0%'}
+                                                            <span className="text-text-muted mx-1">/</span>
+                                                            {inspectedLink.packet_loss_egress != null ? `${inspectedLink.lqm_estimated ? '~' : ''}${inspectedLink.packet_loss_egress}%` : '0%'}
+                                                        </div>
                                                     </div>
-                                                </div>
-                                                <div className="min-w-0">
-                                                    <div className="text-[8px] font-black text-text-muted uppercase tracking-wider">LINK MOS (IN / OUT)</div>
-                                                    <div className={cn(
-                                                        "font-bold truncate",
-                                                        (inspectedLink.mos ?? 4.4) < 3.0 ? "text-rose-400" : (inspectedLink.mos ?? 4.4) < 3.6 ? "text-amber-400" : "text-emerald-400"
-                                                    )}>
-                                                        {inspectedLink.mos_ingress != null ? inspectedLink.mos_ingress : '—'}
-                                                        <span className="text-text-muted mx-1">/</span>
-                                                        {inspectedLink.mos_egress != null ? inspectedLink.mos_egress : '—'}
+                                                    <div className="min-w-0">
+                                                        <div className="text-[8px] font-black text-text-muted uppercase tracking-wider">JITTER (IN / OUT)</div>
+                                                        <div className={cn(
+                                                            "font-bold truncate",
+                                                            (inspectedLink.jitter ?? 0) >= 30 ? "text-rose-400" : (inspectedLink.jitter ?? 0) >= 15 ? "text-amber-400" : "text-cyan-300"
+                                                        )}>
+                                                            {inspectedLink.jitter_ingress != null ? `${inspectedLink.lqm_estimated ? '~' : ''}${inspectedLink.jitter_ingress}ms` : '0ms'}
+                                                            <span className="text-text-muted mx-1">/</span>
+                                                            {inspectedLink.jitter_egress != null ? `${inspectedLink.lqm_estimated ? '~' : ''}${inspectedLink.jitter_egress}ms` : '0ms'}
+                                                        </div>
+                                                    </div>
+                                                    <div className="min-w-0">
+                                                        <div className="text-[8px] font-black text-text-muted uppercase tracking-wider">LINK MOS (IN / OUT)</div>
+                                                        <div className={cn(
+                                                            "font-bold truncate",
+                                                            (inspectedLink.mos ?? 4.4) < 3.0 ? "text-rose-400" : (inspectedLink.mos ?? 4.4) < 3.6 ? "text-amber-400" : "text-emerald-400"
+                                                        )}>
+                                                            {inspectedLink.mos_ingress != null ? `${inspectedLink.lqm_estimated ? '~' : ''}${inspectedLink.mos_ingress}` : '—'}
+                                                            <span className="text-text-muted mx-1">/</span>
+                                                            {inspectedLink.mos_egress != null ? `${inspectedLink.lqm_estimated ? '~' : ''}${inspectedLink.mos_egress}` : '—'}
+                                                        </div>
                                                     </div>
                                                 </div>
                                             </div>
@@ -5899,19 +6035,21 @@ function TopologyContent({ token, theme }: TopologyProps) {
                                                             : `Inactive Tunnel (${statusReason || 'Standby Path'})`}
                                                 </span>
                                             </div>
-                                            <button
-                                                type="button"
-                                                onClick={(e) => {
-                                                    e.stopPropagation();
-                                                    probeLiveTunnelLqm(inspectedVpnId, inspectedLink);
-                                                }}
-                                                disabled={isInspectingLink}
-                                                className="px-2 py-0.5 rounded bg-card-secondary hover:bg-border/60 border border-border/50 text-[8px] font-mono font-bold text-text-secondary hover:text-text-primary flex items-center gap-1 cursor-pointer transition-colors shrink-0"
-                                                title="Refresh live LQM telemetry from Prisma SD-WAN Controller"
-                                            >
-                                                <RefreshCw size={9} className={cn(isInspectingLink && "animate-spin text-cyan-400")} />
-                                                {isInspectingLink ? 'Refreshing...' : 'Refresh LQM'}
-                                            </button>
+                                            {resolvedState !== 'DOWN' && (
+                                                <button
+                                                    type="button"
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        probeLiveTunnelLqm(inspectedVpnId, inspectedLink);
+                                                    }}
+                                                    disabled={isInspectingLink}
+                                                    className="px-2 py-0.5 rounded bg-card-secondary hover:bg-border/60 border border-border/50 text-[8px] font-mono font-bold text-text-secondary hover:text-text-primary flex items-center gap-1 cursor-pointer transition-colors shrink-0"
+                                                    title="Refresh live LQM telemetry from Prisma SD-WAN Controller"
+                                                >
+                                                    <RefreshCw size={9} className={cn(isInspectingLink && "animate-spin text-cyan-400")} />
+                                                    {isInspectingLink ? 'Refreshing...' : 'Refresh LQM'}
+                                                </button>
+                                            )}
                                         </div>
                                     </div>
                                 );
