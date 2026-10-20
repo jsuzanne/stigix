@@ -1876,7 +1876,7 @@ function TopologyContent({ token, theme }: TopologyProps) {
         : '';
 
     const probeLiveTunnelLqm = useCallback((targetVpnId: string, linkSnapshot: any) => {
-        if (!targetVpnId || targetVpnId === 'N/A') return () => {};
+        if (!targetVpnId || targetVpnId === 'N/A' || !token) return () => {};
         let cancelled = false;
         setIsInspectingLink(true);
         const params = new URLSearchParams();
@@ -1886,7 +1886,9 @@ function TopologyContent({ token, theme }: TopologyProps) {
         if (linkSnapshot?.peer_site_id) params.set('dstSiteId', String(linkSnapshot.peer_site_id));
         params.set('_t', String(Date.now()));
 
-        gFetch(`/api/topology/vpn-link/${encodeURIComponent(targetVpnId)}/inspect?${params.toString()}`)
+        gFetch(`/api/topology/vpn-link/${encodeURIComponent(targetVpnId)}/inspect?${params.toString()}`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+        })
             .then(r => (r.ok ? r.json() : null))
             .then(liveData => {
                 if (cancelled || !liveData) return;
@@ -1930,7 +1932,7 @@ function TopologyContent({ token, theme }: TopologyProps) {
         return () => {
             cancelled = true;
         };
-    }, []);
+    }, [token, gFetch]);
 
     useEffect(() => {
         if (!inspectedVpnId || inspectedVpnId === 'N/A') return;
