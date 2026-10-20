@@ -92,6 +92,7 @@ LABEL org.opencontainers.image.vendor="jsuzanne"
 
 ENV NODE_ENV=production
 ENV PORT=8080
+ENV ENABLE_GO_ENGINE=true
 
 EXPOSE 8080
 
