@@ -96,17 +96,35 @@ export function PeerContextProvider({ token, isLeader, children, onActivePeerCha
                             leaderIp = u.hostname;
                         } catch {}
                     }
+                    const peerList: PeerEntry[] = [];
                     if (leaderIp) {
-                        const leaderPeer: PeerEntry = {
+                        peerList.push({
                             instance_id: leaderId,
                             site: status?.leader_info?.id || 'Leader',
                             ip_private: leaderIp,
                             status: 'online',
                             is_leader: true,
                             has_tunnel: Boolean(status?.tunnel_active)
-                        };
-                        setPeers([leaderPeer]);
+                        });
                     }
+                    if (Array.isArray(status?.local_instances)) {
+                        for (const inst of status.local_instances) {
+                            if (!inst || !inst.instance_id) continue;
+                            const instIp = inst.ip_private || inst.ip;
+                            if (!instIp) continue;
+                            // Avoid duplicating leader if already added
+                            if (leaderIp && (instIp === leaderIp || inst.instance_id === leaderId)) continue;
+                            peerList.push({
+                                instance_id: inst.instance_id,
+                                site: inst.meta?.site || inst.site_name || inst.instance_id,
+                                ip_private: instIp,
+                                status: inst.status || 'online',
+                                is_leader: Boolean(inst.is_leader || inst.type === 'leader'),
+                                has_tunnel: false
+                            });
+                        }
+                    }
+                    setPeers(peerList);
                 }
             } catch {}
             return;

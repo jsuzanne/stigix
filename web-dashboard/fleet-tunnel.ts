@@ -487,6 +487,18 @@ export class FleetTunnelManager {
                     }
                 });
 
+                // Spoke listens for cluster peer mesh updates from Leader (M6 mode)
+                socket.on('fleet:peer_mesh', (instances: any[]) => {
+                    if (Array.isArray(instances)) {
+                        this.registryManager.updatePeersFromLeader(instances);
+                    }
+                });
+                socket.emit('fleet:get_peers', (instances: any[]) => {
+                    if (Array.isArray(instances)) {
+                        this.registryManager.updatePeersFromLeader(instances);
+                    }
+                });
+
                 // Spoke listens for config updates and triggers initial sync
                 socket.on('peer:bundle_updated', (type?: string) => {
                     this.syncProvisioningOverTunnel(socket, type);
@@ -497,6 +509,8 @@ export class FleetTunnelManager {
                 this.registerLeaderHandlers(socket);
                 const mesh = this.localRegistryServer?.getCustomAppMesh() || [];
                 socket.emit('custom_app:mesh_update', mesh);
+                const instances = this.localRegistryServer?.getInstances() || [];
+                socket.emit('fleet:peer_mesh', instances);
             }
 
             socket.on('disconnect', (reason: string) => {
@@ -549,6 +563,7 @@ export class FleetTunnelManager {
             socket.on('peer:telemetry', (peerTelemetry: any) => {
                 if (this.localRegistryServer && peerTelemetry && peerTelemetry.instance_id) {
                     this.localRegistryServer.upsertInstance(peerTelemetry);
+                    this.broadcastPeerMesh();
                 }
             });
 
@@ -616,6 +631,15 @@ export class FleetTunnelManager {
         }
     }
 
+    public broadcastPeerMesh(): void {
+        const instances = this.localRegistryServer?.getInstances() || [];
+        for (const [, entry] of this.activeTunnels.entries()) {
+            if (entry.socket && (entry.socket as any).connected) {
+                entry.socket.emit('fleet:peer_mesh', instances);
+            }
+        }
+    }
+
     public pushCustomAppServerState(state: any): void {
         const isLeader = this.registryManager.isLeader();
         if (isLeader) {
@@ -647,6 +671,7 @@ export class FleetTunnelManager {
             const isLeader = this.registryManager.isLeader();
             if (isLeader && this.localRegistryServer) {
                 this.broadcastCustomAppMesh();
+                this.broadcastPeerMesh();
             }
 
             for (const [instanceId, entry] of this.activeTunnels.entries()) {
@@ -886,6 +911,19 @@ export class FleetTunnelManager {
                     if (this.tcpAppManager) {
                         this.tcpAppManager.handleMeshUpdate(mesh);
                     }
+                }
+            });
+
+            // Spoke listens for cluster peer mesh updates from Leader
+            socket.on('fleet:peer_mesh', (instances: any[]) => {
+                if (Array.isArray(instances)) {
+                    this.registryManager.updatePeersFromLeader(instances);
+                }
+            });
+
+            socket.emit('fleet:get_peers', (instances: any[]) => {
+                if (Array.isArray(instances)) {
+                    this.registryManager.updatePeersFromLeader(instances);
                 }
             });
 
@@ -1225,6 +1263,10 @@ export class FleetTunnelManager {
                 );
             }
 
+            // Push cluster peer mesh to dialed peer
+            const instances = this.localRegistryServer?.getInstances() || [];
+            socket.emit('fleet:peer_mesh', instances);
+
             // Initial query for remote peer's telemetry
             socket.emit('peer:query_status', (remoteStatus: any) => {
                 if (this.localRegistryServer && remoteStatus && remoteStatus.instance_id) {
@@ -1237,6 +1279,7 @@ export class FleetTunnelManager {
                         this.siteToInstanceMap.set(remoteStatus.meta.site.toLowerCase(), remoteStatus.instance_id);
                     }
                     log('LOCAL-REGISTRY', `🏠 Ingested Cloud Peer status from ${targetSiteName} (${remoteStatus.instance_id})`);
+                    this.broadcastPeerMesh();
                 }
             });
 
@@ -1251,6 +1294,7 @@ export class FleetTunnelManager {
                             info.siteName = remoteStatus.meta?.site || remoteStatus.instance_id;
                             this.activeTunnels.set(remoteStatus.instance_id, { socket, info });
                             this.siteToInstanceMap.set(remoteStatus.instance_id.toLowerCase(), remoteStatus.instance_id);
+                            this.broadcastPeerMesh();
                         }
                     });
                 }
@@ -1267,6 +1311,7 @@ export class FleetTunnelManager {
                     this.activeTunnels.set(remoteStatus.instance_id, entry);
                     this.siteToInstanceMap.set(remoteStatus.instance_id.toLowerCase(), remoteStatus.instance_id);
                 }
+                this.broadcastPeerMesh();
             }
         });
 
@@ -1562,6 +1607,12 @@ export class FleetTunnelManager {
             }
         });
 
+        socket.on('fleet:get_peers', (ack?: (instances: any[]) => void) => {
+            if (typeof ack === 'function') {
+                ack(this.localRegistryServer?.getInstances() || []);
+            }
+        });
+
         socket.on(
             'multicast:relay_node_request',
             async (
@@ -1810,13 +1861,15 @@ export class FleetTunnelManager {
             instance_id: regStatus.instance_id,
             poc_id: regStatus.poc_id || 'local-leader',
             type: regStatus.mode === 'leader' ? 'leader' : 'spoke',
-            ip_private: regStatus.detected_ip,
+            ip_private: regStatus.detected_ip || nodeIp,
+            port: this.localPort || 8080,
             status: 'online',
             is_leader: regStatus.mode === 'leader',
             capabilities: this.registryManager.getNodeCapabilities(),
             meta: {
                 site: regStatus.site_name || regStatus.instance_id,
-                version
+                version,
+                is_leader: regStatus.mode === 'leader'
             },
             summary,
             custom_app_servers: customAppServers,

@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.0.70] - 2026-10-21
+
+### Fixed & Feature
+- **Cluster Peer Mesh Sync over Fleet Reverse Tunnel (`web-dashboard/fleet-tunnel.ts`, `web-dashboard/registry-manager.ts`, `web-dashboard/server.ts`, `web-dashboard/src/PeerContext.tsx`)**:
+  - **Reverse Tunnel Peer Mesh Broadcast (`fleet:peer_mesh` / `fleet:get_peers`)**: Broadcast active cluster peer instances from the Leader's in-memory registry to all connected Spokes over WebSocket reverse tunnels (both on connection, on telemetry ingestion, and in periodic RTT heartbeat loop), ensuring Spoke nodes dynamically learn mesh peers (BR8, DC2, DC7, etc.) without requiring external Cloudflare Worker polling.
+  - **Spoke Registry Cache & Target Synthesis**: Added `updatePeersFromLeader()` in `RegistryManager` to cache cluster peers received from the Leader, allowing `TargetsManager.synthesizeFromRegistry()` to automatically display learned cluster targets with `meta.registry: true` on Spokes.
+  - **Leader Self-Registration**: Ensured the Leader always registers its own local instance into `LocalRegistryServer` so all connected Spokes receive the Leader target in their mesh list.
+  - **Cluster Peers Exposure on Spokes**: Updated `/api/registry/status` and `/api/mesh/status` on Spoke nodes to return `registryManager.getPeers()` under `local_instances`, and updated `PeerContext.tsx` so Spoke UI components and dropdowns display all cluster peers.
+
 ## [3.0.69] - 2026-10-21
 
 ### Fixed

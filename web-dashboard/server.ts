@@ -18538,7 +18538,7 @@ app.get('/api/registry/status', authenticateToken, (req, res) => {
         ...mgrStatus,
         mode: mode,
         local_registry_active: mode === 'leader',
-        local_instances: mode === 'leader' ? localRegistryServer.getInstances() : [],
+        local_instances: mode === 'leader' ? localRegistryServer.getInstances() : registryManager.getPeers(),
         tunnel_active: fleetTunnelManager.hasActiveLeaderTunnel(),
         leader_tunnel_info: fleetTunnelManager.getActiveLeaderInfo()
     };
@@ -18554,7 +18554,7 @@ app.get('/api/mesh/status', authenticateToken, (req, res) => {
         ...mgrStatus,
         mode: mode,
         local_registry_active: mode === 'leader',
-        local_instances: mode === 'leader' ? localRegistryServer.getInstances() : [],
+        local_instances: mode === 'leader' ? localRegistryServer.getInstances() : registryManager.getPeers(),
         tunnel_active: fleetTunnelManager.hasActiveLeaderTunnel(),
         leader_tunnel_info: fleetTunnelManager.getActiveLeaderInfo()
     });

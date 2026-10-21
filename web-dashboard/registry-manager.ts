@@ -656,6 +656,33 @@ export class RegistryManager {
             }
         }
 
+        if (this.localRegistryServer && (mode === 'leader' || this.isLeader())) {
+            let version = 'v2';
+            try {
+                if (fs.existsSync('/app/VERSION')) {
+                    version = fs.readFileSync('/app/VERSION', 'utf8').trim();
+                }
+            } catch {}
+
+            const selfInstance: RegistryInstance = {
+                poc_id: config.pocId || 'local-leader',
+                instance_id: config.instanceId,
+                type: 'leader',
+                ip_private: this.currentIp,
+                capabilities,
+                summary,
+                meta: {
+                    site: this.getSiteName(),
+                    region: config.region,
+                    vendor: 'stigix',
+                    version,
+                    is_leader: true,
+                },
+                last_seen: new Date().toISOString()
+            };
+            this.localRegistryServer.upsertInstance(selfInstance);
+        }
+
         const result = await this.client.register(this.currentIp, capabilities, summary);
         if (result && result.status === 'ok') {
             // Heartbeat successful
@@ -778,6 +805,27 @@ export class RegistryManager {
         return this.sharedTargetsCache;
     }
 
+    public updatePeersFromLeader(instances: RegistryInstance[]): void {
+        if (!instances || !Array.isArray(instances)) return;
+        const now = Date.now();
+        for (const inst of instances) {
+            if (!inst || !inst.instance_id) continue;
+            this.peerCache.set(inst.instance_id, {
+                instance: inst,
+                lastSeen: now
+            });
+        }
+        // Evict instances that haven't responded within GRACE_PERIOD_MS (15 min)
+        const GRACE_PERIOD_MS = 15 * 60 * 1000;
+        for (const [id, entry] of this.peerCache.entries()) {
+            const entryLastSeen = entry.lastSeen || (entry.instance?.last_seen ? new Date(entry.instance.last_seen).getTime() : 0);
+            if (now - entryLastSeen > GRACE_PERIOD_MS) {
+                this.peerCache.delete(id);
+            }
+        }
+        log('REGISTRY', `⚡ Synchronized cluster peer mesh from Leader: ${this.peerCache.size} peers cached (${this.getPeers().length} active peers learned)`);
+    }
+
     getPeers(): RegistryInstance[] {
         const now = Date.now();
         const GRACE_PERIOD_MS = 15 * 60 * 1000; // 15 minutes
@@ -818,6 +866,7 @@ export class RegistryManager {
             poc_key: config.pocKey,
             is_registered: !!config.pocKey,
             peer_count: this.getPeers().length,
+            peers: this.getPeers(),
             detected_ip: this.currentIp,
             registry_url: config.registryUrl,
             remote_url: config.remoteUrl,
