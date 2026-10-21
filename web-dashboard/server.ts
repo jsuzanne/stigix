@@ -16979,6 +16979,11 @@ app.get('/api/fleet/join-token', authenticateToken, async (req: any, res: any) =
             ''
         ).trim().replace(/\/$/, '');
 
+        if (activeRelayUrl) {
+            process.env.STIGIX_REGISTRY_URL = activeRelayUrl;
+            process.env.STIGIX_REGISTRY_ENABLED = 'true';
+        }
+
         const result = magicJoinManager.createToken({
             ttlSeconds,
             siteHint,
@@ -18719,21 +18724,26 @@ app.post('/api/registry/join-with-token', async (req: any, res: any) => {
                 return res.status(400).json({ error: 'no_endpoints', message: 'Token does not contain any valid reachable Leader endpoints' });
             }
 
-            // Probe candidate endpoints to find the active Leader
+            // Probe candidate endpoints in parallel to find the active Leader quickly (< 1.8s total instead of 2.5s * N)
             let winningEndpoint: string | null = null;
-            log('REGISTRY', `Probing Leader candidate endpoints from token: ${endpoints.join(', ')}`);
-            for (const ep of endpoints) {
-                try {
-                    const testUrl = `${ep.replace(/\/$/, '')}/api/version`;
-                    const probeRes = await fetch(testUrl, { method: 'GET', signal: AbortSignal.timeout(2500) });
-                    if (probeRes.ok) {
-                        winningEndpoint = ep.replace(/\/$/, '');
-                        log('REGISTRY', `Direct connection confirmed with Leader at ${winningEndpoint}`);
-                        break;
-                    }
-                } catch {
-                    // try next endpoint
-                }
+            log('REGISTRY', `Probing Leader candidate endpoints in parallel from token: ${endpoints.join(', ')}`);
+            try {
+                winningEndpoint = await Promise.any(
+                    endpoints.map(async (ep: string) => {
+                        const normalized = ep.replace(/\/$/, '');
+                        const probeRes = await fetch(`${normalized}/api/version`, {
+                            method: 'GET',
+                            signal: AbortSignal.timeout(1800)
+                        });
+                        if (!probeRes.ok) {
+                            throw new Error(`HTTP ${probeRes.status}`);
+                        }
+                        return normalized;
+                    })
+                );
+                log('REGISTRY', `Direct connection confirmed with Leader at ${winningEndpoint}`);
+            } catch {
+                winningEndpoint = null;
             }
 
             const myIp = registryManager.getCurrentIp();

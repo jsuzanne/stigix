@@ -432,6 +432,9 @@ export class RegistryManager {
                 }
                 if (sysSettings.registry_url !== undefined) {
                     process.env.STIGIX_REGISTRY_URL = sysSettings.registry_url;
+                    if (sysSettings.registry_url && String(sysSettings.registry_url).trim().length > 0) {
+                        process.env.STIGIX_REGISTRY_ENABLED = 'true';
+                    }
                     (this.client.getConfig() as any).registryUrl = sysSettings.registry_url;
                     (this.client.getConfig() as any).remoteUrl = sysSettings.registry_url;
                 }

@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.0.73] - 2026-10-21
+
+### Fixed
+- **Cloudflare Rendezvous SSE Listener & Instant M6 Reverse-Dial on Zero-`.env` Leaders (`web-dashboard/fleet-tunnel.ts`, `web-dashboard/registry-manager.ts`, `web-dashboard/server.ts`)**:
+  - **Restore SSE Listener Activation in Zero-`.env` Mode**: Fixed a regression introduced in `v3.0.63`/`v3.0.65` where `startCloudflareRendezvousListener()` required `process.env.STIGIX_REGISTRY_ENABLED === 'true'`, which was not populated when `registry_url` was loaded from `system-settings.json` on Leader startup. The Leader now automatically enables the SSE push listener whenever a valid Cloudflare Relay URL is configured in `system-settings.json` or `.env`.
+  - **Instant Backoff Reset on `peer_registered` Event**: When a Cloud peer (e.g., `HetznerCloud`) re-enrolls with a new Magic Join token and emits a `peer_registered` event, `handleRendezvousEvent()` now immediately closes any disconnected/backoff socket in `outboundDialedSockets` and triggers `dialOutboundPeer()` right away instead of waiting 20–60 seconds for the Socket.IO backoff or stale-socket cleanup loop.
+  - **Parallel Direct Leader Endpoint Probing**: `POST /api/registry/join-with-token` now probes all candidate Leader endpoints from the token concurrently (`Promise.any` with `1.8 s` timeout) instead of sequentially (`2.5 s × N`), cutting the pre-Rendezvous fallback delay to `< 2 s` with zero additional Cloudflare requests.
+
 ## [3.0.72] - 2026-10-21
 
 ### Fixed

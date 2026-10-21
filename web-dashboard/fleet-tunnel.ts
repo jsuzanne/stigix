@@ -1357,11 +1357,26 @@ export class FleetTunnelManager {
         return resolveClusterRealmHash();
     }
 
+    private resolveActiveCloudflareRelayUrl(): string {
+        const envUrl = (process.env.STIGIX_REGISTRY_URL || '').trim().replace(/\/$/, '');
+        if (envUrl && !envUrl.includes('127.0.0.1') && !envUrl.includes('localhost')) {
+            return envUrl;
+        }
+        try {
+            const st = this.registryManager?.getStatus?.();
+            const remote = (st?.remote_url || st?.registry_url || '').trim().replace(/\/$/, '');
+            if (remote && !remote.includes('127.0.0.1') && !remote.includes('localhost')) {
+                return remote;
+            }
+        } catch {}
+        return '';
+    }
+
     private startCloudflareRendezvousListener(): void {
         if (this.isListeningCloudflare) return;
-        const registryBaseUrl = (process.env.STIGIX_REGISTRY_URL || '').trim().replace(/\/$/, '');
-        const registryEnabled = process.env.STIGIX_REGISTRY_ENABLED === 'true';
-        if (!registryEnabled || !registryBaseUrl) {
+        const registryBaseUrl = this.resolveActiveCloudflareRelayUrl();
+        const explicitlyDisabled = process.env.STIGIX_REGISTRY_ENABLED === 'false';
+        if (explicitlyDisabled || !registryBaseUrl) {
             return;
         }
         this.isListeningCloudflare = true;
@@ -1480,9 +1495,9 @@ export class FleetTunnelManager {
 
     public syncEphemeralPeersFromCloudflare(): void {
         if (!this.registryManager.isLeader()) return;
-        const registryBaseUrl = (process.env.STIGIX_REGISTRY_URL || '').trim().replace(/\/$/, '');
-        const registryEnabled = process.env.STIGIX_REGISTRY_ENABLED === 'true';
-        if (!registryEnabled || !registryBaseUrl) return;
+        const registryBaseUrl = this.resolveActiveCloudflareRelayUrl();
+        const explicitlyDisabled = process.env.STIGIX_REGISTRY_ENABLED === 'false';
+        if (explicitlyDisabled || !registryBaseUrl) return;
 
         try {
             const realmHash = this.getRealmHash();
@@ -1562,7 +1577,16 @@ export class FleetTunnelManager {
         for (const peerIp of candidateIps) {
             // Trigger immediate outbound reverse dial for each candidate
             const targetKey = `${peerIp.toLowerCase()}:${peerPort}`;
-            if (!this.outboundDialedSockets.has(targetKey) && !this.activeTunnels.has(peerInstanceId)) {
+            const existingSock = this.outboundDialedSockets.get(targetKey);
+            if (existingSock && !existingSock.connected) {
+                // Peer just re-announced via Cloudflare Rendezvous (e.g. fresh token enrollment):
+                // reset any sleeping backoff socket so we dial immediately instead of waiting 20-60s.
+                existingSock.disconnect();
+                this.outboundDialedSockets.delete(targetKey);
+            }
+            const activeTunnel = this.activeTunnels.get(peerInstanceId);
+            const hasLiveTunnel = Boolean(activeTunnel && (activeTunnel.socket as any)?.connected);
+            if (!this.outboundDialedSockets.has(targetKey) && !hasLiveTunnel) {
                 const targetObj = { id: peerInstanceId, name: peerSiteName, host: peerIp, ports: { dashboard: peerPort, http: 8082 } };
                 this.dialOutboundPeer(targetObj, peerIp, peerPort, targetKey);
             }
