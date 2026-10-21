@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.0.71] - 2026-10-21
+
+### Fixed & Performance
+- **Peer Mesh Synchronization Log De-duplication & Leader Broadcast Throttling (`web-dashboard/registry-manager.ts`, `web-dashboard/fleet-tunnel.ts`, `web-dashboard/local-registry-server.ts`)**:
+  - **Spoke Log De-duplication**: `updatePeersFromLeader()` now compares active peer mesh signatures (`instance_id:ip:site_name`) and only logs when the cluster topology actually changes (peers joining/leaving/renaming) or upon initial connection sync, completely suppressing high-frequency routine heartbeat spam on Spokes.
+  - **Authoritative Pruning on Spoke**: When receiving the authoritative instance mesh from the Leader, Spoke `peerCache` immediately prunes stale entries that are no longer reported by the Leader.
+  - **Leader Broadcast Throttling**: On the Leader, routine `peer:telemetry` heartbeats no longer trigger immediate full-cluster mesh broadcasts unless instance state or topology changed (`upsertInstance()` returns change flag). The existing 15-second RTT heartbeat loop continues to provide regular periodic reconciliation for all connected Spokes.
+  - **Immediate Disconnect & Prune Broadcast**: Leader immediately triggers `broadcastPeerMesh()` when a peer reverse tunnel disconnects or when `cleanup()` prunes a stale instance.
+  - **Custom App Server Log Quieting**: On Leader, `updateCustomAppServer()` only logs when an application status, IP, or port changes, eliminating repeated `[LOCAL-REGISTRY] Custom App Server running:...` log floods.
+
 ## [3.0.70] - 2026-10-21
 
 ### Fixed & Feature

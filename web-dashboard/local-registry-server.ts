@@ -52,8 +52,12 @@ export class LocalRegistryServer {
         }
 
         const key = `${server.node_id || server.ip}:${server.app_id}`;
+        const prev = this.activeCustomAppServers.get(key);
+        const stateChanged = !prev || prev.status !== server.status || prev.ip !== server.ip || prev.port !== server.port;
         this.activeCustomAppServers.set(key, { ...server, updated_at: Date.now() });
-        log('LOCAL-REGISTRY', `Custom App Server ${server.status}: ${server.app_name} on ${server.node_id} (ip: ${server.ip}, port ${server.port})`);
+        if (stateChanged) {
+            log('LOCAL-REGISTRY', `Custom App Server ${server.status}: ${server.app_name} on ${server.node_id} (ip: ${server.ip}, port ${server.port})`);
+        }
     }
 
     public removeCustomAppServersForNode(nodeId: string): void {
@@ -68,6 +72,11 @@ export class LocalRegistryServer {
         return Array.from(this.activeCustomAppServers.values());
     }
 
+    private onInstancesPruned?: () => void;
+    public setOnInstancesPruned(cb: () => void): void {
+        this.onInstancesPruned = cb;
+    }
+
     constructor() {
         // Periodic cleanup of stale heartbeats
         setInterval(() => this.cleanup(), 60000);
@@ -75,12 +84,17 @@ export class LocalRegistryServer {
 
     private cleanup() {
         const now = Date.now();
+        let pruned = false;
         for (const [key, inst] of this.instances.entries()) {
             const lastSeen = inst.last_seen ? new Date(inst.last_seen).getTime() : 0;
             if (now - lastSeen > this.ttlSeconds * 1000) {
                 this.instances.delete(key);
                 log('LOCAL-REGISTRY', `Pruned stale instance: ${inst.instance_id}`);
+                pruned = true;
             }
+        }
+        if (pruned && this.onInstancesPruned) {
+            this.onInstancesPruned();
         }
     }
 
@@ -90,8 +104,8 @@ export class LocalRegistryServer {
         return Array.from(this.instances.values());
     }
 
-    upsertInstance(instance: RegistryInstance, pocId: string = 'local-leader'): void {
-        if (!instance || !instance.instance_id) return;
+    upsertInstance(instance: RegistryInstance, pocId: string = 'local-leader'): boolean {
+        if (!instance || !instance.instance_id) return false;
         const targetPocId = instance.poc_id || pocId || 'local-leader';
         const key = instance.instance_id;
 
@@ -107,6 +121,11 @@ export class LocalRegistryServer {
         }
 
         const prev = this.instances.get(matchedKey);
+        const isNewOrChanged = !prev || 
+            prev.instance_id !== instance.instance_id ||
+            prev.ip_private !== instance.ip_private ||
+            (instance.meta?.site && prev.meta?.site !== instance.meta.site);
+
         const mergedInstance: RegistryInstance = {
             ...prev,
             ...instance,
@@ -131,6 +150,8 @@ export class LocalRegistryServer {
                 }
             }
         }
+
+        return isNewOrChanged;
     }
 
     public updatePeerTunnelMetrics(

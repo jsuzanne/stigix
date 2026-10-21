@@ -19,6 +19,7 @@ export class RegistryManager {
     private heartbeatInterval: NodeJS.Timeout | null = null;
     private discoveryInterval: NodeJS.Timeout | null = null;
     private peerCache: Map<string, { instance: RegistryInstance, lastSeen: number }> = new Map();
+    private lastMeshSignature: string = '';
     private sharedTargetsCache: any[] = [];
     private currentIp: string = '127.0.0.1';
     private leaderInfo: { ip: string, id: string } | null = null;
@@ -808,6 +809,8 @@ export class RegistryManager {
     public updatePeersFromLeader(instances: RegistryInstance[]): void {
         if (!instances || !Array.isArray(instances)) return;
         const now = Date.now();
+        const incomingIds = new Set(instances.map(i => i?.instance_id).filter(Boolean));
+
         for (const inst of instances) {
             if (!inst || !inst.instance_id) continue;
             this.peerCache.set(inst.instance_id, {
@@ -815,15 +818,31 @@ export class RegistryManager {
                 lastSeen: now
             });
         }
-        // Evict instances that haven't responded within GRACE_PERIOD_MS (15 min)
-        const GRACE_PERIOD_MS = 15 * 60 * 1000;
-        for (const [id, entry] of this.peerCache.entries()) {
-            const entryLastSeen = entry.lastSeen || (entry.instance?.last_seen ? new Date(entry.instance.last_seen).getTime() : 0);
-            if (now - entryLastSeen > GRACE_PERIOD_MS) {
-                this.peerCache.delete(id);
+
+        // If Leader sent an authoritative mesh list, prune cached entries no longer reported by Leader
+        if (incomingIds.size > 0) {
+            for (const id of this.peerCache.keys()) {
+                if (!incomingIds.has(id)) {
+                    this.peerCache.delete(id);
+                }
             }
         }
-        log('REGISTRY', `⚡ Synchronized cluster peer mesh from Leader: ${this.peerCache.size} peers cached (${this.getPeers().length} active peers learned)`);
+
+        const activePeers = this.getPeers();
+        const currentSignature = activePeers
+            .map(p => `${p.instance_id}:${p.ip_private}:${p.site_name || ''}`)
+            .sort()
+            .join('|');
+
+        if (!this.lastMeshSignature) {
+            this.lastMeshSignature = currentSignature;
+            const peerNames = activePeers.map(p => p.site_name || p.instance_id).filter(Boolean).join(', ');
+            log('REGISTRY', `⚡ Synchronized cluster peer mesh from Leader: ${this.peerCache.size} peers cached (${activePeers.length} active peers: ${peerNames || 'none'})`);
+        } else if (this.lastMeshSignature !== currentSignature) {
+            this.lastMeshSignature = currentSignature;
+            const peerNames = activePeers.map(p => p.site_name || p.instance_id).filter(Boolean).join(', ');
+            log('REGISTRY', `⚡ Cluster peer mesh updated: ${this.peerCache.size} peers cached (${activePeers.length} active peers: ${peerNames || 'none'})`);
+        }
     }
 
     getPeers(): RegistryInstance[] {
@@ -914,6 +933,7 @@ export class RegistryManager {
         this.stop();
         this.leaderInfo = null;
         this.peerCache.clear();
+        this.lastMeshSignature = '';
         this.sharedTargetsCache = [];
         // Recreate client from fresh process.env (already updated by savePrismaConfig)
         this.client = StigixRegistryClient.fromEnv((usage) => this.handleUsage(usage));

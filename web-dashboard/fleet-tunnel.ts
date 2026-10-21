@@ -227,6 +227,11 @@ export class FleetTunnelManager {
 
     public setLocalRegistryServer(localRegistryServer: LocalRegistryServer): void {
         this.localRegistryServer = localRegistryServer;
+        localRegistryServer.setOnInstancesPruned(() => {
+            if (this.registryManager.isLeader()) {
+                this.broadcastPeerMesh();
+            }
+        });
     }
 
     public setTcpAppManager(tcpAppManager: any): void {
@@ -527,6 +532,9 @@ export class FleetTunnelManager {
                 if (siteName && this.siteToInstanceMap.get(siteName.toLowerCase()) === instanceId) {
                     this.siteToInstanceMap.delete(siteName.toLowerCase());
                 }
+                if (this.registryManager.isLeader()) {
+                    this.broadcastPeerMesh();
+                }
             });
 
             socket.on('tunnel:ping', (ack?: () => void) => {
@@ -562,8 +570,10 @@ export class FleetTunnelManager {
             // Handle telemetry push from remote peer (M6)
             socket.on('peer:telemetry', (peerTelemetry: any) => {
                 if (this.localRegistryServer && peerTelemetry && peerTelemetry.instance_id) {
-                    this.localRegistryServer.upsertInstance(peerTelemetry);
-                    this.broadcastPeerMesh();
+                    const isNewOrChanged = this.localRegistryServer.upsertInstance(peerTelemetry);
+                    if (isNewOrChanged) {
+                        this.broadcastPeerMesh();
+                    }
                 }
             });
 
@@ -1289,12 +1299,14 @@ export class FleetTunnelManager {
                 if (socket.connected) {
                     socket.timeout(5000).emit('peer:query_status', (err: any, remoteStatus: any) => {
                         if (!err && this.localRegistryServer && remoteStatus && remoteStatus.instance_id) {
-                            this.localRegistryServer.upsertInstance(remoteStatus);
+                            const isNewOrChanged = this.localRegistryServer.upsertInstance(remoteStatus);
                             info.instanceId = remoteStatus.instance_id;
                             info.siteName = remoteStatus.meta?.site || remoteStatus.instance_id;
                             this.activeTunnels.set(remoteStatus.instance_id, { socket, info });
                             this.siteToInstanceMap.set(remoteStatus.instance_id.toLowerCase(), remoteStatus.instance_id);
-                            this.broadcastPeerMesh();
+                            if (isNewOrChanged) {
+                                this.broadcastPeerMesh();
+                            }
                         }
                     });
                 }
@@ -1303,7 +1315,7 @@ export class FleetTunnelManager {
 
         socket.on('peer:telemetry', (remoteStatus: any) => {
             if (this.localRegistryServer && remoteStatus && remoteStatus.instance_id) {
-                this.localRegistryServer.upsertInstance(remoteStatus);
+                const isNewOrChanged = this.localRegistryServer.upsertInstance(remoteStatus);
                 const entry = this.activeTunnels.get(targetId);
                 if (entry) {
                     entry.info.instanceId = remoteStatus.instance_id;
@@ -1311,7 +1323,9 @@ export class FleetTunnelManager {
                     this.activeTunnels.set(remoteStatus.instance_id, entry);
                     this.siteToInstanceMap.set(remoteStatus.instance_id.toLowerCase(), remoteStatus.instance_id);
                 }
-                this.broadcastPeerMesh();
+                if (isNewOrChanged) {
+                    this.broadcastPeerMesh();
+                }
             }
         });
 
@@ -1322,6 +1336,9 @@ export class FleetTunnelManager {
             }
             log('TUNNEL', `[M6 DIAL] Leader reverse dial disconnected from ${targetSiteName} (${reason})`, 'warn');
             this.activeTunnels.delete(targetId);
+            if (this.registryManager.isLeader()) {
+                this.broadcastPeerMesh();
+            }
         });
 
         socket.on('connect_error', (err: any) => {
