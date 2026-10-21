@@ -17784,6 +17784,9 @@ const getSnapshotCaptureContext = () => ({
     voiceStatsFile: VOICE_STATS_FILE,
     voiceConfigFile: VOICE_CONFIG_FILE,
     convergenceHistoryFile: CONVERGENCE_HISTORY_FILE,
+    scoreHistoryFile: SCORE_HISTORY_FILE,
+    testResultsFile: path.join(APP_CONFIG.logDir, 'test-results.jsonl'),
+    testLogger,
     version: getStigixVersion()
 });
 
@@ -17813,7 +17816,8 @@ app.get('/api/snapshots', authenticateToken, (req, res) => {
         sdwan_site_count: s.sdwanSiteCount ?? 0,
         sdwan_sites_online: s.sdwanSitesOnline ?? 0,
         voice_avg_mos: s.voiceAvgMos,
-        vyos_impairments_count: s.vyosImpairmentsCount ?? 0
+        vyos_impairments_count: s.vyosImpairmentsCount ?? 0,
+        security_score: s.securityScore
     }));
     res.json({ snapshots, suggested_name: suggestedName, site_name: siteName });
 });
@@ -17836,7 +17840,7 @@ app.post('/api/snapshots', authenticateToken, async (req, res) => {
             createdBy: (req as any).user?.username || 'api',
             context: getSnapshotCaptureContext()
         });
-        log('SNAPSHOT', `📸 Captured state snapshot "${snapshot.name}" (${snapshot.id}) with ${snapshot.tunnels.length} tunnels, ${snapshot.demMatrix.length} DEM probes, Voice MOS=${snapshot.voice?.avgMos ?? 'N/A'}`);
+        log('SNAPSHOT', `📸 Captured state snapshot "${snapshot.name}" (${snapshot.id}) with ${snapshot.tunnels.length} tunnels, ${snapshot.demMatrix.length} DEM probes, Voice MOS=${snapshot.voice?.avgMos ?? 'N/A'}, SecScore=${snapshot.security?.overallScore ?? 'N/A'}%`);
         res.json({ 
             success: true, 
             snapshot: {
@@ -17852,14 +17856,15 @@ app.post('/api/snapshots', authenticateToken, async (req, res) => {
     }
 });
 
-app.get('/api/snapshots/:id', authenticateToken, (req, res) => {
+app.get('/api/snapshots/:id', authenticateToken, async (req, res) => {
     if (process.env.ENABLE_CHANGE_SNAPSHOTS !== 'true') {
         return res.status(403).json({ error: 'ChangeGuard Snapshots feature is disabled' });
     }
-    const snapshot = snapshotManager.getSnapshot(req.params.id);
-    if (!snapshot) {
+    const rawSnapshot = snapshotManager.getSnapshot(req.params.id);
+    if (!rawSnapshot) {
         return res.status(404).json({ error: 'Snapshot not found' });
     }
+    const snapshot = await snapshotManager.enrichSnapshotIfNeeded(rawSnapshot, getSnapshotCaptureContext());
     res.json({ snapshot });
 });
 
@@ -18008,7 +18013,8 @@ app.post('/api/snapshots/diff', authenticateToken, async (req, res) => {
                 underlay: rawDiff.sdwanUnderlayDelta
             },
             voice: rawDiff.voiceDelta || null,
-            vyos: rawDiff.vyosDelta || null
+            vyos: rawDiff.vyosDelta || null,
+            security: rawDiff.securityDelta || null
         };
 
         res.json({ success: true, diff });

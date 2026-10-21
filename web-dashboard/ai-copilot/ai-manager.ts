@@ -1167,6 +1167,7 @@ YOUR ROLE & MANDATORY RELIABILITY RULES:
             criticalRegressions: diffReport.critical_regressions || [],
             improvements: diffReport.improvements || [],
             voiceQoE: diffReport.voice || null,
+            securityPosture: diffReport.security || null,
             vyosUnderlay: diffReport.vyos ? {
                 routersOnlineBefore: diffReport.vyos.routersOnlineBefore,
                 routersOnlineAfter: diffReport.vyos.routersOnlineAfter,
@@ -1197,17 +1198,17 @@ YOUR ROLE & MANDATORY RELIABILITY RULES:
             }
         };
 
-        const systemPrompt = `You are Stigix ChangeGuard AI Architect, an expert SD-WAN, SASE, and Digital Experience (QoE) validation specialist.
+        const systemPrompt = `You are Stigix ChangeGuard AI Architect, an expert SD-WAN, SASE, Security Policy Enforcement, and Digital Experience (QoE) validation specialist.
 Analyze the provided Before/After ChangeGuard telemetry delta and write a concise, high-impact executive analysis in Markdown.
 
 Structure your response into 3 short sections:
-1. **🎯 Executive Verdict & Customer Experience Impact**: Explain what the deterministic verdict (${diffReport.verdict}, ${diffReport.score}/100) means for end-users right now (Voice RTP MOS, SaaS DEM probes, and site connectivity).
-2. **🔍 Cross-Layer Root-Cause Correlation**: Correlate any Underlay changes (VyOS WAN impairments, injected latency/loss, link down, BGP blackholes) with Overlay behavior (Prisma SD-WAN WAN circuits, SASE IPsec Service Links, Stigix Mesh) and application/voice QoE shifts.
+1. **🎯 Executive Verdict & Customer Experience / Security Impact**: Explain what the deterministic verdict (${diffReport.verdict}, ${diffReport.score}/100) means right now across Security Posture (URL Filtering, DNS Security, Threat/EICAR, C2, AI Security), Voice RTP MOS, SaaS DEM probes, and site connectivity.
+2. **🔍 Cross-Layer Root-Cause Correlation**: Correlate any Underlay changes (VyOS WAN impairments, injected latency/loss, link down, BGP blackholes) with Overlay behavior (Prisma SD-WAN WAN circuits, SASE IPsec Service Links, Stigix Mesh), SASE Security policy enforcement shifts (blocked/sinkholed -> allowed/bypass), and application/voice QoE shifts.
 3. **🛠️ Recommended Action**: Clear GO / CAUTION / ROLLBACK guidance with 1-3 concrete next steps.
 
 Rules:
 - Use exact metrics from the JSON digest (never invent numbers).
-- Keep it crisp, scannable, and under 280 words.`;
+- Keep it crisp, scannable, and under 300 words.`;
 
         const userMessage = `Analyze this ChangeGuard state comparison between Baseline "${diffReport.baseline_name}" and Target "${diffReport.current_name}":\n\n\`\`\`json\n${JSON.stringify(digest, null, 2)}\n\`\`\``;
 

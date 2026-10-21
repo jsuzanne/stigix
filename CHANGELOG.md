@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.0.75] - 2026-10-21
+
+### Added
+- **SASE Security Posture & Policy Enforcement Validation in ChangeGuard (`web-dashboard/snapshot-manager.ts`, `web-dashboard/src/ChangeGuard.tsx`, `web-dashboard/ai-copilot/ai-manager.ts`, `web-dashboard/server.ts`)**:
+  - **Snapshot Security Capture & Historical Backfill**: Extended `SnapshotManager` (`StigixSnapshotSecurity`) to capture and automatically backfill SASE Security Posture scores and per-category policy verdicts (`URL Filtering`, `DNS Security`, `Threat Prevention / EICAR`, `C2 Detection`, `AI Security`) from `score-history.jsonl` and `test-results.jsonl` around the snapshot timestamp.
+  - **Automated Security Bypass & Regression Engine**: `computeDiff()` now compares SASE overall and pillar scores as well as individual test category enforcement verdicts, flagging policy bypasses (`blocked`/`sinkholed`/`enforced` → `allowed`/`bypass`) as `CRITICAL SECURITY BYPASS` regressions and adjusting the ChangeGuard GO/NO-GO confidence score accordingly.
+  - **ChangeGuard UI & External LLM Integration**: Added a 5th Executive KPI Card (**Security Posture**), a dedicated **SASE Security Posture & Policy Enforcement** comparison section (5 pillar cards + category verdict diff table), a `Security` score badge in the **Snapshot Catalog**, and full Security Posture details in both the on-demand AI Root-Cause Analysis and external LLM Markdown/JSON exports.
+
 ## [3.0.74] - 2026-10-21
 
 ### Added

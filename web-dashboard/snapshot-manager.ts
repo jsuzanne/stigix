@@ -157,6 +157,29 @@ export interface StigixSnapshotConvergence {
     verdict?: string;
 }
 
+export interface StigixSnapshotSecurityCategory {
+    id: string;
+    type: 'url' | 'dns' | 'threat' | 'c2' | 'ai';
+    name: string;
+    status: string; // 'blocked' | 'sinkholed' | 'enforced' | 'allowed' | 'bypass' | 'unreachable' | 'error'
+    protected: boolean;
+    weight?: number;
+    timestamp?: number;
+}
+
+export interface StigixSnapshotSecurity {
+    overallScore?: number;
+    urlScore?: number;
+    dnsScore?: number;
+    threatScore?: number;
+    c2Score?: number;
+    aiScore?: number;
+    protectedCount: number;
+    totalCount: number;
+    lastRunAt?: string;
+    categories: StigixSnapshotSecurityCategory[];
+}
+
 export interface StigixSnapshot {
     id: string;
     name: string;
@@ -169,6 +192,7 @@ export interface StigixSnapshot {
     voice?: StigixSnapshotVoice; // Voice / RTP MOS QoE
     vyos?: StigixSnapshotVyos; // VyOS Underlay & Chaos/QoS Impairments
     convergence?: StigixSnapshotConvergence; // Latest Failover / Convergence test
+    security?: StigixSnapshotSecurity; // Security Posture & Policy Enforcement (URL, DNS, Threat, C2, AI)
     healthScore?: number;
     metadata?: {
         createdBy?: string;
@@ -191,6 +215,7 @@ export interface SnapshotSummary {
     sdwanSitesOnline?: number;
     voiceAvgMos?: number;
     vyosImpairmentsCount?: number;
+    securityScore?: number;
     healthScore?: number;
     tags?: string[];
 }
@@ -343,6 +368,43 @@ export interface SnapshotVyosDelta {
     interfaceDeltas: SnapshotVyosImpairmentDelta[];
 }
 
+export interface SnapshotSecurityCategoryDelta {
+    id: string;
+    type: 'url' | 'dns' | 'threat' | 'c2' | 'ai';
+    name: string;
+    statusBefore?: string;
+    statusAfter?: string;
+    protectedBefore?: boolean;
+    protectedAfter?: boolean;
+    state: 'REGRESSED' | 'IMPROVED' | 'STABLE_PROTECTED' | 'STABLE_EXPOSED' | 'NEW' | 'REMOVED';
+}
+
+export interface SnapshotSecurityDelta {
+    overallBefore?: number;
+    overallAfter?: number;
+    overallDelta?: number;
+    urlBefore?: number;
+    urlAfter?: number;
+    urlDelta?: number;
+    dnsBefore?: number;
+    dnsAfter?: number;
+    dnsDelta?: number;
+    threatBefore?: number;
+    threatAfter?: number;
+    threatDelta?: number;
+    c2Before?: number;
+    c2After?: number;
+    c2Delta?: number;
+    aiBefore?: number;
+    aiAfter?: number;
+    aiDelta?: number;
+    protectedBefore: number;
+    protectedAfter: number;
+    totalBefore: number;
+    totalAfter: number;
+    categories: SnapshotSecurityCategoryDelta[];
+}
+
 export interface SnapshotDiffResult {
     baseline: {
         id: string;
@@ -374,6 +436,7 @@ export interface SnapshotDiffResult {
         };
         voiceMos?: { before?: number; after?: number; delta?: number };
         vyosImpairments?: { before: number; after: number; delta: number };
+        securityScore?: { before?: number; after?: number; delta?: number };
         healthScore: { before?: number; after?: number; delta?: number };
     };
     regressions: string[];
@@ -384,6 +447,7 @@ export interface SnapshotDiffResult {
     sdwanUnderlayDelta?: SnapshotSdwanUnderlayDelta;
     voiceDelta?: SnapshotVoiceDelta;
     vyosDelta?: SnapshotVyosDelta;
+    securityDelta?: SnapshotSecurityDelta;
 }
 
 export interface SnapshotCaptureContext {
@@ -397,6 +461,9 @@ export interface SnapshotCaptureContext {
     voiceStatsFile?: string;
     voiceConfigFile?: string;
     convergenceHistoryFile?: string;
+    scoreHistoryFile?: string;
+    testResultsFile?: string;
+    testLogger?: any;
     version?: string;
 }
 
@@ -671,6 +738,175 @@ export class SnapshotManager {
     }
 
     /**
+     * Captures Security Posture & Scores (URL Filtering, DNS Security, Threat/EICAR, C2, AI Security)
+     * from score-history.jsonl and test-results.jsonl up to referenceTimeMs.
+     */
+    private captureSecurityState(ctx: SnapshotCaptureContext, referenceTimeMs: number = Date.now()): StigixSnapshotSecurity | undefined {
+        const logDir = path.join(path.dirname(this.configDir), 'logs');
+        const scoreHistoryFile = ctx.scoreHistoryFile || path.join(logDir, 'score-history.jsonl');
+        const testResultsFile = ctx.testResultsFile || path.join(logDir, 'test-results.jsonl');
+
+        const isProtectedStatus = (s: string) => {
+            const norm = String(s || '').toLowerCase();
+            return norm === 'blocked' || norm === 'sinkholed' || norm === 'enforced';
+        };
+        const isEvaluatedStatus = (s: string) => {
+            const norm = String(s || '').toLowerCase();
+            return norm === 'blocked' || norm === 'sinkholed' || norm === 'enforced' || norm === 'allowed' || norm === 'bypass';
+        };
+
+        let urlScore: number | undefined;
+        let dnsScore: number | undefined;
+        let threatScore: number | undefined;
+        let lastRunAtMs = 0;
+
+        const categoriesMap = new Map<string, StigixSnapshotSecurityCategory>();
+
+        // 1. Read score-history.jsonl for weighted batch scores & breakdowns
+        try {
+            if (fs.existsSync(scoreHistoryFile)) {
+                const raw = fs.readFileSync(scoreHistoryFile, 'utf8').trim();
+                if (raw) {
+                    const lines = raw.split('\n').slice(-400);
+                    const parsed = lines.map(l => {
+                        try { return JSON.parse(l); } catch { return null; }
+                    }).filter(Boolean);
+
+                    const beforeRef = parsed.filter(e => !e.timestamp || Number(e.timestamp) <= referenceTimeMs + 120000);
+                    const candidates = beforeRef.length > 0 ? beforeRef : parsed;
+
+                    for (const entry of candidates) {
+                        const ts = Number(entry.timestamp || 0);
+                        if (ts > lastRunAtMs) lastRunAtMs = ts;
+
+                        if (typeof entry.scores?.url === 'number') urlScore = entry.scores.url;
+                        if (typeof entry.scores?.dns === 'number') dnsScore = entry.scores.dns;
+                        if (typeof entry.scores?.threat === 'number') threatScore = entry.scores.threat;
+
+                        for (const pType of ['url', 'dns', 'threat'] as const) {
+                            const bd = entry.breakdown?.[pType];
+                            if (bd && typeof bd === 'object') {
+                                for (const [catName, info] of Object.entries(bd as Record<string, any>)) {
+                                    if (!info || !info.status) continue;
+                                    const statusStr = String(info.status).toLowerCase();
+                                    const id = `${pType}::${catName.toLowerCase().trim()}`;
+                                    categoriesMap.set(id, {
+                                        id,
+                                        type: pType,
+                                        name: catName,
+                                        status: statusStr,
+                                        protected: isProtectedStatus(statusStr),
+                                        weight: typeof info.weight === 'number' ? info.weight : undefined,
+                                        timestamp: ts || undefined
+                                    });
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        } catch {}
+
+        // 2. Read test-results.jsonl for granular individual verdicts (including c2 and ai tests)
+        try {
+            if (fs.existsSync(testResultsFile)) {
+                const raw = fs.readFileSync(testResultsFile, 'utf8').trim();
+                if (raw) {
+                    const lines = raw.split('\n').slice(-1000);
+                    const parsed = lines.map(l => {
+                        try { return JSON.parse(l); } catch { return null; }
+                    }).filter(r => r && r.type && r.name && r.status);
+
+                    const beforeRef = parsed.filter(r => !r.timestamp || Number(r.timestamp) <= referenceTimeMs + 120000);
+                    const candidates = (beforeRef.length > 0 ? beforeRef : parsed)
+                        .sort((a, b) => Number(a.timestamp || 0) - Number(b.timestamp || 0));
+
+                    for (const r of candidates) {
+                        const rawType = String(r.type).toLowerCase();
+                        const pType: 'url' | 'dns' | 'threat' | 'c2' | 'ai' =
+                            rawType === 'c2' || rawType === 'c2_scenario' ? 'c2' :
+                            rawType === 'ai' || rawType === 'ai_security' ? 'ai' :
+                            rawType === 'dns' ? 'dns' :
+                            rawType === 'threat' ? 'threat' : 'url';
+
+                        const statusStr = String(r.status).toLowerCase();
+                        if (!isEvaluatedStatus(statusStr)) continue;
+
+                        const ts = Number(r.timestamp || 0);
+                        if (ts > lastRunAtMs) lastRunAtMs = ts;
+
+                        const id = `${pType}::${String(r.name).toLowerCase().trim()}`;
+                        const existing = categoriesMap.get(id);
+                        if (!existing || !existing.timestamp || ts >= existing.timestamp) {
+                            categoriesMap.set(id, {
+                                id,
+                                type: pType,
+                                name: String(r.name).trim(),
+                                status: statusStr,
+                                protected: isProtectedStatus(statusStr),
+                                weight: existing?.weight,
+                                timestamp: ts || undefined
+                            });
+                        }
+                    }
+                }
+            }
+        } catch {}
+
+        const categories = Array.from(categoriesMap.values());
+        if (categories.length === 0 && urlScore === undefined && dnsScore === undefined && threatScore === undefined) {
+            return undefined;
+        }
+
+        // Compute per-pillar scores from categories if not already set (or for c2 / ai)
+        const computePillarScore = (t: 'url' | 'dns' | 'threat' | 'c2' | 'ai', fallback?: number): number | undefined => {
+            const list = categories.filter(c => c.type === t && isEvaluatedStatus(c.status));
+            if (list.length === 0) return fallback;
+            let totalWeight = 0;
+            let protectedWeight = 0;
+            for (const item of list) {
+                const w = item.weight ?? 1;
+                totalWeight += w;
+                if (item.protected) protectedWeight += w;
+            }
+            if (totalWeight === 0) return fallback;
+            return Math.round((protectedWeight / totalWeight) * 100);
+        };
+
+        const finalUrlScore = urlScore ?? computePillarScore('url');
+        const finalDnsScore = dnsScore ?? computePillarScore('dns');
+        const finalThreatScore = threatScore ?? computePillarScore('threat');
+        const finalC2Score = computePillarScore('c2');
+        const finalAiScore = computePillarScore('ai');
+
+        const evaluatedCategories = categories.filter(c => isEvaluatedStatus(c.status));
+        const protectedCount = evaluatedCategories.filter(c => c.protected).length;
+        const totalCount = evaluatedCategories.length;
+
+        const availableScores = [finalUrlScore, finalDnsScore, finalThreatScore, finalC2Score, finalAiScore]
+            .filter((s): s is number => typeof s === 'number' && !isNaN(s));
+
+        const overallScore = totalCount > 0
+            ? Math.round((protectedCount / totalCount) * 100)
+            : (availableScores.length > 0
+                ? Math.round(availableScores.reduce((a, b) => a + b, 0) / availableScores.length)
+                : undefined);
+
+        return {
+            overallScore,
+            urlScore: finalUrlScore,
+            dnsScore: finalDnsScore,
+            threatScore: finalThreatScore,
+            c2Score: finalC2Score,
+            aiScore: finalAiScore,
+            protectedCount,
+            totalCount,
+            lastRunAt: lastRunAtMs > 0 ? new Date(lastRunAtMs).toISOString() : undefined,
+            categories
+        };
+    }
+
+    /**
      * Extracts normalized DEM metric values from either ConnectivityLogger entries (metrics.total_ms)
      * or unit test / legacy probe entries (latency / avg_latency).
      */
@@ -743,8 +979,8 @@ export class SnapshotManager {
     }
 
     /**
-     * Backfills historical DEM probe latencies & Voice MOS for snapshots that were captured
-     * prior to the ConnectivityResult schema fix.
+     * Backfills historical DEM probe latencies, Voice MOS, and Security Posture for snapshots that were captured
+     * prior to schema updates.
      */
     public async enrichSnapshotIfNeeded(snapshot: StigixSnapshot, ctx?: SnapshotCaptureContext): Promise<StigixSnapshot> {
         if (!ctx) return snapshot;
@@ -802,6 +1038,14 @@ export class SnapshotManager {
             const voiceState = this.captureVoiceState(ctx, snapTimeMs);
             if (voiceState) {
                 snapshot.voice = voiceState;
+            }
+        }
+
+        // Backfill Security Posture at snapshot timestamp if missing
+        if (!snapshot.security) {
+            const securityState = this.captureSecurityState(ctx, snapTimeMs);
+            if (securityState) {
+                snapshot.security = securityState;
             }
         }
 
@@ -1010,6 +1254,9 @@ export class SnapshotManager {
         // 6. Gather Latest Failover / Convergence Test
         const convergence = this.captureConvergenceState(ctx);
 
+        // 7. Gather Security Posture & Policy Enforcement (URL, DNS, Threat, C2, AI)
+        const security = this.captureSecurityState(ctx, Date.now());
+
         const timestamp = new Date().toISOString();
         const dateSlug = timestamp.replace(/[-:T]/g, '').slice(0, 14);
         const nameSlug = this.slugify(effectiveName);
@@ -1024,7 +1271,7 @@ export class SnapshotManager {
                 nodeId,
                 siteName,
                 role,
-                version: ctx.version || process.env.STIGIX_VERSION || '3.0.61',
+                version: ctx.version || process.env.STIGIX_VERSION || '3.0.75',
                 wanIp
             },
             tunnels,
@@ -1033,6 +1280,7 @@ export class SnapshotManager {
             voice,
             vyos,
             convergence,
+            security,
             healthScore,
             metadata: {
                 createdBy: options.createdBy || 'copilot',
@@ -1058,6 +1306,9 @@ export class SnapshotManager {
         const files = fs.readdirSync(this.snapshotsDir).filter(f => f.endsWith('.json'));
         const list: SnapshotSummary[] = [];
 
+        // Fallback security state from history for older snapshots without security field persisted
+        const fallbackSecurity = this.captureSecurityState({});
+
         for (const f of files) {
             try {
                 const fullPath = path.join(this.snapshotsDir, f);
@@ -1068,6 +1319,8 @@ export class SnapshotManager {
                 const probesHealthyCount = passingProbes > 0
                     ? passingProbes
                     : Math.round((probeCount * (data.healthScore ?? 100)) / 100);
+
+                const snapSec = data.security || (data.timestamp ? this.captureSecurityState({}, new Date(data.timestamp).getTime()) : fallbackSecurity);
 
                 list.push({
                     id: data.id,
@@ -1083,6 +1336,7 @@ export class SnapshotManager {
                     sdwanSitesOnline: (data.sdwanTopology?.sites || []).filter(s => s.connected).length,
                     voiceAvgMos: data.voice?.avgMos,
                     vyosImpairmentsCount: data.vyos?.activeImpairmentsCount,
+                    securityScore: snapSec?.overallScore,
                     healthScore: data.healthScore,
                     tags: data.metadata?.tags
                 });
@@ -1801,7 +2055,129 @@ export class SnapshotManager {
             };
         }
 
-        // 6. Score & Verdict Calculation
+        // 6. Security Posture & Policy Enforcement Deltas (URL, DNS, Threat/EICAR, C2, AI)
+        let securityDelta: SnapshotSecurityDelta | undefined = undefined;
+        let securityRegressionsCount = 0;
+
+        const bSec = baseline.security || (baseline.timestamp ? this.captureSecurityState({}, new Date(baseline.timestamp).getTime()) : undefined);
+        const tSec = target.security || (target.timestamp ? this.captureSecurityState({}, new Date(target.timestamp).getTime()) : undefined);
+
+        if (bSec || tSec) {
+            const diffNum = (a?: number, b?: number) => (typeof a === 'number' && typeof b === 'number') ? (b - a) : undefined;
+            const overallDelta = diffNum(bSec?.overallScore, tSec?.overallScore);
+            const urlDelta = diffNum(bSec?.urlScore, tSec?.urlScore);
+            const dnsDelta = diffNum(bSec?.dnsScore, tSec?.dnsScore);
+            const threatDelta = diffNum(bSec?.threatScore, tSec?.threatScore);
+            const c2Delta = diffNum(bSec?.c2Score, tSec?.c2Score);
+            const aiDelta = diffNum(bSec?.aiScore, tSec?.aiScore);
+
+            const bCatMap = new Map<string, StigixSnapshotSecurityCategory>();
+            for (const c of bSec?.categories || []) bCatMap.set(c.id, c);
+            const tCatMap = new Map<string, StigixSnapshotSecurityCategory>();
+            for (const c of tSec?.categories || []) tCatMap.set(c.id, c);
+
+            const allCatIds = new Set([...bCatMap.keys(), ...tCatMap.keys()]);
+            const categories: SnapshotSecurityCategoryDelta[] = [];
+
+            const pillarLabel = (t: string) =>
+                t === 'url' ? 'URL Filtering' :
+                t === 'dns' ? 'DNS Security' :
+                t === 'threat' ? 'Threat Prevention' :
+                t === 'c2' ? 'C2 Detection' : 'AI Security';
+
+            for (const cid of allCatIds) {
+                const bC = bCatMap.get(cid);
+                const tC = tCatMap.get(cid);
+
+                if (bC && tC) {
+                    let state: SnapshotSecurityCategoryDelta['state'] = tC.protected ? 'STABLE_PROTECTED' : 'STABLE_EXPOSED';
+                    if (bC.protected && !tC.protected) {
+                        state = 'REGRESSED';
+                        securityRegressionsCount++;
+                        regressions.push(`CRITICAL SECURITY BYPASS: ${pillarLabel(tC.type)} "${tC.name}" changed from ${bC.status.toUpperCase()} to ${tC.status.toUpperCase()}`);
+                    } else if (!bC.protected && tC.protected) {
+                        state = 'IMPROVED';
+                        improvements.push(`Security enforcement restored: ${pillarLabel(tC.type)} "${tC.name}" changed from ${bC.status.toUpperCase()} to ${tC.status.toUpperCase()}`);
+                    }
+
+                    categories.push({
+                        id: cid,
+                        type: tC.type,
+                        name: tC.name,
+                        statusBefore: bC.status,
+                        statusAfter: tC.status,
+                        protectedBefore: bC.protected,
+                        protectedAfter: tC.protected,
+                        state
+                    });
+                } else if (!bC && tC) {
+                    categories.push({
+                        id: cid,
+                        type: tC.type,
+                        name: tC.name,
+                        statusAfter: tC.status,
+                        protectedAfter: tC.protected,
+                        state: 'NEW'
+                    });
+                } else if (bC && !tC) {
+                    categories.push({
+                        id: cid,
+                        type: bC.type,
+                        name: bC.name,
+                        statusBefore: bC.status,
+                        protectedBefore: bC.protected,
+                        state: 'REMOVED'
+                    });
+                }
+            }
+
+            if (typeof overallDelta === 'number' && securityRegressionsCount === 0) {
+                if (overallDelta <= -10) {
+                    regressions.push(`Security Posture score dropped from ${bSec?.overallScore}% to ${tSec?.overallScore}% (${overallDelta}%)`);
+                } else if (overallDelta >= 10) {
+                    improvements.push(`Security Posture score improved from ${bSec?.overallScore}% to ${tSec?.overallScore}% (+${overallDelta}%)`);
+                }
+            }
+
+            // Sort categories: REGRESSED first, then IMPROVED, STABLE_EXPOSED, STABLE_PROTECTED
+            const orderMap: Record<string, number> = {
+                REGRESSED: 0,
+                IMPROVED: 1,
+                STABLE_EXPOSED: 2,
+                NEW: 3,
+                REMOVED: 4,
+                STABLE_PROTECTED: 5
+            };
+            categories.sort((a, b) => (orderMap[a.state] ?? 9) - (orderMap[b.state] ?? 9) || a.name.localeCompare(b.name));
+
+            securityDelta = {
+                overallBefore: bSec?.overallScore,
+                overallAfter: tSec?.overallScore,
+                overallDelta,
+                urlBefore: bSec?.urlScore,
+                urlAfter: tSec?.urlScore,
+                urlDelta,
+                dnsBefore: bSec?.dnsScore,
+                dnsAfter: tSec?.dnsScore,
+                dnsDelta,
+                threatBefore: bSec?.threatScore,
+                threatAfter: tSec?.threatScore,
+                threatDelta,
+                c2Before: bSec?.c2Score,
+                c2After: tSec?.c2Score,
+                c2Delta,
+                aiBefore: bSec?.aiScore,
+                aiAfter: tSec?.aiScore,
+                aiDelta,
+                protectedBefore: bSec?.protectedCount ?? 0,
+                protectedAfter: tSec?.protectedCount ?? 0,
+                totalBefore: bSec?.totalCount ?? 0,
+                totalAfter: tSec?.totalCount ?? 0,
+                categories
+            };
+        }
+
+        // 7. Score & Verdict Calculation
         let score = 100;
         // Critical penalty: Stigix Mesh tunnel went down (-40 each)
         const failedTunnels = tunnelDeltas.filter(t => t.stateChange === 'FAILED');
@@ -1813,6 +2189,13 @@ export class SnapshotManager {
         // Critical penalty: Underlay router offline (-25 each)
         if (sdwanUnderlayDelta?.offlineRouters?.length) {
             score -= sdwanUnderlayDelta.offlineRouters.length * 25;
+        }
+
+        // Security enforcement bypass penalty (-20 per regressed category, capped at -60)
+        if (securityRegressionsCount > 0) {
+            score -= Math.min(60, securityRegressionsCount * 20);
+        } else if (securityDelta?.overallDelta !== undefined && securityDelta.overallDelta <= -10) {
+            score -= 15;
         }
 
         // Packet loss regressions (-20 each)
@@ -1831,7 +2214,7 @@ export class SnapshotManager {
         score = Math.max(0, Math.min(100, score));
 
         let verdict: 'GO' | 'WARNING' | 'NO_GO' = 'GO';
-        if (failedTunnels.length > 0 || sdwanDevicesDisconnected > 0 || (sdwanUnderlayDelta?.offlineRouters?.length || 0) > 0 || score < 50) {
+        if (failedTunnels.length > 0 || sdwanDevicesDisconnected > 0 || (sdwanUnderlayDelta?.offlineRouters?.length || 0) > 0 || securityRegressionsCount >= 2 || score < 50) {
             verdict = 'NO_GO';
         } else if (regressions.length > 0 || score < 85) {
             verdict = 'WARNING';
@@ -1888,6 +2271,11 @@ export class SnapshotManager {
                     after: target.vyos?.activeImpairmentsCount ?? 0,
                     delta: (target.vyos?.activeImpairmentsCount ?? 0) - (baseline.vyos?.activeImpairmentsCount ?? 0)
                 },
+                securityScore: {
+                    before: securityDelta?.overallBefore,
+                    after: securityDelta?.overallAfter,
+                    delta: securityDelta?.overallDelta
+                },
                 healthScore: {
                     before: baseline.healthScore,
                     after: target.healthScore,
@@ -1903,7 +2291,8 @@ export class SnapshotManager {
             sdwanDeltas,
             sdwanUnderlayDelta,
             voiceDelta,
-            vyosDelta
+            vyosDelta,
+            securityDelta
         };
     }
 }

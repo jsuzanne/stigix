@@ -81,6 +81,44 @@ interface SnapshotMetadata {
     sdwan_sites_online?: number;
     voice_avg_mos?: number;
     vyos_impairments_count?: number;
+    security_score?: number;
+}
+
+interface SecurityCategoryDelta {
+    id: string;
+    type: 'url' | 'dns' | 'threat' | 'c2' | 'ai';
+    name: string;
+    statusBefore: string;
+    statusAfter: string;
+    protectedBefore: boolean;
+    protectedAfter: boolean;
+    state: 'REGRESSED' | 'IMPROVED' | 'STABLE_PROTECTED' | 'STABLE_EXPOSED' | 'NEW' | 'REMOVED';
+}
+
+interface SecurityDelta {
+    overallBefore?: number;
+    overallAfter?: number;
+    overallDelta?: number;
+    urlBefore?: number;
+    urlAfter?: number;
+    urlDelta?: number;
+    dnsBefore?: number;
+    dnsAfter?: number;
+    dnsDelta?: number;
+    threatBefore?: number;
+    threatAfter?: number;
+    threatDelta?: number;
+    c2Before?: number;
+    c2After?: number;
+    c2Delta?: number;
+    aiBefore?: number;
+    aiAfter?: number;
+    aiDelta?: number;
+    protectedBefore?: number;
+    protectedAfter?: number;
+    totalBefore?: number;
+    totalAfter?: number;
+    categories: SecurityCategoryDelta[];
 }
 
 interface TunnelComparison {
@@ -271,6 +309,7 @@ interface DiffReport {
     };
     voice?: VoiceDelta | null;
     vyos?: VyosDelta | null;
+    security?: SecurityDelta | null;
     critical_regressions: string[];
     improvements: string[];
 }
@@ -443,9 +482,9 @@ export default function ChangeGuard({ token }: ChangeGuardProps) {
         const lines: string[] = [];
         lines.push(`# Stigix ChangeGuard — Pre/Post Change Validation Report`);
         lines.push(`> **AI Prompt Instruction (for ChatGPT / Perplexity / Claude):**`);
-        lines.push(`> You are a Senior SD-WAN, SASE, and Network QoE Architect. Analyze this Stigix ChangeGuard state comparison and provide:`);
-        lines.push(`> 1. **Executive Go/No-Go Assessment** & Customer Experience Impact (Voice RTP MOS, SaaS DEM Probes, Site Connectivity).`);
-        lines.push(`> 2. **Cross-Layer Root-Cause Correlation** between Underlay (VyOS WAN impairments/latency/loss/blackholes), Overlay (Prisma SD-WAN WAN circuits, SASE IPsec Service Links, Stigix Mesh), and application/voice QoE.`);
+        lines.push(`> You are a Senior SD-WAN, SASE Security, and Network QoE Architect. Analyze this Stigix ChangeGuard state comparison and provide:`);
+        lines.push(`> 1. **Executive Go/No-Go Assessment** & Customer Experience / Security Impact (Security Posture Enforcement, Voice RTP MOS, SaaS DEM Probes, Site Connectivity).`);
+        lines.push(`> 2. **Cross-Layer Root-Cause Correlation** between Underlay (VyOS WAN impairments/latency/loss/blackholes), Overlay (Prisma SD-WAN WAN circuits, SASE IPsec Service Links, Stigix Mesh), SASE Security policy enforcement (URL/DNS/Threat/C2/AI), and application/voice QoE.`);
         lines.push(`> 3. **Actionable Recommendations** (Proceed, Investigate, or Rollback).`);
         lines.push(``);
         lines.push(`## 1. Executive Summary`);
@@ -471,8 +510,22 @@ export default function ChangeGuard({ token }: ChangeGuardProps) {
             lines.push(``);
         }
 
+        if (diff.security && (diff.security.overallBefore !== undefined || diff.security.overallAfter !== undefined || (diff.security.categories?.length ?? 0) > 0)) {
+            lines.push(`## 2. SASE Security Posture & Policy Enforcement`);
+            lines.push(`- **Overall Security Score:** ${diff.security.overallBefore ?? 'N/A'}% -> ${diff.security.overallAfter ?? 'N/A'}% (Δ ${diff.security.overallDelta ?? 0}%)`);
+            lines.push(`- **URL Filtering:** ${diff.security.urlBefore ?? '—'}% -> ${diff.security.urlAfter ?? '—'}% | **DNS Security:** ${diff.security.dnsBefore ?? '—'}% -> ${diff.security.dnsAfter ?? '—'}% | **Threat/EICAR:** ${diff.security.threatBefore ?? '—'}% -> ${diff.security.threatAfter ?? '—'}% | **C2 Detection:** ${diff.security.c2Before ?? '—'}% -> ${diff.security.c2After ?? '—'}% | **AI Security:** ${diff.security.aiBefore ?? '—'}% -> ${diff.security.aiAfter ?? '—'}%`);
+            if (diff.security.categories?.length > 0) {
+                lines.push(`| Pillar | Category / Vector | Baseline Enforcement | Target Enforcement | State |`);
+                lines.push(`|---|---|---|---|---|`);
+                diff.security.categories.forEach(c => {
+                    lines.push(`| ${c.type.toUpperCase()} | ${c.name} | ${c.statusBefore.toUpperCase()} | ${c.statusAfter.toUpperCase()} | ${c.state} |`);
+                });
+            }
+            lines.push(``);
+        }
+
         if (diff.voice && diff.voice.targets?.length > 0) {
-            lines.push(`## 2. Voice & RTP Collaboration QoE`);
+            lines.push(`## 3. Voice & RTP Collaboration QoE`);
             lines.push(`- **Global MOS:** ${diff.voice.avgMosBefore?.toFixed(2) ?? 'N/A'} -> ${diff.voice.avgMosAfter?.toFixed(2) ?? 'N/A'} (Δ ${diff.voice.mosDelta ?? 0})`);
             lines.push(`- **Avg RTP RTT:** ${diff.voice.avgRttBefore?.toFixed(1) ?? 0}ms -> ${diff.voice.avgRttAfter?.toFixed(1) ?? 0}ms`);
             lines.push(`- **Avg Packet Loss:** ${diff.voice.avgLossBefore?.toFixed(1) ?? 0}% -> ${diff.voice.avgLossAfter?.toFixed(1) ?? 0}%`);
@@ -485,7 +538,7 @@ export default function ChangeGuard({ token }: ChangeGuardProps) {
         }
 
         if (diff.vyos && diff.vyos.interfaceDeltas?.length > 0) {
-            lines.push(`## 3. VyOS Underlay & WAN QoS / Chaos Impairments`);
+            lines.push(`## 4. VyOS Underlay & WAN QoS / Chaos Impairments`);
             lines.push(`- **Routers Online:** ${diff.vyos.routersOnlineBefore}/${diff.vyos.routersTotalBefore} -> ${diff.vyos.routersOnlineAfter}/${diff.vyos.routersTotalAfter}`);
             lines.push(`- **Active Impairments:** ${diff.vyos.impairmentsBefore} -> ${diff.vyos.impairmentsAfter}`);
             lines.push(`- **BGP Blackholes:** ${(diff.vyos.blackholesBefore || []).join(', ') || 'None'} -> ${(diff.vyos.blackholesAfter || []).join(', ') || 'None'}`);
@@ -498,7 +551,7 @@ export default function ChangeGuard({ token }: ChangeGuardProps) {
         }
 
         if (diff.sdwan && diff.sdwan.sites?.length > 0) {
-            lines.push(`## 4. Prisma SD-WAN & SASE Overlay`);
+            lines.push(`## 5. Prisma SD-WAN & SASE Overlay`);
             lines.push(`- **Sites Online:** ${diff.sdwan.online_baseline}/${diff.sdwan.total_baseline} -> ${diff.sdwan.online_current}/${diff.sdwan.total_current}`);
             lines.push(`- **SASE IPsec Tunnels UP:** ${diff.sdwan.sase_links_up_baseline ?? 0}/${diff.sdwan.sase_links_total ?? 0} -> ${diff.sdwan.sase_links_up_current ?? 0}/${diff.sdwan.sase_links_total ?? 0}`);
             lines.push(`| Site | Role | Status (Before->After) | ION Devices | WAN Circuits | SASE Links | State Change |`);
@@ -513,7 +566,7 @@ export default function ChangeGuard({ token }: ChangeGuardProps) {
         }
 
         if (diff.dem?.probes?.length > 0) {
-            lines.push(`## 5. Digital Experience (DEM) App Probes (${diff.dem.total_probes} total, ${diff.dem.regressed_probes} degraded, ${diff.dem.improved_probes} improved)`);
+            lines.push(`## 6. Digital Experience (DEM) App Probes (${diff.dem.total_probes} total, ${diff.dem.regressed_probes} degraded, ${diff.dem.improved_probes} improved)`);
             lines.push(`- **Average Latency:** ${(diff.dem.avg_baseline_latency_ms ?? 0).toFixed(1)}ms -> ${(diff.dem.avg_current_latency_ms ?? 0).toFixed(1)}ms (Δ ${diff.dem.average_latency_delta_ms}ms)`);
             lines.push(`| Probe Target | Type | Score (Before->After) | Baseline Latency | Target Latency | Δ Latency | Δ Loss | Verdict |`);
             lines.push(`|---|---|---|---|---|---|---|---|`);
@@ -586,7 +639,7 @@ export default function ChangeGuard({ token }: ChangeGuardProps) {
         const name = snap.name || snap.metadata?.name || snap.id;
         lines.push(`# Stigix ChangeGuard — Point-in-Time Network State Snapshot`);
         lines.push(`> **AI Prompt Instruction (for ChatGPT / Perplexity / Claude):**`);
-        lines.push(`> Analyze the following Stigix SD-WAN / SASE / DEM / Voice / VyOS node state snapshot (\`${name}\`) and summarize network health, active WAN impairments, SASE tunnel status, DEM application performance, and Voice MOS quality.`);
+        lines.push(`> Analyze the following Stigix SD-WAN / SASE Security / DEM / Voice / VyOS node state snapshot (\`${name}\`) and summarize network health, SASE security policy enforcement scores (URL/DNS/Threat/C2/AI), active WAN impairments, SASE tunnel status, DEM application performance, and Voice MOS quality.`);
         lines.push(``);
         lines.push(`\`\`\`json`);
         lines.push(JSON.stringify(snap, null, 2));
@@ -1067,9 +1120,63 @@ export default function ChangeGuard({ token }: ChangeGuardProps) {
                             </div>
                         )}
 
-                        {/* ── Customer-Centric Executive KPI Cards (4 Pillars) ── */}
-                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
-                            {/* Pillar 1: Voice QoE & MOS */}
+                        {/* ── Customer-Centric Executive KPI Cards (5 Pillars) ── */}
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3.5">
+                            {/* Pillar 1: SASE Security Posture & Policy Enforcement */}
+                            <div className="bg-slate-900/90 border border-slate-700/80 rounded-xl p-3.5 space-y-2">
+                                <div className="flex items-center justify-between text-xs text-slate-400">
+                                    <span className="font-semibold flex items-center gap-1.5 text-slate-200">
+                                        <ShieldCheck className="w-3.5 h-3.5 text-indigo-400" />
+                                        Security Posture
+                                    </span>
+                                    {diffReport.security?.overallAfter !== undefined ? (
+                                        <span className={cn(
+                                            "px-1.5 py-0.5 rounded text-[10px] font-bold border",
+                                            diffReport.security.overallAfter >= 90
+                                                ? "bg-emerald-500/15 text-emerald-400 border-emerald-500/30"
+                                                : diffReport.security.overallAfter >= 70
+                                                    ? "bg-amber-500/15 text-amber-400 border-amber-500/30"
+                                                    : "bg-rose-500/15 text-rose-400 border-rose-500/30"
+                                        )}>
+                                            {diffReport.security.overallAfter >= 90 ? 'ENFORCED' : diffReport.security.overallAfter >= 70 ? 'PARTIAL' : 'EXPOSED'}
+                                        </span>
+                                    ) : (
+                                        <span className="text-[10px] text-slate-500 font-mono">NO DATA</span>
+                                    )}
+                                </div>
+                                {diffReport.security && (diffReport.security.overallBefore !== undefined || diffReport.security.overallAfter !== undefined) ? (
+                                    <div className="space-y-1">
+                                        <div className="text-lg font-bold font-mono text-white flex items-baseline gap-2">
+                                            <span>{diffReport.security.overallBefore !== undefined ? `${diffReport.security.overallBefore}%` : '—'}</span>
+                                            <ArrowRight className="w-3.5 h-3.5 text-slate-500" />
+                                            <span className={cn(
+                                                (diffReport.security.overallDelta ?? 0) < 0 ? "text-rose-400" : (diffReport.security.overallDelta ?? 0) > 0 ? "text-emerald-400" : "text-indigo-300"
+                                            )}>
+                                                {diffReport.security.overallAfter !== undefined ? `${diffReport.security.overallAfter}%` : '—'}
+                                            </span>
+                                            {diffReport.security.overallDelta !== undefined && diffReport.security.overallDelta !== 0 && (
+                                                <span className={cn(
+                                                    "text-xs",
+                                                    diffReport.security.overallDelta < 0 ? "text-rose-400" : "text-emerald-400"
+                                                )}>
+                                                    ({diffReport.security.overallDelta > 0 ? `+${diffReport.security.overallDelta}%` : `${diffReport.security.overallDelta}%`})
+                                                </span>
+                                            )}
+                                        </div>
+                                        <div className="text-[11px] text-slate-400 font-mono flex items-center justify-between">
+                                            <span>URL: {diffReport.security.urlAfter ?? '—'}%</span>
+                                            <span>DNS: {diffReport.security.dnsAfter ?? '—'}%</span>
+                                            <span>EICAR: {diffReport.security.threatAfter ?? '—'}%</span>
+                                        </div>
+                                    </div>
+                                ) : (
+                                    <div className="text-xs text-slate-500 pt-1">
+                                        No security score history recorded yet.
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* Pillar 2: Voice QoE & MOS */}
                             <div className="bg-slate-900/90 border border-slate-700/80 rounded-xl p-3.5 space-y-2">
                                 <div className="flex items-center justify-between text-xs text-slate-400">
                                     <span className="font-semibold flex items-center gap-1.5 text-slate-200">
@@ -1115,7 +1222,7 @@ export default function ChangeGuard({ token }: ChangeGuardProps) {
                                 )}
                             </div>
 
-                            {/* Pillar 2: Digital Experience (DEM Probes) */}
+                            {/* Pillar 3: Digital Experience (DEM Probes) */}
                             <div className="bg-slate-900/90 border border-slate-700/80 rounded-xl p-3.5 space-y-2">
                                 <div className="flex items-center justify-between text-xs text-slate-400">
                                     <span className="font-semibold flex items-center gap-1.5 text-slate-200">
@@ -1145,7 +1252,7 @@ export default function ChangeGuard({ token }: ChangeGuardProps) {
                                 </div>
                             </div>
 
-                            {/* Pillar 3: SD-WAN Overlay & SASE Service Links */}
+                            {/* Pillar 4: SD-WAN Overlay & SASE Service Links */}
                             <div className="bg-slate-900/90 border border-slate-700/80 rounded-xl p-3.5 space-y-2">
                                 <div className="flex items-center justify-between text-xs text-slate-400">
                                     <span className="font-semibold flex items-center gap-1.5 text-slate-200">
@@ -1170,7 +1277,7 @@ export default function ChangeGuard({ token }: ChangeGuardProps) {
                                 </div>
                             </div>
 
-                            {/* Pillar 4: VyOS Underlay & WAN QoS Impairments */}
+                            {/* Pillar 5: VyOS Underlay & WAN QoS Impairments */}
                             <div className="bg-slate-900/90 border border-slate-700/80 rounded-xl p-3.5 space-y-2">
                                 <div className="flex items-center justify-between text-xs text-slate-400">
                                     <span className="font-semibold flex items-center gap-1.5 text-slate-200">
@@ -1232,6 +1339,134 @@ export default function ChangeGuard({ token }: ChangeGuardProps) {
                         )}
 
                         <div className="space-y-4">
+                            {/* ── 0. SASE Security Posture & Policy Enforcement Deltas ── */}
+                            {diffReport.security && (diffReport.security.overallBefore !== undefined || diffReport.security.overallAfter !== undefined || (diffReport.security.categories?.length ?? 0) > 0) && (
+                                <div className="bg-slate-900/80 border border-indigo-500/30 rounded-lg overflow-hidden">
+                                    <div className="px-4 py-3 bg-indigo-950/20 border-b border-indigo-500/20 text-xs font-bold text-indigo-200 flex flex-wrap items-center justify-between gap-2">
+                                        <div className="flex items-center gap-2">
+                                            <ShieldCheck className="w-4 h-4 text-indigo-400" />
+                                            SASE Security Posture & Policy Enforcement (URL Filtering / DNS Security / Threat & EICAR / C2 / AI Security)
+                                        </div>
+                                        <div className="flex items-center gap-4 text-[11px] font-normal text-slate-300 font-mono">
+                                            <span>
+                                                Overall Score: <strong className="text-white">{diffReport.security.overallBefore ?? '—'}% → {diffReport.security.overallAfter ?? '—'}%</strong>
+                                                {diffReport.security.overallDelta !== undefined && diffReport.security.overallDelta !== 0 && (
+                                                    <span className={cn("ml-1.5 font-bold", diffReport.security.overallDelta < 0 ? "text-rose-400" : "text-emerald-400")}>
+                                                        ({diffReport.security.overallDelta > 0 ? `+${diffReport.security.overallDelta}%` : `${diffReport.security.overallDelta}%`})
+                                                    </span>
+                                                )}
+                                            </span>
+                                            {(diffReport.security.totalBefore !== undefined || diffReport.security.totalAfter !== undefined) && (
+                                                <span>
+                                                    Protected Categories: <strong className="text-indigo-300">{diffReport.security.protectedBefore ?? 0}/{diffReport.security.totalBefore ?? 0} → {diffReport.security.protectedAfter ?? 0}/{diffReport.security.totalAfter ?? 0}</strong>
+                                                </span>
+                                            )}
+                                        </div>
+                                    </div>
+
+                                    {/* 5 Pillar Score Cards */}
+                                    <div className="grid grid-cols-2 sm:grid-cols-5 gap-2.5 p-3.5 bg-slate-950/40 border-b border-slate-800/70">
+                                        {[
+                                            { label: 'URL Filtering', before: diffReport.security.urlBefore, after: diffReport.security.urlAfter, delta: diffReport.security.urlDelta },
+                                            { label: 'DNS Security', before: diffReport.security.dnsBefore, after: diffReport.security.dnsAfter, delta: diffReport.security.dnsDelta },
+                                            { label: 'Threat / EICAR', before: diffReport.security.threatBefore, after: diffReport.security.threatAfter, delta: diffReport.security.threatDelta },
+                                            { label: 'C2 Detection', before: diffReport.security.c2Before, after: diffReport.security.c2After, delta: diffReport.security.c2Delta },
+                                            { label: 'AI Security', before: diffReport.security.aiBefore, after: diffReport.security.aiAfter, delta: diffReport.security.aiDelta }
+                                        ].map(pillar => (
+                                            <div key={pillar.label} className="bg-slate-900/90 border border-slate-800 rounded-lg px-3 py-2 space-y-1">
+                                                <div className="text-[11px] font-semibold text-slate-400">{pillar.label}</div>
+                                                <div className="text-sm font-bold font-mono text-white flex items-baseline gap-1.5">
+                                                    <span>{pillar.before !== undefined ? `${pillar.before}%` : '—'}</span>
+                                                    <span className="text-slate-500">→</span>
+                                                    <span className={cn(
+                                                        (pillar.delta ?? 0) < 0 ? "text-rose-400" : (pillar.delta ?? 0) > 0 ? "text-emerald-400" : (pillar.after ?? 100) < 80 ? "text-amber-400" : "text-emerald-400"
+                                                    )}>
+                                                        {pillar.after !== undefined ? `${pillar.after}%` : '—'}
+                                                    </span>
+                                                    {pillar.delta !== undefined && pillar.delta !== 0 && (
+                                                        <span className={cn("text-[10px]", pillar.delta < 0 ? "text-rose-400" : "text-emerald-400")}>
+                                                            ({pillar.delta > 0 ? `+${pillar.delta}%` : `${pillar.delta}%`})
+                                                        </span>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+
+                                    {/* Category-level policy enforcement table (if category tests were recorded) */}
+                                    {diffReport.security.categories && diffReport.security.categories.length > 0 && (
+                                        <div className="overflow-x-auto max-h-[340px]">
+                                            <table className="w-full text-left text-xs text-slate-300">
+                                                <thead className="bg-slate-800/60 text-slate-400 font-semibold border-b border-slate-700/50 sticky top-0">
+                                                    <tr>
+                                                        <th className="px-4 py-2">Security Pillar</th>
+                                                        <th className="px-4 py-2">Category / Threat Vector</th>
+                                                        <th className="px-4 py-2">Baseline Verdict</th>
+                                                        <th className="px-4 py-2">Target Verdict</th>
+                                                        <th className="px-4 py-2">Policy Enforcement Delta</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody className="divide-y divide-slate-800/60 font-mono">
+                                                    {diffReport.security.categories.map(cat => (
+                                                        <tr key={`${cat.type}:${cat.id}`} className={cn(
+                                                            "hover:bg-slate-800/30 transition",
+                                                            cat.state === 'REGRESSED' && "bg-rose-950/20 text-rose-200",
+                                                            cat.state === 'IMPROVED' && "bg-emerald-950/20 text-emerald-200"
+                                                        )}>
+                                                            <td className="px-4 py-2">
+                                                                <span className="px-1.5 py-0.5 rounded bg-indigo-500/15 text-indigo-300 border border-indigo-500/30 text-[10px] font-bold uppercase">
+                                                                    {cat.type}
+                                                                </span>
+                                                            </td>
+                                                            <td className="px-4 py-2 font-sans font-medium text-slate-200">{cat.name}</td>
+                                                            <td className="px-4 py-2">
+                                                                <span className={cn(
+                                                                    "px-2 py-0.5 rounded text-[10px] font-bold uppercase",
+                                                                    cat.protectedBefore ? "bg-emerald-500/20 text-emerald-400" : "bg-rose-500/20 text-rose-400"
+                                                                )}>
+                                                                    {cat.statusBefore}
+                                                                </span>
+                                                            </td>
+                                                            <td className="px-4 py-2">
+                                                                <span className={cn(
+                                                                    "px-2 py-0.5 rounded text-[10px] font-bold uppercase",
+                                                                    cat.protectedAfter ? "bg-emerald-500/20 text-emerald-400" : "bg-rose-500/20 text-rose-400"
+                                                                )}>
+                                                                    {cat.statusAfter}
+                                                                </span>
+                                                            </td>
+                                                            <td className="px-4 py-2 font-sans">
+                                                                {cat.state === 'REGRESSED' ? (
+                                                                    <span className="px-2 py-0.5 rounded bg-rose-500/20 text-rose-300 text-[10px] font-bold">
+                                                                        CRITICAL BYPASS (PROTECTED → EXPOSED)
+                                                                    </span>
+                                                                ) : cat.state === 'IMPROVED' ? (
+                                                                    <span className="px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 text-[10px] font-bold">
+                                                                        REMEDIATED (EXPOSED → PROTECTED)
+                                                                    </span>
+                                                                ) : cat.state === 'STABLE_PROTECTED' ? (
+                                                                    <span className="px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 text-[10px]">
+                                                                        ENFORCED
+                                                                    </span>
+                                                                ) : cat.state === 'STABLE_EXPOSED' ? (
+                                                                    <span className="px-2 py-0.5 rounded bg-amber-500/15 text-amber-300 text-[10px]">
+                                                                        ALLOWED / UNBLOCKED
+                                                                    </span>
+                                                                ) : (
+                                                                    <span className="px-2 py-0.5 rounded bg-slate-800 text-slate-400 text-[10px]">
+                                                                        {cat.state}
+                                                                    </span>
+                                                                )}
+                                                            </td>
+                                                        </tr>
+                                                    ))}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+
                             {/* ── 1. Voice & RTP Collaboration QoE Deltas ── */}
                             {diffReport.voice && diffReport.voice.targets && diffReport.voice.targets.length > 0 && (
                                 <div className="bg-slate-900/80 border border-slate-700/80 rounded-lg overflow-hidden">
@@ -1764,6 +1999,7 @@ export default function ChangeGuard({ token }: ChangeGuardProps) {
                                     <th className="px-4 py-3">SD-WAN & Mesh</th>
                                     <th className="px-4 py-3">DEM Probes</th>
                                     <th className="px-4 py-3">Voice MOS</th>
+                                    <th className="px-4 py-3">Security</th>
                                     <th className="px-4 py-3 text-right">Actions</th>
                                 </tr>
                             </thead>
@@ -1802,6 +2038,22 @@ export default function ChangeGuard({ token }: ChangeGuardProps) {
                                             {s.voice_avg_mos ? (
                                                 <span className={cn("px-2 py-0.5 rounded text-[11px] font-bold border", getMosBadgeColor(s.voice_avg_mos))}>
                                                     {s.voice_avg_mos.toFixed(2)} MOS
+                                                </span>
+                                            ) : (
+                                                <span className="text-slate-500 text-[11px]">—</span>
+                                            )}
+                                        </td>
+                                        <td className="px-4 py-3 font-mono">
+                                            {s.security_score !== undefined && s.security_score !== null ? (
+                                                <span className={cn(
+                                                    "px-2 py-0.5 rounded text-[11px] font-bold border",
+                                                    s.security_score >= 85
+                                                        ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/30"
+                                                        : s.security_score >= 60
+                                                        ? "bg-amber-500/10 text-amber-400 border-amber-500/30"
+                                                        : "bg-rose-500/10 text-rose-400 border-rose-500/30"
+                                                )}>
+                                                    {s.security_score}%
                                                 </span>
                                             ) : (
                                                 <span className="text-slate-500 text-[11px]">—</span>
@@ -1936,6 +2188,7 @@ export default function ChangeGuard({ token }: ChangeGuardProps) {
                                 <span className="font-semibold text-slate-300">What will be captured:</span>
                                 <ul className="list-disc pl-4 space-y-0.5 text-slate-400">
                                     <li><strong>Voice & Collaboration QoE</strong>: MOS score, RTP RTT, jitter & packet loss</li>
+                                    <li><strong>SASE Security Posture</strong>: URL Filtering, DNS Security, EICAR, C2 & AI Security enforcement scores</li>
                                     <li><strong>DEM App Probes</strong>: Real-time latency, score, HTTP status & loss across all targets</li>
                                     <li><strong>SD-WAN & SASE Overlay</strong>: Prisma SD-WAN sites, ION WAN circuits, SASE IPsec tunnels & Stigix Mesh</li>
                                     <li><strong>VyOS Underlay & Chaos</strong>: Router reachability, link states, active QoS latency/loss & blackholes</li>
