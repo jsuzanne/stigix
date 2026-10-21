@@ -4841,8 +4841,10 @@ export async function executeCopilotTool(
                         tunnels_count: snap.tunnels.length,
                         tunnels_up: snap.tunnels.filter((t: any) => t.status === 'UP').length,
                         probes_count: snap.demMatrix.length,
+                        voice_mos: snap.voice?.avgMos ?? null,
+                        vyos_impairments: snap.vyos?.activeImpairmentCount ?? 0,
                         health_score: snap.healthScore,
-                        message: `Snapshot "${snap.name}" recorded on ${nodeCtx.siteName} (${snap.tunnels.filter((t: any) => t.status === 'UP').length}/${snap.tunnels.length} tunnels UP, ${snap.demMatrix.length} DEM probes captured).`
+                        message: `Snapshot "${snap.name}" recorded on ${nodeCtx.siteName} (${snap.tunnels.filter((t: any) => t.status === 'UP').length}/${snap.tunnels.length} tunnels UP, ${snap.demMatrix.length} DEM probes captured${snap.voice?.avgMos ? `, Voice MOS ${snap.voice.avgMos}` : ''}).`
                     };
                 }
                 return await fetchApi(nodeCtx, '/api/snapshots', {
@@ -4865,9 +4867,12 @@ export async function executeCopilotTool(
             case 'compare_snapshots': {
                 const nodeCtx = resolveNodeContext(args.agent_id, ctx);
                 if (nodeCtx.isLocal && ctx.snapshotManager) {
-                    const baselineSnap = ctx.snapshotManager.getSnapshot(args.baseline);
+                    let baselineSnap = ctx.snapshotManager.getSnapshot(args.baseline);
                     if (!baselineSnap) {
                         return { error: `Baseline snapshot "${args.baseline}" not found on ${nodeCtx.siteName}.` };
+                    }
+                    if (typeof ctx.snapshotManager.enrichSnapshotIfNeeded === 'function') {
+                        baselineSnap = await ctx.snapshotManager.enrichSnapshotIfNeeded(baselineSnap, ctx);
                     }
                     let targetSnap: any = null;
                     if (!args.target || args.target === 'current' || args.target === 'live') {
@@ -4875,12 +4880,16 @@ export async function executeCopilotTool(
                             name: 'current-live-state',
                             description: 'Live instantaneous state for comparison',
                             createdBy: 'copilot',
-                            context: ctx
+                            context: ctx,
+                            persist: false
                         });
                     } else {
                         targetSnap = ctx.snapshotManager.getSnapshot(args.target);
                         if (!targetSnap) {
                             return { error: `Target snapshot "${args.target}" not found on ${nodeCtx.siteName}.` };
+                        }
+                        if (typeof ctx.snapshotManager.enrichSnapshotIfNeeded === 'function') {
+                            targetSnap = await ctx.snapshotManager.enrichSnapshotIfNeeded(targetSnap, ctx);
                         }
                     }
                     const diff = ctx.snapshotManager.computeDiff(baselineSnap, targetSnap);

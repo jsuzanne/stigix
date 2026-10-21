@@ -17565,14 +17565,31 @@ const getStigixVersion = () => {
         const vPath = fs.existsSync('/app/VERSION') ? '/app/VERSION' : path.join(PROJECT_ROOT, 'VERSION');
         if (fs.existsSync(vPath)) return fs.readFileSync(vPath, 'utf8').trim();
     } catch {}
-    return process.env.STIGIX_VERSION || '3.0.39';
+    return process.env.STIGIX_VERSION || '3.0.61';
 };
+
+const getSnapshotCaptureContext = () => ({
+    registryManager,
+    connectivityLogger,
+    getAllProbes: getFullEffectiveConnectivityProbes,
+    getSystemSettings,
+    underlayTopologyManager,
+    getTopology: () => topologyCache?.data,
+    vyosManager,
+    voiceStatsFile: VOICE_STATS_FILE,
+    voiceConfigFile: VOICE_CONFIG_FILE,
+    convergenceHistoryFile: CONVERGENCE_HISTORY_FILE,
+    version: getStigixVersion()
+});
 
 app.get('/api/snapshots', authenticateToken, (req, res) => {
     if (process.env.ENABLE_CHANGE_SNAPSHOTS !== 'true') {
         return res.status(403).json({ error: 'ChangeGuard Snapshots feature is disabled (ENABLE_CHANGE_SNAPSHOTS=false)' });
     }
     const rawList = snapshotManager.listSnapshots();
+    const siteName = registryManager?.getSiteName?.() || process.env.STIGIX_SITE_NAME || 'LOCAL';
+    const suggestedName = snapshotManager.generateDefaultName(siteName);
+
     const snapshots = rawList.map(s => ({
         ...s,
         timestamp: new Date(s.timestamp).getTime(),
@@ -17587,36 +17604,34 @@ app.get('/api/snapshots', authenticateToken, (req, res) => {
         tunnels_count: s.tunnelCount,
         tunnels_up: s.tunnelsUpCount,
         dem_probes_count: s.probeCount,
-        dem_healthy_count: Math.round((s.probeCount * (s.healthScore ?? 100)) / 100)
+        dem_healthy_count: s.probesHealthyCount ?? Math.round((s.probeCount * (s.healthScore ?? 100)) / 100),
+        sdwan_site_count: s.sdwanSiteCount ?? 0,
+        sdwan_sites_online: s.sdwanSitesOnline ?? 0,
+        voice_avg_mos: s.voiceAvgMos,
+        vyos_impairments_count: s.vyosImpairmentsCount ?? 0
     }));
-    res.json({ snapshots });
+    res.json({ snapshots, suggested_name: suggestedName, site_name: siteName });
 });
 
 app.post('/api/snapshots', authenticateToken, async (req, res) => {
     if (process.env.ENABLE_CHANGE_SNAPSHOTS !== 'true') {
         return res.status(403).json({ error: 'ChangeGuard Snapshots feature is disabled (ENABLE_CHANGE_SNAPSHOTS=false)' });
     }
-    const { name, description, tags } = req.body;
-    if (!name || typeof name !== 'string' || !name.trim()) {
-        return res.status(400).json({ error: 'Snapshot name is required' });
-    }
+    const { name, description, tags } = req.body || {};
+    const siteName = registryManager?.getSiteName?.() || process.env.STIGIX_SITE_NAME || 'LOCAL';
+    const effectiveName = (typeof name === 'string' && name.trim())
+        ? name.trim()
+        : snapshotManager.generateDefaultName(siteName);
+
     try {
         const snapshot = await snapshotManager.captureState({
-            name,
+            name: effectiveName,
             description,
             tags,
             createdBy: (req as any).user?.username || 'api',
-            context: {
-                registryManager,
-                connectivityLogger,
-                getAllProbes: getFullEffectiveConnectivityProbes,
-                getSystemSettings,
-                underlayTopologyManager,
-                getTopology: () => topologyCache?.data,
-                version: getStigixVersion()
-            }
+            context: getSnapshotCaptureContext()
         });
-        log('SNAPSHOT', `📸 Captured state snapshot "${snapshot.name}" (${snapshot.id}) with ${snapshot.tunnels.length} tunnels and ${snapshot.demMatrix.length} DEM probes`);
+        log('SNAPSHOT', `📸 Captured state snapshot "${snapshot.name}" (${snapshot.id}) with ${snapshot.tunnels.length} tunnels, ${snapshot.demMatrix.length} DEM probes, Voice MOS=${snapshot.voice?.avgMos ?? 'N/A'}`);
         res.json({ 
             success: true, 
             snapshot: {
@@ -17667,38 +17682,38 @@ app.post('/api/snapshots/diff', authenticateToken, async (req, res) => {
             return res.status(400).json({ error: 'Baseline snapshot ID or name is required' });
         }
 
-        const baselineSnap = snapshotManager.getSnapshot(baseKey);
-        if (!baselineSnap) {
+        const rawBaselineSnap = snapshotManager.getSnapshot(baseKey);
+        if (!rawBaselineSnap) {
             return res.status(404).json({ error: `Baseline snapshot "${baseKey}" not found` });
         }
+
+        const captureCtx = getSnapshotCaptureContext();
+        const baselineSnap = await snapshotManager.enrichSnapshotIfNeeded(rawBaselineSnap, captureCtx);
 
         let targetSnap: StigixSnapshot | null = null;
         if (!targetKey || targetKey === 'current' || targetKey === 'live') {
             targetSnap = await snapshotManager.captureState({
-                name: 'current-live-state',
+                name: 'Live Node State (Current)',
                 description: 'Live instantaneous state for comparison',
                 createdBy: 'system',
-                context: {
-                    registryManager,
-                    connectivityLogger,
-                    getAllProbes: getFullEffectiveConnectivityProbes,
-                    getSystemSettings,
-                    underlayTopologyManager,
-                    getTopology: () => topologyCache?.data,
-                    version: getStigixVersion()
-                }
+                persist: false,
+                context: captureCtx
             });
         } else {
-            targetSnap = snapshotManager.getSnapshot(targetKey);
-            if (!targetSnap) {
+            const rawTargetSnap = snapshotManager.getSnapshot(targetKey);
+            if (!rawTargetSnap) {
                 return res.status(404).json({ error: `Target snapshot "${targetKey}" not found` });
             }
+            targetSnap = await snapshotManager.enrichSnapshotIfNeeded(rawTargetSnap, captureCtx);
         }
 
         const rawDiff = snapshotManager.computeDiff(baselineSnap, targetSnap);
 
         const tunnelComparisons = (rawDiff.tunnelDeltas || []).map(td => ({
             peer_id: td.peerId,
+            site_name: td.siteName || td.peerId,
+            endpoint: td.endpoint,
+            ip_private: td.ipPrivate,
             baseline_status: td.statusBefore,
             current_status: td.statusAfter,
             status_changed: td.statusBefore !== td.statusAfter,
@@ -17709,6 +17724,15 @@ app.post('/api/snapshots/diff', authenticateToken, async (req, res) => {
         const demProbeComparisons = (rawDiff.demDeltas || []).map(dd => ({
             target_id: (dd as any).targetId || dd.target,
             target_label: (dd as any).targetLabel || dd.target,
+            target_url: dd.targetUrl,
+            probe_type: dd.type || 'PING',
+            status_before: dd.statusBefore || 'PASS',
+            status_after: dd.statusAfter || 'PASS',
+            score_before: dd.scoreBefore,
+            score_after: dd.scoreAfter,
+            score_delta: dd.scoreDelta ?? 0,
+            http_code_before: dd.httpCodeBefore,
+            http_code_after: dd.httpCodeAfter,
             baseline_latency_ms: (dd as any).latencyBeforeMs ?? dd.latencyBefore ?? 0,
             current_latency_ms: (dd as any).latencyAfterMs ?? dd.latencyAfter ?? 0,
             latency_delta_ms: dd.latencyDeltaMs ?? 0,
@@ -17723,12 +17747,23 @@ app.post('/api/snapshots/diff', authenticateToken, async (req, res) => {
             status_improvement: dd.state === 'IMPROVED'
         }));
 
+        const activeBaselineLatencies = demProbeComparisons.map(p => p.baseline_latency_ms).filter(v => v > 0);
+        const activeCurrentLatencies = demProbeComparisons.map(p => p.current_latency_ms).filter(v => v > 0);
+        const avgBaselineLat = activeBaselineLatencies.length > 0
+            ? parseFloat((activeBaselineLatencies.reduce((a, b) => a + b, 0) / activeBaselineLatencies.length).toFixed(1))
+            : 0;
+        const avgCurrentLat = activeCurrentLatencies.length > 0
+            ? parseFloat((activeCurrentLatencies.reduce((a, b) => a + b, 0) / activeCurrentLatencies.length).toFixed(1))
+            : 0;
+
         const diff = {
             ...rawDiff,
             baseline_id: baselineSnap.id,
             baseline_name: baselineSnap.name,
+            baseline_timestamp: baselineSnap.timestamp,
             current_id: targetSnap.id,
             current_name: targetSnap.name,
+            current_timestamp: targetSnap.timestamp,
             generated_at: new Date().toISOString(),
             score: rawDiff.summary.score,
             verdict: rawDiff.summary.verdict,
@@ -17746,6 +17781,8 @@ app.post('/api/snapshots/diff', authenticateToken, async (req, res) => {
                 total_probes: rawDiff.summary.totalProbes.after,
                 regressed_probes: demProbeComparisons.filter(p => p.status_regression).length,
                 improved_probes: demProbeComparisons.filter(p => p.status_improvement).length,
+                avg_baseline_latency_ms: avgBaselineLat,
+                avg_current_latency_ms: avgCurrentLat,
                 average_latency_delta_ms: demProbeComparisons.length > 0
                     ? parseFloat((demProbeComparisons.reduce((acc, p) => acc + p.latency_delta_ms, 0) / demProbeComparisons.length).toFixed(2))
                     : 0,
@@ -17759,9 +17796,14 @@ app.post('/api/snapshots/diff', authenticateToken, async (req, res) => {
                 total_current: rawDiff.summary.sdwanSites?.after ?? 0,
                 online_baseline: rawDiff.summary.sdwanSites?.onlineBefore ?? 0,
                 online_current: rawDiff.summary.sdwanSites?.onlineAfter ?? 0,
+                sase_links_up_baseline: rawDiff.summary.sdwanSites?.saseLinksUpBefore ?? 0,
+                sase_links_up_current: rawDiff.summary.sdwanSites?.saseLinksUpAfter ?? 0,
+                sase_links_total: rawDiff.summary.sdwanSites?.saseLinksTotal ?? 0,
                 sites: rawDiff.sdwanDeltas || [],
                 underlay: rawDiff.sdwanUnderlayDelta
-            }
+            },
+            voice: rawDiff.voiceDelta || null,
+            vyos: rawDiff.vyosDelta || null
         };
 
         res.json({ success: true, diff });

@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.0.62] - 2026-10-21
+
+### Added
+- **ChangeGuard Multi-Domain Customer-Centric State Capture & Delta Comparison (`web-dashboard/snapshot-manager.ts`, `web-dashboard/server.ts`, `web-dashboard/src/ChangeGuard.tsx`, `web-dashboard/ai-copilot/ai-tools.ts`)**:
+  - **Auto-Generated Default Snapshot Naming & Quick Suffix Pills**: Pre-populated the Snapshot Capture modal with a structured `YYYYMMDD-HHMM-<SITE>-<SEQ>-baseline` format and added 1-click suffix pills (`-baseline`, `-pre-change`, `-post-change`, `-qos-test`, `-failover`), plus automatic server-side fallback via `SnapshotManager.generateDefaultName()`.
+  - **Voice & RTP Collaboration QoE Capture & Delta (`voice` / `voiceDelta`)**: Added historical and live capture of RTP Voice telemetry (`avgMos`, `minMos`, `avgRttMs`, `avgJitterMs`, `avgLossPct`, codec, and per-target Voice server stats) from `voice-stats.jsonl`, with automated MOS regression alerts ($\Delta \text{MOS} \le -0.15$ or post-change $\text{MOS} < 3.8$) and a dedicated per-target Voice QoE comparison table.
+  - **VyOS Underlay & WAN QoS Impairment Tracking (`vyos` / `vyosDelta`)**: Captured VyOS router status, interface up/down states, active QoS latency (`ms`) and packet loss (`%`) rules, and BGP blackhole blocks, displaying before/after interface impairment deltas directly in ChangeGuard.
+  - **Full SD-WAN & SASE Overlay Comparison (`sdwanTopology` / `sdwanDeltas`)**: Always included all Prisma SD-WAN sites and ION devices in snapshot comparisons (including `STABLE_ONLINE` sites) alongside per-device WAN circuit counts (`wanUpCount`/`wanTotalCount`) and Prisma Access SASE IPsec service link counts (`serviceLinksUpCount`/`serviceLinksTotalCount`).
+  - **Executive KPI Summary Cards & Enriched DEM Matrix Filtering**: Added a 4-card executive KPI header (Voice QoE MOS, DEM App Latency, SD-WAN & SASE Overlay, Underlay & QoS Impairments) and enhanced the DEM Path Matrix with protocol badges, before/after scores (`0–100`), status filter pills (`All`, `Changed`, `Degraded`, `Improved`), search, and severity-first sorting.
+
+### Fixed
+- **ChangeGuard DEM Probe Metrics Extraction & Legacy Snapshot Backfill (`web-dashboard/snapshot-manager.ts`, `web-dashboard/server.ts`)**:
+  - Fixed `SnapshotManager` to read `ConnectivityResult` nested metrics (`metrics.total_ms`, `metrics.jitter_ms`, `metrics.loss_pct`, `reachable`, `score`, `httpCode`) instead of `0.0 ms`, and added `enrichSnapshotIfNeeded()` so previously recorded snapshots on disk are automatically backfilled from `connectivityLogger` and `voice-stats.jsonl` around their capture timestamp.
+  - Added `persist: false` when capturing temporary live states for `vs Current Live State` comparisons so transient comparisons no longer pollute the saved snapshot list on disk.
+
 ## [3.0.61] - 2026-10-21
 
 ### Fixed
