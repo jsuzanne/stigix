@@ -93,18 +93,25 @@ func ensureIperf3Server(ctx context.Context) {
 }
 
 type EchoSession struct {
+	ID          string  `json:"id"`
 	Key         string  `json:"key"`
+	Type        string  `json:"type"`
+	SrcIP       string  `json:"src_ip"`
 	SourceIP    string  `json:"source_ip"`
+	SrcPort     int     `json:"src_port"`
 	SourcePort  int     `json:"source_port"`
+	DestPort    int     `json:"dest_port"`
 	TargetPort  int     `json:"target_port"`
 	CallID      string  `json:"call_id"`
 	Label       string  `json:"label"`
+	SrcSite     string  `json:"src_site"`
 	SourceSite  string  `json:"source_site"`
 	StartTime   int64   `json:"start_time"`
 	LastSeen    int64   `json:"last_seen"`
 	PacketCount int64   `json:"packet_count"`
 	TotalBytes  int64   `json:"total_bytes"`
 	Status      string  `json:"status"`
+	Duration    int64   `json:"duration"`
 	DurationS   int64   `json:"duration_s"`
 	Pps         float64 `json:"pps"`
 	BitrateKbps float64 `json:"bitrate_kbps"`
@@ -114,11 +121,11 @@ type EchoSession struct {
 }
 
 var (
-	reSite = regexp.MustCompile(`SITE:([A-Za-z0-9_-]+)`)
-	reCID  = regexp.MustCompile(`CID:(CALL-\d+|TEST-[A-Za-z0-9_-]+)`)
-	reConv = regexp.MustCompile(`CONV:(TEST-[A-Za-z0-9_-]+|[A-Za-z0-9_-]+):([^:]+):`)
+	reSite = regexp.MustCompile(`SITE:([^:\x00\r\n]+)`)
+	reCID  = regexp.MustCompile(`CID:([^:\x00\r\n]+)`)
+	reConv = regexp.MustCompile(`CONV:(TEST-[A-Za-z0-9_-]+|[A-Za-z0-9_-]+):([^:\x00\r\n]*):`)
 	reTest = regexp.MustCompile(`(TEST-[A-Za-z0-9_-]+)`)
-	reCall = regexp.MustCompile(`(CALL-\d+)`)
+	reCall = regexp.MustCompile(`(CALL-[A-Za-z0-9_-]+)`)
 )
 
 func runSRTResponderServer(ctx context.Context, port int) {
@@ -232,41 +239,69 @@ func runEchoServer(ctx context.Context, portsArg string) {
 
 				sourceSite := ""
 				if m := reSite.FindStringSubmatch(headStr); len(m) > 1 {
-					sourceSite = m[1]
+					sourceSite = strings.TrimSpace(m[1])
 				}
 
 				callID := "UNKNOWN"
 				label := "RTP Voice"
+				sessionType := "Voice"
 
 				if m := reCID.FindStringSubmatch(headStr); len(m) > 1 {
-					callID = m[1]
+					callID = strings.TrimSpace(m[1])
 					if strings.HasPrefix(callID, "TEST-") {
 						label = "Quick Call"
 					}
 				} else if m := reConv.FindStringSubmatch(headStr); len(m) > 2 {
-					callID = m[1]
-					label = "Convergence"
+					callID = strings.TrimSpace(m[1])
+					convLabel := strings.TrimSpace(m[2])
+					if convLabel != "" {
+						label = convLabel
+					} else {
+						label = "Convergence"
+					}
+					sessionType = "Convergence"
 				} else if m := reTest.FindStringSubmatch(headStr); len(m) > 1 {
-					callID = m[1]
+					callID = strings.TrimSpace(m[1])
 					label = "Test Flow"
+					sessionType = "Convergence"
 				} else if m := reCall.FindStringSubmatch(headStr); len(m) > 1 {
-					callID = m[1]
+					callID = strings.TrimSpace(m[1])
 				} else if raddr.Port >= 30000 && raddr.Port <= 39999 {
 					callID = fmt.Sprintf("CALL-%04d", raddr.Port-30000)
+				} else if raddr.Port > 0 {
+					callID = fmt.Sprintf("RAW-P%d", raddr.Port)
+				}
+
+				displayID := callID
+				if displayID != "UNKNOWN" && !strings.HasPrefix(displayID, "CALL-") && !strings.HasPrefix(displayID, "CONV-") && !strings.HasPrefix(displayID, "TEST-") && !strings.HasPrefix(displayID, "RAW-") {
+					if sessionType == "Convergence" {
+						displayID = "CONV-" + displayID
+					} else {
+						displayID = "CALL-" + displayID
+					}
 				}
 
 				sessionKey := fmt.Sprintf("%s:%d:%s", raddr.IP.String(), raddr.Port, callID)
+				if sessionType == "Convergence" && callID != "UNKNOWN" {
+					sessionKey = fmt.Sprintf("CONV:%s", callID)
+				}
 
 				mu.Lock()
 				sess, exists := sessions[sessionKey]
 				if !exists {
 					sess = &EchoSession{
+						ID:             displayID,
 						Key:            sessionKey,
+						Type:           sessionType,
+						SrcIP:          raddr.IP.String(),
 						SourceIP:       raddr.IP.String(),
+						SrcPort:        raddr.Port,
 						SourcePort:     raddr.Port,
+						DestPort:       localPort,
 						TargetPort:     localPort,
-						CallID:         callID,
+						CallID:         displayID,
 						Label:          label,
+						SrcSite:        sourceSite,
 						SourceSite:     sourceSite,
 						StartTime:      nowUnix,
 						LastSeen:       nowUnix,
@@ -276,11 +311,18 @@ func runEchoServer(ctx context.Context, portsArg string) {
 					}
 					sessions[sessionKey] = sess
 				} else {
-					if sess.CallID == "UNKNOWN" && callID != "UNKNOWN" {
-						sess.CallID = callID
+					sess.SrcIP = raddr.IP.String()
+					sess.SourceIP = raddr.IP.String()
+					sess.SrcPort = raddr.Port
+					sess.SourcePort = raddr.Port
+					if (sess.CallID == "UNKNOWN" || strings.HasPrefix(sess.CallID, "RAW-")) && callID != "UNKNOWN" && !strings.HasPrefix(callID, "RAW-") {
+						sess.ID = displayID
+						sess.CallID = displayID
 						sess.Label = label
+						sess.Type = sessionType
 					}
 					if sess.SourceSite == "" && sourceSite != "" {
+						sess.SrcSite = sourceSite
 						sess.SourceSite = sourceSite
 					}
 				}
@@ -289,7 +331,7 @@ func runEchoServer(ctx context.Context, portsArg string) {
 				sess.PacketCount++
 				sess.TotalBytes += int64(n)
 				pktCount := sess.PacketCount
-				isConv := sess.Label == "Convergence"
+				isConv := sess.Type == "Convergence"
 				mu.Unlock()
 
 				// Echo back immediately (with :S<count> suffix for Convergence)
@@ -326,7 +368,7 @@ func runEchoServer(ctx context.Context, portsArg string) {
 					delete(sessions, k)
 					continue
 				}
-				if idle > 3.0 {
+				if idle > 5.0 {
 					s.Status = "completed"
 				} else {
 					s.Status = "active"
@@ -336,6 +378,7 @@ func runEchoServer(ctx context.Context, portsArg string) {
 				if dur < 1.0 {
 					dur = 1.0
 				}
+				s.Duration = int64(dur)
 				s.DurationS = int64(dur)
 				s.Pps = float64(int(float64(s.PacketCount)/dur*10)) / 10.0
 				s.BitrateKbps = float64(int(float64(s.TotalBytes)*8.0/(dur*1000.0)*10)) / 10.0

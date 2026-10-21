@@ -44,45 +44,79 @@ func resolveSiteName(configDir string) string {
 	if raw, err := os.ReadFile(filepath.Join(configDir, "site-name.json")); err == nil {
 		var d map[string]any
 		if json.Unmarshal(raw, &d) == nil {
-			if v, ok := d["siteName"].(string); ok && strings.TrimSpace(v) != "" {
-				return strings.TrimSpace(v)
+			for _, k := range []string{"siteName", "site_name"} {
+				if v, ok := d[k].(string); ok && strings.TrimSpace(v) != "" {
+					return strings.TrimSpace(v)
+				}
 			}
 		}
 	}
-	// 2. STIGIX_SITE_NAME / SITE_NAME
+	// 2. STIGIX_SITE_NAME / SITE_NAME env vars
 	for _, envKey := range []string{"STIGIX_SITE_NAME", "SITE_NAME"} {
 		if v := strings.TrimSpace(os.Getenv(envKey)); v != "" {
 			return v
 		}
 	}
-	// 3. site-detection.json
+	// 3. .env files on disk
+	for _, envPath := range []string{"/app/.env", filepath.Join(configDir, ".env"), ".env", "../.env"} {
+		if raw, err := os.ReadFile(envPath); err == nil {
+			for _, line := range strings.Split(string(raw), "\n") {
+				line = strings.TrimSpace(line)
+				if line == "" || strings.HasPrefix(line, "#") || !strings.Contains(line, "=") {
+					continue
+				}
+				parts := strings.SplitN(line, "=", 2)
+				k := strings.TrimSpace(parts[0])
+				if k == "STIGIX_SITE_NAME" || k == "SITE_NAME" {
+					val := strings.Trim(strings.TrimSpace(parts[1]), `"'`)
+					if val != "" {
+						return val
+					}
+				}
+			}
+		}
+	}
+	// 4. site-detection.json
 	if raw, err := os.ReadFile(filepath.Join(configDir, "site-detection.json")); err == nil {
 		var d map[string]any
 		if json.Unmarshal(raw, &d) == nil {
-			for _, k := range []string{"detectedSiteName", "site_name", "siteName"} {
+			for _, k := range []string{"detected_site_name", "detectedSiteName", "site_name", "siteName"} {
 				if v, ok := d[k].(string); ok && strings.TrimSpace(v) != "" {
 					return strings.TrimSpace(v)
 				}
 			}
 		}
 	}
-	// 4. system-settings.json
+	// 5. system-settings.json
 	if raw, err := os.ReadFile(filepath.Join(configDir, "system-settings.json")); err == nil {
 		var d map[string]any
 		if json.Unmarshal(raw, &d) == nil {
-			for _, k := range []string{"site_name", "siteName"} {
+			for _, k := range []string{"site_name", "siteName", "local_site_name", "target_name"} {
 				if v, ok := d[k].(string); ok && strings.TrimSpace(v) != "" {
 					return strings.TrimSpace(v)
 				}
 			}
 		}
 	}
-	// 5. NODE_NAME
-	if v := strings.TrimSpace(os.Getenv("NODE_NAME")); v != "" {
-		return v
+	// 6. identity.json (instance_id / site_name)
+	if raw, err := os.ReadFile(filepath.Join(configDir, "identity.json")); err == nil {
+		var d map[string]any
+		if json.Unmarshal(raw, &d) == nil {
+			for _, k := range []string{"site_name", "siteName", "instance_id"} {
+				if v, ok := d[k].(string); ok && strings.TrimSpace(v) != "" && v != "local-dev-node-01" {
+					return strings.TrimSpace(v)
+				}
+			}
+		}
 	}
-	// 6. Hostname
-	if h, err := os.Hostname(); err == nil && h != "" {
+	// 7. NODE_NAME / TARGET_NAME
+	for _, envKey := range []string{"NODE_NAME", "TARGET_NAME"} {
+		if v := strings.TrimSpace(os.Getenv(envKey)); v != "" {
+			return v
+		}
+	}
+	// 8. Hostname
+	if h, err := os.Hostname(); err == nil && h != "" && h != "localhost" {
 		return h
 	}
 	return "UNKNOWN"

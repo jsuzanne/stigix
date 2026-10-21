@@ -5079,8 +5079,26 @@ app.get('/api/voice/ingress', authenticateToken, (_req, res) => {
     try {
         const ingressFile = '/tmp/ingress-voice-sessions.json';
         if (fs.existsSync(ingressFile)) {
-            const data = JSON.parse(fs.readFileSync(ingressFile, 'utf8'));
-            return res.json({ success: true, sessions: data });
+            const raw = JSON.parse(fs.readFileSync(ingressFile, 'utf8'));
+            const sessions = Array.isArray(raw)
+                ? raw.map((s: any) => ({
+                    ...s,
+                    id: s.id || s.call_id || 'UNKNOWN',
+                    call_id: s.call_id || s.id || 'UNKNOWN',
+                    type: s.type || (s.label === 'Convergence' ? 'Convergence' : 'Voice'),
+                    src_ip: s.src_ip || s.source_ip || '',
+                    source_ip: s.source_ip || s.src_ip || '',
+                    src_site: s.src_site || s.source_site || '',
+                    source_site: s.source_site || s.src_site || '',
+                    src_port: s.src_port ?? s.source_port ?? 0,
+                    source_port: s.source_port ?? s.src_port ?? 0,
+                    dest_port: s.dest_port ?? s.target_port ?? 6100,
+                    target_port: s.target_port ?? s.dest_port ?? 6100,
+                    duration: s.duration ?? s.duration_s ?? 0,
+                    duration_s: s.duration_s ?? s.duration ?? 0,
+                }))
+                : [];
+            return res.json({ success: true, sessions });
         }
         res.json({ success: true, sessions: [] });
     } catch (e: any) {

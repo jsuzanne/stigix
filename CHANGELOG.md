@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.0.72] - 2026-10-21
+
+### Fixed
+- **Voice Call Receiver Go Engine Schema Parity & Site Resolution (`engines/stigix-go/echo.go`, `engines/stigix-go/voice.go`, `web-dashboard/server.ts`, `web-dashboard/src/Voice.tsx`)**:
+  - **Inbound Session Schema Compatibility (`echo.go`)**: Updated `EchoSession` and `sessionWriterLoop` in `echo.go` to emit both UI/Python-compatible keys (`id`, `type`, `src_ip`, `src_site`, `src_port`, `dest_port`, `duration`) and Go-native keys (`call_id`, `source_ip`, `source_site`, `source_port`, `target_port`, `duration_s`) in `/tmp/ingress-voice-sessions.json`, resolving `#CALL-IN`, `Unknown` Source Site/IP, and missing `Src Port` on the Voice Receiver table.
+  - **Tag Parsing & Convergence Keying (`echo.go`)**: Broadened `CID:` and `SITE:` regexes to accept any colon-delimited identifier, normalized `CALL-`/`CONV-` display prefixes with a `RAW-P<port>` fallback, and keyed convergence sessions by `CONV:<callID>` so WAN/NAT failovers preserve the `:S<count>` counter.
+  - **Outbound Site Name Resolution (`voice.go`)**: Aligned `resolveSiteName` in `voice.go` with `voice_orchestrator.py` (`site-name.json`, `.env` files, `detected_site_name` in `site-detection.json`, `system-settings.json`, `identity.json`, and `SITE_NAME`/`TARGET_NAME` env vars).
+  - **API & UI Normalization (`server.ts`, `Voice.tsx`)**: Added bidirectional field normalization in `GET /api/voice/ingress` and fallback property access in `Voice.tsx` so mixed Python/Go peers display seamlessly.
+- **AI Copilot Centralized VyOS Underlay & Remote Peer Auth (`web-dashboard/ai-copilot/ai-tools.ts`, `web-dashboard/ai-copilot/ai-manager.ts`)**:
+  - Added automatic VyOS controller node resolution (`resolveVyosNodeContext`), site-prefix interface auto-selection (e.g., `BR2-INET-226`) in `run_automated_failover_test`, and automatic remote peer JWT re-authentication on 401/403 responses.
+
 ## [3.0.71] - 2026-10-21
 
 ### Fixed & Performance

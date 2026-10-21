@@ -314,8 +314,39 @@ function traceLocalApi(
     }
 }
 
+const peerTokenCache = new Map<string, string>();
+
+async function authenticateRemotePeer(baseUrl: string): Promise<string | null> {
+    const passwordsToTry = Array.from(new Set([
+        process.env.ADMIN_PASSWORD,
+        process.env.UI_PASSWORD,
+        'admin'
+    ].filter(Boolean) as string[]));
+
+    for (const password of passwordsToTry) {
+        try {
+            const loginRes = await fetch(`${baseUrl}/api/auth/login`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ username: 'admin', password }),
+                signal: AbortSignal.timeout(5000)
+            });
+            if (loginRes.ok) {
+                const data: any = await loginRes.json().catch(() => ({}));
+                if (data?.token) {
+                    peerTokenCache.set(baseUrl, data.token);
+                    return data.token;
+                }
+            }
+        } catch {
+            // Ignore and try next password if any
+        }
+    }
+    return null;
+}
+
 async function fetchApi(
-    nodeCtx: { baseUrl: string; headers: Record<string, string>; siteName?: string; unknownNode?: boolean; requestedNode?: string; availableNodes?: string[]; _apiTrace?: ApiCallTrace[] },
+    nodeCtx: { baseUrl: string; headers: Record<string, string>; siteName?: string; isLocal?: boolean; unknownNode?: boolean; requestedNode?: string; availableNodes?: string[]; _apiTrace?: ApiCallTrace[] },
     path: string,
     options: RequestInit = {},
     timeoutMs: number = 25000
@@ -335,16 +366,38 @@ async function fetchApi(
             requestBody = options.body;
         }
     }
+
+    const buildHeaders = (): Record<string, string> => {
+        const h: Record<string, string> = {
+            ...nodeCtx.headers,
+            ...((options.headers as Record<string, string>) || {})
+        };
+        if (!nodeCtx.isLocal && peerTokenCache.has(nodeCtx.baseUrl)) {
+            h['Authorization'] = `Bearer ${peerTokenCache.get(nodeCtx.baseUrl)}`;
+        }
+        return h;
+    };
+
     const reqStart = Date.now();
     const signal = options.signal || AbortSignal.timeout(timeoutMs);
-    const res = await fetch(url, {
+    let res = await fetch(url, {
         ...options,
         signal,
-        headers: {
-            ...nodeCtx.headers,
-            ...(options.headers || {})
-        }
+        headers: buildHeaders()
     });
+
+    // If a remote peer rejects our local JWT (different JWT_SECRET across nodes), auto-login once and retry
+    if (!nodeCtx.isLocal && (res.status === 401 || res.status === 403)) {
+        const peerToken = await authenticateRemotePeer(nodeCtx.baseUrl);
+        if (peerToken) {
+            res = await fetch(url, {
+                ...options,
+                signal: AbortSignal.timeout(timeoutMs),
+                headers: buildHeaders()
+            });
+        }
+    }
+
     if (nodeCtx._apiTrace) {
         nodeCtx._apiTrace.push({
             method,
@@ -373,6 +426,59 @@ async function fetchApi(
     } catch {
         return text;
     }
+}
+
+/**
+ * Resolves the Stigix node that actually manages VyOS routers.
+ * In Stigix labs, VyOS routers ("vyosrouter", "vyoslandc1", "vyoslandc2new") are typically
+ * centrally managed from the controller node (e.g. BR8 / LOCAL) even when testing convergence
+ * from a remote branch (e.g. BR1, BR2, BR5). If a remote branch is passed in `agent_id` and has
+ * no local VyOS routers configured, this helper transparently falls back to the local node.
+ */
+async function resolveVyosNodeContext(
+    requestedAgentId: string | undefined,
+    ctx: ToolExecutionContext
+): Promise<{
+    nodeCtx: ReturnType<typeof resolveNodeContext>;
+    requestedSiteName: string;
+    sitePrefix: string;
+    centralFallbackUsed: boolean;
+}> {
+    const requestedCtx = resolveNodeContext(requestedAgentId, ctx);
+    const localCtx = resolveNodeContext('LOCAL', ctx);
+    const rawSite = String(requestedCtx.siteName || requestedAgentId || localCtx.siteName || 'LOCAL').trim();
+    const sitePrefixMatch = rawSite.match(/^([A-Za-z]+\d+)/);
+    const sitePrefix = (sitePrefixMatch ? sitePrefixMatch[1] : rawSite.split(/[-_\s]/)[0] || '').toUpperCase();
+
+    if (requestedCtx.isLocal || requestedCtx.unknownNode) {
+        return {
+            nodeCtx: localCtx,
+            requestedSiteName: localCtx.siteName,
+            sitePrefix,
+            centralFallbackUsed: false
+        };
+    }
+
+    try {
+        const remoteRouters = await fetchApi(requestedCtx, '/api/vyos/routers', {}, 5000);
+        if (Array.isArray(remoteRouters) && remoteRouters.length > 0) {
+            return {
+                nodeCtx: requestedCtx,
+                requestedSiteName: requestedCtx.siteName,
+                sitePrefix,
+                centralFallbackUsed: false
+            };
+        }
+    } catch {
+        // Fallback to local controller if remote node has no VyOS config or is unreachable
+    }
+
+    return {
+        nodeCtx: localCtx,
+        requestedSiteName: requestedCtx.siteName,
+        sitePrefix,
+        centralFallbackUsed: true
+    };
 }
 
 export const COPILOT_TOOLS: AnthropicToolDefinition[] = [
@@ -2852,27 +2958,36 @@ export async function executeCopilotTool(
             }
 
             case 'list_vyos_routers': {
-                const nodeCtx = resolveNodeContext(args.agent_id, ctx);
-                return await fetchApi(nodeCtx, '/api/vyos/routers');
+                const { nodeCtx, requestedSiteName, sitePrefix, centralFallbackUsed } = await resolveVyosNodeContext(args.agent_id, ctx);
+                const routers = await fetchApi(nodeCtx, '/api/vyos/routers');
+                if (Array.isArray(routers) && centralFallbackUsed) {
+                    return routers.map((r: any) => ({
+                        ...r,
+                        managed_by_node: nodeCtx.siteName,
+                        requested_site: requestedSiteName,
+                        note: `VyOS router centrally managed by ${nodeCtx.siteName} (carries WAN underlay interfaces for ${sitePrefix} and other sites)`
+                    }));
+                }
+                return routers;
             }
 
             case 'list_vyos_scenarios': {
-                const nodeCtx = resolveNodeContext(args.agent_id, ctx);
+                const { nodeCtx } = await resolveVyosNodeContext(args.agent_id, ctx);
                 return await fetchApi(nodeCtx, '/api/vyos/sequences');
             }
 
             case 'run_vyos_scenario': {
-                const nodeCtx = resolveNodeContext(args.agent_id, ctx);
+                const { nodeCtx } = await resolveVyosNodeContext(args.agent_id, ctx);
                 return await fetchApi(nodeCtx, `/api/vyos/sequences/run/${args.scenario_id}`, { method: 'POST' });
             }
 
             case 'get_vyos_timeline': {
-                const nodeCtx = resolveNodeContext(args.agent_id, ctx);
+                const { nodeCtx } = await resolveVyosNodeContext(args.agent_id, ctx);
                 return await fetchApi(nodeCtx, `/api/vyos/history?limit=${args.limit || 20}`);
             }
 
             case 'set_vyos_scenario_status': {
-                const nodeCtx = resolveNodeContext(args.agent_id, ctx);
+                const { nodeCtx } = await resolveVyosNodeContext(args.agent_id, ctx);
                 return await fetchApi(nodeCtx, `/api/vyos/sequences/${args.scenario_id}/status`, {
                     method: 'POST',
                     body: JSON.stringify({ enabled: Boolean(args.enabled) })
@@ -2880,7 +2995,7 @@ export async function executeCopilotTool(
             }
 
             case 'get_vyos_interfaces': {
-                const nodeCtx = resolveNodeContext(args.agent_id, ctx);
+                const { nodeCtx, requestedSiteName, sitePrefix, centralFallbackUsed } = await resolveVyosNodeContext(args.agent_id, ctx);
                 const routers = await fetchApi(nodeCtx, '/api/vyos/routers');
                 if (!Array.isArray(routers)) return routers;
 
@@ -2892,23 +3007,37 @@ export async function executeCopilotTool(
                             fetchApi(nodeCtx, `/api/vyos/state?router_id=${r.id}`, { signal: AbortSignal.timeout(10000) })
                         );
                         const ifaces = (state.interfaces || []).filter((i: any) => i.description && i.description.trim() !== '');
+                        const siteMatchingIfaces = sitePrefix
+                            ? ifaces.filter((i: any) => {
+                                const desc = String(i.description || '').toUpperCase();
+                                return desc.startsWith(`${sitePrefix}-`) || desc.includes(sitePrefix);
+                            })
+                            : [];
+                        const sharedWanIfaces = ifaces.filter((i: any) => String(i.description || '').toUpperCase().startsWith('ALL-'));
                         results.push({
                             router_id: r.id,
                             router_name: r.name,
                             host: r.host,
+                            managed_by_node: nodeCtx.siteName,
+                            ...(centralFallbackUsed ? {
+                                requested_site: requestedSiteName,
+                                note: `VyOS router centrally managed on ${nodeCtx.siteName}. Use matching_site_interfaces for ${sitePrefix} (or shared_wan_interfaces if ${sitePrefix} uses ALL-INET/ALL-MPLS).`
+                            } : {}),
                             online: r.online !== false,
                             chaos_eligible_count: ifaces.length,
+                            ...(siteMatchingIfaces.length > 0 ? { matching_site_interfaces: siteMatchingIfaces } : {}),
+                            ...(sharedWanIfaces.length > 0 ? { shared_wan_interfaces: sharedWanIfaces } : {}),
                             interfaces: ifaces
                         });
                     } catch {
-                        results.push({ router_id: r.id, router_name: r.name, interfaces: [] });
+                        results.push({ router_id: r.id, router_name: r.name, managed_by_node: nodeCtx.siteName, interfaces: [] });
                     }
                 }
                 return results;
             }
 
             case 'get_vyos_router_state': {
-                const nodeCtx = resolveNodeContext(args.agent_id, ctx);
+                const { nodeCtx } = await resolveVyosNodeContext(args.agent_id, ctx);
                 let routerId = args.router_id;
                 if (!routerId || routerId === 'default') {
                     const routers = await fetchApi(nodeCtx, '/api/vyos/routers').catch(() => []);
@@ -2920,7 +3049,7 @@ export async function executeCopilotTool(
             }
 
             case 'vyos_bulk_reset': {
-                const nodeCtx = resolveNodeContext(args.agent_id, ctx);
+                const { nodeCtx } = await resolveVyosNodeContext(args.agent_id, ctx);
                 const scope = args.scope || 'full-reset';
                 let routerId = args.router_id;
                 if (!routerId || routerId === 'default') {
@@ -2971,13 +3100,13 @@ export async function executeCopilotTool(
                             actionsTaken.push(`interface-up on ${iface.name}`);
                         }
                     }
-                    return { success: true, router_id: routerId, scope, actions_taken: actionsTaken };
+                    return { success: true, router_id: routerId, managed_by_node: nodeCtx.siteName, scope, actions_taken: actionsTaken };
                 }
             }
 
             case 'vyos_execute_action': {
-                const nodeCtx = resolveNodeContext(args.agent_id, ctx);
-                const rawCmd = String(args.command || 'set-qos').toLowerCase().trim();
+                const { nodeCtx } = await resolveVyosNodeContext(args.agent_id, ctx);
+                const rawCmd = String(args.command || args.action || 'set-qos').toLowerCase().trim();
                 const cmdMap: Record<string, string> = {
                     'set-impairment': 'set-qos',
                     'clear-impairment': 'clear-qos',
@@ -3032,6 +3161,7 @@ export async function executeCopilotTool(
                 return {
                     ...(typeof actionRes === 'object' ? actionRes : { result: actionRes }),
                     router_id: routerId,
+                    managed_by_node: nodeCtx.siteName,
                     command,
                     interface: args.interface,
                     verified: verifiedInterface !== null || Boolean(actionRes?.success),
@@ -3796,6 +3926,7 @@ export async function executeCopilotTool(
 
             case 'run_automated_failover_test': {
                 const nodeCtx = resolveNodeContext(args.agent_id, ctx);
+                const vyosCtx = await resolveVyosNodeContext(args.agent_id, ctx);
                 const baselineSec = Math.min(Math.max(Number(args.baseline_seconds) || 6, 3), 20);
                 const faultSec = Math.min(Math.max(Number(args.fault_seconds) || 12, 5), 30);
                 const recoverySec = Math.min(Math.max(Number(args.recovery_seconds) || 6, 3), 20);
@@ -3808,12 +3939,40 @@ export async function executeCopilotTool(
                 let rollbackCompleted = false;
                 let probeStopped = false;
                 let resolvedRouterId = args.router_id;
+                let resolvedInterface = args.interface;
+                let resolvedInterfaceDesc: string | undefined;
                 let phase1Baseline: any = null;
                 let phase2DuringFault: any = null;
                 let injectionResult: any = null;
                 let rollbackResult: any = null;
                 let stopResult: any = null;
                 let startedTestId: string | undefined;
+
+                // Auto-resolve interface matching source site prefix (e.g. BR2 -> eth7 BR2-INET-226) if not explicitly provided
+                if (!resolvedInterface && faultType !== 'deny-traffic' && faultType !== 'vyos-scenario') {
+                    try {
+                        const routersList = await executeToolCall('get_vyos_interfaces', {
+                            agent_id: nodeCtx.siteName,
+                            router_id: resolvedRouterId
+                        }, ctx);
+                        if (Array.isArray(routersList) && routersList.length > 0) {
+                            const rObj = routersList[0];
+                            if (!resolvedRouterId && rObj.router_id) resolvedRouterId = rObj.router_id;
+                            const siteIfaces: any[] = rObj.matching_site_interfaces || [];
+                            const sharedIfaces: any[] = rObj.shared_wan_interfaces || [];
+                            const candidatePool = siteIfaces.length > 0 ? siteIfaces : sharedIfaces;
+                            // Prefer an UP INET interface first, then any UP matching interface, then first matching
+                            const preferred = candidatePool.find((i: any) => i.admin_state !== 'down' && /inet/i.test(String(i.description || '')))
+                                || candidatePool.find((i: any) => i.admin_state !== 'down')
+                                || candidatePool[0];
+                            if (preferred?.name) {
+                                resolvedInterface = preferred.name;
+                                resolvedInterfaceDesc = preferred.description;
+                            }
+                        }
+                    } catch {}
+                    if (!resolvedInterface) resolvedInterface = 'eth1';
+                }
 
                 try {
                     // Phase 1: Start convergence probe & observe baseline
@@ -3839,10 +3998,10 @@ export async function executeCopilotTool(
                         startedTestId = phase1Baseline.test_id || phase1Baseline.metrics?.test_id;
                     }
 
-                    // Phase 2: Inject requested VyOS fault
+                    // Phase 2: Inject requested VyOS fault on the VyOS controller node
                     if (faultType === 'vyos-scenario') {
-                        injectionResult = await executeToolCall('vyos_run_scenario', {
-                            agent_id: nodeCtx.siteName,
+                        injectionResult = await executeToolCall('run_vyos_scenario', {
+                            agent_id: vyosCtx.nodeCtx.siteName,
                             scenario_id: args.scenario_id || '1'
                         }, ctx);
                         faultInjected = !injectionResult?.error;
@@ -3854,13 +4013,13 @@ export async function executeCopilotTool(
                         };
                         const actionName = actionMap[faultType] || 'interface-down';
                         injectionResult = await executeToolCall('vyos_execute_action', {
-                            agent_id: nodeCtx.siteName,
+                            agent_id: vyosCtx.nodeCtx.siteName,
                             router_id: resolvedRouterId,
-                            action: actionName,
-                            interface: args.interface || 'eth1',
-                            latency: args.latency_ms,
-                            loss: args.loss_pct,
-                            rate: args.rate_mbit,
+                            command: actionName,
+                            interface: resolvedInterface,
+                            latency_ms: args.latency_ms,
+                            loss_pct: args.loss_pct,
+                            rate: args.rate_mbit ? `${args.rate_mbit}mbit` : undefined,
                             ip: args.blocked_ip
                         }, ctx);
                         if (injectionResult?.router_id) resolvedRouterId = injectionResult.router_id;
@@ -3884,10 +4043,10 @@ export async function executeCopilotTool(
                                     ? 'clear-impairment'
                                     : 'allow-traffic';
                             rollbackResult = await executeToolCall('vyos_execute_action', {
-                                agent_id: nodeCtx.siteName,
+                                agent_id: vyosCtx.nodeCtx.siteName,
                                 router_id: resolvedRouterId,
-                                action: rollbackAction,
-                                interface: args.interface || 'eth1',
+                                command: rollbackAction,
+                                interface: resolvedInterface,
                                 ip: args.blocked_ip
                             }, ctx);
                             rollbackCompleted = !rollbackResult?.error;
@@ -3921,12 +4080,14 @@ export async function executeCopilotTool(
 
                 return {
                     node: nodeCtx.siteName,
+                    vyos_managed_by_node: vyosCtx.nodeCtx.siteName,
                     target: args.target,
                     test_id: finalReport?.test_id || startedTestId,
                     fault_scenario: {
                         fault_type: faultType,
                         router_id: resolvedRouterId,
-                        interface: args.interface || (faultType !== 'deny-traffic' && faultType !== 'vyos-scenario' ? 'eth1' : undefined),
+                        interface: resolvedInterface,
+                        ...(resolvedInterfaceDesc ? { interface_description: resolvedInterfaceDesc } : {}),
                         latency_ms: args.latency_ms,
                         loss_pct: args.loss_pct,
                         rate_mbit: args.rate_mbit,

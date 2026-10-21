@@ -1475,19 +1475,23 @@ export default function Voice(props: VoiceProps) {
                                             const cleanTerm = searchTerm.trim().toLowerCase().replace(/^#/, '');
                                             if (!cleanTerm) return true;
 
-                                            const rawPayloadSite = (s as any).src_site || '';
-                                            const siteName = getResolvedSiteName(s.src_ip, rawPayloadSite);
-                                            const derivedPort = deriveSourcePort(s.id);
+                                            const sessId = s.id || (s as any).call_id || '';
+                                            const sessIp = s.src_ip || (s as any).source_ip || '';
+                                            const rawPayloadSite = (s as any).src_site || (s as any).source_site || '';
+                                            const siteName = getResolvedSiteName(sessIp, rawPayloadSite);
+                                            const sessSrcPort = s.src_port || (s as any).source_port;
+                                            const sessDestPort = s.dest_port || (s as any).target_port;
+                                            const derivedPort = deriveSourcePort(sessId);
                                             const statusLabel = s.status === 'active' ? 'live active' : 'completed';
 
                                             const haystack = [
-                                                s.id,
-                                                s.src_ip,
+                                                sessId,
+                                                sessIp,
                                                 rawPayloadSite,
                                                 siteName,
-                                                s.src_port,
+                                                sessSrcPort,
                                                 derivedPort,
-                                                s.dest_port,
+                                                sessDestPort,
                                                 statusLabel,
                                                 s.type,
                                                 s.label,
@@ -1498,18 +1502,23 @@ export default function Voice(props: VoiceProps) {
                                             return haystack.some(h => h !== undefined && h !== null && String(h).toLowerCase().includes(cleanTerm));
                                         })
                                         .map((session, idx) => {
-                                            const siteName = getResolvedSiteName(session.src_ip, (session as any).src_site);
+                                            const sessId = session.id || (session as any).call_id || 'CALL-IN';
+                                            const sessIp = session.src_ip || (session as any).source_ip || '';
+                                            const sessSite = (session as any).src_site || (session as any).source_site || '';
+                                            const sessSrcPort = session.src_port || (session as any).source_port;
+                                            const sessDestPort = session.dest_port || (session as any).target_port || 6100;
+                                            const siteName = getResolvedSiteName(sessIp, sessSite);
                                             const isActive = session.status === 'active';
                                             const startTime = session.start_time ? new Date(session.start_time * 1000) : new Date();
                                             return (
-                                                <tr key={session.id || idx} className="hover:bg-card-secondary/30 transition-all group">
+                                                <tr key={`${sessId}-${sessIp}-${session.start_time || idx}`} className="hover:bg-card-secondary/30 transition-all group">
                                                     <td className="py-4 px-3 text-[10px] font-black font-mono text-text-muted">
                                                         {startTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
                                                     </td>
                                                     <td className="py-4 px-3">
                                                         <div className="flex items-center gap-2">
                                                             <span className="text-[10px] font-black text-cyan-400 px-2 py-0.5 rounded bg-cyan-600/10 border border-cyan-500/20 font-mono italic">
-                                                                #{session.id || 'CALL-IN'}
+                                                                #{sessId}
                                                             </span>
                                                             <PhoneIncoming size={13} className={isActive ? "text-cyan-400 animate-pulse" : "text-text-muted opacity-50"} />
                                                         </div>
@@ -1517,16 +1526,16 @@ export default function Voice(props: VoiceProps) {
                                                     <td className="py-4 px-3">
                                                         <div className="flex flex-col">
                                                             <span className="text-xs font-black text-text-primary">{siteName}</span>
-                                                            <span className="text-[9px] font-mono text-text-muted opacity-60">{session.src_ip}</span>
+                                                            <span className="text-[9px] font-mono text-text-muted opacity-60">{sessIp}</span>
                                                         </div>
                                                     </td>
                                                     <td className="py-4 px-3 font-mono text-[10px] font-bold text-text-muted">
                                                         <span className="px-2 py-0.5 rounded bg-card-secondary border border-border">
-                                                            {session.src_port || '—'}
+                                                            {sessSrcPort || '—'}
                                                         </span>
                                                     </td>
                                                     <td className="py-4 px-3 font-mono text-[10px] font-bold text-cyan-400">
-                                                        {session.dest_port || 6100} UDP
+                                                        {sessDestPort} UDP
                                                     </td>
                                                     <td className="py-4 px-3 font-mono text-[10px] font-bold text-text-primary">
                                                         {session.packet_count?.toLocaleString() || 0} pkts
