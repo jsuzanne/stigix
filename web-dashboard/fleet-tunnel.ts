@@ -275,6 +275,8 @@ export class FleetTunnelManager {
                 return next(new Error('authentication_required'));
             }
 
+            const rawHandshakeIp = (socket.handshake.address || '').replace(/^.*:/, '');
+            const clientIp = (auth.ip || rawHandshakeIp || '127.0.0.1').trim();
             const fleetTunnelKey = deriveFleetTunnelKey(this.secretKey);
 
             // 1a. Scoped Per-Node Token authentication (Spoke -> Leader or Leader -> Spoke with shared/derived key)
