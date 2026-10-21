@@ -151,8 +151,8 @@ export class TargetManager {
             try { jsonConfig = JSON.parse(fs.readFileSync(this.jsonConfigPath, 'utf8')); } catch { }
         }
 
-        // 2. Determine Base URL: JSON > Constructor Arg > Env > Default (empty = disabled)
-        let rawBase = jsonConfig.baseUrl || baseUrlOverride || process.env.STIGIX_TARGET_BASE_URL || '';
+        // 2. Determine Base URL: JSON > Constructor Arg > Env > Default (fallback to https://target.stigix.io)
+        let rawBase = jsonConfig.baseUrl || baseUrlOverride || process.env.STIGIX_TARGET_BASE_URL || 'https://target.stigix.io';
         if (rawBase && !rawBase.startsWith('http')) {
             rawBase = `https://${rawBase}`;
         }

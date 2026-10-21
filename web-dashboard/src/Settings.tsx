@@ -70,6 +70,7 @@ interface CustomProbe {
     enabled?: boolean;
     source?: 'discovery' | 'manual' | 'cloud';
     content_match?: ContentMatch;
+    effectiveUrl?: string;
 }
 
 interface MaintenanceStatus {
@@ -2136,10 +2137,6 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
     const addProbe = async () => {
         if (!newProbe.name || !newProbe.target) return;
 
-        if (newProbe.type === 'CLOUD' && !cloudConfig?.hasKey) {
-            toast.error('Stigix Cloud requires a Master Key. Please check system configuration.');
-            return;
-        }
         let formattedTarget = newProbe.target.trim();
         if ((newProbe.type === 'HTTP' || newProbe.type === 'HTTPS') && !formattedTarget.startsWith('http://') && !formattedTarget.startsWith('https://')) {
             formattedTarget = `${newProbe.type.toLowerCase()}://${formattedTarget}`;
@@ -3373,20 +3370,57 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                                                         {(() => {
                                                             let displayUrl = '';
                                                             let fullUrl = '';
-                                                            if (probe.type === 'CLOUD') {
-                                                                if (probe.target.startsWith('advanced-custom#')) {
-                                                                    // Reconstruct readable path from JSON config
-                                                                    try {
-                                                                        const adv = JSON.parse(probe.target.split('#')[1]);
-                                                                        const base = cloudConfig?.baseUrl || 'stigix-target.workers.dev';
-                                                                        displayUrl = `${base}/advanced?mode=${adv.mode||'info'}${adv.delay ? `&delay=${adv.delay}` : ''}`;
-                                                                        fullUrl = displayUrl;
-                                                                    } catch { displayUrl = 'advanced-custom'; fullUrl = 'advanced-custom'; }
+                                                            if (probe.effectiveUrl && typeof probe.effectiveUrl === 'string' && probe.effectiveUrl.startsWith('http')) {
+                                                                fullUrl = probe.effectiveUrl;
+                                                                displayUrl = fullUrl;
+                                                            } else if (probe.type === 'CLOUD') {
+                                                                const baseOrigin = cloudConfig?.baseUrl || 'https://target.stigix.io';
+                                                                let baseId = probe.target || '';
+                                                                let overrides: any = {};
+                                                                if (baseId.includes('#')) {
+                                                                    const parts = baseId.split('#');
+                                                                    baseId = parts[0];
+                                                                    try { overrides = JSON.parse(parts[1]); } catch { }
+                                                                }
+                                                                if (baseId === 'advanced-custom') {
+                                                                    const params = new URLSearchParams();
+                                                                    params.set('mode', overrides.mode || 'info');
+                                                                    if (overrides.delay !== undefined) params.set('delay', overrides.delay.toString());
+                                                                    if (overrides.mode === 'large') params.set('size', overrides.size || '5m');
+                                                                    if (overrides.mode === 'error') params.set('code', (overrides.code || 500).toString());
+                                                                    displayUrl = `${baseOrigin}/advanced?${params.toString()}`;
+                                                                    fullUrl = displayUrl;
                                                                 } else {
-                                                                    const scenario = cloudScenarios.find(s => s.id === probe.target);
-                                                                    // Strip ?key=... secret from display, keep full for curl copy
-                                                                    fullUrl = scenario?.signedUrl || probe.target;
-                                                                    displayUrl = fullUrl.split('?')[0]; // base URL without params
+                                                                    const scenario = cloudScenarios.find(s => s.id === baseId);
+                                                                    if (scenario?.signedUrl) {
+                                                                        try {
+                                                                            const u = new URL(scenario.signedUrl);
+                                                                            u.searchParams.delete('key');
+                                                                            u.searchParams.delete('tsg');
+                                                                            if (overrides.delay !== undefined) u.searchParams.set('delay', overrides.delay.toString());
+                                                                            fullUrl = u.toString();
+                                                                            displayUrl = fullUrl;
+                                                                        } catch {
+                                                                            fullUrl = scenario.signedUrl;
+                                                                            displayUrl = fullUrl;
+                                                                        }
+                                                                    } else {
+                                                                        const pathMap: Record<string, string> = {
+                                                                            'egress-info': '/saas/info',
+                                                                            'saas-slow': '/saas/slow',
+                                                                            'saas-flap': '/saas/flap',
+                                                                            'saas-wave': '/saas/wave',
+                                                                            'saas-random': '/saas/random',
+                                                                            'download-large': '/download/large',
+                                                                            'security-eicar': '/security/eicar'
+                                                                        };
+                                                                        const p = pathMap[baseId] || (baseId.startsWith('saas-') ? `/${baseId.replace('-', '/')}` : `/${baseId}`);
+                                                                        const params = new URLSearchParams();
+                                                                        if (overrides.delay !== undefined) params.set('delay', overrides.delay.toString());
+                                                                        const qs = params.toString() ? `?${params.toString()}` : '';
+                                                                        fullUrl = `${baseOrigin}${p}${qs}`;
+                                                                        displayUrl = fullUrl;
+                                                                    }
                                                                 }
                                                             } else {
                                                                 fullUrl = probe.target || '';
@@ -3703,14 +3737,6 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                                             <label className="text-[9px] font-black text-text-muted tracking-[0.2em] ml-1 uppercase">
                                                 {newProbe.type === 'CLOUD' ? 'Stigix Probe' : 'Target URL / IP Address'}
                                             </label>
-                                            {newProbe.type === 'CLOUD' && (!cloudConfig?.hasKey || !slsConfig?.tsg_id) && (
-                                                <div className="p-3 bg-red-600/10 border border-dashed border-red-500/30 rounded-xl flex gap-3 items-start animate-in zoom-in-95 duration-300">
-                                                    <ShieldAlert size={14} className="text-red-500 mt-0.5 shrink-0" />
-                                                    <p className="text-[10px] font-bold text-red-100 leading-relaxed opacity-90">
-                                                        Stigix Cloud Probes require a <strong>Master Key</strong> and a <strong>TSG ID</strong> to be configured in the system settings.
-                                                    </p>
-                                                </div>
-                                            )}
                                             {newProbe.type === 'CLOUD' ? (
                                                 <div className="space-y-3">
                                                     <StigixSelect
@@ -3975,11 +4001,11 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                                                 CANCEL
                                             </button>
                                             <button
-                                                disabled={newProbe.type === 'CLOUD' && (!cloudConfig?.hasKey || !slsConfig?.tsg_id)}
+                                                disabled={!newProbe.name || !newProbe.target}
                                                 onClick={() => { addProbe(); setIsProbeModalOpen(false); }}
                                                 className={cn(
                                                     "px-8 py-3 rounded-xl text-[10px] font-black tracking-[0.2em] transition-all flex items-center justify-center gap-2 shadow-lg",
-                                                    (newProbe.type === 'CLOUD' && (!cloudConfig?.hasKey || !slsConfig?.tsg_id))
+                                                    (!newProbe.name || !newProbe.target)
                                                         ? "bg-card-hover text-text-muted opacity-50 cursor-not-allowed"
                                                         : editingIndex !== null
                                                             ? "bg-amber-600 hover:bg-amber-500 text-white shadow-amber-900/40"
@@ -4278,7 +4304,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                                             <h4 className="text-[11px] font-black uppercase tracking-wider">Fleet Automatic Propagation</h4>
                                         </div>
                                         <p className="text-[10px] text-text-muted leading-relaxed opacity-85">
-                                            When you save on the Leader, the Worker Base URL and Master Key are securely bundled and pushed to all active spoke peers in real-time over the encrypted WebSocket tunnel.
+                                            When you save on the Leader, the Worker Base URL is securely bundled and pushed to all active spoke peers in real-time over the encrypted WebSocket tunnel.
                                         </p>
                                         <div className="pt-2 border-t border-border/40 text-[9.5px] text-text-muted space-y-1">
                                             <div className="flex items-center gap-1.5">

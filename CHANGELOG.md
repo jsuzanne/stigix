@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.0.64] - 2026-10-21
+
+### Fixed
+- **Unrestricted Stigix Cloud Synthetic Probes on Standalone Nodes (`web-dashboard/src/Settings.tsx`, `web-dashboard/server.ts`, `web-dashboard/target-manager.ts`)**:
+  - Removed obsolete UI validations and warning banners requiring a `Master Key` or `TSG ID` to configure Stigix Cloud probes (`target.stigix.io`).
+  - Standalone nodes without Prisma SD-WAN credentials or master keys can now freely create, edit, and run Cloud synthetic probes.
+  - Added automatic fallback to `https://target.stigix.io` for cloud targets when `STIGIX_TARGET_BASE_URL` is unset or commented out.
+  - Added dedicated full resolved URL & CLI command test actions (`Copy URL` / `Copy cURL`) in Connectivity Performance view for transparent testing and troubleshooting.
+
 ## [3.0.63] - 2026-10-21
 
 ### Removed

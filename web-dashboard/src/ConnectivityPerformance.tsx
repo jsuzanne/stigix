@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { usePeerContext } from './PeerContext';
-import { Gauge, Activity, Clock, Filter, Download, Zap, Shield, Search, ChevronRight, BarChart3, AlertCircle, Info, ChevronUp, ChevronDown, Flame, Plus, XCircle, CheckCircle, RefreshCw, Globe, Play, Pause, Square, TrendingUp, Pencil, Route, Grid, Trash2 } from 'lucide-react';
+import { Gauge, Activity, Clock, Filter, Download, Zap, Shield, Search, ChevronRight, BarChart3, AlertCircle, Info, ChevronUp, ChevronDown, Flame, Plus, XCircle, CheckCircle, RefreshCw, Globe, Play, Pause, Square, TrendingUp, Pencil, Route, Grid, Trash2, Copy, Terminal, Check } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as ReTooltip, ResponsiveContainer, AreaChart, Area, ReferenceLine, ReferenceArea } from 'recharts';
 import { twMerge } from 'tailwind-merge';
 import { TracerouteModal } from './components/TracerouteModal';
@@ -472,33 +472,118 @@ export default function ConnectivityPerformance({ token, uiConfig, onManage, isL
         }
     }, [propIsLeader]);
 
-    const formatDisplayUrl = (endpoint: any) => {
-        const target = endpoint.lastResult?.url || '';
-        if (endpoint.type !== 'CLOUD') return target;
+    const [copiedUrl, setCopiedUrl] = useState<string | null>(null);
+    const [copiedCurl, setCopiedCurl] = useState<string | null>(null);
 
-        if (target.startsWith('advanced-custom#')) {
-            try {
-                const config = JSON.parse(target.split('#')[1]);
-                const params = new URLSearchParams({ mode: config.mode, delay: config.delay.toString() });
-                if (config.mode === 'large') params.set('size', config.size);
-                if (config.mode === 'error') params.set('code', config.code.toString());
-                const host = cloudScenarios[0]?.signedUrl ? new URL(cloudScenarios[0].signedUrl).host : 'stigix-target.stigix.com';
-                return `${host}/advanced?${params.toString()}`;
-            } catch {
-                return target;
-            }
+    const handleCopyUrl = (url: string) => {
+        if (!url || url === '---') return;
+        navigator.clipboard.writeText(url);
+        setCopiedUrl(url);
+        setTimeout(() => setCopiedUrl(null), 2000);
+    };
+
+    const handleCopyCurl = (cmd: string) => {
+        if (!cmd) return;
+        navigator.clipboard.writeText(cmd);
+        setCopiedCurl(cmd);
+        setTimeout(() => setCopiedCurl(null), 2000);
+    };
+
+    const getResolvedFullUrl = (endpoint: any): string => {
+        if (!endpoint) return '';
+
+        // 1. If effectiveUrl is explicitly available, use it
+        if (endpoint.effectiveUrl && typeof endpoint.effectiveUrl === 'string' && endpoint.effectiveUrl.startsWith('http')) {
+            return endpoint.effectiveUrl;
         }
 
-        const scenario = cloudScenarios.find(s => s.id === target || s.id === (endpoint.name || '').toLowerCase().replace(/\s+/g, '-'));
+        // 2. If lastResult has an HTTP URL, use it
+        if (endpoint.lastResult?.url && typeof endpoint.lastResult.url === 'string' && endpoint.lastResult.url.startsWith('http')) {
+            return endpoint.lastResult.url;
+        }
+
+        const rawTarget = endpoint.target || endpoint.lastResult?.url || '';
+
+        // Non-CLOUD probes (HTTP, HTTPS, PING, TCP, UDP, DNS)
+        if (endpoint.type !== 'CLOUD') {
+            return rawTarget || '---';
+        }
+
+        // Base domain resolution
+        let baseOrigin = '';
+        if (cloudScenarios.length > 0 && cloudScenarios[0]?.signedUrl) {
+            try {
+                const u = new URL(cloudScenarios[0].signedUrl);
+                const hostParts = u.hostname.split('.');
+                if (hostParts.length > 2 && ['info', 'slow', 'download', 'security', 'error'].includes(hostParts[0])) {
+                    baseOrigin = `${u.protocol}//${hostParts.slice(1).join('.')}${u.port ? ':' + u.port : ''}`;
+                } else {
+                    baseOrigin = u.origin;
+                }
+            } catch { }
+        }
+        if (!baseOrigin) {
+            baseOrigin = 'https://target.stigix.io';
+        }
+
+        let baseId = rawTarget;
+        let overrides: any = {};
+        if (rawTarget.includes('#')) {
+            const parts = rawTarget.split('#');
+            baseId = parts[0];
+            try { overrides = JSON.parse(parts[1]); } catch { }
+        }
+
+        // Advanced custom scenario
+        if (baseId === 'advanced-custom') {
+            const params = new URLSearchParams();
+            params.set('mode', overrides.mode || 'info');
+            if (overrides.delay !== undefined && overrides.delay !== null) {
+                params.set('delay', overrides.delay.toString());
+            }
+            if (overrides.mode === 'large') params.set('size', overrides.size || '5m');
+            if (overrides.mode === 'error') params.set('code', (overrides.code || 500).toString());
+
+            const qs = params.toString() ? `?${params.toString()}` : '';
+            return `${baseOrigin}/advanced${qs}`;
+        }
+
+        // Predefined scenarios (e.g. saas-random, saas-slow, egress-info, etc.)
+        const scenario = cloudScenarios.find(s => s.id === baseId || s.id === (endpoint.name || '').toLowerCase().replace(/\s+/g, '-'));
         if (scenario?.signedUrl) {
             try {
                 const u = new URL(scenario.signedUrl);
                 u.searchParams.delete('key');
                 u.searchParams.delete('tsg');
-                return u.toString().replace(/^https?:\/\//, '');
-            } catch {}
+                if (overrides.delay !== undefined) {
+                    u.searchParams.set('delay', overrides.delay.toString());
+                }
+                return u.toString();
+            } catch { }
         }
-        return target || '---';
+
+        // Direct path mapping fallback
+        const pathMap: Record<string, string> = {
+            'egress-info': '/saas/info',
+            'saas-slow': '/saas/slow',
+            'saas-flap': '/saas/flap',
+            'saas-wave': '/saas/wave',
+            'saas-random': '/saas/random',
+            'download-large': '/download/large',
+            'security-eicar': '/security/eicar'
+        };
+
+        const targetPath = pathMap[baseId] || (baseId.startsWith('saas-') ? `/${baseId.replace('-', '/')}` : `/${baseId}`);
+        const params = new URLSearchParams();
+        if (overrides.delay !== undefined) {
+            params.set('delay', overrides.delay.toString());
+        }
+        const qs = params.toString() ? `?${params.toString()}` : '';
+        return `${baseOrigin}${targetPath}${qs}`;
+    };
+
+    const formatDisplayUrl = (endpoint: any) => {
+        return getResolvedFullUrl(endpoint);
     };
 
     // Sorting state
@@ -915,6 +1000,7 @@ export default function ConnectivityPerformance({ token, uiConfig, onManage, isL
                 successRate: Math.round((reachable.length / endpointResults.length) * 100),
                 lastResult: last,
                 target: config?.target || last?.url || '',
+                effectiveUrl: config?.effectiveUrl || (last?.url && last.url.startsWith('http') ? last.url : undefined),
                 enabled,
                 source: config?.source,
                 stale: config?.stale,
@@ -1002,6 +1088,7 @@ export default function ConnectivityPerformance({ token, uiConfig, onManage, isL
                     name: config.name,
                     type: (config.type || 'HTTP').toUpperCase(),
                     target: config.target,
+                    effectiveUrl: config.effectiveUrl,
                     pending: true,
                     lastScore: null,
                     avgScore: null,
@@ -1594,7 +1681,17 @@ export default function ConnectivityPerformance({ token, uiConfig, onManage, isL
                                             {renderProbeTitle(e, false)}
                                         </div>
                                         <div className="flex items-center gap-1.5 flex-wrap mt-0.5">
-                                            <span className="text-[10px] text-text-muted font-mono opacity-60 leading-tight">{e.target}</span>
+                                            <span className="text-[10px] text-text-muted font-mono opacity-60 leading-tight">{formatDisplayUrl(e)}</span>
+                                            <button
+                                                onClick={(ev) => {
+                                                    ev.stopPropagation();
+                                                    handleCopyUrl(getResolvedFullUrl(e));
+                                                }}
+                                                className="p-1 rounded hover:bg-card-secondary text-text-muted hover:text-foreground transition-colors"
+                                                title="Copy full target URL"
+                                            >
+                                                {copiedUrl === getResolvedFullUrl(e) ? <Check size={10} className="text-emerald-500" /> : <Copy size={10} />}
+                                            </button>
                                         </div>
                                     </div>
                                 </td>
@@ -1711,6 +1808,16 @@ export default function ConnectivityPerformance({ token, uiConfig, onManage, isL
                                             <span className="text-[10px] text-text-muted font-mono break-all opacity-80 leading-tight">
                                                 {formatDisplayUrl(e)}
                                             </span>
+                                            <button
+                                                onClick={(ev) => {
+                                                    ev.stopPropagation();
+                                                    handleCopyUrl(getResolvedFullUrl(e));
+                                                }}
+                                                className="p-1 rounded hover:bg-card-secondary text-text-muted hover:text-foreground transition-colors"
+                                                title="Copy full target URL"
+                                            >
+                                                {copiedUrl === getResolvedFullUrl(e) ? <Check size={10} className="text-emerald-500" /> : <Copy size={10} />}
+                                            </button>
                                         </div>
                                     </div>
                                 </td>
@@ -1860,7 +1967,16 @@ export default function ConnectivityPerformance({ token, uiConfig, onManage, isL
                                             </span>
                                         )}
                                     </h3>
-                                    <p className="text-[10px] text-text-muted font-mono font-bold break-all max-w-[700px] mt-1">{formatDisplayUrl(selectedEndpoint)}</p>
+                                    <div className="flex items-center gap-2 mt-1">
+                                        <p className="text-[11px] text-text-muted font-mono font-bold break-all max-w-[700px]">{formatDisplayUrl(selectedEndpoint)}</p>
+                                        <button
+                                            onClick={() => handleCopyUrl(getResolvedFullUrl(selectedEndpoint))}
+                                            className="p-1 rounded hover:bg-card-secondary text-text-muted hover:text-foreground transition-colors flex-shrink-0"
+                                            title="Copy full target URL"
+                                        >
+                                            {copiedUrl === getResolvedFullUrl(selectedEndpoint) ? <Check size={12} className="text-emerald-500" /> : <Copy size={12} />}
+                                        </button>
+                                    </div>
                                 </div>
                             </div>
                             <div className="flex items-center gap-2">
@@ -1929,6 +2045,64 @@ export default function ConnectivityPerformance({ token, uiConfig, onManage, isL
                         })()}
 
                         <div className="p-8 space-y-8">
+                            {/* ── Effective Target URL & CLI Command Card ── */}
+                            {(() => {
+                                const fullUrl = getResolvedFullUrl(selectedEndpoint);
+                                const isHttpLike = selectedEndpoint.type === 'CLOUD' || ['HTTP', 'HTTPS'].includes((selectedEndpoint.type || '').toUpperCase());
+                                const curlCommand = isHttpLike
+                                    ? `curl -i -sS "${fullUrl}"`
+                                    : selectedEndpoint.type === 'PING'
+                                        ? `ping -c 4 ${selectedEndpoint.target}`
+                                        : selectedEndpoint.type === 'TCP'
+                                            ? `nc -zv ${(selectedEndpoint.target || '').split(':')[0]} ${(selectedEndpoint.target || '').split(':')[1] || 80}`
+                                            : `nc -zvu ${(selectedEndpoint.target || '').split(':')[0]} ${(selectedEndpoint.target || '').split(':')[1] || 5201}`;
+
+                                return (
+                                    <div className="bg-card-secondary/40 border border-border rounded-xl p-4 space-y-3">
+                                        <div className="flex items-center justify-between">
+                                            <span className="text-[10px] font-black uppercase tracking-wider text-text-muted flex items-center gap-1.5">
+                                                <Globe size={13} className="text-blue-500" />
+                                                Effective Test Target & Command
+                                            </span>
+                                            <div className="flex items-center gap-2">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleCopyUrl(fullUrl)}
+                                                    className="px-2.5 py-1 rounded-lg text-[10px] font-bold bg-card border border-border hover:bg-card-secondary text-text-primary transition-all flex items-center gap-1.5 shadow-sm"
+                                                    title="Copy full target URL"
+                                                >
+                                                    {copiedUrl === fullUrl ? <Check size={12} className="text-emerald-400" /> : <Copy size={12} />}
+                                                    <span>{copiedUrl === fullUrl ? 'Copied URL' : 'Copy URL'}</span>
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleCopyCurl(curlCommand)}
+                                                    className="px-2.5 py-1 rounded-lg text-[10px] font-bold bg-blue-500/10 border border-blue-500/20 hover:bg-blue-500/20 text-blue-400 transition-all flex items-center gap-1.5 shadow-sm"
+                                                    title="Copy command for terminal testing"
+                                                >
+                                                    {copiedCurl === curlCommand ? <Check size={12} className="text-emerald-400" /> : <Terminal size={12} />}
+                                                    <span>{copiedCurl === curlCommand ? 'Copied Command' : (isHttpLike ? 'Copy cURL' : 'Copy CLI')}</span>
+                                                </button>
+                                            </div>
+                                        </div>
+                                        <div className="grid grid-cols-1 gap-2">
+                                            <div className="bg-background/80 border border-border/60 rounded-lg px-3 py-2 flex items-center justify-between gap-3">
+                                                <div className="flex items-center gap-2 overflow-hidden flex-1 min-w-0">
+                                                    <span className="text-[9px] font-black uppercase text-text-muted px-1.5 py-0.5 rounded bg-card border border-border flex-shrink-0">URL</span>
+                                                    <span className="text-[11px] font-mono text-text-primary truncate select-all">{fullUrl}</span>
+                                                </div>
+                                            </div>
+                                            <div className="bg-background/80 border border-border/60 rounded-lg px-3 py-2 flex items-center justify-between gap-3">
+                                                <div className="flex items-center gap-2 overflow-hidden flex-1 min-w-0">
+                                                    <span className="text-[9px] font-black uppercase text-blue-400 px-1.5 py-0.5 rounded bg-blue-500/10 border border-blue-500/20 flex-shrink-0">CLI</span>
+                                                    <span className="text-[11px] font-mono text-blue-300 dark:text-blue-200 truncate select-all">{curlCommand}</span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                );
+                            })()}
+
                             {/* ── Synchronized charts wrapper (relative for connecting line) ── */}
                             <div ref={chartsRegionRef} style={{ position: 'relative' }}>
 
@@ -2290,6 +2464,22 @@ export default function ConnectivityPerformance({ token, uiConfig, onManage, isL
                                     value={editingProbe.target}
                                     onChange={e => setEditingProbe({ ...editingProbe, target: e.target.value })}
                                 />
+                                {editingProbe.type === 'CLOUD' && (
+                                    <div className="flex items-center justify-between px-3 py-2 bg-purple-500/10 border border-purple-500/20 rounded-xl text-[10px] font-mono">
+                                        <div className="flex items-center gap-1.5 overflow-hidden flex-1 min-w-0 mr-2">
+                                            <span className="text-purple-400 font-bold flex-shrink-0">Resolved:</span>
+                                            <span className="text-purple-300 truncate">{getResolvedFullUrl(editingProbe)}</span>
+                                        </div>
+                                        <button
+                                            type="button"
+                                            onClick={() => handleCopyUrl(getResolvedFullUrl(editingProbe))}
+                                            className="flex items-center gap-1 text-purple-300 hover:text-white px-2 py-0.5 rounded bg-purple-500/20 transition-colors flex-shrink-0"
+                                        >
+                                            {copiedUrl === getResolvedFullUrl(editingProbe) ? <Check size={11} className="text-emerald-400" /> : <Copy size={11} />}
+                                            <span>Copy</span>
+                                        </button>
+                                    </div>
+                                )}
                             </div>
 
                             {/* Content Matching (HTTP/HTTPS only) */}

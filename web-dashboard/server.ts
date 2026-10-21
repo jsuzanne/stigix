@@ -3307,7 +3307,7 @@ app.get('/api/config/cloud', authenticateToken, (req, res) => {
     } catch (e) { }
 
     // Determine derived/effective status
-    const effectiveBaseUrl = config.baseUrl || process.env.STIGIX_TARGET_BASE_URL || '';
+    const effectiveBaseUrl = config.baseUrl || process.env.STIGIX_TARGET_BASE_URL || 'https://target.stigix.io';
 
     res.json({
         baseUrl: effectiveBaseUrl,
@@ -5531,6 +5531,12 @@ const performConnectivityCheck = async (endpoint: any): Promise<ConnectivityResu
         } else if (endpoint.type.toLowerCase() === 'cloud') {
             if (DEBUG) log('CONNECTIVITY', `[DEBUG] Executing CLOUD Probe for scenario: ${endpoint.target}`, 'debug');
             try {
+                if (targetManager) {
+                    try {
+                        const { url } = targetManager.getEffectiveUrl(endpoint.target);
+                        if (url) result.url = url;
+                    } catch { }
+                }
                 const probeResult = await targetManager.runProbe(endpoint.target, endpoint.timeout);
                 result.reachable = probeResult.success;
                 result.score = probeResult.score;
@@ -5787,7 +5793,15 @@ const getFullEffectiveConnectivityProbes = () => {
         }
     }
 
-    return deduplicated;
+    return deduplicated.map(p => {
+        if (p.type === 'CLOUD' && targetManager) {
+            try {
+                const { url } = targetManager.getEffectiveUrl(p.target || '');
+                if (url) return { ...p, effectiveUrl: url };
+            } catch { }
+        }
+        return p;
+    });
 };
 
 // API: Refresh Discovered Connectivity Probes
@@ -5819,6 +5833,9 @@ app.get('/api/connectivity/active-probes', authenticateToken, (req, res) => {
                 name: p.name,
                 type: (p.type || 'PING').toUpperCase(),
                 target: p.target,
+                effectiveUrl: p.type === 'CLOUD' && targetManager
+                    ? (targetManager.getEffectiveUrl(p.target || '').url || p.effectiveUrl)
+                    : (['HTTP', 'HTTPS'].includes((p.type || '').toUpperCase()) ? p.target : p.effectiveUrl),
                 enabled: p.enabled !== false,
                 source: p.source,
                 site_name: p.site_name,
