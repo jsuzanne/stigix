@@ -249,8 +249,12 @@ if [ -n "$JOIN_TOKEN" ]; then
         REDEEM_RES=$(curl -s -k -X POST -H "Content-Type: application/json" -d "$REDEEM_BODY" --connect-timeout 4 -m 6 "$WINNING_LEADER/api/fleet/join-redeem" 2>/dev/null || echo "{}")
         if echo "$REDEEM_RES" | grep -q -E '"success":true|"status":"ok"'; then
             echo "   ✅ Token redeemed successfully!"
+            NODE_TOKEN_VAL=$(echo "$REDEEM_RES" | grep -o '"node_token":"[^"]*' | cut -d'"' -f4)
             CLUSTER_JWT=$(echo "$REDEEM_RES" | grep -o '"jwt_secret":"[^"]*' | cut -d'"' -f4)
-            if [ -n "$CLUSTER_JWT" ]; then
+            if [ -n "$NODE_TOKEN_VAL" ]; then
+                JOINED_NODE_TOKEN="$NODE_TOKEN_VAL"
+                echo "   🔒 Scoped node credential synchronized."
+            elif [ -n "$CLUSTER_JWT" ]; then
                 JOINED_JWT_SECRET="$CLUSTER_JWT"
                 echo "   🔒 Cluster security realm synchronized."
             fi
@@ -616,7 +620,13 @@ if [ -n "$CONTROLLER_URL" ]; then
     echo "✅ Controller URL written to .env"
 fi
 
-if [ -n "$JOINED_JWT_SECRET" ]; then
+if [ -n "$JOINED_NODE_TOKEN" ]; then
+    if grep -q "^STIGIX_NODE_TOKEN=" .env 2>/dev/null; then
+        sed -i.bak -E "s|^STIGIX_NODE_TOKEN=.*|STIGIX_NODE_TOKEN=$JOINED_NODE_TOKEN|g" .env && rm -f .env.bak
+    else
+        echo "STIGIX_NODE_TOKEN=$JOINED_NODE_TOKEN" >> .env
+    fi
+elif [ -n "$JOINED_JWT_SECRET" ]; then
     if grep -q "^JWT_SECRET=" .env 2>/dev/null; then
         sed -i.bak -E "s|^JWT_SECRET=.*|JWT_SECRET=$JOINED_JWT_SECRET|g" .env && rm -f .env.bak
     fi
@@ -660,7 +670,9 @@ fi
 
 if [ -n "$JOIN_TOKEN" ] && [ -n "$CONTROLLER_URL" ]; then
     TOKEN_PFX="${JOIN_TOKEN:0:12}..."
-    echo "{\"enrolled\":true,\"tokenPrefix\":\"$TOKEN_PFX\",\"leaderUrl\":\"$CONTROLLER_URL\",\"siteName\":\"$FINAL_SITE_NAME\",\"enrolledAt\":\"$(date -u +"%Y-%m-%dT%H:%M:%SZ" 2>/dev/null || date)\"}" > ./config/cluster-enrollment.json 2>/dev/null || true
+    NODE_TOKEN_FIELD=""
+    [ -n "$JOINED_NODE_TOKEN" ] && NODE_TOKEN_FIELD=",\"nodeToken\":\"$JOINED_NODE_TOKEN\""
+    echo "{\"enrolled\":true,\"tokenPrefix\":\"$TOKEN_PFX\",\"leaderUrl\":\"$CONTROLLER_URL\",\"siteName\":\"$FINAL_SITE_NAME\"${NODE_TOKEN_FIELD},\"enrolledAt\":\"$(date -u +"%Y-%m-%dT%H:%M:%SZ" 2>/dev/null || date)\"}" > ./config/cluster-enrollment.json 2>/dev/null || true
 fi
 
 if [ -n "$CHOSEN_PRIMARY_IP" ]; then

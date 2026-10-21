@@ -361,6 +361,17 @@ def _headers():
     h = {"Content-Type": "application/json"}
     if JWT_TOKEN:
         h["Authorization"] = f"Bearer {JWT_TOKEN}"
+    else:
+        for secret_path in ("/app/config/.cli-local-secret", "config/.cli-local-secret", ".cli-local-secret"):
+            if os.path.exists(secret_path):
+                try:
+                    with open(secret_path, "r") as sf:
+                        cli_secret = sf.read().strip()
+                    if cli_secret:
+                        h["X-Stigix-Cli-Secret"] = cli_secret
+                        break
+                except Exception:
+                    pass
     return h
 
 def api_get(path, timeout=TIMEOUT, suppress_err=False):
@@ -2872,7 +2883,8 @@ def cmd_join(args):
             info(f"Connected to local Stigix node at {STIGIX_URL}. Executing live cluster enrollment...")
             join_res = api_post("/api/registry/join-with-token", {
                 "token": token_candidate,
-                "site_name": site_hint
+                "site_name": site_hint,
+                "force": True
             }, timeout=15)
 
             if join_res and (join_res.get("success") or join_res.get("status") == "ok"):
@@ -2948,9 +2960,12 @@ def cmd_join(args):
             if node_id:
                 info(f"Assigned Persistent Node ID: {c('1;32', node_id)}")
 
-            # Synchronize cluster JWT_SECRET into local .env if available
+            # Synchronize scoped STIGIX_NODE_TOKEN (or legacy JWT_SECRET) into local .env if available
+            node_token = res_data.get("node_token")
             cluster_jwt = res_data.get("jwt_secret")
-            if cluster_jwt:
+            env_key = "STIGIX_NODE_TOKEN" if node_token else ("JWT_SECRET" if cluster_jwt else None)
+            env_val = node_token or cluster_jwt
+            if env_key and env_val:
                 for env_path in ["/app/config/.env", ".env", "config/.env"]:
                     if os.path.exists(env_path):
                         try:
@@ -2959,16 +2974,16 @@ def cmd_join(args):
                             new_lines = []
                             found = False
                             for line in env_lines:
-                                if line.startswith("JWT_SECRET="):
-                                    new_lines.append(f"JWT_SECRET={cluster_jwt}\n")
+                                if line.startswith(f"{env_key}="):
+                                    new_lines.append(f"{env_key}={env_val}\n")
                                     found = True
                                 else:
                                     new_lines.append(line)
                             if not found:
-                                new_lines.append(f"JWT_SECRET={cluster_jwt}\n")
+                                new_lines.append(f"{env_key}={env_val}\n")
                             with open(env_path, "w") as ef:
                                 ef.writelines(new_lines)
-                            info(f"Cluster security realm synchronized ({env_path})")
+                            info(f"Cluster node credential synchronized ({env_path})")
                             break
                         except Exception:
                             pass

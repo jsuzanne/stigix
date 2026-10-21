@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.0.67] - 2026-10-21
+
+### Security & Fixed
+- **Fleet Gateway, Loopback Trust & Magic Join Security Hardening (`web-dashboard/server.ts`, `web-dashboard/fleet-tunnel.ts`, `web-dashboard/magic-join-manager.ts`, `Scripts/stigix-cli.py`, `install.sh`)**:
+  - **Per-Process Loopback Secret (`INTERNAL_LOOPBACK_SECRET`)**: Replaced plain `x-gateway-source` loopback header trust with a 256-bit per-process secret (`x-internal-tunnel-secret`) injected exclusively by `FleetTunnelManager` and persisted in `config/.cli-local-secret` (`0600`) for local CLI (`X-Stigix-Cli-Secret`), preventing authentication bypass behind local reverse proxies (Nginx/Caddy).
+  - **Fleet Gateway Access Control (`/api/gateway/:peerId/*path`)**: Enforced administrator role verification, blocked loopback/self targets (`127.0.0.1`, `localhost`, `::1`, `0.0.0.0`, self-instance), and blocked remote proxying of sensitive cluster/auth mutation endpoints (`/api/registry/join-with-token`, `/api/registry/unenroll`, `/api/fleet/join-*`, `/api/auth/*`).
+  - **Protected Enrollment (`POST /api/registry/join-with-token`)**: Removed unauthenticated loopback bypass, added `force: true` overwrite protection when a node is already enrolled or acting as Leader, and filtered loopback/link-local candidate endpoints.
+  - **High-Entropy Cluster Realm & M6 Reverse-Dial Protection**: Eliminated guessable `PRISMA_SDWAN_TSGID` / `'default-stigix-realm'` realm derivation in favor of an auto-generated 256-bit persistent key (`config/cluster-realm.key`), and restricted M6 `isLeaderDial` adoption to non-Leader nodes explicitly awaiting a token realm without overwriting local `JWT_SECRET`.
+  - **Scoped Node Credentials (`STIGIX_NODE_TOKEN`)**: Stopped returning the Leader's master `SECRET_KEY` in `POST /api/fleet/join-redeem`; issued per-node revocable `STX-NODE` tokens signed with a derived HMAC tunnel key (`deriveFleetTunnelKey`) while preserving 100% backward compatibility with shared-secret `.env` deployments.
+
 ## [3.0.66] - 2026-10-21
 
 ### Fixed
