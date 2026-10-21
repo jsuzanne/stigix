@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.0.65] - 2026-10-21
+
+### Fixed
+- **Persistent Leader Mode & Zero-.env Configuration (`web-dashboard/registry-manager.ts`, `web-dashboard/server.ts`)**:
+  - Fixed an issue where nodes promoted to `leader` via the Web UI reverted to `standalone` mode upon container restart or upgrade when Cloudflare registry was not configured in `.env`.
+  - Mode determination (`system-settings.json`) is now evaluated before any optional Cloudflare bootstrap check, ensuring local Leader operation persists across all container upgrades.
+  - Automatically initializes local registry server and heartbeat client for local LAN/mesh operations without external Cloudflare dependencies.
+  - Synchronizes `STIGIX_REGISTRY_MODE` directly into `.env` if mounted/present when updated via the UI, while maintaining `config/system-settings.json` as the resilient primary source of truth.
+
 ## [3.0.64] - 2026-10-21
 
 ### Fixed

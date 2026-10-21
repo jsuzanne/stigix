@@ -19228,6 +19228,32 @@ app.post('/api/config/system-settings', authenticateToken, async (req, res) => {
         const saved = saveSystemSettings(patch);
         log('SYSTEM', `System settings updated: ${JSON.stringify(saved)}`);
 
+        if (patch.registry_mode) {
+            // Synchronize STIGIX_REGISTRY_MODE to .env if present on disk
+            const envCandidates = [
+                path.join(APP_CONFIG.configDir, '.env'),
+                path.join(process.cwd(), 'config', '.env'),
+                path.join(process.cwd(), '.env'),
+                '/app/.env',
+                '/app/config/.env'
+            ];
+            for (const ep of envCandidates) {
+                try {
+                    if (fs.existsSync(ep)) {
+                        let envContent = fs.readFileSync(ep, 'utf8');
+                        if (/^#?\s*STIGIX_REGISTRY_MODE=/m.test(envContent)) {
+                            envContent = envContent.replace(/^#?\s*STIGIX_REGISTRY_MODE=.*/m, `STIGIX_REGISTRY_MODE=${patch.registry_mode}`);
+                        } else {
+                            envContent += `\nSTIGIX_REGISTRY_MODE=${patch.registry_mode}\n`;
+                        }
+                        fs.writeFileSync(ep, envContent, 'utf8');
+                        log('SYSTEM', `Synchronized STIGIX_REGISTRY_MODE=${patch.registry_mode} to ${ep}`);
+                        break;
+                    }
+                } catch { /* ignore */ }
+            }
+        }
+
         if (typeof security_engine_enabled === 'boolean') {
             startSchedulers();
         }

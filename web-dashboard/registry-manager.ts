@@ -396,10 +396,6 @@ export class RegistryManager {
 
     async start() {
         const config = this.client.getConfig();
-        if (!config.enabled) {
-            log('REGISTRY', `Disabled by configuration.`);
-            return;
-        }
 
         // ── Direct Controller Mode ───────────────────────────────────────
         // When STIGIX_CONTROLLER_URL is set, bypass ALL Cloudflare logic.
@@ -478,10 +474,10 @@ export class RegistryManager {
                 } catch {}
                 this.staticLeaderUrl = null;
             }
-            // Ensure Leader has a fallback pocId so discovery fetchInstances() works locally
+            // Ensure Leader is enabled and has a fallback pocId so discovery fetchInstances() works locally
+            (config as any).enabled = true;
             if (!config.pocId) {
                 (config as any).pocId = 'local-leader';
-                (config as any).enabled = true;
             }
             // Leader Mode: Announce ourselves to Bootstrap Signal only if remoteUrl is configured
             if (config.remoteUrl) {
@@ -847,7 +843,16 @@ export class RegistryManager {
 
     public isLeader(): boolean {
         if (this.directMode) return false;
-        const mode = process.env.STIGIX_REGISTRY_MODE_CURRENT || 'peer';
+        if (process.env.STIGIX_REGISTRY_MODE_CURRENT === 'leader') return true;
+        try {
+            const sysSettingsFile = path.join(this.configDir, 'system-settings.json');
+            if (fs.existsSync(sysSettingsFile)) {
+                const sysSettings = JSON.parse(fs.readFileSync(sysSettingsFile, 'utf8'));
+                if (sysSettings.registry_mode === 'leader') return true;
+                if (sysSettings.registry_mode === 'standalone' || sysSettings.registry_mode === 'peer') return false;
+            }
+        } catch {}
+        const mode = process.env.STIGIX_REGISTRY_MODE_CURRENT || process.env.STIGIX_REGISTRY_MODE || 'peer';
         return mode === 'leader';
     }
 
