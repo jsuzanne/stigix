@@ -2,6 +2,38 @@ import crypto from 'crypto';
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
+import jwt from 'jsonwebtoken';
+
+export function deriveFleetTunnelKey(secretKey: string): string {
+    return crypto.createHmac('sha256', secretKey).update('stigix-fleet-tunnel-key-v1').digest('hex');
+}
+
+export function resolveClusterRealmHash(configDir = '/app/config'): string {
+    if (process.env.STIGIX_CLUSTER_REALM && /^[a-f0-9]{64}$/i.test(process.env.STIGIX_CLUSTER_REALM.trim())) {
+        return process.env.STIGIX_CLUSTER_REALM.trim().toLowerCase();
+    }
+    if (process.env.STIGIX_CLUSTER_KEY && process.env.STIGIX_CLUSTER_KEY.trim().length >= 16) {
+        return crypto.createHash('sha256').update(process.env.STIGIX_CLUSTER_KEY.trim()).digest('hex');
+    }
+    const realmFile = path.join(configDir, 'cluster-realm.key');
+    try {
+        if (fs.existsSync(realmFile)) {
+            const existing = fs.readFileSync(realmFile, 'utf8').trim();
+            if (existing.length >= 32) {
+                return crypto.createHash('sha256').update(existing).digest('hex');
+            }
+        }
+        if (!fs.existsSync(configDir)) {
+            fs.mkdirSync(configDir, { recursive: true });
+        }
+        const generatedKey = crypto.randomBytes(32).toString('hex');
+        fs.writeFileSync(realmFile, generatedKey, { encoding: 'utf8', mode: 0o600 });
+        return crypto.createHash('sha256').update(generatedKey).digest('hex');
+    } catch {
+        const fallbackSeed = process.env.JWT_SECRET || crypto.randomBytes(32).toString('hex');
+        return crypto.createHmac('sha256', fallbackSeed).update('stigix-cluster-realm-v1').digest('hex');
+    }
+}
 
 export interface JoinTokenPayload {
     v: number;
@@ -30,6 +62,7 @@ export interface JoinTokenEntry {
         hostname?: string;
         site_name?: string;
         redeemed_at: string;
+        node_token?: string;
     }[];
 }
 
@@ -74,11 +107,7 @@ export class MagicJoinManager {
     }
 
     public getRealmHash(): string {
-        const seed = process.env.PRISMA_SDWAN_TSGID ||
-                     process.env.STIGIX_CLUSTER_KEY ||
-                     process.env.STIGIX_POC_ID ||
-                     'default-stigix-realm';
-        return crypto.createHash('sha256').update(seed).digest('hex');
+        return resolveClusterRealmHash(this.configDir);
     }
 
     public detectLeaderEndpoints(requestHost?: string, localIp?: string): string[] {
@@ -229,6 +258,21 @@ export class MagicJoinManager {
         }
     }
 
+    public issueScopedNodeToken(nodeId: string, siteName?: string, jti?: string): string {
+        const fleetTunnelKey = deriveFleetTunnelKey(this.secretKey);
+        return jwt.sign(
+            {
+                typ: 'STX-NODE',
+                sub: nodeId,
+                jti: jti || `stx_dial_${crypto.randomBytes(6).toString('hex')}`,
+                site: siteName || nodeId,
+                role: 'spoke-tunnel'
+            },
+            fleetTunnelKey,
+            { expiresIn: '3650d' }
+        );
+    }
+
     public redeemToken(tokenStr: string, nodeInfo: {
         instance_id: string;
         public_ip?: string;
@@ -241,6 +285,10 @@ export class MagicJoinManager {
             return { success: false, error: verify.error };
         }
 
+        const nodeId = nodeInfo.instance_id;
+        const resolvedSite = nodeInfo.site_name || verify.payload.site_hint || nodeId;
+        const nodeToken = this.issueScopedNodeToken(nodeId, resolvedSite, verify.payload.jti);
+
         const entry = this.tokens.get(verify.payload.jti);
         if (entry) {
             entry.uses_count += 1;
@@ -249,8 +297,9 @@ export class MagicJoinManager {
                 instance_id: nodeInfo.instance_id,
                 public_ip: nodeInfo.public_ip,
                 hostname: nodeInfo.hostname,
-                site_name: nodeInfo.site_name || verify.payload.site_hint,
-                redeemed_at: new Date().toISOString()
+                site_name: resolvedSite,
+                redeemed_at: new Date().toISOString(),
+                node_token: nodeToken
             });
 
             if (entry.uses_count >= entry.max_uses) {
@@ -259,18 +308,39 @@ export class MagicJoinManager {
             this.saveTokens();
         }
 
-        // Generate persistent node authentication credentials
-        const nodeId = nodeInfo.instance_id;
-        const nodeToken = crypto
-            .createHmac('sha256', this.secretKey)
-            .update(`node:${nodeId}:${Date.now()}`)
-            .digest('hex');
-
         return {
             success: true,
             node_id: nodeId,
             node_token: nodeToken
         };
+    }
+
+    public isTokenRevoked(jti?: string): boolean {
+        if (!jti) return false;
+        const entry = this.tokens.get(jti);
+        return Boolean(entry && entry.status === 'REVOKED');
+    }
+
+    public getNodeTokenForPeer(identifier: string): string | null {
+        if (!identifier) return null;
+        const cleanId = identifier.trim().toLowerCase();
+        const entries = Array.from(this.tokens.values()).sort(
+            (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+        );
+        for (const entry of entries) {
+            if (entry.status === 'REVOKED' || !Array.isArray(entry.redeemed_by)) continue;
+            for (let i = entry.redeemed_by.length - 1; i >= 0; i--) {
+                const r = entry.redeemed_by[i];
+                if (!r.node_token) continue;
+                const candidates = [r.instance_id, r.site_name, r.public_ip, r.hostname]
+                    .filter(Boolean)
+                    .map(s => String(s).trim().toLowerCase());
+                if (candidates.includes(cleanId)) {
+                    return r.node_token;
+                }
+            }
+        }
+        return null;
     }
 
     public revokeToken(jti: string): boolean {

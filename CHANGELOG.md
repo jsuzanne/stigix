@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.0.66] - 2026-10-21
+
+### Fixed
+- **Magic Join Token Generation & Peer Token Redemption (`web-dashboard/server.ts`)**:
+  - Fixed a `ReferenceError: systemSettings is not defined` runtime exception when invoking `GET /api/fleet/join-token` to generate a Magic Join onboarding token on the Leader.
+  - Replaced undefined `systemSettings` references with `getSystemSettings()` and `saveSystemSettings()` in token generation and stateless Cloudflare rendezvous token redemption endpoints.
+
 ## [3.0.65] - 2026-10-21
 
 ### Fixed

@@ -2323,12 +2323,29 @@ let SECRET_KEY = process.env.JWT_SECRET || 'super-secret-key-change-this';
 const USERS_FILE = path.join(APP_CONFIG.configDir, 'users.json');
 const DEBUG_API = process.env.DEBUG_API === 'true';
 
-// Fleet WebSocket Reverse Tunnel Manager (M5 — NAT/CGNAT Traversal)
-const fleetTunnelManager = new FleetTunnelManager(io, registryManager, SECRET_KEY, PORT);
-fleetTunnelManager.start();
+// Per-process cryptographic secret for internal loopback tunnel dispatch & local CLI authentication
+const INTERNAL_LOOPBACK_SECRET = crypto.randomBytes(32).toString('hex');
+try {
+    const cliSecretFile = path.join(APP_CONFIG.configDir, '.cli-local-secret');
+    fs.writeFileSync(cliSecretFile, INTERNAL_LOOPBACK_SECRET, { encoding: 'utf8', mode: 0o600 });
+} catch {}
 
 // Magic Join Manager (PRD v2.4 — Universal Zero-Touch Onboarding)
 const magicJoinManager = new MagicJoinManager(APP_CONFIG.configDir, SECRET_KEY);
+
+// Fleet WebSocket Reverse Tunnel Manager (M5 — NAT/CGNAT Traversal)
+const fleetTunnelManager = new FleetTunnelManager(
+    io,
+    registryManager,
+    SECRET_KEY,
+    PORT,
+    undefined,
+    undefined,
+    undefined,
+    INTERNAL_LOOPBACK_SECRET,
+    magicJoinManager
+);
+fleetTunnelManager.start();
 
 app.use(cors());
 app.use(express.json({ limit: '10mb' }));
@@ -2389,16 +2406,39 @@ app.use((req, res, next) => {
     next();
 });
 
+const isAdminUser = (user: any): boolean => {
+    if (!user) return false;
+    return (
+        user.role === 'admin' ||
+        user.username === 'admin' ||
+        user.username === 'stigix-gateway' ||
+        user.username === 'stigix-multicast-orchestrator'
+    );
+};
+
 // --- Authentication Middleware ---
 const authenticateToken = (req: any, res: any, next: any) => {
-    // 1. Loopback Reverse Tunnel Dispatch:
-    // Requests dispatched locally by fleet-tunnel over 127.0.0.1 with x-gateway-source
-    // are already authenticated at the secure WebSocket tunnel layer.
+    // 1. Loopback Reverse Tunnel & Local CLI Dispatch:
+    // Requests dispatched locally by fleet-tunnel over 127.0.0.1 must carry the per-process
+    // cryptographic secret (INTERNAL_LOOPBACK_SECRET) so external reverse proxies (Nginx/Caddy)
+    // on the same host cannot spoof x-gateway-source headers.
     const isLoopback = req.ip === '127.0.0.1' || req.ip === '::1' || req.ip === '::ffff:127.0.0.1' || 
                        req.socket?.remoteAddress === '127.0.0.1' || req.socket?.remoteAddress === '::1' || req.socket?.remoteAddress === '::ffff:127.0.0.1';
     const gwSource = req.headers['x-gateway-source'];
-    if (isLoopback && (gwSource === 'reverse-tunnel' || gwSource === 'reverse-tunnel-stream' || gwSource === 'stigix-leader')) {
+    const internalTunnelSecret = req.headers['x-internal-tunnel-secret'];
+    const cliSecret = req.headers['x-stigix-cli-secret'];
+
+    if (
+        isLoopback &&
+        (gwSource === 'reverse-tunnel' || gwSource === 'reverse-tunnel-stream') &&
+        internalTunnelSecret === INTERNAL_LOOPBACK_SECRET
+    ) {
         req.user = { username: 'stigix-gateway', role: 'admin' };
+        return next();
+    }
+
+    if (isLoopback && cliSecret === INTERNAL_LOOPBACK_SECRET) {
+        req.user = { username: 'admin', role: 'admin' };
         return next();
     }
 
@@ -2408,22 +2448,46 @@ const authenticateToken = (req: any, res: any, next: any) => {
 
     if (!token) return res.sendStatus(401);
 
+    const normalizeUser = (u: any) => {
+        if (u && u.username === 'admin' && !u.role) {
+            u.role = 'admin';
+        }
+        return u;
+    };
+
+    const verifyWithNodeTokenFallback = () => {
+        const nodeToken = process.env.STIGIX_NODE_TOKEN || fleetTunnelManager.getNodeToken();
+        if (nodeToken) {
+            try {
+                const decoded: any = jwt.verify(token, nodeToken);
+                if (
+                    decoded &&
+                    (decoded.username === 'stigix-gateway' || decoded.username === 'stigix-multicast-orchestrator')
+                ) {
+                    req.user = normalizeUser(decoded);
+                    return next();
+                }
+            } catch {}
+        }
+        return res.sendStatus(403);
+    };
+
     const activeSecret = process.env.JWT_SECRET || SECRET_KEY;
     jwt.verify(token, activeSecret, (err: any, user: any) => {
         if (!err) {
-            req.user = user;
+            req.user = normalizeUser(user);
             return next();
         }
         if (activeSecret !== SECRET_KEY) {
             jwt.verify(token, SECRET_KEY, (err2: any, user2: any) => {
                 if (!err2) {
-                    req.user = user2;
+                    req.user = normalizeUser(user2);
                     return next();
                 }
-                return res.sendStatus(403);
+                return verifyWithNodeTokenFallback();
             });
         } else {
-            return res.sendStatus(403);
+            return verifyWithNodeTokenFallback();
         }
     });
 };
@@ -2665,8 +2729,9 @@ app.post('/api/auth/login', (req, res) => {
     const user = users.find((u: any) => u.username === username);
 
     if (user && bcrypt.compareSync(password, user.passwordHash)) {
-        const token = jwt.sign({ username: user.username }, SECRET_KEY, { expiresIn: '24h' });
-        res.json({ token, username: user.username });
+        const userRole = user.role || (user.username === 'admin' ? 'admin' : 'user');
+        const token = jwt.sign({ username: user.username, role: userRole }, SECRET_KEY, { expiresIn: '24h' });
+        res.json({ token, username: user.username, role: userRole });
     } else {
         res.status(401).json({ error: 'Invalid credentials' });
     }
@@ -16880,7 +16945,7 @@ app.get('/api/fleet/join-token', authenticateToken, async (req: any, res: any) =
 
         const allDetected = magicJoinManager.detectLeaderEndpoints(requestHost, localIp);
         const activeRelayUrl = (
-            systemSettings.registry_url ||
+            getSystemSettings().registry_url ||
             process.env.STIGIX_REGISTRY_URL ||
             process.env.REGISTRY_URL ||
             ''
@@ -17021,7 +17086,6 @@ app.post('/api/fleet/join-redeem', async (req: any, res: any) => {
             node_token: redeemResult.node_token,
             realm: magicJoinManager.getRealmHash(),
             leader_ip: registryManager.getCurrentIp(),
-            jwt_secret: SECRET_KEY,
             message: 'Node successfully enrolled into Stigix cluster.'
         });
     } catch (err: any) {
@@ -17039,7 +17103,33 @@ app.all('/api/gateway/:peerId/*path', authenticateToken, async (req: any, res: a
         });
     }
 
-    const peerId = req.params.peerId;
+    if (!isAdminUser(req.user)) {
+        return res.status(403).json({
+            error: 'admin_required',
+            message: 'Administrator privileges are required to use the Fleet Gateway.'
+        });
+    }
+
+    const peerId = (req.params.peerId || '').trim();
+    const isLoopbackHost = (h?: string) => {
+        if (!h) return false;
+        const clean = h.trim().toLowerCase().replace(/^\[|\]$/g, '');
+        return (
+            clean === '127.0.0.1' ||
+            clean === 'localhost' ||
+            clean === '::1' ||
+            clean === '::ffff:127.0.0.1' ||
+            clean === '0.0.0.0' ||
+            clean.startsWith('127.')
+        );
+    };
+
+    if (isLoopbackHost(peerId)) {
+        return res.status(400).json({
+            error: 'loopback_target_forbidden',
+            message: 'Gateway cannot proxy requests to a loopback target.'
+        });
+    }
 
     // Check if Peer has an active WebSocket Reverse Tunnel
     const allInstances = localRegistryServer.getInstances();
@@ -17074,6 +17164,25 @@ app.all('/api/gateway/:peerId/*path', authenticateToken, async (req: any, res: a
         }
     }
 
+    if (peerIp && isLoopbackHost(peerIp)) {
+        return res.status(400).json({
+            error: 'loopback_target_forbidden',
+            message: 'Gateway cannot proxy requests to a loopback target IP.'
+        });
+    }
+
+    const myInstanceId = registryManager.getInstanceId();
+    const myIp = registryManager.getCurrentIp();
+    if (!hasWsTunnel && (
+        (myInstanceId && peerInstanceId.toLowerCase() === myInstanceId.toLowerCase()) ||
+        (peerIp && myIp && peerIp === myIp && Number(peerPort) === Number(PORT))
+    )) {
+        return res.status(400).json({
+            error: 'self_target_forbidden',
+            message: 'Gateway cannot proxy requests back to the local Leader instance.'
+        });
+    }
+
     if (!hasWsTunnel && !peerIp) {
         return res.status(404).json({
             error: 'peer_not_found',
@@ -17083,13 +17192,34 @@ app.all('/api/gateway/:peerId/*path', authenticateToken, async (req: any, res: a
     }
 
     // Strip /api/gateway/:peerId prefix — forward the remainder to the peer
-    const proxyPath = req.path.replace(`/api/gateway/${peerId}`, '') || '/';
-    const proxyUrl = req.originalUrl.replace(`/api/gateway/${peerId}`, '');
+    const proxyPath = req.path.replace(`/api/gateway/${req.params.peerId}`, '') || '/';
+    const proxyUrl = req.originalUrl.replace(`/api/gateway/${req.params.peerId}`, '');
+
+    // Block sensitive cluster membership / auth mutation endpoints from being proxied across the gateway
+    const normalizedProxyPath = proxyPath.toLowerCase();
+    const forbiddenGatewayPrefixes = [
+        '/api/registry/join-with-token',
+        '/api/registry/unenroll',
+        '/api/registry/static-leader',
+        '/api/fleet/join-token',
+        '/api/fleet/join-tokens',
+        '/api/fleet/join-redeem',
+        '/api/auth/users',
+        '/api/auth/change-password',
+        '/api/gateway/'
+    ];
+    if (forbiddenGatewayPrefixes.some((prefix) => normalizedProxyPath === prefix || normalizedProxyPath.startsWith(prefix + '/') || normalizedProxyPath.startsWith(prefix + '?'))) {
+        return res.status(403).json({
+            error: 'gateway_path_forbidden',
+            message: `Endpoint "${proxyPath}" cannot be invoked remotely via Fleet Gateway.`
+        });
+    }
 
     // Build forwarded headers: strip hop-by-hop headers, keep the rest
     const hopByHop = new Set([
         'connection', 'keep-alive', 'proxy-authenticate', 'proxy-authorization',
-        'te', 'trailers', 'transfer-encoding', 'upgrade', 'host', 'authorization'
+        'te', 'trailers', 'transfer-encoding', 'upgrade', 'host', 'authorization',
+        'x-internal-tunnel-secret', 'x-stigix-cli-secret'
     ]);
     const forwardHeaders: Record<string, string | string[]> = {};
     for (const [k, v] of Object.entries(req.headers)) {
@@ -17098,9 +17228,16 @@ app.all('/api/gateway/:peerId/*path', authenticateToken, async (req: any, res: a
         }
     }
     // Inject a short-lived internal gateway token so the peer can authenticate the request.
+    // Use the peer's scoped nodeToken if enrolled via Magic Join, falling back to SECRET_KEY for shared-secret fleets.
+    const peerSigningKey =
+        fleetTunnelManager.getPeerNodeToken(peerId) ||
+        fleetTunnelManager.getPeerNodeToken(peerInstanceId) ||
+        (peerSiteName ? fleetTunnelManager.getPeerNodeToken(peerSiteName) : null) ||
+        (peerIp ? fleetTunnelManager.getPeerNodeToken(peerIp) : null) ||
+        SECRET_KEY;
     const gatewayToken = jwt.sign(
         { username: 'stigix-gateway', role: 'admin', peer: peerId },
-        SECRET_KEY,
+        peerSigningKey,
         { expiresIn: '30s' }
     );
     forwardHeaders['authorization'] = `Bearer ${gatewayToken}`;
@@ -17382,9 +17519,14 @@ tcpAppManager.multicastManager.setClusterHooks({
         );
         const matchedTunnelId = tunnelCandidates.find((cand) => fleetTunnelManager.hasTunnel(cand));
 
+        const peerSigningKey =
+            fleetTunnelManager.getPeerNodeToken(peerId) ||
+            fleetTunnelManager.getPeerNodeToken(peerInstanceId) ||
+            (peerSiteName ? fleetTunnelManager.getPeerNodeToken(peerSiteName) : null) ||
+            SECRET_KEY;
         const gatewayToken = jwt.sign(
             { username: 'stigix-multicast-orchestrator', role: 'admin', peer: peerId },
-            SECRET_KEY,
+            peerSigningKey,
             { expiresIn: '30s' }
         );
         const headers: Record<string, string> = {
@@ -18492,6 +18634,14 @@ function normalizeControllerUrl(input: string): string {
 app.post('/api/registry/join-with-token', async (req: any, res: any) => {
     const handleJoinExecution = async () => {
         try {
+            const existingEnrollment = registryManager.getClusterEnrollment();
+            if ((existingEnrollment?.enrolled || registryManager.isLeader()) && req.body?.force !== true) {
+                return res.status(409).json({
+                    error: 'already_enrolled',
+                    message: 'Node is already enrolled in a cluster or acting as a Leader. Pass force: true to replace existing enrollment.'
+                });
+            }
+
             const rawToken = (req.body?.token || '').trim();
             if (!rawToken || !rawToken.startsWith('STX-')) {
                 return res.status(400).json({ error: 'invalid_token', message: 'Token must start with STX-' });
@@ -18516,9 +18666,28 @@ app.post('/api/registry/join-with-token', async (req: any, res: any) => {
                 return res.status(400).json({ error: 'token_expired', message: `Token expired at ${new Date(payload.exp * 1000).toISOString()}` });
             }
 
-            const endpoints: string[] = Array.isArray(payload.endpoints) ? payload.endpoints : [];
+            const rawEndpoints: string[] = Array.isArray(payload.endpoints) ? payload.endpoints : [];
+            const endpoints = rawEndpoints.filter((ep) => {
+                try {
+                    const u = new URL(ep);
+                    const h = u.hostname.toLowerCase().replace(/^\[|\]$/g, '');
+                    if (
+                        h === '127.0.0.1' ||
+                        h === 'localhost' ||
+                        h === '::1' ||
+                        h === '0.0.0.0' ||
+                        h.startsWith('127.') ||
+                        h.startsWith('169.254.')
+                    ) {
+                        return false;
+                    }
+                    return u.protocol === 'http:' || u.protocol === 'https:';
+                } catch {
+                    return false;
+                }
+            });
             if (endpoints.length === 0) {
-                return res.status(400).json({ error: 'no_endpoints', message: 'Token does not contain any reachable Leader endpoints' });
+                return res.status(400).json({ error: 'no_endpoints', message: 'Token does not contain any valid reachable Leader endpoints' });
             }
 
             // Probe candidate endpoints to find the active Leader
@@ -18547,7 +18716,7 @@ app.post('/api/registry/join-with-token', async (req: any, res: any) => {
                 if (payload.realm) {
                     const registryUrl = (
                         payload.relay_url ||
-                        systemSettings.registry_url ||
+                        getSystemSettings().registry_url ||
                         process.env.STIGIX_REGISTRY_URL ||
                         process.env.REGISTRY_URL ||
                         ''
@@ -18562,8 +18731,8 @@ app.post('/api/registry/join-with-token', async (req: any, res: any) => {
                     process.env.STIGIX_MAGIC_JOIN = 'true';
                     process.env.STIGIX_REGISTRY_URL = registryUrl;
                     process.env.STIGIX_REGISTRY_ENABLED = 'true';
-                    systemSettings.registry_url = registryUrl;
-                    saveSystemSetting('registry_url', registryUrl);
+                    fleetTunnelManager.setNodeToken(null);
+                    saveSystemSettings({ registry_url: registryUrl });
                     if (effectiveSite) {
                         registryManager.setSiteName(effectiveSite);
                     }
@@ -18685,11 +18854,14 @@ app.post('/api/registry/join-with-token', async (req: any, res: any) => {
                 return res.status(400).json({ error: redeemData.error || 'redeem_failed', message: errMsg });
             }
 
+            const nodeToken = redeemData.node_token;
             const clusterJwt = redeemData.jwt_secret;
             const nodeId = redeemData.node_id;
 
-            // 1. Dynamic in-memory credential update
-            if (clusterJwt) {
+            // 1. Dynamic in-memory credential update: prefer scoped node_token over replacing local SECRET_KEY
+            if (nodeToken) {
+                fleetTunnelManager.setNodeToken(nodeToken);
+            } else if (clusterJwt) {
                 SECRET_KEY = clusterJwt;
                 process.env.JWT_SECRET = clusterJwt;
                 fleetTunnelManager.setSecretKey(clusterJwt);
@@ -18714,6 +18886,7 @@ app.post('/api/registry/join-with-token', async (req: any, res: any) => {
                 candidateEndpoints: endpoints,
                 siteName: effectiveSite,
                 nodeId,
+                ...(nodeToken ? { nodeToken } : {}),
                 enrolledAt: new Date().toISOString()
             });
 
@@ -18728,10 +18901,18 @@ app.post('/api/registry/join-with-token', async (req: any, res: any) => {
                 try {
                     if (fs.existsSync(ep)) {
                         let envContent = fs.readFileSync(ep, 'utf8');
-                        if (/^JWT_SECRET=/m.test(envContent)) {
-                            envContent = envContent.replace(/^JWT_SECRET=.*/m, `JWT_SECRET=${clusterJwt}`);
-                        } else {
-                            envContent += `\nJWT_SECRET=${clusterJwt}\n`;
+                        if (nodeToken) {
+                            if (/^STIGIX_NODE_TOKEN=/m.test(envContent)) {
+                                envContent = envContent.replace(/^STIGIX_NODE_TOKEN=.*/m, `STIGIX_NODE_TOKEN=${nodeToken}`);
+                            } else {
+                                envContent += `\nSTIGIX_NODE_TOKEN=${nodeToken}\n`;
+                            }
+                        } else if (clusterJwt) {
+                            if (/^JWT_SECRET=/m.test(envContent)) {
+                                envContent = envContent.replace(/^JWT_SECRET=.*/m, `JWT_SECRET=${clusterJwt}`);
+                            } else {
+                                envContent += `\nJWT_SECRET=${clusterJwt}\n`;
+                            }
                         }
                         if (/^STIGIX_LEADER_URL=/m.test(envContent)) {
                             envContent = envContent.replace(/^STIGIX_LEADER_URL=.*/m, `STIGIX_LEADER_URL=${winningEndpoint}`);
@@ -18771,19 +18952,30 @@ app.post('/api/registry/join-with-token', async (req: any, res: any) => {
         }
     };
 
-    // Allow requests originating from local loopback (CLI) or authenticated web users
-    const isLoopback = req.ip === '127.0.0.1' || req.ip === '::1' || req.ip === '::ffff:127.0.0.1' ||
-                       req.socket?.remoteAddress === '127.0.0.1' || req.socket?.remoteAddress === '::1' || req.socket?.remoteAddress === '::ffff:127.0.0.1';
-    if (isLoopback) {
+    // Always require authentication (either admin JWT or local CLI secret on loopback)
+    return authenticateToken(req, res, () => {
+        if (!isAdminUser(req.user)) {
+            return res.status(403).json({
+                error: 'admin_required',
+                message: 'Administrator privileges are required to enroll this node into a cluster.'
+            });
+        }
         return handleJoinExecution();
-    }
-    return authenticateToken(req, res, handleJoinExecution);
+    });
 });
 
 app.post('/api/registry/unenroll', authenticateToken, async (req: any, res: any) => {
+    if (!isAdminUser(req.user)) {
+        return res.status(403).json({
+            error: 'admin_required',
+            message: 'Administrator privileges are required to unenroll this node.'
+        });
+    }
     try {
         saveSystemSettings({ registry_mode: 'standalone' });
         registryManager.saveClusterEnrollment(null);
+        fleetTunnelManager.setNodeToken(null);
+        delete process.env.STIGIX_CLUSTER_REALM;
         await registryManager.saveStaticLeader(null);
         await registryManager.reinitialize();
         fleetTunnelManager.reconnectSpoke();

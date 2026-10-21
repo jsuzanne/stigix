@@ -161,7 +161,7 @@ export class RegistryManager {
         }
     }
 
-    public getClusterEnrollment(): { enrolled: boolean; tokenPrefix?: string; leaderUrl?: string; siteName?: string; enrolledAt?: string } | null {
+    public getClusterEnrollment(): { enrolled: boolean; tokenPrefix?: string; leaderUrl?: string; siteName?: string; enrolledAt?: string; nodeToken?: string } | null {
         try {
             const f = path.join(this.configDir, 'cluster-enrollment.json');
             if (fs.existsSync(f)) {

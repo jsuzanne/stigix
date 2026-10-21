@@ -6,6 +6,7 @@ import jwt from 'jsonwebtoken';
 import { Server as SocketIOServer, Socket } from 'socket.io';
 import { io as ioClient, Socket as ClientSocket } from 'socket.io-client';
 import { log } from './utils/logger.js';
+import { deriveFleetTunnelKey, resolveClusterRealmHash, type MagicJoinManager } from './magic-join-manager.js';
 import type { RegistryManager } from './registry-manager.js';
 import type { LocalRegistryServer } from './local-registry-server.js';
 import type { TargetsManager } from './targets-manager.js';
@@ -68,6 +69,7 @@ export class FleetTunnelManager {
     private targetsManager?: TargetsManager;
     private localRegistryServer?: LocalRegistryServer;
     private provisioningManager?: ProvisioningManager;
+    private magicJoinManager?: MagicJoinManager;
     private tcpAppManager?: any;
     private onLeaderConnectedCallback?: () => void;
 
@@ -77,7 +79,10 @@ export class FleetTunnelManager {
     private cachedCustomAppMesh: any[] = [];
     private telemetryProvider?: () => Promise<any> | any;
     private secretKey: string;
+    private nodeToken: string | null = null;
+    private internalLoopbackSecret: string;
     private localPort: number;
+    private peerNodeTokens: Map<string, string> = new Map();
 
     // Active tunnels indexed by instanceId and alias siteName
     private activeTunnels: Map<string, { socket: Socket | ClientSocket; info: TunnelPeerInfo }> = new Map();
@@ -122,17 +127,31 @@ export class FleetTunnelManager {
         localPort: number = 8080,
         targetsManager?: TargetsManager,
         localRegistryServer?: LocalRegistryServer,
-        provisioningManager?: ProvisioningManager
+        provisioningManager?: ProvisioningManager,
+        internalLoopbackSecret?: string,
+        magicJoinManager?: MagicJoinManager
     ) {
         this.ioServer = ioServer;
         this.registryManager = registryManager;
         this.targetsManager = targetsManager;
         this.localRegistryServer = localRegistryServer;
         this.provisioningManager = provisioningManager;
+        this.magicJoinManager = magicJoinManager;
         this.secretKey = secretKey;
         this.localPort = localPort;
+        this.internalLoopbackSecret = internalLoopbackSecret || crypto.randomBytes(32).toString('hex');
+
+        const enrolledToken = this.registryManager?.getClusterEnrollment?.()?.nodeToken;
+        this.nodeToken = process.env.STIGIX_NODE_TOKEN || enrolledToken || null;
+        if (this.nodeToken && !process.env.STIGIX_NODE_TOKEN) {
+            process.env.STIGIX_NODE_TOKEN = this.nodeToken;
+        }
 
         this.initServerNamespace();
+    }
+
+    public setMagicJoinManager(magicJoinManager: MagicJoinManager): void {
+        this.magicJoinManager = magicJoinManager;
     }
 
     public setTargetsManager(targetsManager: TargetsManager): void {
@@ -143,6 +162,40 @@ export class FleetTunnelManager {
         this.secretKey = key;
         process.env.JWT_SECRET = key;
         log('TUNNEL', '🔒 Secret key dynamically updated for Fleet Tunnel');
+    }
+
+    public setNodeToken(token: string | null): void {
+        this.nodeToken = token;
+        if (token) {
+            process.env.STIGIX_NODE_TOKEN = token;
+            log('TUNNEL', '🔒 Scoped node token updated for Fleet Tunnel');
+        } else {
+            delete process.env.STIGIX_NODE_TOKEN;
+        }
+    }
+
+    public getNodeToken(): string | null {
+        return this.nodeToken;
+    }
+
+    public getPeerNodeToken(peerIdOrIp: string): string | null {
+        if (!peerIdOrIp) return null;
+        const key = peerIdOrIp.trim().toLowerCase();
+        return this.peerNodeTokens.get(key) || this.magicJoinManager?.getNodeTokenForPeer(peerIdOrIp) || null;
+    }
+
+    public getDeterministicDialNodeToken(): string {
+        const fleetTunnelKey = deriveFleetTunnelKey(this.secretKey);
+        return jwt.sign(
+            {
+                typ: 'STX-NODE',
+                sub: 'm6-rendezvous',
+                realm: this.getRealmHash(),
+                role: 'spoke-tunnel'
+            },
+            fleetTunnelKey,
+            { noTimestamp: true }
+        );
     }
 
     public setCandidateLeaderUrls(endpoints: string[]): void {
@@ -222,29 +275,80 @@ export class FleetTunnelManager {
                 return next(new Error('authentication_required'));
             }
 
-            // 1. Direct validation with local secretKey
+            const fleetTunnelKey = deriveFleetTunnelKey(this.secretKey);
+
+            // 1a. Scoped Per-Node Token authentication (Spoke -> Leader or Leader -> Spoke with shared/derived key)
+            if (auth.nodeToken && typeof auth.nodeToken === 'string') {
+                try {
+                    const decodedNode: any = jwt.verify(auth.nodeToken, fleetTunnelKey);
+                    if (decodedNode && decodedNode.typ === 'STX-NODE') {
+                        if (this.magicJoinManager?.isTokenRevoked(decodedNode.jti)) {
+                            log('TUNNEL', `Rejecting tunnel connection from ${socket.handshake.address}: join token ${decodedNode.jti} is REVOKED`, 'warn');
+                            return next(new Error('token_revoked'));
+                        }
+                        jwt.verify(token, auth.nodeToken);
+                        (socket as any).peerNodeToken = auth.nodeToken;
+                        return next();
+                    }
+                } catch {}
+            }
+
+            // 1b. Direct token signed with derived Fleet Tunnel Key
+            try {
+                const decodedDirect: any = jwt.verify(token, fleetTunnelKey);
+                if (!this.magicJoinManager?.isTokenRevoked(decodedDirect?.jti)) {
+                    return next();
+                }
+            } catch {}
+
+            // 1c. Direct validation with local secretKey (backward-compatible for .env shared-secret fleets)
             try {
                 jwt.verify(token, this.secretKey);
                 return next();
             } catch {}
 
-            // 2. Rendezvous Cluster Adoption: If Leader is dialing in and provides matching cluster realm
-            const expectedRealm = (process.env.STIGIX_CLUSTER_REALM || this.getRealmHash() || '').trim().toLowerCase();
-            const receivedRealm = (auth.realm || '').trim().toLowerCase();
-            const fallbackRealm = this.getRealmHash().trim().toLowerCase();
-
-            if (auth.isLeaderDial && (receivedRealm === expectedRealm || receivedRealm === fallbackRealm) && auth.clusterJwtSecret) {
+            // 1d. Validation with local enrolled nodeToken (when Leader reconnects to an already-adopted Spoke)
+            if (this.nodeToken) {
                 try {
-                    jwt.verify(token, auth.clusterJwtSecret);
-                    this.secretKey = auth.clusterJwtSecret;
-                    process.env.JWT_SECRET = auth.clusterJwtSecret;
-                    log('TUNNEL', `🔒 Adopted cluster security realm from Leader (${auth.siteName || auth.instanceId})`);
+                    jwt.verify(token, this.nodeToken);
+                    return next();
+                } catch {}
+            }
+
+            // 2. Hardened M6 Rendezvous Cluster Adoption:
+            // Only permitted when:
+            // - This node is NOT a Leader
+            // - This node was explicitly provisioned with STIGIX_CLUSTER_REALM (via a Magic Join token)
+            // - This node has not already locked in a different nodeToken
+            const explicitRealm = (process.env.STIGIX_CLUSTER_REALM || '').trim().toLowerCase();
+            const receivedRealm = (auth.realm || '').trim().toLowerCase();
+            const candidateNodeToken = auth.nodeToken || auth.clusterJwtSecret;
+
+            if (
+                auth.isLeaderDial &&
+                !this.registryManager.isLeader() &&
+                explicitRealm.length >= 32 &&
+                receivedRealm === explicitRealm &&
+                candidateNodeToken &&
+                (!this.nodeToken || this.nodeToken === candidateNodeToken)
+            ) {
+                try {
+                    jwt.verify(token, candidateNodeToken);
+                    this.setNodeToken(candidateNodeToken);
+                    const existingEnrollment = this.registryManager.getClusterEnrollment();
+                    if (existingEnrollment && existingEnrollment.enrolled) {
+                        this.registryManager.saveClusterEnrollment({
+                            ...existingEnrollment,
+                            nodeToken: candidateNodeToken
+                        });
+                    }
+                    log('TUNNEL', `🔒 Adopted scoped cluster tunnel credential from Leader (${auth.siteName || auth.instanceId})`);
                     return next();
                 } catch (verifyErr: any) {
                     log('TUNNEL', `Cluster realm match but token verification failed: ${verifyErr.message}`, 'warn');
                 }
             } else if (auth.isLeaderDial) {
-                log('TUNNEL', `Leader dial auth rejected — realm mismatch (expected: ${expectedRealm.slice(0, 12)}..., received: ${receivedRealm.slice(0, 12)}...)`, 'warn');
+                log('TUNNEL', `Leader dial auth rejected — realm mismatch or node not in pending Rendezvous state`, 'warn');
             }
 
             log('TUNNEL', `Invalid reverse tunnel JWT token from ${socket.handshake.address}`, 'warn');
@@ -257,6 +361,11 @@ export class FleetTunnelManager {
             const siteName: string = auth.siteName || instanceId;
             const clientIp: string = auth.ip || socket.handshake.address.replace(/^.*:/, '') || '127.0.0.1';
             const isLeaderDial: boolean = !!auth.isLeaderDial;
+            if ((socket as any).peerNodeToken) {
+                this.peerNodeTokens.set(instanceId.toLowerCase(), (socket as any).peerNodeToken);
+                this.peerNodeTokens.set(siteName.toLowerCase(), (socket as any).peerNodeToken);
+                this.peerNodeTokens.set(clientIp.toLowerCase(), (socket as any).peerNodeToken);
+            }
 
             const rawRemote = (socket.conn as any)?.remoteAddress || (socket.request?.socket as any)?.remoteAddress || socket.handshake.address || '';
             const socketRemoteIp = rawRemote.replace(/^::ffff:/, '').replace(/^.*:/, '');
@@ -700,9 +809,10 @@ export class FleetTunnelManager {
         const siteName = regStatus.site_name || instanceId;
         const localIp = regStatus.detected_ip || '127.0.0.1';
 
+        const signingSecret = this.nodeToken || this.secretKey;
         const token = jwt.sign(
             { username: 'stigix-tunnel-spoke', role: 'admin', peer: instanceId, site: siteName },
-            this.secretKey,
+            signingSecret,
             { expiresIn: '24h' }
         );
 
@@ -710,7 +820,13 @@ export class FleetTunnelManager {
         const wsUrl = `${targetUrl}/fleet-tunnel`;
 
         const socket = ioClient(wsUrl, {
-            auth: { token, instanceId, siteName, ip: localIp },
+            auth: {
+                token,
+                nodeToken: this.nodeToken || undefined,
+                instanceId,
+                siteName,
+                ip: localIp
+            },
             transports: ['websocket', 'polling'],
             maxHttpBufferSize: 100 * 1024 * 1024,
             reconnection: true,
@@ -965,9 +1081,14 @@ export class FleetTunnelManager {
         const targetId = target.id || target.name || host;
         const targetSiteName = target.name || host;
 
+        const dialNodeToken = this.getDeterministicDialNodeToken();
+        this.peerNodeTokens.set(String(targetId).toLowerCase(), dialNodeToken);
+        this.peerNodeTokens.set(String(targetSiteName).toLowerCase(), dialNodeToken);
+        this.peerNodeTokens.set(String(host).toLowerCase(), dialNodeToken);
+
         const token = jwt.sign(
             { username: 'stigix-leader-dial', role: 'admin', peer: targetId, site: localSite },
-            this.secretKey,
+            dialNodeToken,
             { expiresIn: '24h' }
         );
 
@@ -977,12 +1098,12 @@ export class FleetTunnelManager {
         const socket = ioClient(wsUrl, {
             auth: {
                 token,
+                nodeToken: dialNodeToken,
                 instanceId: localId,
                 siteName: localSite,
                 ip: localStatus.detected_ip || '127.0.0.1',
                 isLeaderDial: true,
-                realm: this.getRealmHash(),
-                clusterJwtSecret: this.secretKey
+                realm: this.getRealmHash()
             },
             transports: ['websocket', 'polling'],
             maxHttpBufferSize: 100 * 1024 * 1024,
@@ -1163,11 +1284,7 @@ export class FleetTunnelManager {
     // ─────────────────────────────────────────────────────────────────────────────
 
     private getRealmHash(): string {
-        const seed = process.env.PRISMA_SDWAN_TSGID ||
-                     process.env.STIGIX_CLUSTER_KEY ||
-                     process.env.STIGIX_POC_ID ||
-                     'default-stigix-realm';
-        return crypto.createHash('sha256').update(seed).digest('hex');
+        return resolveClusterRealmHash();
     }
 
     private startCloudflareRendezvousListener(): void {
@@ -1717,7 +1834,8 @@ export class FleetTunnelManager {
         return new Promise((resolve) => {
             const hopByHop = new Set([
                 'connection', 'keep-alive', 'proxy-authenticate', 'proxy-authorization',
-                'te', 'trailers', 'transfer-encoding', 'upgrade', 'host'
+                'te', 'trailers', 'transfer-encoding', 'upgrade', 'host',
+                'x-internal-tunnel-secret', 'x-stigix-cli-secret'
             ]);
 
             const cleanHeaders: Record<string, string | string[]> = {};
@@ -1731,6 +1849,7 @@ export class FleetTunnelManager {
 
             cleanHeaders['host'] = `127.0.0.1:${this.localPort}`;
             cleanHeaders['x-gateway-source'] = 'reverse-tunnel';
+            cleanHeaders['x-internal-tunnel-secret'] = this.internalLoopbackSecret;
 
             let bodyBuf: Buffer | null = null;
             if (payload.body != null && !['GET', 'HEAD'].includes(payload.method.toUpperCase())) {
@@ -1819,7 +1938,8 @@ export class FleetTunnelManager {
         const streamId = payload.reqId || randomUUID();
         const hopByHop = new Set([
             'connection', 'keep-alive', 'proxy-authenticate', 'proxy-authorization',
-            'te', 'trailers', 'transfer-encoding', 'upgrade', 'host'
+            'te', 'trailers', 'transfer-encoding', 'upgrade', 'host',
+            'x-internal-tunnel-secret', 'x-stigix-cli-secret'
         ]);
 
         const cleanHeaders: Record<string, string | string[]> = {};
@@ -1832,6 +1952,7 @@ export class FleetTunnelManager {
         }
         cleanHeaders['host'] = `127.0.0.1:${this.localPort}`;
         cleanHeaders['x-gateway-source'] = 'reverse-tunnel-stream';
+        cleanHeaders['x-internal-tunnel-secret'] = this.internalLoopbackSecret;
 
         let bodyBuf: Buffer | null = null;
         if (payload.body != null && !['GET', 'HEAD'].includes(payload.method.toUpperCase())) {

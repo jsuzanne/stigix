@@ -71,7 +71,7 @@ export function NodeRoleModal({
             const res = await fetch('/api/registry/join-with-token', {
                 method: 'POST',
                 headers: authHeaders,
-                body: JSON.stringify({ token: trimmed })
+                body: JSON.stringify({ token: trimmed, force: true })
             });
             const data = await res.json();
             if (res.ok && (data.success || data.status === 'ok')) {

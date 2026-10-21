@@ -1785,7 +1785,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
             const res = await apiFetch('/api/registry/join-with-token', {
                 method: 'POST',
                 headers: authHeaders,
-                body: JSON.stringify({ token: joinTokenInput.trim() })
+                body: JSON.stringify({ token: joinTokenInput.trim(), force: true })
             });
             const data = await res.json();
             if (res.ok && (data.success || data.status === 'ok')) {
