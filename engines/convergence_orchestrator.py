@@ -186,15 +186,21 @@ class ConvergenceMetrics:
 
         outage = (outage_base - last_rcvd_time_copy) * 1000.0
 
+        avg_rtt = round(sum(rtts_copy) / len(rtts_copy), 2) if rtts_copy else 0.0
+        current_rtt_ms = round(rtts_copy[-1], 2) if rtts_copy else 0.0
+        jitter_ms = round(jitter_copy * 1000.0, 2)
+
+        # Jitter-tolerant in-flight grace window (minimum 1.0s during live tests)
+        in_flight_grace_sec = max(1.0, interval_copy * 3.0, (avg_rtt / 1000.0) * 4.0 + jitter_copy * 6.0)
+
         history = []
         history_start = max(1, seq - 99)
         for s in range(history_start, seq + 1):
             if s in received_seqs_copy:
                 history.append(1)
             else:
-                threshold = max(0.1, interval_copy * 1.5)
                 sent_at = sent_times_copy.get(s, now)
-                if now - sent_at > threshold:
+                if not is_running or (now - sent_at > in_flight_grace_sec):
                     history.append(0)
                 else:
                     history.append(1)
@@ -202,12 +208,14 @@ class ConvergenceMetrics:
         if len(history) < 100:
             history = [1] * (100 - len(history)) + history
 
-        threshold_ms = max(100.0, interval_copy * 1500.0)
-        # Require at least 2 missing packets before considering a gap real.
-        # A single seq delta can be caused by a packet still in-flight at the moment
-        # of sampling (especially at low RTT / high jitter) without any real loss.
+        threshold_ms = max(1000.0, in_flight_grace_sec * 1000.0)
+        # Require confirmed overdue packets (beyond in-flight grace window) before considering a gap real
+        overdue_missing = sum(
+            1 for s, sent_at in sent_times_copy.items()
+            if s not in received_seqs_copy and (now - sent_at > in_flight_grace_sec)
+        )
         min_gap = max(2, int(rate_copy * 0.1))  # 10% of rate pps, minimum 2
-        has_seq_gap = (seq - rcvd) >= min_gap
+        has_seq_gap = overdue_missing >= min_gap
         is_blackout = (outage > threshold_ms) and has_seq_gap
 
         # Persistence: Update the instance variable so we don't lose the peak value
@@ -227,6 +235,8 @@ class ConvergenceMetrics:
             max_blackout = 0
             self.max_blackout = 0
             history = [1] * 100
+            for pt in self.time_series:
+                pt["loss"] = 0.0
 
         total_loss_pct = 0.0
         if seq > 0:
@@ -261,10 +271,6 @@ class ConvergenceMetrics:
 
         tx_loss_ms = round((tx_lost_packets / rate_copy) * 1000) if rate_copy > 0 else 0
         rx_loss_ms = round((rx_lost_packets / rate_copy) * 1000) if rate_copy > 0 else 0
-
-        avg_rtt = round(sum(rtts_copy) / len(rtts_copy), 2) if rtts_copy else 0.0
-        current_rtt_ms = round(rtts_copy[-1], 2) if rtts_copy else 0.0
-        jitter_ms = round(jitter_copy * 1000.0, 2)
 
         # Sample 1-second time series point for historical curves persistence
         if is_running and (now - self.last_sample_time >= 0.95):

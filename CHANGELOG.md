@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.0.61] - 2026-10-21
+
+### Fixed
+- **Failover / Convergence Self-Healing Sequence Tracking, Jitter-Tolerant Blackout Detection & Historical Charts (`engines/stigix-go/convergence.go`, `engines/convergence_orchestrator.py`, `web-dashboard/server.ts`, `web-dashboard/src/Failover.tsx`)**:
+  - **Self-Healing Sequence History & Blackout Calculation (`convergence.go`)**: Replaced the irreversible `250 ms` `accountedSeqs` timeout and `200 ms` silence-only blackout trigger in `stigix-go` with dynamic, self-healing sequence tracking (`sentTimes` + `receivedFlags`) and an adaptive jitter-tolerant in-flight grace window (`max(1.0s, avgRtt*4 + jitter*6)`). Delayed packets on WAN/lab links no longer cause false live packet drops or false `Max Blackout` spikes when 100% of packets arrive (`Sent == Echo == Received` $\rightarrow$ `0 ms` blackout and `100%` blue sequence bar).
+  - **Python Fallback Alignment (`convergence_orchestrator.py`)**: Aligned the Python convergence engine's live in-flight grace window (`min 1.0 s`) and overdue sequence-gap threshold with the Go engine.
+  - **Historical Telemetry Charts & Shutdown Race Protection (`convergence.go`, `server.ts`, `Failover.tsx`)**: Updated `ConvergenceSeriesPoint` in `stigix-go` to export the full Recharts schema (`time`, `timeLabel`, `elapsedLabel`, `elapsedSec`, `ts`, `rtt`, `jitter`, `loss`), added `pendingConvergenceSeriesMap` in `server.ts` so `POST /api/convergence/history/save-metrics` never loses client series data while the Go engine is in its post-stop grace period, and added backward-compatible normalization in `Failover.tsx` so previously saved Go history records render their `RTT LATENCY`, `JITTER`, and `PACKET LOSS SPIKE` curves and clean up false zero-loss blackout badges.
+
+### Added
+- **Native Go Multicast Studio Data-Plane (`engines/stigix-go/multicast.go`, `engines/stigix-go/main.go`, `web-dashboard/server.ts`)**:
+  - Migrated Multicast Studio UDP sender (`mcast-send`) and receiver (`mcast-recv`) from Python processes to the native `stigix-go` engine with automatic Python fallback.
+- **Prisma Access Remote Networks Public IP Exporter (`web-dashboard/remote-networks-manager.ts`, `web-dashboard/server.ts`, `web-dashboard/src/RemoteNetworksModal.tsx`)**:
+  - Added on-demand Prisma Access Remote Networks IP discovery and cloud firewall whitelist export in the dashboard header.
+
 ## [3.0.60] - 2026-10-20
 
 ### Performance

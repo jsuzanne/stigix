@@ -1674,7 +1674,9 @@ export default function Failover(props: FailoverProps) {
                                     </tr>
                                 ) : (
                                     sortedHistory.map((test, idx) => {
-                                        const verdict = getVerdict(test.max_blackout_ms);
+                                        const isZeroLossComplete = (Number(test.sent) > 0) && (Number(test.received) >= Number(test.sent)) && ((Number(test.tx_loss_pct) || 0) === 0) && ((Number(test.rx_loss_pct) || 0) === 0);
+                                        const effectiveBlackoutMs = isZeroLossComplete ? 0 : (test.max_blackout_ms || 0);
+                                        const verdict = getVerdict(effectiveBlackoutMs);
                                         const rowKey = (test.test_id || test.testId || '') + (test.timestamp || '');
                                         const isExpanded = expandedHistory === rowKey;
                                         const dateInfo = formatTestDate(test.timestamp || test.start_time);
@@ -1732,7 +1734,7 @@ export default function Failover(props: FailoverProps) {
                                                                     </div>
                                                                     <p className="text-[9px] text-slate-400 leading-snug">{verdict.desc}</p>
                                                                     <div className="text-[8px] font-mono text-slate-500 mt-1 pt-1 border-t border-slate-900">
-                                                                        Blackout: {formatMs(test.max_blackout_ms || 0)}
+                                                                        Blackout: {formatMs(effectiveBlackoutMs)}
                                                                     </div>
                                                                 </div>
                                                                 <div className="w-2 h-2 bg-slate-950 border-r border-b border-slate-700/80 transform rotate-45 -mt-1"></div>
@@ -1741,8 +1743,8 @@ export default function Failover(props: FailoverProps) {
                                                     </td>
                                                     <td className="px-6 py-4 text-center">
                                                         <div className="flex flex-col">
-                                                            <span className={`font-mono text-sm font-bold ${test.max_blackout_ms > 0 ? 'text-orange-500' : 'text-text-muted'}`}>
-                                                                {formatMs(test.max_blackout_ms || 0)}
+                                                            <span className={`font-mono text-sm font-bold ${effectiveBlackoutMs > 0 ? 'text-orange-500' : 'text-text-muted'}`}>
+                                                                {formatMs(effectiveBlackoutMs)}
                                                             </span>
                                                             <span className="text-[9px] font-bold text-text-muted uppercase">
                                                                 Max Blackout {test.duration_s ? `(${test.duration_s}s)` : ''}
@@ -1781,19 +1783,54 @@ export default function Failover(props: FailoverProps) {
                                                             {(() => {
                                                                 const testKey = test.test_id || test.testId || '';
                                                                 const convId = test.test_id?.match(/CONV-\d+/)?.[0] || testKey;
-                                                                let series = expandedSeriesCache[rowKey] || test.metrics_series || liveMetricsSeries[testKey] || liveMetricsSeries[convId] || [];
+                                                                let rawSeries = expandedSeriesCache[rowKey] || test.metrics_series || liveMetricsSeries[testKey] || liveMetricsSeries[convId] || [];
+                                                                const effectiveHistory = isZeroLossComplete
+                                                                    ? Array(100).fill(1)
+                                                                    : (Array.isArray(test.history) && test.history.length > 0 ? test.history : Array(100).fill(1));
+
+                                                                const durSec = test.duration_s || 10;
+                                                                const avgRtt = test.avg_rtt_ms || 0;
+                                                                const avgJitter = test.jitter_ms || 0;
+                                                                const endTs = typeof test.timestamp === 'number' ? (test.timestamp > 1e11 ? test.timestamp : test.timestamp * 1000) : Date.now();
+                                                                const startTs = test.start_time
+                                                                    ? (typeof test.start_time === 'number' ? (test.start_time > 1e11 ? test.start_time : test.start_time * 1000) : endTs - durSec * 1000)
+                                                                    : (endTs - durSec * 1000);
+
+                                                                // Normalize series points to support both Python and Go (rtt_ms/jitter_ms/loss_pct) schemas
+                                                                let series = Array.isArray(rawSeries) ? rawSeries.map((pt: any, sIdx: number) => {
+                                                                    const pTs = typeof pt.ts === 'number'
+                                                                        ? (pt.ts > 1e11 ? pt.ts : pt.ts * 1000)
+                                                                        : Math.round(startTs + (sIdx / Math.max(1, rawSeries.length - 1)) * durSec * 1000);
+                                                                    const pDate = new Date(pTs);
+                                                                    const timeLabel = pt.timeLabel || pt.time || pDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+                                                                    const elSec = typeof pt.elapsedSec === 'number'
+                                                                        ? pt.elapsedSec
+                                                                        : Math.max(0, Math.round((pTs - startTs) / 1000));
+                                                                    const em = Math.floor(elSec / 60);
+                                                                    const es = elSec % 60;
+                                                                    const elapsedLabel = pt.elapsedLabel || `${String(em).padStart(2, '0')}:${String(es).padStart(2, '0')}`;
+                                                                    const rttVal = typeof pt.rtt === 'number' ? pt.rtt : (typeof pt.rtt_ms === 'number' ? pt.rtt_ms : avgRtt);
+                                                                    const jitterVal = typeof pt.jitter === 'number' ? pt.jitter : (typeof pt.jitter_ms === 'number' ? pt.jitter_ms : avgJitter);
+                                                                    const rawLoss = typeof pt.loss === 'number' ? pt.loss : (typeof pt.loss_pct === 'number' ? pt.loss_pct : 0);
+                                                                    return {
+                                                                        ...pt,
+                                                                        time: pt.time || timeLabel,
+                                                                        timeLabel,
+                                                                        elapsedLabel,
+                                                                        elapsedSec: elSec,
+                                                                        ts: pTs,
+                                                                        rtt: rttVal,
+                                                                        jitter: jitterVal,
+                                                                        loss: isZeroLossComplete ? 0 : rawLoss
+                                                                    };
+                                                                }) : [];
 
                                                                 // If series is empty but 100-packet history exists, synthesize a fallback curve
-                                                                if ((!series || series.length === 0) && Array.isArray(test.history) && test.history.length > 0) {
-                                                                    const totalPackets = test.history.length;
-                                                                    const durSec = test.duration_s || 10;
-                                                                    const avgRtt = test.avg_rtt_ms || 0;
-                                                                    const avgJitter = test.jitter_ms || 0;
-                                                                    const endTs = typeof test.timestamp === 'number' ? (test.timestamp > 1e11 ? test.timestamp : test.timestamp * 1000) : Date.now();
-                                                                    const startTs = endTs - (durSec * 1000);
+                                                                if ((!series || series.length === 0) && Array.isArray(effectiveHistory) && effectiveHistory.length > 0) {
+                                                                    const totalPackets = effectiveHistory.length;
 
-                                                                    series = test.history.map((val: number, idx: number) => {
-                                                                        const frac = idx / (totalPackets - 1 || 1);
+                                                                    series = effectiveHistory.map((val: number, pIdx: number) => {
+                                                                        const frac = pIdx / (totalPackets - 1 || 1);
                                                                         const pTs = Math.round(startTs + frac * durSec * 1000);
                                                                         const pDate = new Date(pTs);
                                                                         const timeLabel = pDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
@@ -1835,7 +1872,7 @@ export default function Failover(props: FailoverProps) {
                                                                                     </span>
                                                                                 )}
                                                                                 <span className="text-[10px] font-mono text-text-muted font-bold">
-                                                                                    Max Outage: <span className={test.max_blackout_ms > 0 ? 'text-orange-400 font-bold' : 'text-text-secondary'}>{formatMs(test.max_blackout_ms || 0)}</span>
+                                                                                    Max Outage: <span className={effectiveBlackoutMs > 0 ? 'text-orange-400 font-bold' : 'text-text-secondary'}>{formatMs(effectiveBlackoutMs)}</span>
                                                                                 </span>
                                                                                 {test.duration_s && (
                                                                                     <span className="text-[10px] font-mono text-text-muted">
@@ -1996,7 +2033,7 @@ export default function Failover(props: FailoverProps) {
                                                                             <span className="font-mono">{test.sent ? `${test.received}/${test.sent} packets (${test.tx_loss_pct || 0}% tx loss)` : ''}</span>
                                                                         </div>
                                                                         <div className="h-3.5 w-full flex gap-0.5 rounded overflow-hidden bg-card-secondary/50 p-0.5 border border-border/30">
-                                                                            {(test.history || Array(100).fill(1)).map((val: number, i: number) => (
+                                                                            {effectiveHistory.map((val: number, i: number) => (
                                                                                 <div
                                                                                     key={i}
                                                                                     className={`flex-1 min-w-[1px] rounded-[0.5px] ${val === 1 ? 'bg-blue-600/50' : 'bg-gradient-to-t from-red-600 to-rose-400 shadow-md shadow-red-500/60'}`}

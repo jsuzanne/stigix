@@ -7229,8 +7229,16 @@ app.post('/api/convergence/start', authenticateToken, (req, res) => {
             if (fs.existsSync(statsFile)) {
                 try {
                     const finalStats = JSON.parse(fs.readFileSync(statsFile, 'utf8'));
+                    const pendingSeries = pendingConvergenceSeriesMap.get(testId);
+                    if (pendingSeries) {
+                        pendingConvergenceSeriesMap.delete(testId);
+                    }
+                    const effectiveSeries = (Array.isArray(finalStats.metrics_series) && finalStats.metrics_series.length > 0)
+                        ? finalStats.metrics_series
+                        : (pendingSeries || finalStats.metrics_series || []);
                     fs.appendFileSync(CONVERGENCE_HISTORY_FILE, JSON.stringify({
                         ...finalStats,
+                        metrics_series: effectiveSeries,
                         global_id: savedGlobalId || finalStats.global_id || finalStats.global_test_id || null,
                         global_test_id: savedGlobalId || finalStats.global_test_id || finalStats.global_id || null,
                         timestamp: Date.now()
@@ -7442,13 +7450,15 @@ function invalidateConvergenceHistoryCache() {
     convergenceHistoryCache.liteJson = '[]';
 }
 
+const pendingConvergenceSeriesMap = new Map<string, any[]>();
+
 function downsampleConvergenceSeries(series: any[], maxPoints = 40): any[] {
     if (!Array.isArray(series) || series.length <= maxPoints) return series;
     const step = Math.ceil(series.length / maxPoints);
     return series.filter((pt, idx) =>
         idx === 0 ||
         idx === series.length - 1 ||
-        (pt && typeof pt.loss === 'number' && pt.loss > 0) ||
+        (pt && ((typeof pt.loss === 'number' && pt.loss > 0) || (typeof pt.loss_pct === 'number' && pt.loss_pct > 0))) ||
         idx % step === 0
     ).slice(0, maxPoints + 20);
 }
@@ -7837,7 +7847,10 @@ app.post('/api/convergence/history/save-metrics', authenticateToken, async (req,
             seriesToSave = seriesToSave.filter((_, idx) => idx % step === 0 || idx === seriesToSave.length - 1);
         }
         const updated = await enrichConvergenceHistory(testId, { metrics_series: seriesToSave });
-        res.json({ success: updated, count: seriesToSave.length });
+        if (!updated) {
+            pendingConvergenceSeriesMap.set(testId, seriesToSave);
+        }
+        res.json({ success: true, updatedOnDisk: updated, count: seriesToSave.length });
     } catch (e: any) {
         res.status(500).json({ error: e.message });
     }
