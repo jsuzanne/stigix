@@ -17,27 +17,29 @@ import (
 const EngineVersion = "2.2.0-go"
 
 var (
-	activeHTTPWorkers atomic.Int32
-	activeVoiceCalls  atomic.Int32
-	activeEchoFlows   atomic.Int32
-	totalHTTPReqs     atomic.Int64
-	totalRTPPackets   atomic.Int64
+	activeHTTPWorkers      atomic.Int32
+	activeVoiceCalls       atomic.Int32
+	activeEchoFlows        atomic.Int32
+	activeMulticastStreams atomic.Int32
+	totalHTTPReqs          atomic.Int64
+	totalRTPPackets        atomic.Int64
 )
 
 type GoEngineMetrics struct {
-	EngineVersion     string  `json:"engine_version"`
-	PID               int     `json:"pid"`
-	UptimeSec         float64 `json:"uptime_sec"`
-	Goroutines        int     `json:"goroutines"`
-	HeapAllocMB       float64 `json:"heap_alloc_mb"`
-	SysMemMB          float64 `json:"sys_mem_mb"`
-	NumGC             uint32  `json:"num_gc"`
-	ActiveHTTPWorkers int32   `json:"active_http_workers"`
-	ActiveVoiceCalls  int32   `json:"active_voice_calls"`
-	ActiveEchoFlows   int32   `json:"active_echo_flows"`
-	TotalHTTPReqs     int64   `json:"total_http_reqs"`
-	TotalRTPPackets   int64   `json:"total_rtp_packets"`
-	Timestamp         int64   `json:"timestamp"`
+	EngineVersion          string  `json:"engine_version"`
+	PID                    int     `json:"pid"`
+	UptimeSec              float64 `json:"uptime_sec"`
+	Goroutines             int     `json:"goroutines"`
+	HeapAllocMB            float64 `json:"heap_alloc_mb"`
+	SysMemMB               float64 `json:"sys_mem_mb"`
+	NumGC                  uint32  `json:"num_gc"`
+	ActiveHTTPWorkers      int32   `json:"active_http_workers"`
+	ActiveVoiceCalls       int32   `json:"active_voice_calls"`
+	ActiveEchoFlows        int32   `json:"active_echo_flows"`
+	ActiveMulticastStreams int32   `json:"active_multicast_streams"`
+	TotalHTTPReqs          int64   `json:"total_http_reqs"`
+	TotalRTPPackets        int64   `json:"total_rtp_packets"`
+	Timestamp              int64   `json:"timestamp"`
 }
 
 func isFeatureFlagEnabled(force bool) bool {
@@ -113,11 +115,12 @@ func runMetricsReporter(ctx context.Context, startTime time.Time) {
 				HeapAllocMB:       float64(m.Alloc) / (1024 * 1024),
 				SysMemMB:          float64(m.Sys) / (1024 * 1024),
 				NumGC:             m.NumGC,
-				ActiveHTTPWorkers: activeHTTPWorkers.Load(),
-				ActiveVoiceCalls:  activeVoiceCalls.Load(),
-				ActiveEchoFlows:   activeEchoFlows.Load(),
-				TotalHTTPReqs:     totalHTTPReqs.Load(),
-				TotalRTPPackets:   totalRTPPackets.Load(),
+				ActiveHTTPWorkers:      activeHTTPWorkers.Load(),
+				ActiveVoiceCalls:       activeVoiceCalls.Load(),
+				ActiveEchoFlows:        activeEchoFlows.Load(),
+				ActiveMulticastStreams: activeMulticastStreams.Load(),
+				TotalHTTPReqs:          totalHTTPReqs.Load(),
+				TotalRTPPackets:        totalRTPPackets.Load(),
 				Timestamp:         time.Now().Unix(),
 			}
 			_ = writeAtomicJSON(metricsPath, payload)

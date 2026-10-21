@@ -164,6 +164,7 @@ func runProbeRPCServer(ctx context.Context, addr string) {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte(`{"ok":true}`))
 	})
+	registerMulticastRPC(mux)
 
 	srv := &http.Server{
 		Addr:              addr,

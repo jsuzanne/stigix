@@ -607,9 +607,9 @@ export function createCustomTcpApiRouter(tcpAppManager: TcpAppManager, onConfigC
     });
 
     // GET /api/custom-tcp-apps/multicast/:id/local-stats
-    router.get('/multicast/:id/local-stats', (req: Request, res: Response) => {
+    router.get('/multicast/:id/local-stats', async (req: Request, res: Response) => {
         try {
-            const localStats = mcManager.getLocalStats(req.params.id);
+            const localStats = await mcManager.getLocalStatsAsync(req.params.id);
             res.json({ success: true, ...localStats });
         } catch (err: any) {
             res.status(400).json({ success: false, error: err.message });

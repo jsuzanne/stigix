@@ -496,6 +496,23 @@ export class MulticastAppManager {
         };
     }
 
+    public async getLocalStatsAsync(appId: string): Promise<{
+        nodeId: string;
+        sender: MulticastSenderStats | null;
+        receiver: MulticastReceiverStats | null;
+    }> {
+        const sender = this.activeSenders.get(appId);
+        const receiver = this.activeReceivers.get(appId);
+        if (sender) {
+            await sender.refreshStats();
+        }
+        const senderActive = sender ? sender.isRunning() : undefined;
+        if (receiver) {
+            await receiver.refreshStats(senderActive);
+        }
+        return this.getLocalStats(appId);
+    }
+
     public async getLocalPreflight(
         appId: string,
         overrideConfig?: any,
@@ -563,7 +580,8 @@ export class MulticastAppManager {
                 return { success: true, receiver: stats };
             }
             if (action === 'local-stats') {
-                return { success: true, ...this.getLocalStats(appId) };
+                const localStats = await this.getLocalStatsAsync(appId);
+                return { success: true, ...localStats };
             }
             if (action === 'local-preflight') {
                 const preflight = await this.getLocalPreflight(appId, body?.config, body?.interfaceIp);

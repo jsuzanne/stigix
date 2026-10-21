@@ -27,3 +27,26 @@ func applySocketOptions(conn *net.UDPConn, _ string, tos int, rcvBuf int, sndBuf
 
 func bindToDevice(_ int, _ string) {}
 
+func setMulticastReuseAddrPort(fd int) {
+	_ = syscall.SetsockoptInt(fd, syscall.SOL_SOCKET, syscall.SO_REUSEADDR, 1)
+	_ = syscall.SetsockoptInt(fd, syscall.SOL_SOCKET, syscall.SO_REUSEPORT, 1)
+}
+
+func joinMulticastSSM(fd int, groupIP, ifaceIP, _ [4]byte) error {
+	// Fallback to ASM membership on non-Linux platforms if SSM is requested
+	mreq := &syscall.IPMreq{
+		Multiaddr: groupIP,
+		Interface: ifaceIP,
+	}
+	return syscall.SetsockoptIPMreq(fd, syscall.IPPROTO_IP, syscall.IP_ADD_MEMBERSHIP, mreq)
+}
+
+func leaveMulticastSSM(fd int, groupIP, ifaceIP, _ [4]byte) error {
+	mreq := &syscall.IPMreq{
+		Multiaddr: groupIP,
+		Interface: ifaceIP,
+	}
+	return syscall.SetsockoptIPMreq(fd, syscall.IPPROTO_IP, syscall.IP_DROP_MEMBERSHIP, mreq)
+}
+
+

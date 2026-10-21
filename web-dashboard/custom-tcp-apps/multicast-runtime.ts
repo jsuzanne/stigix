@@ -10,6 +10,7 @@
  */
 
 import dgram from 'dgram';
+import http from 'http';
 import os from 'os';
 import fs from 'fs';
 import path from 'path';
@@ -29,6 +30,69 @@ export const STGX_MULTICAST_MAGIC = 0x53544758; // "STGX"
 export const STGX_HEADER_BYTES = 24;
 const SLIDING_WINDOW_SIZE = 4096; // 4096 sequences tracked in 128 x uint32 bitset
 const localJoinedReceivers = new Set<MulticastReceiverRuntime>();
+
+const GO_ENGINE_RPC_HOST = '127.0.0.1';
+const GO_ENGINE_RPC_PORT = Number(process.env.GO_ENGINE_RPC_PORT) || 19090;
+
+/**
+ * Invokes the resident stigix-go multicast RPC engine on 127.0.0.1:19090.
+ * Returns null if ENABLE_GO_ENGINE=false or if the Go daemon is unreachable,
+ * allowing transparent fallback to the in-process Node.js dgram runtime.
+ */
+async function callGoMulticastRpc(
+    subPath: string,
+    method: 'GET' | 'POST',
+    body?: any,
+    timeoutMs: number = 1500
+): Promise<any | null> {
+    if (process.env.ENABLE_GO_ENGINE === 'false') {
+        return null;
+    }
+    const payload = body !== undefined ? JSON.stringify(body) : undefined;
+    return await new Promise<any | null>((resolve) => {
+        const req = http.request(
+            {
+                hostname: GO_ENGINE_RPC_HOST,
+                port: GO_ENGINE_RPC_PORT,
+                path: subPath,
+                method,
+                headers: payload
+                    ? {
+                          'Content-Type': 'application/json',
+                          'Content-Length': Buffer.byteLength(payload)
+                      }
+                    : undefined,
+                timeout: timeoutMs
+            },
+            (res) => {
+                let raw = '';
+                res.setEncoding('utf8');
+                res.on('data', (chunk) => {
+                    raw += chunk;
+                });
+                res.on('end', () => {
+                    try {
+                        const parsed = JSON.parse(raw);
+                        resolve(parsed);
+                    } catch {
+                        resolve(null);
+                    }
+                });
+            }
+        );
+        req.on('timeout', () => {
+            req.destroy();
+            resolve(null);
+        });
+        req.on('error', () => {
+            resolve(null);
+        });
+        if (payload) {
+            req.write(payload);
+        }
+        req.end();
+    });
+}
 
 export const MULTICAST_INDUSTRY_PRESETS: MulticastApplicationPreset[] = [
     {
@@ -522,6 +586,9 @@ export class MulticastSenderRuntime {
     private socket: dgram.Socket | null = null;
     private pacingTimer: NodeJS.Timeout | null = null;
     private stopTimeout: NodeJS.Timeout | null = null;
+    private goPollTimer: NodeJS.Timeout | null = null;
+    private usingGoEngine: boolean = false;
+    private goStatsCache: MulticastSenderStats | null = null;
     private active: boolean = false;
     private runId: number = 0;
     private streamId: number;
@@ -568,6 +635,37 @@ export class MulticastSenderRuntime {
         this.streamId = computeStreamId(config.id);
     }
 
+    private applyGoSenderStats(s: MulticastSenderStats): void {
+        this.goStatsCache = s;
+        this.active = Boolean(s.active);
+        this.interfaceName = s.interfaceName || this.interfaceName;
+        this.interfaceIp = s.interfaceIp || this.interfaceIp;
+        this.runId = s.runId || this.runId;
+        this.streamId = s.streamId || this.streamId;
+        this.currentSeq = BigInt(s.currentSeq || 0);
+        this.packetsSent = s.packetsSent || 0;
+        this.bytesSent = s.bytesSent || 0;
+        this.txBitrateKbps = s.txBitrateKbps || 0;
+        this.txPps = s.txPps || 0;
+        if (s.startedAt) this.startedAt = s.startedAt;
+        this.lastError = s.lastError;
+    }
+
+    public async refreshStats(): Promise<MulticastSenderStats> {
+        if (this.usingGoEngine) {
+            const res = await callGoMulticastRpc(
+                `/multicast/stats?appId=${encodeURIComponent(this.config.id)}`,
+                'GET',
+                undefined,
+                800
+            );
+            if (res && res.success && res.sender) {
+                this.applyGoSenderStats(res.sender);
+            }
+        }
+        return this.getStats();
+    }
+
     public async start(allowLoopback: boolean = false): Promise<MulticastSenderStats> {
         if (this.active) {
             await this.stop();
@@ -576,6 +674,26 @@ export class MulticastSenderRuntime {
         const resolved = resolveMulticastInterface(this.config.senderInterfaceIp);
         this.interfaceName = resolved.interfaceName;
         this.interfaceIp = resolved.address;
+
+        // Delegate to native stigix-go multicast engine when reachable
+        const goRes = await callGoMulticastRpc('/multicast/sender/start', 'POST', {
+            appId: this.config.id,
+            nodeId: this.nodeName,
+            config: this.config,
+            interfaceIp: resolved.address,
+            allowLoopback: allowLoopback || resolved.isFallbackLoopback
+        });
+        if (goRes && goRes.success && goRes.sender) {
+            this.usingGoEngine = true;
+            this.applyGoSenderStats(goRes.sender);
+            this.goPollTimer = setInterval(() => {
+                this.refreshStats().catch(() => {});
+            }, 250);
+            return this.getStats();
+        }
+
+        this.usingGoEngine = false;
+        this.goStatsCache = null;
         this.runId = (this.runId + 1) & 0xffff;
         if (this.runId === 0) this.runId = 1;
 
@@ -757,6 +875,27 @@ export class MulticastSenderRuntime {
 
     public async stop(): Promise<MulticastSenderStats> {
         this.active = false;
+        if (this.goPollTimer) {
+            clearInterval(this.goPollTimer);
+            this.goPollTimer = null;
+        }
+        if (this.usingGoEngine) {
+            const goRes = await callGoMulticastRpc('/multicast/sender/stop', 'POST', {
+                appId: this.config.id
+            });
+            if (goRes && goRes.sender) {
+                this.applyGoSenderStats(goRes.sender);
+            }
+            this.active = false;
+            this.txBitrateKbps = 0;
+            this.txPps = 0;
+            if (this.goStatsCache) {
+                this.goStatsCache.active = false;
+                this.goStatsCache.txBitrateKbps = 0;
+                this.goStatsCache.txPps = 0;
+            }
+            return this.getStats();
+        }
         if (this.pacingTimer) {
             clearInterval(this.pacingTimer);
             this.pacingTimer = null;
@@ -782,6 +921,9 @@ export class MulticastSenderRuntime {
     }
 
     public getStats(): MulticastSenderStats {
+        if (this.usingGoEngine && this.goStatsCache) {
+            return { ...this.goStatsCache };
+        }
         this.updateRollingThroughput();
         const uptimeSec = this.active && this.startedAt
             ? Math.max(0, Math.round((Date.now() - this.startedAt) / 1000))
@@ -821,6 +963,9 @@ export class MulticastReceiverRuntime {
     private preferredInterfaceIp?: string;
     private socket: dgram.Socket | null = null;
     private sampleTimer: NodeJS.Timeout | null = null;
+    private goPollTimer: NodeJS.Timeout | null = null;
+    private usingGoEngine: boolean = false;
+    private goStatsCache: MulticastReceiverStats | null = null;
     private joined: boolean = false;
     private streamId: number;
     private interfaceName: string = 'auto';
@@ -910,6 +1055,51 @@ export class MulticastReceiverRuntime {
         this.streamId = computeStreamId(config.id);
     }
 
+    private applyGoReceiverStats(r: MulticastReceiverStats): void {
+        this.goStatsCache = r;
+        this.joined = Boolean(r.joined);
+        this.interfaceName = r.interfaceName || this.interfaceName;
+        this.interfaceIp = r.interfaceIp || this.interfaceIp;
+        this.igmpVersion = r.igmpVersion || this.igmpVersion;
+        this.runId = r.runId || 0;
+        this.firstSeq = r.firstSeq !== null && r.firstSeq !== undefined ? BigInt(r.firstSeq) : null;
+        this.highestSeq = r.highestSeq !== null && r.highestSeq !== undefined ? BigInt(r.highestSeq) : null;
+        this.packetsReceived = r.packetsReceived || 0;
+        this.packetsLost = r.packetsLost || 0;
+        this.duplicatePackets = r.duplicatePackets || 0;
+        this.reorderedPackets = r.reorderedPackets || 0;
+        this.foreignPackets = r.foreignPackets || 0;
+        this.bytesReceived = r.bytesReceived || 0;
+        this.rxBitrateKbps = r.rxBitrateKbps || 0;
+        this.rxPps = r.rxPps || 0;
+        this.jitterMs = r.jitterMs || 0;
+        this.maxGapMs = r.maxGapMs || 0;
+        this.joinLatencyMs = r.joinLatencyMs ?? null;
+        this.joinedAt = r.joinedAt;
+        this.firstPacketAt = r.firstPacketAt;
+        this.lastPacketAt = r.lastPacketAt;
+        this.lastError = r.lastError;
+        if (Array.isArray(r.history)) {
+            this.history = r.history;
+        }
+    }
+
+    public async refreshStats(senderActiveHint?: boolean): Promise<MulticastReceiverStats> {
+        if (this.usingGoEngine) {
+            const hintParam = senderActiveHint !== undefined ? `&senderActive=${senderActiveHint ? 'true' : 'false'}` : '';
+            const res = await callGoMulticastRpc(
+                `/multicast/stats?appId=${encodeURIComponent(this.config.id)}${hintParam}`,
+                'GET',
+                undefined,
+                800
+            );
+            if (res && res.success && res.receiver) {
+                this.applyGoReceiverStats(res.receiver);
+            }
+        }
+        return this.getStats(senderActiveHint);
+    }
+
     private resetRunCounters(newRunId: number): void {
         this.runId = newRunId;
         this.firstSeq = null;
@@ -936,6 +1126,35 @@ export class MulticastReceiverRuntime {
         this.resetRunCounters(this.runId);
         this.foreignPackets = 0;
         this.history = [];
+        if (this.usingGoEngine) {
+            if (this.goStatsCache) {
+                this.goStatsCache = {
+                    ...this.goStatsCache,
+                    firstSeq: null,
+                    highestSeq: null,
+                    packetsReceived: 0,
+                    packetsExpected: 0,
+                    packetsLost: 0,
+                    lossPct: 0,
+                    duplicatePackets: 0,
+                    reorderedPackets: 0,
+                    foreignPackets: 0,
+                    bytesReceived: 0,
+                    rxBitrateKbps: 0,
+                    rxPps: 0,
+                    jitterMs: 0,
+                    maxGapMs: 0,
+                    history: []
+                };
+            }
+            callGoMulticastRpc('/multicast/receiver/reset', 'POST', { appId: this.config.id })
+                .then((res) => {
+                    if (res && res.receiver) {
+                        this.applyGoReceiverStats(res.receiver);
+                    }
+                })
+                .catch(() => {});
+        }
         return this.getStats();
     }
 
@@ -997,6 +1216,26 @@ export class MulticastReceiverRuntime {
         this.foreignPackets = 0;
         this.joinLatencyMs = null;
         this.history = [];
+
+        // Delegate to native stigix-go multicast receiver engine when reachable
+        const goRes = await callGoMulticastRpc('/multicast/receiver/join', 'POST', {
+            appId: this.config.id,
+            nodeId: this.nodeName,
+            expect: this.expectMode,
+            interfaceIp: resolved.address,
+            config: this.config
+        });
+        if (goRes && goRes.success && goRes.receiver) {
+            this.usingGoEngine = true;
+            this.applyGoReceiverStats(goRes.receiver);
+            this.goPollTimer = setInterval(() => {
+                this.refreshStats().catch(() => {});
+            }, 250);
+            return this.getStats();
+        }
+
+        this.usingGoEngine = false;
+        this.goStatsCache = null;
 
         const port = Number(this.config.port) || 5000;
         const group = this.config.group.trim();
@@ -1196,6 +1435,27 @@ export class MulticastReceiverRuntime {
 
     public async leave(): Promise<MulticastReceiverStats> {
         localJoinedReceivers.delete(this);
+        if (this.goPollTimer) {
+            clearInterval(this.goPollTimer);
+            this.goPollTimer = null;
+        }
+        if (this.usingGoEngine) {
+            const goRes = await callGoMulticastRpc('/multicast/receiver/leave', 'POST', {
+                appId: this.config.id
+            });
+            if (goRes && goRes.receiver) {
+                this.applyGoReceiverStats(goRes.receiver);
+            }
+            this.joined = false;
+            this.rxBitrateKbps = 0;
+            this.rxPps = 0;
+            if (this.goStatsCache) {
+                this.goStatsCache.joined = false;
+                this.goStatsCache.rxBitrateKbps = 0;
+                this.goStatsCache.rxPps = 0;
+            }
+            return this.getStats();
+        }
         if (this.sampleTimer) {
             clearInterval(this.sampleTimer);
             this.sampleTimer = null;
@@ -1226,6 +1486,9 @@ export class MulticastReceiverRuntime {
     }
 
     public getStats(senderActiveHint?: boolean): MulticastReceiverStats {
+        if (this.usingGoEngine && this.goStatsCache) {
+            return { ...this.goStatsCache };
+        }
         const now = Date.now();
         const packetsExpected = this.getPacketsExpected();
         const lossPct = packetsExpected > 0
