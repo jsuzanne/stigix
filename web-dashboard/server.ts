@@ -18086,6 +18086,27 @@ aiManager.setExecutionContext({
 app.use('/api/copilot', authenticateToken, createAiCopilotRouter(aiManager));
 log('COPILOT', `🤖 Stigix In-App AI Copilot mounted at /api/copilot`);
 
+app.post('/api/snapshots/analyze-diff', authenticateToken, async (req, res) => {
+    if (process.env.ENABLE_CHANGE_SNAPSHOTS !== 'true') {
+        return res.status(403).json({ error: 'ChangeGuard Snapshots feature is disabled' });
+    }
+    try {
+        const { diff, model } = req.body || {};
+        if (!diff || typeof diff !== 'object') {
+            return res.status(400).json({ error: 'Diff report payload is required for AI analysis' });
+        }
+        const result = await aiManager.analyzeChangeGuardDiff(diff, model);
+        log('SNAPSHOT', `✨ ChangeGuard AI Analysis generated via ${result.model} (${result.durationMs}ms)`);
+        res.json({ success: true, ...result });
+    } catch (err: any) {
+        log('SNAPSHOT', `❌ ChangeGuard AI Analysis failed: ${err?.message || err}`, 'error');
+        res.status(500).json({
+            error: err?.message || 'Failed to generate AI analysis',
+            detail: err?.message || String(err)
+        });
+    }
+});
+
 // Hook Global Provisioning sync to hot-reload Custom TCP App runtimes on peers
 provisioningManager.onBundleApplied((type, payload) => {
     if (type === 'custom-tcp-apps') {

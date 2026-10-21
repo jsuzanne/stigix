@@ -21,10 +21,44 @@ import {
     PhoneCall,
     Search,
     Sliders,
-    Tag
+    Tag,
+    Sparkles,
+    Download,
+    Copy,
+    FileText,
+    Bot
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { cn } from './lib/utils';
+
+interface AiModelOption {
+    id: string;
+    name: string;
+    description: string;
+    provider?: 'anthropic' | 'deepseek';
+}
+
+interface AiConfigState {
+    enabled: boolean;
+    hasKey: boolean;
+    hasAnthropicKey?: boolean;
+    hasDeepseekKey?: boolean;
+    defaultModel: string;
+    models: AiModelOption[];
+}
+
+interface AiAnalysisResult {
+    analysis: string;
+    reasoning?: string;
+    model: string;
+    provider: string;
+    durationMs: number;
+    usage?: {
+        inputTokens: number;
+        outputTokens: number;
+        totalTokens: number;
+    };
+}
 
 interface SnapshotMetadata {
     id: string;
@@ -289,10 +323,46 @@ export default function ChangeGuard({ token }: ChangeGuardProps) {
     // Modal state for inspecting JSON
     const [inspectData, setInspectData] = useState<any | null>(null);
 
+    // Optional AI Analysis state (when LLM API key is configured)
+    const [aiConfig, setAiConfig] = useState<AiConfigState | null>(null);
+    const [selectedAiModel, setSelectedAiModel] = useState<string>('');
+    const [aiAnalysis, setAiAnalysis] = useState<AiAnalysisResult | null>(null);
+    const [aiAnalyzing, setAiAnalyzing] = useState<boolean>(false);
+
     const authHeaders = useMemo(() => ({
         'Authorization': `Bearer ${token}`,
         'Content-Type': 'application/json'
     }), [token]);
+
+    const fetchAiConfig = useCallback(async () => {
+        try {
+            const res = await fetch('/api/copilot/config', { headers: authHeaders });
+            if (!res.ok) return;
+            const data = await res.json();
+            const cfg = data.config || data;
+            setAiConfig({
+                enabled: Boolean(cfg.enabled),
+                hasKey: Boolean(cfg.hasKey),
+                hasAnthropicKey: Boolean(cfg.hasAnthropicKey ?? (cfg.maskedKey && cfg.maskedKey.length > 0)),
+                hasDeepseekKey: Boolean(cfg.hasDeepseekKey),
+                defaultModel: cfg.defaultModel || 'claude-sonnet-4-5-20250929',
+                models: Array.isArray(cfg.models) ? cfg.models : []
+            });
+            setSelectedAiModel(prev => prev || cfg.defaultModel || 'claude-sonnet-4-5-20250929');
+        } catch {
+            // Non-blocking if Copilot config endpoint is unavailable
+        }
+    }, [authHeaders]);
+
+    const availableAiModels = useMemo(() => {
+        if (!aiConfig?.models?.length) return [];
+        const filtered = aiConfig.models.filter(m => {
+            if (m.provider === 'anthropic') return aiConfig.hasAnthropicKey;
+            if (m.provider === 'deepseek') return aiConfig.hasDeepseekKey;
+            return true;
+        });
+        return filtered.length > 0 ? filtered : aiConfig.models;
+    }, [aiConfig]);
 
     const fetchSnapshots = useCallback(async () => {
         try {
@@ -332,7 +402,197 @@ export default function ChangeGuard({ token }: ChangeGuardProps) {
 
     useEffect(() => {
         fetchSnapshots();
-    }, [fetchSnapshots]);
+        fetchAiConfig();
+    }, [fetchSnapshots, fetchAiConfig]);
+
+    const copyTextToClipboard = async (text: string, successMessage: string) => {
+        try {
+            if (navigator.clipboard && window.isSecureContext) {
+                await navigator.clipboard.writeText(text);
+            } else {
+                const textArea = document.createElement('textarea');
+                textArea.value = text;
+                textArea.style.position = 'fixed';
+                textArea.style.left = '-9999px';
+                document.body.appendChild(textArea);
+                textArea.focus();
+                textArea.select();
+                document.execCommand('copy');
+                document.body.removeChild(textArea);
+            }
+            toast.success(successMessage);
+        } catch (err) {
+            console.error('Clipboard copy failed:', err);
+            toast.error('Failed to copy to clipboard');
+        }
+    };
+
+    const downloadFile = (filename: string, content: string, mimeType: string = 'application/json') => {
+        const blob = new Blob([content], { type: mimeType });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+    };
+
+    const buildDiffLlmMarkdown = (diff: DiffReport): string => {
+        const lines: string[] = [];
+        lines.push(`# Stigix ChangeGuard — Pre/Post Change Validation Report`);
+        lines.push(`> **AI Prompt Instruction (for ChatGPT / Perplexity / Claude):**`);
+        lines.push(`> You are a Senior SD-WAN, SASE, and Network QoE Architect. Analyze this Stigix ChangeGuard state comparison and provide:`);
+        lines.push(`> 1. **Executive Go/No-Go Assessment** & Customer Experience Impact (Voice RTP MOS, SaaS DEM Probes, Site Connectivity).`);
+        lines.push(`> 2. **Cross-Layer Root-Cause Correlation** between Underlay (VyOS WAN impairments/latency/loss/blackholes), Overlay (Prisma SD-WAN WAN circuits, SASE IPsec Service Links, Stigix Mesh), and application/voice QoE.`);
+        lines.push(`> 3. **Actionable Recommendations** (Proceed, Investigate, or Rollback).`);
+        lines.push(``);
+        lines.push(`## 1. Executive Summary`);
+        lines.push(`- **Baseline (Before):** \`${diff.baseline_name}\` (${diff.baseline_timestamp || 'N/A'})`);
+        lines.push(`- **Target (After):** \`${diff.current_name}\` (${diff.current_timestamp || 'Live'})`);
+        lines.push(`- **Deterministic Verdict:** **${diff.verdict}** (Confidence Score: **${diff.score}/100**)`);
+        lines.push(`- **Generated At:** ${diff.generated_at}`);
+        lines.push(``);
+
+        if (diff.critical_regressions?.length > 0) {
+            lines.push(`### 🔴 Regressions Detected (${diff.critical_regressions.length})`);
+            diff.critical_regressions.forEach(r => lines.push(`- ${r}`));
+            lines.push(``);
+        }
+        if (diff.improvements?.length > 0) {
+            lines.push(`### 🟢 Improvements Detected (${diff.improvements.length})`);
+            diff.improvements.forEach(i => lines.push(`- ${i}`));
+            lines.push(``);
+        }
+        if (aiAnalysis?.analysis) {
+            lines.push(`### ✨ Stigix In-App AI Analysis (${aiAnalysis.model})`);
+            lines.push(aiAnalysis.analysis);
+            lines.push(``);
+        }
+
+        if (diff.voice && diff.voice.targets?.length > 0) {
+            lines.push(`## 2. Voice & RTP Collaboration QoE`);
+            lines.push(`- **Global MOS:** ${diff.voice.avgMosBefore?.toFixed(2) ?? 'N/A'} -> ${diff.voice.avgMosAfter?.toFixed(2) ?? 'N/A'} (Δ ${diff.voice.mosDelta ?? 0})`);
+            lines.push(`- **Avg RTP RTT:** ${diff.voice.avgRttBefore?.toFixed(1) ?? 0}ms -> ${diff.voice.avgRttAfter?.toFixed(1) ?? 0}ms`);
+            lines.push(`- **Avg Packet Loss:** ${diff.voice.avgLossBefore?.toFixed(1) ?? 0}% -> ${diff.voice.avgLossAfter?.toFixed(1) ?? 0}%`);
+            lines.push(`| Target | Codec | Baseline MOS | Target MOS | Δ MOS | RTT (Before->After) | Jitter | Loss | Verdict |`);
+            lines.push(`|---|---|---|---|---|---|---|---|---|`);
+            diff.voice.targets.forEach(vt => {
+                lines.push(`| ${vt.target} | ${vt.codec || 'G.711'} | ${vt.mosBefore?.toFixed(2) ?? '—'} | ${vt.mosAfter?.toFixed(2) ?? '—'} | ${vt.mosDelta?.toFixed(2) ?? '0'} | ${vt.rttBefore?.toFixed(1) ?? 0}->${vt.rttAfter?.toFixed(1) ?? 0}ms | ${vt.jitterBefore?.toFixed(1) ?? 0}->${vt.jitterAfter?.toFixed(1) ?? 0}ms | ${vt.lossBefore?.toFixed(1) ?? 0}%->${vt.lossAfter?.toFixed(1) ?? 0}% | ${vt.state} |`);
+            });
+            lines.push(``);
+        }
+
+        if (diff.vyos && diff.vyos.interfaceDeltas?.length > 0) {
+            lines.push(`## 3. VyOS Underlay & WAN QoS / Chaos Impairments`);
+            lines.push(`- **Routers Online:** ${diff.vyos.routersOnlineBefore}/${diff.vyos.routersTotalBefore} -> ${diff.vyos.routersOnlineAfter}/${diff.vyos.routersTotalAfter}`);
+            lines.push(`- **Active Impairments:** ${diff.vyos.impairmentsBefore} -> ${diff.vyos.impairmentsAfter}`);
+            lines.push(`- **BGP Blackholes:** ${(diff.vyos.blackholesBefore || []).join(', ') || 'None'} -> ${(diff.vyos.blackholesAfter || []).join(', ') || 'None'}`);
+            lines.push(`| Router | Interface | Description | Link State | Latency (Before->After) | Loss (Before->After) | Changed |`);
+            lines.push(`|---|---|---|---|---|---|---|`);
+            diff.vyos.interfaceDeltas.forEach(i => {
+                lines.push(`| ${i.routerName} | ${i.interfaceName} | ${i.description || '—'} | ${i.statusBefore}->${i.statusAfter} | ${i.latencyBeforeMs}ms->${i.latencyAfterMs}ms | ${i.lossBeforePct}%->${i.lossAfterPct}% | ${i.changed ? 'MODIFIED' : 'UNCHANGED'} |`);
+            });
+            lines.push(``);
+        }
+
+        if (diff.sdwan && diff.sdwan.sites?.length > 0) {
+            lines.push(`## 4. Prisma SD-WAN & SASE Overlay`);
+            lines.push(`- **Sites Online:** ${diff.sdwan.online_baseline}/${diff.sdwan.total_baseline} -> ${diff.sdwan.online_current}/${diff.sdwan.total_current}`);
+            lines.push(`- **SASE IPsec Tunnels UP:** ${diff.sdwan.sase_links_up_baseline ?? 0}/${diff.sdwan.sase_links_total ?? 0} -> ${diff.sdwan.sase_links_up_current ?? 0}/${diff.sdwan.sase_links_total ?? 0}`);
+            lines.push(`| Site | Role | Status (Before->After) | ION Devices | WAN Circuits | SASE Links | State Change |`);
+            lines.push(`|---|---|---|---|---|---|---|`);
+            diff.sdwan.sites.forEach(s => {
+                const devs = s.deviceChanges.map(d => d.deviceName).join(', ') || '—';
+                const wans = s.deviceChanges.map(d => `${d.wanUpBefore ?? 0}/${d.wanTotal ?? 0}->${d.wanUpAfter ?? 0}/${d.wanTotal ?? 0}`).join(', ') || '—';
+                const sase = s.deviceChanges.map(d => `${d.serviceLinksUpBefore ?? 0}/${d.serviceLinksTotal ?? 0}->${d.serviceLinksUpAfter ?? 0}/${d.serviceLinksTotal ?? 0}`).join(', ') || '—';
+                lines.push(`| ${s.siteName} | ${s.role} | ${s.connectedBefore ? 'ONLINE' : 'OFFLINE'}->${s.connectedAfter ? 'ONLINE' : 'OFFLINE'} | ${devs} | ${wans} | ${sase} | ${s.stateChange} |`);
+            });
+            lines.push(``);
+        }
+
+        if (diff.dem?.probes?.length > 0) {
+            lines.push(`## 5. Digital Experience (DEM) App Probes (${diff.dem.total_probes} total, ${diff.dem.regressed_probes} degraded, ${diff.dem.improved_probes} improved)`);
+            lines.push(`- **Average Latency:** ${(diff.dem.avg_baseline_latency_ms ?? 0).toFixed(1)}ms -> ${(diff.dem.avg_current_latency_ms ?? 0).toFixed(1)}ms (Δ ${diff.dem.average_latency_delta_ms}ms)`);
+            lines.push(`| Probe Target | Type | Score (Before->After) | Baseline Latency | Target Latency | Δ Latency | Δ Loss | Verdict |`);
+            lines.push(`|---|---|---|---|---|---|---|---|`);
+            diff.dem.probes.forEach(p => {
+                const verdict = p.status_regression ? 'DEGRADED' : p.status_improvement ? 'IMPROVED' : 'UNCHANGED';
+                lines.push(`| ${p.target_label} | ${p.probe_type || 'PING'} | ${p.score_before ?? '—'}->${p.score_after ?? '—'} | ${p.baseline_latency_ms.toFixed(1)}ms | ${p.current_latency_ms.toFixed(1)}ms | ${p.latency_delta_ms > 0 ? `+${p.latency_delta_ms.toFixed(1)}` : p.latency_delta_ms.toFixed(1)}ms (${p.latency_delta_percent.toFixed(0)}%) | ${p.loss_delta_percent.toFixed(1)}% | ${verdict} |`);
+            });
+            lines.push(``);
+        }
+
+        return lines.join('\n');
+    };
+
+    const handleAnalyzeWithAi = async () => {
+        if (!diffReport) return;
+        try {
+            setAiAnalyzing(true);
+            const res = await fetch('/api/snapshots/analyze-diff', {
+                method: 'POST',
+                headers: authHeaders,
+                body: JSON.stringify({
+                    diff: diffReport,
+                    model: selectedAiModel || aiConfig?.defaultModel
+                })
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) {
+                toast.error(data.error || data.detail || 'AI Analysis failed');
+                return;
+            }
+            setAiAnalysis({
+                analysis: data.analysis,
+                reasoning: data.reasoning,
+                model: data.model,
+                provider: data.provider,
+                durationMs: data.durationMs,
+                usage: data.usage
+            });
+            toast.success(`AI Analysis generated with ${data.model}`);
+        } catch (err: any) {
+            console.error('AI analysis error:', err);
+            toast.error(`AI analysis error: ${err?.message || 'Network error'}`);
+        } finally {
+            setAiAnalyzing(false);
+        }
+    };
+
+    const handleDownloadSnapshot = async (id: string, name: string) => {
+        try {
+            setActionLoading(true);
+            const res = await fetch(`/api/snapshots/${encodeURIComponent(id)}`, { headers: authHeaders });
+            if (!res.ok) {
+                toast.error('Failed to fetch snapshot for export');
+                return;
+            }
+            const data = await res.json();
+            const safeName = (name || id).replace(/[^a-zA-Z0-9_-]+/g, '_');
+            downloadFile(`stigix-snapshot-${safeName}.json`, JSON.stringify(data.snapshot, null, 2), 'application/json');
+            toast.success(`Exported snapshot "${name}" (.json)`);
+        } catch (err) {
+            console.error('Export snapshot error:', err);
+            toast.error('Failed to export snapshot');
+        } finally {
+            setActionLoading(false);
+        }
+    };
+
+    const buildSnapshotLlmPrompt = (snap: any): string => {
+        const lines: string[] = [];
+        const name = snap.name || snap.metadata?.name || snap.id;
+        lines.push(`# Stigix ChangeGuard — Point-in-Time Network State Snapshot`);
+        lines.push(`> **AI Prompt Instruction (for ChatGPT / Perplexity / Claude):**`);
+        lines.push(`> Analyze the following Stigix SD-WAN / SASE / DEM / Voice / VyOS node state snapshot (\`${name}\`) and summarize network health, active WAN impairments, SASE tunnel status, DEM application performance, and Voice MOS quality.`);
+        lines.push(``);
+        lines.push(`\`\`\`json`);
+        lines.push(JSON.stringify(snap, null, 2));
+        lines.push(`\`\`\``);
+        return lines.join('\n');
+    };
 
     const openCreateModal = () => {
         const defaultName = buildClientDefaultSnapshotName(siteName, snapshots, 'baseline');
@@ -401,6 +661,7 @@ export default function ChangeGuard({ token }: ChangeGuardProps) {
             if (currentId === id) setCurrentId('');
             if (diffReport?.baseline_id === id || diffReport?.current_id === id) {
                 setDiffReport(null);
+                setAiAnalysis(null);
             }
             await fetchSnapshots();
         } catch (err) {
@@ -419,6 +680,7 @@ export default function ChangeGuard({ token }: ChangeGuardProps) {
 
         try {
             setDiffLoading(true);
+            setAiAnalysis(null);
             const res = await fetch('/api/snapshots/diff', {
                 method: 'POST',
                 headers: authHeaders,
@@ -656,6 +918,154 @@ export default function ChangeGuard({ token }: ChangeGuardProps) {
                                 />
                             </div>
                         </div>
+
+                        {/* ── AI Root-Cause Analysis & External LLM Export Toolbar ── */}
+                        <div className="bg-slate-900/80 border border-slate-700/80 rounded-xl p-3.5 flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+                            {/* Left: On-Demand AI Root-Cause Analysis (if API key configured) */}
+                            <div className="flex flex-wrap items-center gap-2.5">
+                                <div className="flex items-center gap-1.5 text-xs font-semibold text-indigo-300">
+                                    <Sparkles className="w-4 h-4 text-indigo-400" />
+                                    <span>AI Root-Cause Analysis</span>
+                                </div>
+
+                                {aiConfig?.hasKey && availableAiModels.length > 0 ? (
+                                    <>
+                                        <select
+                                            value={selectedAiModel}
+                                            onChange={(e) => setSelectedAiModel(e.target.value)}
+                                            disabled={aiAnalyzing}
+                                            className="bg-slate-950 border border-slate-700 text-slate-200 text-xs rounded-lg px-2.5 py-1.5 focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500"
+                                        >
+                                            {availableAiModels.map((m) => (
+                                                <option key={m.id} value={m.id}>
+                                                    {m.name} ({m.provider === 'deepseek' ? 'DeepSeek' : 'Anthropic'})
+                                                </option>
+                                            ))}
+                                        </select>
+                                        <button
+                                            onClick={handleAnalyzeWithAi}
+                                            disabled={aiAnalyzing}
+                                            className={cn(
+                                                "px-3 py-1.5 rounded-lg text-xs font-semibold transition flex items-center gap-1.5 border",
+                                                aiAnalyzing
+                                                    ? "bg-indigo-950/50 text-indigo-300 border-indigo-500/30 cursor-wait"
+                                                    : "bg-indigo-600 hover:bg-indigo-500 text-white border-indigo-500 shadow-sm hover:shadow-indigo-500/20"
+                                            )}
+                                        >
+                                            <Bot className={cn("w-3.5 h-3.5", aiAnalyzing && "animate-pulse")} />
+                                            {aiAnalyzing ? "Generating AI Verdict..." : aiAnalysis ? "Re-Analyze with AI" : "Analyze with AI"}
+                                        </button>
+                                    </>
+                                ) : (
+                                    <span className="text-[11px] text-slate-400 bg-slate-800/80 border border-slate-700/70 px-2.5 py-1 rounded-md">
+                                        No LLM API key configured in AI Settings — use Copy Prompt or Export below for ChatGPT / Perplexity
+                                    </span>
+                                )}
+                            </div>
+
+                            {/* Right: Export Compare for External LLMs (ChatGPT / Perplexity / Claude) */}
+                            <div className="flex flex-wrap items-center gap-2">
+                                <span className="text-[11px] text-slate-400 font-medium mr-1">
+                                    Export Compare:
+                                </span>
+                                <button
+                                    onClick={() => copyTextToClipboard(buildDiffLlmMarkdown(diffReport), "Compare Prompt (Markdown) for ChatGPT / Perplexity")}
+                                    title="Copy structured prompt + full ChangeGuard diff report for ChatGPT, Perplexity, or Claude"
+                                    className="px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-violet-600/20 hover:bg-violet-600/30 text-violet-200 border border-violet-500/30 transition flex items-center gap-1.5"
+                                >
+                                    <Copy className="w-3.5 h-3.5 text-violet-400" />
+                                    Copy Prompt (ChatGPT / Perplexity)
+                                </button>
+                                <button
+                                    onClick={() => {
+                                        const safeBase = (diffReport.baseline_name || 'baseline').replace(/[^a-zA-Z0-9_-]/g, '_');
+                                        const safeCurr = (diffReport.current_name || 'target').replace(/[^a-zA-Z0-9_-]/g, '_');
+                                        downloadFile(
+                                            `changeguard-diff-${safeBase}-vs-${safeCurr}.md`,
+                                            buildDiffLlmMarkdown(diffReport),
+                                            'text/markdown;charset=utf-8'
+                                        );
+                                        toast.success('Downloaded ChangeGuard Diff (.md)');
+                                    }}
+                                    title="Download Markdown report with LLM instructions"
+                                    className="px-2.5 py-1.5 rounded-lg text-xs font-medium bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition flex items-center gap-1.5"
+                                >
+                                    <FileText className="w-3.5 h-3.5 text-cyan-400" />
+                                    Export .md
+                                </button>
+                                <button
+                                    onClick={() => {
+                                        const safeBase = (diffReport.baseline_name || 'baseline').replace(/[^a-zA-Z0-9_-]/g, '_');
+                                        const safeCurr = (diffReport.current_name || 'target').replace(/[^a-zA-Z0-9_-]/g, '_');
+                                        downloadFile(
+                                            `changeguard-diff-${safeBase}-vs-${safeCurr}.json`,
+                                            JSON.stringify(diffReport, null, 2),
+                                            'application/json;charset=utf-8'
+                                        );
+                                        toast.success('Downloaded ChangeGuard Diff (.json)');
+                                    }}
+                                    title="Download raw Diff JSON"
+                                    className="px-2.5 py-1.5 rounded-lg text-xs font-medium bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition flex items-center gap-1.5"
+                                >
+                                    <Download className="w-3.5 h-3.5 text-emerald-400" />
+                                    Export .json
+                                </button>
+                            </div>
+                        </div>
+
+                        {/* ── AI Executive Analysis Result Card ── */}
+                        {aiAnalysis && (
+                            <div className="bg-gradient-to-br from-indigo-950/40 via-slate-900/95 to-violet-950/30 border border-indigo-500/40 rounded-xl p-4 space-y-3 shadow-lg animate-in fade-in duration-200">
+                                <div className="flex flex-wrap items-center justify-between gap-2 border-b border-indigo-500/20 pb-2.5">
+                                    <div className="flex items-center gap-2">
+                                        <Sparkles className="w-4 h-4 text-indigo-400" />
+                                        <span className="text-xs font-bold uppercase tracking-wider text-indigo-200">
+                                            AI Root-Cause & Rollback Verdict
+                                        </span>
+                                        <span className="text-[11px] font-mono px-2 py-0.5 rounded bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
+                                            {aiAnalysis.provider === 'anthropic' ? 'Anthropic' : 'DeepSeek'} · {aiAnalysis.model}
+                                        </span>
+                                        {aiAnalysis.durationMs !== undefined && (
+                                            <span className="text-[11px] text-slate-400 font-mono">
+                                                {(aiAnalysis.durationMs / 1000).toFixed(1)}s
+                                                {aiAnalysis.usage?.totalTokens ? ` · ${aiAnalysis.usage.totalTokens} tokens` : ''}
+                                            </span>
+                                        )}
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                        <button
+                                            onClick={() => copyTextToClipboard(aiAnalysis.analysis, "AI Executive Analysis")}
+                                            className="px-2 py-1 text-[11px] font-medium bg-slate-800/80 hover:bg-slate-700 text-slate-200 rounded border border-slate-700 flex items-center gap-1"
+                                        >
+                                            <Copy className="w-3 h-3 text-indigo-400" />
+                                            Copy Analysis
+                                        </button>
+                                        <button
+                                            onClick={() => setAiAnalysis(null)}
+                                            className="p-1 text-slate-400 hover:text-slate-200 rounded"
+                                            title="Dismiss AI analysis"
+                                        >
+                                            <X className="w-3.5 h-3.5" />
+                                        </button>
+                                    </div>
+                                </div>
+
+                                {aiAnalysis.reasoning && (
+                                    <details className="text-xs bg-slate-950/60 border border-slate-800 rounded-lg p-2.5 text-slate-400">
+                                        <summary className="cursor-pointer font-semibold text-slate-300 select-none">
+                                            View DeepSeek R1 Chain-of-Thought Reasoning
+                                        </summary>
+                                        <pre className="mt-2 whitespace-pre-wrap font-mono text-[11px] text-slate-400 leading-relaxed">
+                                            {aiAnalysis.reasoning}
+                                        </pre>
+                                    </details>
+                                )}
+
+                                <div className="text-xs text-slate-200 whitespace-pre-wrap leading-relaxed font-sans bg-slate-950/40 border border-slate-800/80 rounded-lg p-3.5">
+                                    {aiAnalysis.analysis}
+                                </div>
+                            </div>
+                        )}
 
                         {/* ── Customer-Centric Executive KPI Cards (4 Pillars) ── */}
                         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
@@ -1431,10 +1841,17 @@ export default function ChangeGuard({ token }: ChangeGuardProps) {
                                                 </button>
                                                 <button
                                                     onClick={() => handleInspectSnapshot(s.id)}
-                                                    title="Inspect JSON"
+                                                    title="Inspect Snapshot & Copy for AI"
                                                     className="p-1.5 text-slate-400 hover:text-slate-200 bg-slate-800 hover:bg-slate-700 rounded border border-slate-700"
                                                 >
                                                     <FileJson className="w-3.5 h-3.5" />
+                                                </button>
+                                                <button
+                                                    onClick={() => handleDownloadSnapshot(s.id, s.name)}
+                                                    title="Download Snapshot (.json)"
+                                                    className="p-1.5 text-emerald-400 hover:text-emerald-300 bg-slate-800 hover:bg-slate-700 rounded border border-slate-700"
+                                                >
+                                                    <Download className="w-3.5 h-3.5" />
                                                 </button>
                                                 <button
                                                     onClick={() => handleDeleteSnapshot(s.id, s.name)}
@@ -1567,7 +1984,34 @@ export default function ChangeGuard({ token }: ChangeGuardProps) {
                             <pre>{JSON.stringify(inspectData, null, 2)}</pre>
                         </div>
 
-                        <div className="flex justify-end pt-2">
+                        <div className="flex flex-wrap items-center justify-between gap-2 pt-2">
+                            <div className="flex items-center gap-2">
+                                <button
+                                    onClick={() => copyTextToClipboard(buildSnapshotLlmPrompt(inspectData), "Snapshot Prompt for ChatGPT / Perplexity")}
+                                    className="px-3 py-2 text-xs font-semibold bg-violet-600/20 hover:bg-violet-600/30 text-violet-200 rounded-lg border border-violet-500/30 flex items-center gap-1.5 transition"
+                                >
+                                    <Copy className="w-3.5 h-3.5 text-violet-400" />
+                                    Copy Prompt (ChatGPT / Perplexity)
+                                </button>
+                                <button
+                                    onClick={() => copyTextToClipboard(JSON.stringify(inspectData, null, 2), "Snapshot Raw JSON")}
+                                    className="px-3 py-2 text-xs font-medium bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg border border-slate-700 flex items-center gap-1.5 transition"
+                                >
+                                    <Copy className="w-3.5 h-3.5 text-slate-400" />
+                                    Copy JSON
+                                </button>
+                                <button
+                                    onClick={() => {
+                                        const safeName = (inspectData.name || inspectData.metadata?.name || 'snapshot').replace(/[^a-zA-Z0-9_-]/g, '_');
+                                        downloadFile(`stigix-snapshot-${safeName}.json`, JSON.stringify(inspectData, null, 2), 'application/json;charset=utf-8');
+                                        toast.success('Downloaded Snapshot (.json)');
+                                    }}
+                                    className="px-3 py-2 text-xs font-medium bg-slate-800 hover:bg-slate-700 text-emerald-300 rounded-lg border border-slate-700 flex items-center gap-1.5 transition"
+                                >
+                                    <Download className="w-3.5 h-3.5 text-emerald-400" />
+                                    Download .json
+                                </button>
+                            </div>
                             <button
                                 onClick={() => setInspectData(null)}
                                 className="px-4 py-2 text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg border border-slate-700"

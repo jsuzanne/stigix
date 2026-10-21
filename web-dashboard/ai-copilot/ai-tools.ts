@@ -2406,6 +2406,7 @@ export async function executeCopilotTool(
                                 parallel_streams: payload.parallel_streams
                             });
                             ctx.xfrManager.startJob(id);
+                            traceLocalApi(sourceNodeContext, 'POST', '/api/tests/xfr', payload);
                             const job = ctx.xfrManager.getJob(id);
                             results.push({
                                 // Use sequence_id as the canonical test_id the model should poll with
@@ -2421,32 +2422,30 @@ export async function executeCopilotTool(
                                 duration: `${durationSec}s`
                             });
                         } else {
-                            const res = await fetch(`${sourceNodeContext.baseUrl}/api/tests/xfr`, {
-                                method: 'POST',
-                                headers: sourceNodeContext.headers,
-                                body: JSON.stringify(payload)
-                            });
-                            const data = await res.json().catch(() => ({}));
-                            if (!res.ok) {
-                                results.push({
-                                    error: data?.error || `HTTP ${res.status}`,
-                                    source: sourceNodeContext.siteName,
-                                    target: targetEndpoint.name,
-                                    host: targetEndpoint.host
+                            try {
+                                const data = await fetchApi(sourceNodeContext, '/api/tests/xfr', {
+                                    method: 'POST',
+                                    body: JSON.stringify(payload)
                                 });
-                            } else {
                                 results.push({
                                     // Use sequence_id as the canonical test_id the model should poll with
-                                    test_id: data.sequence_id || data.id || data.jobId,
-                                    sequence_id: data.sequence_id,
-                                    canonical_poll_id: data.sequence_id,   // always use this with get_test_status
+                                    test_id: data?.sequence_id || data?.id || data?.jobId,
+                                    sequence_id: data?.sequence_id,
+                                    canonical_poll_id: data?.sequence_id,   // always use this with get_test_status
                                     source_agent_id: sourceNodeContext.agentId || sourceNodeContext.siteName, // always pass this to get_test_status
                                     profile: 'xfr',
-                                    status: data.status || 'running',
+                                    status: data?.status || 'running',
                                     source: sourceNodeContext.siteName,
                                     target: targetEndpoint.name,
                                     host: targetEndpoint.host,
                                     duration: `${durationSec}s`
+                                });
+                            } catch (xfrErr: any) {
+                                results.push({
+                                    error: xfrErr?.message || String(xfrErr),
+                                    source: sourceNodeContext.siteName,
+                                    target: targetEndpoint.name,
+                                    host: targetEndpoint.host
                                 });
                             }
                         }
@@ -2484,9 +2483,8 @@ export async function executeCopilotTool(
                             results.push({ error: `Convergence probe failed: ${convErr?.message || convErr}`, target: targetEndpoint.name });
                         }
                     } else if (isVoice) {
-                        await fetch(`${sourceNodeContext.baseUrl}/api/voice/control`, {
+                        await fetchApi(sourceNodeContext, '/api/voice/control', {
                             method: 'POST',
-                            headers: sourceNodeContext.headers,
                             body: JSON.stringify({ enabled: true })
                         });
                         results.push({
@@ -2497,9 +2495,8 @@ export async function executeCopilotTool(
                             port: 6100
                         });
                     } else if (isIot) {
-                        await fetch(`${sourceNodeContext.baseUrl}/api/iot/control`, {
+                        await fetchApi(sourceNodeContext, '/api/iot/control', {
                             method: 'POST',
-                            headers: sourceNodeContext.headers,
                             body: JSON.stringify({ enabled: true })
                         });
                         results.push({
@@ -2541,16 +2538,16 @@ export async function executeCopilotTool(
                         await new Promise(r => setTimeout(r, explicitWaitSec * 1000));
                     }
 
-                    const loadJobsAndProbes = async () => {
+                    const loadJobsAndProbes = async (prevXfr: any[] = [], prevConv: any[] = []) => {
                         const [xfrData, convData] = await Promise.all([
                             (nodeCtx.isLocal && ctx.xfrManager)
                                 ? ctx.xfrManager.getAllJobs()
-                                : fetchApi(nodeCtx, `/api/tests/xfr`).catch(() => []),
-                            fetchApi(nodeCtx, `/api/convergence/status`).catch(() => [])
+                                : fetchApi(nodeCtx, `/api/tests/xfr`).catch(() => null),
+                            fetchApi(nodeCtx, `/api/convergence/status`).catch(() => null)
                         ]);
                         return {
-                            xfrJobs: Array.isArray(xfrData) ? xfrData : [],
-                            convProbes: Array.isArray(convData) ? convData : []
+                            xfrJobs: Array.isArray(xfrData) ? xfrData : prevXfr,
+                            convProbes: Array.isArray(convData) ? convData : prevConv
                         };
                     };
 
@@ -2573,7 +2570,7 @@ export async function executeCopilotTool(
                                 if (activeXfr.length === 0) break;
                             }
                             await new Promise(r => setTimeout(r, 1500));
-                            ({ xfrJobs, convProbes } = await loadJobsAndProbes());
+                            ({ xfrJobs, convProbes } = await loadJobsAndProbes(xfrJobs, convProbes));
                         }
                     }
 
@@ -2791,12 +2788,17 @@ export async function executeCopilotTool(
                 }
                 const expectedRunning = Boolean(args.enabled);
                 const action = expectedRunning ? 'start' : 'stop';
-                const res = await fetch(`${nodeCtx.baseUrl}/api/traffic/${action}`, {
-                    method: 'POST',
-                    headers: nodeCtx.headers,
-                    body: JSON.stringify({})
-                });
-                const rawRes = await res.json().catch(() => ({ success: res.ok, status: action }));
+                let rawRes: any = {};
+                let postOk = true;
+                try {
+                    rawRes = await fetchApi(nodeCtx, `/api/traffic/${action}`, {
+                        method: 'POST',
+                        body: JSON.stringify({})
+                    });
+                } catch (e: any) {
+                    postOk = false;
+                    rawRes = { error: e?.message || String(e), status: action };
+                }
                 await new Promise(r => setTimeout(r, 400));
                 let liveStatus: any = null;
                 try {
@@ -2806,10 +2808,10 @@ export async function executeCopilotTool(
                         liveStatus = await fetchApi(nodeCtx, '/api/traffic/status');
                     }
                 } catch {}
-                const verifiedRunning = liveStatus?.running !== undefined ? Boolean(liveStatus.running) : expectedRunning;
+                const verifiedRunning = liveStatus?.running !== undefined ? Boolean(liveStatus.running) : (postOk ? expectedRunning : !expectedRunning);
                 return {
                     ...rawRes,
-                    success: res.ok && verifiedRunning === expectedRunning,
+                    success: postOk && verifiedRunning === expectedRunning,
                     node: nodeCtx.siteName,
                     requested_action: action,
                     verified: verifiedRunning === expectedRunning,
@@ -2822,33 +2824,42 @@ export async function executeCopilotTool(
             case 'set_traffic_rate': {
                 const nodeCtx = resolveNodeContext(args.agent_id || args.node, ctx);
                 const rate = Math.max(0.1, Math.min(10.0, Number(args.rate) || 1.0));
-                const res = await fetch(`${nodeCtx.baseUrl}/api/traffic/settings`, {
-                    method: 'POST',
-                    headers: nodeCtx.headers,
-                    body: JSON.stringify({ sleep_interval: rate })
-                });
-                return res.json().catch(() => ({ success: res.ok, sleep_interval: rate }));
+                try {
+                    const res = await fetchApi(nodeCtx, '/api/traffic/settings', {
+                        method: 'POST',
+                        body: JSON.stringify({ sleep_interval: rate })
+                    });
+                    return { ...res, success: true, node: nodeCtx.siteName, sleep_interval: rate };
+                } catch (e: any) {
+                    return { success: false, node: nodeCtx.siteName, error: e?.message || String(e) };
+                }
             }
 
             case 'set_traffic_client_count': {
                 const nodeCtx = resolveNodeContext(args.agent_id || args.node, ctx);
                 const count = Math.max(1, Math.min(20, Number(args.client_count) || 1));
-                const res = await fetch(`${nodeCtx.baseUrl}/api/traffic/settings`, {
-                    method: 'POST',
-                    headers: nodeCtx.headers,
-                    body: JSON.stringify({ client_count: count })
-                });
-                return res.json().catch(() => ({ success: res.ok, client_count: count }));
+                try {
+                    const res = await fetchApi(nodeCtx, '/api/traffic/settings', {
+                        method: 'POST',
+                        body: JSON.stringify({ client_count: count })
+                    });
+                    return { ...res, success: true, node: nodeCtx.siteName, client_count: count };
+                } catch (e: any) {
+                    return { success: false, node: nodeCtx.siteName, error: e?.message || String(e) };
+                }
             }
 
             case 'set_voice_status': {
                 const nodeCtx = resolveNodeContext(args.source_id || args.node, ctx);
-                const res = await fetch(`${nodeCtx.baseUrl}/api/voice/control`, {
-                    method: 'POST',
-                    headers: nodeCtx.headers,
-                    body: JSON.stringify({ enabled: Boolean(args.enabled) })
-                });
-                return res.json().catch(() => ({ success: res.ok, enabled: Boolean(args.enabled) }));
+                try {
+                    const res = await fetchApi(nodeCtx, '/api/voice/control', {
+                        method: 'POST',
+                        body: JSON.stringify({ enabled: Boolean(args.enabled) })
+                    });
+                    return { ...res, success: true, node: nodeCtx.siteName, enabled: Boolean(args.enabled) };
+                } catch (e: any) {
+                    return { success: false, node: nodeCtx.siteName, error: e?.message || String(e) };
+                }
             }
 
             case 'get_diagnostics': {

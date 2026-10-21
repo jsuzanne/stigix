@@ -186,6 +186,7 @@ export class AiManager {
             featureEnabled,
             provider: this.config.provider || (hasDeepseek && !hasAnthropic ? 'deepseek' : 'anthropic'),
             hasKey: hasAnthropic || hasDeepseek,
+            hasAnthropicKey: hasAnthropic,
             maskedKey: maskKey(anthropicKey),
             keyMasked: maskKey(anthropicKey),
             hasDeepseekKey: hasDeepseek,
@@ -1101,6 +1102,201 @@ YOUR ROLE & MANDATORY RELIABILITY RULES:
                 sendEvent('error', { type: 'error', error: `Anthropic stream failure: ${streamErr?.message || streamErr}`, message: `Anthropic stream failure: ${streamErr?.message || streamErr}` });
                 break;
             }
+        }
+    }
+
+    /**
+     * Generates an on-demand AI Executive Analysis & Root-Cause Correlation for a ChangeGuard Diff Report.
+     * Supports selecting any configured Anthropic or DeepSeek model.
+     */
+    public async analyzeChangeGuardDiff(
+        diffReport: any,
+        modelOverride?: string
+    ): Promise<{
+        analysis: string;
+        reasoning?: string;
+        model: string;
+        provider: AiProvider;
+        durationMs: number;
+        usage?: { inputTokens: number; outputTokens: number; totalTokens: number };
+    }> {
+        const rawModel = modelOverride || this.config.defaultModel;
+        let model = normalizeModelId(rawModel);
+
+        const hasAnthropicKey = Boolean(this.config.apiKey && this.config.apiKey.startsWith('sk-ant-'));
+        const hasDeepseekKey = Boolean(this.config.deepseekApiKey || (this.config.apiKey && !this.config.apiKey.startsWith('sk-ant-')));
+
+        if (model.startsWith('claude-') && !hasAnthropicKey && hasDeepseekKey) {
+            model = this.config.defaultModel?.startsWith('deepseek-') ? this.config.defaultModel : 'deepseek-chat';
+        } else if (model.startsWith('deepseek-') && !hasDeepseekKey && hasAnthropicKey) {
+            model = this.config.defaultModel?.startsWith('claude-') ? this.config.defaultModel : 'claude-sonnet-4-5-20250929';
+        }
+
+        const isDeepSeek = model.startsWith('deepseek-');
+        const activeProvider: AiProvider = isDeepSeek ? 'deepseek' : 'anthropic';
+        const activeApiKey = isDeepSeek
+            ? (this.config.deepseekApiKey || (this.config.apiKey?.startsWith('sk-ant-') ? '' : this.config.apiKey))
+            : (this.config.apiKey?.startsWith('sk-ant-') ? this.config.apiKey : '');
+
+        if (!activeApiKey) {
+            const providerName = isDeepSeek ? 'DeepSeek' : 'Anthropic';
+            throw new Error(`No ${providerName} API key is configured. Please configure an API key in Settings ➔ AI & Copilot.`);
+        }
+
+        // Build compact, high-signal telemetry digest for the LLM
+        const changedVyos = (diffReport?.vyos?.interfaceDeltas || []).filter(
+            (i: any) => i.changed || i.latencyAfterMs > 0 || i.lossAfterPct > 0 || i.statusBefore !== i.statusAfter
+        );
+        const notableProbes = (diffReport?.dem?.probes || [])
+            .filter((p: any) => p.status_regression || p.status_improvement || Math.abs(p.latency_delta_ms || 0) >= 2 || Math.abs(p.loss_delta_percent || 0) > 0)
+            .slice(0, 25);
+
+        const digest = {
+            baseline: {
+                id: diffReport.baseline_id,
+                name: diffReport.baseline_name,
+                timestamp: diffReport.baseline_timestamp
+            },
+            target: {
+                id: diffReport.current_id,
+                name: diffReport.current_name,
+                timestamp: diffReport.current_timestamp
+            },
+            verdict: diffReport.verdict,
+            confidenceScore: diffReport.score,
+            criticalRegressions: diffReport.critical_regressions || [],
+            improvements: diffReport.improvements || [],
+            voiceQoE: diffReport.voice || null,
+            vyosUnderlay: diffReport.vyos ? {
+                routersOnlineBefore: diffReport.vyos.routersOnlineBefore,
+                routersOnlineAfter: diffReport.vyos.routersOnlineAfter,
+                impairmentsBefore: diffReport.vyos.impairmentsBefore,
+                impairmentsAfter: diffReport.vyos.impairmentsAfter,
+                blackholesBefore: diffReport.vyos.blackholesBefore,
+                blackholesAfter: diffReport.vyos.blackholesAfter,
+                activeOrChangedInterfaces: changedVyos
+            } : null,
+            sdwanOverlay: diffReport.sdwan || null,
+            demSummary: {
+                totalProbes: diffReport.dem?.total_probes,
+                regressedProbes: diffReport.dem?.regressed_probes,
+                improvedProbes: diffReport.dem?.improved_probes,
+                avgBaselineLatencyMs: diffReport.dem?.avg_baseline_latency_ms,
+                avgCurrentLatencyMs: diffReport.dem?.avg_current_latency_ms,
+                avgLatencyDeltaMs: diffReport.dem?.average_latency_delta_ms,
+                avgLossDeltaPct: diffReport.dem?.average_loss_delta_percent,
+                notableProbeDeltas: notableProbes
+            },
+            meshTunnels: {
+                totalBaseline: diffReport.tunnels?.total_baseline,
+                totalCurrent: diffReport.tunnels?.total_current,
+                downNow: diffReport.tunnels?.down_now,
+                regressed: diffReport.tunnels?.regressed,
+                improved: diffReport.tunnels?.improved,
+                changedPeers: (diffReport.tunnels?.comparisons || []).filter((t: any) => t.status_changed || t.regression || t.improvement)
+            }
+        };
+
+        const systemPrompt = `You are Stigix ChangeGuard AI Architect, an expert SD-WAN, SASE, and Digital Experience (QoE) validation specialist.
+Analyze the provided Before/After ChangeGuard telemetry delta and write a concise, high-impact executive analysis in Markdown.
+
+Structure your response into 3 short sections:
+1. **🎯 Executive Verdict & Customer Experience Impact**: Explain what the deterministic verdict (${diffReport.verdict}, ${diffReport.score}/100) means for end-users right now (Voice RTP MOS, SaaS DEM probes, and site connectivity).
+2. **🔍 Cross-Layer Root-Cause Correlation**: Correlate any Underlay changes (VyOS WAN impairments, injected latency/loss, link down, BGP blackholes) with Overlay behavior (Prisma SD-WAN WAN circuits, SASE IPsec Service Links, Stigix Mesh) and application/voice QoE shifts.
+3. **🛠️ Recommended Action**: Clear GO / CAUTION / ROLLBACK guidance with 1-3 concrete next steps.
+
+Rules:
+- Use exact metrics from the JSON digest (never invent numbers).
+- Keep it crisp, scannable, and under 280 words.`;
+
+        const userMessage = `Analyze this ChangeGuard state comparison between Baseline "${diffReport.baseline_name}" and Target "${diffReport.current_name}":\n\n\`\`\`json\n${JSON.stringify(digest, null, 2)}\n\`\`\``;
+
+        const startTime = Date.now();
+
+        if (activeProvider === 'deepseek') {
+            const response = await fetch('https://api.deepseek.com/chat/completions', {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${activeApiKey}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    model,
+                    max_tokens: 1200,
+                    messages: [
+                        { role: 'system', content: systemPrompt },
+                        { role: 'user', content: userMessage }
+                    ]
+                })
+            });
+
+            if (!response.ok) {
+                const errBody: any = await response.json().catch(() => ({}));
+                throw new Error(errBody?.error?.message || `DeepSeek API error (HTTP ${response.status})`);
+            }
+
+            const data: any = await response.json();
+            const choice = data.choices?.[0]?.message;
+            const analysis = this.stripReasoningAndDsml(choice?.content || '');
+            const reasoning = choice?.reasoning_content || undefined;
+            const usage = data.usage ? {
+                inputTokens: data.usage.prompt_tokens || 0,
+                outputTokens: data.usage.completion_tokens || 0,
+                totalTokens: data.usage.total_tokens || 0
+            } : undefined;
+
+            return {
+                analysis: analysis || 'No analysis returned by model.',
+                reasoning,
+                model,
+                provider: 'deepseek',
+                durationMs: Date.now() - startTime,
+                usage
+            };
+        } else {
+            const response = await fetch('https://api.anthropic.com/v1/messages', {
+                method: 'POST',
+                headers: {
+                    'x-api-key': activeApiKey,
+                    'anthropic-version': '2023-06-01',
+                    'content-type': 'application/json'
+                },
+                body: JSON.stringify({
+                    model,
+                    max_tokens: 1200,
+                    system: systemPrompt,
+                    messages: [
+                        { role: 'user', content: userMessage }
+                    ]
+                })
+            });
+
+            if (!response.ok) {
+                const errBody: any = await response.json().catch(() => ({}));
+                throw new Error(errBody?.error?.message || `Anthropic API error (HTTP ${response.status})`);
+            }
+
+            const data: any = await response.json();
+            const text = (data.content || [])
+                .filter((b: any) => b.type === 'text')
+                .map((b: any) => b.text || '')
+                .join('\n')
+                .trim();
+
+            const inTok = data.usage?.input_tokens || 0;
+            const outTok = data.usage?.output_tokens || 0;
+
+            return {
+                analysis: text || 'No analysis returned by model.',
+                model,
+                provider: 'anthropic',
+                durationMs: Date.now() - startTime,
+                usage: {
+                    inputTokens: inTok,
+                    outputTokens: outTok,
+                    totalTokens: inTok + outTok
+                }
+            };
         }
     }
 }

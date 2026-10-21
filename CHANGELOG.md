@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.0.74] - 2026-10-21
+
+### Added
+- **ChangeGuard Customer-Centric Validation, On-Demand AI Root-Cause Analysis & External LLM Export (`web-dashboard/snapshot-manager.ts`, `web-dashboard/src/ChangeGuard.tsx`, `web-dashboard/ai-copilot/ai-manager.ts`, `web-dashboard/server.ts`)**:
+  - **Multi-Layer Snapshot Capture & Diff Engine**: Extended `SnapshotManager` (`schema_version: 2.0`) to capture and compare 5 full telemetry pillars: **Voice QoE / MOS** (active calls, RTP RTT, jitter, packet loss), **DEM App Probes** (side-by-side `Before → After (Δ)` latency, loss, score, and HTTP status for every probe, sorted with regressions first plus search/filter), **Prisma SD-WAN & SASE Overlay** (branch sites, ION WAN circuit states, SASE IPsec tunnels, Stigix Mesh), and **VyOS Underlay & Chaos Impairments** (router reachability, interfaces, active netem latency/loss/blackholes).
+  - **Auto-Generated Default Snapshot Naming**: Opening the *Capture Snapshot* modal now pre-fills a structured default name (`YYYYMMDD-HHMM-<SITE>-<SEQ>`, e.g., `20261021-1830-BR2-01`) with one-click preset suffix pills (`-baseline`, `-pre-change`, `-post-change`, `-qos-test`, `-failover`).
+  - **Optional On-Demand AI Root-Cause Analysis (`POST /api/snapshots/analyze-diff`)**: When an Anthropic or DeepSeek API key is configured in AI Settings, ChangeGuard displays a model selector (Claude Sonnet 4.5, Claude Haiku 4.5, DeepSeek V3 Chat, DeepSeek R1 Reasoner, etc.) and an **Analyze with AI** button that correlates underlay impairments, SD-WAN/SASE paths, DEM probes, and Voice MOS into an Executive Rollback Verdict directly inside the diff report.
+  - **One-Click Prompt Copy & File Export for External LLMs (ChatGPT / Perplexity / Claude Web)**: Added **Copy Prompt (ChatGPT / Perplexity)** (with LAN HTTP clipboard fallback), **Export `.md`**, and **Export `.json`** on both the Diff comparison toolbar and individual Snapshots (Catalog & Inspect JSON modal).
+
 ## [3.0.73] - 2026-10-21
 
 ### Fixed

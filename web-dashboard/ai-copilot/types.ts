@@ -21,6 +21,7 @@ export interface AiPublicConfig {
     featureEnabled?: boolean;
     provider?: AiProvider;
     hasKey: boolean;
+    hasAnthropicKey?: boolean;
     maskedKey?: string;
     keyMasked?: string;
     hasDeepseekKey?: boolean;
