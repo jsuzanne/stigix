@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.0.76] - 2026-10-21
+
+### Changed
+- **Failover / Convergence Active Test Widget Ergonomic Redesign (`web-dashboard/src/Failover.tsx`)**:
+  - **Vertical KPI Stack & Wider Graph Area**: Stacked `Current Outage` (with live status badge), `Max Blackout` (with SLA threshold badge), and `QoE Score` (with visual progress bar) vertically in the left column, reducing the sidebar width from `256px` (`md:w-64`) to `176px` (`md:w-44`) and freeing `+80px` of horizontal width for the live charts and packet sequence bar.
+  - **Unified Header & Structured Metadata Pills**: Replaced the raw metadata text line (and duplicate duration string) with structured technical pills (`Target IP`, `UDP Src Port`, `Rate pps`, `Started`), grouped `Sent / Received / Drops` counters in a compact pill, and moved the `STOP` button alongside `PoC Card` in the top action bar.
+  - **Unified Control Strip & Aligned 3-Chart Grid**: Combined the Prisma SD-WAN Live Path Inspector and Timeline Window/Scrubber controls into a single responsive control bar, standardized all 3 live chart headers (`Live Latency (RTT)`, `Live Jitter`, `Live Loss`) to a 2-line metric layout for pixel-perfect vertical alignment, and moved the `Live Sequence Monitoring` header and `Received OK / Dropped` legend directly above the 100-packet sequence bar.
+
 ## [3.0.75] - 2026-10-21
 
 ### Added

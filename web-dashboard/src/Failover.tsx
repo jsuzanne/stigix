@@ -1062,205 +1062,170 @@ export default function Failover(props: FailoverProps) {
             <div className="space-y-4">
                 {activeTests.map((test) => (
                     <div key={test.testId} id={`active-test-card-${test.testId}`} className="bg-card border border-border rounded-2xl overflow-hidden shadow-xl flex flex-col md:flex-row divide-y md:divide-y-0 md:divide-x divide-border">
-                        {/* Outage Stats */}
-                        <div className="bg-card-secondary/30 p-4 md:w-64 shrink-0 flex flex-col justify-center items-center text-center space-y-4">
-                            <div className="space-y-1">
+                        {/* Left Column: 3 Stacked KPIs (Current Outage, Max Blackout, QoE Score) */}
+                        <div className="bg-card-secondary/30 py-4 px-3.5 md:w-44 shrink-0 flex flex-row md:flex-col justify-between items-center text-center divide-x md:divide-x-0 md:divide-y divide-border/50 gap-2 md:gap-0">
+                            {/* KPI 1: Current Outage */}
+                            <div className="flex-1 md:w-full flex flex-col items-center justify-center md:py-2">
                                 <div className="flex items-center gap-1.5 justify-center mb-1">
-                                    <Activity size={12} className="text-blue-500" />
+                                    <Activity size={11} className={test.current_blackout_ms > 0 ? "text-red-500 animate-ping" : "text-blue-500"} />
                                     <span className="text-[9px] font-bold text-text-muted uppercase tracking-wider whitespace-nowrap">Current Outage</span>
                                 </div>
-                                <div className={`text-3xl font-black font-mono tracking-tighter transition-all duration-300 ${test.current_blackout_ms > 0 ? 'text-red-500 animate-pulse' : 'text-text-primary'}`} style={test.current_blackout_ms > 0 ? { textShadow: '0 0 20px rgba(239, 68, 68, 0.4)' } : {}}>
+                                <div
+                                    className={`text-2xl md:text-[26px] leading-tight font-black font-mono tracking-tighter transition-all duration-300 ${
+                                        test.current_blackout_ms > 0 ? 'text-red-500 animate-pulse' : 'text-text-primary'
+                                    }`}
+                                    style={test.current_blackout_ms > 0 ? { textShadow: '0 0 20px rgba(239, 68, 68, 0.4)' } : {}}
+                                >
                                     {formatMs(test.current_blackout_ms || 0)}
                                 </div>
+                                <span className={`mt-1 text-[8px] font-bold uppercase tracking-widest px-1.5 py-0.5 rounded ${
+                                    test.current_blackout_ms > 0
+                                        ? 'bg-red-500/20 text-red-400 border border-red-500/30'
+                                        : 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
+                                }`}>
+                                    {test.current_blackout_ms > 0 ? 'Outage Active' : 'Flow Healthy'}
+                                </span>
                             </div>
-                            <div className="w-full h-px bg-border/50"></div>
-                            <div className="flex justify-between w-full px-1 gap-2">
-                                <div className="space-y-1 flex-1 text-center min-w-0">
-                                    <div className="text-[9px] font-bold text-text-muted uppercase tracking-wider whitespace-nowrap">Max Blackout</div>
-                                    <div className="text-lg font-bold text-orange-500 font-mono tracking-tighter">
-                                        {formatMs(test.max_blackout_ms || 0)}
-                                    </div>
+
+                            {/* KPI 2: Max Blackout */}
+                            <div className="flex-1 md:w-full flex flex-col items-center justify-center md:py-3">
+                                <div className="text-[9px] font-bold text-text-muted uppercase tracking-wider whitespace-nowrap mb-1">Max Blackout</div>
+                                <div className="text-xl md:text-2xl leading-tight font-black text-orange-500 font-mono tracking-tighter">
+                                    {formatMs(test.max_blackout_ms || 0)}
                                 </div>
-                                <div className="w-px bg-border/50 shrink-0"></div>
-                                <div className="space-y-1 flex flex-col items-center flex-1 min-w-0">
-                                    <div className="text-[9px] font-bold text-text-muted uppercase tracking-wider whitespace-nowrap">QoE Score</div>
-                                    {(() => {
-                                        // Synthetic QoE Score: Starts at 100, drops for live loss, jitter, and high RTT.
-                                        const currentLoss = typeof test.live_loss_pct === 'number' ? test.live_loss_pct : (test.loss_pct || 0);
-                                        let qoe = 100 - (currentLoss * 2) - ((test.jitter_ms || 0) * 0.5) - ((test.avg_rtt_ms > 50 ? test.avg_rtt_ms - 50 : 0) * 0.1);
-                                        qoe = Math.max(0, Math.min(100, Math.round(qoe)));
-                                        let color = qoe >= 90 ? 'text-green-400 font-bold' : qoe >= 70 ? 'text-amber-500 font-bold' : 'text-red-500 font-bold animate-pulse';
-                                        let glow = qoe >= 90 ? '0 0 10px rgba(74, 222, 128, 0.3)' : qoe >= 70 ? '0 0 10px rgba(245, 158, 11, 0.3)' : '0 0 15px rgba(239, 68, 68, 0.4)';
-                                        return <div className={`text-lg font-mono tracking-tighter ${color}`} style={{ textShadow: glow }}>{qoe}/100</div>;
-                                    })()}
-                                </div>
+                                {(() => {
+                                    const maxSec = (test.max_blackout_ms || 0) / 1000;
+                                    const label = maxSec === 0 ? 'Zero Drop' : maxSec < thresholds.good ? 'SLA Good' : maxSec < thresholds.degraded ? 'Degraded' : 'Critical';
+                                    const badgeCls = maxSec === 0 || maxSec < thresholds.good
+                                        ? 'text-text-muted bg-card-secondary border-border'
+                                        : maxSec < thresholds.degraded
+                                        ? 'text-amber-400 bg-amber-500/10 border-amber-500/30'
+                                        : 'text-red-400 bg-red-500/10 border-red-500/30';
+                                    return (
+                                        <span className={`mt-1 text-[8px] font-mono font-bold uppercase px-1.5 py-0.5 rounded border ${badgeCls}`}>
+                                            {label}
+                                        </span>
+                                    );
+                                })()}
+                            </div>
+
+                            {/* KPI 3: Live QoE Score */}
+                            <div className="flex-1 md:w-full flex flex-col items-center justify-center md:py-2">
+                                <div className="text-[9px] font-bold text-text-muted uppercase tracking-wider whitespace-nowrap mb-1">QoE Score</div>
+                                {(() => {
+                                    const currentLoss = typeof test.live_loss_pct === 'number' ? test.live_loss_pct : (test.loss_pct || 0);
+                                    let qoe = 100 - (currentLoss * 2) - ((test.jitter_ms || 0) * 0.5) - ((test.avg_rtt_ms > 50 ? test.avg_rtt_ms - 50 : 0) * 0.1);
+                                    qoe = Math.max(0, Math.min(100, Math.round(qoe)));
+                                    const color = qoe >= 90 ? 'text-green-400 font-black' : qoe >= 70 ? 'text-amber-500 font-black' : 'text-red-500 font-black animate-pulse';
+                                    const barColor = qoe >= 90 ? 'bg-emerald-500' : qoe >= 70 ? 'bg-amber-500' : 'bg-red-500';
+                                    const glow = qoe >= 90 ? '0 0 10px rgba(74, 222, 128, 0.3)' : qoe >= 70 ? '0 0 10px rgba(245, 158, 11, 0.3)' : '0 0 15px rgba(239, 68, 68, 0.4)';
+                                    return (
+                                        <>
+                                            <div className={`text-xl md:text-2xl leading-tight font-mono tracking-tighter ${color}`} style={{ textShadow: glow }}>
+                                                {qoe}<span className="text-xs text-text-muted font-normal">/100</span>
+                                            </div>
+                                            <div className="w-24 h-1.5 bg-slate-800 rounded-full overflow-hidden mt-1.5 border border-slate-700/60">
+                                                <div className={`h-full transition-all duration-300 ${barColor}`} style={{ width: `${qoe}%` }} />
+                                            </div>
+                                        </>
+                                    );
+                                })()}
                             </div>
                         </div>
 
-                        {/* Timeline & Details */}
+                        {/* Right Panel: Header, Controls, Charts & Sequence */}
                         {(() => {
                             const testKey = test.test_id || test.testId || '';
                             const livePath = livePaths[testKey] || livePaths[test.testId] || livePaths[test.test_id];
                             const sourcePort = getSourcePort(test.test_id || test.testId);
+                            const dropsCount = Math.max(0, (test.sent || 0) - (test.received || 0));
 
                             return (
-                                <div className="flex-1 p-6 relative flex flex-col justify-between">
-                                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4">
-                                        <div className="flex flex-col">
-                                            <div className="flex items-center gap-3">
+                                <div className="flex-1 p-5 relative flex flex-col justify-between gap-3.5 min-w-0">
+                                    {/* Top Row: Identity + Structured Metadata Badges on Left | Packet Counters + Actions on Right */}
+                                    <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 pb-3 border-b border-border/60">
+                                        <div className="flex flex-col gap-1.5 min-w-0">
+                                            <div className="flex items-center gap-2.5 flex-wrap">
                                                 <span title={`Source Port: ${sourcePort}`} className="px-2 py-0.5 rounded text-[10px] font-bold bg-blue-600 text-white uppercase tracking-tighter shadow-lg shadow-blue-500/20 cursor-help">
                                                     {test.test_id?.match(/\((CONV-\d+)\)/)?.[1] || test.testId}
                                                 </span>
-                                                <span className="text-sm font-bold text-text-primary tracking-tight">
+                                                <span className="text-sm font-bold text-text-primary tracking-tight truncate">
                                                     {test.label || test.test_id?.split(' (')[0] || 'Unknown Target'}
                                                 </span>
-                                                <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-card-secondary border border-border">
-                                                    <Clock size={10} className="text-blue-500 dark:text-blue-400" />
-                                                    <span className="text-[10px] font-mono text-blue-500 dark:text-blue-400 font-bold">
+                                                <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-blue-500/10 border border-blue-500/25">
+                                                    <Clock size={10} className="text-blue-400" />
+                                                    <span className="text-[10px] font-mono text-blue-400 font-bold">
                                                         {formatChrono(test.start_time)}
                                                     </span>
                                                 </div>
                                             </div>
-                                            <span className="text-[10px] text-text-muted font-mono mt-1.5 flex items-center gap-1">
-                                                <Server size={10} /> {new Date().toLocaleDateString('en-CA')} {new Date().toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', second: '2-digit' })} | Duration: {formatChrono(test.start_time)} | {test.target || '--'} | Source Port: {sourcePort} | {test.rate_pps || test.rate} pps
-                                            </span>
 
-                                            {/* Live SD-WAN Path Status & Inspector Bar */}
-                                            <div className="mt-2.5 flex items-center gap-2 flex-wrap">
-                                                {!livePath?.egress_path && !livePath?.loading && !livePath?.error && !livePath?.message && (
-                                                    <button
-                                                        onClick={() => handleCheckLivePath(testKey, test.target, sourcePort)}
-                                                        className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 border border-blue-500/30 transition-all shadow-sm hover:shadow active:scale-95 group cursor-pointer"
-                                                        title="Query Prisma SD-WAN Flow Browser via API to inspect active WAN paths and failover history for this UDP flow"
-                                                    >
-                                                        <Search size={11} className="group-hover:scale-110 transition-transform" />
-                                                        <span>Inspect Live Path (Prisma SD-WAN)</span>
-                                                    </button>
-                                                )}
-
-                                                {livePath?.loading && (
-                                                    <div className="inline-flex items-center gap-2 px-2.5 py-1 rounded-lg bg-blue-500/10 border border-blue-500/30 text-blue-400 text-[11px] font-mono animate-pulse">
-                                                        <RotateCw size={11} className="animate-spin text-blue-400" />
-                                                        <span>Querying Prisma SASE Flow API (UDP port {sourcePort})...</span>
-                                                    </div>
-                                                )}
-
-                                                {livePath?.egress_path && (
-                                                    <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-emerald-950/40 border border-emerald-500/40 text-xs shadow-[0_0_15px_rgba(16,185,129,0.15)] flex-wrap animate-in fade-in duration-300">
-                                                        <div className="flex items-center gap-1.5 font-bold text-emerald-400 text-[11px]">
-                                                            <ArrowRightLeft size={12} className="text-emerald-400" />
-                                                            <span className="uppercase text-[9px] text-text-muted tracking-wider">
-                                                                {livePath.path_history && livePath.path_history.length > 1 ? 'Failover Path Sequence:' : 'Active Egress Path:'}
-                                                            </span>
-                                                        </div>
-
-                                                        {/* If multiple path decisions exist, show the clean sequential progression (Path 1 -> Path 2) */}
-                                                        {livePath.path_history && livePath.path_history.length > 1 ? (
-                                                            <div className="flex items-center gap-2 flex-wrap font-mono text-[11px]">
-                                                                {livePath.path_history.map((histItem: any, hIdx: number, hArr: any[]) => {
-                                                                    const isCurrent = hIdx === hArr.length - 1;
-                                                                    return (
-                                                                        <React.Fragment key={hIdx}>
-                                                                            <div
-                                                                                className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg border transition-all ${
-                                                                                    isCurrent
-                                                                                        ? 'bg-emerald-950/80 border-emerald-400/80 text-emerald-200 font-bold shadow-[0_0_12px_rgba(16,185,129,0.35)]'
-                                                                                        : 'bg-card-secondary/80 border-border/80 text-text-muted opacity-80'
-                                                                                }`}
-                                                                            >
-                                                                                <span className={`text-[8px] font-mono px-1 py-0.2 rounded font-black tracking-tight ${
-                                                                                    isCurrent ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40' : 'bg-card border border-border text-text-muted'
-                                                                                }`}>
-                                                                                    {hIdx + 1}
-                                                                                </span>
-                                                                                <span className={`font-bold tracking-tight ${isCurrent ? 'text-text-primary' : 'line-through text-text-muted'}`}>
-                                                                                    {histItem.path}
-                                                                                </span>
-                                                                                {isCurrent && (
-                                                                                    <span className="text-[7px] bg-emerald-500 text-slate-950 font-black px-1.5 py-0.5 rounded uppercase tracking-wider ml-1">
-                                                                                        ACTIVE
-                                                                                    </span>
-                                                                                )}
-                                                                            </div>
-                                                                            {hIdx < hArr.length - 1 && (
-                                                                                <span className="text-orange-400 font-bold text-xs">➔</span>
-                                                                            )}
-                                                                        </React.Fragment>
-                                                                    );
-                                                                })}
-                                                            </div>
-                                                        ) : (
-                                                            <div className="flex items-center gap-1 font-mono font-bold text-emerald-300 text-[11px]">
-                                                                {livePath.egress_path.split(' → ').map((seg: string, idx: number, arr: string[]) => (
-                                                                    <React.Fragment key={idx}>
-                                                                        <span className="bg-emerald-900/60 px-1.5 py-0.5 rounded border border-emerald-500/30 text-emerald-200">
-                                                                            {seg}
-                                                                        </span>
-                                                                        {idx < arr.length - 1 && <span className="text-emerald-500/60 text-[10px]">→</span>}
-                                                                    </React.Fragment>
-                                                                ))}
-                                                            </div>
-                                                        )}
-
-                                                        {livePath.path_type && (
-                                                            <span className="text-[9px] px-1.5 py-0.5 rounded bg-card-secondary text-text-muted font-mono uppercase border border-border">
-                                                                {livePath.path_type}
-                                                            </span>
-                                                        )}
-                                                        <button
-                                                            onClick={() => handleCheckLivePath(testKey, test.target, sourcePort)}
-                                                            disabled={livePath.loading}
-                                                            className="p-1 hover:bg-emerald-500/20 rounded text-emerald-400/80 hover:text-emerald-300 transition-colors ml-1 cursor-pointer"
-                                                            title={`Re-check path (last verified at ${new Date(livePath.timestamp || Date.now()).toLocaleTimeString()})`}
-                                                        >
-                                                            <RotateCw size={11} className={livePath.loading ? 'animate-spin' : ''} />
-                                                        </button>
-                                                    </div>
-                                                )}
-
-                                                {(livePath?.error || (livePath?.message && !livePath?.egress_path)) && !livePath?.loading && (
-                                                    <div className="inline-flex items-center gap-2 px-2.5 py-1 rounded-lg bg-amber-500/10 border border-amber-500/30 text-amber-400 text-[11px] animate-in fade-in">
-                                                        <Info size={12} className="shrink-0" />
-                                                        <span>{livePath.message || livePath.error}</span>
-                                                        <button
-                                                            onClick={() => handleCheckLivePath(testKey, test.target, sourcePort)}
-                                                            className="underline font-bold text-amber-300 hover:text-amber-100 ml-1 flex items-center gap-1 cursor-pointer"
-                                                        >
-                                                            <RotateCw size={10} /> Retry
-                                                        </button>
-                                                    </div>
+                                            {/* Structured Technical Metadata Pills (No duplicate duration) */}
+                                            <div className="flex items-center gap-1.5 flex-wrap text-[10px] font-mono text-text-muted">
+                                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-card-secondary/70 border border-border/60 text-text-secondary">
+                                                    <Server size={10} className="text-blue-400" />
+                                                    {test.target || '--'}
+                                                </span>
+                                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-card-secondary/70 border border-border/60">
+                                                    UDP Src: <strong className="text-text-primary">{sourcePort}</strong>
+                                                </span>
+                                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-card-secondary/70 border border-border/60">
+                                                    Rate: <strong className="text-text-primary">{test.rate_pps || test.rate} pps</strong>
+                                                </span>
+                                                {test.start_time && (
+                                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-card-secondary/40 border border-border/40 text-text-muted">
+                                                        Started: {new Date(test.start_time * 1000).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                                                    </span>
                                                 )}
                                             </div>
                                         </div>
 
-                                        <div className="flex flex-col items-end gap-1.5 shrink-0">
-                                            <div className="flex items-center gap-3">
-                                                <button
-                                                    data-no-export="true"
-                                                    onClick={(e) => handleExportPocCard(`active-test-card-${test.testId}`, `stigix-poc-live-${test.testId}-${new Date().toISOString().slice(0, 10)}`, e)}
-                                                    disabled={exportingPocId === `active-test-card-${test.testId}`}
-                                                    className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[10px] font-bold bg-card-secondary hover:bg-card-hover text-text-muted hover:text-text-primary border border-border transition-all cursor-pointer shadow-sm active:scale-95 disabled:opacity-50"
-                                                    title="Export full test card as HD PNG screenshot for client PoC reports"
-                                                >
-                                                    {exportingPocId === `active-test-card-${test.testId}` ? (
-                                                        <RotateCw size={11} className="animate-spin text-blue-400" />
-                                                    ) : (
-                                                        <Camera size={11} className="text-blue-400" />
-                                                    )}
-                                                    <span>{exportingPocId === `active-test-card-${test.testId}` ? 'Exporting...' : 'Export PoC Card'}</span>
-                                                </button>
-                                                <div className="flex gap-2">
-                                                    <div className="flex flex-col items-end">
-                                                        <span className="text-[9px] font-bold text-text-muted uppercase tracking-tighter">Packets Sent</span>
-                                                        <span className="text-sm font-bold text-green-600 dark:text-green-400 font-mono">{test.sent}</span>
-                                                    </div>
-                                                    <div className="w-[1px] h-6 bg-border self-center mx-1" />
-                                                    <div className="flex flex-col items-end">
-                                                        <span className="text-[9px] font-bold text-text-muted uppercase tracking-tighter">Received</span>
-                                                        <span className="text-sm font-bold text-blue-600 dark:text-blue-400 font-mono">{test.received}</span>
-                                                    </div>
+                                        {/* Right Side: Sent/Received/Drops + Export PoC + Stop Probe */}
+                                        <div className="flex items-center gap-2.5 flex-wrap sm:flex-nowrap shrink-0 self-start lg:self-center">
+                                            <div className="flex items-center gap-2.5 bg-card-secondary/50 px-3 py-1.5 rounded-xl border border-border/60">
+                                                <div className="flex flex-col items-end">
+                                                    <span className="text-[8px] font-bold text-text-muted uppercase tracking-wider">Sent</span>
+                                                    <span className="text-xs font-bold text-emerald-400 font-mono leading-tight">{test.sent || 0}</span>
+                                                </div>
+                                                <div className="w-px h-5 bg-border/70" />
+                                                <div className="flex flex-col items-end">
+                                                    <span className="text-[8px] font-bold text-text-muted uppercase tracking-wider">Received</span>
+                                                    <span className="text-xs font-bold text-blue-400 font-mono leading-tight">{test.received || 0}</span>
+                                                </div>
+                                                <div className="w-px h-5 bg-border/70" />
+                                                <div className="flex flex-col items-end">
+                                                    <span className="text-[8px] font-bold text-text-muted uppercase tracking-wider">Drops</span>
+                                                    <span className={`text-xs font-bold font-mono leading-tight ${dropsCount > 0 ? 'text-red-400' : 'text-text-muted'}`}>
+                                                        {dropsCount}
+                                                    </span>
                                                 </div>
                                             </div>
+
+                                            <button
+                                                data-no-export="true"
+                                                onClick={(e) => handleExportPocCard(`active-test-card-${test.testId}`, `stigix-poc-live-${test.testId}-${new Date().toISOString().slice(0, 10)}`, e)}
+                                                disabled={exportingPocId === `active-test-card-${test.testId}`}
+                                                className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[10px] font-bold bg-card-secondary hover:bg-card-hover text-text-muted hover:text-text-primary border border-border transition-all cursor-pointer shadow-sm active:scale-95 disabled:opacity-50"
+                                                title="Export full test card as HD PNG screenshot for client PoC reports"
+                                            >
+                                                {exportingPocId === `active-test-card-${test.testId}` ? (
+                                                    <RotateCw size={11} className="animate-spin text-blue-400" />
+                                                ) : (
+                                                    <Camera size={11} className="text-blue-400" />
+                                                )}
+                                                <span>{exportingPocId === `active-test-card-${test.testId}` ? 'Exporting...' : 'PoC Card'}</span>
+                                            </button>
+
+                                            <button
+                                                data-no-export="true"
+                                                onClick={() => stopTest(test.testId)}
+                                                disabled={isStopping}
+                                                className="px-3 py-1.5 bg-red-600/15 hover:bg-red-600 text-red-400 hover:text-white rounded-lg border border-red-500/30 text-[10px] font-bold transition-all flex items-center gap-1.5 shadow-sm cursor-pointer disabled:opacity-50"
+                                                title="Stop active convergence probe"
+                                            >
+                                                {isStopping ? <Activity size={10} className="animate-spin" /> : <Square size={10} fill="currentColor" />}
+                                                <span>{isStopping ? 'STOPPING...' : 'STOP'}</span>
+                                            </button>
                                         </div>
                                     </div>
 
@@ -1300,89 +1265,201 @@ export default function Failover(props: FailoverProps) {
 
                                 return (
                                     <>
-                                        {/* Interactive Timeline Scrubber & Window Controls */}
-                                        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2.5 mb-3 bg-card-secondary/40 p-2 rounded-xl border border-border/50 text-[11px]">
-                                            {/* Window Presets */}
-                                            <div className="flex items-center gap-1.5">
-                                                <span className="text-[9px] text-text-muted font-bold uppercase tracking-wider flex items-center gap-1">
-                                                    <ZoomIn size={11} className="text-blue-400" /> Window:
-                                                </span>
-                                                {(['1m', '5m', '15m', 'all'] as const).map(w => (
+                                        {/* Unified Control Strip: Prisma SD-WAN Path Inspector + Timeline Window & Scrubber */}
+                                        <div className="flex flex-col xl:flex-row items-stretch xl:items-center justify-between gap-2.5 bg-card-secondary/40 px-3 py-2 rounded-xl border border-border/50 text-[11px]">
+                                            {/* Left: Prisma SD-WAN Live Path Inspector */}
+                                            <div className="flex items-center gap-2 flex-wrap">
+                                                {!livePath?.egress_path && !livePath?.loading && !livePath?.error && !livePath?.message && (
                                                     <button
-                                                        key={w}
-                                                        onClick={() => setLiveZoomWindows(prev => ({ ...prev, [test.testId]: w }))}
-                                                        className={`px-2 py-0.5 rounded text-[9px] font-mono font-bold uppercase transition-all cursor-pointer ${
-                                                            zoom === w
-                                                                ? 'bg-blue-600 text-white shadow-sm'
-                                                                : 'bg-card text-text-muted hover:text-text-primary border border-border hover:bg-card-secondary'
-                                                        }`}
+                                                        onClick={() => handleCheckLivePath(testKey, test.target, sourcePort)}
+                                                        className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[10px] font-semibold bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 border border-blue-500/30 transition-all shadow-sm hover:shadow active:scale-95 group cursor-pointer"
+                                                        title="Query Prisma SD-WAN Flow Browser via API to inspect active WAN paths and failover history for this UDP flow"
                                                     >
-                                                        {w === 'all' ? 'ALL' : w}
+                                                        <Search size={11} className="group-hover:scale-110 transition-transform" />
+                                                        <span>Inspect Live Path (Prisma SD-WAN)</span>
                                                     </button>
-                                                ))}
-                                                {!isLive && (
-                                                    <span className="text-[9px] font-mono text-amber-400 ml-2 font-semibold">
-                                                        [{visibleStart} ➔ {visibleEnd}]
-                                                    </span>
+                                                )}
+
+                                                {livePath?.loading && (
+                                                    <div className="inline-flex items-center gap-2 px-2.5 py-1 rounded-lg bg-blue-500/10 border border-blue-500/30 text-blue-400 text-[10px] font-mono animate-pulse">
+                                                        <RotateCw size={11} className="animate-spin text-blue-400" />
+                                                        <span>Querying Prisma SASE Flow API (UDP {sourcePort})...</span>
+                                                    </div>
+                                                )}
+
+                                                {livePath?.egress_path && (
+                                                    <div className="inline-flex items-center gap-2 px-2.5 py-1 rounded-lg bg-emerald-950/40 border border-emerald-500/40 text-xs shadow-[0_0_15px_rgba(16,185,129,0.12)] flex-wrap animate-in fade-in duration-300">
+                                                        <div className="flex items-center gap-1 font-bold text-emerald-400 text-[10px]">
+                                                            <ArrowRightLeft size={11} className="text-emerald-400" />
+                                                            <span className="uppercase text-[9px] text-text-muted tracking-wider">
+                                                                {livePath.path_history && livePath.path_history.length > 1 ? 'Failover Sequence:' : 'Active Path:'}
+                                                            </span>
+                                                        </div>
+
+                                                        {livePath.path_history && livePath.path_history.length > 1 ? (
+                                                            <div className="flex items-center gap-1.5 flex-wrap font-mono text-[10px]">
+                                                                {livePath.path_history.map((histItem: any, hIdx: number, hArr: any[]) => {
+                                                                    const isCurrent = hIdx === hArr.length - 1;
+                                                                    return (
+                                                                        <React.Fragment key={hIdx}>
+                                                                            <div
+                                                                                className={`flex items-center gap-1 px-2 py-0.5 rounded-md border transition-all ${
+                                                                                    isCurrent
+                                                                                        ? 'bg-emerald-950/80 border-emerald-400/80 text-emerald-200 font-bold shadow-[0_0_10px_rgba(16,185,129,0.3)]'
+                                                                                        : 'bg-card-secondary/80 border-border/80 text-text-muted opacity-80'
+                                                                                }`}
+                                                                            >
+                                                                                <span className={`text-[8px] font-mono px-1 rounded font-black ${
+                                                                                    isCurrent ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40' : 'bg-card border border-border text-text-muted'
+                                                                                }`}>
+                                                                                    {hIdx + 1}
+                                                                                </span>
+                                                                                <span className={`font-bold tracking-tight ${isCurrent ? 'text-text-primary' : 'line-through text-text-muted'}`}>
+                                                                                    {histItem.path}
+                                                                                </span>
+                                                                                {isCurrent && (
+                                                                                    <span className="text-[7px] bg-emerald-500 text-slate-950 font-black px-1 py-0.2 rounded uppercase tracking-wider ml-0.5">
+                                                                                        ACTIVE
+                                                                                    </span>
+                                                                                )}
+                                                                            </div>
+                                                                            {hIdx < hArr.length - 1 && (
+                                                                                <span className="text-orange-400 font-bold text-[10px]">➔</span>
+                                                                            )}
+                                                                        </React.Fragment>
+                                                                    );
+                                                                })}
+                                                            </div>
+                                                        ) : (
+                                                            <div className="flex items-center gap-1 font-mono font-bold text-emerald-300 text-[10px]">
+                                                                {livePath.egress_path.split(' → ').map((seg: string, idx: number, arr: string[]) => (
+                                                                    <React.Fragment key={idx}>
+                                                                        <span className="bg-emerald-900/60 px-1.5 py-0.5 rounded border border-emerald-500/30 text-emerald-200">
+                                                                            {seg}
+                                                                        </span>
+                                                                        {idx < arr.length - 1 && <span className="text-emerald-500/60 text-[10px]">→</span>}
+                                                                    </React.Fragment>
+                                                                ))}
+                                                            </div>
+                                                        )}
+
+                                                        {livePath.path_type && (
+                                                            <span className="text-[8px] px-1.5 py-0.5 rounded bg-card-secondary text-text-muted font-mono uppercase border border-border">
+                                                                {livePath.path_type}
+                                                            </span>
+                                                        )}
+                                                        <button
+                                                            onClick={() => handleCheckLivePath(testKey, test.target, sourcePort)}
+                                                            disabled={livePath.loading}
+                                                            className="p-0.5 hover:bg-emerald-500/20 rounded text-emerald-400/80 hover:text-emerald-300 transition-colors cursor-pointer"
+                                                            title={`Re-check path (last verified at ${new Date(livePath.timestamp || Date.now()).toLocaleTimeString()})`}
+                                                        >
+                                                            <RotateCw size={10} className={livePath.loading ? 'animate-spin' : ''} />
+                                                        </button>
+                                                    </div>
+                                                )}
+
+                                                {(livePath?.error || (livePath?.message && !livePath?.egress_path)) && !livePath?.loading && (
+                                                    <div className="inline-flex items-center gap-2 px-2.5 py-1 rounded-lg bg-amber-500/10 border border-amber-500/30 text-amber-400 text-[10px] animate-in fade-in">
+                                                        <Info size={11} className="shrink-0" />
+                                                        <span>{livePath.message || livePath.error}</span>
+                                                        <button
+                                                            onClick={() => handleCheckLivePath(testKey, test.target, sourcePort)}
+                                                            className="underline font-bold text-amber-300 hover:text-amber-100 ml-1 flex items-center gap-1 cursor-pointer"
+                                                        >
+                                                            <RotateCw size={9} /> Retry
+                                                        </button>
+                                                    </div>
                                                 )}
                                             </div>
 
-                                            {/* Scrubber slider + Rewind info */}
-                                            <div className="flex items-center gap-2.5 w-full sm:w-auto justify-end flex-1 max-w-lg">
-                                                <span className="text-[9px] font-mono text-text-muted shrink-0" title="Start of test">
-                                                    {fullSeries[0]?.elapsedLabel || '00:00'}
-                                                </span>
-                                                <input
-                                                    type="range"
-                                                    min="0"
-                                                    max="100"
-                                                    value={scrubPos}
-                                                    onChange={(e) => {
-                                                        const val = Number(e.target.value);
-                                                        setLiveScrubPositions(prev => ({ ...prev, [test.testId]: val }));
-                                                    }}
-                                                    className="w-full h-2 bg-slate-700/60 rounded-lg appearance-none cursor-pointer accent-blue-500 hover:accent-blue-400 transition-all"
-                                                    title={isLive ? 'LIVE Mode' : `Rewound to ${curScrubPoint?.timeLabel || ''} (${curScrubPoint?.elapsedLabel || ''})`}
-                                                />
-                                                <span className="text-[9px] font-mono text-text-muted shrink-0" title="Latest live metric">
-                                                    {fullSeries[fullSeries.length - 1]?.elapsedLabel || '00:00'}
-                                                </span>
+                                            {/* Right: Window Presets & Interactive Timeline Scrubber */}
+                                            <div className="flex flex-wrap sm:flex-nowrap items-center justify-between xl:justify-end gap-3 flex-1">
+                                                <div className="flex items-center gap-1 shrink-0">
+                                                    <span className="text-[9px] text-text-muted font-bold uppercase tracking-wider flex items-center gap-1 mr-0.5">
+                                                        <ZoomIn size={10} className="text-blue-400" /> Window:
+                                                    </span>
+                                                    {(['1m', '5m', '15m', 'all'] as const).map(w => (
+                                                        <button
+                                                            key={w}
+                                                            onClick={() => setLiveZoomWindows(prev => ({ ...prev, [test.testId]: w }))}
+                                                            className={`px-1.5 py-0.5 rounded text-[9px] font-mono font-bold uppercase transition-all cursor-pointer ${
+                                                                zoom === w
+                                                                    ? 'bg-blue-600 text-white shadow-sm'
+                                                                    : 'bg-card text-text-muted hover:text-text-primary border border-border hover:bg-card-secondary'
+                                                            }`}
+                                                        >
+                                                            {w === 'all' ? 'ALL' : w}
+                                                        </button>
+                                                    ))}
+                                                    {!isLive && (
+                                                        <span className="text-[9px] font-mono text-amber-400 ml-1 font-semibold">
+                                                            [{visibleStart}➔{visibleEnd}]
+                                                        </span>
+                                                    )}
+                                                </div>
 
-                                                {isLive ? (
-                                                    <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 font-bold text-[9px] uppercase tracking-wider shrink-0 shadow-sm">
-                                                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                                                        <span>LIVE</span>
-                                                    </div>
-                                                ) : (
-                                                    <button
-                                                        onClick={() => setLiveScrubPositions(prev => ({ ...prev, [test.testId]: 100 }))}
-                                                        className="flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-amber-500/20 hover:bg-amber-500 text-amber-300 hover:text-slate-950 border border-amber-500/40 font-bold text-[9px] uppercase tracking-wider transition-all shrink-0 cursor-pointer shadow-[0_0_10px_rgba(245,158,11,0.2)] animate-pulse"
-                                                        title="Click to snap back to real-time live feed"
-                                                    >
-                                                        <Rewind size={10} className="rotate-180" />
-                                                        <span>Jump to Live</span>
-                                                    </button>
-                                                )}
+                                                <div className="flex items-center gap-2 w-full sm:w-auto justify-end flex-1 max-w-xs">
+                                                    <span className="text-[9px] font-mono text-text-muted shrink-0" title="Start of test">
+                                                        {fullSeries[0]?.elapsedLabel || '00:00'}
+                                                    </span>
+                                                    <input
+                                                        type="range"
+                                                        min="0"
+                                                        max="100"
+                                                        value={scrubPos}
+                                                        onChange={(e) => {
+                                                            const val = Number(e.target.value);
+                                                            setLiveScrubPositions(prev => ({ ...prev, [test.testId]: val }));
+                                                        }}
+                                                        className="w-full h-1.5 bg-slate-700/60 rounded-lg appearance-none cursor-pointer accent-blue-500 hover:accent-blue-400 transition-all"
+                                                        title={isLive ? 'LIVE Mode' : `Rewound to ${curScrubPoint?.timeLabel || ''} (${curScrubPoint?.elapsedLabel || ''})`}
+                                                    />
+                                                    <span className="text-[9px] font-mono text-text-muted shrink-0" title="Latest live metric">
+                                                        {fullSeries[fullSeries.length - 1]?.elapsedLabel || '00:00'}
+                                                    </span>
+
+                                                    {isLive ? (
+                                                        <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 font-bold text-[9px] uppercase tracking-wider shrink-0 shadow-sm">
+                                                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                                                            <span>LIVE</span>
+                                                        </div>
+                                                    ) : (
+                                                        <button
+                                                            onClick={() => setLiveScrubPositions(prev => ({ ...prev, [test.testId]: 100 }))}
+                                                            className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-500/20 hover:bg-amber-500 text-amber-300 hover:text-slate-950 border border-amber-500/40 font-bold text-[9px] uppercase tracking-wider transition-all shrink-0 cursor-pointer shadow-[0_0_10px_rgba(245,158,11,0.2)] animate-pulse"
+                                                            title="Click to snap back to real-time live feed"
+                                                        >
+                                                            <Rewind size={9} className="rotate-180" />
+                                                            <span>Live</span>
+                                                        </button>
+                                                    )}
+                                                </div>
                                             </div>
                                         </div>
 
-                                        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-4">
+                                        {/* 3 Aligned Live Charts (Latency, Jitter, Loss) */}
+                                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                                             {/* Latency Chart */}
-                                            <div>
-                                                <div className="flex justify-between items-end mb-2">
-                                                    <div className="text-[10px] text-text-muted font-bold uppercase tracking-widest flex items-center gap-2">
-                                                        <Activity size={12} className="text-emerald-500 animate-pulse" /> Live Latency (RTT)
+                                            <div className="bg-card-secondary/15 border border-border/40 rounded-xl p-2.5">
+                                                <div className="flex justify-between items-start mb-1.5">
+                                                    <div className="text-[10px] text-text-muted font-bold uppercase tracking-widest flex items-center gap-1.5 pt-0.5">
+                                                        <Activity size={11} className="text-emerald-500 animate-pulse" /> Live Latency (RTT)
                                                     </div>
                                                     <div className="flex flex-col items-end">
-                                                        <div className="text-lg font-bold text-emerald-400 font-mono tracking-tight shadow-sm">
-                                                            {isLive ? (typeof test.current_rtt_ms === 'number' ? test.current_rtt_ms : test.avg_rtt_ms) : (curScrubPoint?.rtt ?? test.avg_rtt_ms)} <span className="text-[10px] text-text-muted ml-0.5">ms</span>
+                                                        <div className="text-base font-bold text-emerald-400 font-mono tracking-tight leading-tight">
+                                                            {isLive ? (typeof test.current_rtt_ms === 'number' ? test.current_rtt_ms : test.avg_rtt_ms) : (curScrubPoint?.rtt ?? test.avg_rtt_ms)} <span className="text-[10px] text-text-muted">ms</span>
                                                         </div>
-                                                        {!isLive && curScrubPoint && (
-                                                            <span className="text-[8px] font-mono text-amber-400">@ {curScrubPoint.elapsedLabel}</span>
-                                                        )}
+                                                        <div className="text-[9px] text-text-muted font-mono tracking-tighter">
+                                                            {!isLive && curScrubPoint ? (
+                                                                <span className="text-amber-400">@ {curScrubPoint.elapsedLabel}</span>
+                                                            ) : (
+                                                                <span>Avg: <strong className="text-text-secondary">{test.avg_rtt_ms ?? 0} ms</strong></span>
+                                                            )}
+                                                        </div>
                                                     </div>
                                                 </div>
-                                                <div className="h-[75px] w-full bg-card-secondary/10 rounded overflow-hidden">
+                                                <div className="h-[72px] w-full bg-card-secondary/10 rounded overflow-hidden">
                                                     <ResponsiveContainer width="100%" height="100%">
                                                         <AreaChart data={displaySeries} margin={{ top: 5, right: 5, left: 5, bottom: 0 }}>
                                                             <defs>
@@ -1414,21 +1491,27 @@ export default function Failover(props: FailoverProps) {
                                             </div>
 
                                             {/* Jitter Chart */}
-                                            <div>
-                                                <div className="flex justify-between items-end mb-2">
-                                                    <div className="text-[10px] text-text-muted font-bold uppercase tracking-widest flex items-center gap-2">
-                                                        <Activity size={12} className="text-amber-500 animate-pulse" /> Live Jitter
+                                            <div className="bg-card-secondary/15 border border-border/40 rounded-xl p-2.5">
+                                                <div className="flex justify-between items-start mb-1.5">
+                                                    <div className="text-[10px] text-text-muted font-bold uppercase tracking-widest flex items-center gap-1.5 pt-0.5">
+                                                        <Activity size={11} className="text-amber-500 animate-pulse" /> Live Jitter
                                                     </div>
                                                     <div className="flex flex-col items-end">
-                                                        <div className="text-lg font-bold text-amber-400 font-mono tracking-tight shadow-sm">
-                                                            {isLive ? (test.jitter_ms || 0) : (curScrubPoint?.jitter ?? 0)} <span className="text-[10px] text-text-muted ml-0.5">ms</span>
+                                                        <div className="text-base font-bold text-amber-400 font-mono tracking-tight leading-tight">
+                                                            {isLive ? (test.jitter_ms || 0) : (curScrubPoint?.jitter ?? 0)} <span className="text-[10px] text-text-muted">ms</span>
                                                         </div>
-                                                        {!isLive && curScrubPoint && (
-                                                            <span className="text-[8px] font-mono text-amber-400">@ {curScrubPoint.elapsedLabel}</span>
-                                                        )}
+                                                        <div className="text-[9px] text-text-muted font-mono tracking-tighter">
+                                                            {!isLive && curScrubPoint ? (
+                                                                <span className="text-amber-400">@ {curScrubPoint.elapsedLabel}</span>
+                                                            ) : (
+                                                                <span className={(test.jitter_ms || 0) > 15 ? 'text-amber-400' : 'text-text-muted'}>
+                                                                    {(test.jitter_ms || 0) <= 5 ? 'Stable (<5ms)' : (test.jitter_ms || 0) <= 15 ? 'Moderate' : 'High Jitter'}
+                                                                </span>
+                                                            )}
+                                                        </div>
                                                     </div>
                                                 </div>
-                                                <div className="h-[75px] w-full bg-card-secondary/10 rounded overflow-hidden">
+                                                <div className="h-[72px] w-full bg-card-secondary/10 rounded overflow-hidden">
                                                     <ResponsiveContainer width="100%" height="100%">
                                                         <AreaChart data={displaySeries} margin={{ top: 5, right: 5, left: 5, bottom: 0 }}>
                                                             <defs>
@@ -1460,24 +1543,24 @@ export default function Failover(props: FailoverProps) {
                                             </div>
                                             
                                             {/* Loss Chart */}
-                                            <div>
-                                                <div className="flex justify-between items-end mb-2">
-                                                    <div className="text-[10px] text-text-muted font-bold uppercase tracking-widest flex items-center gap-2">
-                                                        <Activity size={12} className="text-red-500 animate-pulse" /> Live Loss
+                                            <div className="bg-card-secondary/15 border border-border/40 rounded-xl p-2.5">
+                                                <div className="flex justify-between items-start mb-1.5">
+                                                    <div className="text-[10px] text-text-muted font-bold uppercase tracking-widest flex items-center gap-1.5 pt-0.5">
+                                                        <Activity size={11} className="text-red-500 animate-pulse" /> Live Loss
                                                     </div>
                                                     <div className="flex flex-col items-end">
-                                                        <div className={`text-lg font-bold font-mono tracking-tight shadow-sm ${(isLive ? (test.live_loss_pct ?? test.loss_pct ?? 0) : (curScrubPoint?.loss ?? 0)) > 0 ? 'text-red-500 animate-pulse' : 'text-emerald-400'}`}>
-                                                            {isLive ? (test.live_loss_pct !== undefined ? test.live_loss_pct : (test.loss_pct || 0)) : (curScrubPoint?.loss ?? 0)} <span className="text-[10px] text-text-muted ml-0.5">%</span>
+                                                        <div className={`text-base font-bold font-mono tracking-tight leading-tight ${(isLive ? (test.live_loss_pct ?? test.loss_pct ?? 0) : (curScrubPoint?.loss ?? 0)) > 0 ? 'text-red-500 animate-pulse' : 'text-emerald-400'}`}>
+                                                            {isLive ? (test.live_loss_pct !== undefined ? test.live_loss_pct : (test.loss_pct || 0)) : (curScrubPoint?.loss ?? 0)} <span className="text-[10px] text-text-muted">%</span>
                                                         </div>
                                                         <div className="text-[9px] text-text-muted font-mono tracking-tighter">
                                                             Total: <span className={(test.total_loss_pct ?? test.loss_pct ?? 0) > 0 ? 'text-red-400 font-semibold' : 'text-text-secondary'}>{test.total_loss_pct !== undefined ? test.total_loss_pct : (test.loss_pct || 0)}%</span>
-                                                            {test.sent && test.received !== undefined && (
-                                                                <span className="ml-1 opacity-80">({Math.max(0, test.sent - test.received)} drops)</span>
+                                                            {test.sent !== undefined && test.received !== undefined && (
+                                                                <span className="ml-1 opacity-80">({dropsCount} drops)</span>
                                                             )}
                                                         </div>
                                                     </div>
                                                 </div>
-                                                <div className="h-[75px] w-full bg-card-secondary/10 rounded overflow-hidden">
+                                                <div className="h-[72px] w-full bg-card-secondary/10 rounded overflow-hidden">
                                                     <ResponsiveContainer width="100%" height="100%">
                                                         <AreaChart data={displaySeries} margin={{ top: 5, right: 5, left: 5, bottom: 0 }}>
                                                             <defs>
@@ -1509,61 +1592,64 @@ export default function Failover(props: FailoverProps) {
                                             </div>
                                         </div>
 
-                                        <div className="h-[44px] w-full flex flex-col justify-end relative rounded-lg overflow-hidden bg-card-secondary/30 border border-border/40 mb-6 p-1">
-                                            {/* Blackout Overlay */}
-                                            {isLive && test.current_blackout_ms > 0 && (
-                                                <div className="absolute inset-0 z-20 bg-red-950/70 backdrop-blur-[2px] flex items-center justify-center animate-in fade-in">
-                                                    <div className="bg-red-950/90 text-red-400 border border-red-500/60 px-4 py-1 rounded-full text-[10px] font-bold uppercase tracking-widest flex items-center gap-2 shadow-[0_0_25px_rgba(239,68,68,0.5)]">
-                                                        <AlertCircle size={12} className="animate-pulse text-red-400" />
-                                                        <span>NETWORK OUTAGE: {(test.current_blackout_ms / 1000).toFixed(1)}s — FAILOVER IN PROGRESS...</span>
-                                                    </div>
+                                        {/* Bottom Row: Live Sequence Bar with Integrated Header & Legend */}
+                                        <div className="space-y-1.5">
+                                            <div className="flex items-center justify-between text-[9px] text-text-muted font-bold uppercase tracking-widest px-0.5">
+                                                <span className="flex items-center gap-1.5">
+                                                    <Activity size={10} className="text-blue-400" /> Live Sequence Monitoring (Last 100 Packets)
+                                                </span>
+                                                <div className="flex items-center gap-3 font-mono text-[8px]">
+                                                    <span className="flex items-center gap-1 text-sky-400">
+                                                        <span className="w-2 h-2 rounded-[1px] bg-sky-400 inline-block" /> Received OK
+                                                    </span>
+                                                    <span className="flex items-center gap-1 text-red-400">
+                                                        <span className="w-2 h-2 rounded-[1px] bg-red-500 inline-block" /> Dropped (Outage)
+                                                    </span>
                                                 </div>
-                                            )}
-                                            <div className="w-full flex items-end gap-[1.5px] h-full">
-                                                {(() => {
-                                                    const rawHist = test.history || Array(100).fill(1);
-                                                    let histToRender = rawHist;
-                                                    if (!isLive && curScrubPoint) {
-                                                        const dropCount = Math.round(((curScrubPoint.loss || 0) / 100) * 100);
-                                                        histToRender = Array(100).fill(1);
-                                                        for (let d = 0; d < dropCount; d++) {
-                                                            histToRender[99 - d] = 0;
+                                            </div>
+
+                                            <div className="h-[38px] w-full flex flex-col justify-end relative rounded-lg overflow-hidden bg-card-secondary/30 border border-border/40 p-1">
+                                                {/* Blackout Overlay */}
+                                                {isLive && test.current_blackout_ms > 0 && (
+                                                    <div className="absolute inset-0 z-20 bg-red-950/70 backdrop-blur-[2px] flex items-center justify-center animate-in fade-in">
+                                                        <div className="bg-red-950/90 text-red-400 border border-red-500/60 px-4 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-widest flex items-center gap-2 shadow-[0_0_25px_rgba(239,68,68,0.5)]">
+                                                            <AlertCircle size={12} className="animate-pulse text-red-400" />
+                                                            <span>NETWORK OUTAGE: {(test.current_blackout_ms / 1000).toFixed(1)}s — FAILOVER IN PROGRESS...</span>
+                                                        </div>
+                                                    </div>
+                                                )}
+                                                <div className="w-full flex items-end gap-[1.5px] h-full">
+                                                    {(() => {
+                                                        const rawHist = test.history || Array(100).fill(1);
+                                                        let histToRender = rawHist;
+                                                        if (!isLive && curScrubPoint) {
+                                                            const dropCount = Math.round(((curScrubPoint.loss || 0) / 100) * 100);
+                                                            histToRender = Array(100).fill(1);
+                                                            for (let d = 0; d < dropCount; d++) {
+                                                                histToRender[99 - d] = 0;
+                                                            }
                                                         }
-                                                    }
-                                                    return histToRender.map((val: number, i: number) => {
-                                                        const isLast = i === histToRender.length - 1;
-                                                        const isDrop = val === 0;
-                                                        return (
-                                                            <div
-                                                                key={i}
-                                                                className={`flex-1 min-w-[2px] rounded-t-[1px] transition-all duration-150 ${isDrop
-                                                                    ? 'bg-gradient-to-t from-red-600 via-rose-500 to-red-400 h-full shadow-[0_0_8px_rgba(239,68,68,0.85)] z-10 animate-pulse'
-                                                                    : 'bg-gradient-to-t from-blue-700 via-blue-500 to-cyan-400 h-[75%] opacity-90 hover:h-[90%]'}`}
-                                                                style={isLast ? (isDrop ? { background: '#ef4444', boxShadow: '0 0 12px #ef4444', height: '100%' } : { background: '#38bdf8', boxShadow: '0 0 10px #38bdf8', height: '100%' }) : {}}
-                                                                title={isDrop ? `Packet #${i + 1}: DROPPED (Outage)` : `Packet #${i + 1}: Received OK`}
-                                                            />
-                                                        );
-                                                    });
-                                                })()}
+                                                        return histToRender.map((val: number, i: number) => {
+                                                            const isLast = i === histToRender.length - 1;
+                                                            const isDrop = val === 0;
+                                                            return (
+                                                                <div
+                                                                    key={i}
+                                                                    className={`flex-1 min-w-[2px] rounded-t-[1px] transition-all duration-150 ${isDrop
+                                                                        ? 'bg-gradient-to-t from-red-600 via-rose-500 to-red-400 h-full shadow-[0_0_8px_rgba(239,68,68,0.85)] z-10 animate-pulse'
+                                                                        : 'bg-gradient-to-t from-blue-700 via-blue-500 to-cyan-400 h-[75%] opacity-90 hover:h-[90%]'}`}
+                                                                    style={isLast ? (isDrop ? { background: '#ef4444', boxShadow: '0 0 12px #ef4444', height: '100%' } : { background: '#38bdf8', boxShadow: '0 0 10px #38bdf8', height: '100%' }) : {}}
+                                                                    title={isDrop ? `Packet #${i + 1}: DROPPED (Outage)` : `Packet #${i + 1}: Received OK`}
+                                                                />
+                                                            );
+                                                        });
+                                                    })()}
+                                                </div>
                                             </div>
                                         </div>
                                     </>
                                 );
                             })()}
-
-                            <div className="flex justify-between items-center">
-                                <span className="text-[9px] text-text-muted font-bold uppercase tracking-widest flex items-center gap-2">
-                                    <Activity size={10} /> Live Sequence Monitoring
-                                </span>
-                                <button
-                                    onClick={() => stopTest(test.testId)}
-                                    disabled={isStopping}
-                                    className="px-4 py-1.5 bg-red-600/10 hover:bg-red-600 text-red-500 hover:text-white rounded border border-red-500/20 text-[10px] font-bold transition-all flex items-center gap-2 shadow-lg shadow-red-900/10 disabled:opacity-50"
-                                >
-                                    {isStopping ? <Activity size={10} className="animate-spin" /> : <Square size={10} fill="currentColor" />}
-                                    {isStopping ? 'STOPPING...' : 'STOP PROBE'}
-                                </button>
-                            </div>
                         </div>
                     );
                 })()}
