@@ -78,6 +78,16 @@ function findProjectRoot() {
 const PROJECT_ROOT = findProjectRoot();
 log('SYSTEM', `Project Root: ${PROJECT_ROOT}`);
 
+const APP_VERSION = (() => {
+    try {
+        const vPath = path.join(PROJECT_ROOT, 'VERSION');
+        if (fs.existsSync(vPath)) {
+            return fs.readFileSync(vPath, 'utf8').trim();
+        }
+    } catch {}
+    return 'unknown';
+})();
+
 /**
  * Get the path to the Python interpreter.
  * Prefers the virtual environment in engines/.venv if it exists.
@@ -17086,6 +17096,7 @@ app.post('/api/fleet/join-redeem', async (req: any, res: any) => {
             node_token: redeemResult.node_token,
             realm: magicJoinManager.getRealmHash(),
             leader_ip: registryManager.getCurrentIp(),
+            jwt_secret: SECRET_KEY,
             message: 'Node successfully enrolled into Stigix cluster.'
         });
     } catch (err: any) {

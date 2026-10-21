@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.0.68] - 2026-10-21
+
+### Fixed & Resiliency
+- **Fleet Tunnel Diagnostic Endpoint (`web-dashboard/server.ts`)**:
+  - Fixed `ReferenceError: APP_VERSION is not defined` crash in `/api/system/tunnel-status` by defining `APP_VERSION` at startup from `PROJECT_ROOT/VERSION`.
+- **Fleet Reverse Tunnel Peer Authentication Fallback (`web-dashboard/fleet-tunnel.ts`)**:
+  - Added fallback lookup in `magicJoinManager.getNodeTokenForPeer` on the Leader when Spoke connects without explicitly attaching `auth.nodeToken` in the WebSocket handshake.
+- **Magic Join Backward Compatibility (`web-dashboard/server.ts`)**:
+  - Restored `jwt_secret: SECRET_KEY` in `POST /api/fleet/join-redeem` response alongside `node_token` to guarantee seamless compatibility with legacy Spokes.
+
 ## [3.0.67] - 2026-10-21
 
 ### Security & Fixed

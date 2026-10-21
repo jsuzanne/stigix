@@ -278,16 +278,22 @@ export class FleetTunnelManager {
             const fleetTunnelKey = deriveFleetTunnelKey(this.secretKey);
 
             // 1a. Scoped Per-Node Token authentication (Spoke -> Leader or Leader -> Spoke with shared/derived key)
-            if (auth.nodeToken && typeof auth.nodeToken === 'string') {
+            const candidateNode = (auth.nodeToken && typeof auth.nodeToken === 'string')
+                ? auth.nodeToken
+                : (this.magicJoinManager?.getNodeTokenForPeer(auth.instanceId) ||
+                   this.magicJoinManager?.getNodeTokenForPeer(auth.siteName) ||
+                   this.magicJoinManager?.getNodeTokenForPeer(clientIp) || null);
+
+            if (candidateNode && typeof candidateNode === 'string') {
                 try {
-                    const decodedNode: any = jwt.verify(auth.nodeToken, fleetTunnelKey);
+                    const decodedNode: any = jwt.verify(candidateNode, fleetTunnelKey);
                     if (decodedNode && decodedNode.typ === 'STX-NODE') {
                         if (this.magicJoinManager?.isTokenRevoked(decodedNode.jti)) {
                             log('TUNNEL', `Rejecting tunnel connection from ${socket.handshake.address}: join token ${decodedNode.jti} is REVOKED`, 'warn');
                             return next(new Error('token_revoked'));
                         }
-                        jwt.verify(token, auth.nodeToken);
-                        (socket as any).peerNodeToken = auth.nodeToken;
+                        jwt.verify(token, candidateNode);
+                        (socket as any).peerNodeToken = candidateNode;
                         return next();
                     }
                 } catch {}
