@@ -152,9 +152,9 @@ export const SystemHealthModal: React.FC<SystemHealthModalProps> = ({
                         is_registered: !!regData?.is_registered
                     },
                     cloud: {
-                        status: 'connected',
-                        master_key_valid: true,
-                        base_url: 'stigix-target.jlsuzanne.workers.dev',
+                        status: 'ready',
+                        master_key_valid: false,
+                        base_url: '',
                         scenarios_count: 8,
                         poc_id: pocId
                     },

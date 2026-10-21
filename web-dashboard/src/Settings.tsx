@@ -741,13 +741,14 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
 
     const [cloudScenarios, setCloudScenarios] = useState<any[]>([]);
     const [cloudConfig, setCloudConfig] = useState<{ baseUrl: string; hasKey: boolean; isUiDefined?: boolean; stats?: { dateUtc: string; countToday: number } } | null>(null);
-    const [cloudMasterKey, setCloudMasterKey] = useState('');
-    const [showCloudKey, setShowCloudKey] = useState(false);
-    const [showMasterKeyHelp, setShowMasterKeyHelp] = useState(false);
     const [isSavingCloud, setIsSavingCloud] = useState(false);
     const [isTestingCloud, setIsTestingCloud] = useState(false);
     const [cloudTestResult, setCloudTestResult] = useState<{ success?: boolean; error?: string } | null>(null);
     const [cloudDirty, setCloudDirty] = useState(false);
+    const [relayUrl, setRelayUrl] = useState('');
+    const [isTestingRelay, setIsTestingRelay] = useState(false);
+    const [relayTestResult, setRelayTestResult] = useState<{ success?: boolean; error?: string; service?: string; version?: string } | null>(null);
+    const [isSavingRelay, setIsSavingRelay] = useState(false);
 
     // Convergence & Traffic SLA State
     const [convergenceThresholds, setConvergenceThresholds] = useState({ good: 1, degraded: 5, critical: 10, retention_days: 7 });
@@ -1123,16 +1124,22 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
         // system-settings.json for probes/iot/voice
         apiFetch('/api/config/system-settings', { headers: authHeaders })
             .then(r => r.json())
-            .then(data => setSystemSettings((prev: any) => ({
-                ...prev,
-                auto_restart_iot: !!data.auto_restart_iot,
-                auto_restart_voice: !!data.auto_restart_voice,
-                auto_restart_probes: data.auto_restart_probes !== false,
-                auto_sync_probes_to_fleet: data.auto_sync_probes_to_fleet !== false, // default true
-                auto_restart_traffic: data.auto_restart_traffic !== false, // default true
-                auto_restart_custom_tcp: data.auto_restart_custom_tcp !== false, // default true
-                registry_mode: data.registry_mode || 'auto',
-            })))
+            .then(data => {
+                setSystemSettings((prev: any) => ({
+                    ...prev,
+                    auto_restart_iot: !!data.auto_restart_iot,
+                    auto_restart_voice: !!data.auto_restart_voice,
+                    auto_restart_probes: data.auto_restart_probes !== false,
+                    auto_sync_probes_to_fleet: data.auto_sync_probes_to_fleet !== false, // default true
+                    auto_restart_traffic: data.auto_restart_traffic !== false, // default true
+                    auto_restart_custom_tcp: data.auto_restart_custom_tcp !== false, // default true
+                    registry_mode: data.registry_mode || 'standalone',
+                    registry_url: data.registry_url || '',
+                }));
+                if (data.registry_url !== undefined) {
+                    setRelayUrl(data.registry_url || '');
+                }
+            })
             .catch(() => {});
 
         // traffic status comes from applications-config.json via /api/traffic/status
@@ -2491,7 +2498,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
         return <SettingsSkeleton />;
     }
 
-    const saveSystemSetting = async (key: 'auto_restart_iot' | 'auto_restart_voice' | 'auto_restart_traffic' | 'auto_restart_probes' | 'auto_restart_custom_tcp' | 'auto_sync_probes_to_fleet' | 'registry_mode', value: any) => {
+    const saveSystemSetting = async (key: 'auto_restart_iot' | 'auto_restart_voice' | 'auto_restart_traffic' | 'auto_restart_probes' | 'auto_restart_custom_tcp' | 'auto_sync_probes_to_fleet' | 'registry_mode' | 'registry_url', value: any) => {
         const next = { ...systemSettings, [key]: value };
         setSystemSettings(next);
         setSavingSystemSettings(true);
@@ -2506,9 +2513,9 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                     body: JSON.stringify({ [key]: value })
                 });
             }
-            showSuccess('Startup setting saved');
+            showSuccess(key === 'registry_url' ? (value ? 'Rendezvous Relay URL saved' : 'Relay disabled (standalone LAN mode)') : 'Startup setting saved');
         } catch (e) {
-            setErrorMsg('Failed to save startup setting');
+            setErrorMsg(key === 'registry_url' ? 'Failed to save relay URL' : 'Failed to save startup setting');
             setSystemSettings(systemSettings); // rollback
         } finally {
             setSavingSystemSettings(false);
@@ -2612,10 +2619,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                 method: 'POST',
                 headers: authHeaders,
                 body: JSON.stringify({ 
-                    baseUrl: cloudConfig?.baseUrl || 'https://stigix-target.jlsuzanne.workers.dev',
-                    // Only send masterKey if the user has actually typed something.
-                    // If empty + hasKey, let the backend use the saved key from disk.
-                    masterKey: cloudMasterKey.trim() || undefined,
+                    baseUrl: cloudConfig?.baseUrl || '',
                     tsgId: slsConfig?.tsg_id || registryStatus?.poc_id
                 })
             });
@@ -2626,6 +2630,33 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
             setCloudTestResult({ success: false, error: 'Network error' });
         } finally {
             setIsTestingCloud(false);
+        }
+    };
+
+    const handleTestRelay = async () => {
+        setIsTestingRelay(true);
+        setRelayTestResult(null);
+        try {
+            const res = await apiFetch('/api/registry/test-relay', {
+                method: 'POST',
+                headers: authHeaders,
+                body: JSON.stringify({ relayUrl: relayUrl.trim() })
+            });
+            const data = await res.json();
+            setRelayTestResult(data);
+        } catch (e: any) {
+            setRelayTestResult({ success: false, error: 'Network error' });
+        } finally {
+            setIsTestingRelay(false);
+        }
+    };
+
+    const handleSaveRelay = async () => {
+        setIsSavingRelay(true);
+        try {
+            await saveSystemSetting('registry_url', relayUrl.trim());
+        } finally {
+            setIsSavingRelay(false);
         }
     };
 
@@ -2833,13 +2864,12 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                 method: 'POST',
                 headers: authHeaders,
                 body: JSON.stringify({ 
-                    masterKey: cloudMasterKey.trim() || undefined, 
                     baseUrl: cloudConfig?.baseUrl 
                 })
             });
             if (res.ok) {
                 showSuccess('Cloud configuration saved');
-                setCloudMasterKey(''); // Clear sensitive field
+                setCloudDirty(false);
                 const data = await apiFetch('/api/config/cloud', { headers: authHeaders }).then(r => r.json());
                 setCloudConfig(data);
             } else {
@@ -4158,7 +4188,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                                         </div>
                                         <div>
                                             <div className="flex items-center gap-2">
-                                                <h3 className="text-sm font-black text-text-primary tracking-tight">Worker Target Configuration &amp; Fleet Propagation</h3>
+                                                <h3 className="text-sm font-black text-text-primary tracking-tight">Synthetic Probes Target (<code className="font-mono text-blue-400 text-xs">stigix-cloudflare-target</code>)</h3>
                                                 {cloudConfig?.hasKey && (
                                                     <span className="flex items-center gap-1.5 text-[8.5px] font-black text-emerald-500 uppercase tracking-widest bg-emerald-500/10 px-2.5 py-0.5 rounded-full border border-emerald-500/20 shadow-sm">
                                                         <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
@@ -4167,7 +4197,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                                                 )}
                                             </div>
                                             <p className="text-[10px] text-text-muted mt-0.5 opacity-70">
-                                                HMAC-SHA256 signature credentials required for Synthetic Cloud Probes targeting the Cloudflare edge
+                                                Optional edge responder for SaaS benchmarks, TTFB latency, and cloud synthetic probes
                                             </p>
                                         </div>
                                     </div>
@@ -4183,71 +4213,14 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                                     {/* Left inputs */}
                                     <div className="lg:col-span-2 space-y-4">
                                         <div className="space-y-1.5">
-                                            <div className="flex flex-wrap items-center justify-between gap-2 pl-1">
-                                                <div className="flex items-center gap-2">
-                                                    <label className="text-[10px] font-black text-text-muted uppercase tracking-[0.2em]">Master Key</label>
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => setShowMasterKeyHelp(!showMasterKeyHelp)}
-                                                        className="text-[9.5px] font-bold text-blue-500 hover:text-blue-400 flex items-center gap-1 transition-colors group"
-                                                    >
-                                                        <Key size={10} className="group-hover:scale-110 transition-transform" />
-                                                        <span>How to set a custom key?</span>
-                                                        <ChevronDown size={10} className={cn("transition-transform duration-200", showMasterKeyHelp && "rotate-180")} />
-                                                    </button>
-                                                </div>
-                                                {cloudConfig?.hasKey && (
-                                                    <span className="text-[9px] font-bold text-text-muted opacity-60">
-                                                        Saved key active on disk
+                                            <div className="flex items-center justify-between pl-1">
+                                                <label className="text-[10px] font-black text-text-muted uppercase tracking-[0.2em]">Worker Base URL</label>
+                                                {cloudConfig?.baseUrl && (
+                                                    <span className="text-[9px] font-bold text-emerald-500">
+                                                        Active
                                                     </span>
                                                 )}
                                             </div>
-
-                                            {showMasterKeyHelp && (
-                                                <div className="p-3.5 bg-blue-500/5 border border-blue-500/20 rounded-xl text-xs space-y-2.5 animate-in fade-in duration-200">
-                                                    <div className="flex items-center gap-1.5 font-bold text-text-primary text-[11px]">
-                                                        <Key size={12} className="text-blue-500" />
-                                                        <span>How to configure a private Master Key in Cloudflare:</span>
-                                                    </div>
-                                                    <ol className="list-decimal list-inside space-y-1.5 text-[10.5px] text-text-muted leading-relaxed pl-1">
-                                                        <li>Open <a href="https://dash.cloudflare.com" target="_blank" rel="noopener noreferrer" className="text-blue-500 hover:underline inline-flex items-center gap-0.5 font-semibold">Cloudflare Dashboard <ExternalLink size={9} /></a> &rarr; <strong>Workers &amp; Pages</strong> &rarr; Click <code className="bg-card px-1.5 py-0.5 rounded text-text-primary font-mono text-[9.5px]">stigix-target</code>.</li>
-                                                        <li>Navigate to the <strong>Settings</strong> tab &rarr; <strong>Variables and Secrets</strong>.</li>
-                                                        <li>Add or edit the secret named <code className="bg-card px-1.5 py-0.5 rounded text-blue-400 font-mono text-[9.5px]">MASTER_SIGNATURE_KEY</code>:
-                                                            <div className="pl-4 pt-1 text-text-muted space-y-0.5 text-[10px]">
-                                                                <div>• <strong>Value</strong>: Type your private secret passphrase.</div>
-                                                                <div>• <strong>Type</strong>: Select <strong>Encrypt</strong> (Secret) to secure it.</div>
-                                                                <div>• Click <strong>Deploy</strong> to apply worldwide.</div>
-                                                            </div>
-                                                        </li>
-                                                        <li>Paste this exact passphrase into the <strong>Master Key</strong> field below, then click <strong>Save &amp; Sync Fleet 📢</strong>.</li>
-                                                    </ol>
-                                                    <div className="text-[9.5px] text-text-muted/80 italic pt-1.5 border-t border-border/40">
-                                                        💡 Default Key: If you haven't configured a custom secret in Cloudflare yet, the template defaults to <code className="font-mono text-text-primary font-bold">Stigix2026</code>.
-                                                    </div>
-                                                </div>
-                                            )}
-                                            <div className="relative">
-                                                <input
-                                                    type={showCloudKey ? "text" : "password"}
-                                                    autoComplete="new-password"
-                                                    placeholder={cloudConfig?.hasKey ? "•••••••••••••••• (Leave empty to keep saved key)" : "Enter Master Key (e.g. Stigix2026)..."}
-                                                    value={cloudMasterKey}
-                                                    onChange={e => { setCloudMasterKey(e.target.value); setCloudDirty(true); setCloudTestResult(null); }}
-                                                    className="w-full bg-card hover:bg-card-hover border border-border text-xs font-mono text-text-primary rounded-xl px-4 py-2.5 outline-none focus:ring-1 focus:ring-blue-500 transition-all pr-12"
-                                                />
-                                                <button
-                                                    type="button"
-                                                    onClick={() => setShowCloudKey(!showCloudKey)}
-                                                    className="absolute right-3 top-1/2 -translate-y-1/2 p-1 hover:bg-card-secondary rounded-lg text-text-muted transition-colors"
-                                                    title={showCloudKey ? "Hide key" : "Show key"}
-                                                >
-                                                    <Globe size={13} className={showCloudKey ? "text-blue-500" : "opacity-40"} />
-                                                </button>
-                                            </div>
-                                        </div>
-
-                                        <div className="space-y-1.5">
-                                            <label className="text-[10px] font-black text-text-muted uppercase tracking-[0.2em] pl-1">Worker Base URL</label>
                                             <input
                                                 type="text"
                                                 placeholder="https://stigix-target.<subdomain>.workers.dev"
@@ -4268,7 +4241,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                                             </button>
                                             <button
                                                 onClick={saveCloudConfig}
-                                                disabled={isSavingCloud || (!cloudMasterKey && !cloudDirty)}
+                                                disabled={isSavingCloud || !cloudDirty}
                                                 className={cn(
                                                     "px-5 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-2 shadow-sm disabled:opacity-50",
                                                     isSavingCloud ? "bg-card-secondary text-text-muted border border-border" : "bg-blue-600 hover:bg-blue-500 text-white shadow-blue-900/20"
@@ -4285,7 +4258,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                                                     {cloudTestResult.success ? (
                                                         <>
                                                             <CheckCircle2 size={11} />
-                                                            <span>Worker Reachable • Signature OK</span>
+                                                            <span>Worker Reachable • Ready</span>
                                                         </>
                                                     ) : (
                                                         <>
@@ -4315,6 +4288,148 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                                             <div className="flex items-center gap-1.5">
                                                 <Zap size={12} className="text-amber-500" />
                                                 <span>Hot-reloaded without node restart</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* ── WAN Rendezvous Relay Configuration (Universal Magic Join) ── */}
+                            <div className="bg-card-secondary/30 border border-border/70 rounded-2xl p-6 space-y-6">
+                                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-border/40 pb-4">
+                                    <div className="flex items-center gap-3">
+                                        <div className="p-2.5 bg-purple-600/10 rounded-xl text-purple-500">
+                                            <Radio size={22} />
+                                        </div>
+                                        <div>
+                                            <div className="flex items-center gap-2">
+                                                <h3 className="text-sm font-black text-text-primary tracking-tight">WAN Rendezvous Relay (<code className="font-mono text-purple-400 text-xs">stigix-registry</code>)</h3>
+                                                {relayUrl ? (
+                                                    <span className="flex items-center gap-1.5 text-[8.5px] font-black text-emerald-500 uppercase tracking-widest bg-emerald-500/10 px-2.5 py-0.5 rounded-full border border-emerald-500/20 shadow-sm">
+                                                        <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                                                        Configured
+                                                    </span>
+                                                ) : (
+                                                    <span className="text-[8.5px] font-black text-text-muted uppercase tracking-widest bg-card px-2.5 py-0.5 rounded-full border border-border shadow-sm">
+                                                        Standalone / LAN Only
+                                                    </span>
+                                                )}
+                                            </div>
+                                            <p className="text-[10px] text-text-muted mt-0.5 opacity-70">
+                                                Server-Sent Events (SSE) push channel for multi-site WAN peer discovery behind NATs and corporate firewalls
+                                            </p>
+                                        </div>
+                                    </div>
+                                    <div className="flex items-center gap-3">
+                                        <a
+                                            href="https://deploy.workers.cloudflare.com/?url=https://github.com/jsuzanne/stigix/tree/v3/stigix-registry"
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="px-4 py-2 bg-[#F38020] hover:bg-[#E56A05] text-white rounded-xl text-[10px] font-black uppercase tracking-wider flex items-center justify-center gap-2 shadow-sm transition-all hover:scale-[1.02] active:scale-[0.98]"
+                                        >
+                                            <Radio size={13} />
+                                            <span>Deploy Relay Worker</span>
+                                            <ExternalLink size={11} className="opacity-80" />
+                                        </a>
+                                    </div>
+                                </div>
+
+                                {/* Educational Notice */}
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5 text-xs">
+                                    <div className="bg-card/70 border border-emerald-500/20 rounded-xl p-3.5 space-y-1">
+                                        <div className="flex items-center gap-2 text-emerald-500 font-black text-[11px] uppercase tracking-wider">
+                                            <ShieldCheck size={14} />
+                                            <span>Private LAN / Local Lab (Zero Cloud)</span>
+                                        </div>
+                                        <p className="text-[10.5px] text-text-muted leading-relaxed">
+                                            By default, Stigix operates in <strong>Standalone Mode</strong> with 0 external network requests. In private labs, spokes join leaders directly via private IP or Join Tokens (<code className="font-mono text-text-primary text-[10px]">STX-...</code>). No Cloudflare worker is needed.
+                                        </p>
+                                    </div>
+                                    <div className="bg-card/70 border border-purple-500/20 rounded-xl p-3.5 space-y-1">
+                                        <div className="flex items-center gap-2 text-purple-500 font-black text-[11px] uppercase tracking-wider">
+                                            <Globe size={14} />
+                                            <span>Multi-Site WAN Traversal (Optional Relay)</span>
+                                        </div>
+                                        <p className="text-[10.5px] text-text-muted leading-relaxed">
+                                            If your cluster spans remote sites across the internet behind NAT routers without static public IPs or VPNs, deploy your own Relay Worker. Private Leaders open a silent SSE push channel to receive peer announcements instantaneously.
+                                        </p>
+                                    </div>
+                                </div>
+
+                                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start pt-2">
+                                    <div className="lg:col-span-2 space-y-4">
+                                        <div className="space-y-1.5">
+                                            <label className="text-[10px] font-black text-text-muted uppercase tracking-[0.2em] pl-1">Rendezvous Relay Worker URL</label>
+                                            <input
+                                                type="text"
+                                                placeholder="https://stigix-registry.<subdomain>.workers.dev (Leave empty for LAN-only / standalone)"
+                                                value={relayUrl}
+                                                onChange={e => { setRelayUrl(e.target.value); setRelayTestResult(null); }}
+                                                className="w-full bg-card hover:bg-card-hover border border-border text-xs font-mono text-text-primary rounded-xl px-4 py-2.5 outline-none focus:ring-1 focus:ring-purple-500 transition-all"
+                                            />
+                                            <p className="text-[9.5px] text-text-muted pl-1 opacity-70">
+                                                Leave this field empty to prevent any remote registry connections and ensure 100% private local operation.
+                                            </p>
+                                        </div>
+
+                                        <div className="flex flex-wrap items-center gap-2.5 pt-1">
+                                            <button
+                                                onClick={handleTestRelay}
+                                                disabled={isTestingRelay || !relayUrl}
+                                                className="px-4 py-2 bg-card hover:bg-card-hover border border-border hover:border-purple-500/40 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-2 shadow-sm disabled:opacity-50"
+                                            >
+                                                {isTestingRelay ? <RefreshCw size={12} className="animate-spin text-purple-500" /> : <Activity size={12} className="text-purple-500" />}
+                                                Test Reachability
+                                            </button>
+                                            <button
+                                                onClick={handleSaveRelay}
+                                                disabled={isSavingRelay}
+                                                className={cn(
+                                                    "px-5 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-2 shadow-sm disabled:opacity-50",
+                                                    isSavingRelay ? "bg-card-secondary text-text-muted border border-border" : "bg-purple-600 hover:bg-purple-500 text-white shadow-purple-900/20"
+                                                )}
+                                            >
+                                                {isSavingRelay ? <RefreshCw size={12} className="animate-spin" /> : <CheckCircle2 size={12} />}
+                                                <span>Save Relay URL</span>
+                                            </button>
+                                            {relayTestResult && (
+                                                <div className={cn(
+                                                    "px-3 py-1.5 rounded-xl text-[9px] font-black uppercase tracking-widest border flex items-center gap-1.5",
+                                                    relayTestResult.success ? "bg-emerald-500/10 text-emerald-500 border-emerald-500/30" : "bg-red-500/10 text-red-500 border-red-500/30"
+                                                )}>
+                                                    {relayTestResult.success ? (
+                                                        <>
+                                                            <CheckCircle2 size={11} />
+                                                            <span>Relay Online • {relayTestResult.service} (v{relayTestResult.version || '3.0'})</span>
+                                                        </>
+                                                    ) : (
+                                                        <>
+                                                            <XCircle size={11} />
+                                                            <span>{relayTestResult.error || 'Connection Failed'}</span>
+                                                        </>
+                                                    )}
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+
+                                    {/* Right Relay Info */}
+                                    <div className="p-4 bg-purple-600/5 border border-dashed border-purple-500/20 rounded-xl space-y-3">
+                                        <div className="flex items-center gap-2 text-purple-500">
+                                            <Info size={14} />
+                                            <h4 className="text-[11px] font-black uppercase tracking-wider">Zero-Polling Architecture</h4>
+                                        </div>
+                                        <p className="text-[10px] text-text-muted leading-relaxed opacity-85">
+                                            Unlike legacy registries that polled every few seconds, this v3 Relay uses in-memory Server-Sent Events (SSE). Spoke nodes push a single 10ms HTTP POST when booting up, and the Leader receives it over the open stream instantly.
+                                        </p>
+                                        <div className="pt-2 border-t border-border/40 text-[9.5px] text-text-muted space-y-1">
+                                            <div className="flex items-center gap-1.5">
+                                                <Zap size={12} className="text-amber-500" />
+                                                <span>Sub-millisecond rendezvous latency</span>
+                                            </div>
+                                            <div className="flex items-center gap-1.5">
+                                                <ShieldCheck size={12} className="text-emerald-500" />
+                                                <span>0 KV reads/writes, 0 Cloudflare quota drain</span>
                                             </div>
                                         </div>
                                     </div>

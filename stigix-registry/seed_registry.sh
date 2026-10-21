@@ -1,6 +1,6 @@
 #!/bin/bash
 
-BASE_URL="https://stigix-registry.jlsuzanne.workers.dev"
+BASE_URL="${STIGIX_REGISTRY_URL:-https://stigix-registry.<your-subdomain>.workers.dev}"
 
 for p in {1..3}; do
   POC_ID="77700${p}"

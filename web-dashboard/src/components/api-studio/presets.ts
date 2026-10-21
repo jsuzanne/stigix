@@ -150,12 +150,12 @@ export const API_PRESETS: ApiPreset[] = [
     // --- External Probes ---
     {
         id: 'probe-cloudflare-target',
-        name: 'Ping Cloudflare Target Worker',
+        name: 'Test Cloudflare Target Worker',
         category: 'External Probes',
-        description: 'Test connectivity and latency to Stigix Cloudflare edge target',
-        method: 'GET',
-        url: 'https://stigix-target.jlsuzanne.workers.dev/__down?bytes=1024',
-        autoAuth: 'none'
+        description: 'Test connectivity and reachability to configured Cloudflare edge target',
+        method: 'POST',
+        url: '/api/config/cloud/test',
+        autoAuth: 'stigix'
     },
     {
         id: 'probe-eicar-test',

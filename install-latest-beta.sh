@@ -232,19 +232,16 @@ cat <<EOF >> .env
 # PRISMA_SDWAN_CLIENT_ID="your-client-id@tsgid.iam.panserviceaccount.com"
 # PRISMA_SDWAN_CLIENT_SECRET="your-client-secret"
 
-# --- Registry & Autodiscovery (Optional) ---
+# --- Registry & Autodiscovery (Optional BYOC) ---
+# Default mode is standalone (zero cloud traffic). To enable WAN Rendezvous Relay:
 # STIGIX_REGISTRY_ENABLED=true
-# STIGIX_REGISTRY_URL=https://registry.stigix.io
+# STIGIX_REGISTRY_MODE=peer
+# STIGIX_REGISTRY_URL=https://stigix-registry.<subdomain>.workers.dev
 # STIGIX_INSTANCE_ID=local-node-$(hostname | cut -d'.' -f1)
 
-# --- Stigix Cloud Probes (Signed URLs) ---
-# The Target Worker URL where scenarios are hosted
-STIGIX_TARGET_BASE_URL=https://target.stigix.io
-
-# Master Key for target worker auth (must match MASTER_SIGNATURE_KEY on Cloudflare Worker)
-# Key is derived per request as SHA256(PRISMA_SDWAN_TSGID:STIGIX_TARGET_MASTER_KEY)
-# Leave commented if the worker runs in open-access mode (no key configured on CF side)
-# STIGIX_TARGET_MASTER_KEY=
+# --- Stigix Cloud Probes (Optional BYOC) ---
+# Deploy your free Cloudflare Worker from Settings > Cloud Edge tab.
+# STIGIX_TARGET_BASE_URL=https://stigix-target.<subdomain>.workers.dev
 
 # Site name for dashboard display
 STIGIX_SITE_NAME=$(hostname | cut -d'.' -f1)

@@ -29,7 +29,9 @@ import {
     X,
     PanelLeft,
     PanelLeftClose,
-    Square
+    Square,
+    ClipboardPaste,
+    Code2
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { StigixSelect } from './components/common/StigixSelect';
@@ -543,12 +545,41 @@ export default function Copilot({ token, onOpenSettings, isDrawer = false, onClo
         }
     };
 
-    const copyToClipboard = (text: string) => {
-        navigator.clipboard.writeText(text);
-        toast.success('Copied to clipboard');
+    const copyToClipboard = (text: string, customMessage = 'Copied to clipboard') => {
+        if (!text) return;
+        const fallbackCopy = (val: string) => {
+            try {
+                const textArea = document.createElement('textarea');
+                textArea.value = val;
+                textArea.style.position = 'fixed';
+                textArea.style.left = '-9999px';
+                textArea.style.top = '0';
+                document.body.appendChild(textArea);
+                textArea.focus();
+                textArea.select();
+                const ok = document.execCommand('copy');
+                document.body.removeChild(textArea);
+                if (ok) {
+                    toast.success(customMessage);
+                } else {
+                    toast.error('Failed to copy to clipboard');
+                }
+            } catch {
+                toast.error('Failed to copy to clipboard');
+            }
+        };
+
+        if (navigator.clipboard && window.isSecureContext) {
+            navigator.clipboard.writeText(text)
+                .then(() => toast.success(customMessage))
+                .catch(() => fallbackCopy(text));
+        } else {
+            fallbackCopy(text);
+        }
     };
 
     const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null);
+    const [copiedDebugId, setCopiedDebugId] = useState<string | null>(null);
     const [expandedToolsMsgIds, setExpandedToolsMsgIds] = useState<Record<string, boolean>>({});
 
     const toggleMessageTools = (msgId: string) => {
@@ -557,11 +588,74 @@ export default function Copilot({ token, onOpenSettings, isDrawer = false, onClo
 
     const handleCopyMessage = (msgId: string, text: string) => {
         if (!text) return;
-        copyToClipboard(text);
+        copyToClipboard(text, 'Message copied to clipboard');
         setCopiedMessageId(msgId);
         setTimeout(() => {
             setCopiedMessageId(prev => prev === msgId ? null : prev);
         }, 2000);
+    };
+
+    const formatMessageDebugBundle = (m: CopilotMessage): string => {
+        const lines: string[] = [];
+        const timeStr = new Date(m.timestamp).toISOString();
+        lines.push(`=== [${m.role.toUpperCase()}] ${timeStr}${m.model ? ` (${m.model})` : ''} ===`);
+        if (m.toolCalls && m.toolCalls.length > 0) {
+            lines.push(`--- EXECUTED TOOLS & API CALLS (${m.toolCalls.length}) ---`);
+            m.toolCalls.forEach((t, idx) => {
+                lines.push(`[Tool #${idx + 1}] ${t.name} (status: ${t.status}${t.durationMs ? `, ${t.durationMs}ms` : ''})`);
+                lines.push(`Input: ${JSON.stringify(t.input || {})}`);
+                if (t.apiCalls && t.apiCalls.length > 0) {
+                    t.apiCalls.forEach(api => {
+                        lines.push(`API Call: ${api.method} ${api.path}${api.status ? ` -> HTTP ${api.status}` : ''}${api.durationMs !== undefined ? ` (${api.durationMs}ms)` : ''}`);
+                        if (api.requestBody) {
+                            lines.push(`API Body: ${typeof api.requestBody === 'string' ? api.requestBody : JSON.stringify(api.requestBody)}`);
+                        }
+                    });
+                }
+                if (t.output !== undefined) {
+                    lines.push(`Output JSON:\n${typeof t.output === 'string' ? t.output : JSON.stringify(t.output, null, 2)}`);
+                }
+                lines.push('');
+            });
+        }
+        lines.push(`--- MESSAGE CONTENT ---`);
+        lines.push(m.content || '(empty)');
+        return lines.join('\n');
+    };
+
+    const handleCopyMessageDebug = (m: CopilotMessage) => {
+        const debugText = formatMessageDebugBundle(m);
+        copyToClipboard(debugText, 'Copied message + API/JSON debug trace');
+        setCopiedDebugId(m.id);
+        setTimeout(() => {
+            setCopiedDebugId(prev => prev === m.id ? null : prev);
+        }, 2000);
+    };
+
+    const handleCopyFullChatDebug = () => {
+        if (messages.length === 0) {
+            toast.error('No messages in current conversation to copy');
+            return;
+        }
+        const header = `# Stigix AI Copilot Debug Transcript\n# Exported: ${new Date().toISOString()}\n# Model: ${selectedModel}\n# Messages: ${messages.length}\n`;
+        const body = messages.map(m => formatMessageDebugBundle(m)).join('\n\n' + '='.repeat(60) + '\n\n');
+        copyToClipboard(`${header}\n${body}`, `Copied full chat debug (${messages.length} messages)`);
+    };
+
+    const handlePasteFromClipboard = async () => {
+        if (navigator.clipboard && window.isSecureContext && navigator.clipboard.readText) {
+            try {
+                const clipText = await navigator.clipboard.readText();
+                if (clipText) {
+                    setInputPrompt(prev => prev ? `${prev}\n${clipText}` : clipText);
+                    textareaRef.current?.focus();
+                    toast.success('Pasted from clipboard');
+                    return;
+                }
+            } catch {}
+        }
+        textareaRef.current?.focus();
+        toast('Press Cmd+V / Ctrl+V to paste (browser restricts direct clipboard read over HTTP)', { icon: '📋' });
     };
 
     return (
@@ -686,6 +780,18 @@ export default function Copilot({ token, onOpenSettings, isDrawer = false, onClo
                     </div>
 
                     <div className="flex items-center gap-2">
+                        {messages.length > 0 && (
+                            <button
+                                type="button"
+                                onClick={handleCopyFullChatDebug}
+                                className="flex items-center gap-1.5 px-2.5 py-1.5 bg-card-secondary hover:bg-blue-600/15 border border-border hover:border-blue-500/40 rounded-xl text-[10px] font-bold text-text-secondary hover:text-blue-400 transition-all cursor-pointer"
+                                title="Copier toute la conversation + appels outils/API + JSON pour le debug"
+                            >
+                                <Copy size={12} />
+                                <span className="hidden md:inline">Copy Chat Debug</span>
+                            </button>
+                        )}
+
                         {/* Model Selector */}
                         <StigixSelect
                             value={selectedModel}
@@ -905,12 +1011,16 @@ export default function Copilot({ token, onOpenSettings, isDrawer = false, onClo
                                         );
                                     })()}
 
-                                    {/* Quick floating copy button on hover for assistant messages */}
-                                    {m.role === 'assistant' && m.content && (
+                                    {/* Quick floating copy button on hover for all messages */}
+                                    {m.content && (
                                         <button
                                             onClick={() => handleCopyMessage(m.id, m.content)}
-                                            className="absolute top-3 right-3 opacity-0 group-hover/msg:opacity-100 p-1.5 rounded-lg bg-card/90 hover:bg-card border border-border/80 text-text-muted hover:text-text-primary transition-all shadow-sm cursor-pointer z-10"
-                                            title="Copy response to clipboard"
+                                            className={`absolute top-3 right-3 opacity-0 group-hover/msg:opacity-100 p-1.5 rounded-lg transition-all shadow-sm cursor-pointer z-10 ${
+                                                m.role === 'user'
+                                                    ? 'bg-blue-700/90 hover:bg-blue-800 border border-blue-400/40 text-blue-100 hover:text-white'
+                                                    : 'bg-card/90 hover:bg-card border border-border/80 text-text-muted hover:text-text-primary'
+                                            }`}
+                                            title="Copy message to clipboard"
                                         >
                                             {copiedMessageId === m.id ? (
                                                 <Check size={13} className="text-emerald-400" />
@@ -960,13 +1070,13 @@ export default function Copilot({ token, onOpenSettings, isDrawer = false, onClo
                                             </button>
                                         </>
                                     )}
-                                    {m.role === 'assistant' && m.content && (
+                                    {m.content && (
                                         <>
                                             <span>•</span>
                                             <button
                                                 onClick={() => handleCopyMessage(m.id, m.content)}
                                                 className="flex items-center gap-1 px-1.5 py-0.5 rounded hover:bg-card-secondary hover:text-text-primary text-text-muted transition-colors cursor-pointer"
-                                                title="Copy full response"
+                                                title="Copy message text"
                                             >
                                                 {copiedMessageId === m.id ? (
                                                     <>
@@ -977,6 +1087,28 @@ export default function Copilot({ token, onOpenSettings, isDrawer = false, onClo
                                                     <>
                                                         <Copy size={11} />
                                                         <span>Copy</span>
+                                                    </>
+                                                )}
+                                            </button>
+                                        </>
+                                    )}
+                                    {m.role === 'assistant' && m.toolCalls && m.toolCalls.length > 0 && (
+                                        <>
+                                            <span>•</span>
+                                            <button
+                                                onClick={() => handleCopyMessageDebug(m)}
+                                                className="flex items-center gap-1 px-1.5 py-0.5 rounded hover:bg-blue-500/15 hover:text-blue-400 text-text-muted transition-colors cursor-pointer"
+                                                title="Copy response + full tool arguments, API calls & JSON output for debugging"
+                                            >
+                                                {copiedMessageId === `${m.id}-debug` ? (
+                                                    <>
+                                                        <Check size={11} className="text-emerald-400" />
+                                                        <span className="text-emerald-400 font-bold">Debug Copied!</span>
+                                                    </>
+                                                ) : (
+                                                    <>
+                                                        <Code2 size={11} />
+                                                        <span>Copy Debug (API/JSON)</span>
                                                     </>
                                                 )}
                                             </button>
@@ -1010,13 +1142,23 @@ export default function Copilot({ token, onOpenSettings, isDrawer = false, onClo
                             value={inputPrompt}
                             onChange={(e) => setInputPrompt(e.target.value)}
                             onKeyDown={handleKeyDown}
-                            placeholder={config?.hasKey ? "Ask Stigix Copilot anything or trigger network actions... (Enter to send, Shift+Enter for newline)" : "Please enter your Anthropic API Key above to start chat..."}
+                            placeholder={config?.hasKey ? "Ask Stigix Copilot anything or trigger network actions... (Enter to send, Shift+Enter for newline, Cmd/Ctrl+V to paste)" : "Please enter your Anthropic API Key above to start chat..."}
                             disabled={!config?.hasKey || isStreaming}
                             rows={1}
-                            className="w-full bg-transparent text-xs text-text-primary placeholder:text-text-muted/60 p-3.5 pr-24 focus:outline-none resize-none max-h-40 custom-scrollbar disabled:opacity-50"
+                            className="w-full bg-transparent text-xs text-text-primary placeholder:text-text-muted/60 p-3.5 pr-28 focus:outline-none resize-none max-h-40 custom-scrollbar disabled:opacity-50"
                         />
 
                         <div className="absolute right-2 bottom-2 flex items-center gap-1.5">
+                            {!isStreaming && config?.hasKey && (
+                                <button
+                                    type="button"
+                                    onClick={handlePasteFromClipboard}
+                                    className="p-2 bg-card hover:bg-card-hover border border-border text-text-secondary hover:text-text-primary rounded-xl transition-all shadow-sm active:scale-95 flex items-center justify-center cursor-pointer"
+                                    title="Paste from clipboard (or focus input for Ctrl+V / Cmd+V)"
+                                >
+                                    <ClipboardPaste size={15} />
+                                </button>
+                            )}
                             {isStreaming ? (
                                 <button
                                     type="button"
@@ -1042,7 +1184,7 @@ export default function Copilot({ token, onOpenSettings, isDrawer = false, onClo
                         <span>
                             {selectedModel.startsWith('deepseek-') ? 'DeepSeek API (BYOK) • Local Tool Execution • Zero Log Sharing' : 'Anthropic Claude API (BYOK) • Local Tool Execution • Zero Log Sharing'}
                         </span>
-                        <span>Shift + Enter for new line</span>
+                        <span>Shift + Enter for new line • Copy/Paste ready for debug</span>
                     </div>
                 </div>
             </div>
@@ -1214,11 +1356,13 @@ const TOOL_FALLBACK_API_MAP: Record<string, { method: string; path: string }> = 
     stop_traffic: { method: 'POST', path: '/api/traffic/stop' },
     get_security_results_stats: { method: 'GET', path: '/api/security/stats' },
     run_security_test: { method: 'POST', path: '/api/security/run' },
-    list_endpoints: { method: 'GET', path: '/api/registry/endpoints' },
-    run_test: { method: 'POST', path: '/api/tests/start' },
-    get_test_status: { method: 'GET', path: '/api/tests/status' },
-    stop_test: { method: 'POST', path: '/api/tests/stop' },
-    get_convergence_history: { method: 'GET', path: '/api/tests/convergence-history' },
+    list_endpoints: { method: 'GET', path: '/api/convergence/targets' },
+    run_test: { method: 'POST', path: '/api/convergence/start' },
+    get_test_status: { method: 'GET', path: '/api/convergence/status' },
+    stop_test: { method: 'POST', path: '/api/convergence/stop' },
+    get_convergence_history: { method: 'GET', path: '/api/convergence/history' },
+    get_convergence_report: { method: 'GET', path: '/api/convergence/history' },
+    run_automated_failover_test: { method: 'POST', path: '/api/convergence/start' },
     list_custom_apps: { method: 'GET', path: '/api/iot/devices' },
     get_vyos_status: { method: 'GET', path: '/api/vyos/routers' },
     discover_vyos_interfaces: { method: 'POST', path: '/api/vyos/discover' },

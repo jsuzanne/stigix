@@ -425,7 +425,7 @@ export class RegistryManager {
         this.detectedRole = identity.role;
         this.isBranchGateway = identity.isBg;
 
-        let sysMode = 'auto';
+        let sysMode = 'standalone';
         try {
             const sysSettingsFile = path.join(this.configDir, 'system-settings.json');
             if (fs.existsSync(sysSettingsFile)) {
@@ -433,12 +433,26 @@ export class RegistryManager {
                 if (sysSettings.registry_mode) {
                     sysMode = sysSettings.registry_mode;
                 }
+                if (sysSettings.registry_url !== undefined) {
+                    process.env.STIGIX_REGISTRY_URL = sysSettings.registry_url;
+                    (this.client.getConfig() as any).registryUrl = sysSettings.registry_url;
+                    (this.client.getConfig() as any).remoteUrl = sysSettings.registry_url;
+                }
             }
         } catch (e) {
             log('REGISTRY', `Failed to read system-settings for registry mode: ${e}`, 'warn');
         }
 
-        let mode = sysMode !== 'auto' ? sysMode : (process.env.STIGIX_REGISTRY_MODE || 'auto');
+        let mode = sysMode !== 'auto' ? sysMode : (process.env.STIGIX_REGISTRY_MODE || 'standalone');
+
+        // Standalone Mode: 100% offline/independent. No discovery, no registration, no Cloudflare traffic.
+        if (mode === 'standalone') {
+            log('REGISTRY', `Node operating in standalone mode. Remote registry and clustering disabled.`);
+            this.leaderInfo = null;
+            process.env.STIGIX_REGISTRY_MODE_CURRENT = 'standalone';
+            this.stop();
+            return;
+        }
 
         if (mode === 'auto') {
             // Logic: Hub OR Branch Gateway => Potential Leader
@@ -469,8 +483,12 @@ export class RegistryManager {
                 (config as any).pocId = 'local-leader';
                 (config as any).enabled = true;
             }
-            // Leader Mode: Announce ourselves to Bootstrap Signal
-            await this.client.announceLeader(this.currentIp);
+            // Leader Mode: Announce ourselves to Bootstrap Signal only if remoteUrl is configured
+            if (config.remoteUrl) {
+                await this.client.announceLeader(this.currentIp);
+            } else {
+                log('REGISTRY', 'Leader initialized locally (no remote Cloudflare registry configured).');
+            }
             // Switch heartbeats to local server (self)
             this.client.setLocalRegistry('127.0.0.1');
         } else {
@@ -487,8 +505,8 @@ export class RegistryManager {
                 } catch (e) {}
                 
                 this.leaderInfo = { ip: displayName, id: displayName };
-            } else {
-                // 2. Otherwise, try to find local leader via Bootstrap (Cloudflare)
+            } else if (config.remoteUrl) {
+                // 2. Otherwise, try to find local leader via Bootstrap (Cloudflare) if remoteUrl configured
                 const leader = await this.client.findLeader();
                 if (leader) {
                     log('REGISTRY', `Local leader discovered at ${leader.ip}. Verifying reachability...`);
@@ -504,6 +522,8 @@ export class RegistryManager {
                 } else {
                     log('REGISTRY', `No local leader found. Using remote bootstrap (Cloudflare) at ${config.remoteUrl}`);
                 }
+            } else {
+                log('REGISTRY', `No static leader and no remote Cloudflare registry configured. Operating as unattached peer.`);
             }
         }
 
@@ -588,10 +608,12 @@ export class RegistryManager {
     }
 
     private async performHeartbeat() {
+        const mode = process.env.STIGIX_REGISTRY_MODE_CURRENT || 'standalone';
+        if (mode === 'standalone') return;
+
         // Dynamically update private IP in case interfaces.txt or network configuration changed
         this.currentIp = this.detectPrivateIp(this.configDir);
         const config = this.client.getConfig();
-        const mode = process.env.STIGIX_REGISTRY_MODE_CURRENT || 'peer';
 
         // 1. Peer Recovery: If using Remote, try to reconnect to the leader
         if (mode === 'peer' && config.registryUrl === config.remoteUrl) {
@@ -669,8 +691,10 @@ export class RegistryManager {
     }
 
     private async performDiscovery() {
+        const mode = process.env.STIGIX_REGISTRY_MODE_CURRENT || 'standalone';
+        if (mode === 'standalone') return;
+
         const config = this.client.getConfig();
-        const mode = process.env.STIGIX_REGISTRY_MODE_CURRENT || 'peer';
 
         // 1. Recovery Check: If on Fallback, try to find the Leader in the discovery phase
         if (mode === 'peer' && config.registryUrl === config.remoteUrl) {

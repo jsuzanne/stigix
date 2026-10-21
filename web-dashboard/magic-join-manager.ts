@@ -12,6 +12,7 @@ export interface JoinTokenPayload {
     max_uses: number;
     site_hint?: string;
     tags?: Record<string, string>;
+    relay_url?: string;
 }
 
 export interface JoinTokenEntry {
@@ -129,6 +130,7 @@ export class MagicJoinManager {
         requestHost?: string;
         localIp?: string;
         endpoints?: string[];
+        relayUrl?: string;
     }): { token: string; entry: JoinTokenEntry; curlCommand: string } {
         const ttl = options.ttlSeconds || 3600; // 1 hour default
         const now = Date.now();
@@ -147,7 +149,8 @@ export class MagicJoinManager {
             exp,
             max_uses: options.maxUses ?? 1,
             site_hint: options.siteHint,
-            tags: options.tags
+            tags: options.tags,
+            relay_url: options.relayUrl || undefined
         };
 
         const headerObj = { alg: 'HS256', typ: 'STX-JOIN' };

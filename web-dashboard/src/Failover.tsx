@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { usePeerContext } from './PeerContext';
 import { AreaChart, Area, ResponsiveContainer, YAxis, XAxis, Tooltip } from 'recharts';
-import { Activity, Clock, Calendar, Shield, Search, ChevronRight, BarChart3, AlertCircle, Info, Play, Pause, Trash2, Zap, Server, Globe, Hash, Plus, Target, X, Square, ArrowRightLeft, RotateCw, ZoomIn, Rewind, Camera, Eye, EyeOff } from 'lucide-react';
+import { Activity, Clock, Calendar, Shield, Search, ChevronRight, BarChart3, AlertCircle, Info, Play, Pause, Trash2, Zap, Server, Globe, Hash, Plus, Target, X, Square, ArrowRightLeft, RotateCw, ZoomIn, Rewind, Camera, Eye, EyeOff, Copy, Check } from 'lucide-react';
 import { toPng } from 'html-to-image';
 import { isValidIpOrFqdn } from './utils/validation';
 import { FailoverSkeleton } from './components/skeletons/FailoverSkeleton';
@@ -24,6 +24,7 @@ export default function Failover(props: FailoverProps) {
     const [historySearch, setHistorySearch] = useState('');
     const [nowTs, setNowTs] = useState(Date.now());
     const [exportingPocId, setExportingPocId] = useState<string | null>(null);
+    const [copiedPocId, setCopiedPocId] = useState<string | null>(null);
     const [showAllTargetsDuringTest, setShowAllTargetsDuringTest] = useState(false);
 
     const allTargets = useMemo(() => {
@@ -425,6 +426,50 @@ export default function Failover(props: FailoverProps) {
             console.error('Failed to export PoC card image:', err);
         } finally {
             setExportingPocId(null);
+        }
+    };
+
+    const handleCopyPocReport = async (test: any, verdictLabel: string, effectiveBlackoutMs: number, dateStr: string, series: any[], cardDomId: string, e?: React.MouseEvent) => {
+        if (e) e.stopPropagation();
+        const rawId = test.test_id || test.testId || 'CONV-XXXX';
+        const peakLoss = Array.isArray(series) && series.length > 0 ? Math.max(...series.map((s: any) => s.loss || 0), 0) : (test.loss_pct || 0);
+        const egress = test.path_evolution || test.egress_path || 'Pending / Direct';
+        const text = [
+            `### PoC Test Analysis & Failover Curves — ${rawId}`,
+            `- **Verdict**: **${verdictLabel}** | **Timestamp**: ${dateStr} | **Max Outage**: ${formatMs(effectiveBlackoutMs)} | **Duration**: ${test.duration_s || 0}s`,
+            `- **Target**: \`${test.target || 'N/A'}:${test.port || 6200}\` (Source Port: \`${test.source_port || getSourcePort(rawId)}\`, Rate: \`${test.rate_pps || 50} pps\`)`,
+            `- **RTT Latency (Avg)**: \`${test.avg_rtt_ms || 0}ms\` | **Jitter (Avg)**: \`${test.jitter_ms || 0}ms\` | **Packet Loss Spike (Peak)**: \`${peakLoss}%\``,
+            `- **100-Packet Sequence / Outage Detection**: \`${test.received || 0}/${test.sent || 0} packets (${test.tx_loss_pct || 0}% tx loss)\` (Server Echo: \`${test.server_received ?? test.received ?? 0}\`)`,
+            `- **Uplink Loss**: \`↑ ${test.tx_loss_pct || 0}%\` (${test.tx_loss_ms || 0}ms) | **Downlink Loss**: \`↓ ${test.rx_loss_pct || 0}%\` (${test.rx_loss_ms || 0}ms)`,
+            `- **Egress Path**: \`${egress}\``
+        ].join('\n');
+
+        let copied = false;
+        if (navigator.clipboard && window.isSecureContext) {
+            try {
+                await navigator.clipboard.writeText(text);
+                copied = true;
+            } catch {}
+        }
+        if (!copied) {
+            try {
+                const ta = document.createElement('textarea');
+                ta.value = text;
+                ta.setAttribute('readonly', '');
+                ta.style.position = 'fixed';
+                ta.style.top = '-9999px';
+                ta.style.left = '-9999px';
+                document.body.appendChild(ta);
+                ta.focus();
+                ta.select();
+                document.execCommand('copy');
+                document.body.removeChild(ta);
+                copied = true;
+            } catch {}
+        }
+        if (copied) {
+            setCopiedPocId(cardDomId);
+            setTimeout(() => setCopiedPocId(prev => (prev === cardDomId ? null : prev)), 2000);
         }
     };
 
@@ -1880,7 +1925,25 @@ export default function Failover(props: FailoverProps) {
                                                                                     </span>
                                                                                 )}
                                                                             </div>
-                                                                        <div className="flex items-center gap-3" data-no-export="true">
+                                                                        <div className="flex items-center gap-2" data-no-export="true">
+                                                                            <button
+                                                                                data-no-export="true"
+                                                                                onClick={(e) => handleCopyPocReport(test, verdict.label, effectiveBlackoutMs, dateInfo ? dateInfo.fullStr : String(test.timestamp || ''), series, cardDomId, e)}
+                                                                                className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg text-[10px] font-bold bg-card-secondary hover:bg-card-hover text-text-secondary hover:text-text-primary border border-border transition-all cursor-pointer shadow-sm active:scale-95"
+                                                                                title="Copy PoC Test Analysis markdown output to clipboard (to paste into AI Copilot or notes)"
+                                                                            >
+                                                                                {copiedPocId === cardDomId ? (
+                                                                                    <>
+                                                                                        <Check size={11} className="text-emerald-400" />
+                                                                                        <span className="text-emerald-400">Copied!</span>
+                                                                                    </>
+                                                                                ) : (
+                                                                                    <>
+                                                                                        <Copy size={11} />
+                                                                                        <span>Copy PoC Output</span>
+                                                                                    </>
+                                                                                )}
+                                                                            </button>
                                                                             <button
                                                                                 data-no-export="true"
                                                                                 onClick={(e) => handleExportPocCard(cardDomId, `stigix-poc-history-${convId}-${test.timestamp}`, e)}

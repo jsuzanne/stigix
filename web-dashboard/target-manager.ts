@@ -146,34 +146,23 @@ export class TargetManager {
      */
     public reload(baseUrlOverride?: string) {
         // 1. Load from JSON if exists
-        let jsonConfig: { masterKey?: string, baseUrl?: string } = {};
+        let jsonConfig: { baseUrl?: string } = {};
         if (fs.existsSync(this.jsonConfigPath)) {
             try { jsonConfig = JSON.parse(fs.readFileSync(this.jsonConfigPath, 'utf8')); } catch { }
         }
 
-        // 2. Determine Base URL: JSON > Constructor Arg > Env > Default
-        let rawBase = jsonConfig.baseUrl || baseUrlOverride || process.env.STIGIX_TARGET_BASE_URL || 'https://stigix-target.jlsuzanne.workers.dev';
+        // 2. Determine Base URL: JSON > Constructor Arg > Env > Default (empty = disabled)
+        let rawBase = jsonConfig.baseUrl || baseUrlOverride || process.env.STIGIX_TARGET_BASE_URL || '';
         if (rawBase && !rawBase.startsWith('http')) {
             rawBase = `https://${rawBase}`;
         }
         this.baseUrl = rawBase;
-
-        // 3. Derive Shared Key: SHA256(tsgId + ":" + MASTER_SIGNATURE_KEY)
-        // MASTER_SIGNATURE_KEY is the only supported auth method.
-        const masterKey = jsonConfig.masterKey || process.env.STIGIX_TARGET_MASTER_KEY;
-        const tsgId = process.env.PRISMA_SDWAN_TSGID || process.env.PRISMA_SDWAN_TSG_ID || '';
-        let key = '';
-
-        if (masterKey && tsgId) {
-            key = crypto.createHash('sha256').update(`${tsgId}:${masterKey}`).digest('hex');
-            log('TARGET', `Master key derived for TSG ${tsgId} ${jsonConfig.masterKey ? '(UI config)' : '(ENV)'}`);
-        } else if (masterKey && !tsgId) {
-            log('TARGET', 'STIGIX_TARGET_MASTER_KEY set but PRISMA_SDWAN_TSGID is missing — target probes will be unauthorized', 'warn');
+        this.sharedKey = '';
+        if (this.baseUrl) {
+            log('TARGET', `Cloud target endpoint active: ${this.baseUrl} (open synthetic probe)`);
         } else {
-            log('TARGET', 'No STIGIX_TARGET_MASTER_KEY configured — worker running in open-access mode', 'warn');
+            log('TARGET', 'No STIGIX_TARGET_BASE_URL configured — cloud target idle');
         }
-
-        this.sharedKey = key;
     }
 
     /**

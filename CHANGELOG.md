@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.0.63] - 2026-10-21
+
+### Removed
+- **Cloudflare Target Master Key Deprecation (`stigix-cloudflare-target`, `web-dashboard`, Docker Compose & Installers)**:
+  - Completely removed `STIGIX_TARGET_MASTER_KEY` / `MASTER_SIGNATURE_KEY` secret requirement and URL signature verification across the entire stack.
+  - The Cloudflare Target Worker operates as an open stateless synthetic benchmark responder (latency, jitter, throughput, and EICAR antivirus probes) without requiring HMAC verification or secret key exchanges.
+  - Removed master key configuration fields from Settings UI, eliminated key verification warnings from Security tests, and cleaned up Docker Compose templates and installation scripts (`install.sh`, `install-autodocker.sh`, `install-latest-beta.sh`).
+
+### Added
+- **Streamlined Peer Onboarding & Cloud Edge Documentation (`docs/DEPLOYMENT_SCENARIOS_AND_CLOUD_EDGE.md`)**:
+  - Added comprehensive architectural guide covering Stigix operating modes (`standalone`, `leader`, `peer`), LAN direct peering, and optional BYOC Cloudflare Edge integration (WAN Relay & Target probes).
+
 ## [3.0.62] - 2026-10-21
 
 ### Added

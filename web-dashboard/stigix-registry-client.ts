@@ -115,7 +115,7 @@ export class StigixRegistryClient {
         // Snapshot the initial registry URL as the "Remote Bootstrap" signal.
         // This ensures findLeader/announceLeader always use the original Cloudflare URL
         // from .env, even after heartbeats switch to a local leader IP.
-        this.config.remoteUrl = this.config.registryUrl || 'https://stigix-registry.jlsuzanne.workers.dev';
+        this.config.remoteUrl = this.config.registryUrl || '';
     }
 
     /**
@@ -145,12 +145,11 @@ export class StigixRegistryClient {
         const pocId = process.env.PRISMA_SDWAN_TSGID || null;
         const clientId = process.env.PRISMA_SDWAN_CLIENT_ID;
 
-        // Auto-enable logic:
+        // Auto-enable logic: strictly opt-in.
+        // Cloudflare registry is ONLY contacted if explicitly enabled AND a URL is configured.
         const explicitToggle = process.env.STIGIX_REGISTRY_ENABLED;
-        const enabled = explicitToggle === 'true' ||
-            (explicitToggle !== 'false' && !!pocId && !!clientId);
-
-        const registryUrl = process.env.STIGIX_REGISTRY_URL || 'https://stigix-registry.jlsuzanne.workers.dev';
+        const registryUrl = process.env.STIGIX_REGISTRY_URL || '';
+        const enabled = explicitToggle === 'true' && !!registryUrl;
 
         const hostname = os.hostname();
         const siteName = process.env.STIGIX_SITE_NAME || process.env.STIGIX_INSTANCE_ID || hostname;

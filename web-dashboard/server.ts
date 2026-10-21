@@ -176,21 +176,11 @@ loadPrismaConfig();
  */
 function tryReinitRegistry(reason: string) {
     const tsgId = process.env.PRISMA_SDWAN_TSGID;
-    let hasMasterKey = false;
-    try {
-        const cloudCfg = fs.existsSync(CLOUD_CONFIG_FILE)
-            ? JSON.parse(fs.readFileSync(CLOUD_CONFIG_FILE, 'utf8'))
-            : {};
-        hasMasterKey = !!(cloudCfg.masterKey || process.env.STIGIX_TARGET_MASTER_KEY);
-    } catch {}
-
-    if (tsgId && hasMasterKey) {
+    if (tsgId) {
         log('REGISTRY', `Auto hot-reload triggered by: ${reason}`);
         registryManager.reinitialize().catch(e =>
             log('REGISTRY', `Hot-reload failed: ${e.message}`, 'error')
         );
-    } else {
-        log('REGISTRY', `Hot-reload skipped (${reason}): tsgId=${!!tsgId}, masterKey=${hasMasterKey}`);
     }
 }
 
@@ -565,7 +555,8 @@ interface SystemSettings {
     security_engine_enabled?: boolean; // Local node security scheduler execution (Standby mode on Leader when false)
     auto_sync_probes_to_fleet?: boolean; // Auto-push configuration bundles (probes, apps) to peers with debounce
     pcap_max_auto_sync_mb?: number;
-    registry_mode?: 'auto' | 'leader' | 'peer';
+    registry_mode?: 'auto' | 'leader' | 'peer' | 'standalone';
+    registry_url?: string;
     engine_runtime?: 'legacy' | 'go'; // Data-plane engine runtime selector (defaults to 'go')
     engine_runtime_explicit?: boolean; // Set to true when explicitly toggled via Web UI
     mcp_server_enabled?: boolean; // External FastMCP SSE server on port 3100 (disabled by default to save ~95MB RAM)
@@ -582,7 +573,8 @@ const DEFAULT_SYSTEM_SETTINGS: SystemSettings = {
     security_engine_enabled: true, // Local security scheduler execution enabled by default
     auto_sync_probes_to_fleet: true, // Default enabled: auto-push changes to fleet with debounce
     pcap_max_auto_sync_mb: 10,     // Auto-sync threshold for PCAP profiles (<= 50MB, safety ratio of WS buffer)
-    registry_mode: 'auto',
+    registry_mode: 'standalone',
+    registry_url: process.env.STIGIX_REGISTRY_URL || '',
     engine_runtime: isGoEngineFeatureEnabled() ? 'go' : 'legacy',
     mcp_server_enabled: process.env.ENABLE_MCP_SERVER === 'true',
 };
@@ -3307,7 +3299,7 @@ const CLOUD_CONFIG_FILE = path.join(APP_CONFIG.configDir, 'cloud-config.json');
 
 // API: Cloud Config Status
 app.get('/api/config/cloud', authenticateToken, (req, res) => {
-    let config: { masterKey?: string, baseUrl?: string } = {};
+    let config: { baseUrl?: string } = {};
     try {
         if (fs.existsSync(CLOUD_CONFIG_FILE)) {
             config = JSON.parse(fs.readFileSync(CLOUD_CONFIG_FILE, 'utf8'));
@@ -3315,20 +3307,19 @@ app.get('/api/config/cloud', authenticateToken, (req, res) => {
     } catch (e) { }
 
     // Determine derived/effective status
-    const effectiveBaseUrl = config.baseUrl || process.env.STIGIX_TARGET_BASE_URL || 'https://stigix-target.jlsuzanne.workers.dev';
-    const hasKey = !!(config.masterKey || process.env.STIGIX_TARGET_MASTER_KEY);
+    const effectiveBaseUrl = config.baseUrl || process.env.STIGIX_TARGET_BASE_URL || '';
 
     res.json({
         baseUrl: effectiveBaseUrl,
-        hasKey: hasKey,
-        isUiDefined: !!config.masterKey,
+        hasKey: !!effectiveBaseUrl,
+        isUiDefined: !!config.baseUrl,
         stats: typeof (targetManager as any)?.getCloudRequestStats === 'function' ? (targetManager as any).getCloudRequestStats() : { countToday: 0 }
     });
 });
 
 // API: Save Cloud Config
 app.post('/api/config/cloud', authenticateToken, (req, res) => {
-    const { masterKey, baseUrl } = req.body;
+    const { baseUrl } = req.body;
     
     let currentConfig: any = {};
     try {
@@ -3339,14 +3330,13 @@ app.post('/api/config/cloud', authenticateToken, (req, res) => {
 
     const newConfig = {
         ...currentConfig,
-        ...(masterKey !== undefined && { masterKey }),
         ...(baseUrl !== undefined && { baseUrl })
     };
 
     try {
         fs.writeFileSync(CLOUD_CONFIG_FILE, JSON.stringify(newConfig, null, 2));
-        targetManager.reload(); // Refresh the manager signature logic
-        log('SYSTEM', `Cloud Target configuration updated via UI: baseUrl=${newConfig.baseUrl}${masterKey ? ' (Master Key updated)' : ''}`);
+        targetManager.reload(); // Refresh the manager endpoint
+        log('SYSTEM', `Cloud Target configuration updated via UI: baseUrl=${newConfig.baseUrl}`);
 
         // If this node is Leader or has global provisioning enabled, automatically publish cloud-config bundle
         const isLeader = typeof registryManager?.isLeader === 'function' 
@@ -10724,8 +10714,7 @@ app.post('/api/config/cloud/test', authenticateToken, async (req, res) => {
         let savedCloudCfg: any = {};
         try { savedCloudCfg = JSON.parse(fs.readFileSync(cloudCfgPath, 'utf8')); } catch {}
 
-        const baseUrl = reqBaseUrl || savedCloudCfg.baseUrl || 'https://target.stigix.io';
-        const masterKey = reqMasterKey || savedCloudCfg.masterKey || process.env.STIGIX_TARGET_MASTER_KEY;
+        const baseUrl = reqBaseUrl || savedCloudCfg.baseUrl || process.env.STIGIX_TARGET_BASE_URL || '';
         const tsgId = reqTsgId || savedCloudCfg.tsg_id || process.env.PRISMA_SDWAN_TSGID;
 
         if (!baseUrl) return res.json({ success: false, error: 'No Worker URL configured' });
@@ -10735,15 +10724,8 @@ app.post('/api/config/cloud/test', authenticateToken, async (req, res) => {
             ? baseUrl
             : `https://${baseUrl}`;
 
-        // Append /saas/info to test a protected endpoint
+        // Append /saas/info to test the endpoint
         const targetUrl = new URL(normalizedUrl.replace(/\/$/, '') + '/saas/info');
-
-        // Sign the request if we have credentials
-        if (masterKey && tsgId) {
-            const signature = crypto.createHash('sha256').update(`${tsgId}:${masterKey}`).digest('hex');
-            targetUrl.searchParams.set('key', signature);
-            targetUrl.searchParams.set('tsg', tsgId);
-        }
 
         const testRes = await fetch(targetUrl.toString(), { signal: AbortSignal.timeout(10000) });
         if (testRes.ok) {
@@ -10764,7 +10746,7 @@ app.post('/api/config/cloud/test', authenticateToken, async (req, res) => {
             let errMsg = `HTTP ${testRes.status}`;
             if (testRes.status === 429) {
                 if (body.includes('1027')) {
-                    errMsg = `HTTP 429: Cloudflare Worker daily quota exceeded (Error 1027). The Free plan limit of 100k req/day was reached on target.stigix.io.`;
+                    errMsg = `HTTP 429: Cloudflare Worker daily quota exceeded (Error 1027). The Free plan limit of 100k req/day was reached on your Worker.`;
                 } else {
                     errMsg = `HTTP 429: Rate limit exceeded on Worker endpoint.`;
                 }
@@ -10776,6 +10758,35 @@ app.post('/api/config/cloud/test', authenticateToken, async (req, res) => {
         }
     } catch (e: any) {
         res.json({ success: false, error: e.message });
+    }
+});
+
+// API: Test Cloudflare Rendezvous Relay Reachability
+app.post('/api/registry/test-relay', authenticateToken, async (req, res) => {
+    const { relayUrl: reqRelayUrl } = req.body;
+    try {
+        const sysSettings = readSystemSettings();
+        const relayUrl = reqRelayUrl || sysSettings.registry_url || process.env.STIGIX_REGISTRY_URL || '';
+        if (!relayUrl) return res.json({ success: false, error: 'No Relay URL configured' });
+
+        const normalizedUrl = relayUrl.startsWith('http://') || relayUrl.startsWith('https://')
+            ? relayUrl
+            : `https://${relayUrl}`;
+
+        const healthUrl = new URL(normalizedUrl.replace(/\/$/, '') + '/health');
+        const testRes = await fetch(healthUrl.toString(), { signal: AbortSignal.timeout(8000) });
+        if (testRes.ok) {
+            const data: any = await testRes.json().catch(() => ({}));
+            return res.json({
+                success: true,
+                service: data.service || 'stigix-rendezvous-relay',
+                version: data.version,
+                features: data.features
+            });
+        }
+        res.json({ success: false, error: `Relay responded with HTTP ${testRes.status} (${testRes.statusText})` });
+    } catch (e: any) {
+        res.json({ success: false, error: e.name === 'TimeoutError' ? 'Relay connection timed out (8s)' : (e.message || 'Network error') });
     }
 });
 
@@ -12865,18 +12876,10 @@ app.post('/api/security/edl-test', authenticateToken, async (req, res) => {
     res.json(summary);
 });
 
-// API: Get Cloud EICAR Signed URL
+// API: Get Cloud EICAR URL
 app.get('/api/security/cloud-eicar-url', authenticateToken, (req, res) => {
     const { url } = targetManager.getEffectiveUrl('advanced-custom#{"mode":"eicar"}');
-    let hasKey = false;
-    try {
-        const cloudCfgRaw = fs.existsSync(CLOUD_CONFIG_FILE) ? fs.readFileSync(CLOUD_CONFIG_FILE, 'utf-8') : '{}';
-        const cloudCfg = JSON.parse(cloudCfgRaw);
-        hasKey = !!(cloudCfg.masterKey || process.env.STIGIX_TARGET_MASTER_KEY);
-    } catch (_) {
-        hasKey = !!process.env.STIGIX_TARGET_MASTER_KEY;
-    }
-    res.json({ url, hasKey });
+    res.json({ url, hasKey: !!url });
 });
 
 // API: List all configured EICAR test targets — mirrors Security.tsx logic exactly
@@ -12903,13 +12906,7 @@ app.get('/api/security/eicar-targets', authenticateToken, (req, res) => {
 
     // 1. Cloud EICAR target (same as Security.tsx cloud-eicar-url fetch)
     const { url: cloudUrl } = targetManager.getEffectiveUrl('advanced-custom#{"mode":"eicar"}');
-    let hasKey = false;
-    try {
-        const cloudCfgRaw = fs.existsSync(CLOUD_CONFIG_FILE) ? fs.readFileSync(CLOUD_CONFIG_FILE, 'utf-8') : '{}';
-        hasKey = !!(JSON.parse(cloudCfgRaw).masterKey || process.env.STIGIX_TARGET_MASTER_KEY);
-    } catch (_) { hasKey = !!process.env.STIGIX_TARGET_MASTER_KEY; }
-
-    if (cloudUrl && hasKey) {
+    if (cloudUrl) {
         targets.push({ name: 'Stigix Cloud', target: cloudUrl, type: 'cloud', url: cloudUrl });
     }
 
@@ -13799,11 +13796,11 @@ app.get('/api/system/health-matrix', authenticateToken, async (req, res) => {
             }
         } catch {}
 
-        // 9. Stigix Cloud & Master Key (Cloudflare Worker Edge Probes)
+        // 9. Stigix Cloud (Cloudflare Worker Edge Probes)
         let cloudStatus: any = {
             status: 'ready',
-            master_key_valid: false,
-            base_url: 'stigix-target.jlsuzanne.workers.dev',
+            master_key_valid: true,
+            base_url: process.env.STIGIX_TARGET_BASE_URL || '',
             scenarios_count: 8,
             poc_id: meshStatus.poc_id || '777003'
         };
@@ -13812,10 +13809,17 @@ app.get('/api/system/health-matrix', authenticateToken, async (req, res) => {
                 const scenarios = targetManager.getScenarios();
                 cloudStatus.scenarios_count = scenarios.length || 8;
             }
-            // Check if Master Key is configured / derived
-            const hasMasterKey = !!(process.env.STIGIX_TARGET_MASTER_KEY || fs.existsSync(path.join(APP_CONFIG.configDir, 'cloud-config.json')) || fs.existsSync(path.join(APP_CONFIG.configDir, 'identity.json')));
-            cloudStatus.master_key_valid = hasMasterKey;
-            cloudStatus.status = hasMasterKey ? 'connected' : 'ready';
+            let activeUrl = process.env.STIGIX_TARGET_BASE_URL || '';
+            try {
+                const cfgPath = path.join(APP_CONFIG.configDir, 'cloud-config.json');
+                if (fs.existsSync(cfgPath)) {
+                    const parsed = JSON.parse(fs.readFileSync(cfgPath, 'utf8'));
+                    if (parsed.baseUrl) activeUrl = parsed.baseUrl;
+                }
+            } catch {}
+            cloudStatus.base_url = activeUrl;
+            cloudStatus.master_key_valid = true;
+            cloudStatus.status = activeUrl ? 'connected' : 'ready';
         } catch {}
 
         // 10. Security Validation Engine
@@ -16858,6 +16862,12 @@ app.get('/api/fleet/join-token', authenticateToken, async (req: any, res: any) =
         const selectedEndpoints = rawEndpoints ? rawEndpoints.split(',').map((s: string) => s.trim()).filter(Boolean) : undefined;
 
         const allDetected = magicJoinManager.detectLeaderEndpoints(requestHost, localIp);
+        const activeRelayUrl = (
+            systemSettings.registry_url ||
+            process.env.STIGIX_REGISTRY_URL ||
+            process.env.REGISTRY_URL ||
+            ''
+        ).trim().replace(/\/$/, '');
 
         const result = magicJoinManager.createToken({
             ttlSeconds,
@@ -16865,7 +16875,8 @@ app.get('/api/fleet/join-token', authenticateToken, async (req: any, res: any) =
             maxUses,
             requestHost,
             localIp,
-            endpoints: selectedEndpoints
+            endpoints: selectedEndpoints,
+            relayUrl: activeRelayUrl || undefined
         });
 
         res.json({
@@ -16878,6 +16889,7 @@ app.get('/api/fleet/join-token', authenticateToken, async (req: any, res: any) =
             endpoints: result.entry.payload.endpoints,
             detected_endpoints: allDetected,
             realm: result.entry.payload.realm,
+            relay_url: result.entry.payload.relay_url || null,
             curl_command: result.curlCommand
         });
     } catch (err: any) {
@@ -18350,7 +18362,7 @@ app.post('/api/provisioning/restore/:type/:id', authenticateToken, (req, res) =>
 // Global Registry Status
 app.get('/api/registry/status', authenticateToken, (req, res) => {
     const mgrStatus = registryManager.getStatus();
-    const mode = mgrStatus.current_mode || process.env.STIGIX_REGISTRY_MODE || 'peer';
+    const mode = mgrStatus.current_mode || process.env.STIGIX_REGISTRY_MODE || 'standalone';
 
     const status: any = {
         ...mgrStatus,
@@ -18367,7 +18379,7 @@ app.get('/api/registry/status', authenticateToken, (req, res) => {
 // Compatibility alias for mesh controller status
 app.get('/api/mesh/status', authenticateToken, (req, res) => {
     const mgrStatus = registryManager.getStatus();
-    const mode = mgrStatus.current_mode || process.env.STIGIX_REGISTRY_MODE || 'peer';
+    const mode = mgrStatus.current_mode || process.env.STIGIX_REGISTRY_MODE || 'standalone';
     res.json({
         ...mgrStatus,
         mode: mode,
@@ -18516,17 +18528,30 @@ app.post('/api/registry/join-with-token', async (req: any, res: any) => {
             if (!winningEndpoint) {
                 // If direct probes timed out and token carries a Cluster Realm, trigger Stateless Cloudflare Rendezvous (M6 Reverse-Dial)
                 if (payload.realm) {
-                    const registryUrl = (process.env.REGISTRY_URL || 'https://registry.stigix.io').replace(/\/$/, '');
-                    log('REGISTRY', `Direct LAN probes timed out; initiating Stateless Cloudflare Rendezvous for Realm ${payload.realm}...`, 'info');
+                    const registryUrl = (
+                        payload.relay_url ||
+                        systemSettings.registry_url ||
+                        process.env.STIGIX_REGISTRY_URL ||
+                        process.env.REGISTRY_URL ||
+                        ''
+                    ).trim().replace(/\/$/, '');
+                    if (!registryUrl) {
+                        return res.status(400).json({ error: 'Direct LAN connection to Leader timed out, and no Cloudflare Relay URL was provided in token or configuration.' });
+                    }
+                    log('REGISTRY', `Direct LAN probes timed out; adopting Relay URL (${registryUrl}) and initiating Rendezvous for Realm ${payload.realm}...`, 'info');
 
-                    // Set cluster realm & site name in memory so fleet-tunnel accepts inbound Leader M6 dial
+                    // Set cluster realm, site name & relay in memory so fleet-tunnel accepts inbound Leader M6 dial
                     process.env.STIGIX_CLUSTER_REALM = payload.realm;
                     process.env.STIGIX_MAGIC_JOIN = 'true';
+                    process.env.STIGIX_REGISTRY_URL = registryUrl;
+                    process.env.STIGIX_REGISTRY_ENABLED = 'true';
+                    systemSettings.registry_url = registryUrl;
+                    saveSystemSetting('registry_url', registryUrl);
                     if (effectiveSite) {
                         registryManager.setSiteName(effectiveSite);
                     }
 
-                    // Persist STIGIX_CLUSTER_REALM and STIGIX_MAGIC_JOIN to .env
+                    // Persist STIGIX_CLUSTER_REALM, STIGIX_MAGIC_JOIN, STIGIX_REGISTRY_URL, STIGIX_REGISTRY_ENABLED to .env
                     const envCandidates = [
                         path.join(APP_CONFIG.configDir, '.env'),
                         path.join(process.cwd(), 'config', '.env'),
@@ -18546,6 +18571,16 @@ app.post('/api/registry/join-with-token', async (req: any, res: any) => {
                                     envContent = envContent.replace(/^STIGIX_MAGIC_JOIN=.*/m, `STIGIX_MAGIC_JOIN=true`);
                                 } else {
                                     envContent += `\nSTIGIX_MAGIC_JOIN=true\n`;
+                                }
+                                if (/^STIGIX_REGISTRY_URL=/m.test(envContent)) {
+                                    envContent = envContent.replace(/^STIGIX_REGISTRY_URL=.*/m, `STIGIX_REGISTRY_URL=${registryUrl}`);
+                                } else {
+                                    envContent += `\nSTIGIX_REGISTRY_URL=${registryUrl}\n`;
+                                }
+                                if (/^STIGIX_REGISTRY_ENABLED=/m.test(envContent)) {
+                                    envContent = envContent.replace(/^STIGIX_REGISTRY_ENABLED=.*/m, `STIGIX_REGISTRY_ENABLED=true`);
+                                } else {
+                                    envContent += `\nSTIGIX_REGISTRY_ENABLED=true\n`;
                                 }
                                 fs.writeFileSync(ep, envContent, 'utf8');
                                 break;
@@ -18730,8 +18765,10 @@ app.post('/api/registry/join-with-token', async (req: any, res: any) => {
 
 app.post('/api/registry/unenroll', authenticateToken, async (req: any, res: any) => {
     try {
+        saveSystemSettings({ registry_mode: 'standalone' });
         registryManager.saveClusterEnrollment(null);
         await registryManager.saveStaticLeader(null);
+        await registryManager.reinitialize();
         fleetTunnelManager.reconnectSpoke();
         log('REGISTRY', 'Node unenrolled from cluster leader and reverted to standalone mode');
         res.json({ status: 'ok', message: 'Successfully unenrolled from cluster' });
@@ -19142,6 +19179,7 @@ app.post('/api/config/system-settings', authenticateToken, async (req, res) => {
             auto_restart_custom_tcp,
             auto_sync_probes_to_fleet,
             registry_mode,
+            registry_url,
             security_engine_enabled
         } = req.body;
         const patch: Partial<SystemSettings> = {};
@@ -19158,8 +19196,13 @@ app.post('/api/config/system-settings', authenticateToken, async (req, res) => {
             }
         }
         if (typeof auto_sync_probes_to_fleet === 'boolean') patch.auto_sync_probes_to_fleet = auto_sync_probes_to_fleet;
-        if (registry_mode === 'auto' || registry_mode === 'leader' || registry_mode === 'peer') {
+        if (registry_mode === 'auto' || registry_mode === 'leader' || registry_mode === 'peer' || registry_mode === 'standalone') {
             patch.registry_mode = registry_mode;
+        }
+        if (typeof registry_url === 'string') {
+            patch.registry_url = registry_url.trim();
+            process.env.STIGIX_REGISTRY_URL = patch.registry_url;
+            process.env.STIGIX_REGISTRY_ENABLED = patch.registry_url ? 'true' : 'false';
         }
         if (typeof security_engine_enabled === 'boolean') {
             patch.security_engine_enabled = security_engine_enabled;
@@ -19172,9 +19215,9 @@ app.post('/api/config/system-settings', authenticateToken, async (req, res) => {
             startSchedulers();
         }
 
-        // If registry mode was updated, hot-reload the registry orchestration
-        if (patch.registry_mode) {
-            log('REGISTRY', `Registry mode changed via UI to ${patch.registry_mode}. Reinitializing...`);
+        // If registry mode or url was updated, hot-reload the registry orchestration
+        if (patch.registry_mode || patch.registry_url !== undefined) {
+            log('REGISTRY', `Registry settings changed via UI (mode: ${patch.registry_mode}, url: ${patch.registry_url}). Reinitializing...`);
             await registryManager.reinitialize();
         }
 

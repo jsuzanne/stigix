@@ -1,13 +1,6 @@
 const EICAR =
   'X5O!P%@AP[4\\PZX54(P^)7CC)7}$EICAR-STANDARD-ANTIVIRUS-TEST-FILE!$H+H*';
 
-async function sha256(message) {
-  const msgBuffer = new TextEncoder().encode(message);
-  const hashBuffer = await crypto.subtle.digest("SHA-256", msgBuffer);
-  const hashArray = Array.from(new Uint8Array(hashBuffer));
-  return hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
-}
-
 export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
@@ -22,47 +15,6 @@ export default {
     let delay = parseInt(searchParams.get("delay") || "0", 10);
     let size = searchParams.get("size") || "10m";
     let code = parseInt(searchParams.get("code") || "500", 10);
-
-    // ---------- Auth: MASTER_SIGNATURE_KEY only ----------
-    const masterKey = env.MASTER_SIGNATURE_KEY;
-    const providedKey = searchParams.get("key");
-    const tsgId = searchParams.get("tsg");
-
-    const isRootInfoOnly = pathname === "/" && mode === "info";
-    const isProtectedMode = !isRootInfoOnly;
-
-    let authorized = false;
-    if (!isProtectedMode) {
-      authorized = true;
-    } else if (masterKey && tsgId && providedKey) {
-      // key === SHA256(tsg + ":" + MASTER_SIGNATURE_KEY)
-      const expectedKey = await sha256(`${tsgId}:${masterKey}`);
-      authorized = providedKey === expectedKey;
-    } else if (!masterKey) {
-      // No security configured — open access
-      authorized = true;
-    }
-
-    if (!authorized) {
-      return new Response(
-        JSON.stringify(
-          {
-            error: "Unauthorized",
-            tsg: tsgId || "not provided",
-            hint: "Provide valid key as ?key= or X-Stigix-Key. For multi-tenant, provide ?tsg=",
-          },
-          null,
-          2
-        ),
-        {
-          status: 401,
-          headers: {
-            "Content-Type": "application/json; charset=utf-8",
-            "Cache-Control": "no-store",
-          },
-        }
-      );
-    }
 
     // ---------- Infos de base ----------
     const ip =

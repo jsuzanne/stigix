@@ -101,7 +101,7 @@ bash seed_registry.sh
 Then check the results:
 ```bash
 # Get all (if no global key is set or using admin key)
-curl https://stigix-registry.jlsuzanne.workers.dev/instances
+curl https://stigix-registry.<your-subdomain>.workers.dev/instances
 ```
 
 ---

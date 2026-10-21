@@ -52,8 +52,9 @@ export function NodeRoleModal({
                 const b64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');
                 const decoded = JSON.parse(atob(b64));
                 return {
-                    siteHint: decoded.sub || decoded.site_name,
-                    endpoints: decoded.endpoints || (decoded.controller_url ? [decoded.controller_url] : [])
+                    siteHint: decoded.sub || decoded.site_name || decoded.site_hint,
+                    endpoints: decoded.endpoints || (decoded.controller_url ? [decoded.controller_url] : []),
+                    relayUrl: decoded.relay_url || null
                 };
             }
         } catch { }
@@ -184,7 +185,7 @@ export function NodeRoleModal({
             const res = await fetch('/api/config/system-settings', {
                 method: 'POST',
                 headers: authHeaders,
-                body: JSON.stringify({ registry_mode: 'peer' })
+                body: JSON.stringify({ registry_mode: 'standalone' })
             });
             if (res.ok) {
                 await fetch('/api/registry/unenroll', { method: 'POST', headers: authHeaders }).catch(() => {});
@@ -303,6 +304,9 @@ export function NodeRoleModal({
                                             )}
                                             {tokenPreview.endpoints.length > 0 && (
                                                 <div>Target Leader: <span className="text-emerald-400 font-bold">{tokenPreview.endpoints[0]}</span></div>
+                                            )}
+                                            {tokenPreview.relayUrl && (
+                                                <div>Cloudflare Relay: <span className="text-amber-400 font-bold">{tokenPreview.relayUrl}</span> <span className="text-[10px] text-text-muted">(WAN traversal ready)</span></div>
                                             )}
                                         </div>
                                     )}

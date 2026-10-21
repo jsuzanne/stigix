@@ -161,24 +161,29 @@ if [ -n "$JOIN_TOKEN" ]; then
     CANDIDATES=()
     TOKEN_SITE=""
     TOKEN_REALM=""
+    TOKEN_RELAY_URL=""
     if command -v python3 &>/dev/null; then
-        PY_EXTRACT=$(python3 -c "import sys, json; d=json.loads(sys.argv[1]); print('\n'.join(d.get('endpoints', []))); print('SITE_HINT=' + (d.get('site_hint') or '')); print('REALM=' + (d.get('realm') or ''))" "$DECODED_JSON" 2>/dev/null)
+        PY_EXTRACT=$(python3 -c "import sys, json; d=json.loads(sys.argv[1]); print('\n'.join(d.get('endpoints', []))); print('SITE_HINT=' + (d.get('site_hint') or '')); print('REALM=' + (d.get('realm') or '')); print('RELAY_URL=' + (d.get('relay_url') or ''))" "$DECODED_JSON" 2>/dev/null)
         while IFS= read -r line; do
             if [[ "$line" =~ ^SITE_HINT=(.*) ]]; then
                 TOKEN_SITE="${BASH_REMATCH[1]}"
             elif [[ "$line" =~ ^REALM=(.*) ]]; then
                 TOKEN_REALM="${BASH_REMATCH[1]}"
+            elif [[ "$line" =~ ^RELAY_URL=(.*) ]]; then
+                TOKEN_RELAY_URL="${BASH_REMATCH[1]}"
             elif [ -n "$line" ]; then
                 CANDIDATES+=("$line")
             fi
         done <<< "$PY_EXTRACT"
     elif command -v node &>/dev/null; then
-        NODE_EXTRACT=$(node -e "try { const d=JSON.parse(process.argv[1]); (d.endpoints||[]).forEach(e=>console.log(e)); if (d.site_hint) console.log('SITE_HINT=' + d.site_hint); if (d.realm) console.log('REALM=' + d.realm); } catch(e){}" "$DECODED_JSON" 2>/dev/null)
+        NODE_EXTRACT=$(node -e "try { const d=JSON.parse(process.argv[1]); (d.endpoints||[]).forEach(e=>console.log(e)); if (d.site_hint) console.log('SITE_HINT=' + d.site_hint); if (d.realm) console.log('REALM=' + d.realm); if (d.relay_url) console.log('RELAY_URL=' + d.relay_url); } catch(e){}" "$DECODED_JSON" 2>/dev/null)
         while IFS= read -r line; do
             if [[ "$line" =~ ^SITE_HINT=(.*) ]]; then
                 TOKEN_SITE="${BASH_REMATCH[1]}"
             elif [[ "$line" =~ ^REALM=(.*) ]]; then
                 TOKEN_REALM="${BASH_REMATCH[1]}"
+            elif [[ "$line" =~ ^RELAY_URL=(.*) ]]; then
+                TOKEN_RELAY_URL="${BASH_REMATCH[1]}"
             elif [ -n "$line" ]; then
                 CANDIDATES+=("$line")
             fi
@@ -191,6 +196,9 @@ if [ -n "$JOIN_TOKEN" ]; then
     fi
     if [ -z "$TOKEN_REALM" ]; then
         TOKEN_REALM=$(echo "$DECODED_JSON" | grep -o '"realm"[[:space:]]*:[[:space:]]*"[^"]*"' | sed -E 's/.*:[[:space:]]*"([^"]+)".*/\1/')
+    fi
+    if [ -z "$TOKEN_RELAY_URL" ]; then
+        TOKEN_RELAY_URL=$(echo "$DECODED_JSON" | grep -o '"relay_url"[[:space:]]*:[[:space:]]*"[^"]*"' | sed -E 's/.*:[[:space:]]*"([^"]+)".*/\1/')
     fi
     if [ ${#CANDIDATES[@]} -eq 0 ]; then
         while IFS= read -r ep; do
@@ -231,8 +239,13 @@ if [ -n "$JOIN_TOKEN" ]; then
         fi
     elif [ ${#CANDIDATES[@]} -gt 0 ]; then
         CONTROLLER_URL="${CANDIDATES[0]}"
-        echo "⚠️ Direct LAN probes timed out. Announcing to Cloudflare Rendezvous Relay..."
-        REGISTRY_URL="https://registry.stigix.io"
+        REGISTRY_URL="${TOKEN_RELAY_URL:-}"
+        if [ -n "$REGISTRY_URL" ]; then
+            echo "⚠️ Direct LAN probes timed out. Announcing to Cloudflare Rendezvous Relay ($REGISTRY_URL)..."
+            REGISTRY_ENABLED=true
+        else
+            echo "⚠️ Direct LAN probes timed out and no Cloudflare Relay URL was embedded in the token."
+        fi
         NODE_HOSTNAME=$(hostname | cut -d'.' -f1)
         CHOSEN_SITE="${SITE_NAME_OVERRIDE:-$NODE_HOSTNAME}"
         ANNOUNCE_PORT=8080
@@ -351,7 +364,7 @@ if [ -n "$JOIN_TOKEN" ]; then
         done
         LOCAL_IPS_JSON+="]"
         ANNOUNCE_BODY="{\"instance_id\":\"$NODE_HOSTNAME\",\"site_name\":\"$CHOSEN_SITE\",\"port\":$ANNOUNCE_PORT,\"ips\":$LOCAL_IPS_JSON}"
-        if [ -n "$TOKEN_REALM" ]; then
+        if [ -n "$TOKEN_REALM" ] && [ -n "$REGISTRY_URL" ]; then
             ANNOUNCE_RES=$(curl -s -k -X POST -H "Content-Type: application/json" -d "$ANNOUNCE_BODY" --connect-timeout 4 -m 6 "$REGISTRY_URL/realms/$TOKEN_REALM/register" 2>/dev/null || echo "{}")
             if echo "$ANNOUNCE_RES" | grep -q '"status":"ok"'; then
                 echo "   ✅ Cloudflare Rendezvous announced (port $ANNOUNCE_PORT)! Private Leader will establish reverse tunnel automatically."
@@ -601,19 +614,16 @@ cat <<EOF >> .env
 # PRISMA_SDWAN_CLIENT_ID="your-client-id@tsgid.iam.panserviceaccount.com"
 # PRISMA_SDWAN_CLIENT_SECRET="your-client-secret"
 
-# --- Registry & Autodiscovery (Optional) ---
+# --- Registry & Autodiscovery (Optional BYOC) ---
+# Default mode is standalone (zero cloud traffic). To enable WAN Rendezvous Relay:
 # STIGIX_REGISTRY_ENABLED=true
-# STIGIX_REGISTRY_URL=https://registry.stigix.io
+# STIGIX_REGISTRY_MODE=peer
+# STIGIX_REGISTRY_URL=https://stigix-registry.<subdomain>.workers.dev
 # STIGIX_INSTANCE_ID=local-node-$(hostname | cut -d'.' -f1)
 
-# --- Stigix Cloud Probes (Signed URLs) ---
-# The Target Worker URL where scenarios are hosted
-STIGIX_TARGET_BASE_URL=https://target.stigix.io
-
-# Master Key for target worker auth (must match MASTER_SIGNATURE_KEY on Cloudflare Worker)
-# Key is derived per request as SHA256(PRISMA_SDWAN_TSGID:STIGIX_TARGET_MASTER_KEY)
-# Leave commented if the worker runs in open-access mode (no key configured on CF side)
-# STIGIX_TARGET_MASTER_KEY=
+# --- Stigix Cloud Probes (Optional BYOC) ---
+# Deploy your free Cloudflare Worker from Settings > Cloud Edge tab.
+# STIGIX_TARGET_BASE_URL=https://stigix-target.<subdomain>.workers.dev
 
 # Site name for dashboard display
 STIGIX_SITE_NAME="${SITE_NAME_OVERRIDE:-$(hostname | cut -d'.' -f1)}"
@@ -671,6 +681,12 @@ if [ -n "$TOKEN_REALM" ]; then
     else
         echo "STIGIX_CLUSTER_REALM=$TOKEN_REALM" >> .env
     fi
+fi
+
+if [ "$REGISTRY_ENABLED" = "true" ] && [ -n "$REGISTRY_URL" ]; then
+    echo "STIGIX_REGISTRY_ENABLED=true" >> .env
+    echo "STIGIX_REGISTRY_MODE=peer" >> .env
+    echo "STIGIX_REGISTRY_URL=$REGISTRY_URL" >> .env
 fi
 
 mkdir -p ./config ./logs ./mcp-data

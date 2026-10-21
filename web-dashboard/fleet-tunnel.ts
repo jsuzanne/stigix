@@ -1172,9 +1172,13 @@ export class FleetTunnelManager {
 
     private startCloudflareRendezvousListener(): void {
         if (this.isListeningCloudflare) return;
+        const registryBaseUrl = (process.env.STIGIX_REGISTRY_URL || '').trim().replace(/\/$/, '');
+        const registryEnabled = process.env.STIGIX_REGISTRY_ENABLED === 'true';
+        if (!registryEnabled || !registryBaseUrl) {
+            return;
+        }
         this.isListeningCloudflare = true;
 
-        const registryBaseUrl = (process.env.STIGIX_REGISTRY_URL || 'https://registry.stigix.io').replace(/\/$/, '');
         const realmHash = this.getRealmHash();
         const streamUrl = `${registryBaseUrl}/realms/${realmHash}/stream`;
 
@@ -1194,8 +1198,19 @@ export class FleetTunnelManager {
                         'User-Agent': 'Stigix-Leader-Rendezvous/2.0'
                     }
                 }, (res) => {
+                    if (res.statusCode === 429) {
+                        log('RENDEZVOUS', `⚠️ Cloudflare Rendezvous rate-limited (429 - quota reached). Backing off for 1 hour.`, 'warn');
+                        scheduleRetry(3600000);
+                        return;
+                    }
+                    if (res.statusCode === 404 || res.statusCode === 401 || res.statusCode === 403) {
+                        log('RENDEZVOUS', `⚠️ Cloudflare Rendezvous endpoint returned ${res.statusCode}. Backing off for 10 minutes.`, 'warn');
+                        scheduleRetry(600000);
+                        return;
+                    }
                     if (res.statusCode !== 200) {
-                        scheduleRetry(15000);
+                        log('RENDEZVOUS', `⚠️ Cloudflare Rendezvous endpoint returned HTTP ${res.statusCode}. Retrying in 60s.`, 'warn');
+                        scheduleRetry(60000);
                         return;
                     }
 
@@ -1243,12 +1258,12 @@ export class FleetTunnelManager {
                 });
 
                 req.on('error', () => {
-                    scheduleRetry(10000);
+                    scheduleRetry(60000);
                 });
 
                 this.cloudflareReq = req;
             } catch {
-                scheduleRetry(15000);
+                scheduleRetry(60000);
             }
         };
 
@@ -1266,7 +1281,7 @@ export class FleetTunnelManager {
         connect();
 
         if (!this.cloudflareKvPollInterval) {
-            // Safeguard poll: reduced from 10s to 5 minutes (300s) to conserve Cloudflare quotas.
+            // Safeguard poll: reduced to 5 minutes (300s) to conserve Cloudflare quotas.
             // SSE Push is already real-time (<10ms) and initial sync happens on connection.
             this.cloudflareKvPollInterval = setInterval(() => {
                 if (this.isListeningCloudflare && this.registryManager.isLeader()) {
@@ -1278,8 +1293,11 @@ export class FleetTunnelManager {
 
     public syncEphemeralPeersFromCloudflare(): void {
         if (!this.registryManager.isLeader()) return;
+        const registryBaseUrl = (process.env.STIGIX_REGISTRY_URL || '').trim().replace(/\/$/, '');
+        const registryEnabled = process.env.STIGIX_REGISTRY_ENABLED === 'true';
+        if (!registryEnabled || !registryBaseUrl) return;
+
         try {
-            const registryBaseUrl = (process.env.STIGIX_REGISTRY_URL || 'https://registry.stigix.io').replace(/\/$/, '');
             const realmHash = this.getRealmHash();
             const peersUrl = `${registryBaseUrl}/realms/${realmHash}/peers`;
 

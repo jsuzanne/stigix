@@ -2013,6 +2013,140 @@ export const COPILOT_TOOLS: AnthropicToolDefinition[] = [
 ];
 
 /**
+ * Extracts the clean CONV-XXXX identifier from a raw test_id string like "CONV-0022 (DC1-LAN)".
+ */
+function extractCleanConvId(raw: any): string {
+    if (!raw) return '';
+    return String(raw).split(' (')[0].trim();
+}
+
+/**
+ * Formats a convergence test record (from convergence_history.jsonl or live status)
+ * into the exact PoC Test Analysis structure displayed in the Failover UI card.
+ */
+function formatConvergencePocReport(record: any, nodeName: string, statusOverride?: string) {
+    const rawId = record.test_id || record.testId || record.id || record.sequence_id || 'CONV-UNKNOWN';
+    const cleanId = extractCleanConvId(rawId);
+    const labelMatch = String(rawId).match(/\(([^)]+)\)/);
+    const label = record.label || (labelMatch ? labelMatch[1] : undefined) || record.target;
+
+    const maxBlackoutMs = Number(record.max_blackout_ms ?? record.blackout_ms ?? 0);
+    const lossPct = Number(record.loss_pct ?? record.loss_percent ?? record.live_loss_pct ?? 0);
+    const txLossPct = Number(record.tx_loss_pct ?? record.uplink_loss_pct ?? 0);
+    const txLossMs = Number(record.tx_loss_ms ?? 0);
+    const rxLossPct = Number(record.rx_loss_pct ?? record.downlink_loss_pct ?? 0);
+    const rxLossMs = Number(record.rx_loss_ms ?? 0);
+
+    const sent = Number(record.sent ?? record.packets_sent ?? record.tx_count ?? 0);
+    const received = Number(record.received ?? record.packets_received ?? record.rx_count ?? 0);
+    const serverReceived = Number(
+        record.server_received ??
+        (sent > 0 ? Math.round(sent * (1 - txLossPct / 100)) : received)
+    );
+    const lost = Math.max(0, sent - received);
+
+    const avgRttMs = Number(record.avg_rtt_ms ?? record.current_rtt_ms ?? record.latency_ms ?? record.rtt_ms ?? 0);
+    const jitterMs = Number(record.jitter_ms ?? record.avg_jitter_ms ?? 0);
+    const durationS = Number(record.duration_s ?? record.duration ?? record.duration_seconds ?? record.elapsed_s ?? 0);
+
+    const series = Array.isArray(record.series) ? record.series : [];
+    const peakLossFromSeries = series.length > 0
+        ? Math.max(...series.map((s: any) => Number(s.lossPct ?? s.loss_pct ?? 0)), 0)
+        : 0;
+    const peakLossPct = Number(record.peak_loss_pct ?? Math.max(peakLossFromSeries, lossPct));
+
+    // Match Failover.tsx getStatusInfo(maxBlackoutMs, lossPct)
+    let uiVerdict = 'PERFECT';
+    if (maxBlackoutMs > 10000 || lossPct > 25) uiVerdict = 'CRITICAL';
+    else if (maxBlackoutMs > 5000 || lossPct > 10) uiVerdict = 'BAD';
+    else if (maxBlackoutMs > 1000 || lossPct > 2) uiVerdict = 'DEGRADED';
+    else if (maxBlackoutMs > 0 || lossPct > 0) uiVerdict = 'GOOD';
+
+    const maxOutageFormatted = maxBlackoutMs >= 1000
+        ? `${(maxBlackoutMs / 1000).toFixed(2)}s`
+        : `${maxBlackoutMs}ms`;
+
+    const egressPath = record.egress_path || 'Direct / Local';
+    const pathEvolution = Array.isArray(record.path_evolution) ? record.path_evolution : [];
+    const pathHistory = Array.isArray(record.path_history) ? record.path_history : [];
+
+    return {
+        node: nodeName,
+        found: true,
+        test_id: cleanId,
+        full_test_id: rawId,
+        label,
+        target: record.target,
+        source_port: record.source_port ?? null,
+        running: Boolean(record.running && statusOverride !== 'STOPPED'),
+        status: statusOverride || (record.running ? 'RUNNING' : 'COMPLETED'),
+        verdict: uiVerdict,
+        timestamp: record.timestamp || record.started_at || new Date().toISOString(),
+        duration_s: durationS,
+        max_outage_ms: maxBlackoutMs,
+        max_outage_formatted: maxOutageFormatted,
+        poc_test_analysis: {
+            title: `PoC Test Analysis & Failover Curves — ${cleanId}${label ? ` (${label})` : ''}`,
+            verdict: uiVerdict,
+            timestamp: record.timestamp || record.started_at,
+            max_outage_ms: maxBlackoutMs,
+            max_outage_formatted: maxOutageFormatted,
+            duration_s: durationS,
+            duration_formatted: `${durationS}s`,
+            rtt_latency_avg_ms: avgRttMs,
+            jitter_avg_ms: jitterMs,
+            packet_loss_spike_peak_pct: peakLossPct,
+            packet_sequence_100: {
+                summary: `${serverReceived}/${sent} PACKETS (${txLossPct}% TX LOSS)`,
+                sent,
+                echo_server_received: serverReceived,
+                received,
+                lost,
+                total_loss_pct: lossPct,
+                tx_loss_pct: txLossPct,
+                rx_loss_pct: rxLossPct
+            },
+            uplink_loss: {
+                direction: '↑ Uplink (TX)',
+                tx_loss_pct: txLossPct,
+                tx_loss_ms: txLossMs,
+                formatted: `↑ ${txLossPct}%${txLossMs > 0 ? ` (${txLossMs >= 1000 ? (txLossMs / 1000).toFixed(1) + 's' : txLossMs + 'ms'})` : ''}`
+            },
+            downlink_loss: {
+                direction: '↓ Downlink (RX)',
+                rx_loss_pct: rxLossPct,
+                rx_loss_ms: rxLossMs,
+                formatted: `↓ ${rxLossPct}%${rxLossMs > 0 ? ` (${rxLossMs >= 1000 ? (rxLossMs / 1000).toFixed(1) + 's' : rxLossMs + 'ms'})` : ''}`
+            },
+            avg_latency_ms: avgRttMs,
+            jitter_ms: jitterMs,
+            egress_path: egressPath,
+            path_evolution: pathEvolution,
+            path_history: pathHistory
+        },
+        metrics: {
+            max_blackout_ms: maxBlackoutMs,
+            max_blackout_s: Number((maxBlackoutMs / 1000).toFixed(3)),
+            packets_sent: sent,
+            packets_echo_server_received: serverReceived,
+            packets_received: received,
+            packets_lost: lost,
+            loss_pct: lossPct,
+            peak_loss_pct: peakLossPct,
+            uplink_loss_pct: txLossPct,
+            uplink_loss_ms: txLossMs,
+            downlink_loss_pct: rxLossPct,
+            downlink_loss_ms: rxLossMs,
+            avg_rtt_ms: avgRttMs,
+            jitter_ms: jitterMs
+        },
+        egress_path: egressPath,
+        path_evolution: pathEvolution,
+        path_history: pathHistory
+    };
+}
+
+/**
  * Executes a tool locally inside the Stigix Node.js process.
  */
 export async function executeCopilotTool(
@@ -2222,16 +2356,13 @@ export async function executeCopilotTool(
                             label: effectiveLabel
                         };
 
-                        const res = await fetch(`${sourceNodeContext.baseUrl}/api/convergence/start`, {
-                            method: 'POST',
-                            headers: sourceNodeContext.headers,
-                            body: JSON.stringify(payload)
-                        });
-
-                        if (res.ok) {
-                            const data = await res.json().catch(() => ({}));
+                        try {
+                            const data = await fetchApi(sourceNodeContext, '/api/convergence/start', {
+                                method: 'POST',
+                                body: JSON.stringify(payload)
+                            });
                             results.push({
-                                test_id: data.testId || data.sequence_id || 'CONV-ACTIVE',
+                                test_id: data?.testId || data?.sequence_id || 'CONV-ACTIVE',
                                 profile: 'convergence',
                                 status: 'running',
                                 running: true,
@@ -2241,11 +2372,10 @@ export async function executeCopilotTool(
                                 port: convergencePort,
                                 rate_pps: pps,
                                 label: effectiveLabel,
-                                note: 'Continuous probe running. Say "stop" or call stop_test when ready.'
+                                note: 'Convergence probe started. Unless the user explicitly asked to leave it running continuously, call get_test_status(wait_seconds=15) and then call stop_test in this same turn to return the full PoC Test Analysis output.'
                             });
-                        } else {
-                            const errTxt = await res.text();
-                            results.push({ error: `Convergence probe failed: ${errTxt}`, target: targetEndpoint.name });
+                        } catch (convErr: any) {
+                            results.push({ error: `Convergence probe failed: ${convErr?.message || convErr}`, target: targetEndpoint.name });
                         }
                     } else if (isVoice) {
                         await fetch(`${sourceNodeContext.baseUrl}/api/voice/control`, {
@@ -2282,7 +2412,7 @@ export async function executeCopilotTool(
 
                 return {
                     tests: results,
-                    note_for_model: 'Tests launched. For XFR/speedtest: call get_test_status with each test_id and repeat until status=\'completed\' before reporting throughput metrics. Do NOT call list_speedtest_history until status is completed.'
+                    note_for_model: 'Tests launched. For XFR/speedtest: call get_test_status with each test_id until status=\'completed\'. For Convergence (CONV-*): unless the user explicitly asked for a continuous background probe, call get_test_status(wait_seconds=15) and then stop_test in this same turn so you can present the full PoC Test Analysis report at the end.'
                 };
             }
 
@@ -2309,8 +2439,8 @@ export async function executeCopilotTool(
                         const [xfrData, convData] = await Promise.all([
                             (nodeCtx.isLocal && ctx.xfrManager)
                                 ? ctx.xfrManager.getAllJobs()
-                                : fetch(`${nodeCtx.baseUrl}/api/tests/xfr`, { headers: nodeCtx.headers }).then(r => r.json()).catch(() => []),
-                            fetch(`${nodeCtx.baseUrl}/api/convergence/status`, { headers: nodeCtx.headers }).then(r => r.json()).catch(() => [])
+                                : fetchApi(nodeCtx, `/api/tests/xfr`).catch(() => []),
+                            fetchApi(nodeCtx, `/api/convergence/status`).catch(() => [])
                         ]);
                         return {
                             xfrJobs: Array.isArray(xfrData) ? xfrData : [],
@@ -2392,28 +2522,41 @@ export async function executeCopilotTool(
 
                         const matchedConv = convProbes.find((c: any) =>
                             (c.testId && c.testId.toLowerCase().includes(testIdFilter)) ||
+                            (c.test_id && String(c.test_id).toLowerCase().includes(testIdFilter)) ||
                             (c.label && c.label.toLowerCase().includes(testIdFilter))
                         );
                         if (matchedConv) {
                             return {
-                                node: nodeCtx.siteName,
+                                ...formatConvergencePocReport(matchedConv, nodeCtx.siteName),
                                 test_type: 'convergence_probe',
-                                test_id: matchedConv.testId,
-                                label: matchedConv.label,
-                                running: Boolean(matchedConv.running),
-                                status: matchedConv.running ? 'RUNNING' : 'COMPLETED',
-                                target: matchedConv.target,
-                                current_rtt_ms: matchedConv.current_rtt_ms,
-                                live_loss_pct: matchedConv.live_loss_pct,
-                                duration_s: matchedConv.duration_s,
+                                current_rtt_ms: matchedConv.current_rtt_ms ?? matchedConv.avg_rtt_ms,
+                                live_loss_pct: matchedConv.live_loss_pct ?? matchedConv.loss_pct,
                                 ...(explicitWaitSec > 0 ? { waited_seconds: explicitWaitSec } : {})
                             };
+                        }
+
+                        // Check if it already finished and is in convergence history
+                        if (testIdFilter.startsWith('conv')) {
+                            const historyArr = await fetchApi(nodeCtx, `/api/convergence/history?limit=10`).catch(() => []);
+                            if (Array.isArray(historyArr)) {
+                                const histMatch = historyArr.find((h: any) => {
+                                    const hId = String(h.test_id || h.testId || '').toLowerCase();
+                                    return hId.includes(testIdFilter) || testIdFilter.includes(extractCleanConvId(hId).toLowerCase());
+                                });
+                                if (histMatch) {
+                                    return {
+                                        ...formatConvergencePocReport(histMatch, nodeCtx.siteName, 'COMPLETED'),
+                                        test_type: 'convergence_probe',
+                                        ...(explicitWaitSec > 0 ? { waited_seconds: explicitWaitSec } : {})
+                                    };
+                                }
+                            }
                         }
 
                         // Test ID provided but not found — return explicit error to prevent hallucination
                         return {
                             error: `Test '${testIdFilter}' not found on node '${nodeCtx.siteName}'.`,
-                            hint: 'Check that agent_id matches the SOURCE node that ran the test (not the target). Use the sequence_id (e.g. XFR-0003) returned by run_test as test_id — never a UUID. The test may also have expired from in-memory history.',
+                            hint: 'Check that agent_id matches the SOURCE node that ran the test (not the target). Use the sequence_id (e.g. XFR-0003 or CONV-0022) returned by run_test as test_id — never a UUID. The test may also have expired from in-memory history.',
                             node: nodeCtx.siteName,
                             status: 'not_found'
                         };
@@ -2435,16 +2578,7 @@ export async function executeCopilotTool(
                             started_at: j.started_at
                         })),
                         last_completed_xfr_speedtest: latestCompletedXfr,
-                        running_convergence_probes: runningConv.map((c: any) => ({
-                            test_id: c.testId,
-                            label: c.label,
-                            target: c.target,
-                            pps: c.pps,
-                            current_rtt_ms: c.current_rtt_ms,
-                            live_loss_pct: c.live_loss_pct,
-                            duration_s: c.duration_s,
-                            started_at: c.started_at
-                        }))
+                        running_convergence_probes: runningConv.map((c: any) => formatConvergencePocReport(c, nodeCtx.siteName))
                     };
                 } catch (e: any) {
                     return { error: `Failed to retrieve test status: ${e.message}` };
@@ -2453,46 +2587,54 @@ export async function executeCopilotTool(
 
             case 'stop_test': {
                 const nodeCtx = resolveNodeContext(args.agent_id || args.node, ctx);
-                const testId = String(args.test_id || '').trim();
+                const requestedTestId = extractCleanConvId(args.test_id || '');
 
                 try {
-                    const convStatus = await fetch(`${nodeCtx.baseUrl}/api/convergence/status`, { headers: nodeCtx.headers }).then(r => r.json()).catch(() => []);
+                    const convStatus = await fetchApi(nodeCtx, `/api/convergence/status`).catch(() => []);
                     const activeConv = Array.isArray(convStatus) ? convStatus : [];
-                    const matched = activeConv.find((c: any) =>
-                        !testId ||
-                        (c.testId && (c.testId === testId || c.testId.includes(testId) || testId.includes(c.testId))) ||
-                        (c.label && c.label.toLowerCase().includes(testId.toLowerCase()))
-                    );
+                    const matched = activeConv.find((c: any) => {
+                        if (!requestedTestId) return true;
+                        const cId = extractCleanConvId(c.testId || c.test_id || '');
+                        return (cId && (cId.toLowerCase() === requestedTestId.toLowerCase() || cId.toLowerCase().includes(requestedTestId.toLowerCase()))) ||
+                            (c.label && c.label.toLowerCase().includes(requestedTestId.toLowerCase()));
+                    }) || activeConv[0];
 
-                    const targetId = matched?.testId || testId;
+                    const targetId = extractCleanConvId(matched?.testId || matched?.test_id || requestedTestId);
+
+                    // Record baseline newest history ID before stopping so we know when the new record flushes
+                    const preHistory = await fetchApi(nodeCtx, `/api/convergence/history?limit=3`).catch(() => []);
+                    const preTopRawId = Array.isArray(preHistory) && preHistory.length > 0
+                        ? String(preHistory[0].test_id || preHistory[0].testId || '')
+                        : '';
+
                     let stopData: any = null;
                     try {
-                        const stopRes = await fetch(`${nodeCtx.baseUrl}/api/convergence/stop`, {
+                        stopData = await fetchApi(nodeCtx, `/api/convergence/stop`, {
                             method: 'POST',
-                            headers: nodeCtx.headers,
-                            body: JSON.stringify({ enabled: false })
+                            body: JSON.stringify(targetId ? { testId: targetId, enabled: false } : { enabled: false })
                         });
-                        if (stopRes.ok) {
-                            stopData = await stopRes.json().catch(() => null);
-                        }
                     } catch {}
 
-                    // 2. Wait up to 3 seconds for backend to flush and write the final stats to history
+                    // Wait up to 6 seconds for convergence_orchestrator.py (2s grace period) + server.ts path enrichment to flush to history
                     let finalMetrics: any = null;
-                    for (let attempt = 0; attempt < 6; attempt++) {
+                    for (let attempt = 0; attempt < 12; attempt++) {
                         await new Promise(r => setTimeout(r, 500));
                         try {
-                            const historyRes = await fetch(`${nodeCtx.baseUrl}/api/convergence/history?limit=5`, {
-                                headers: nodeCtx.headers
-                            });
-                            if (historyRes.ok) {
-                                const history = await historyRes.json();
-                                if (Array.isArray(history) && history.length > 0) {
-                                    const match = testId
-                                        ? history.find((h: any) => String(h.testId || '').toLowerCase().includes(testId.toLowerCase()) || testId.toLowerCase().includes(String(h.testId || '').toLowerCase()))
-                                        : history[0];
-                                    if (match) {
-                                        finalMetrics = match;
+                            const history = await fetchApi(nodeCtx, `/api/convergence/history?limit=10`).catch(() => []);
+                            if (Array.isArray(history) && history.length > 0) {
+                                const match = targetId
+                                    ? history.find((h: any) => {
+                                        const hRaw = String(h.test_id || h.testId || h.id || h.sequence_id || '');
+                                        const hClean = extractCleanConvId(hRaw);
+                                        return hClean.toLowerCase() === targetId.toLowerCase() ||
+                                            hRaw.toLowerCase().includes(targetId.toLowerCase());
+                                    })
+                                    : (String(history[0].test_id || history[0].testId || '') !== preTopRawId ? history[0] : (attempt >= 6 ? history[0] : null));
+
+                                if (match) {
+                                    finalMetrics = match;
+                                    // Wait at least 1 extra poll if egress_path hasn't been enriched yet by the stop handler
+                                    if (match.egress_path || attempt >= 5) {
                                         break;
                                     }
                                 }
@@ -2500,30 +2642,31 @@ export async function executeCopilotTool(
                         } catch {}
                     }
 
-                    if (finalMetrics) {
+                    // Fallback to pre-stop live snapshot if history hasn't flushed yet
+                    const recordToFormat = finalMetrics || matched;
+                    if (recordToFormat) {
+                        const report = formatConvergencePocReport(recordToFormat, nodeCtx.siteName, 'STOPPED');
                         return {
                             success: true,
-                            node: nodeCtx.siteName,
-                            test_id: finalMetrics.testId || testId,
-                            label: finalMetrics.label || finalMetrics.target,
-                            status: 'STOPPED',
-                            duration_s: finalMetrics.duration_s || finalMetrics.duration || finalMetrics.duration_seconds,
-                            packets_sent: finalMetrics.sent || finalMetrics.packets_sent || finalMetrics.tx_count,
-                            packets_received: finalMetrics.received || finalMetrics.packets_received || finalMetrics.rx_count,
-                            packets_lost: finalMetrics.lost || finalMetrics.loss_count || 0,
-                            loss_percent: `${finalMetrics.loss_pct ?? finalMetrics.loss_percent ?? 0}%`,
-                            avg_rtt_ms: finalMetrics.avg_rtt_ms ?? finalMetrics.latency_ms ?? finalMetrics.rtt_ms,
-                            jitter_ms: finalMetrics.jitter_ms ?? 0,
-                            max_blackout_ms: finalMetrics.max_blackout_ms ?? finalMetrics.blackout_ms ?? 0,
-                            verdict: finalMetrics.verdict || (finalMetrics.loss_pct > 1 ? 'DEGRADED' : 'PERFECT'),
-                            raw_metrics: finalMetrics
+                            ...report,
+                            // Legacy top-level aliases for backward compatibility
+                            packets_sent: report.metrics.packets_sent,
+                            packets_echo_server_received: report.metrics.packets_echo_server_received,
+                            packets_received: report.metrics.packets_received,
+                            packets_lost: report.metrics.packets_lost,
+                            loss_percent: `${report.metrics.loss_pct}%`,
+                            uplink_loss_pct: report.metrics.uplink_loss_pct,
+                            downlink_loss_pct: report.metrics.downlink_loss_pct,
+                            avg_rtt_ms: report.metrics.avg_rtt_ms,
+                            jitter_ms: report.metrics.jitter_ms,
+                            max_blackout_ms: report.metrics.max_blackout_ms
                         };
                     }
 
                     return {
                         success: true,
                         node: nodeCtx.siteName,
-                        test_id: testId,
+                        test_id: targetId || requestedTestId,
                         status: 'STOPPED',
                         message: 'Convergence test stop signal processed successfully.',
                         details: stopData
@@ -3557,33 +3700,35 @@ export async function executeCopilotTool(
                 const nodeCtx = resolveNodeContext(args.agent_id || args.node, ctx);
                 const limit = Number(args.limit) || 10;
                 const summaryOnly = args.summary_only !== false;
-                const filterTestId = args.test_id ? String(args.test_id).trim().toLowerCase() : null;
-                const history = await fetchApi(nodeCtx, `/api/convergence/history`).catch(() => []);
+                const filterTestId = args.test_id ? extractCleanConvId(args.test_id).toLowerCase() : null;
+                const history = await fetchApi(nodeCtx, `/api/convergence/history?limit=${Math.max(limit, 25)}`).catch(() => []);
                 const arr = Array.isArray(history) ? history : ((history as any)?.results || []);
                 const filtered = filterTestId
-                    ? arr.filter((r: any) => [r.testId, r.id, r.sequence_id].some(v => v && String(v).toLowerCase() === filterTestId))
+                    ? arr.filter((r: any) => [r.test_id, r.testId, r.id, r.sequence_id].some(v => {
+                        if (!v) return false;
+                        const s = String(v).toLowerCase();
+                        return s === filterTestId || extractCleanConvId(s) === filterTestId || s.includes(filterTestId);
+                    }))
                     : arr;
                 // Sort strictly newest first (descending sequence_id or timestamp)
                 const sorted = [...filtered].sort((a: any, b: any) => {
-                    const idA = a.testId || a.id || a.sequence_id || '';
-                    const idB = b.testId || b.id || b.sequence_id || '';
-                    if (idA && idB) return idB.localeCompare(idA, undefined, { numeric: true });
                     const dateA = new Date(a.timestamp || a.started_at || 0).getTime();
                     const dateB = new Date(b.timestamp || b.started_at || 0).getTime();
-                    return dateB - dateA;
+                    if (dateA && dateB && dateA !== dateB) return dateB - dateA;
+                    const idA = extractCleanConvId(a.test_id || a.testId || a.id || a.sequence_id || '');
+                    const idB = extractCleanConvId(b.test_id || b.testId || b.id || b.sequence_id || '');
+                    return idB.localeCompare(idA, undefined, { numeric: true });
                 }).slice(0, limit);
 
                 const cleanedHistory = sorted.map((row: any) => {
-                    const item = { ...row };
+                    const report = formatConvergencePocReport(row, nodeCtx.siteName);
                     if (summaryOnly) {
-                        delete item.samples;
-                        delete item.raw_samples;
-                        delete item.packets;
-                        delete item.packet_log;
-                        delete item.time_series;
-                        delete item.telemetry;
+                        return report;
                     }
-                    return item;
+                    return {
+                        ...report,
+                        series: row.series
+                    };
                 });
 
                 return {
@@ -3597,33 +3742,43 @@ export async function executeCopilotTool(
             case 'get_convergence_report': {
                 const nodeCtx = resolveNodeContext(args.agent_id || args.node, ctx);
                 const requestedId = args.test_id ? String(args.test_id).trim() : 'latest';
-                const [historyRaw, liveStatus] = await Promise.all([
-                    fetchApi(nodeCtx, `/api/convergence/history`).catch(() => []),
-                    fetchApi(nodeCtx, `/api/convergence/status`).catch(() => null)
+                const cleanRequestedId = extractCleanConvId(requestedId).toLowerCase();
+                const [historyRaw, liveStatusRaw] = await Promise.all([
+                    fetchApi(nodeCtx, `/api/convergence/history?limit=25`).catch(() => []),
+                    fetchApi(nodeCtx, `/api/convergence/status`).catch(() => [])
                 ]);
                 const arr = Array.isArray(historyRaw) ? historyRaw : ((historyRaw as any)?.results || []);
+                const activeProbes = Array.isArray(liveStatusRaw) ? liveStatusRaw : (liveStatusRaw && typeof liveStatusRaw === 'object' ? [liveStatusRaw] : []);
+
                 const sorted = [...arr].sort((a: any, b: any) => {
-                    const idA = a.testId || a.id || a.sequence_id || '';
-                    const idB = b.testId || b.id || b.sequence_id || '';
-                    if (idA && idB) return idB.localeCompare(idA, undefined, { numeric: true });
                     const dateA = new Date(a.timestamp || a.started_at || 0).getTime();
                     const dateB = new Date(b.timestamp || b.started_at || 0).getTime();
-                    return dateB - dateA;
+                    if (dateA && dateB && dateA !== dateB) return dateB - dateA;
+                    const idA = extractCleanConvId(a.test_id || a.testId || a.id || a.sequence_id || '');
+                    const idB = extractCleanConvId(b.test_id || b.testId || b.id || b.sequence_id || '');
+                    return idB.localeCompare(idA, undefined, { numeric: true });
                 });
 
                 let record: any = null;
-                if (requestedId.toLowerCase() === 'latest') {
-                    if (liveStatus && liveStatus.running && liveStatus.metrics) {
-                        record = { ...liveStatus.metrics, testId: liveStatus.metrics.test_id || liveStatus.testId || 'LIVE', running: true };
-                    } else {
-                        record = sorted[0] || null;
-                    }
+                if (cleanRequestedId === 'latest' || cleanRequestedId === 'last' || !cleanRequestedId) {
+                    // Prefer the most recent completed test in history unless a live probe is actively running and user asked for live/latest
+                    record = sorted[0] || activeProbes.find((p: any) => p && p.running !== false) || null;
                 } else {
                     record = sorted.find((r: any) =>
-                        [r.testId, r.id, r.sequence_id].some(v => v && String(v).toLowerCase() === requestedId.toLowerCase())
+                        [r.test_id, r.testId, r.id, r.sequence_id, r.label].some(v => {
+                            if (!v) return false;
+                            const s = String(v).toLowerCase();
+                            return s === cleanRequestedId || extractCleanConvId(s) === cleanRequestedId || s.includes(cleanRequestedId);
+                        })
                     ) || null;
-                    if (!record && liveStatus?.metrics && String(liveStatus.metrics.test_id || '').toLowerCase() === requestedId.toLowerCase()) {
-                        record = { ...liveStatus.metrics, running: Boolean(liveStatus.running) };
+                    if (!record) {
+                        record = activeProbes.find((p: any) =>
+                            [p?.testId, p?.test_id, p?.label].some(v => {
+                                if (!v) return false;
+                                const s = String(v).toLowerCase();
+                                return s === cleanRequestedId || extractCleanConvId(s) === cleanRequestedId || s.includes(cleanRequestedId);
+                            })
+                        ) || null;
                     }
                 }
 
@@ -3636,38 +3791,7 @@ export async function executeCopilotTool(
                     };
                 }
 
-                const maxBlackoutMs = Number(record.max_blackout_ms ?? record.blackout_ms ?? 0);
-                const lossPct = Number(record.loss_pct ?? 0);
-                const verdict = record.verdict || (maxBlackoutMs === 0 && lossPct < 0.1 ? 'ZERO_LOSS' : maxBlackoutMs < 1000 ? 'SUB_SECOND_FAILOVER' : maxBlackoutMs < 5000 ? 'DEGRADED_FAILOVER' : 'OUTAGE_DETECTED');
-
-                return {
-                    node: nodeCtx.siteName,
-                    found: true,
-                    test_id: record.testId || record.test_id || record.id || record.sequence_id,
-                    running: Boolean(record.running),
-                    verdict,
-                    target: record.target || record.label,
-                    rate_pps: record.rate_pps || record.rate,
-                    duration_s: record.duration_s || record.elapsed_s,
-                    timestamp: record.timestamp || record.started_at,
-                    metrics: {
-                        max_blackout_ms: maxBlackoutMs,
-                        max_blackout_s: Number((maxBlackoutMs / 1000).toFixed(3)),
-                        packets_sent: record.sent ?? record.packets_sent,
-                        packets_received: record.received ?? record.packets_received,
-                        loss_pct: lossPct,
-                        peak_loss_pct: record.peak_loss_pct ?? lossPct,
-                        uplink_loss_pct: record.uplink_loss_pct ?? 0,
-                        downlink_loss_pct: record.downlink_loss_pct ?? 0,
-                        avg_rtt_ms: record.avg_rtt_ms ?? record.rtt_ms,
-                        min_rtt_ms: record.min_rtt_ms,
-                        max_rtt_ms: record.max_rtt_ms,
-                        avg_jitter_ms: record.avg_jitter_ms ?? record.jitter_ms
-                    },
-                    egress_path: record.egress_path || null,
-                    path_evolution: record.path_evolution || [],
-                    events: record.events || []
-                };
+                return formatConvergencePocReport(record, nodeCtx.siteName);
             }
 
             case 'run_automated_failover_test': {
@@ -3688,6 +3812,7 @@ export async function executeCopilotTool(
                 let phase2DuringFault: any = null;
                 let injectionResult: any = null;
                 let rollbackResult: any = null;
+                let stopResult: any = null;
                 let startedTestId: string | undefined;
 
                 try {
@@ -3698,19 +3823,20 @@ export async function executeCopilotTool(
                         target: args.target,
                         pps
                     }, ctx);
-                    if (startRes?.error) {
-                        return { error: `Failed to start convergence probe: ${startRes.error}`, details: startRes };
+                    if (startRes?.error || startRes?.tests?.[0]?.error) {
+                        return { error: `Failed to start convergence probe: ${startRes?.error || startRes?.tests?.[0]?.error}`, details: startRes };
                     }
                     probeStarted = true;
-                    startedTestId = startRes?.test_id || startRes?.testId;
+                    startedTestId = startRes?.test_id || startRes?.testId || startRes?.tests?.[0]?.test_id || startRes?.tests?.[0]?.testId;
 
                     phase1Baseline = await executeToolCall('get_test_status', {
                         agent_id: nodeCtx.siteName,
                         profile: 'conv',
+                        test_id: startedTestId,
                         wait_seconds: baselineSec
                     }, ctx);
-                    if (!startedTestId && phase1Baseline?.metrics?.test_id) {
-                        startedTestId = phase1Baseline.metrics.test_id;
+                    if (!startedTestId && (phase1Baseline?.test_id || phase1Baseline?.metrics?.test_id)) {
+                        startedTestId = phase1Baseline.test_id || phase1Baseline.metrics?.test_id;
                     }
 
                     // Phase 2: Inject requested VyOS fault
@@ -3745,6 +3871,7 @@ export async function executeCopilotTool(
                     phase2DuringFault = await executeToolCall('get_test_status', {
                         agent_id: nodeCtx.siteName,
                         profile: 'conv',
+                        test_id: startedTestId,
                         wait_seconds: faultSec
                     }, ctx);
                 } finally {
@@ -3774,20 +3901,23 @@ export async function executeCopilotTool(
                     // Guaranteed cleanup: 2. Always stop convergence probe
                     if (probeStarted) {
                         try {
-                            await executeToolCall('stop_test', {
+                            stopResult = await executeToolCall('stop_test', {
                                 agent_id: nodeCtx.siteName,
-                                profile: 'conv'
+                                profile: 'conv',
+                                test_id: startedTestId
                             }, ctx);
                             probeStopped = true;
                         } catch {}
                     }
                 }
 
-                // Fetch final convergence report
-                const finalReport = await executeToolCall('get_convergence_report', {
-                    agent_id: nodeCtx.siteName,
-                    test_id: startedTestId || 'latest'
-                }, ctx);
+                // Fetch final convergence report (or use the rich report already returned by stop_test)
+                const finalReport = (stopResult && stopResult.poc_test_analysis)
+                    ? stopResult
+                    : await executeToolCall('get_convergence_report', {
+                        agent_id: nodeCtx.siteName,
+                        test_id: startedTestId || 'latest'
+                    }, ctx);
 
                 return {
                     node: nodeCtx.siteName,
@@ -3813,6 +3943,7 @@ export async function executeCopilotTool(
                     phase_2_during_fault: phase2DuringFault?.metrics || phase2DuringFault,
                     injection_result: injectionResult,
                     rollback_result: rollbackResult,
+                    poc_test_analysis: finalReport?.poc_test_analysis,
                     final_convergence_report: finalReport
                 };
             }

@@ -63,20 +63,19 @@ services:
       - TARGET_HTTP_PORT=8082
 
       # --- Registry & Discovery (Optional Overrides) ---
-      - STIGIX_REGISTRY_ENABLED=${STIGIX_REGISTRY_ENABLED:-true}
+      - STIGIX_REGISTRY_ENABLED=${STIGIX_REGISTRY_ENABLED:-false}
       - STIGIX_SITE_NAME=${STIGIX_SITE_NAME:-}
       - STIGIX_PRIVATE_IP=${STIGIX_PRIVATE_IP:-}
       - STIGIX_INSTANCE_ID=${STIGIX_INSTANCE_ID:-}
       - STIGIX_REGISTRY_HEARTBEAT_SEC=${STIGIX_REGISTRY_HEARTBEAT_SEC:-300}
       - STIGIX_REGISTRY_DISCOVERY_SEC=${STIGIX_REGISTRY_DISCOVERY_SEC:-120}
-      - STIGIX_REGISTRY_MODE=${STIGIX_REGISTRY_MODE:-peer}
+      - STIGIX_REGISTRY_MODE=${STIGIX_REGISTRY_MODE:-standalone}
       - STIGIX_PUBLIC_URL=${STIGIX_PUBLIC_URL:-}
       # --- Direct Controller Mode (bypasses Cloudflare, set by --controller installer flag) ---
       - STIGIX_CONTROLLER_URL=${STIGIX_CONTROLLER_URL:-}
-      # --- Stigix Cloud & Probes ---
-      - STIGIX_REGISTRY_URL=${STIGIX_REGISTRY_URL:-https://registry.stigix.io}
-      - STIGIX_TARGET_BASE_URL=${STIGIX_TARGET_BASE_URL:-https://target.stigix.io}
-      - STIGIX_TARGET_MASTER_KEY=${STIGIX_TARGET_MASTER_KEY:-}
+      # --- Stigix Cloud & Probes (Optional BYOC) ---
+      - STIGIX_REGISTRY_URL=${STIGIX_REGISTRY_URL:-}
+      - STIGIX_TARGET_BASE_URL=${STIGIX_TARGET_BASE_URL:-}
       # --- PCAP Stateful Replay Engine ---
       - ENABLE_PCAP_REPLAY=${ENABLE_PCAP_REPLAY:-false}
       - PCAP_MAX_UPLOAD_MB=${PCAP_MAX_UPLOAD_MB:-100}

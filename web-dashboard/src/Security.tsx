@@ -136,7 +136,7 @@ const SchedulerSettings = ({
     );
 };
 
-export default function Security({ token, onGoToCloudSettings }: SecurityProps) {
+export default function Security({ token, onGoToCloudSettings: _onGoToCloudSettings }: SecurityProps) {
     const {
         scores, loading: scoresLoading,
         urlBaseline, dnsBaseline, threatBaseline,
@@ -2624,50 +2624,24 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
                                             let host = '';
                                             try { host = new URL(cloudEicarUrl).hostname; } catch {}
                                             const status = targetReachability[host];
-                                            const disabled = !cloudHasKey;
+                                            const disabled = false;
                                             const lastResult = getEicarResult(cloudEicarUrl);
 
                                             return (
                                                 <div
-                                                    onClick={() => {
-                                                        if (disabled) return;
-                                                        toggleEicarTarget(cloudEicarUrl);
-                                                    }}
-                                                    className={`bg-card border px-4 py-3 rounded-xl group transition-all flex items-center gap-3 shadow-sm ${
-                                                        disabled
-                                                            ? 'opacity-50 cursor-not-allowed border-amber-500/30 bg-amber-500/5'
-                                                            : `cursor-pointer hover:shadow-md ${isSelected ? 'border-blue-500/50 bg-blue-500/5' : 'border-border'}`
+                                                    onClick={() => toggleEicarTarget(cloudEicarUrl)}
+                                                    className={`bg-card border px-4 py-3 rounded-xl group transition-all flex items-center gap-3 shadow-sm cursor-pointer hover:shadow-md ${
+                                                        isSelected ? 'border-blue-500/50 bg-blue-500/5' : 'border-border'
                                                     }`}
                                                 >
-                                                    <div className={`w-4 h-4 rounded border flex items-center justify-center transition-all shrink-0 ${isSelected && !disabled ? 'bg-blue-600 border-blue-500' : 'bg-card-secondary border-border'}`}>
-                                                        {isSelected && !disabled && <Check size={11} className="text-white" strokeWidth={3} />}
+                                                    <div className={`w-4 h-4 rounded border flex items-center justify-center transition-all shrink-0 ${isSelected ? 'bg-blue-600 border-blue-500' : 'bg-card-secondary border-border'}`}>
+                                                        {isSelected && <Check size={11} className="text-white" strokeWidth={3} />}
                                                     </div>
                                                     <div className="flex flex-col min-w-0 flex-1">
                                                         <div className="flex items-center gap-2">
-                                                            <h4 className={`text-xs font-bold transition-colors tracking-tight truncate ${isSelected && !disabled ? 'text-blue-500' : 'text-text-secondary'}`}>Stigix Cloud (Public Worker)</h4>
-                                                            {disabled && (
-                                                                <span className="text-[8px] font-black px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30 tracking-wide whitespace-nowrap shrink-0">
-                                                                    ⚠ Requires STIGIX_TARGET_MASTER_KEY
-                                                                </span>
-                                                            )}
+                                                            <h4 className={`text-xs font-bold transition-colors tracking-tight truncate ${isSelected ? 'text-blue-500' : 'text-text-secondary'}`}>Stigix Cloud (Public Worker)</h4>
                                                         </div>
                                                         <p className="text-[9px] text-text-muted font-mono mt-0.5 truncate">{cloudEicarUrl}</p>
-                                                        {disabled && (
-                                                            <p className="text-[8px] text-amber-600 dark:text-amber-500 mt-1">
-                                                                Configure your key in{' '}
-                                                                {onGoToCloudSettings ? (
-                                                                    <button
-                                                                        onClick={onGoToCloudSettings}
-                                                                        className="underline underline-offset-2 hover:text-amber-400 transition-colors font-black"
-                                                                    >
-                                                                        Settings → Cloud Target Security
-                                                                    </button>
-                                                                ) : (
-                                                                    <span>Settings → Cloud Target Security</span>
-                                                                )}{' '}
-                                                                to enable this endpoint.
-                                                            </p>
-                                                        )}
                                                     </div>
                                                     <div className="flex items-center gap-1.5 ml-2 border-l border-border/50 pl-3">
                                                         {lastResult && getStatusBadge(lastResult.result, { isFresh: !!freshVerdicts[`eicar-${cloudEicarUrl}`], isTesting: runningEicarTarget === cloudEicarUrl || (loading && isSelected), freshKey: freshVerdicts[`eicar-${cloudEicarUrl}`] })}
