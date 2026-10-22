@@ -67,16 +67,17 @@ interface XfrJob {
     error: string | null;
 }
 
-// Helper to format congestion window
+// Helper to format congestion window (normalizes legacy 1448x-scaled records > 64MB)
 const formatCwnd = (raw: number | undefined): { val: string; unit: string } => {
     if (!raw || raw <= 0) return { val: '0', unit: 'KB' };
-    if (raw >= 1048576) {
-        return { val: (raw / 1048576).toFixed(1), unit: 'MB' };
+    const bytes = raw > 67108864 ? raw / 1448 : raw;
+    if (bytes >= 1048576) {
+        return { val: (bytes / 1048576).toFixed(1), unit: 'MB' };
     }
-    if (raw >= 1024) {
-        return { val: (raw / 1024).toFixed(0), unit: 'KB' };
+    if (bytes >= 1024) {
+        return { val: (bytes / 1024).toFixed(0), unit: 'KB' };
     }
-    return { val: raw.toString(), unit: 'B' };
+    return { val: Math.round(bytes).toString(), unit: 'B' };
 };
 
 export default function Speedtest({ token }: Props) {
@@ -940,7 +941,7 @@ export default function Speedtest({ token }: Props) {
                                                         {activeJob?.params.protocol === 'tcp' && payload[0].payload.cwnd !== undefined && (
                                                             <div className="flex items-center justify-between gap-6 mt-2 pt-2 border-t border-border/50">
                                                                 <span className="font-bold text-[#8b5cf6]">TCP Window</span>
-                                                                <span className="font-black text-text-primary">{(payload[0].payload.cwnd / 1024).toFixed(0)} KB</span>
+                                                                <span className="font-black text-text-primary">{formatCwnd(payload[0].payload.cwnd).val} {formatCwnd(payload[0].payload.cwnd).unit}</span>
                                                             </div>
                                                         )}
                                                     </div>
@@ -1124,10 +1125,10 @@ export default function Speedtest({ token }: Props) {
             {
                 showDetailModal && selectedJob && (
                     <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in duration-300">
-                        <div className="bg-card border border-border rounded-2xl w-full max-w-2xl max-h-[90vh] flex flex-col shadow-2xl overflow-hidden relative">
+                        <div className="bg-card border border-border rounded-2xl w-full max-w-4xl max-h-[90vh] flex flex-col shadow-2xl overflow-hidden relative">
 
                             {/* Header */}
-                            <div className="px-5 py-4 border-b border-border flex items-center justify-between bg-card-secondary/40 shrink-0">
+                            <div className="px-5 py-3.5 border-b border-border flex items-center justify-between bg-card-secondary/40 shrink-0">
                                 <div className="flex items-center gap-3">
                                     <div className="p-2 bg-blue-600 rounded-xl shadow-lg shadow-blue-900/30">
                                         <BarChart3 className="text-white" size={16} />
@@ -1156,7 +1157,7 @@ export default function Speedtest({ token }: Props) {
                             </div>
 
                             {/* Body */}
-                            <div className="p-5 space-y-4 overflow-y-auto">
+                            <div className="p-4 space-y-3 overflow-y-auto">
 
                                 {/* Historical Time-Series Chart */}
                                 {selectedJob.intervals && selectedJob.intervals.length > 0 && (() => {
@@ -1167,8 +1168,8 @@ export default function Speedtest({ token }: Props) {
                                     const isBidirModal = selectedJob.params.direction === 'bidirectional';
 
                                     return (
-                                        <div className="bg-card-secondary/30 rounded-xl p-4 border border-border">
-                                            <div className="flex items-center justify-between mb-3">
+                                        <div className="bg-card-secondary/30 rounded-xl p-3.5 border border-border">
+                                            <div className="flex items-center justify-between mb-2.5">
                                                 <span className="text-[9px] font-black text-text-muted tracking-widest opacity-60 uppercase">
                                                     Throughput &amp; {isUdpModal ? 'Loss' : 'Latency'} Profile ({selectedJob.intervals.length}s)
                                                 </span>
@@ -1193,7 +1194,7 @@ export default function Speedtest({ token }: Props) {
                                                     </span>
                                                 </div>
                                             </div>
-                                            <div className="h-48 w-full">
+                                            <div className="h-44 w-full">
                                                 <ResponsiveContainer width="100%" height="100%">
                                                     <ComposedChart data={modalChartData}>
                                                         <defs>
@@ -1208,7 +1209,7 @@ export default function Speedtest({ token }: Props) {
                                                         </defs>
                                                         <CartesianGrid strokeDasharray="3 3" stroke="currentColor" className="text-border" vertical={false} />
                                                         <XAxis
-                                                            dataKey="timestamp"
+                                                            dataKey="time"
                                                             stroke="currentColor"
                                                             className="text-text-muted opacity-40"
                                                             fontSize={10}
@@ -1257,10 +1258,10 @@ export default function Speedtest({ token }: Props) {
                                                                                         <span className="text-xs font-black text-white">{Math.round(data.received_mbps)} Mbps</span>
                                                                                     </div>
                                                                                 )}
-                                                                                {!isUdpModal && data.rtt_us !== undefined && (
+                                                                                {!isUdpModal && data.rtt_ms !== undefined && (
                                                                                     <div className="flex items-center justify-between gap-4">
                                                                                         <span className="text-[10px] font-bold text-cyan-400">Latency (RTT):</span>
-                                                                                        <span className="text-xs font-black text-cyan-300">{(data.rtt_us / 1000).toFixed(1)} ms</span>
+                                                                                        <span className="text-xs font-black text-cyan-300">{Number(data.rtt_ms).toFixed(1)} ms</span>
                                                                                     </div>
                                                                                 )}
                                                                                 {!isUdpModal && data.retransmits !== undefined && (
@@ -1271,8 +1272,8 @@ export default function Speedtest({ token }: Props) {
                                                                                 )}
                                                                                 {!isUdpModal && data.cwnd !== undefined && (
                                                                                     <div className="flex items-center justify-between gap-4 border-t border-white/5 pt-1 mt-1">
-                                                                                        <span className="text-[10px] font-bold text-slate-400">TCP Window (cwnd):</span>
-                                                                                        <span className="text-[10px] font-mono text-slate-300">{Math.round(data.cwnd / 1024)} KB</span>
+                                                                                        <span className="text-[10px] font-bold text-slate-400">TCP Window:</span>
+                                                                                        <span className="text-[10px] font-mono text-slate-300">{formatCwnd(data.cwnd).val} {formatCwnd(data.cwnd).unit}</span>
                                                                                     </div>
                                                                                 )}
                                                                                 {isUdpModal && data.lost_percent !== undefined && (
@@ -1352,7 +1353,7 @@ export default function Speedtest({ token }: Props) {
                                     );
                                 })()}
 
-                                {/* ── Tier 1: Hero Performance KPIs ── */}
+                                {/* ── Clean 2-Row Summary Layout ── */}
                                 {(() => {
                                     const isUpload = selectedJob.params.direction === 'client-to-server';
                                     const isDownload = selectedJob.params.direction === 'server-to-client';
@@ -1367,15 +1368,23 @@ export default function Speedtest({ token }: Props) {
                                         ? Math.max(...selectedJob.intervals.map((i: any) => Math.max(i.sent_mbps || 0, i.received_mbps || 0)))
                                         : null;
 
-                                    // Latency / Jitter
-                                    const rttAvg = selectedJob.summary?.rtt_ms_avg ?? 0;
-                                    const rttMin = selectedJob.summary?.rtt_ms_min ?? 0;
-                                    const rttMax = selectedJob.summary?.rtt_ms_max ?? 0;
+                                    // Latency / Jitter (compute real Min/Max from intervals when summary min/max is 0)
+                                    const rttSamples = (selectedJob.intervals || [])
+                                        .map((i: any) => Number(i.rtt_ms))
+                                        .filter((v: number) => !isNaN(v) && v > 0);
+                                    const rttAvg = selectedJob.summary?.rtt_ms_avg || (rttSamples.length > 0 ? rttSamples.reduce((a: number, b: number) => a + b, 0) / rttSamples.length : 0);
+                                    const rttMin = (selectedJob.summary?.rtt_ms_min && selectedJob.summary.rtt_ms_min > 0)
+                                        ? selectedJob.summary.rtt_ms_min
+                                        : (rttSamples.length > 0 ? Math.min(...rttSamples) : 0);
+                                    const rttMax = (selectedJob.summary?.rtt_ms_max && selectedJob.summary.rtt_ms_max > 0)
+                                        ? selectedJob.summary.rtt_ms_max
+                                        : (rttSamples.length > 0 ? Math.max(...rttSamples) : 0);
                                     const jitterAvg = selectedJob.summary?.jitter_ms_avg ?? 0;
 
                                     // Integrity
                                     const retransmits = selectedJob.summary?.retransmits ?? 0;
                                     const lossPct = selectedJob.summary?.loss_percent ?? 0;
+                                    const hasDegradation = isUdp ? lossPct > 0 : retransmits > 0;
 
                                     // Transfer volume
                                     let txBytes = 0;
@@ -1400,262 +1409,159 @@ export default function Speedtest({ token }: Props) {
                                         const k = 1024;
                                         const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
                                         const i = Math.floor(Math.log(bytes) / Math.log(k));
-                                        return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+                                        return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
                                     };
 
                                     const totalBytes = txBytes + rxBytes;
                                     const cwndInfo = formatCwnd(selectedJob.summary?.cwnd);
 
                                     return (
-                                        <div className="flex flex-col gap-3">
-                                            {/* Tier 1: 3-column Hero KPIs */}
-                                            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                                                {/* KPI 1: Speed / Throughput */}
-                                                <div className="relative overflow-hidden bg-gradient-to-br from-emerald-500/10 via-card-secondary/60 to-card-secondary/30 rounded-2xl border border-emerald-500/30 p-4 shadow-sm flex flex-col justify-between">
+                                        <div className="space-y-3">
+                                            {/* Row 1: 4 Clean KPI Cards */}
+                                            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                                                {/* Card 1: Throughput */}
+                                                <div className="bg-card-secondary/50 rounded-xl border border-emerald-500/25 p-3.5 flex flex-col justify-between">
                                                     <div className="flex items-center justify-between">
-                                                        <span className="text-[10px] font-black uppercase tracking-wider text-emerald-400/90 flex items-center gap-1.5">
-                                                            <Zap size={13} className="text-emerald-400" />
-                                                            {isBidir ? 'Combined Rate' : isDownload ? 'Download Speed' : 'Upload Speed'}
+                                                        <span className="text-[10px] font-black uppercase tracking-wider text-emerald-400">
+                                                            {isBidir ? 'Combined Speed' : isDownload ? 'Download' : 'Upload'}
                                                         </span>
-                                                        <span className="text-[9px] font-mono px-2 py-0.5 rounded-full bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 font-bold uppercase tracking-wider">
-                                                            {selectedJob.params.direction}
+                                                        <Zap size={13} className="text-emerald-400/70" />
+                                                    </div>
+                                                    <div className="my-1.5 flex items-baseline gap-1.5">
+                                                        <span className="text-2xl font-black tracking-tight text-text-primary">
+                                                            {isBidir ? (sentMbps + recvMbps).toFixed(1) : mainMbps.toFixed(1)}
                                                         </span>
+                                                        <span className="text-xs font-bold text-emerald-400">Mbps</span>
                                                     </div>
-                                                    <div className="my-2">
-                                                        <div className="flex items-baseline gap-1.5">
-                                                            <span className="text-3xl font-black tracking-tight text-text-primary">
-                                                                {isBidir ? (sentMbps + recvMbps).toFixed(1) : mainMbps.toFixed(1)}
-                                                            </span>
-                                                            <span className="text-xs font-black text-emerald-400 uppercase tracking-widest">Mbps</span>
-                                                        </div>
-                                                        {isBidir ? (
-                                                            <div className="flex items-center gap-2 mt-1 text-[11px] font-mono text-text-muted">
-                                                                <span className="text-emerald-400">TX: {sentMbps.toFixed(1)}</span>
-                                                                <span>•</span>
-                                                                <span className="text-blue-400">RX: {recvMbps.toFixed(1)}</span>
-                                                            </div>
-                                                        ) : (
-                                                            peakMbps !== null && (
-                                                                <p className="text-[11px] font-medium text-text-muted mt-0.5">
-                                                                    Peak burst: <span className="font-mono text-text-secondary font-bold">{peakMbps.toFixed(1)} Mbps</span>
-                                                                </p>
-                                                            )
-                                                        )}
-                                                    </div>
-                                                    <div className="text-[10px] text-text-muted border-t border-border/40 pt-2 flex items-center justify-between">
-                                                        <span>Target: {selectedJob.params.bitrate || 'Uncapped'}</span>
-                                                        <span className="font-mono text-emerald-400/90 font-bold">{selectedJob.params.protocol.toUpperCase()}</span>
+                                                    <div className="text-[11px] font-mono text-text-muted truncate">
+                                                        {isBidir
+                                                            ? `↑ ${sentMbps.toFixed(1)} • ↓ ${recvMbps.toFixed(1)} Mbps`
+                                                            : peakMbps !== null
+                                                                ? `Peak: ${peakMbps.toFixed(1)} Mbps`
+                                                                : `Cap: ${selectedJob.params.bitrate || 'Max'}`}
                                                     </div>
                                                 </div>
 
-                                                {/* KPI 2: Latency & Responsiveness */}
-                                                <div className="relative overflow-hidden bg-gradient-to-br from-cyan-500/10 via-card-secondary/60 to-card-secondary/30 rounded-2xl border border-cyan-500/30 p-4 shadow-sm flex flex-col justify-between">
+                                                {/* Card 2: Latency / Jitter */}
+                                                <div className="bg-card-secondary/50 rounded-xl border border-cyan-500/25 p-3.5 flex flex-col justify-between">
                                                     <div className="flex items-center justify-between">
-                                                        <span className="text-[10px] font-black uppercase tracking-wider text-cyan-400/90 flex items-center gap-1.5">
-                                                            <Gauge size={13} className="text-cyan-400" />
-                                                            {isUdp ? 'Jitter & Latency' : 'Round-Trip Time (RTT)'}
+                                                        <span className="text-[10px] font-black uppercase tracking-wider text-cyan-400">
+                                                            {isUdp ? 'Jitter' : 'Latency (RTT)'}
                                                         </span>
-                                                        {isUdp ? (
-                                                            <span className={cn(
-                                                                "text-[9px] font-mono px-2 py-0.5 rounded-full border font-bold uppercase tracking-wider",
-                                                                jitterAvg <= 2 ? "bg-emerald-500/15 border-emerald-500/30 text-emerald-300" :
-                                                                jitterAvg <= 10 ? "bg-cyan-500/15 border-cyan-500/30 text-cyan-300" :
-                                                                "bg-amber-500/15 border-amber-500/30 text-amber-300"
-                                                            )}>
-                                                                {jitterAvg <= 2 ? 'Stable' : jitterAvg <= 10 ? 'Normal' : 'High Jitter'}
-                                                            </span>
-                                                        ) : (
-                                                            <span className={cn(
-                                                                "text-[9px] font-mono px-2 py-0.5 rounded-full border font-bold uppercase tracking-wider",
-                                                                rttAvg <= 30 ? "bg-emerald-500/15 border-emerald-500/30 text-emerald-300" :
-                                                                rttAvg <= 80 ? "bg-cyan-500/15 border-cyan-500/30 text-cyan-300" :
-                                                                "bg-amber-500/15 border-amber-500/30 text-amber-300"
-                                                            )}>
-                                                                {rttAvg <= 30 ? 'Optimal' : rttAvg <= 80 ? 'Normal' : 'Elevated'}
-                                                            </span>
-                                                        )}
+                                                        <Gauge size={13} className="text-cyan-400/70" />
                                                     </div>
-                                                    <div className="my-2">
-                                                        <div className="flex items-baseline gap-1.5">
-                                                            <span className="text-3xl font-black tracking-tight text-text-primary">
-                                                                {isUdp ? jitterAvg.toFixed(2) : rttAvg.toFixed(1)}
-                                                            </span>
-                                                            <span className="text-xs font-black text-cyan-400 uppercase tracking-widest">ms</span>
-                                                        </div>
-                                                        <p className="text-[11px] font-medium text-text-muted mt-0.5">
-                                                            {isUdp ? (
-                                                                <span>Avg jitter variance</span>
-                                                            ) : (
-                                                                <span>
-                                                                    Min: <span className="font-mono text-text-secondary">{rttMin.toFixed(1)}ms</span> • Max: <span className="font-mono text-text-secondary">{rttMax.toFixed(1)}ms</span>
-                                                                </span>
-                                                            )}
-                                                        </p>
+                                                    <div className="my-1.5 flex items-baseline gap-1.5">
+                                                        <span className="text-2xl font-black tracking-tight text-text-primary">
+                                                            {isUdp ? jitterAvg.toFixed(2) : rttAvg.toFixed(1)}
+                                                        </span>
+                                                        <span className="text-xs font-bold text-cyan-400">ms</span>
                                                     </div>
-                                                    <div className="text-[10px] text-text-muted border-t border-border/40 pt-2 flex items-center justify-between">
-                                                        <span>Measurement: Socket RTT</span>
-                                                        <span className="font-mono text-cyan-400/90 font-bold">±{Math.abs(rttMax - rttMin).toFixed(1)}ms spread</span>
+                                                    <div className="text-[11px] font-mono text-text-muted truncate">
+                                                        {isUdp
+                                                            ? 'Avg packet delay var'
+                                                            : `Min ${rttMin.toFixed(1)} • Max ${rttMax.toFixed(1)} ms`}
                                                     </div>
                                                 </div>
 
-                                                {/* KPI 3: Link Integrity & Health */}
+                                                {/* Card 3: Retransmits / Packet Loss */}
                                                 <div className={cn(
-                                                    "relative overflow-hidden bg-gradient-to-br via-card-secondary/60 to-card-secondary/30 rounded-2xl border p-4 shadow-sm flex flex-col justify-between",
-                                                    (isUdp ? lossPct > 0 : retransmits > 0)
-                                                        ? "from-amber-500/10 border-amber-500/30"
-                                                        : "from-emerald-500/10 border-emerald-500/30"
+                                                    "bg-card-secondary/50 rounded-xl border p-3.5 flex flex-col justify-between",
+                                                    hasDegradation ? "border-amber-500/30" : "border-border"
                                                 )}>
                                                     <div className="flex items-center justify-between">
                                                         <span className={cn(
-                                                            "text-[10px] font-black uppercase tracking-wider flex items-center gap-1.5",
-                                                            (isUdp ? lossPct > 0 : retransmits > 0) ? "text-amber-400" : "text-emerald-400"
+                                                            "text-[10px] font-black uppercase tracking-wider",
+                                                            hasDegradation ? "text-amber-400" : "text-text-muted"
                                                         )}>
-                                                            <Activity size={13} />
-                                                            {isUdp ? 'Packet Loss' : 'Retransmissions'}
+                                                            {isUdp ? 'Packet Loss' : 'Retransmits'}
                                                         </span>
                                                         <span className={cn(
-                                                            "text-[9px] font-mono px-2 py-0.5 rounded-full border font-bold uppercase tracking-wider",
-                                                            (isUdp ? lossPct === 0 : retransmits === 0)
-                                                                ? "bg-emerald-500/15 border-emerald-500/30 text-emerald-300"
-                                                                : "bg-amber-500/15 border-amber-500/30 text-amber-300"
+                                                            "w-2 h-2 rounded-full",
+                                                            hasDegradation ? "bg-amber-400" : "bg-emerald-400"
+                                                        )} />
+                                                    </div>
+                                                    <div className="my-1.5 flex items-baseline gap-1.5">
+                                                        <span className={cn(
+                                                            "text-2xl font-black tracking-tight",
+                                                            hasDegradation ? "text-amber-400" : "text-text-primary"
                                                         )}>
-                                                            {(isUdp ? lossPct === 0 : retransmits === 0) ? 'Clean' : 'Degraded'}
+                                                            {isUdp ? `${lossPct.toFixed(1)}%` : retransmits.toLocaleString()}
+                                                        </span>
+                                                        <span className="text-xs font-bold text-text-muted">
+                                                            {isUdp ? 'lost' : 'retries'}
                                                         </span>
                                                     </div>
-                                                    <div className="my-2">
-                                                        <div className="flex items-baseline gap-1.5">
-                                                            <span className={cn(
-                                                                "text-3xl font-black tracking-tight",
-                                                                (isUdp ? lossPct > 0 : retransmits > 0) ? "text-amber-400" : "text-text-primary"
-                                                            )}>
-                                                                {isUdp ? `${lossPct.toFixed(1)}%` : retransmits.toLocaleString()}
-                                                            </span>
-                                                            <span className="text-xs font-black text-text-muted uppercase tracking-widest">
-                                                                {isUdp ? 'lost' : 'retries'}
-                                                            </span>
-                                                        </div>
-                                                        <p className="text-[11px] font-medium text-text-muted mt-0.5">
-                                                            {isUdp ? (
-                                                                <span>{selectedJob.summary?.lost ?? 0} dropped / {selectedJob.summary?.packets_sent ?? 0} sent</span>
-                                                            ) : (
-                                                                <span>{retransmits === 0 ? 'Zero retransmitted segments' : 'TCP fast/timeout retransmits'}</span>
-                                                            )}
-                                                        </p>
+                                                    <div className="text-[11px] font-mono text-text-muted truncate">
+                                                        {isUdp
+                                                            ? `${selectedJob.summary?.lost ?? 0} / ${selectedJob.summary?.packets_sent ?? 0} pkts`
+                                                            : `Loss rate: ${lossPct.toFixed(2)}%`}
                                                     </div>
-                                                    <div className="text-[10px] text-text-muted border-t border-border/40 pt-2 flex items-center justify-between">
-                                                        <span>Loss Rate</span>
-                                                        <span className="font-mono text-text-secondary font-bold">{(selectedJob.summary?.loss_percent ?? 0).toFixed(2)}%</span>
+                                                </div>
+
+                                                {/* Card 4: Data Transferred */}
+                                                <div className="bg-card-secondary/50 rounded-xl border border-border p-3.5 flex flex-col justify-between">
+                                                    <div className="flex items-center justify-between">
+                                                        <span className="text-[10px] font-black uppercase tracking-wider text-blue-400">
+                                                            Transferred
+                                                        </span>
+                                                        <ArrowUpRight size={13} className="text-blue-400/70" />
+                                                    </div>
+                                                    <div className="my-1.5 flex items-baseline gap-1.5">
+                                                        <span className="text-2xl font-black tracking-tight text-text-primary">
+                                                            {formatBytes(totalBytes).split(' ')[0]}
+                                                        </span>
+                                                        <span className="text-xs font-bold text-blue-400">
+                                                            {formatBytes(totalBytes).split(' ')[1] || 'B'}
+                                                        </span>
+                                                    </div>
+                                                    <div className="text-[11px] font-mono text-text-muted truncate">
+                                                        {isBidir
+                                                            ? `↑ ${formatBytes(txBytes)} • ↓ ${formatBytes(rxBytes)}`
+                                                            : `Duration: ${selectedJob.params.duration_sec}s • Cap: ${selectedJob.params.bitrate || 'Max'}`}
                                                     </div>
                                                 </div>
                                             </div>
 
-                                            {/* Tier 2: 2-column Transfer & Socket Breakdown */}
-                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                                                {/* Left: Volume Transferred */}
-                                                <div className="bg-card-secondary/50 rounded-2xl border border-border p-4 flex flex-col justify-between">
-                                                    <div>
-                                                        <div className="flex items-center justify-between pb-2.5 border-b border-border/50">
-                                                            <span className="text-[10px] font-black text-text-muted tracking-widest uppercase flex items-center gap-1.5">
-                                                                <ArrowUpRight size={12} className="text-blue-400" />
-                                                                Data Volume Transferred
-                                                            </span>
-                                                            <span className="text-xs font-mono font-bold text-text-primary">
-                                                                Total: {formatBytes(totalBytes)}
-                                                            </span>
-                                                        </div>
-                                                        <div className="grid grid-cols-2 gap-3 pt-3">
-                                                            <div className="p-3 rounded-xl bg-card/60 border border-border/40">
-                                                                <span className="text-[9px] font-black uppercase tracking-wider text-text-muted block mb-1">Download (RX)</span>
-                                                                <span className="text-lg font-black text-blue-400 font-mono">{formatBytes(rxBytes)}</span>
-                                                            </div>
-                                                            <div className="p-3 rounded-xl bg-card/60 border border-border/40">
-                                                                <span className="text-[9px] font-black uppercase tracking-wider text-text-muted block mb-1">Upload (TX)</span>
-                                                                <span className="text-lg font-black text-emerald-400 font-mono">{formatBytes(txBytes)}</span>
-                                                            </div>
-                                                        </div>
-                                                    </div>
-                                                    {/* Ratio bar */}
-                                                    <div className="mt-3 pt-2">
-                                                        <div className="h-1.5 w-full bg-border/60 rounded-full overflow-hidden flex">
-                                                            <div
-                                                                className="bg-blue-500 h-full transition-all"
-                                                                style={{ width: `${totalBytes > 0 ? (rxBytes / totalBytes) * 100 : 0}%` }}
-                                                                title={`RX: ${formatBytes(rxBytes)}`}
-                                                            />
-                                                            <div
-                                                                className="bg-emerald-500 h-full transition-all"
-                                                                style={{ width: `${totalBytes > 0 ? (txBytes / totalBytes) * 100 : 0}%` }}
-                                                                title={`TX: ${formatBytes(txBytes)}`}
-                                                            />
-                                                        </div>
-                                                        <div className="flex justify-between items-center text-[9px] text-text-muted mt-1 font-mono">
-                                                            <span className="text-blue-400">RX {totalBytes > 0 ? Math.round((rxBytes / totalBytes) * 100) : 0}%</span>
-                                                            <span className="text-emerald-400">TX {totalBytes > 0 ? Math.round((txBytes / totalBytes) * 100) : 0}%</span>
-                                                        </div>
-                                                    </div>
-                                                </div>
-
-                                                {/* Right: Socket & Stack Configuration */}
-                                                <div className="bg-card-secondary/50 rounded-2xl border border-border p-4 flex flex-col justify-between">
-                                                    <div>
-                                                        <div className="flex items-center justify-between pb-2.5 border-b border-border/50">
-                                                            <span className="text-[10px] font-black text-text-muted tracking-widest uppercase flex items-center gap-1.5">
-                                                                <Layers size={12} className="text-purple-400" />
-                                                                Socket & Stack State
-                                                            </span>
-                                                            <span className="text-[10px] font-mono px-2 py-0.5 rounded-md bg-purple-500/10 border border-purple-500/20 text-purple-300 font-bold">
-                                                                {selectedJob.params.protocol === 'tcp' ? 'TCP Window Scaled' : 'UDP Datagram'}
-                                                            </span>
-                                                        </div>
-                                                        <div className="grid grid-cols-2 gap-2.5 pt-3">
-                                                            <div className="p-2.5 rounded-xl bg-card/60 border border-border/40 flex flex-col justify-between">
-                                                                <span className="text-[9px] font-black uppercase tracking-wider text-text-muted">TCP Window (CWND)</span>
-                                                                <div className="flex items-baseline gap-1 mt-1">
-                                                                    <span className="text-base font-black text-text-primary font-mono">{cwndInfo.val}</span>
-                                                                    <span className="text-[10px] font-bold text-text-muted">{cwndInfo.unit}</span>
-                                                                </div>
-                                                            </div>
-                                                            <div className="p-2.5 rounded-xl bg-card/60 border border-border/40 flex flex-col justify-between">
-                                                                <span className="text-[9px] font-black uppercase tracking-wider text-text-muted">Congestion Algorithm</span>
-                                                                <span className="text-base font-black text-text-primary font-mono mt-1">
-                                                                    {selectedJob.params.protocol === 'tcp' ? (selectedJob.params.congestion || 'Cubic') : 'N/A (UDP)'}
-                                                                </span>
-                                                            </div>
-                                                            <div className="p-2.5 rounded-xl bg-card/60 border border-border/40 flex flex-col justify-between">
-                                                                <span className="text-[9px] font-black uppercase tracking-wider text-text-muted">Parallel Streams</span>
-                                                                <span className="text-base font-black text-text-primary font-mono mt-1">
-                                                                    {selectedJob.params.parallel_streams || 1} <span className="text-[10px] font-normal text-text-muted">flow{(selectedJob.params.parallel_streams || 1) > 1 ? 's' : ''}</span>
-                                                                </span>
-                                                            </div>
-                                                            <div className="p-2.5 rounded-xl bg-card/60 border border-border/40 flex flex-col justify-between">
-                                                                <span className="text-[9px] font-black uppercase tracking-wider text-text-muted">DSCP / Traffic Class</span>
-                                                                <span className="text-base font-black text-text-primary font-mono mt-1">
-                                                                    {selectedJob.params.dscp || 'Default (0)'}
-                                                                </span>
-                                                            </div>
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                            </div>
-
-                                            {/* Tier 3: Session Footer Metadata Bar */}
-                                            <div className="bg-card-secondary/40 rounded-xl border border-border/70 px-4 py-2.5 flex flex-wrap items-center justify-between gap-2 text-xs">
-                                                <div className="flex items-center gap-3 text-text-muted flex-wrap">
-                                                    <span className="text-[9px] font-black uppercase tracking-widest text-text-muted">Session Params:</span>
-                                                    <span className="font-mono text-text-primary font-semibold">
-                                                        Target: <span className="text-text-secondary">{selectedJob.params.target_host}:{selectedJob.params.target_port}</span>
-                                                    </span>
-                                                    <span className="text-border">•</span>
-                                                    <span className="font-mono text-text-primary font-semibold">
-                                                        Duration: <span className="text-text-secondary">{selectedJob.params.duration_sec}s</span>
-                                                    </span>
-                                                    <span className="text-border">•</span>
-                                                    <span className="font-mono text-text-primary font-semibold">
-                                                        Src Port: <span className="text-text-secondary">{selectedJob.params.cport || 'Auto (Ephem)'}</span>
+                                            {/* Row 2: Single-Line Technical Parameters Strip */}
+                                            <div className="bg-card-secondary/30 rounded-xl border border-border/70 px-4 py-2.5 flex flex-wrap items-center justify-between gap-x-4 gap-y-1.5 text-xs">
+                                                <div className="flex items-center gap-1.5">
+                                                    <span className="text-text-muted">Protocol:</span>
+                                                    <span className="font-mono font-bold text-text-primary uppercase">
+                                                        {selectedJob.params.protocol}
+                                                        {!isUdp && ` (${selectedJob.params.congestion || 'Cubic'})`}
                                                     </span>
                                                 </div>
-                                                <div className="text-[10px] font-mono text-text-muted">
-                                                    ID: <span className="text-text-secondary">{selectedJob.id.slice(0, 8)}</span>
+                                                {!isUdp && (
+                                                    <div className="flex items-center gap-1.5">
+                                                        <span className="text-text-muted">TCP Window:</span>
+                                                        <span className="font-mono font-bold text-text-primary">
+                                                            {cwndInfo.val} {cwndInfo.unit}
+                                                        </span>
+                                                    </div>
+                                                )}
+                                                <div className="flex items-center gap-1.5">
+                                                    <span className="text-text-muted">Streams:</span>
+                                                    <span className="font-mono font-bold text-text-primary">
+                                                        {selectedJob.params.parallel_streams || selectedJob.params.streams || 1}
+                                                    </span>
+                                                </div>
+                                                <div className="flex items-center gap-1.5">
+                                                    <span className="text-text-muted">Direction:</span>
+                                                    <span className="font-mono font-bold text-text-primary">
+                                                        {isBidir ? 'Bidirectional' : isDownload ? 'Download (RX)' : 'Upload (TX)'}
+                                                    </span>
+                                                </div>
+                                                <div className="flex items-center gap-1.5">
+                                                    <span className="text-text-muted">DSCP:</span>
+                                                    <span className="font-mono font-bold text-text-primary">
+                                                        {selectedJob.params.dscp || 'Default (0)'}
+                                                    </span>
+                                                </div>
+                                                <div className="flex items-center gap-1.5">
+                                                    <span className="text-text-muted">Src Port:</span>
+                                                    <span className="font-mono font-bold text-text-primary">
+                                                        {selectedJob.params.cport || 'Auto'}
+                                                    </span>
                                                 </div>
                                             </div>
                                         </div>

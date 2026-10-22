@@ -1027,7 +1027,7 @@ class XfrJobManager {
                 jitter_ms: parsed.jitter_ms || 0,
                 cwnd: (() => {
                     const c = parsed.cwnd || parsed.tcp_info?.cwnd || 0;
-                    return process.platform === 'darwin' ? c : c * 1448;
+                    return (process.platform === 'darwin' || c > 16384) ? c : c * 1448;
                 })()
             };
 
@@ -1252,7 +1252,7 @@ class XfrJobManager {
             packets_received: p.udp_stats?.packets_received,
             cwnd: (() => {
                 const c = p.tcp_info?.cwnd || p.cwnd || 0;
-                return process.platform === 'darwin' ? c : c * 1448;
+                return (process.platform === 'darwin' || c > 16384) ? c : c * 1448;
             })()
         };
     }

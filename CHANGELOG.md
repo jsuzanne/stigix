@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.0.79] - 2026-10-22
+
+### Changed
+- **Speedtest Test Details Modal Compact Wide Layout (`web-dashboard/src/Speedtest.tsx`)**:
+  - **Wider & Lower-Profile Modal (`max-w-4xl`)**: Expanded modal width from `max-w-2xl` to `max-w-4xl` and reduced vertical padding so the entire modal fits comfortably on 13-inch laptop screens without scrolling.
+  - **Streamlined 2-Row Summary**: Replaced the verbose 3-tier layout with 4 uncluttered KPI cards on a single horizontal row (Throughput, Latency/Jitter, Retransmits/Loss, Total Transferred) followed by a single-line technical parameter strip (Protocol & Congestion, TCP Window, Streams, Direction, DSCP, Src Port).
+
+### Fixed
+- **Speedtest Telemetry & Chart Display Fixes (`web-dashboard/src/Speedtest.tsx`, `web-dashboard/server.ts`)**:
+  - **Modal X-Axis Formatting**: Fixed `<XAxis>` in the Test Details modal using `dataKey="time"` instead of raw ISO `timestamp` strings (`1s..10s` instead of `2026-10-22T...Zs`).
+  - **Real Min/Max RTT Computation**: Computed `Min` and `Max` RTT directly from per-second `intervals` when `xfr` summary `rtt_ms_min` / `rtt_ms_max` fields are `0`.
+  - **TCP Window (`cwnd`) Scaling**: Fixed double-multiplication (`c * 1448`) in `server.ts` when `xfr` already reports `cwnd` in bytes, and normalized legacy historical records in `formatCwnd()`.
+
 ## [3.0.78] - 2026-10-22
 
 ### Added
