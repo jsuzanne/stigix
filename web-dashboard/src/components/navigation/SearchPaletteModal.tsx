@@ -463,6 +463,10 @@ export const SearchPaletteModal: React.FC<SearchPaletteModalProps> = ({
                             <kbd className="px-1.5 py-0.5 font-mono text-[9px] bg-slate-200 dark:bg-[#161f36] text-slate-700 dark:text-slate-300 rounded">⇧H</kbd>
                             <span>home</span>
                         </span>
+                        <span className="flex items-center gap-1">
+                            <kbd className="px-1.5 py-0.5 font-mono text-[9px] bg-slate-200 dark:bg-[#161f36] text-slate-700 dark:text-slate-300 rounded">?</kbd>
+                            <span>shortcuts</span>
+                        </span>
                     </div>
 
                     <span className="font-semibold text-[10px] text-blue-600 dark:text-blue-400">

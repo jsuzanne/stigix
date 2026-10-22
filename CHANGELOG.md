@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.0.78] - 2026-10-22
+
+### Added
+- **Global Menu Keyboard Shortcuts & Cheatsheet Modal (`web-dashboard/src/App.tsx`, `web-dashboard/src/components/navigation/KeyboardShortcutsModal.tsx`, `SidebarRail.tsx`, `SearchPaletteModal.tsx`)**:
+  - **Go-To Sequence Navigation**: Implemented sequential navigation using `G` followed by a target key (`G+H` Home Overview, `G+T` Topology, `G+D` Digital Experience, `G+B` Bandwidth Speedtest, `G+S` Security, `G+V` VyOS Router, `G+F` Failover, `G+P` Packet Capture, `G+G` SaaS Generator, `G+C` ChangeGuard, `G+E` Live Events, `G+O` Voice, `G+I` IoT, `G+L` Fleet Mesh, `G+,` Settings).
+  - **Sequence Feedback & Safety**: Added an animated floating indicator pill when `G` is pressed (with 1.5s timeout) displaying available hotkeys; automatically ignored when typing in text inputs, textareas, and select elements.
+  - **Keyboard Cheatsheet Modal**: Dedicated reference modal triggered via `?` (or `Shift+/`) or from the user profile popover menu in the sidebar rail, listing both navigation sequences and global accelerators (`⌘K`, `⌘J`, `⇧H`, `Esc`).
+
+### Changed
+- **Speedtest Test Details Ergonomic & KPI Redesign (`web-dashboard/src/Speedtest.tsx`)**:
+  - **3-Tier Structured Hierarchy**: Replaced the previous flat parameter list with an executive 3-tier hierarchy below the throughput graph.
+  - **Tier 1 Hero Performance Cards**: 3 prominent cards highlighting Throughput/Speed (direction badge, burst peak), Latency/RTT (min/max spread, dynamic health pills), and Link Integrity/Retransmissions (`Clean` vs `Degraded` status).
+  - **Tier 2 Transfer & Stack Breakdown**: Formatted data volume transferred (Download vs Upload) with a visual ratio bar, and network stack details with dynamic TCP window size formatting (`formatCwnd`, displaying MB/KB instead of raw bytes).
+  - **Tier 3 Session Footer**: Consolidated session parameters (target, duration, source port, test ID) into a compact bottom metadata strip.
+- **Digital Experience (DEM) Test Target & CLI Command Card Repositioning (`web-dashboard/src/ConnectivityPerformance.tsx`)**:
+  - Moved the Effective Test Target & CLI Command card from the top of the test details modal to the bottom of the modal body following Probe Score and probe results.
+
 ## [3.0.77] - 2026-10-22
 
 ### Added

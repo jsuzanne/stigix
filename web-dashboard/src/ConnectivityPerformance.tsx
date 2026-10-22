@@ -2045,64 +2045,6 @@ export default function ConnectivityPerformance({ token, uiConfig, onManage, isL
                         })()}
 
                         <div className="p-8 space-y-8">
-                            {/* ── Effective Target URL & CLI Command Card ── */}
-                            {(() => {
-                                const fullUrl = getResolvedFullUrl(selectedEndpoint);
-                                const isHttpLike = selectedEndpoint.type === 'CLOUD' || ['HTTP', 'HTTPS'].includes((selectedEndpoint.type || '').toUpperCase());
-                                const curlCommand = isHttpLike
-                                    ? `curl -i -sS "${fullUrl}"`
-                                    : selectedEndpoint.type === 'PING'
-                                        ? `ping -c 4 ${selectedEndpoint.target}`
-                                        : selectedEndpoint.type === 'TCP'
-                                            ? `nc -zv ${(selectedEndpoint.target || '').split(':')[0]} ${(selectedEndpoint.target || '').split(':')[1] || 80}`
-                                            : `nc -zvu ${(selectedEndpoint.target || '').split(':')[0]} ${(selectedEndpoint.target || '').split(':')[1] || 5201}`;
-
-                                return (
-                                    <div className="bg-card-secondary/40 border border-border rounded-xl p-4 space-y-3">
-                                        <div className="flex items-center justify-between">
-                                            <span className="text-[10px] font-black uppercase tracking-wider text-text-muted flex items-center gap-1.5">
-                                                <Globe size={13} className="text-blue-500" />
-                                                Effective Test Target & Command
-                                            </span>
-                                            <div className="flex items-center gap-2">
-                                                <button
-                                                    type="button"
-                                                    onClick={() => handleCopyUrl(fullUrl)}
-                                                    className="px-2.5 py-1 rounded-lg text-[10px] font-bold bg-card border border-border hover:bg-card-secondary text-text-primary transition-all flex items-center gap-1.5 shadow-sm"
-                                                    title="Copy full target URL"
-                                                >
-                                                    {copiedUrl === fullUrl ? <Check size={12} className="text-emerald-400" /> : <Copy size={12} />}
-                                                    <span>{copiedUrl === fullUrl ? 'Copied URL' : 'Copy URL'}</span>
-                                                </button>
-                                                <button
-                                                    type="button"
-                                                    onClick={() => handleCopyCurl(curlCommand)}
-                                                    className="px-2.5 py-1 rounded-lg text-[10px] font-bold bg-blue-500/10 border border-blue-500/20 hover:bg-blue-500/20 text-blue-400 transition-all flex items-center gap-1.5 shadow-sm"
-                                                    title="Copy command for terminal testing"
-                                                >
-                                                    {copiedCurl === curlCommand ? <Check size={12} className="text-emerald-400" /> : <Terminal size={12} />}
-                                                    <span>{copiedCurl === curlCommand ? 'Copied Command' : (isHttpLike ? 'Copy cURL' : 'Copy CLI')}</span>
-                                                </button>
-                                            </div>
-                                        </div>
-                                        <div className="grid grid-cols-1 gap-2">
-                                            <div className="bg-background/80 border border-border/60 rounded-lg px-3 py-2 flex items-center justify-between gap-3">
-                                                <div className="flex items-center gap-2 overflow-hidden flex-1 min-w-0">
-                                                    <span className="text-[9px] font-black uppercase text-text-muted px-1.5 py-0.5 rounded bg-card border border-border flex-shrink-0">URL</span>
-                                                    <span className="text-[11px] font-mono text-text-primary truncate select-all">{fullUrl}</span>
-                                                </div>
-                                            </div>
-                                            <div className="bg-background/80 border border-border/60 rounded-lg px-3 py-2 flex items-center justify-between gap-3">
-                                                <div className="flex items-center gap-2 overflow-hidden flex-1 min-w-0">
-                                                    <span className="text-[9px] font-black uppercase text-blue-400 px-1.5 py-0.5 rounded bg-blue-500/10 border border-blue-500/20 flex-shrink-0">CLI</span>
-                                                    <span className="text-[11px] font-mono text-blue-300 dark:text-blue-200 truncate select-all">{curlCommand}</span>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </div>
-                                );
-                            })()}
-
                             {/* ── Synchronized charts wrapper (relative for connecting line) ── */}
                             <div ref={chartsRegionRef} style={{ position: 'relative' }}>
 
@@ -2337,13 +2279,71 @@ export default function ConnectivityPerformance({ token, uiConfig, onManage, isL
                                 </div>
                             </div>
 
-                            {/* ── Dynamic DEM Score Breakdown & Explainer Card (placed at bottom) ── */}
+                            {/* ── Dynamic DEM Score Breakdown & Explainer Card ── */}
                             <ProbeScoreCard
                                 probe={selectedEndpoint}
                                 result={inspectedCapture || selectedEndpointResults[0]}
                                 onQuickFixStatus={handleQuickAddStatusCode}
                                 onOpenEditModal={() => startEditProbe(selectedEndpoint)}
                             />
+
+                            {/* ── Effective Target URL & CLI Command Card (placed at bottom) ── */}
+                            {(() => {
+                                const fullUrl = getResolvedFullUrl(selectedEndpoint);
+                                const isHttpLike = selectedEndpoint.type === 'CLOUD' || ['HTTP', 'HTTPS'].includes((selectedEndpoint.type || '').toUpperCase());
+                                const curlCommand = isHttpLike
+                                    ? `curl -i -sS "${fullUrl}"`
+                                    : selectedEndpoint.type === 'PING'
+                                        ? `ping -c 4 ${selectedEndpoint.target}`
+                                        : selectedEndpoint.type === 'TCP'
+                                            ? `nc -zv ${(selectedEndpoint.target || '').split(':')[0]} ${(selectedEndpoint.target || '').split(':')[1] || 80}`
+                                            : `nc -zvu ${(selectedEndpoint.target || '').split(':')[0]} ${(selectedEndpoint.target || '').split(':')[1] || 5201}`;
+
+                                return (
+                                    <div className="bg-card-secondary/40 border border-border rounded-xl p-4 space-y-3">
+                                        <div className="flex items-center justify-between">
+                                            <span className="text-[10px] font-black uppercase tracking-wider text-text-muted flex items-center gap-1.5">
+                                                <Globe size={13} className="text-blue-500" />
+                                                Effective Test Target & Command
+                                            </span>
+                                            <div className="flex items-center gap-2">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleCopyUrl(fullUrl)}
+                                                    className="px-2.5 py-1 rounded-lg text-[10px] font-bold bg-card border border-border hover:bg-card-secondary text-text-primary transition-all flex items-center gap-1.5 shadow-sm cursor-pointer"
+                                                    title="Copy full target URL"
+                                                >
+                                                    {copiedUrl === fullUrl ? <Check size={12} className="text-emerald-400" /> : <Copy size={12} />}
+                                                    <span>{copiedUrl === fullUrl ? 'Copied URL' : 'Copy URL'}</span>
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleCopyCurl(curlCommand)}
+                                                    className="px-2.5 py-1 rounded-lg text-[10px] font-bold bg-blue-500/10 border border-blue-500/20 hover:bg-blue-500/20 text-blue-400 transition-all flex items-center gap-1.5 shadow-sm cursor-pointer"
+                                                    title="Copy command for terminal testing"
+                                                >
+                                                    {copiedCurl === curlCommand ? <Check size={12} className="text-emerald-400" /> : <Terminal size={12} />}
+                                                    <span>{copiedCurl === curlCommand ? 'Copied Command' : (isHttpLike ? 'Copy cURL' : 'Copy CLI')}</span>
+                                                </button>
+                                            </div>
+                                        </div>
+                                        <div className="grid grid-cols-1 gap-2">
+                                            <div className="bg-background/80 border border-border/60 rounded-lg px-3 py-2 flex items-center justify-between gap-3">
+                                                <div className="flex items-center gap-2 overflow-hidden flex-1 min-w-0">
+                                                    <span className="text-[9px] font-black uppercase text-text-muted px-1.5 py-0.5 rounded bg-card border border-border flex-shrink-0">URL</span>
+                                                    <span className="text-[11px] font-mono text-text-primary truncate select-all">{fullUrl}</span>
+                                                </div>
+                                            </div>
+                                            <div className="bg-background/80 border border-border/60 rounded-lg px-3 py-2 flex items-center justify-between gap-3">
+                                                <div className="flex items-center gap-2 overflow-hidden flex-1 min-w-0">
+                                                    <span className="text-[9px] font-black uppercase text-blue-400 px-1.5 py-0.5 rounded bg-blue-500/10 border border-blue-500/20 flex-shrink-0">CLI</span>
+                                                    <span className="text-[11px] font-mono text-blue-300 dark:text-blue-200 truncate select-all">{curlCommand}</span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                );
+                            })()}
                         </div>
                     </div>
                 </div>

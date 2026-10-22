@@ -1352,61 +1352,42 @@ export default function Speedtest({ token }: Props) {
                                     );
                                 })()}
 
-                                {/* Session Params — inline label: value rows */}
-                                <div className="bg-card-secondary/50 rounded-xl border border-border divide-y divide-border/50 overflow-hidden">
-                                    <div className="grid grid-cols-3">
-                                        <div className="px-4 py-3 flex flex-col gap-0.5">
-                                            <span className="text-[9px] font-black text-text-muted tracking-widest opacity-60 uppercase">Protocol</span>
-                                            <span className="text-xs font-black text-text-primary">{selectedJob.params.protocol.toUpperCase()}</span>
-                                        </div>
-                                        <div className="px-4 py-3 flex flex-col gap-0.5 border-l border-border/50">
-                                            <span className="text-[9px] font-black text-text-muted tracking-widest opacity-60 uppercase">Duration</span>
-                                            <span className="text-xs font-black text-text-primary">{selectedJob.params.duration_sec}s</span>
-                                        </div>
-                                        <div className="px-4 py-3 flex flex-col gap-0.5 border-l border-border/50">
-                                            <span className="text-[9px] font-black text-text-muted tracking-widest opacity-60 uppercase">Streams</span>
-                                            <span className="text-xs font-black text-text-primary">{selectedJob.params.parallel_streams}</span>
-                                        </div>
-                                    </div>
-                                    <div className="grid grid-cols-3">
-                                        <div className="px-4 py-3 flex flex-col gap-0.5">
-                                            <span className="text-[9px] font-black text-text-muted tracking-widest opacity-60 uppercase">DSCP</span>
-                                            <span className="text-xs font-black text-text-primary">{selectedJob.params.dscp || 'Default'}</span>
-                                        </div>
-                                        <div className="px-4 py-3 flex flex-col gap-0.5 border-l border-border/50">
-                                            <span className="text-[9px] font-black text-text-muted tracking-widest opacity-60 uppercase">Src Port</span>
-                                            <span className="text-xs font-black text-text-primary font-mono">{selectedJob.params.cport || 'Auto'}</span>
-                                        </div>
-                                        <div className="px-4 py-3 flex flex-col gap-0.5 border-l border-border/50">
-                                            <span className="text-[9px] font-black text-text-muted tracking-widest opacity-60 uppercase">
-                                                {selectedJob.params.protocol === 'tcp' ? 'Congestion' : 'Jitter'}
-                                            </span>
-                                            <span className={cn("text-xs font-black", selectedJob.params.protocol === 'udp' ? "text-purple-400" : "text-text-primary")}>
-                                                {selectedJob.params.protocol === 'tcp'
-                                                    ? (selectedJob.params.congestion || 'Cubic')
-                                                    : `${selectedJob.summary?.jitter_ms_avg?.toFixed(2) ?? '0.00'} ms`}
-                                            </span>
-                                        </div>
-                                    </div>
-                                </div>
-
-                                {/* Transfer Stats */}
+                                {/* ── Tier 1: Hero Performance KPIs ── */}
                                 {(() => {
                                     const isUpload = selectedJob.params.direction === 'client-to-server';
                                     const isDownload = selectedJob.params.direction === 'server-to-client';
                                     const isBidir = selectedJob.params.direction === 'bidirectional';
+                                    const isUdp = selectedJob.params.protocol === 'udp';
 
+                                    // Throughput values
+                                    const sentMbps = selectedJob.summary?.sent_mbps ?? 0;
+                                    const recvMbps = selectedJob.summary?.received_mbps ?? 0;
+                                    const mainMbps = isDownload ? recvMbps : sentMbps;
+                                    const peakMbps = selectedJob.intervals && selectedJob.intervals.length > 0
+                                        ? Math.max(...selectedJob.intervals.map((i: any) => Math.max(i.sent_mbps || 0, i.received_mbps || 0)))
+                                        : null;
+
+                                    // Latency / Jitter
+                                    const rttAvg = selectedJob.summary?.rtt_ms_avg ?? 0;
+                                    const rttMin = selectedJob.summary?.rtt_ms_min ?? 0;
+                                    const rttMax = selectedJob.summary?.rtt_ms_max ?? 0;
+                                    const jitterAvg = selectedJob.summary?.jitter_ms_avg ?? 0;
+
+                                    // Integrity
+                                    const retransmits = selectedJob.summary?.retransmits ?? 0;
+                                    const lossPct = selectedJob.summary?.loss_percent ?? 0;
+
+                                    // Transfer volume
                                     let txBytes = 0;
                                     let rxBytes = 0;
-
                                     if (selectedJob.summary?.bytes_total) {
                                         if (isUpload) txBytes = selectedJob.summary.bytes_total;
                                         if (isDownload) rxBytes = selectedJob.summary.bytes_total;
                                         if (isBidir) {
-                                            const totalMbps = (selectedJob.summary.sent_mbps || 0) + (selectedJob.summary.received_mbps || 0);
-                                            if (totalMbps > 0) {
-                                                txBytes = ((selectedJob.summary.sent_mbps || 0) / totalMbps) * selectedJob.summary.bytes_total;
-                                                rxBytes = ((selectedJob.summary.received_mbps || 0) / totalMbps) * selectedJob.summary.bytes_total;
+                                            const totalRate = sentMbps + recvMbps;
+                                            if (totalRate > 0) {
+                                                txBytes = (sentMbps / totalRate) * selectedJob.summary.bytes_total;
+                                                rxBytes = (recvMbps / totalRate) * selectedJob.summary.bytes_total;
                                             }
                                         }
                                     } else if (selectedJob.intervals) {
@@ -1422,76 +1403,264 @@ export default function Speedtest({ token }: Props) {
                                         return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
                                     };
 
+                                    const totalBytes = txBytes + rxBytes;
+                                    const cwndInfo = formatCwnd(selectedJob.summary?.cwnd);
+
                                     return (
-                                        <div className="bg-card-secondary/50 rounded-xl border border-border overflow-hidden">
-                                            <div className="px-4 py-2.5 border-b border-border/50 flex items-center gap-1.5">
-                                                <ArrowUpRight size={11} className="text-blue-500" />
-                                                <span className="text-[9px] font-black text-text-muted tracking-widest opacity-70 uppercase">Data Transfer</span>
+                                        <div className="flex flex-col gap-3">
+                                            {/* Tier 1: 3-column Hero KPIs */}
+                                            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                                                {/* KPI 1: Speed / Throughput */}
+                                                <div className="relative overflow-hidden bg-gradient-to-br from-emerald-500/10 via-card-secondary/60 to-card-secondary/30 rounded-2xl border border-emerald-500/30 p-4 shadow-sm flex flex-col justify-between">
+                                                    <div className="flex items-center justify-between">
+                                                        <span className="text-[10px] font-black uppercase tracking-wider text-emerald-400/90 flex items-center gap-1.5">
+                                                            <Zap size={13} className="text-emerald-400" />
+                                                            {isBidir ? 'Combined Rate' : isDownload ? 'Download Speed' : 'Upload Speed'}
+                                                        </span>
+                                                        <span className="text-[9px] font-mono px-2 py-0.5 rounded-full bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 font-bold uppercase tracking-wider">
+                                                            {selectedJob.params.direction}
+                                                        </span>
+                                                    </div>
+                                                    <div className="my-2">
+                                                        <div className="flex items-baseline gap-1.5">
+                                                            <span className="text-3xl font-black tracking-tight text-text-primary">
+                                                                {isBidir ? (sentMbps + recvMbps).toFixed(1) : mainMbps.toFixed(1)}
+                                                            </span>
+                                                            <span className="text-xs font-black text-emerald-400 uppercase tracking-widest">Mbps</span>
+                                                        </div>
+                                                        {isBidir ? (
+                                                            <div className="flex items-center gap-2 mt-1 text-[11px] font-mono text-text-muted">
+                                                                <span className="text-emerald-400">TX: {sentMbps.toFixed(1)}</span>
+                                                                <span>•</span>
+                                                                <span className="text-blue-400">RX: {recvMbps.toFixed(1)}</span>
+                                                            </div>
+                                                        ) : (
+                                                            peakMbps !== null && (
+                                                                <p className="text-[11px] font-medium text-text-muted mt-0.5">
+                                                                    Peak burst: <span className="font-mono text-text-secondary font-bold">{peakMbps.toFixed(1)} Mbps</span>
+                                                                </p>
+                                                            )
+                                                        )}
+                                                    </div>
+                                                    <div className="text-[10px] text-text-muted border-t border-border/40 pt-2 flex items-center justify-between">
+                                                        <span>Target: {selectedJob.params.bitrate || 'Uncapped'}</span>
+                                                        <span className="font-mono text-emerald-400/90 font-bold">{selectedJob.params.protocol.toUpperCase()}</span>
+                                                    </div>
+                                                </div>
+
+                                                {/* KPI 2: Latency & Responsiveness */}
+                                                <div className="relative overflow-hidden bg-gradient-to-br from-cyan-500/10 via-card-secondary/60 to-card-secondary/30 rounded-2xl border border-cyan-500/30 p-4 shadow-sm flex flex-col justify-between">
+                                                    <div className="flex items-center justify-between">
+                                                        <span className="text-[10px] font-black uppercase tracking-wider text-cyan-400/90 flex items-center gap-1.5">
+                                                            <Gauge size={13} className="text-cyan-400" />
+                                                            {isUdp ? 'Jitter & Latency' : 'Round-Trip Time (RTT)'}
+                                                        </span>
+                                                        {isUdp ? (
+                                                            <span className={cn(
+                                                                "text-[9px] font-mono px-2 py-0.5 rounded-full border font-bold uppercase tracking-wider",
+                                                                jitterAvg <= 2 ? "bg-emerald-500/15 border-emerald-500/30 text-emerald-300" :
+                                                                jitterAvg <= 10 ? "bg-cyan-500/15 border-cyan-500/30 text-cyan-300" :
+                                                                "bg-amber-500/15 border-amber-500/30 text-amber-300"
+                                                            )}>
+                                                                {jitterAvg <= 2 ? 'Stable' : jitterAvg <= 10 ? 'Normal' : 'High Jitter'}
+                                                            </span>
+                                                        ) : (
+                                                            <span className={cn(
+                                                                "text-[9px] font-mono px-2 py-0.5 rounded-full border font-bold uppercase tracking-wider",
+                                                                rttAvg <= 30 ? "bg-emerald-500/15 border-emerald-500/30 text-emerald-300" :
+                                                                rttAvg <= 80 ? "bg-cyan-500/15 border-cyan-500/30 text-cyan-300" :
+                                                                "bg-amber-500/15 border-amber-500/30 text-amber-300"
+                                                            )}>
+                                                                {rttAvg <= 30 ? 'Optimal' : rttAvg <= 80 ? 'Normal' : 'Elevated'}
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                    <div className="my-2">
+                                                        <div className="flex items-baseline gap-1.5">
+                                                            <span className="text-3xl font-black tracking-tight text-text-primary">
+                                                                {isUdp ? jitterAvg.toFixed(2) : rttAvg.toFixed(1)}
+                                                            </span>
+                                                            <span className="text-xs font-black text-cyan-400 uppercase tracking-widest">ms</span>
+                                                        </div>
+                                                        <p className="text-[11px] font-medium text-text-muted mt-0.5">
+                                                            {isUdp ? (
+                                                                <span>Avg jitter variance</span>
+                                                            ) : (
+                                                                <span>
+                                                                    Min: <span className="font-mono text-text-secondary">{rttMin.toFixed(1)}ms</span> • Max: <span className="font-mono text-text-secondary">{rttMax.toFixed(1)}ms</span>
+                                                                </span>
+                                                            )}
+                                                        </p>
+                                                    </div>
+                                                    <div className="text-[10px] text-text-muted border-t border-border/40 pt-2 flex items-center justify-between">
+                                                        <span>Measurement: Socket RTT</span>
+                                                        <span className="font-mono text-cyan-400/90 font-bold">±{Math.abs(rttMax - rttMin).toFixed(1)}ms spread</span>
+                                                    </div>
+                                                </div>
+
+                                                {/* KPI 3: Link Integrity & Health */}
+                                                <div className={cn(
+                                                    "relative overflow-hidden bg-gradient-to-br via-card-secondary/60 to-card-secondary/30 rounded-2xl border p-4 shadow-sm flex flex-col justify-between",
+                                                    (isUdp ? lossPct > 0 : retransmits > 0)
+                                                        ? "from-amber-500/10 border-amber-500/30"
+                                                        : "from-emerald-500/10 border-emerald-500/30"
+                                                )}>
+                                                    <div className="flex items-center justify-between">
+                                                        <span className={cn(
+                                                            "text-[10px] font-black uppercase tracking-wider flex items-center gap-1.5",
+                                                            (isUdp ? lossPct > 0 : retransmits > 0) ? "text-amber-400" : "text-emerald-400"
+                                                        )}>
+                                                            <Activity size={13} />
+                                                            {isUdp ? 'Packet Loss' : 'Retransmissions'}
+                                                        </span>
+                                                        <span className={cn(
+                                                            "text-[9px] font-mono px-2 py-0.5 rounded-full border font-bold uppercase tracking-wider",
+                                                            (isUdp ? lossPct === 0 : retransmits === 0)
+                                                                ? "bg-emerald-500/15 border-emerald-500/30 text-emerald-300"
+                                                                : "bg-amber-500/15 border-amber-500/30 text-amber-300"
+                                                        )}>
+                                                            {(isUdp ? lossPct === 0 : retransmits === 0) ? 'Clean' : 'Degraded'}
+                                                        </span>
+                                                    </div>
+                                                    <div className="my-2">
+                                                        <div className="flex items-baseline gap-1.5">
+                                                            <span className={cn(
+                                                                "text-3xl font-black tracking-tight",
+                                                                (isUdp ? lossPct > 0 : retransmits > 0) ? "text-amber-400" : "text-text-primary"
+                                                            )}>
+                                                                {isUdp ? `${lossPct.toFixed(1)}%` : retransmits.toLocaleString()}
+                                                            </span>
+                                                            <span className="text-xs font-black text-text-muted uppercase tracking-widest">
+                                                                {isUdp ? 'lost' : 'retries'}
+                                                            </span>
+                                                        </div>
+                                                        <p className="text-[11px] font-medium text-text-muted mt-0.5">
+                                                            {isUdp ? (
+                                                                <span>{selectedJob.summary?.lost ?? 0} dropped / {selectedJob.summary?.packets_sent ?? 0} sent</span>
+                                                            ) : (
+                                                                <span>{retransmits === 0 ? 'Zero retransmitted segments' : 'TCP fast/timeout retransmits'}</span>
+                                                            )}
+                                                        </p>
+                                                    </div>
+                                                    <div className="text-[10px] text-text-muted border-t border-border/40 pt-2 flex items-center justify-between">
+                                                        <span>Loss Rate</span>
+                                                        <span className="font-mono text-text-secondary font-bold">{(selectedJob.summary?.loss_percent ?? 0).toFixed(2)}%</span>
+                                                    </div>
+                                                </div>
                                             </div>
-                                            <div className="grid grid-cols-3 divide-x divide-border/50">
-                                                <div className="px-4 py-3 flex flex-col gap-1">
-                                                    <span className="text-[9px] font-black text-text-muted opacity-60 uppercase tracking-widest">Download</span>
-                                                    <span className="text-sm font-black text-blue-400">{formatBytes(rxBytes)}</span>
+
+                                            {/* Tier 2: 2-column Transfer & Socket Breakdown */}
+                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                                {/* Left: Volume Transferred */}
+                                                <div className="bg-card-secondary/50 rounded-2xl border border-border p-4 flex flex-col justify-between">
+                                                    <div>
+                                                        <div className="flex items-center justify-between pb-2.5 border-b border-border/50">
+                                                            <span className="text-[10px] font-black text-text-muted tracking-widest uppercase flex items-center gap-1.5">
+                                                                <ArrowUpRight size={12} className="text-blue-400" />
+                                                                Data Volume Transferred
+                                                            </span>
+                                                            <span className="text-xs font-mono font-bold text-text-primary">
+                                                                Total: {formatBytes(totalBytes)}
+                                                            </span>
+                                                        </div>
+                                                        <div className="grid grid-cols-2 gap-3 pt-3">
+                                                            <div className="p-3 rounded-xl bg-card/60 border border-border/40">
+                                                                <span className="text-[9px] font-black uppercase tracking-wider text-text-muted block mb-1">Download (RX)</span>
+                                                                <span className="text-lg font-black text-blue-400 font-mono">{formatBytes(rxBytes)}</span>
+                                                            </div>
+                                                            <div className="p-3 rounded-xl bg-card/60 border border-border/40">
+                                                                <span className="text-[9px] font-black uppercase tracking-wider text-text-muted block mb-1">Upload (TX)</span>
+                                                                <span className="text-lg font-black text-emerald-400 font-mono">{formatBytes(txBytes)}</span>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                    {/* Ratio bar */}
+                                                    <div className="mt-3 pt-2">
+                                                        <div className="h-1.5 w-full bg-border/60 rounded-full overflow-hidden flex">
+                                                            <div
+                                                                className="bg-blue-500 h-full transition-all"
+                                                                style={{ width: `${totalBytes > 0 ? (rxBytes / totalBytes) * 100 : 0}%` }}
+                                                                title={`RX: ${formatBytes(rxBytes)}`}
+                                                            />
+                                                            <div
+                                                                className="bg-emerald-500 h-full transition-all"
+                                                                style={{ width: `${totalBytes > 0 ? (txBytes / totalBytes) * 100 : 0}%` }}
+                                                                title={`TX: ${formatBytes(txBytes)}`}
+                                                            />
+                                                        </div>
+                                                        <div className="flex justify-between items-center text-[9px] text-text-muted mt-1 font-mono">
+                                                            <span className="text-blue-400">RX {totalBytes > 0 ? Math.round((rxBytes / totalBytes) * 100) : 0}%</span>
+                                                            <span className="text-emerald-400">TX {totalBytes > 0 ? Math.round((txBytes / totalBytes) * 100) : 0}%</span>
+                                                        </div>
+                                                    </div>
                                                 </div>
-                                                <div className="px-4 py-3 flex flex-col gap-1">
-                                                    <span className="text-[9px] font-black text-text-muted opacity-60 uppercase tracking-widest">Upload</span>
-                                                    <span className="text-sm font-black text-emerald-400">{formatBytes(txBytes)}</span>
+
+                                                {/* Right: Socket & Stack Configuration */}
+                                                <div className="bg-card-secondary/50 rounded-2xl border border-border p-4 flex flex-col justify-between">
+                                                    <div>
+                                                        <div className="flex items-center justify-between pb-2.5 border-b border-border/50">
+                                                            <span className="text-[10px] font-black text-text-muted tracking-widest uppercase flex items-center gap-1.5">
+                                                                <Layers size={12} className="text-purple-400" />
+                                                                Socket & Stack State
+                                                            </span>
+                                                            <span className="text-[10px] font-mono px-2 py-0.5 rounded-md bg-purple-500/10 border border-purple-500/20 text-purple-300 font-bold">
+                                                                {selectedJob.params.protocol === 'tcp' ? 'TCP Window Scaled' : 'UDP Datagram'}
+                                                            </span>
+                                                        </div>
+                                                        <div className="grid grid-cols-2 gap-2.5 pt-3">
+                                                            <div className="p-2.5 rounded-xl bg-card/60 border border-border/40 flex flex-col justify-between">
+                                                                <span className="text-[9px] font-black uppercase tracking-wider text-text-muted">TCP Window (CWND)</span>
+                                                                <div className="flex items-baseline gap-1 mt-1">
+                                                                    <span className="text-base font-black text-text-primary font-mono">{cwndInfo.val}</span>
+                                                                    <span className="text-[10px] font-bold text-text-muted">{cwndInfo.unit}</span>
+                                                                </div>
+                                                            </div>
+                                                            <div className="p-2.5 rounded-xl bg-card/60 border border-border/40 flex flex-col justify-between">
+                                                                <span className="text-[9px] font-black uppercase tracking-wider text-text-muted">Congestion Algorithm</span>
+                                                                <span className="text-base font-black text-text-primary font-mono mt-1">
+                                                                    {selectedJob.params.protocol === 'tcp' ? (selectedJob.params.congestion || 'Cubic') : 'N/A (UDP)'}
+                                                                </span>
+                                                            </div>
+                                                            <div className="p-2.5 rounded-xl bg-card/60 border border-border/40 flex flex-col justify-between">
+                                                                <span className="text-[9px] font-black uppercase tracking-wider text-text-muted">Parallel Streams</span>
+                                                                <span className="text-base font-black text-text-primary font-mono mt-1">
+                                                                    {selectedJob.params.parallel_streams || 1} <span className="text-[10px] font-normal text-text-muted">flow{(selectedJob.params.parallel_streams || 1) > 1 ? 's' : ''}</span>
+                                                                </span>
+                                                            </div>
+                                                            <div className="p-2.5 rounded-xl bg-card/60 border border-border/40 flex flex-col justify-between">
+                                                                <span className="text-[9px] font-black uppercase tracking-wider text-text-muted">DSCP / Traffic Class</span>
+                                                                <span className="text-base font-black text-text-primary font-mono mt-1">
+                                                                    {selectedJob.params.dscp || 'Default (0)'}
+                                                                </span>
+                                                            </div>
+                                                        </div>
+                                                    </div>
                                                 </div>
-                                                <div className="px-4 py-3 flex flex-col gap-1">
-                                                    <span className="text-[9px] font-black text-text-muted opacity-60 uppercase tracking-widest">Total</span>
-                                                    <span className="text-sm font-black text-text-primary">{formatBytes(rxBytes + txBytes)}</span>
+                                            </div>
+
+                                            {/* Tier 3: Session Footer Metadata Bar */}
+                                            <div className="bg-card-secondary/40 rounded-xl border border-border/70 px-4 py-2.5 flex flex-wrap items-center justify-between gap-2 text-xs">
+                                                <div className="flex items-center gap-3 text-text-muted flex-wrap">
+                                                    <span className="text-[9px] font-black uppercase tracking-widest text-text-muted">Session Params:</span>
+                                                    <span className="font-mono text-text-primary font-semibold">
+                                                        Target: <span className="text-text-secondary">{selectedJob.params.target_host}:{selectedJob.params.target_port}</span>
+                                                    </span>
+                                                    <span className="text-border">•</span>
+                                                    <span className="font-mono text-text-primary font-semibold">
+                                                        Duration: <span className="text-text-secondary">{selectedJob.params.duration_sec}s</span>
+                                                    </span>
+                                                    <span className="text-border">•</span>
+                                                    <span className="font-mono text-text-primary font-semibold">
+                                                        Src Port: <span className="text-text-secondary">{selectedJob.params.cport || 'Auto (Ephem)'}</span>
+                                                    </span>
+                                                </div>
+                                                <div className="text-[10px] font-mono text-text-muted">
+                                                    ID: <span className="text-text-secondary">{selectedJob.id.slice(0, 8)}</span>
                                                 </div>
                                             </div>
                                         </div>
                                     );
                                 })()}
-
-                                {/* Loss / Retransmit Analysis */}
-                                <div className="bg-card-secondary/50 rounded-xl border border-border overflow-hidden">
-                                    <div className="px-4 py-2.5 border-b border-border/50 flex items-center gap-1.5">
-                                        <ShieldOff size={11} className={selectedJob.params.protocol === 'udp' ? "text-red-500" : "text-orange-500"} />
-                                        <span className="text-[9px] font-black text-text-muted tracking-widest opacity-70 uppercase">
-                                            {selectedJob.params.protocol === 'udp' ? 'Loss Analysis' : 'Retransmit Analysis'}
-                                        </span>
-                                    </div>
-                                    {selectedJob.params.protocol === 'udp' ? (
-                                        <div className="grid grid-cols-4 divide-x divide-border/50">
-                                            <div className="px-3 py-3 flex flex-col gap-1">
-                                                <span className="text-[8px] font-black text-text-muted opacity-60 uppercase tracking-widest leading-tight">Avg Loss</span>
-                                                <span className="text-sm font-black text-red-400">{selectedJob.summary?.loss_percent?.toFixed(1) ?? '0.0'}%</span>
-                                            </div>
-                                            <div className="px-3 py-3 flex flex-col gap-1">
-                                                <span className="text-[8px] font-black text-text-muted opacity-60 uppercase tracking-widest leading-tight">Sent</span>
-                                                <span className="text-sm font-black text-text-primary">{selectedJob.summary?.packets_sent?.toLocaleString() ?? 0}</span>
-                                            </div>
-                                            <div className="px-3 py-3 flex flex-col gap-1">
-                                                <span className="text-[8px] font-black text-text-muted opacity-60 uppercase tracking-widest leading-tight">Received</span>
-                                                <span className="text-sm font-black text-text-primary">{selectedJob.summary?.packets_received?.toLocaleString() ?? 0}</span>
-                                            </div>
-                                            <div className="px-3 py-3 flex flex-col gap-1">
-                                                <span className="text-[8px] font-black text-text-muted opacity-60 uppercase tracking-widest leading-tight">Dropped</span>
-                                                <span className="text-sm font-black text-orange-400">{selectedJob.summary?.lost?.toLocaleString() ?? 0}</span>
-                                            </div>
-                                        </div>
-                                    ) : (
-                                        <div className="grid grid-cols-3 divide-x divide-border/50">
-                                            <div className="px-4 py-3 flex flex-col gap-1">
-                                                <span className="text-[9px] font-black text-text-muted opacity-60 uppercase tracking-widest">Retransmits</span>
-                                                <span className="text-sm font-black text-orange-400">{selectedJob.summary?.retransmits ?? 0}</span>
-                                            </div>
-                                            <div className="px-4 py-3 flex flex-col gap-1">
-                                                <span className="text-[9px] font-black text-text-muted opacity-60 uppercase tracking-widest">Avg RTT</span>
-                                                <span className="text-sm font-black text-cyan-400">{selectedJob.summary?.rtt_ms_avg?.toFixed(1) ?? '0.0'} ms</span>
-                                            </div>
-                                            {selectedJob.summary?.cwnd !== undefined && (
-                                                <div className="px-4 py-3 flex flex-col gap-1">
-                                                    <span className="text-[9px] font-black text-text-muted opacity-60 uppercase tracking-widest">TCP Window</span>
-                                                    <span className="text-sm font-black text-text-primary">{(selectedJob.summary.cwnd / 1024).toFixed(0)} KB</span>
-                                                </div>
-                                            )}
-                                        </div>
-                                    )}
-                                </div>
 
                                 {selectedJob.error && (
                                     <div className="bg-red-500/5 p-4 rounded-xl border border-red-500/20 flex flex-col gap-2">

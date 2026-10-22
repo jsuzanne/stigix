@@ -27,6 +27,7 @@ import { MagicJoinModal } from './components/MagicJoinModal';
 import { NodeRoleModal } from './components/NodeRoleModal';
 import { SidebarRail } from './components/navigation/SidebarRail';
 import { SearchPaletteModal } from './components/navigation/SearchPaletteModal';
+import { KeyboardShortcutsModal } from './components/navigation/KeyboardShortcutsModal';
 import { HomeOverview } from './components/navigation/HomeOverview';
 import { Activity, Server, AlertCircle, LayoutDashboard, Settings, LogOut, Key, UserPlus, BarChart3, Wifi, Shield, ChevronDown, ChevronUp, Clock, CheckCircle, XCircle, Play, Pause, Phone, Gauge, Network, Plus, Zap, Monitor, Cpu, Sun, Moon, Globe, Terminal, Sliders, Layers, Code, Bot, Sparkles, Binary, Radio } from 'lucide-react';
 import { clsx } from 'clsx';
@@ -282,6 +283,9 @@ export default function App() {
   }>({ xfr_enabled: false });
   const [copilotDrawerOpen, setCopilotDrawerOpen] = useState(false);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
+  const [showShortcutsModal, setShowShortcutsModal] = useState(false);
+  const [sequencePending, setSequencePending] = useState<string | null>(null);
+  const sequenceTimerRef = React.useRef<any>(null);
   const [copilotConfig, setCopilotConfig] = useState<{ enabled: boolean; featureEnabled?: boolean; hasKey: boolean } | null>(null);
   const [isLeader, setIsLeader] = useState<boolean>(false);
   // Tracks whether a remote peer is active (set via PeerContextProvider callback).
@@ -334,40 +338,133 @@ export default function App() {
     } catch (e) { }
   };
 
-  // Global shortcuts: Cmd+K / Ctrl+K for Search Palette, Cmd+J / Ctrl+J for AI Copilot, Shift+H / Alt+H for Home Overview
+  // Global shortcuts:
+  // - Cmd+K / Ctrl+K: Search Palette
+  // - Cmd+J / Ctrl+J: AI Copilot
+  // - Shift+H / Alt+H: Instant Home Overview
+  // - ?: Keyboard Shortcuts Cheatsheet
+  // - G then key: Go-to sequence navigation (H: Home, T: Topology, D: DEM, B: Speedtest, S: Security, etc.)
+  // - Escape: Close open modals / drawer / sequence
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && (e.key === 'k' || e.key === 'K')) {
-        e.preventDefault();
-        setIsSearchOpen(prev => !prev);
-      } else if ((e.metaKey || e.ctrlKey) && (e.key === 'j' || e.key === 'J')) {
-        if (!copilotConfig?.featureEnabled || !copilotConfig?.hasKey) return; // Only toggle if feature is enabled and key is configured
-        e.preventDefault();
-        setCopilotDrawerOpen(prev => !prev);
-      } else if (!e.metaKey && !e.ctrlKey && (e.shiftKey || e.altKey) && (e.key === 'h' || e.key === 'H' || e.code === 'KeyH')) {
-        const target = e.target as HTMLElement | null;
-        const isEditable = target && (
-          target.tagName === 'INPUT' ||
-          target.tagName === 'TEXTAREA' ||
-          target.tagName === 'SELECT' ||
-          target.isContentEditable
-        );
-        if (!isEditable) {
-          e.preventDefault();
-          setIsSearchOpen(false);
-          setView('home');
+      // 1. Escape key handler
+      if (e.key === 'Escape') {
+        if (sequencePending) {
+          if (sequenceTimerRef.current) clearTimeout(sequenceTimerRef.current);
+          setSequencePending(null);
+          return;
         }
-      } else if (e.key === 'Escape') {
+        if (showShortcutsModal) {
+          setShowShortcutsModal(false);
+          return;
+        }
         if (isSearchOpen) {
           setIsSearchOpen(false);
-        } else if (copilotDrawerOpen) {
+          return;
+        }
+        if (copilotDrawerOpen) {
           setCopilotDrawerOpen(false);
+          return;
         }
       }
+
+      const target = e.target as HTMLElement | null;
+      const isEditable = target && (
+        target.tagName === 'INPUT' ||
+        target.tagName === 'TEXTAREA' ||
+        target.tagName === 'SELECT' ||
+        target.isContentEditable
+      );
+
+      // Never intercept single-key or sequence shortcuts when user is typing in forms/inputs
+      if (isEditable) return;
+
+      // 2. Global Shortcuts with Modifiers
+      if ((e.metaKey || e.ctrlKey) && (e.key === 'k' || e.key === 'K')) {
+        e.preventDefault();
+        if (sequenceTimerRef.current) clearTimeout(sequenceTimerRef.current);
+        setSequencePending(null);
+        setIsSearchOpen(prev => !prev);
+        return;
+      }
+
+      if ((e.metaKey || e.ctrlKey) && (e.key === 'j' || e.key === 'J')) {
+        if (!copilotConfig?.featureEnabled || !copilotConfig?.hasKey) return;
+        e.preventDefault();
+        if (sequenceTimerRef.current) clearTimeout(sequenceTimerRef.current);
+        setSequencePending(null);
+        setCopilotDrawerOpen(prev => !prev);
+        return;
+      }
+
+      if (!e.metaKey && !e.ctrlKey && (e.shiftKey || e.altKey) && (e.key === 'h' || e.key === 'H' || e.code === 'KeyH')) {
+        e.preventDefault();
+        if (sequenceTimerRef.current) clearTimeout(sequenceTimerRef.current);
+        setSequencePending(null);
+        setIsSearchOpen(false);
+        handleNavigate('home');
+        return;
+      }
+
+      // 3. Question mark '?' for Keyboard Shortcuts Cheatsheet
+      if (e.key === '?' || (e.shiftKey && (e.key === '/' || e.code === 'Slash'))) {
+        e.preventDefault();
+        if (sequenceTimerRef.current) clearTimeout(sequenceTimerRef.current);
+        setSequencePending(null);
+        setShowShortcutsModal(prev => !prev);
+        return;
+      }
+
+      // 4. Sequence Navigation (G then [Key])
+      if (sequencePending === 'g') {
+        const key = e.key.toLowerCase();
+        let targetView: string | null = null;
+
+        if (key === 'h') targetView = 'home';
+        else if (key === 't') targetView = 'topology';
+        else if (key === 'd') targetView = 'performance';
+        else if (key === 'b') targetView = features.xfr_enabled ? 'speedtest' : null;
+        else if (key === 's') targetView = 'security';
+        else if (key === 'v') targetView = 'vyos';
+        else if (key === 'f') targetView = 'convergence';
+        else if (key === 'p') targetView = 'packet_capture';
+        else if (key === 'g') targetView = 'dashboard';
+        else if (key === 'c') targetView = features.snapshots_enabled ? 'snapshots' : null;
+        else if (key === 'e') targetView = 'events';
+        else if (key === 'o') targetView = 'voice';
+        else if (key === 'i') targetView = 'iot';
+        else if (key === 'l' && isLeader) targetView = 'fleet';
+        else if (key === ',') targetView = 'settings';
+
+        if (sequenceTimerRef.current) clearTimeout(sequenceTimerRef.current);
+        setSequencePending(null);
+
+        if (targetView) {
+          e.preventDefault();
+          setIsSearchOpen(false);
+          setShowShortcutsModal(false);
+          handleNavigate(targetView);
+        }
+        return;
+      }
+
+      // 5. Initiate Sequence: 'g' pressed without modifiers
+      if (!e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey && (e.key === 'g' || e.key === 'G')) {
+        e.preventDefault();
+        setSequencePending('g');
+        if (sequenceTimerRef.current) clearTimeout(sequenceTimerRef.current);
+        sequenceTimerRef.current = setTimeout(() => {
+          setSequencePending(null);
+        }, 1500);
+      }
     };
+
     window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isSearchOpen, copilotDrawerOpen, copilotConfig?.featureEnabled, copilotConfig?.hasKey]);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      if (sequenceTimerRef.current) clearTimeout(sequenceTimerRef.current);
+    };
+  }, [isSearchOpen, copilotDrawerOpen, copilotConfig?.featureEnabled, copilotConfig?.hasKey, showShortcutsModal, sequencePending, features, isLeader]);
 
   // --- Theme Management ---
   const [theme, setTheme] = useState<'light' | 'dark'>(() => {
@@ -1162,6 +1259,7 @@ export default function App() {
         username={username}
         theme={theme}
         onToggleTheme={toggleTheme}
+        onOpenShortcuts={() => setShowShortcutsModal(true)}
         onAddUser={() => setShowAddUserModal(true)}
         onChangePassword={() => setShowPwdModal(true)}
         onLogout={logout}
@@ -1974,6 +2072,54 @@ export default function App() {
         theme={theme}
         onToggleTheme={toggleTheme}
       />
+
+      <KeyboardShortcutsModal
+        isOpen={showShortcutsModal}
+        onClose={() => setShowShortcutsModal(false)}
+        onNavigate={handleNavigate}
+        isLeader={isLeader}
+        features={{
+          xfr_enabled: features.xfr_enabled,
+          pcap_enabled: isPcapEnabled,
+          copilot_enabled: Boolean(copilotConfig?.featureEnabled && copilotConfig?.hasKey),
+          snapshots_enabled: features.snapshots_enabled
+        }}
+      />
+
+      {/* Go-To Sequence Floating Indicator */}
+      {sequencePending === 'g' && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-slate-900/95 dark:bg-[#0b1020]/95 text-white px-4 py-2.5 rounded-2xl border border-blue-500/40 shadow-2xl flex items-center gap-3 backdrop-blur-md animate-in fade-in slide-in-from-bottom-2 duration-150">
+          <span className="w-2 h-2 rounded-full bg-blue-400 animate-ping" />
+          <div className="flex items-center gap-1.5 font-mono text-xs">
+            <span className="px-1.5 py-0.5 rounded bg-blue-500/20 border border-blue-500/30 font-bold text-blue-400">G</span>
+            <span className="text-slate-400">then</span>
+          </div>
+          <div className="text-xs text-slate-300 flex items-center gap-1.5 flex-wrap">
+            <span><strong className="text-white font-mono">H</strong>ome</span>
+            <span className="text-slate-600">•</span>
+            <span><strong className="text-white font-mono">T</strong>opology</span>
+            <span className="text-slate-600">•</span>
+            <span><strong className="text-white font-mono">D</strong>EM</span>
+            <span className="text-slate-600">•</span>
+            <span><strong className="text-white font-mono">B</strong>andwidth</span>
+            <span className="text-slate-600">•</span>
+            <span><strong className="text-white font-mono">S</strong>ecurity</span>
+            <span className="text-slate-600">•</span>
+            <span><strong className="text-white font-mono">V</strong>yOS</span>
+            <span className="text-slate-600">•</span>
+            <span><strong className="text-white font-mono">,</strong>Settings</span>
+          </div>
+          <button
+            onClick={() => {
+              if (sequenceTimerRef.current) clearTimeout(sequenceTimerRef.current);
+              setSequencePending(null);
+            }}
+            className="text-[10px] font-mono text-slate-400 hover:text-white px-1.5 py-0.5 rounded bg-slate-800/80 border border-slate-700/60 ml-1 cursor-pointer"
+          >
+            Esc
+          </button>
+        </div>
+      )}
     </div>
     </PeerContextProvider>
   );
