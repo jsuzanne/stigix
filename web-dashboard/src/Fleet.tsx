@@ -27,6 +27,11 @@ interface PeerInstance {
     tunnel_dest_ip?: string;
     tunnel_source_port?: number;
     tunnel_dest_port?: number;
+    tunnel_connected_at?: number;
+    tunnel_uptime_seconds?: number;
+    tunnel_reconnect_count?: number;
+    tunnel_last_disconnected_at?: number;
+    tunnel_last_disconnect_reason?: string;
     status: 'online' | 'offline';
     is_stale: boolean;
     last_seen_seconds_ago: number;
@@ -165,6 +170,17 @@ function formatUptime(seconds?: number) {
     return `${m}m`;
 }
 
+function formatTunnelUptime(seconds?: number) {
+    if (seconds === undefined || seconds === null || seconds < 0) return '—';
+    if (seconds < 60) return `${seconds}s`;
+    if (seconds < 3600) {
+        const m = Math.floor(seconds / 60);
+        const s = seconds % 60;
+        return s > 0 ? `${m}m ${s}s` : `${m}m`;
+    }
+    return formatUptime(seconds);
+}
+
 function formatLastSeen(secondsAgo: number, lastSeenIso?: string) {
     let timeStr = '';
     if (lastSeenIso) {
@@ -254,6 +270,8 @@ export default function Fleet({ token, onNavigate: _onNavigate }: FleetProps) {
                         (t.destIp && t.destIp.toLowerCase() === ip)
                     );
                     const hasTunnel = tunnelKeys.has(id) || tunnelKeys.has(site) || (ip ? tunnelKeys.has(ip) : false) || !!matchedTunnel;
+                    const connectedAt = matchedTunnel?.connectedAt ?? inst.tunnel_connected_at;
+                    const uptimeSeconds = matchedTunnel?.uptimeSeconds ?? (connectedAt ? Math.max(0, Math.floor((Date.now() - connectedAt) / 1000)) : inst.tunnel_uptime_seconds);
                     return {
                         ...inst,
                         has_tunnel: hasTunnel,
@@ -262,6 +280,11 @@ export default function Fleet({ token, onNavigate: _onNavigate }: FleetProps) {
                         tunnel_dest_ip: matchedTunnel?.destIp || inst.tunnel_dest_ip,
                         tunnel_source_port: matchedTunnel?.sourcePort || inst.tunnel_source_port,
                         tunnel_dest_port: matchedTunnel?.destPort || inst.tunnel_dest_port,
+                        tunnel_connected_at: connectedAt,
+                        tunnel_uptime_seconds: uptimeSeconds,
+                        tunnel_reconnect_count: matchedTunnel?.reconnectCount ?? inst.tunnel_reconnect_count ?? 0,
+                        tunnel_last_disconnected_at: matchedTunnel?.lastDisconnectedAt ?? inst.tunnel_last_disconnected_at,
+                        tunnel_last_disconnect_reason: matchedTunnel?.lastDisconnectReason ?? inst.tunnel_last_disconnect_reason,
                         rtt_ms: matchedTunnel?.rttMs ?? inst.rtt_ms
                     };
                 });
@@ -592,12 +615,33 @@ export default function Fleet({ token, onNavigate: _onNavigate }: FleetProps) {
                                                     peer.has_tunnel ? (
                                                         peer.tunnel_direction === 'outbound' || peer.tunnel_direction === 'outbound_dial' ? (
                                                             <div className="flex flex-col gap-1 items-start">
-                                                                <div className="flex items-center gap-1.5">
+                                                                <div className="flex items-center gap-1.5 flex-wrap">
                                                                     <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-wider bg-cyan-500/15 text-cyan-700 dark:text-cyan-300 border border-cyan-500/30 shadow-sm" title="Outbound WebSocket Tunnel (Initiator: Leader ➔ Receiver: Peer)">
                                                                         ↗️ OUTBOUND WS
                                                                     </span>
                                                                     {peer.rtt_ms !== undefined && (
                                                                         <span className="text-[10px] font-mono text-cyan-600 dark:text-cyan-400 font-semibold" title="Tunnel Round-Trip Time">{peer.rtt_ms}ms</span>
+                                                                    )}
+                                                                    {peer.tunnel_uptime_seconds !== undefined && (
+                                                                        <span
+                                                                            className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-mono font-semibold border ${
+                                                                                peer.tunnel_uptime_seconds < 300
+                                                                                    ? 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/30'
+                                                                                    : 'bg-card-secondary/80 text-text-secondary border-border/60'
+                                                                            }`}
+                                                                            title={`WebSocket Tunnel Uptime: ${formatTunnelUptime(peer.tunnel_uptime_seconds)}${peer.tunnel_connected_at ? ` (Connected since ${new Date(peer.tunnel_connected_at).toLocaleString()})` : ''}`}
+                                                                        >
+                                                                            <Clock size={10} className="opacity-75" />
+                                                                            {formatTunnelUptime(peer.tunnel_uptime_seconds)}
+                                                                        </span>
+                                                                    )}
+                                                                    {(peer.tunnel_reconnect_count ?? 0) > 0 && (
+                                                                        <span
+                                                                            className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-mono font-bold bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30"
+                                                                            title={`Tunnel reconnected ${peer.tunnel_reconnect_count} time(s) since Leader start${peer.tunnel_last_disconnected_at ? ` · Last drop: ${new Date(peer.tunnel_last_disconnected_at).toLocaleTimeString()}${peer.tunnel_last_disconnect_reason ? ` (${peer.tunnel_last_disconnect_reason})` : ''}` : ''}`}
+                                                                        >
+                                                                            ↻ {peer.tunnel_reconnect_count}
+                                                                        </span>
                                                                     )}
                                                                 </div>
                                                                 <div className="flex items-center gap-1 text-[10px] font-mono" title={`Tunnel Path: Initiator ${peer.tunnel_source_ip || 'Leader'} connects to Receiver ${peer.tunnel_dest_ip || peer.ip_private}`}>
@@ -610,12 +654,33 @@ export default function Fleet({ token, onNavigate: _onNavigate }: FleetProps) {
                                                             </div>
                                                         ) : (
                                                             <div className="flex flex-col gap-1 items-start">
-                                                                <div className="flex items-center gap-1.5">
+                                                                <div className="flex items-center gap-1.5 flex-wrap">
                                                                     <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-wider bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30 shadow-sm" title="Inbound Reverse WebSocket Tunnel (Initiator: Peer ➔ Receiver: Leader, NAT Traversal)">
                                                                         ↘️ INBOUND WS
                                                                     </span>
                                                                     {peer.rtt_ms !== undefined && (
                                                                         <span className="text-[10px] font-mono text-emerald-600 dark:text-emerald-400 font-semibold" title="Tunnel Round-Trip Time">{peer.rtt_ms}ms</span>
+                                                                    )}
+                                                                    {peer.tunnel_uptime_seconds !== undefined && (
+                                                                        <span
+                                                                            className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-mono font-semibold border ${
+                                                                                peer.tunnel_uptime_seconds < 300
+                                                                                    ? 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/30'
+                                                                                    : 'bg-card-secondary/80 text-text-secondary border-border/60'
+                                                                            }`}
+                                                                            title={`WebSocket Tunnel Uptime: ${formatTunnelUptime(peer.tunnel_uptime_seconds)}${peer.tunnel_connected_at ? ` (Connected since ${new Date(peer.tunnel_connected_at).toLocaleString()})` : ''}`}
+                                                                        >
+                                                                            <Clock size={10} className="opacity-75" />
+                                                                            {formatTunnelUptime(peer.tunnel_uptime_seconds)}
+                                                                        </span>
+                                                                    )}
+                                                                    {(peer.tunnel_reconnect_count ?? 0) > 0 && (
+                                                                        <span
+                                                                            className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-mono font-bold bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30"
+                                                                            title={`Tunnel reconnected ${peer.tunnel_reconnect_count} time(s) since Leader start${peer.tunnel_last_disconnected_at ? ` · Last drop: ${new Date(peer.tunnel_last_disconnected_at).toLocaleTimeString()}${peer.tunnel_last_disconnect_reason ? ` (${peer.tunnel_last_disconnect_reason})` : ''}` : ''}`}
+                                                                        >
+                                                                            ↻ {peer.tunnel_reconnect_count}
+                                                                        </span>
                                                                     )}
                                                                 </div>
                                                                 <div className="flex items-center gap-1 text-[10px] font-mono" title={`Tunnel Path: Initiator ${peer.tunnel_source_ip || peer.ip_private} connects to Receiver ${peer.tunnel_dest_ip || 'Leader'}`}>
@@ -951,15 +1016,29 @@ export default function Fleet({ token, onNavigate: _onNavigate }: FleetProps) {
                             {/* WebSocket Control Plane Tunnel */}
                             {(selectedPeer.has_tunnel || selectedPeer.tunnel_source_ip || selectedPeer.tunnel_dest_ip) && (
                                 <div className="space-y-2">
-                                    <div className="flex items-center justify-between">
+                                    <div className="flex items-center justify-between flex-wrap gap-2">
                                         <h3 className="text-xs uppercase font-mono tracking-wider text-text-muted font-bold">
                                             Mesh Tunnel Control Plane
                                         </h3>
-                                        {selectedPeer.rtt_ms !== undefined && (
-                                            <span className="text-[11px] font-mono font-bold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">
-                                                RTT: {selectedPeer.rtt_ms} ms
-                                            </span>
-                                        )}
+                                        <div className="flex items-center gap-2">
+                                            {selectedPeer.tunnel_uptime_seconds !== undefined && (
+                                                <span
+                                                    className={`text-[11px] font-mono font-bold px-2 py-0.5 rounded border inline-flex items-center gap-1 ${
+                                                        selectedPeer.tunnel_uptime_seconds < 300
+                                                            ? 'text-amber-600 dark:text-amber-400 bg-amber-500/10 border-amber-500/25'
+                                                            : 'text-cyan-400 bg-cyan-500/10 border-cyan-500/20'
+                                                    }`}
+                                                >
+                                                    <Clock size={11} />
+                                                    WS Uptime: {formatTunnelUptime(selectedPeer.tunnel_uptime_seconds)}
+                                                </span>
+                                            )}
+                                            {selectedPeer.rtt_ms !== undefined && (
+                                                <span className="text-[11px] font-mono font-bold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">
+                                                    RTT: {selectedPeer.rtt_ms} ms
+                                                </span>
+                                            )}
+                                        </div>
                                     </div>
                                     <div className="p-3 rounded-xl bg-card/60 border border-border space-y-3">
                                         <div className="flex items-center justify-between text-xs">
@@ -990,6 +1069,44 @@ export default function Fleet({ token, onNavigate: _onNavigate }: FleetProps) {
                                                         ? `${selectedPeer.tunnel_dest_ip || selectedPeer.ip_private}${selectedPeer.tunnel_dest_port ? `:${selectedPeer.tunnel_dest_port}` : ''}`
                                                         : `${selectedPeer.tunnel_dest_ip || 'Leader'}${selectedPeer.tunnel_dest_port ? `:${selectedPeer.tunnel_dest_port}` : ''}`}
                                                 </div>
+                                            </div>
+                                        </div>
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                                            <div className="bg-card-secondary/70 p-2.5 rounded-lg border border-border/50 flex items-center justify-between">
+                                                <div>
+                                                    <div className="text-[10px] uppercase font-bold text-text-muted">WS Session Uptime</div>
+                                                    <div className="text-sm font-mono font-bold text-text mt-0.5 flex items-baseline gap-1.5">
+                                                        <span className={selectedPeer.tunnel_uptime_seconds !== undefined && selectedPeer.tunnel_uptime_seconds < 300 ? 'text-amber-600 dark:text-amber-400' : 'text-emerald-400'}>
+                                                            {formatTunnelUptime(selectedPeer.tunnel_uptime_seconds)}
+                                                        </span>
+                                                        {selectedPeer.tunnel_connected_at && (
+                                                            <span className="text-[10px] font-normal text-text-muted">
+                                                                since {new Date(selectedPeer.tunnel_connected_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                                <Clock size={15} className="text-text-muted opacity-60" />
+                                            </div>
+                                            <div className="bg-card-secondary/70 p-2.5 rounded-lg border border-border/50 flex items-center justify-between">
+                                                <div className="min-w-0">
+                                                    <div className="text-[10px] uppercase font-bold text-text-muted">Session Stability</div>
+                                                    {(selectedPeer.tunnel_reconnect_count ?? 0) === 0 ? (
+                                                        <div className="text-xs font-mono font-bold text-emerald-400 mt-0.5">
+                                                            0 reconnects (Stable)
+                                                        </div>
+                                                    ) : (
+                                                        <div className="text-xs font-mono font-bold text-amber-600 dark:text-amber-400 mt-0.5 truncate" title={selectedPeer.tunnel_last_disconnect_reason ? `Last reason: ${selectedPeer.tunnel_last_disconnect_reason}` : undefined}>
+                                                            ↻ {selectedPeer.tunnel_reconnect_count} reconnect{selectedPeer.tunnel_reconnect_count === 1 ? '' : 's'}
+                                                            {selectedPeer.tunnel_last_disconnected_at && (
+                                                                <span className="text-[10px] font-normal text-text-muted ml-1">
+                                                                    (last: {new Date(selectedPeer.tunnel_last_disconnected_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })})
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                                <RefreshCw size={14} className={(selectedPeer.tunnel_reconnect_count ?? 0) > 0 ? 'text-amber-400 opacity-80' : 'text-emerald-400 opacity-50'} />
                                             </div>
                                         </div>
                                     </div>
@@ -1038,7 +1155,7 @@ export default function Fleet({ token, onNavigate: _onNavigate }: FleetProps) {
                                     </div>
                                 </div>
                                 <div>
-                                    <div className="text-[11px] uppercase tracking-wider text-text-muted font-bold">Uptime</div>
+                                    <div className="text-[11px] uppercase tracking-wider text-text-muted font-bold" title="Node / Container Uptime">Node Uptime</div>
                                     <div className="mt-1 font-mono text-sm font-bold text-text">
                                         {formatUptime(selectedPeer.summary?.uptime_seconds)}
                                     </div>

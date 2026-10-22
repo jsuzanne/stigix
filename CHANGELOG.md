@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.0.77] - 2026-10-22
+
+### Added
+- **Fleet Mesh WebSocket Tunnel Uptime & Reconnect Telemetry (`web-dashboard/fleet-tunnel.ts`, `web-dashboard/server.ts`, `web-dashboard/src/Fleet.tsx`)**:
+  - **Session Uptime & Reconnect Tracking**: Enhanced `FleetTunnelManager` (`getConnectedTunnels()`) and `/api/fleet/overview` to compute real-time WebSocket session uptime (`uptimeSeconds` / `connectedAt`) and track per-peer tunnel disconnect/reconnect counts (`reconnectCount`, `lastDisconnectedAt`, `lastDisconnectReason`) across both inbound (`INBOUND WS`) and Leader-dialed (`OUTBOUND WS`) tunnels.
+  - **Mesh Overview Table (`MESH LINK` Column)**: Added a live WebSocket tunnel uptime badge (highlighted in amber when `< 5m` to spot recent reconnects immediately) and a reconnect counter badge (`↻ N`) with last-disconnect timestamp and reason tooltip alongside the tunnel direction and RTT badges.
+  - **Peer Detail Modal (`Mesh Tunnel Control Plane`)**: Added dedicated **WS Session Uptime** (with connection timestamp) and **Session Stability** (`0 reconnects (Stable)` vs reconnect count and last drop timestamp/reason) cards, and clarified the node telemetry label as **Node Uptime**.
+
 ## [3.0.76] - 2026-10-21
 
 ### Changed

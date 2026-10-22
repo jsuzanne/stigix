@@ -17,6 +17,10 @@ export interface TunnelPeerInfo {
     siteName: string;
     ip: string;
     connectedAt: number;
+    uptimeSeconds?: number;
+    reconnectCount?: number;
+    lastDisconnectedAt?: number;
+    lastDisconnectReason?: string;
     lastPing: number;
     rttMs?: number;
     lastPong?: number;
@@ -87,6 +91,30 @@ export class FleetTunnelManager {
     // Active tunnels indexed by instanceId and alias siteName
     private activeTunnels: Map<string, { socket: Socket | ClientSocket; info: TunnelPeerInfo }> = new Map();
     private siteToInstanceMap: Map<string, string> = new Map();
+    private peerTunnelStats: Map<string, { disconnectCount: number; lastDisconnectedAt?: number; lastDisconnectReason?: string }> = new Map();
+
+    private getPeerTunnelStats(instanceId?: string, siteName?: string, ip?: string) {
+        const keys = [instanceId, siteName, ip].filter(Boolean).map(k => String(k).toLowerCase());
+        for (const k of keys) {
+            const st = this.peerTunnelStats.get(k);
+            if (st) return st;
+        }
+        return { disconnectCount: 0 };
+    }
+
+    private recordPeerDisconnect(instanceId?: string, siteName?: string, ip?: string, reason?: string) {
+        const keys = Array.from(new Set([instanceId, siteName, ip].filter(Boolean).map(k => String(k).toLowerCase())));
+        if (keys.length === 0) return;
+        const prev = this.getPeerTunnelStats(instanceId, siteName, ip);
+        const updated = {
+            disconnectCount: (prev.disconnectCount || 0) + 1,
+            lastDisconnectedAt: Date.now(),
+            lastDisconnectReason: reason
+        };
+        for (const k of keys) {
+            this.peerTunnelStats.set(k, updated);
+        }
+    }
 
     // Spoke state: client socket connected to Leader (M5)
     private spokeClientSocket: ClientSocket | null = null;
@@ -528,8 +556,13 @@ export class FleetTunnelManager {
                     this.activeLeaderInfo = null;
                 }
                 log('TUNNEL', `Reverse tunnel disconnected: ${siteName} (${instanceId}) — reason: ${reason}`, 'warn');
-                this.activeTunnels.delete(instanceId);
-                if (siteName && this.siteToInstanceMap.get(siteName.toLowerCase()) === instanceId) {
+                if (reason !== 'io server disconnect') {
+                    this.recordPeerDisconnect(instanceId, siteName, clientIp, reason);
+                }
+                if (this.activeTunnels.get(instanceId)?.socket === socket) {
+                    this.activeTunnels.delete(instanceId);
+                }
+                if (siteName && this.siteToInstanceMap.get(siteName.toLowerCase()) === instanceId && !this.activeTunnels.has(instanceId)) {
                     this.siteToInstanceMap.delete(siteName.toLowerCase());
                 }
                 if (this.registryManager.isLeader()) {
@@ -1335,7 +1368,17 @@ export class FleetTunnelManager {
                 queryInterval = null;
             }
             log('TUNNEL', `[M6 DIAL] Leader reverse dial disconnected from ${targetSiteName} (${reason})`, 'warn');
-            this.activeTunnels.delete(targetId);
+            const currentEntry = this.activeTunnels.get(targetId);
+            const resolvedInstanceId = currentEntry?.info?.instanceId || targetId;
+            if (reason !== 'io client disconnect') {
+                this.recordPeerDisconnect(resolvedInstanceId, targetSiteName, host, reason);
+            }
+            if (currentEntry?.socket === socket) {
+                this.activeTunnels.delete(targetId);
+            }
+            if (resolvedInstanceId !== targetId && this.activeTunnels.get(resolvedInstanceId)?.socket === socket) {
+                this.activeTunnels.delete(resolvedInstanceId);
+            }
             if (this.registryManager.isLeader()) {
                 this.broadcastPeerMesh();
             }
@@ -2329,9 +2372,21 @@ export class FleetTunnelManager {
      */
     public getConnectedTunnels(): TunnelPeerInfo[] {
         const result: TunnelPeerInfo[] = [];
+        const seenInstances = new Set<string>();
+        const now = Date.now();
         for (const [, entry] of this.activeTunnels) {
             if (entry.socket.connected) {
-                result.push({ ...entry.info });
+                const dedupKey = (entry.info.instanceId || entry.info.siteName || entry.info.ip).toLowerCase();
+                if (seenInstances.has(dedupKey)) continue;
+                seenInstances.add(dedupKey);
+                const stats = this.getPeerTunnelStats(entry.info.instanceId, entry.info.siteName, entry.info.ip);
+                result.push({
+                    ...entry.info,
+                    uptimeSeconds: entry.info.connectedAt ? Math.max(0, Math.floor((now - entry.info.connectedAt) / 1000)) : undefined,
+                    reconnectCount: stats.disconnectCount || 0,
+                    lastDisconnectedAt: stats.lastDisconnectedAt,
+                    lastDisconnectReason: stats.lastDisconnectReason
+                });
             }
         }
         return result;

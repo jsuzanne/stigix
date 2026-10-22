@@ -16116,11 +16116,17 @@ app.get('/api/fleet/overview', authenticateToken, (req, res) => {
             if (matchedTunnel) {
                 return {
                     ...inst,
+                    has_tunnel: true,
                     tunnel_direction: matchedTunnel.direction,
                     tunnel_source_ip: matchedTunnel.sourceIp || inst.tunnel_source_ip,
                     tunnel_dest_ip: matchedTunnel.destIp || inst.tunnel_dest_ip,
                     tunnel_source_port: matchedTunnel.sourcePort || inst.tunnel_source_port,
                     tunnel_dest_port: matchedTunnel.destPort || inst.tunnel_dest_port,
+                    tunnel_connected_at: matchedTunnel.connectedAt,
+                    tunnel_uptime_seconds: matchedTunnel.uptimeSeconds,
+                    tunnel_reconnect_count: matchedTunnel.reconnectCount ?? 0,
+                    tunnel_last_disconnected_at: matchedTunnel.lastDisconnectedAt,
+                    tunnel_last_disconnect_reason: matchedTunnel.lastDisconnectReason,
                     rtt_ms: matchedTunnel.rttMs ?? inst.rtt_ms
                 };
             }
