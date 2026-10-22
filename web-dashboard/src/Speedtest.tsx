@@ -403,15 +403,15 @@ export default function Speedtest({ token }: Props) {
             <div className="flex flex-col md:flex-row gap-6">
                 {/* Configuration Side */}
                 {isConfigExpanded ? (
-                    <div className="w-full md:w-96 space-y-6 shrink-0 animate-in slide-in-from-left-4 fade-in duration-300">
-                        <div className="bg-card border border-border rounded-2xl p-6 shadow-sm overflow-hidden relative">
+                    <div className="w-full md:w-96 space-y-4 shrink-0 animate-in slide-in-from-left-4 fade-in duration-300">
+                        <div className="bg-card border border-border rounded-2xl p-5 shadow-sm overflow-hidden relative">
                             <div className="absolute top-0 right-0 p-4 opacity-5 pointer-events-none">
-                                <Gauge size={120} />
+                                <Gauge size={110} />
                             </div>
 
-                            <div className="flex items-center justify-between mb-6 relative z-10">
-                                <h2 className="text-xl font-black text-text-primary flex items-center gap-2 tracking-tight">
-                                    <Zap className="text-blue-500" size={24} />
+                            <div className="flex items-center justify-between mb-4 relative z-10">
+                                <h2 className="text-lg font-black text-text-primary flex items-center gap-2 tracking-tight">
+                                    <Zap className="text-blue-500" size={20} />
                                     Bandwidth Test
                                 </h2>
                                 <button
@@ -423,337 +423,443 @@ export default function Speedtest({ token }: Props) {
                                 </button>
                             </div>
 
-                        <div className="flex p-1 bg-card-secondary rounded-xl mb-6 border border-border/50">
-                            <button
-                                onClick={() => setMode('default')}
-                                className={cn(
-                                    "flex-1 py-1.5 text-[10px] font-black tracking-widest rounded-lg transition-all",
-                                    mode === 'default' ? 'bg-blue-600 text-white shadow-lg' : 'text-text-muted hover:text-text-primary'
-                                )}
-                            >
-                                Default
-                            </button>
-                            <button
-                                onClick={() => setMode('custom')}
-                                className={cn(
-                                    "flex-1 py-1.5 text-[10px] font-black tracking-widest rounded-lg transition-all",
-                                    mode === 'custom' ? 'bg-blue-600 text-white shadow-lg' : 'text-text-muted hover:text-text-primary'
-                                )}
-                            >
-                                Custom
-                            </button>
-                        </div>
-
-                        <div className="space-y-4">
-                            <div>
-                                <label className="text-[10px] font-black text-text-muted tracking-widest mb-3 flex items-center gap-2">
-                                    <Target size={14} className="text-blue-500" />
-                                    Stigix Targets
-                                </label>
-                                
-                                <div className="flex flex-col gap-2 max-h-[350px] overflow-y-auto pr-1">
-                                    {quickTargets.map((t, i) => {
-                                        const isSelected = targetHost === t.host;
-                                        const status = targetReachability[t.host];
-                                        return (
-                                            <div
-                                                key={`env-${i}`}
-                                                onClick={() => { setTargetHost(t.host); setTargetPort(9000); }}
-                                                className={`bg-card border px-4 py-3 rounded-xl group cursor-pointer transition-all flex items-center gap-3 shadow-sm hover:shadow-md ${isSelected ? 'border-blue-500 bg-blue-600/5 shadow-blue-500/10' : 'border-border'}`}
-                                            >
-                                                {/* Reachability Dot */}
-                                                <div className="shrink-0 flex items-center justify-center w-4">
-                                                    {status === 'loading' || status === undefined ? (
-                                                        <div className="w-1.5 h-1.5 rounded-full bg-border animate-pulse shrink-0" title="Checking reachability..." />
-                                                    ) : status ? (
-                                                        <div className="relative flex h-2 w-2 items-center justify-center shrink-0" title="Reachable">
-                                                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75" style={{ animationDuration: '3s' }}></span>
-                                                            <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.6)]"></span>
-                                                        </div>
-                                                    ) : (
-                                                        <div className="w-1.5 h-1.5 rounded-full bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.6)] shrink-0" title="Unreachable" />
-                                                    )}
-                                                </div>
-
-                                                <div className="flex flex-col min-w-0 flex-1">
-                                                    <h4 className={`text-xs font-bold transition-colors tracking-tight truncate ${isSelected ? 'text-blue-500' : 'text-text-primary'}`}>{t.label}</h4>
-                                                    <p className="text-[9px] text-text-muted font-mono mt-0.5 truncate">{t.host}:9000</p>
-                                                </div>
-                                                <div className="flex items-center gap-1.5 ml-2 border-l border-border/50 pl-3">
-                                                    <button
-                                                        onClick={(e) => {
-                                                            e.stopPropagation();
-                                                            setTargetHost(t.host);
-                                                            setTargetPort(9000);
-                                                            runTest(t.host, 9000);
-                                                        }}
-                                                        className="ml-2 p-1.5 rounded-md bg-blue-500/10 text-blue-500 hover:bg-blue-600 hover:text-white transition-colors border border-blue-500/20 hover:border-blue-600 shadow-sm"
-                                                        title="Quick Launch Speedtest"
-                                                    >
-                                                        <Play size={10} fill="currentColor" />
-                                                    </button>
-                                                </div>
-                                            </div>
-                                        );
-                                    })}
-
-                                    {sharedTargets.filter(st => !quickTargets.some(qt => qt.host === st.host)).map((t) => {
-                                        const isSelected = targetHost === t.host;
-                                        const status = targetReachability[t.host];
-                                        const port = (t.ports?.xfr && t.ports.xfr !== 5201) ? t.ports.xfr : 9000;
-                                        return (
-                                            <div
-                                                key={`tgt-${t.id}`}
-                                                onClick={() => { setTargetHost(t.host); setTargetPort(port); }}
-                                                className={`bg-card border px-4 py-3 rounded-xl group cursor-pointer transition-all flex items-center gap-3 shadow-sm hover:shadow-md ${isSelected ? 'border-emerald-500 bg-emerald-600/5 shadow-emerald-500/10' : 'border-border'}`}
-                                            >
-                                                {/* Reachability Dot */}
-                                                <div className="shrink-0 flex items-center justify-center w-4">
-                                                    {status === 'loading' || status === undefined ? (
-                                                        <div className="w-1.5 h-1.5 rounded-full bg-border animate-pulse shrink-0" title="Checking reachability..." />
-                                                    ) : status ? (
-                                                        <div className="relative flex h-2 w-2 items-center justify-center shrink-0" title="Reachable">
-                                                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75" style={{ animationDuration: '3s' }}></span>
-                                                            <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.6)]"></span>
-                                                        </div>
-                                                    ) : (
-                                                        <div className="w-1.5 h-1.5 rounded-full bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.6)] shrink-0" title="Unreachable" />
-                                                    )}
-                                                </div>
-
-                                                <div className="flex flex-col min-w-0 flex-1">
-                                                    <h4 className={`text-xs font-bold transition-colors tracking-tight truncate ${isSelected ? 'text-emerald-500' : 'text-text-primary'}`}>{t.name}</h4>
-                                                    <p className="text-[9px] text-text-muted font-mono mt-0.5 truncate">{t.host}:{port}</p>
-                                                </div>
-                                                <div className="flex items-center gap-1.5 ml-2 border-l border-border/50 pl-3">
-                                                    <button
-                                                        onClick={(e) => {
-                                                            e.stopPropagation();
-                                                            setTargetHost(t.host);
-                                                            setTargetPort(port);
-                                                            runTest(t.host, port);
-                                                        }}
-                                                        className="ml-2 p-1.5 rounded-md bg-emerald-500/10 text-emerald-500 hover:bg-emerald-600 hover:text-white transition-colors border border-emerald-500/20 hover:border-emerald-600 shadow-sm"
-                                                        title="Quick Launch Speedtest"
-                                                    >
-                                                        <Play size={10} fill="currentColor" />
-                                                    </button>
-                                                </div>
-                                            </div>
-                                        );
-                                    })}
-                                </div>
-
-                                <div className="mt-6 pt-5 border-t border-border space-y-4">
-                                    <div>
-                                        <label className="text-[10px] font-black text-text-muted tracking-widest mb-1.5 block">Custom Target IP / FQDN</label>
-                                        <div className="relative group">
-                                            <div className="absolute left-3 top-1/2 -translate-y-1/2 text-text-muted/50">
-                                                <Network size={14} />
-                                            </div>
-                                            <input
-                                                type="text"
-                                                value={targetHost}
-                                                onChange={e => setTargetHost(e.target.value)}
-                                                placeholder="e.g. 1.2.3.4"
-                                                className="w-full bg-card-secondary border border-border rounded-xl pl-9 pr-4 py-3 text-sm focus:border-blue-500 outline-none transition-all font-mono"
-                                            />
-                                        </div>
-                                    </div>
-
-                                    <div>
-                                        <label className="text-[10px] font-black text-text-muted tracking-widest mb-1.5 block">Port</label>
-                                        <input
-                                            type="number"
-                                            value={targetPort}
-                                            onChange={e => setTargetPort(parseInt(e.target.value))}
-                                            className="w-full bg-card-secondary border border-border rounded-xl px-4 py-3 text-sm focus:border-blue-500 outline-none transition-all font-mono"
-                                        />
-                                    </div>
-                                </div>
+                            <div className="flex p-1 bg-card-secondary rounded-xl mb-4 border border-border/50">
+                                <button
+                                    onClick={() => setMode('default')}
+                                    className={cn(
+                                        "flex-1 py-1.5 text-[10px] font-black tracking-widest rounded-lg transition-all",
+                                        mode === 'default' ? 'bg-blue-600 text-white shadow-lg' : 'text-text-muted hover:text-text-primary'
+                                    )}
+                                >
+                                    Default
+                                </button>
+                                <button
+                                    onClick={() => setMode('custom')}
+                                    className={cn(
+                                        "flex-1 py-1.5 text-[10px] font-black tracking-widest rounded-lg transition-all",
+                                        mode === 'custom' ? 'bg-blue-600 text-white shadow-lg' : 'text-text-muted hover:text-text-primary'
+                                    )}
+                                >
+                                    Custom
+                                </button>
                             </div>
 
-                            {mode === 'custom' && (
-                                <div className="space-y-4 pt-2 border-t border-border/50 animate-in fade-in duration-300">
-                                    <div>
-                                        <label className="text-[10px] font-black text-text-muted tracking-widest mb-1.5 block">Protocol</label>
-                                        <StigixSelect
-                                            value={protocol}
-                                            onChange={val => setProtocol(val as any)}
-                                            accent="blue"
-                                            triggerClassName="bg-card-secondary rounded-xl px-4 py-3 text-sm"
-                                            options={[
-                                                { value: 'tcp', label: 'TCP' },
-                                                { value: 'udp', label: 'UDP' },
-                                                { value: 'quic', label: 'QUIC' },
-                                            ]}
-                                        />
-                                    </div>
-
-                                    <div>
-                                        <label className="text-[10px] font-black text-text-muted tracking-widest mb-1.5 block">Direction</label>
-                                        <StigixSelect
-                                            value={direction}
-                                            onChange={val => setDirection(val as any)}
-                                            accent="blue"
-                                            triggerClassName="bg-card-secondary rounded-xl px-4 py-3 text-sm"
-                                            options={[
-                                                { value: 'client-to-server', label: 'Upload (Client to Server)' },
-                                                { value: 'server-to-client', label: 'Download (Reverse)' },
-                                                { value: 'bidirectional', label: 'Bidirectional' },
-                                            ]}
-                                        />
-                                    </div>
-
-                                    <div>
-                                        <label className="text-[10px] font-black text-text-muted tracking-widest mb-1.5 block">Bitrate (e.g. 100M, 0=Max)</label>
-                                        <input
-                                            type="text"
-                                            value={bitrate}
-                                            onChange={e => setBitrate(e.target.value)}
-                                            placeholder="e.g. 100M, Max, 0"
-                                            className="w-full bg-card-secondary border border-border rounded-xl px-4 py-3 text-sm outline-none focus:border-blue-500"
-                                        />
-                                    </div>
-
-                                    <div className="grid grid-cols-2 gap-4">
+                            <div className="space-y-3.5">
+                                {mode === 'default' ? (
+                                    <>
                                         <div>
-                                            <label className="text-[10px] font-black text-text-muted tracking-widest mb-1.5 flex items-center justify-between">
-                                                <span>Duration (s)</span>
-                                                <span className="text-[8px] font-bold opacity-50 lowercase tracking-normal">10-3600</span>
+                                            <label className="text-[10px] font-black text-text-muted tracking-widest mb-2 flex items-center gap-1.5 uppercase">
+                                                <Target size={13} className="text-blue-500" />
+                                                Stigix Targets
                                             </label>
-                                            <input
-                                                type="number"
-                                                min="10"
-                                                max="3600"
-                                                value={duration}
-                                                onChange={e => setDuration(parseInt(e.target.value))}
-                                                onBlur={e => {
-                                                    const val = parseInt(e.target.value);
-                                                    setDuration(isNaN(val) ? 10 : Math.min(3600, Math.max(10, val)));
-                                                }}
-                                                className="w-full bg-card-secondary border border-border rounded-xl px-4 py-3 text-sm outline-none focus:border-blue-500"
-                                            />
-                                        </div>
-                                        <div>
-                                            <label className="text-[10px] font-black text-text-muted tracking-widest mb-1.5 block">Streams</label>
-                                            <input
-                                                type="number"
-                                                value={streams}
-                                                onChange={e => setStreams(parseInt(e.target.value))}
-                                                className="w-full bg-card-secondary border border-border rounded-xl px-4 py-3 text-sm outline-none focus:border-blue-500"
-                                            />
-                                        </div>
-                                    </div>
 
-                                    <div className="grid grid-cols-2 gap-4">
-                                        <div>
-                                            <label className="text-[10px] font-black text-text-muted tracking-widest mb-1.5 block">DSCP / TOS (ex: EF, 00)</label>
-                                            <input
-                                                type="text"
-                                                list="dscp-options"
-                                                value={dscp}
-                                                onChange={e => setDscp(e.target.value)}
-                                                placeholder="Default (Blank)"
-                                                className={`w-full bg-card-secondary border rounded-xl px-4 py-3 text-sm outline-none transition-colors ${dscp && !isValidDscp(dscp) ? 'border-red-500/50 focus:border-red-500' : 'border-border focus:border-blue-500'}`}
-                                            />
-                                            <datalist id="dscp-options">
-                                                <option value="EF" />
-                                                <option value="AF11" />
-                                                <option value="AF21" />
-                                                <option value="CS1" />
-                                                <option value="CS6" />
-                                                <option value="46" />
-                                            </datalist>
-                                            {dscp && !isValidDscp(dscp) && (
-                                                <span className="text-[9px] text-red-500 font-bold block mt-1">Invalid DSCP Marking</span>
-                                            )}
-                                        </div>
-                                        <div>
-                                            <label className="text-[10px] font-black text-text-muted tracking-widest mb-1.5 block">Client Flow Port (Auto)</label>
-                                            <input
-                                                type="number"
-                                                value={cport}
-                                                onChange={e => setCport(parseInt(e.target.value))}
-                                                className="w-full bg-card-secondary border border-border rounded-xl px-4 py-3 text-sm outline-none focus:border-blue-500"
-                                            />
-                                        </div>
-                                    </div>
+                                            <div className="flex flex-col gap-1.5 max-h-[280px] overflow-y-auto pr-1">
+                                                {quickTargets.map((t, i) => {
+                                                    const isSelected = targetHost === t.host;
+                                                    const status = targetReachability[t.host];
+                                                    return (
+                                                        <div
+                                                            key={`env-${i}`}
+                                                            onClick={() => { setTargetHost(t.host); setTargetPort(9000); }}
+                                                            className={`bg-card border px-3.5 py-2.5 rounded-xl group cursor-pointer transition-all flex items-center gap-3 shadow-sm hover:shadow-md ${isSelected ? 'border-blue-500 bg-blue-600/5 shadow-blue-500/10' : 'border-border'}`}
+                                                        >
+                                                            <div className="shrink-0 flex items-center justify-center w-3.5">
+                                                                {status === 'loading' || status === undefined ? (
+                                                                    <div className="w-1.5 h-1.5 rounded-full bg-border animate-pulse shrink-0" title="Checking reachability..." />
+                                                                ) : status ? (
+                                                                    <div className="relative flex h-2 w-2 items-center justify-center shrink-0" title="Reachable">
+                                                                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75" style={{ animationDuration: '3s' }}></span>
+                                                                        <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.6)]"></span>
+                                                                    </div>
+                                                                ) : (
+                                                                    <div className="w-1.5 h-1.5 rounded-full bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.6)] shrink-0" title="Unreachable" />
+                                                                )}
+                                                            </div>
 
-                                    {protocol === 'tcp' && (
-                                        <div>
-                                            <label className="text-[10px] font-black text-text-muted tracking-widest mb-1.5 block">TCP Congestion Avoidance</label>
-                                            <StigixSelect
-                                                value={congestion}
-                                                onChange={val => setCongestion(val)}
-                                                accent="blue"
-                                                triggerClassName="bg-card-secondary rounded-xl px-4 py-3 text-sm"
-                                                options={[
-                                                    { value: 'cubic', label: 'Cubic (Default)' },
-                                                    { value: 'reno', label: 'Reno' },
-                                                ]}
-                                            />
+                                                            <div className="flex flex-col min-w-0 flex-1">
+                                                                <h4 className={`text-xs font-bold transition-colors tracking-tight truncate ${isSelected ? 'text-blue-500' : 'text-text-primary'}`}>{t.label}</h4>
+                                                                <p className="text-[9px] text-text-muted font-mono truncate">{t.host}:9000</p>
+                                                            </div>
+                                                            <div className="flex items-center border-l border-border/50 pl-2.5">
+                                                                <button
+                                                                    onClick={(e) => {
+                                                                        e.stopPropagation();
+                                                                        setTargetHost(t.host);
+                                                                        setTargetPort(9000);
+                                                                        runTest(t.host, 9000);
+                                                                    }}
+                                                                    className="p-1.5 rounded-md bg-blue-500/10 text-blue-500 hover:bg-blue-600 hover:text-white transition-colors border border-blue-500/20 hover:border-blue-600 shadow-sm"
+                                                                    title="Quick Launch Speedtest"
+                                                                >
+                                                                    <Play size={10} fill="currentColor" />
+                                                                </button>
+                                                            </div>
+                                                        </div>
+                                                    );
+                                                })}
+
+                                                {sharedTargets.filter(st => !quickTargets.some(qt => qt.host === st.host)).map((t) => {
+                                                    const isSelected = targetHost === t.host;
+                                                    const status = targetReachability[t.host];
+                                                    const port = (t.ports?.xfr && t.ports.xfr !== 5201) ? t.ports.xfr : 9000;
+                                                    return (
+                                                        <div
+                                                            key={`tgt-${t.id}`}
+                                                            onClick={() => { setTargetHost(t.host); setTargetPort(port); }}
+                                                            className={`bg-card border px-3.5 py-2.5 rounded-xl group cursor-pointer transition-all flex items-center gap-3 shadow-sm hover:shadow-md ${isSelected ? 'border-emerald-500 bg-emerald-600/5 shadow-emerald-500/10' : 'border-border'}`}
+                                                        >
+                                                            <div className="shrink-0 flex items-center justify-center w-3.5">
+                                                                {status === 'loading' || status === undefined ? (
+                                                                    <div className="w-1.5 h-1.5 rounded-full bg-border animate-pulse shrink-0" title="Checking reachability..." />
+                                                                ) : status ? (
+                                                                    <div className="relative flex h-2 w-2 items-center justify-center shrink-0" title="Reachable">
+                                                                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75" style={{ animationDuration: '3s' }}></span>
+                                                                        <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.6)]"></span>
+                                                                    </div>
+                                                                ) : (
+                                                                    <div className="w-1.5 h-1.5 rounded-full bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.6)] shrink-0" title="Unreachable" />
+                                                                )}
+                                                            </div>
+
+                                                            <div className="flex flex-col min-w-0 flex-1">
+                                                                <h4 className={`text-xs font-bold transition-colors tracking-tight truncate ${isSelected ? 'text-emerald-500' : 'text-text-primary'}`}>{t.name}</h4>
+                                                                <p className="text-[9px] text-text-muted font-mono truncate">{t.host}:{port}</p>
+                                                            </div>
+                                                            <div className="flex items-center border-l border-border/50 pl-2.5">
+                                                                <button
+                                                                    onClick={(e) => {
+                                                                        e.stopPropagation();
+                                                                        setTargetHost(t.host);
+                                                                        setTargetPort(port);
+                                                                        runTest(t.host, port);
+                                                                    }}
+                                                                    className="p-1.5 rounded-md bg-emerald-500/10 text-emerald-500 hover:bg-emerald-600 hover:text-white transition-colors border border-emerald-500/20 hover:border-emerald-600 shadow-sm"
+                                                                    title="Quick Launch Speedtest"
+                                                                >
+                                                                    <Play size={10} fill="currentColor" />
+                                                                </button>
+                                                            </div>
+                                                        </div>
+                                                    );
+                                                })}
+                                            </div>
                                         </div>
-                                    )}
 
-                                    <div>
-                                        <label className="text-[10px] font-black text-text-muted tracking-widest mb-1.5 block">Psk (Optional)</label>
-                                        <input
-                                            type="password"
-                                            value={psk}
-                                            onChange={e => setPsk(e.target.value)}
-                                            className="w-full bg-card-secondary border border-border rounded-xl px-4 py-3 text-sm outline-none focus:border-blue-500"
-                                        />
-                                    </div>
-                                </div>
-                            )}
+                                        {/* Target IP + Port on a single horizontal row */}
+                                        <div className="pt-3 border-t border-border/60 grid grid-cols-3 gap-2.5">
+                                            <div className="col-span-2">
+                                                <label className="text-[10px] font-black text-text-muted tracking-widest mb-1 block uppercase">Target IP / FQDN</label>
+                                                <div className="relative">
+                                                    <div className="absolute left-3 top-1/2 -translate-y-1/2 text-text-muted/50">
+                                                        <Network size={13} />
+                                                    </div>
+                                                    <input
+                                                        type="text"
+                                                        value={targetHost}
+                                                        onChange={e => setTargetHost(e.target.value)}
+                                                        placeholder="e.g. 1.2.3.4"
+                                                        className="w-full bg-card-secondary border border-border rounded-xl pl-8 pr-3 py-2 text-xs focus:border-blue-500 outline-none transition-all font-mono"
+                                                    />
+                                                </div>
+                                            </div>
+                                            <div>
+                                                <label className="text-[10px] font-black text-text-muted tracking-widest mb-1 block uppercase">Port</label>
+                                                <input
+                                                    type="number"
+                                                    value={targetPort}
+                                                    onChange={e => setTargetPort(parseInt(e.target.value))}
+                                                    className="w-full bg-card-secondary border border-border rounded-xl px-3 py-2 text-xs focus:border-blue-500 outline-none transition-all font-mono"
+                                                />
+                                            </div>
+                                        </div>
 
-                            <button
-                                onClick={() => runTest()}
-                                disabled={isRunning || !targetHost || !isValidIpOrFqdn(targetHost) || !isValidDscp(dscp)}
-                                className={cn(
-                                    "w-full py-4 rounded-xl font-black tracking-widest text-xs flex items-center justify-center gap-2 transition-all shadow-xl",
-                                    isRunning || !targetHost || !isValidDscp(dscp) ? "bg-card-secondary text-text-muted cursor-not-allowed" :
-                                        !isValidIpOrFqdn(targetHost) ? "bg-red-500/10 text-red-500 border border-red-500/20 cursor-not-allowed" :
-                                            "bg-gradient-to-r from-blue-600 to-blue-500 text-white hover:opacity-90 active:scale-[0.98]"
-                                )}
-                            >
-                                {isRunning ? (
-                                    <>
-                                        <RefreshCw size={20} className="animate-spin" />
-                                        Running Test...
-                                    </>
-                                ) : !targetHost ? (
-                                    <>
-                                        <Play size={20} fill="currentColor" />
-                                        Launch Speedtest
-                                    </>
-                                ) : !isValidIpOrFqdn(targetHost) ? (
-                                    <>
-                                        <AlertCircle size={20} />
-                                        Invalid Target IP/FQDN
+                                        {/* Compact Default Profile Summary Strip */}
+                                        <div className="px-3 py-2 rounded-xl bg-card-secondary/50 border border-border/50 flex items-center justify-between text-[10px] font-mono text-text-muted">
+                                            <span className="font-sans font-bold uppercase tracking-wider text-[9px]">Profile:</span>
+                                            <span>TCP (Cubic) • Upload • 200M • 10s • 4 streams</span>
+                                        </div>
                                     </>
                                 ) : (
-                                    <>
-                                        <Play size={20} fill="currentColor" />
-                                        Launch Speedtest
-                                    </>
-                                )}
-                            </button>
-                        </div>
-                    </div>
+                                    <div className="space-y-3 animate-in fade-in duration-200">
+                                        {/* Compact Quick Target Chips in Custom Mode */}
+                                        {(quickTargets.length > 0 || sharedTargets.length > 0) && (
+                                            <div>
+                                                <label className="text-[10px] font-black text-text-muted tracking-widest mb-1.5 flex items-center gap-1.5 uppercase">
+                                                    <Target size={12} className="text-blue-500" />
+                                                    Quick Target Select
+                                                </label>
+                                                <div className="flex flex-wrap gap-1.5">
+                                                    {quickTargets.map((t, i) => {
+                                                        const isSelected = targetHost === t.host;
+                                                        const status = targetReachability[t.host];
+                                                        return (
+                                                            <button
+                                                                key={`chip-env-${i}`}
+                                                                type="button"
+                                                                onClick={() => { setTargetHost(t.host); setTargetPort(9000); }}
+                                                                className={cn(
+                                                                    "px-2.5 py-1 rounded-lg border text-[11px] font-bold flex items-center gap-1.5 transition-all cursor-pointer",
+                                                                    isSelected
+                                                                        ? "border-blue-500 bg-blue-500/15 text-blue-400 shadow-sm"
+                                                                        : "border-border bg-card-secondary/60 text-text-secondary hover:border-blue-500/40 hover:text-text-primary"
+                                                                )}
+                                                                title={`${t.host}:9000`}
+                                                            >
+                                                                <span className={cn(
+                                                                    "w-1.5 h-1.5 rounded-full shrink-0",
+                                                                    status === 'loading' || status === undefined ? "bg-border animate-pulse" :
+                                                                    status ? "bg-green-500" : "bg-red-500"
+                                                                )} />
+                                                                <span className="truncate max-w-[110px]">{t.label}</span>
+                                                            </button>
+                                                        );
+                                                    })}
+                                                    {sharedTargets.filter(st => !quickTargets.some(qt => qt.host === st.host)).map((t) => {
+                                                        const isSelected = targetHost === t.host;
+                                                        const status = targetReachability[t.host];
+                                                        const port = (t.ports?.xfr && t.ports.xfr !== 5201) ? t.ports.xfr : 9000;
+                                                        return (
+                                                            <button
+                                                                key={`chip-tgt-${t.id}`}
+                                                                type="button"
+                                                                onClick={() => { setTargetHost(t.host); setTargetPort(port); }}
+                                                                className={cn(
+                                                                    "px-2.5 py-1 rounded-lg border text-[11px] font-bold flex items-center gap-1.5 transition-all cursor-pointer",
+                                                                    isSelected
+                                                                        ? "border-emerald-500 bg-emerald-500/15 text-emerald-400 shadow-sm"
+                                                                        : "border-border bg-card-secondary/60 text-text-secondary hover:border-emerald-500/40 hover:text-text-primary"
+                                                                )}
+                                                                title={`${t.host}:${port}`}
+                                                            >
+                                                                <span className={cn(
+                                                                    "w-1.5 h-1.5 rounded-full shrink-0",
+                                                                    status === 'loading' || status === undefined ? "bg-border animate-pulse" :
+                                                                    status ? "bg-green-500" : "bg-red-500"
+                                                                )} />
+                                                                <span className="truncate max-w-[110px]">{t.name}</span>
+                                                            </button>
+                                                        );
+                                                    })}
+                                                </div>
+                                            </div>
+                                        )}
 
-                    {/* Info Card */}
-                    <div className="p-4 bg-blue-600/5 border border-blue-500/10 rounded-2xl flex gap-3">
-                        <Info className="text-blue-500 shrink-0 mt-0.5" size={18} />
-                        <div>
-                            <h4 className="text-[10px] font-black text-blue-500 tracking-widest mb-1">Testing Note</h4>
-                            <p className="text-[10px] text-text-muted leading-relaxed font-bold opacity-60">
-                                This tool sends bidirectional traffic to validate path throughput and latency.
-                                Ensure the target is a Stigix target host OR has <a href="https://github.com/lance0/xfr" target="_blank" rel="noreferrer" className="text-blue-400 hover:underline">xfr</a> running in server mode.
-                            </p>
+                                        {/* Row 1: Target IP / FQDN + Port */}
+                                        <div className="grid grid-cols-3 gap-2.5">
+                                            <div className="col-span-2">
+                                                <label className="text-[10px] font-black text-text-muted tracking-widest mb-1 block uppercase">Target IP / FQDN</label>
+                                                <div className="relative">
+                                                    <div className="absolute left-3 top-1/2 -translate-y-1/2 text-text-muted/50">
+                                                        <Network size={13} />
+                                                    </div>
+                                                    <input
+                                                        type="text"
+                                                        value={targetHost}
+                                                        onChange={e => setTargetHost(e.target.value)}
+                                                        placeholder="e.g. 1.2.3.4"
+                                                        className="w-full bg-card-secondary border border-border rounded-xl pl-8 pr-3 py-2 text-xs focus:border-blue-500 outline-none transition-all font-mono"
+                                                    />
+                                                </div>
+                                            </div>
+                                            <div>
+                                                <label className="text-[10px] font-black text-text-muted tracking-widest mb-1 block uppercase">Port</label>
+                                                <input
+                                                    type="number"
+                                                    value={targetPort}
+                                                    onChange={e => setTargetPort(parseInt(e.target.value))}
+                                                    className="w-full bg-card-secondary border border-border rounded-xl px-3 py-2 text-xs focus:border-blue-500 outline-none transition-all font-mono"
+                                                />
+                                            </div>
+                                        </div>
+
+                                        {/* Row 2: Protocol + Direction */}
+                                        <div className="grid grid-cols-2 gap-2.5">
+                                            <div>
+                                                <label className="text-[10px] font-black text-text-muted tracking-widest mb-1 block uppercase">Protocol</label>
+                                                <StigixSelect
+                                                    value={protocol}
+                                                    onChange={val => setProtocol(val as any)}
+                                                    accent="blue"
+                                                    triggerClassName="bg-card-secondary rounded-xl px-3 py-2 text-xs"
+                                                    options={[
+                                                        { value: 'tcp', label: 'TCP' },
+                                                        { value: 'udp', label: 'UDP' },
+                                                        { value: 'quic', label: 'QUIC' },
+                                                    ]}
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className="text-[10px] font-black text-text-muted tracking-widest mb-1 block uppercase">Direction</label>
+                                                <StigixSelect
+                                                    value={direction}
+                                                    onChange={val => setDirection(val as any)}
+                                                    accent="blue"
+                                                    triggerClassName="bg-card-secondary rounded-xl px-3 py-2 text-xs"
+                                                    options={[
+                                                        { value: 'client-to-server', label: 'Upload (TX)' },
+                                                        { value: 'server-to-client', label: 'Download (RX)' },
+                                                        { value: 'bidirectional', label: 'Bidirectional' },
+                                                    ]}
+                                                />
+                                            </div>
+                                        </div>
+
+                                        {/* Row 3: Bitrate + Duration + Streams */}
+                                        <div className="grid grid-cols-3 gap-2.5">
+                                            <div>
+                                                <label className="text-[10px] font-black text-text-muted tracking-widest mb-1 block uppercase" title="e.g. 100M, 0=Max">Bitrate</label>
+                                                <input
+                                                    type="text"
+                                                    value={bitrate}
+                                                    onChange={e => setBitrate(e.target.value)}
+                                                    placeholder="200M"
+                                                    className="w-full bg-card-secondary border border-border rounded-xl px-3 py-2 text-xs font-mono outline-none focus:border-blue-500"
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className="text-[10px] font-black text-text-muted tracking-widest mb-1 flex items-center justify-between uppercase">
+                                                    <span>Duration</span>
+                                                    <span className="text-[8px] font-mono opacity-50 lowercase">s</span>
+                                                </label>
+                                                <input
+                                                    type="number"
+                                                    min="10"
+                                                    max="3600"
+                                                    value={duration}
+                                                    onChange={e => setDuration(parseInt(e.target.value))}
+                                                    onBlur={e => {
+                                                        const val = parseInt(e.target.value);
+                                                        setDuration(isNaN(val) ? 10 : Math.min(3600, Math.max(10, val)));
+                                                    }}
+                                                    className="w-full bg-card-secondary border border-border rounded-xl px-3 py-2 text-xs font-mono outline-none focus:border-blue-500"
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className="text-[10px] font-black text-text-muted tracking-widest mb-1 block uppercase">Streams</label>
+                                                <input
+                                                    type="number"
+                                                    value={streams}
+                                                    onChange={e => setStreams(parseInt(e.target.value))}
+                                                    className="w-full bg-card-secondary border border-border rounded-xl px-3 py-2 text-xs font-mono outline-none focus:border-blue-500"
+                                                />
+                                            </div>
+                                        </div>
+
+                                        {/* Row 4: DSCP + Client Port */}
+                                        <div className="grid grid-cols-2 gap-2.5">
+                                            <div>
+                                                <label className="text-[10px] font-black text-text-muted tracking-widest mb-1 block uppercase">DSCP / TOS</label>
+                                                <input
+                                                    type="text"
+                                                    list="dscp-options"
+                                                    value={dscp}
+                                                    onChange={e => setDscp(e.target.value)}
+                                                    placeholder="Default (0)"
+                                                    className={`w-full bg-card-secondary border rounded-xl px-3 py-2 text-xs font-mono outline-none transition-colors ${dscp && !isValidDscp(dscp) ? 'border-red-500/50 focus:border-red-500' : 'border-border focus:border-blue-500'}`}
+                                                />
+                                                <datalist id="dscp-options">
+                                                    <option value="EF" />
+                                                    <option value="AF11" />
+                                                    <option value="AF21" />
+                                                    <option value="CS1" />
+                                                    <option value="CS6" />
+                                                    <option value="46" />
+                                                </datalist>
+                                                {dscp && !isValidDscp(dscp) && (
+                                                    <span className="text-[9px] text-red-500 font-bold block mt-0.5">Invalid DSCP</span>
+                                                )}
+                                            </div>
+                                            <div>
+                                                <label className="text-[10px] font-black text-text-muted tracking-widest mb-1 block uppercase">Src Flow Port</label>
+                                                <input
+                                                    type="number"
+                                                    value={cport}
+                                                    onChange={e => setCport(parseInt(e.target.value))}
+                                                    className="w-full bg-card-secondary border border-border rounded-xl px-3 py-2 text-xs font-mono outline-none focus:border-blue-500"
+                                                />
+                                            </div>
+                                        </div>
+
+                                        {/* Row 5: Congestion + PSK */}
+                                        <div className="grid grid-cols-2 gap-2.5">
+                                            <div>
+                                                <label className="text-[10px] font-black text-text-muted tracking-widest mb-1 block uppercase">Congestion</label>
+                                                {protocol === 'tcp' ? (
+                                                    <StigixSelect
+                                                        value={congestion}
+                                                        onChange={val => setCongestion(val)}
+                                                        accent="blue"
+                                                        triggerClassName="bg-card-secondary rounded-xl px-3 py-2 text-xs"
+                                                        options={[
+                                                            { value: 'cubic', label: 'Cubic (Default)' },
+                                                            { value: 'reno', label: 'Reno' },
+                                                        ]}
+                                                    />
+                                                ) : (
+                                                    <div className="w-full bg-card-secondary/50 border border-border/50 rounded-xl px-3 py-2 text-xs font-mono text-text-muted">
+                                                        N/A ({protocol.toUpperCase()})
+                                                    </div>
+                                                )}
+                                            </div>
+                                            <div>
+                                                <label className="text-[10px] font-black text-text-muted tracking-widest mb-1 block uppercase">PSK (Optional)</label>
+                                                <input
+                                                    type="password"
+                                                    value={psk}
+                                                    onChange={e => setPsk(e.target.value)}
+                                                    placeholder="••••••"
+                                                    className="w-full bg-card-secondary border border-border rounded-xl px-3 py-2 text-xs outline-none focus:border-blue-500"
+                                                />
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
+
+                                <button
+                                    onClick={() => runTest()}
+                                    disabled={isRunning || !targetHost || !isValidIpOrFqdn(targetHost) || !isValidDscp(dscp)}
+                                    className={cn(
+                                        "w-full py-3 rounded-xl font-black tracking-widest text-xs flex items-center justify-center gap-2 transition-all shadow-xl",
+                                        isRunning || !targetHost || !isValidDscp(dscp) ? "bg-card-secondary text-text-muted cursor-not-allowed" :
+                                            !isValidIpOrFqdn(targetHost) ? "bg-red-500/10 text-red-500 border border-red-500/20 cursor-not-allowed" :
+                                                "bg-gradient-to-r from-blue-600 to-blue-500 text-white hover:opacity-90 active:scale-[0.98]"
+                                    )}
+                                >
+                                    {isRunning ? (
+                                        <>
+                                            <RefreshCw size={16} className="animate-spin" />
+                                            Running Test...
+                                        </>
+                                    ) : !targetHost ? (
+                                        <>
+                                            <Play size={16} fill="currentColor" />
+                                            Launch Speedtest
+                                        </>
+                                    ) : !isValidIpOrFqdn(targetHost) ? (
+                                        <>
+                                            <AlertCircle size={16} />
+                                            Invalid Target IP/FQDN
+                                        </>
+                                    ) : (
+                                        <>
+                                            <Play size={16} fill="currentColor" />
+                                            Launch Speedtest
+                                        </>
+                                    )}
+                                </button>
+                            </div>
                         </div>
-                    </div>
+
+                        {/* Info Card */}
+                        <div className="p-3.5 bg-blue-600/5 border border-blue-500/10 rounded-2xl flex gap-3">
+                            <Info className="text-blue-500 shrink-0 mt-0.5" size={16} />
+                            <div>
+                                <h4 className="text-[10px] font-black text-blue-500 tracking-widest mb-0.5 uppercase">Testing Note</h4>
+                                <p className="text-[10px] text-text-muted leading-relaxed font-bold opacity-60">
+                                    Sends traffic to validate path throughput and latency. Ensure target is a Stigix peer or runs <a href="https://github.com/lance0/xfr" target="_blank" rel="noreferrer" className="text-blue-400 hover:underline">xfr</a> server.
+                                </p>
+                            </div>
+                        </div>
                     </div>
                 ) : (
                     <div className="hidden md:flex w-16 shrink-0 flex-col gap-4 animate-in slide-in-from-left-4 fade-in duration-300">
@@ -815,12 +921,13 @@ export default function Speedtest({ token }: Props) {
 
                             <div className="bg-card-secondary/50 border border-border/50 rounded-2xl p-5 group hover:border-cyan-500/30 transition-all">
                                 <label className="text-[10px] font-black text-text-muted tracking-widest opacity-60 flex items-center gap-2 mb-2">
-                                    <Clock size={14} className="text-cyan-500" /> Latency (Rtt)
+                                    <Clock size={14} className="text-cyan-500" /> {activeJob?.params?.protocol === 'udp' ? 'Jitter' : 'Latency (RTT)'}
                                 </label>
                                 <div className="flex items-baseline gap-2">
                                     <span className="text-3xl font-black text-text-primary tracking-tighter">
-                                        {activeJob?.summary ? activeJob.summary.rtt_ms_avg.toFixed(1) :
-                                            (chartData.length > 0 ? chartData[chartData.length - 1].rtt_ms?.toFixed(1) : '0.0')}
+                                        {activeJob?.params?.protocol === 'udp'
+                                            ? (activeJob?.summary ? (activeJob.summary.jitter_ms_avg ?? 0).toFixed(2) : (chartData.length > 0 ? (chartData[chartData.length - 1].jitter_ms ?? 0).toFixed(2) : '0.00'))
+                                            : (activeJob?.summary ? activeJob.summary.rtt_ms_avg.toFixed(1) : (chartData.length > 0 ? chartData[chartData.length - 1].rtt_ms?.toFixed(1) : '0.0'))}
                                     </span>
                                     <span className="text-[10px] font-black text-text-muted italic opacity-40">ms</span>
                                 </div>
@@ -1078,8 +1185,25 @@ export default function Speedtest({ token }: Props) {
                                                     <td className="px-4 py-4 text-right">
                                                         {job.summary ? (
                                                             <div className="flex flex-col items-end">
-                                                                <div className="text-xs font-black text-text-primary">{Math.round(job.summary.received_mbps)} Mbps</div>
-                                                                <div className="text-[9px] text-red-500 font-bold tracking-tighter">{job.summary.loss_percent.toFixed(1)}% Loss</div>
+                                                                <div className="text-xs font-black text-text-primary">{Math.round(job.summary.received_mbps || job.summary.sent_mbps)} Mbps</div>
+                                                                {job.params.protocol === 'udp' ? (
+                                                                    <div className={cn(
+                                                                        "text-[9px] font-bold tracking-tight",
+                                                                        (job.summary.loss_percent ?? 0) > 0 ? "text-red-500" : "text-emerald-500"
+                                                                    )}>
+                                                                        {(job.summary.loss_percent ?? 0).toFixed(1)}% Loss
+                                                                    </div>
+                                                                ) : (
+                                                                    <div className="text-[9px] font-bold tracking-tight flex items-center gap-1">
+                                                                        <span className="text-cyan-400">{(job.summary.rtt_ms_avg ?? 0).toFixed(1)} ms</span>
+                                                                        <span className="text-text-muted opacity-50">•</span>
+                                                                        <span className={cn(
+                                                                            (job.summary.retransmits ?? 0) > 0 ? "text-amber-400" : "text-emerald-500"
+                                                                        )}>
+                                                                            {job.summary.retransmits ?? 0} rxmt
+                                                                        </span>
+                                                                    </div>
+                                                                )}
                                                             </div>
                                                         ) : (
                                                             <span className="text-xs font-bold text-text-muted italic">No results</span>

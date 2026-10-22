@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.0.80] - 2026-10-22
+
+### Changed
+- **Speedtest Configuration Sidebar & Main Telemetry Ergonomics (`web-dashboard/src/Speedtest.tsx`)**:
+  - **Default Mode Layout**: Placed `Target IP / FQDN` and `Port` side-by-side (`col-span-2` / `col-span-1`) and added a compact Default Profile summary strip (`TCP (Cubic) • Upload • 200M • 10s • 4 streams`) above the launch button.
+  - **Custom Mode Above-the-Fold Grid**: Replaced the tall target card list in Custom mode with compact Quick Target Chips (with live reachability dots) and organized custom parameters into a compact multi-column grid (`Protocol` + `Direction`, `Bitrate` + `Duration` + `Streams`, `DSCP` + `Src Flow Port`, `Congestion` + `PSK`) so all fields and the Launch button fit on a 13" laptop screen without scrolling.
+  - **Main View & History Table Telemetry**: Updated the live/completed Latency card to display `Jitter` for UDP tests, and refined the History table `Throughput` column to display RTT + retransmits for TCP tests (instead of a misleading red `0.0% Loss`) and color-coded loss for UDP tests.
+
 ## [3.0.79] - 2026-10-22
 
 ### Changed
