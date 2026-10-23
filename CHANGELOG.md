@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.0.92] - 2026-10-23
+
+### Fixed
+- **Multi-Homed Host Primary Route Detection & Dynamic Target IP Migration (`install.sh`, `web-dashboard/registry-manager.ts`, `web-dashboard/targets-manager.ts`, `web-dashboard/local-registry-server.ts`, `web-dashboard/server.ts`)**:
+  - Fixed an IP selection issue on multi-homed Linux hosts during cold install (`install.sh`):
+    - `install.sh` now detects the default gateway routing interface (`ip route show default` / `route -n`) and prioritizes its IP as the first candidate in `LOCAL_IPS` and default `CHOSEN_PRIMARY_IP`, preventing management interfaces without default routes (e.g. `enp1s0` / `192.168.123.101`) from preempting traffic interfaces (e.g. `enp2s0` / `192.168.217.5`).
+    - Added guaranteed `interfaces.txt` and `STIGIX_PRIVATE_IP` persistence in `install.sh` regardless of interactive choice.
+  - Enhanced `RegistryManager.detectPrivateIp()` to read `/proc/net/route` (default gateway `00000000`) and query `ip route show default` / `route get default` before falling back to heuristic interface iteration, and added comment filtering (`#`) when reading `interfaces.txt`.
+  - Refreshed detected IP in `server.ts` both after `initializeDefaultConfigs()` and right before redeeming a Magic Join Token (`/api/fleet/join-cluster`), ensuring nodes advertise their correct traffic IP.
+  - Implemented `TargetsManager.syncPeerInstance()` on the Leader to automatically detect and migrate target host IPs when an enrolled/auto-learned peer heartbeats or re-registers with an updated traffic IP, preventing stale management IPs from sticking in `targets.json`.
+
 ## [3.0.91] - 2026-10-23
 
 ### Added

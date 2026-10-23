@@ -2656,6 +2656,7 @@ if (getUsers().length === 0) {
 
 // Initialize default config files
 initializeDefaultConfigs();
+registryManager.refreshIp().catch(() => {});
 
 // --- IoT Helpers ---
 let iotConfigCache: { mtimeMs: number; data: { devices: IoTDeviceConfig[], network?: any } } | null = null;
@@ -18840,6 +18841,7 @@ async function executeJoinWithToken(req: any, res: any) {
             winningEndpoint = null;
         }
 
+        await registryManager.refreshIp().catch(() => {});
         const myIp = registryManager.getCurrentIp();
         const currentSite = (registryManager.getSiteName() || '').trim();
         const hasExistingCustomSite = Boolean(

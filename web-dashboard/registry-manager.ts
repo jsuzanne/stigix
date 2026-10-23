@@ -2,7 +2,7 @@ import path from 'path';
 import os from 'os';
 import fs from 'fs';
 import net from 'net';
-import { spawn } from 'child_process';
+import { spawn, execSync } from 'child_process';
 import { log } from './utils/logger.js';
 import { StigixRegistryClient, RegistryInstance, RegistryInstanceSummary } from './stigix-registry-client.js';
 import type { LocalRegistryServer } from './local-registry-server.js';
@@ -321,13 +321,18 @@ export class RegistryManager {
         try {
             const ifaceFile = path.join(configDir, 'interfaces.txt');
             if (fs.existsSync(ifaceFile)) {
-                const ifaceName = fs.readFileSync(ifaceFile, 'utf8').trim().split('\n')[0].trim();
-                const netInfo = nets[ifaceName];
-                if (netInfo) {
-                    const ipv4 = netInfo.find(ni => ni.family === 'IPv4');
-                    if (ipv4) {
-                        log('REGISTRY', `Selected IP from interfaces.txt (${ifaceName}): ${ipv4.address}`);
-                        return ipv4.address;
+                const lines = fs.readFileSync(ifaceFile, 'utf8')
+                    .split('\n')
+                    .map(l => l.trim())
+                    .filter(l => l && !l.startsWith('#'));
+                for (const ifaceName of lines) {
+                    const netInfo = nets[ifaceName];
+                    if (netInfo) {
+                        const ipv4 = netInfo.find(ni => ni.family === 'IPv4' && !ni.internal);
+                        if (ipv4) {
+                            log('REGISTRY', `Selected IP from interfaces.txt (${ifaceName}): ${ipv4.address}`);
+                            return ipv4.address;
+                        }
                     }
                 }
             }
@@ -335,7 +340,47 @@ export class RegistryManager {
             log('REGISTRY', `Failed to read interfaces.txt for IP detection: ${e}`, 'warn');
         }
 
-        // 3. Heuristic fallback
+        // 3. Fast non-blocking Linux /proc/net/route lookup (Default gateway = Destination 00000000)
+        const isMac = process.platform === 'darwin';
+        if (!isMac && fs.existsSync('/proc/net/route')) {
+            try {
+                const routeContent = fs.readFileSync('/proc/net/route', 'utf8');
+                const lines = routeContent.split('\n').slice(1);
+                for (const line of lines) {
+                    const cols = line.trim().split(/\s+/);
+                    if (cols.length >= 2 && cols[1] === '00000000' && cols[0]) {
+                        const defaultIface = cols[0];
+                        const netInfo = nets[defaultIface];
+                        if (netInfo) {
+                            const ipv4 = netInfo.find(ni => ni.family === 'IPv4' && !ni.internal);
+                            if (ipv4) {
+                                log('REGISTRY', `Selected default gateway IP from /proc/net/route (${defaultIface}): ${ipv4.address}`);
+                                return ipv4.address;
+                            }
+                        }
+                    }
+                }
+            } catch (e) {
+                // Ignore and proceed
+            }
+        }
+
+        // 4. Prefer default route via ip route / route get
+        try {
+            const cmd = isMac
+                ? "route get default | grep interface | awk '{print $2}'"
+                : "ip route | grep '^default' | awk '{print $5}' | head -n 1";
+            const output = execSync(cmd, { encoding: 'utf8', timeout: 2000 }).trim();
+            if (output && nets[output]) {
+                const ipv4 = nets[output]!.find(ni => ni.family === 'IPv4' && !ni.internal);
+                if (ipv4) {
+                    log('REGISTRY', `Selected default gateway IP via routing command (${output}): ${ipv4.address}`);
+                    return ipv4.address;
+                }
+            }
+        } catch (e) {}
+
+        // 5. Heuristic fallback
         const blacklist = ['docker', 'virbr', 'veth', 'br-', 'lo'];
 
         // Collect all possible IPs
@@ -777,6 +822,9 @@ export class RegistryManager {
                             this.peerCache.delete(existingId);
                         }
                     }
+                    if (this.targetsManager && typeof this.targetsManager.syncPeerInstance === 'function') {
+                        this.targetsManager.syncPeerInstance(inst.instance_id, inst.meta?.site || inst.instance_id, inst.ip_private);
+                    }
                     if (this.targetsManager && typeof this.targetsManager.updateHostName === 'function') {
                         this.targetsManager.updateHostName(inst.ip_private, inst.meta?.site || inst.instance_id);
                     }
@@ -857,6 +905,9 @@ export class RegistryManager {
                     if (existingEntry.instance?.ip_private === inst.ip_private && existingId !== inst.instance_id) {
                         this.peerCache.delete(existingId);
                     }
+                }
+                if (this.targetsManager && typeof this.targetsManager.syncPeerInstance === 'function') {
+                    this.targetsManager.syncPeerInstance(inst.instance_id, inst.meta?.site || inst.instance_id, inst.ip_private);
                 }
                 if (this.targetsManager && typeof this.targetsManager.updateHostName === 'function') {
                     this.targetsManager.updateHostName(inst.ip_private, inst.meta?.site || inst.instance_id);

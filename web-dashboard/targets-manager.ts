@@ -234,6 +234,50 @@ export class TargetsManager {
         return null;
     }
 
+    /**
+     * Synchronizes a discovered/enrolled peer instance with managed targets.
+     * If an auto-learned or enrolled target matches the peer's site name or instance ID, ensures its host IP is updated.
+     */
+    syncPeerInstance(instanceId: string, siteName: string, ipPrivate: string): boolean {
+        if (!ipPrivate || (!instanceId && !siteName)) return false;
+        const targets = this.loadTargets();
+        const normSite = (siteName || '').trim().toUpperCase();
+        const normId = (instanceId || '').trim();
+        let updated = false;
+
+        for (const t of targets) {
+            const isAutoTarget = Boolean(
+                t.tags?.includes('magic-join') ||
+                t.tags?.includes('auto-onboarded') ||
+                t.tags?.includes('rendezvous') ||
+                t.meta?.magic_join === true ||
+                t.meta?.registry === true
+            );
+            const matchesId = Boolean(normId && (t.meta?.instance_id === normId || t.id === normId));
+            const matchesSite = Boolean(normSite && (
+                (t.name || '').trim().toUpperCase() === normSite ||
+                (t.label || '').trim().toUpperCase() === normSite
+            ));
+
+            if (matchesId || (isAutoTarget && matchesSite)) {
+                if (t.host.trim().toLowerCase() !== ipPrivate.trim().toLowerCase()) {
+                    log('TARGETS', `Migrating peer target "${t.name}" host IP from ${t.host} to ${ipPrivate}`);
+                    t.host = ipPrivate;
+                    if (!t.meta) t.meta = {};
+                    t.meta.last_seen = new Date().toISOString();
+                    if (normId) t.meta.instance_id = normId;
+                    t.updated_at = new Date().toISOString();
+                    updated = true;
+                }
+            }
+        }
+
+        if (updated) {
+            this.saveTargets(targets);
+        }
+        return updated;
+    }
+
     /** Updates the displayed name of any managed target matching the given host. */
     updateHostName(host: string, newName: string): boolean {
         if (!host || !newName) return false;

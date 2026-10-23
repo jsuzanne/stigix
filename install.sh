@@ -278,6 +278,26 @@ if [ -n "$JOIN_TOKEN" ]; then
             [ -n "$FP" ] && ANNOUNCE_PORT="$FP"
         fi
         LOCAL_IPS=()
+        # Find default route interface and its IP first if available (prioritize default gateway)
+        DEFAULT_ROUTE_IFACE=""
+        DEFAULT_ROUTE_IP=""
+        if command -v ip &>/dev/null; then
+            DEFAULT_ROUTE_IFACE=$(ip route show default 2>/dev/null | awk '/default/ {print $5}' | head -n 1)
+            if [ -n "$DEFAULT_ROUTE_IFACE" ]; then
+                DEFAULT_ROUTE_IP=$(ip -4 -o addr show dev "$DEFAULT_ROUTE_IFACE" 2>/dev/null | awk '{print $4}' | sed 's/\/.*//' | head -n 1)
+            fi
+        elif command -v route &>/dev/null; then
+            DEFAULT_ROUTE_IFACE=$(route -n 2>/dev/null | awk '$1 == "0.0.0.0" {print $8}' | head -n 1)
+            if [ -n "$DEFAULT_ROUTE_IFACE" ] && command -v ifconfig &>/dev/null; then
+                DEFAULT_ROUTE_IP=$(ifconfig "$DEFAULT_ROUTE_IFACE" 2>/dev/null | grep -E 'inet [0-9]' | awk '{print $2}' | sed 's/addr://' | head -n 1)
+            fi
+        fi
+
+        # Prioritize the default route IP as first candidate
+        if [[ "$DEFAULT_ROUTE_IP" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]] && [[ ! "$DEFAULT_ROUTE_IP" =~ ^127\. ]] && [[ ! "$DEFAULT_ROUTE_IP" =~ ^169\.254\. ]]; then
+            LOCAL_IPS+=("$DEFAULT_ROUTE_IP")
+        fi
+
         # 1. Inspect interfaces with 'ip' command, filtering out docker/libvirt/veth virtual bridges
         if command -v ip &>/dev/null; then
             while read -r iface ip; do
@@ -686,6 +706,9 @@ if [ -n "$CHOSEN_PRIMARY_IP" ]; then
         DEFAULT_IFACE=$(ip route show default 2>/dev/null | awk '/default/ {print $5}' | head -n 1)
         [ -n "$DEFAULT_IFACE" ] && echo "$DEFAULT_IFACE" > ./config/interfaces.txt
     fi
+else
+    DEFAULT_IFACE=$(ip route show default 2>/dev/null | awk '/default/ {print $5}' | head -n 1)
+    [ -n "$DEFAULT_IFACE" ] && echo "$DEFAULT_IFACE" > ./config/interfaces.txt
 fi
 
 # Pre-create CLI persistence files so Docker mounts them as files (not dirs)

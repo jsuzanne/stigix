@@ -264,6 +264,15 @@ export class LocalRegistryServer {
 
             this.instances.set(key, instance);
 
+            if (targetsManager && payload.ip_private) {
+                if (typeof targetsManager.syncPeerInstance === 'function') {
+                    targetsManager.syncPeerInstance(payload.instance_id, payload.meta?.site || payload.instance_id, payload.ip_private);
+                }
+                if (typeof targetsManager.updateHostName === 'function') {
+                    targetsManager.updateHostName(payload.ip_private, payload.meta?.site || payload.instance_id);
+                }
+            }
+
             return res.json({
                 status: 'ok',
                 poc_id: payload.poc_id,
