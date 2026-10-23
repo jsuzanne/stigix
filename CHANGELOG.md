@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.0.95] - 2026-10-23
+
+### Changed
+- **Fleet WebSocket Heartbeat Tuning & Reconnect Lifecycle Logging (`web-dashboard/server.ts`, `web-dashboard/fleet-tunnel.ts`)**:
+  - Tuned Engine.IO heartbeat parameters on `server.ts` to `pingInterval: 10000` (10s) and `pingTimeout: 35000` (35s), eliminating false-positive disconnections caused by WAN jitter and traffic generator bandwidth saturation while keeping black-hole dead-node detection within ~40s.
+  - Added explicit Socket.IO reconnection attempt and recovery log listeners in `fleet-tunnel.ts` (`reconnect_attempt` and `reconnect`), surfacing detailed retry ticks and successful recoveries in console logs.
+
 ## [3.0.94] - 2026-10-23
 
 ### Added

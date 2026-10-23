@@ -2340,8 +2340,8 @@ const app = express();
 const httpServer = createServer(app);
 const io = new Server(httpServer, {
     maxHttpBufferSize: 100 * 1024 * 1024, // 100 MB buffer for heavy PCAP profiles and telemetry bundles
-    pingInterval: 15000, // 15s keepalive to prevent Cloudflare Tunnel / NAT 100s idle timeouts
-    pingTimeout: 30000,  // 30s tolerance for WAN jitter and heavy telemetry bursts
+    pingInterval: 10000, // 10s keepalive to prevent Cloudflare Tunnel / NAT idle timeouts
+    pingTimeout: 35000,  // 35s tolerance: provides 3 consecutive ping chances during WAN jitter & bandwidth bursts
     cors: {
         origin: '*',
         methods: ['GET', 'POST']

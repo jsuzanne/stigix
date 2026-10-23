@@ -1058,6 +1058,14 @@ export class FleetTunnelManager {
             timeout: 15000
         });
 
+        socket.io.on('reconnect_attempt', (attempt: number) => {
+            log('TUNNEL', `🔄 Reconnecting reverse tunnel to Leader (${host}:${port}) [attempt #${attempt}]...`, 'warn');
+        });
+
+        socket.io.on('reconnect', (attempt: number) => {
+            log('TUNNEL', `⚡ Reverse tunnel to Leader RECONNECTED successfully after ${attempt} attempt(s)`);
+        });
+
         socket.on('connect', () => {
             this.consecutiveConnectErrors = 0;
             const epHealth = this.getOrCreateEndpointHealth(targetUrl);
@@ -1411,6 +1419,14 @@ export class FleetTunnelManager {
         });
 
         let queryInterval: NodeJS.Timeout | null = null;
+
+        socket.io.on('reconnect_attempt', (attempt: number) => {
+            log('TUNNEL', `🔄 Reconnecting reverse tunnel to Leader (${host}:${port}) [attempt #${attempt}]...`, 'warn');
+        });
+
+        socket.io.on('reconnect', (attempt: number) => {
+            log('TUNNEL', `⚡ Reverse tunnel to Leader RECONNECTED successfully after ${attempt} attempt(s)`);
+        });
 
         socket.on('connect', () => {
             log('TUNNEL', `⚡ [M6 DIAL] Leader reverse dial CONNECTED to Cloud Peer: ${targetSiteName} (${host}:${port})`);
