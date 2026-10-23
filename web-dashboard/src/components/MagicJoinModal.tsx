@@ -76,9 +76,10 @@ export function MagicJoinModal({ isOpen, onClose, token }: MagicJoinModalProps) 
             setLoading(true);
             setError(null);
             const params = new URLSearchParams();
+            const effectiveMaxUses = overrideMaxUses ?? maxUses;
             params.set('ttl_seconds', (overrideTtl ?? ttlSeconds).toString());
-            params.set('max_uses', (overrideMaxUses ?? maxUses).toString());
-            if (siteName.trim()) params.set('site_name', siteName.trim());
+            params.set('max_uses', effectiveMaxUses.toString());
+            if (siteName.trim() && effectiveMaxUses <= 1) params.set('site_name', siteName.trim());
 
             const epsToUse = customEndpoints || selectedEndpoints;
             if (epsToUse && epsToUse.length > 0) {
@@ -286,16 +287,18 @@ export function MagicJoinModal({ isOpen, onClose, token }: MagicJoinModalProps) 
                                     </label>
                                     <input
                                         type="text"
-                                        placeholder="e.g. Paris-Branch"
-                                        value={siteName}
+                                        placeholder={maxUses > 1 ? "Auto-preserved per node (Multi-Use)" : "e.g. Paris-Branch"}
+                                        value={maxUses > 1 ? "" : siteName}
                                         onChange={(e) => setSiteName(e.target.value)}
+                                        disabled={maxUses > 1}
+                                        title={maxUses > 1 ? "Site Name is ignored in Multi-Use mode so each joining node preserves its own identity" : "Optional site name hint for fresh 1-use installations"}
                                         autoComplete="off"
                                         autoCapitalize="none"
                                         autoCorrect="off"
                                         spellCheck={false}
                                         data-lpignore="true"
                                         data-1p-ignore="true"
-                                        className="w-full bg-card-secondary border border-border rounded-xl px-3 py-2 text-xs text-text-primary font-mono focus:outline-none focus:ring-1 focus:ring-blue-500"
+                                        className={`w-full bg-card-secondary border border-border rounded-xl px-3 py-2 text-xs text-text-primary font-mono focus:outline-none focus:ring-1 focus:ring-blue-500 ${maxUses > 1 ? "opacity-50 cursor-not-allowed" : ""}`}
                                     />
                                 </div>
                                 <div>

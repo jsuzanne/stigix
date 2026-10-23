@@ -80,8 +80,10 @@ export function NodeRoleModal({
 
     const candidateEndpointsList: string[] = (() => {
         const list = Array.isArray(effectiveStatus?.candidate_endpoints) ? effectiveStatus.candidate_endpoints : [];
-        const cleaned = list.map((ep: string) => ep.replace(/\/api\/registry\/?$/, '').replace(/\/$/, '')).filter(Boolean);
-        if (activeControllerOrigin && !cleaned.includes(activeControllerOrigin)) {
+        const cleaned = list
+            .map((ep: string) => ep.replace(/\/api\/registry\/?$/, '').replace(/\/$/, ''))
+            .filter((ep: string) => Boolean(ep) && !/^https?:\/\/stx-/i.test(ep));
+        if (activeControllerOrigin && !/^https?:\/\/stx-/i.test(activeControllerOrigin) && !cleaned.includes(activeControllerOrigin)) {
             return [activeControllerOrigin, ...cleaned];
         }
         return Array.from(new Set(cleaned));

@@ -549,7 +549,13 @@ export class FleetTunnelManager {
             const sourceIp = isLeaderDial ? leaderCurrentIp : realInboundSourceIp;
             const destIp = isLeaderDial ? clientIp : leaderDestIp;
             const sourcePort = (socket.request?.socket as any)?.remotePort || (socket.conn as any)?.remotePort;
-            const destPort = (socket.request?.socket as any)?.localPort || (socket.conn as any)?.localPort || this.port;
+            const isCloudflareOrHttpsProxy = !isLeaderDial && (
+                socket.request?.headers?.['x-forwarded-proto'] === 'https' ||
+                Boolean(socket.request?.headers?.['cf-ray'])
+            );
+            const destPort = isCloudflareOrHttpsProxy
+                ? 443
+                : ((socket.request?.socket as any)?.localPort || (socket.conn as any)?.localPort || this.port);
 
             const info: TunnelPeerInfo = {
                 instanceId,

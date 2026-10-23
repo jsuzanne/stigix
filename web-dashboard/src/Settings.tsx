@@ -1757,19 +1757,22 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
     const handleSaveStaticLeader = async (url: string | null) => {
         setSaving(true);
         try {
-            const res = await apiFetch('/api/registry/static-leader', {
+            const trimmed = url ? url.trim() : null;
+            const isStxToken = trimmed && /^stx-/i.test(trimmed);
+            const res = await apiFetch(isStxToken ? '/api/registry/join-with-token' : '/api/registry/static-leader', {
                 method: 'POST',
                 headers: authHeaders,
-                body: JSON.stringify({ url })
+                body: JSON.stringify(isStxToken ? { token: trimmed, force: true } : { url: trimmed })
             });
+            const data = await res.json().catch(() => ({}));
             if (res.ok) {
-                showSuccess(url ? "Static Leader configured!" : "Reverted to auto-discovery");
+                showSuccess(isStxToken ? `Successfully joined Leader (${(data.endpoints || []).join(', ')})!` : (url ? "Static Leader configured!" : "Reverted to auto-discovery"));
                 // Refresh status
                 const sres = await apiFetch('/api/registry/status', { headers: authHeaders });
                 const sdata = await sres.json();
                 setRegistryStatus(sdata);
             } else {
-                setErrorMsg("Failed to save static leader");
+                setErrorMsg(data.message || data.error || "Failed to save static leader");
             }
         } catch (e) {
             setErrorMsg(String(e));
