@@ -44,10 +44,18 @@ jobs:
     runs-on: ubuntu-latest
     if: github.event_name == 'workflow_dispatch' && github.event.inputs.version_to_stable != ''
     steps:
+      - name: Normalize Target Version
+        id: target_ver
+        run: |
+          RAW="${{ github.event.inputs.version_to_stable }}"
+          CLEAN=$(echo "$RAW" | tr -d '[:space:]' | sed 's/^v//')
+          echo "clean=$CLEAN" >> $GITHUB_OUTPUT
+          echo "tag=v$CLEAN" >> $GITHUB_OUTPUT
+
       - name: Checkout target version
         uses: actions/checkout@v4
         with:
-          ref: v${{ github.event.inputs.version_to_stable }}
+          ref: ${{ steps.target_ver.outputs.tag }}
       
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
@@ -91,11 +99,11 @@ jobs:
           platforms: linux/amd64,linux/arm64
           push: true
           provenance: false
-          tags: ${{ env.IMAGE_NAME }}:stable,${{ env.IMAGE_NAME }}:latest,${{ env.IMAGE_NAME }}:${{ github.event.inputs.version_to_stable }}
+          tags: ${{ env.IMAGE_NAME }}:stable,${{ env.IMAGE_NAME }}:latest,${{ env.IMAGE_NAME }}:${{ steps.target_ver.outputs.clean }},${{ env.IMAGE_NAME }}:v${{ steps.target_ver.outputs.clean }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
           build-args: |
-            VERSION=${{ github.event.inputs.version_to_stable }}
+            VERSION=${{ steps.target_ver.outputs.clean }}
             GIT_COMMIT=${{ github.sha }}
             BUILD_DATE=${{ steps.meta.outputs.build_date }}
           labels: |
@@ -103,7 +111,7 @@ jobs:
             org.opencontainers.image.description=Stigix SD-WAN & SASE Simulation and Testing Environment
             org.opencontainers.image.source=https://github.com/jsuzanne/stigix
             org.opencontainers.image.revision=${{ github.sha }}
-            org.opencontainers.image.version=${{ github.event.inputs.version_to_stable }}
+            org.opencontainers.image.version=${{ steps.target_ver.outputs.clean }}
 
   build:
     name: Build Stigix Image
@@ -160,7 +168,7 @@ jobs:
             if [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
               MAJOR=$(echo $VERSION | cut -d. -f1)
               MINOR=$(echo $VERSION | cut -d. -f2)
-              TAG_LIST="$TAG_LIST,${{ env.IMAGE_NAME }}:$MAJOR.$MINOR,${{ env.IMAGE_NAME }}:v$MAJOR.$MINOR,${{ env.IMAGE_NAME }}:$MAJOR,${{ env.IMAGE_NAME }}:latest"
+              TAG_LIST="$TAG_LIST,${{ env.IMAGE_NAME }}:v$MAJOR,${{ env.IMAGE_NAME }}:$MAJOR.$MINOR,${{ env.IMAGE_NAME }}:v$MAJOR.$MINOR,${{ env.IMAGE_NAME }}:$MAJOR"
             fi
             echo "tags=$TAG_LIST" >> $GITHUB_OUTPUT
             echo "version=$VERSION" >> $GITHUB_OUTPUT
@@ -211,11 +219,20 @@ jobs:
           else
             BRANCH_NAME=$(echo ${GITHUB_REF#refs/heads/} | tr '/' '-')
             BASELINE=$(cat VERSION 2>/dev/null || echo "dev")
-            BASELINE_CLEAN=${BASELINE%-dev}
-            COMMIT_COUNT=$(git rev-list --count HEAD 2>/dev/null || echo "0")
-            DEV_VERSION="$BASELINE_CLEAN-$BRANCH_NAME.dev$COMMIT_COUNT"
-            echo "tags=${{ env.IMAGE_NAME }}:$BRANCH_NAME,${{ env.IMAGE_NAME }}:sha-$SHORT_SHA,${{ env.IMAGE_NAME }}:$DEV_VERSION" >> $GITHUB_OUTPUT
-            echo "version=$DEV_VERSION" >> $GITHUB_OUTPUT
+            VERSION_CLEAN=$(echo "$BASELINE" | tr -d '[:space:]' | sed 's/^v//' | sed 's/-dev$//')
+            if [[ "$VERSION_CLEAN" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+              git config user.name "github-actions[bot]"
+              git config user.email "github-actions[bot]@users.noreply.github.com"
+              git tag -f "v$VERSION_CLEAN" -m "Release v$VERSION_CLEAN ($BRANCH_NAME)"
+              git push -f origin "v$VERSION_CLEAN" || echo "Tag push skipped"
+              echo "tags=${{ env.IMAGE_NAME }}:$BRANCH_NAME,${{ env.IMAGE_NAME }}:$VERSION_CLEAN,${{ env.IMAGE_NAME }}:v$VERSION_CLEAN,${{ env.IMAGE_NAME }}:sha-$SHORT_SHA" >> $GITHUB_OUTPUT
+              echo "version=$VERSION_CLEAN" >> $GITHUB_OUTPUT
+            else
+              COMMIT_COUNT=$(git rev-list --count HEAD 2>/dev/null || echo "0")
+              DEV_VERSION="$VERSION_CLEAN-$BRANCH_NAME.dev$COMMIT_COUNT"
+              echo "tags=${{ env.IMAGE_NAME }}:$BRANCH_NAME,${{ env.IMAGE_NAME }}:sha-$SHORT_SHA,${{ env.IMAGE_NAME }}:$DEV_VERSION" >> $GITHUB_OUTPUT
+              echo "version=$DEV_VERSION" >> $GITHUB_OUTPUT
+            fi
             echo "is_release=false" >> $GITHUB_OUTPUT
           fi
 

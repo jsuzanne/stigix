@@ -5,6 +5,26 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.0.82] - 2026-10-23
+
+### Added
+- **Zero-Touch HTTPS Ingress & Multi-Protocol Magic Join (`web-dashboard/magic-join-manager.ts`, `web-dashboard/server.ts`, `web-dashboard/fleet-tunnel.ts`)**:
+  - Added `extractRequestIngress()` to inspect `X-Forwarded-Proto`, `CF-Visitor`, `X-Forwarded-Host`, and `X-Forwarded-Ssl` headers so Leaders accessed behind Cloudflare Tunnels or reverse proxies emit `https://leader.domain.com` (port 443 without `:8080`) alongside local `http://<ip>:8080` LAN/Management endpoints in the same `STX-...` join token.
+  - Updated `normalizeControllerUrl()`, `syncSpokeOutboundTunnel()`, and `previewControllerUrl()` to preserve `https://` URLs without forcing port `8080`.
+- **Zero-Config Persistent Cryptographic `JWT_SECRET` (`web-dashboard/magic-join-manager.ts`, `web-dashboard/server.ts`)**:
+  - Added `resolveOrGenerateJwtSecret()` to automatically generate a 256-bit cryptographic secret (`crypto.randomBytes(32).toString('hex')`) and persist it to `/app/config/jwt-secret.key` (`0600`) whenever `JWT_SECRET` is unset or matches an insecure default placeholder.
+- **In-Place Leader Endpoint Switch on Enrolled Peers (`web-dashboard/server.ts`, `web-dashboard/src/components/NodeRoleModal.tsx`, `web-dashboard/src/Settings.tsx`)**:
+  - Updated `POST /api/registry/static-leader` to update `cluster-enrollment.json`, `controller-endpoints.json`, `.env` (`STIGIX_LEADER_URL`), and invoke `fleetTunnelManager.preferCandidateLeaderUrl()` so enrolled peers can switch or edit their Leader URL in-place without unenrolling or losing their `nodeToken`.
+  - Added **Switch Endpoint** controls and interactive candidate endpoint pills (with live RTT and health scores) in `NodeRoleModal.tsx` and `Settings.tsx`.
+- **Passive WebSocket Connection Scoring & Smart Failover (`web-dashboard/fleet-tunnel.ts`, `web-dashboard/src/components/MagicJoinModal.tsx`)**:
+  - Embedded `lastRttMs` in the existing 15s `tunnel:rtt_ping` heartbeat (zero extra network packets) so Spoke nodes compute passive EWMA RTT and track disconnect flaps over a 15-minute decay window (`computeEndpointScore()`).
+  - Automatic failover and flap steering now select the highest-scoring candidate endpoint with a 20-point hysteresis guard.
+  - Added UX guidance in `MagicJoinModal.tsx` explaining why keeping all reachable interfaces selected enables multi-path WebSocket failover.
+
+### Changed
+- **CI/CD Versioned Tagging on `v3` (`build-stigix-allinone.yml`)**:
+  - Updated `v3` branch builds to tag Docker images with both `:v3` and `:<VERSION>` / `:v<VERSION>` (never `:stable` or `:latest`) and automatically publish the corresponding `v<VERSION>` Git tag so any `v3.0.XX` build can later be promoted to `:stable` via `workflow_dispatch`.
+
 ## [3.0.81] - 2026-10-22
 
 ### Changed
