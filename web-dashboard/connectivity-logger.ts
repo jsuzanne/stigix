@@ -275,6 +275,7 @@ export class ConnectivityLogger {
 
             if (filtered.length === 0) return {
                 globalHealth: 0,
+                totalChecks: 0,
                 httpEndpoints: { total: 0, avgScore: 0, minScore: 0, maxScore: 0 },
                 flakyEndpoints: [],
                 lastCheckTime: allResults.length > 0 ? allResults[0].timestamp : null
@@ -285,12 +286,13 @@ export class ConnectivityLogger {
                 ? options.globalScoreTypes
                 : ['HTTP', 'HTTPS', 'PING', 'DNS', 'UDP', 'TCP', 'CLOUD'];
 
-            const scoreResults = filtered.filter(r => scoreTypes.includes(r.endpointType));
+            const scoreResults = filtered.filter(r => scoreTypes.includes((r.endpointType || '').toUpperCase()));
 
-            // Filter scoreResults to only include active probes
-            const activeScoreResults = options.activeProbeIds
-                ? scoreResults.filter(r => options.activeProbeIds!.includes(r.endpointId))
+            // Filter scoreResults to only include active probes (fallback to scoreResults if IDs don't match)
+            const matchedActiveScoreResults = options.activeProbeIds
+                ? scoreResults.filter(r => options.activeProbeIds!.includes((r.endpointId || '').toLowerCase()))
                 : scoreResults;
+            const activeScoreResults = matchedActiveScoreResults.length > 0 ? matchedActiveScoreResults : scoreResults;
 
             // HTTP Coverage count (always HTTP/HTTPS regardless of score types)
             const httpResults = filtered.filter(r => r.endpointType === 'HTTP' || r.endpointType === 'HTTPS');
@@ -353,6 +355,7 @@ export class ConnectivityLogger {
                 globalHealth: activeScoreResults.length > 0
                     ? Math.round(activeScoreResults.reduce((acc, r) => acc + (r.score || 0), 0) / activeScoreResults.length)
                     : 0,
+                totalChecks: activeScoreResults.length,
                 globalScoreTypes: scoreTypes,
                 httpEndpoints: {
                     total: uniqueHttpEndpoints,

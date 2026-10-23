@@ -541,7 +541,12 @@ export class FleetTunnelManager {
                 ? socketLocalIp
                 : leaderCurrentIp;
 
-            const sourceIp = isLeaderDial ? leaderCurrentIp : (clientIp || socketRemoteIp || '127.0.0.1');
+            const forwardedHeader = (socket.request?.headers?.['x-forwarded-for'] || socket.request?.headers?.['x-real-ip'] || '') as string;
+            const forwardedIp = forwardedHeader ? String(forwardedHeader).split(',')[0].trim().replace(/^::ffff:/, '') : '';
+            const isLoopbackRemote = !socketRemoteIp || socketRemoteIp === '127.0.0.1' || socketRemoteIp === '::1' || socketRemoteIp === 'localhost';
+            const realInboundSourceIp = (!isLoopbackRemote ? socketRemoteIp : (forwardedIp || clientIp)) || clientIp || '127.0.0.1';
+
+            const sourceIp = isLeaderDial ? leaderCurrentIp : realInboundSourceIp;
             const destIp = isLeaderDial ? clientIp : leaderDestIp;
             const sourcePort = (socket.request?.socket as any)?.remotePort || (socket.conn as any)?.remotePort;
             const destPort = (socket.request?.socket as any)?.localPort || (socket.conn as any)?.localPort || this.port;

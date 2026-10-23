@@ -1,8 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
     X, Check, AlertTriangle, Globe, Server, 
     Sparkles, ArrowRight, RefreshCw, Unlink, 
-    Radio, Shield, Terminal, Zap, CheckCircle2
+    Radio, Shield, Terminal, Zap, CheckCircle2, Plus
 } from 'lucide-react';
 import { twMerge } from 'tailwind-merge';
 
@@ -31,11 +31,33 @@ export function NodeRoleModal({
     const [error, setError] = useState<string | null>(null);
     const [successMsg, setSuccessMsg] = useState<string | null>(null);
 
+    useEffect(() => {
+        if (isOpen) {
+            onRefreshStatus();
+        }
+    }, [isOpen]);
+
     if (!isOpen) return null;
 
     const isLeader = registryStatus?.mode === 'leader' || registryStatus?.current_mode === 'leader';
     const isEnrolledPeer = !isLeader && Boolean(registryStatus?.is_cluster_enrolled || registryStatus?.static_leader_url);
     const isStandalone = !isLeader && !isEnrolledPeer;
+
+    const activeControllerOrigin = (
+        registryStatus?.active_leader_endpoint ||
+        registryStatus?.enrolled_leader_url ||
+        registryStatus?.static_leader_url ||
+        ''
+    ).replace(/\/api\/registry\/?$/, '').replace(/\/$/, '');
+
+    const candidateEndpointsList: string[] = (() => {
+        const list = Array.isArray(registryStatus?.candidate_endpoints) ? registryStatus.candidate_endpoints : [];
+        const cleaned = list.map((ep: string) => ep.replace(/\/api\/registry\/?$/, '').replace(/\/$/, '')).filter(Boolean);
+        if (activeControllerOrigin && !cleaned.includes(activeControllerOrigin)) {
+            return [activeControllerOrigin, ...cleaned];
+        }
+        return Array.from(new Set(cleaned));
+    })();
 
     const authHeaders = {
         'Authorization': `Bearer ${token || localStorage.getItem('token') || ''}`,
@@ -91,7 +113,7 @@ export function NodeRoleModal({
         }
     };
 
-    const handleSaveManualLeader = async (overrideUrl?: string) => {
+    const handleSaveManualLeader = async (overrideUrl?: string, addOnly = false) => {
         const trimmed = (overrideUrl ?? manualLeaderUrl).trim();
         if (!trimmed) return;
         setIsJoining(true);
@@ -101,19 +123,41 @@ export function NodeRoleModal({
             const res = await fetch('/api/registry/static-leader', {
                 method: 'POST',
                 headers: authHeaders,
-                body: JSON.stringify({ url: trimmed })
+                body: JSON.stringify({ url: trimmed, addOnly })
             });
+            const d = await res.json().catch(() => ({}));
             if (res.ok) {
-                setSuccessMsg(`Leader endpoint updated to ${trimmed}! Reconnecting WebSocket...`);
+                setSuccessMsg(d.message || (addOnly ? `Added backup Leader endpoint(s): ${trimmed}` : `Leader endpoint updated to ${trimmed}! Reconnecting WebSocket...`));
                 setManualLeaderUrl('');
-                setShowManualUrl(false);
+                if (!addOnly) setShowManualUrl(false);
                 await onRefreshStatus();
             } else {
-                const d = await res.json().catch(() => ({}));
                 setError(d.message || d.error || 'Failed to configure static Leader URL');
             }
         } catch (e: any) {
             setError(e.message || String(e));
+        } finally {
+            setIsJoining(false);
+        }
+    };
+
+    const handleRemoveCandidateEndpoint = async (epToRemove: string, e: React.MouseEvent) => {
+        e.stopPropagation();
+        setIsJoining(true);
+        setError(null);
+        setSuccessMsg(null);
+        try {
+            const res = await fetch('/api/registry/static-leader', {
+                method: 'POST',
+                headers: authHeaders,
+                body: JSON.stringify({ removeUrl: epToRemove })
+            });
+            if (res.ok) {
+                setSuccessMsg(`Removed candidate endpoint ${epToRemove}`);
+                await onRefreshStatus();
+            }
+        } catch (err: any) {
+            setError(err.message || String(err));
         } finally {
             setIsJoining(false);
         }
@@ -263,7 +307,7 @@ export function NodeRoleModal({
                             </div>
                             <div className="text-sm text-text-primary font-medium">
                                 {isLeader && "This node is acting as the central Cluster Leader (Hub Controller). It distributes configurations, collects fleet telemetry, and issues Magic Join tokens."}
-                                {isEnrolledPeer && `This node is enrolled as a managed Spoke Peer connected to Leader: ${registryStatus?.enrolled_leader_url || registryStatus?.static_leader_url || 'Cluster Leader'}.`}
+                                {isEnrolledPeer && `This node is enrolled as a managed Spoke Peer connected to Leader: ${activeControllerOrigin || 'Cluster Leader'}.`}
                                 {isStandalone && "This node is running in Standalone Autonomous mode. Probes, speedtests, traffic generator, and packet captures execute locally without central control."}
                             </div>
                         </div>
@@ -394,20 +438,21 @@ export function NodeRoleModal({
                                     <button
                                         type="button"
                                         onClick={() => {
-                                            const currentUrl = registryStatus?.active_leader_endpoint || registryStatus?.enrolled_leader_url || registryStatus?.static_leader_url || '';
-                                            setManualLeaderUrl(currentUrl.replace(/\/api\/registry\/?$/, ''));
+                                            if (!showManualUrl) {
+                                                setManualLeaderUrl('');
+                                            }
                                             setShowManualUrl(!showManualUrl);
                                         }}
                                         className="text-[11px] font-bold text-blue-400 hover:text-blue-300 transition-colors flex items-center gap-1"
                                     >
-                                        <span>{showManualUrl ? '▾ Cancel Endpoint Edit' : '✎ Change / Switch Leader URL'}</span>
+                                        <span>{showManualUrl ? '▾ Hide Endpoint Editor' : '✎ Change / Add Leader URLs'}</span>
                                     </button>
                                 </div>
                                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs font-mono">
                                     <div className="p-2.5 rounded-lg bg-card border border-border/60">
                                         <span className="text-[10px] text-text-muted block font-sans uppercase">Active Controller URL</span>
                                         <span className="text-text-primary font-bold break-all">
-                                            {registryStatus?.active_leader_endpoint || registryStatus?.enrolled_leader_url || registryStatus?.static_leader_url || '—'}
+                                            {activeControllerOrigin || '—'}
                                         </span>
                                     </div>
                                     <div className="p-2.5 rounded-lg bg-card border border-border/60">
@@ -416,83 +461,109 @@ export function NodeRoleModal({
                                     </div>
                                 </div>
 
-                                {/* Candidate Endpoints & Smart Failover Metrics */}
-                                {Array.isArray(registryStatus?.candidate_endpoints) && registryStatus.candidate_endpoints.length > 0 && (
-                                    <div className="p-3 rounded-lg bg-card border border-border/60 space-y-2">
-                                        <div className="flex items-center justify-between">
-                                            <span className="text-[10px] font-bold text-text-muted uppercase tracking-wider">
-                                                Known Leader Endpoints (Click to switch immediately)
-                                            </span>
-                                            <span className="text-[10px] text-emerald-400 font-mono">
-                                                Smart Failover Active
-                                            </span>
-                                        </div>
-                                        <div className="flex flex-wrap gap-1.5">
-                                            {registryStatus.candidate_endpoints.map((ep: string) => {
-                                                const activeEp = (registryStatus?.active_leader_endpoint || registryStatus?.enrolled_leader_url || '').replace(/\/$/, '');
-                                                const cleanEp = ep.replace(/\/$/, '');
-                                                const isActive = activeEp === cleanEp;
-                                                const metric = Array.isArray(registryStatus?.candidate_endpoint_metrics)
-                                                    ? registryStatus.candidate_endpoint_metrics.find((m: any) => m.url?.replace(/\/$/, '') === cleanEp)
-                                                    : null;
-                                                return (
+                                {/* Candidate Endpoints & Smart Failover Metrics (always rendered for stable height) */}
+                                <div className="p-3 rounded-lg bg-card border border-border/60 space-y-2">
+                                    <div className="flex items-center justify-between">
+                                        <span className="text-[10px] font-bold text-text-muted uppercase tracking-wider">
+                                            Known Leader Endpoints ({candidateEndpointsList.length}) — Click to switch
+                                        </span>
+                                        <span className="text-[10px] text-emerald-400 font-mono">
+                                            Smart Failover Active
+                                        </span>
+                                    </div>
+                                    <div className="flex flex-wrap gap-1.5 min-h-[28px]">
+                                        {candidateEndpointsList.map((cleanEp: string) => {
+                                            const isActive = activeControllerOrigin === cleanEp;
+                                            const metric = Array.isArray(registryStatus?.candidate_endpoint_metrics)
+                                                ? registryStatus.candidate_endpoint_metrics.find((m: any) => m.url?.replace(/\/$/, '') === cleanEp)
+                                                : null;
+                                            const scoreVal = metric?.score ?? 100;
+                                            return (
+                                                <div
+                                                    key={cleanEp}
+                                                    className={twMerge(
+                                                        "px-2.5 py-1 rounded-lg border text-[11px] font-mono flex items-center gap-1.5 transition-all",
+                                                        isActive
+                                                            ? "bg-blue-500/15 border-blue-500/50 text-blue-400 font-bold"
+                                                            : "bg-card-secondary/50 border-border hover:border-blue-500/40 text-text-secondary"
+                                                    )}
+                                                >
                                                     <button
-                                                        key={cleanEp}
                                                         type="button"
                                                         disabled={isJoining}
-                                                        onClick={() => handleSaveManualLeader(cleanEp)}
-                                                        className={twMerge(
-                                                            "px-2.5 py-1 rounded-lg border text-[11px] font-mono flex items-center gap-1.5 transition-all",
-                                                            isActive
-                                                                ? "bg-blue-500/15 border-blue-500/50 text-blue-400 font-bold"
-                                                                : "bg-card-secondary/50 border-border hover:border-blue-500/40 text-text-secondary"
-                                                        )}
-                                                        title={isActive ? "Currently active Leader endpoint" : "Click to switch WebSocket connection to this endpoint"}
+                                                        onClick={() => handleSaveManualLeader(cleanEp, false)}
+                                                        className="flex items-center gap-1.5 text-left"
+                                                        title={isActive ? "Currently active Leader endpoint" : "Click to switch WebSocket connection to this endpoint immediately"}
                                                     >
-                                                        <span className={twMerge("w-1.5 h-1.5 rounded-full", isActive ? "bg-emerald-400" : "bg-text-muted/50")} />
+                                                        <span className={twMerge("w-1.5 h-1.5 rounded-full shrink-0", isActive ? "bg-emerald-400" : "bg-text-muted/50")} />
                                                         <span>{cleanEp}</span>
-                                                        {metric?.rttEwmaMs != null && (
+                                                        {metric?.ewmaRttMs != null && (
                                                             <span className="text-[9px] px-1 rounded bg-emerald-500/15 text-emerald-300">
-                                                                {metric.rttEwmaMs}ms
+                                                                {metric.ewmaRttMs}ms
                                                             </span>
                                                         )}
-                                                        {metric?.score != null && (
-                                                            <span className="text-[9px] text-text-muted">
-                                                                (score {metric.score})
-                                                            </span>
-                                                        )}
+                                                        <span className="text-[9px] text-text-muted">
+                                                            (score {scoreVal})
+                                                        </span>
                                                     </button>
-                                                );
-                                            })}
-                                        </div>
+                                                    {candidateEndpointsList.length > 1 && (
+                                                        <button
+                                                            type="button"
+                                                            disabled={isJoining}
+                                                            onClick={(e) => handleRemoveCandidateEndpoint(cleanEp, e)}
+                                                            className="ml-0.5 text-text-muted hover:text-red-400 transition-colors"
+                                                            title="Remove this endpoint from candidate failover list"
+                                                        >
+                                                            <X size={11} />
+                                                        </button>
+                                                    )}
+                                                </div>
+                                            );
+                                        })}
                                     </div>
-                                )}
+                                </div>
 
-                                {/* In-place manual URL editor for Enrolled Peer */}
+                                {/* In-place manual URL editor for Enrolled Peer (supports single or multiple URLs) */}
                                 {showManualUrl && (
                                     <div className="p-3 rounded-lg bg-blue-500/5 border border-blue-500/30 space-y-2">
                                         <label className="text-[10px] font-bold text-blue-400 uppercase tracking-wider block">
-                                            Override / Switch Leader Controller URL (keeps current cluster enrollment)
+                                            Switch Active URL or Add Multiple Candidate Endpoints (comma-separated)
                                         </label>
-                                        <div className="flex gap-2">
+                                        <div className="flex flex-col sm:flex-row gap-2">
                                             <input
                                                 type="text"
                                                 value={manualLeaderUrl}
                                                 onChange={(e) => setManualLeaderUrl(e.target.value)}
-                                                onKeyDown={(e) => e.key === 'Enter' && handleSaveManualLeader()}
-                                                placeholder="e.g. http://192.168.1.50:8080 or https://leader.domain.com"
+                                                onKeyDown={(e) => e.key === 'Enter' && handleSaveManualLeader(undefined, false)}
+                                                placeholder="e.g. http://192.168.122.51:8080, https://sdwandc1.carenaje.fr"
                                                 className="flex-1 px-3 py-1.5 text-xs font-mono bg-card border border-border rounded-lg text-text focus:outline-none focus:border-blue-500 placeholder:text-text-muted/40"
                                             />
-                                            <button
-                                                type="button"
-                                                onClick={() => handleSaveManualLeader()}
-                                                disabled={isJoining || !manualLeaderUrl.trim()}
-                                                className="px-3.5 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 disabled:opacity-40 text-white text-xs font-bold transition-all flex items-center gap-1.5"
-                                            >
-                                                {isJoining ? <RefreshCw size={12} className="animate-spin" /> : <Check size={12} />}
-                                                Apply & Reconnect
-                                            </button>
+                                            <div className="flex gap-1.5 shrink-0">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleSaveManualLeader(undefined, false)}
+                                                    disabled={isJoining || !manualLeaderUrl.trim()}
+                                                    className="px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 disabled:opacity-40 text-white text-xs font-bold transition-all flex items-center gap-1"
+                                                    title="Make the first URL active immediately and keep all URLs in the candidate list"
+                                                >
+                                                    {isJoining ? <RefreshCw size={12} className="animate-spin" /> : <Check size={12} />}
+                                                    Switch Now
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleSaveManualLeader(undefined, true)}
+                                                    disabled={isJoining || !manualLeaderUrl.trim()}
+                                                    className="px-2.5 py-1.5 rounded-lg bg-card hover:bg-card-hover border border-blue-500/40 text-blue-400 disabled:opacity-40 text-xs font-bold transition-all flex items-center gap-1"
+                                                    title="Add URL(s) to the backup candidate pool without disconnecting the current active tunnel"
+                                                >
+                                                    <Plus size={12} />
+                                                    Add Backup
+                                                </button>
+                                            </div>
                                         </div>
+                                        <p className="text-[10px] text-text-muted">
+                                            Tip: Enter one or several URLs separated by commas. Use <strong>Switch Now</strong> to reconnect immediately, or <strong>+ Add Backup</strong> to register secondary failover URLs without interrupting the current tunnel.
+                                        </p>
                                     </div>
                                 )}
 

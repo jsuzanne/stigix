@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.0.83] - 2026-10-23
+
+### Fixed
+- **Stable `NodeRoleModal` Layout & Multi-URL Candidate Management (`web-dashboard/server.ts`, `web-dashboard/src/components/NodeRoleModal.tsx`, `web-dashboard/src/Settings.tsx`)**:
+  - Aligned the `registry` payload in `/api/admin/system/dashboard-data` with `/api/registry/status` (`active_leader_endpoint`, `candidate_endpoints`, `candidate_endpoint_metrics`) so periodic dashboard polling no longer overwrites candidate endpoint metrics or causes the modal height and active URL format to flicker.
+  - Enhanced `POST /api/registry/static-leader` and `NodeRoleModal.tsx` to support entering multiple comma-separated Leader URLs, adding backup failover endpoints (`+ Add Backup`) without interrupting the active tunnel, and removing obsolete candidate URLs (`×`).
+- **Fleet `GLOBAL EXP. SCORE` (`probes_global_health`) Reporting (`web-dashboard/connectivity-logger.ts`, `web-dashboard/server.ts`)**:
+  - Included `totalChecks` in `connectivityLogger.getStats()` and updated `collectFleetTelemetrySummary()` to use `getFullEffectiveConnectivityProbes()` so the Fleet Overview table accurately displays each node's DEM Global Experience Score instead of `— N/A`.
+- **Accurate Inbound WebSocket Tunnel Source IP (`web-dashboard/fleet-tunnel.ts`, `web-dashboard/server.ts`)**:
+  - Fixed inbound tunnel `sourceIp` resolution to prioritize the actual TCP/HTTP transport source IP (`socketRemoteIp` / `X-Forwarded-For`, e.g., the peer's management interface IP) over `auth.ip` (which represents the node's primary SD-WAN dataplane IP).
+
 ## [3.0.82] - 2026-10-23
 
 ### Added

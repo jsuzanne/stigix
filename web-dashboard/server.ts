@@ -14329,10 +14329,20 @@ app.get('/api/admin/system/dashboard-data', authenticateToken, async (req, res) 
                 stats: voiceStats
             },
             dem: demData,
-            registry: {
-                ...registryManager.getStatus(),
-                local_registry_active: registryManager.getStatus()?.mode === 'leader'
-            },
+            registry: (() => {
+                const mgrStatus = registryManager.getStatus();
+                const regMode = mgrStatus?.current_mode || mgrStatus?.mode || process.env.STIGIX_REGISTRY_MODE || 'standalone';
+                return {
+                    ...mgrStatus,
+                    mode: regMode,
+                    local_registry_active: regMode === 'leader',
+                    tunnel_active: fleetTunnelManager.hasActiveLeaderTunnel(),
+                    leader_tunnel_info: fleetTunnelManager.getActiveLeaderInfo(),
+                    active_leader_endpoint: fleetTunnelManager.getSpokeCurrentLeaderUrl(),
+                    candidate_endpoints: registryManager.getControllerEndpoints(),
+                    candidate_endpoint_metrics: fleetTunnelManager.getCandidateEndpointMetrics()
+                };
+            })(),
             timestamp: Date.now()
         });
     } catch (e: any) {
@@ -15897,17 +15907,10 @@ const collectFleetTelemetrySummary = async () => {
     let failingProbes: Array<{ name: string; type: string; target: string; error: string; reliability: number }> = [];
 
     try {
-        const envProbes = getEnvConnectivityEndpoints();
-        const customProbes = getCustomConnectivityEndpoints();
-        const discoveredProbes = discoveryManager.getProbes();
-
-        const mergedEnvProbes = envProbes.map((p: any) => {
-            const override = customProbes.find((cp: any) => cp.name === p.name);
-            return override ? { ...p, enabled: override.enabled } : p;
-        });
-        const pureCustom = customProbes.filter((p: any) => !envProbes.find(ep => ep.name === p.name));
-        const allProbes = [...mergedEnvProbes, ...pureCustom, ...discoveredProbes];
-        const activeProbeIds = allProbes.filter((p: any) => p.enabled !== false).map((p: any) => p.name.toLowerCase().replace(/\s+/g, '-'));
+        const allProbes = getFullEffectiveConnectivityProbes();
+        const activeProbeIds = allProbes
+            .filter((p: any) => p.enabled !== false)
+            .map((p: any) => (p.name || p.id || '').toLowerCase().replace(/\s+/g, '-'));
         probesTotal = activeProbeIds.length;
 
         if (!probesPaused && probesTotal > 0) {
@@ -15922,7 +15925,7 @@ const collectFleetTelemetrySummary = async () => {
             } catch {}
 
             const stats = await connectivityLogger.getStats({ timeRange: '1h', activeProbeIds, globalScoreTypes });
-            if (stats && typeof stats.globalHealth === 'number' && (stats.totalChecks ?? 0) > 0) {
+            if (stats && typeof stats.globalHealth === 'number' && (((stats as any).totalChecks ?? 0) > 0 || Boolean(stats.lastCheckTime))) {
                 probesGlobalHealth = stats.globalHealth;
             }
             if (stats && stats.flakyEndpoints) {
@@ -16111,7 +16114,13 @@ app.get('/api/fleet/overview', authenticateToken, (req, res) => {
         overview.instances = overview.instances.map((inst: any) => {
             const matchedTunnel = liveTunnels.find(t => 
                 t.instanceId === inst.instance_id || 
-                (inst.ip_private && (t.remoteIp === inst.ip_private || t.sourceIp === inst.ip_private || t.destIp === inst.ip_private))
+                (inst.ip_private && (
+                    t.ip === inst.ip_private ||
+                    (t as any).remoteIp === inst.ip_private ||
+                    t.socketRemoteIp === inst.ip_private ||
+                    t.sourceIp === inst.ip_private ||
+                    t.destIp === inst.ip_private
+                ))
             );
             if (matchedTunnel) {
                 return {
@@ -19066,71 +19075,128 @@ app.post('/api/registry/unenroll', authenticateToken, async (req: any, res: any)
 });
 
 app.post('/api/registry/static-leader', authenticateToken, async (req, res) => {
-    let { url } = req.body;
-    const normalizedRegistryUrl = url ? normalizeControllerUrl(url) : null;
-    
-    try {
-        await registryManager.saveStaticLeader(normalizedRegistryUrl);
+    const { url, urls, removeUrl, addOnly } = req.body || {};
 
-        let cleanOrigin: string | null = null;
-        if (normalizedRegistryUrl) {
-            try {
-                const parsed = new URL(normalizedRegistryUrl);
-                cleanOrigin = `${parsed.protocol}//${parsed.host}`;
-            } catch {
-                cleanOrigin = normalizedRegistryUrl.replace(/\/api\/registry\/?$/, '').replace(/\/$/, '');
+    const toCleanOrigin = (raw: string): string | null => {
+        const norm = normalizeControllerUrl(raw);
+        if (!norm) return null;
+        try {
+            const parsed = new URL(norm);
+            return `${parsed.protocol}//${parsed.host}`;
+        } catch {
+            return norm.replace(/\/api\/registry\/?$/, '').replace(/\/$/, '') || null;
+        }
+    };
+
+    try {
+        const existingEnrollment = registryManager.getClusterEnrollment();
+        const existingCandidates = (registryManager.getControllerEndpoints() || []).map((ep: string) => ep.replace(/\/$/, ''));
+
+        // Case 1: Remove a specific candidate endpoint from the pool
+        if (removeUrl && typeof removeUrl === 'string') {
+            const targetOrigin = toCleanOrigin(removeUrl);
+            const updatedCandidates = existingCandidates.filter((ep: string) => ep !== targetOrigin);
+            registryManager.saveControllerEndpoints(updatedCandidates);
+            fleetTunnelManager.setCandidateLeaderUrls(updatedCandidates);
+
+            const currentActive = (fleetTunnelManager.getSpokeCurrentLeaderUrl() || '').replace(/\/$/, '');
+            const nextPrimary = updatedCandidates[0] || null;
+            if (existingEnrollment?.enrolled) {
+                registryManager.saveClusterEnrollment({
+                    ...existingEnrollment,
+                    leaderUrl: (currentActive && currentActive !== targetOrigin) ? currentActive : (nextPrimary || existingEnrollment.leaderUrl),
+                    candidateEndpoints: updatedCandidates
+                });
             }
+            if (targetOrigin && currentActive === targetOrigin && nextPrimary) {
+                await registryManager.saveStaticLeader(`${nextPrimary}/api/registry`);
+                fleetTunnelManager.preferCandidateLeaderUrl(nextPrimary);
+            }
+            return res.json({
+                status: 'ok',
+                message: `Removed Leader endpoint ${targetOrigin || removeUrl}`,
+                candidate_endpoints: updatedCandidates
+            });
         }
 
-        // If this node is enrolled in a cluster (or switching endpoints), update enrollment & tunnel candidates in-place
-        const existingEnrollment = registryManager.getClusterEnrollment();
-        if (cleanOrigin) {
-            const existingCandidates = registryManager.getControllerEndpoints() || [];
-            const updatedCandidates = [
-                cleanOrigin,
-                ...existingCandidates.filter((ep: string) => ep.replace(/\/$/, '') !== cleanOrigin)
-            ];
+        // Case 2: Add / Switch one or multiple candidate Leader URLs (comma, newline, or array)
+        const rawList: string[] = Array.isArray(urls)
+            ? urls.map(String)
+            : (typeof url === 'string' && url.trim()
+                ? url.split(/[\s,\n;]+/).map((s: string) => s.trim()).filter(Boolean)
+                : []);
+
+        const normalizedOrigins = Array.from(new Set(rawList.map(toCleanOrigin).filter((v): v is string => Boolean(v))));
+        const primaryOrigin = normalizedOrigins[0] || null;
+        const normalizedRegistryUrl = primaryOrigin ? `${primaryOrigin}/api/registry` : null;
+
+        if (!addOnly) {
+            await registryManager.saveStaticLeader(normalizedRegistryUrl);
+        }
+
+        if (primaryOrigin) {
+            const updatedCandidates = addOnly
+                ? Array.from(new Set([...existingCandidates, ...normalizedOrigins]))
+                : Array.from(new Set([...normalizedOrigins, ...existingCandidates]));
+
             registryManager.saveControllerEndpoints(updatedCandidates);
+            fleetTunnelManager.setCandidateLeaderUrls(updatedCandidates);
+
+            const effectivePrimary = addOnly
+                ? (fleetTunnelManager.getSpokeCurrentLeaderUrl() || existingEnrollment?.leaderUrl || primaryOrigin)
+                : primaryOrigin;
 
             if (existingEnrollment?.enrolled) {
                 registryManager.saveClusterEnrollment({
                     ...existingEnrollment,
-                    leaderUrl: cleanOrigin,
+                    leaderUrl: effectivePrimary,
                     candidateEndpoints: updatedCandidates
                 });
             }
 
-            // Persist STIGIX_LEADER_URL to .env if present
-            const envCandidates = [
-                path.join(APP_CONFIG.configDir, '.env'),
-                path.join(process.cwd(), 'config', '.env'),
-                path.join(process.cwd(), '.env'),
-                '/app/config/.env'
-            ];
-            for (const ep of envCandidates) {
-                try {
-                    if (fs.existsSync(ep)) {
-                        let envContent = fs.readFileSync(ep, 'utf8');
-                        if (/^STIGIX_LEADER_URL=/m.test(envContent)) {
-                            envContent = envContent.replace(/^STIGIX_LEADER_URL=.*/m, `STIGIX_LEADER_URL=${cleanOrigin}`);
-                        } else {
-                            envContent += `\nSTIGIX_LEADER_URL=${cleanOrigin}\n`;
+            if (!addOnly) {
+                // Persist STIGIX_LEADER_URL to .env if present
+                const envCandidates = [
+                    path.join(APP_CONFIG.configDir, '.env'),
+                    path.join(process.cwd(), 'config', '.env'),
+                    path.join(process.cwd(), '.env'),
+                    '/app/config/.env'
+                ];
+                for (const ep of envCandidates) {
+                    try {
+                        if (fs.existsSync(ep)) {
+                            let envContent = fs.readFileSync(ep, 'utf8');
+                            if (/^STIGIX_LEADER_URL=/m.test(envContent)) {
+                                envContent = envContent.replace(/^STIGIX_LEADER_URL=.*/m, `STIGIX_LEADER_URL=${primaryOrigin}`);
+                            } else {
+                                envContent += `\nSTIGIX_LEADER_URL=${primaryOrigin}\n`;
+                            }
+                            fs.writeFileSync(ep, envContent, 'utf8');
+                            break;
                         }
-                        fs.writeFileSync(ep, envContent, 'utf8');
-                        break;
-                    }
-                } catch {}
+                    } catch {}
+                }
+
+                // Immediately steer the Spoke WebSocket tunnel to the preferred endpoint
+                fleetTunnelManager.preferCandidateLeaderUrl(primaryOrigin);
             }
 
-            // Immediately steer the Spoke WebSocket tunnel to the preferred endpoint
-            fleetTunnelManager.preferCandidateLeaderUrl(cleanOrigin);
+            return res.json({
+                status: 'ok',
+                message: addOnly
+                    ? `Added ${normalizedOrigins.length} candidate Leader endpoint(s)`
+                    : `Leader endpoint updated to ${primaryOrigin}${normalizedOrigins.length > 1 ? ` (+${normalizedOrigins.length - 1} backup URL(s))` : ''}`,
+                normalizedUrl: normalizedRegistryUrl,
+                leaderOrigin: primaryOrigin,
+                candidate_endpoints: updatedCandidates
+            });
         }
 
         res.json({
             status: 'ok',
-            message: normalizedRegistryUrl ? `Leader endpoint updated to ${cleanOrigin || normalizedRegistryUrl}` : 'Static leader removed',
-            normalizedUrl: normalizedRegistryUrl,
-            leaderOrigin: cleanOrigin
+            message: 'Static leader removed',
+            normalizedUrl: null,
+            leaderOrigin: null
         });
     } catch (e) {
         log('SYSTEM', `Failed to save static leader: ${e}`, 'error');

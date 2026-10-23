@@ -6936,9 +6936,14 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                                                         >
                                                             <span className={cn("w-1.5 h-1.5 rounded-full", isActive ? "bg-emerald-400" : "bg-text-muted/40")} />
                                                             <span>{cleanEp}</span>
-                                                            {metric?.rttEwmaMs != null && (
+                                                            {(metric?.ewmaRttMs ?? metric?.rttEwmaMs) != null && (
                                                                 <span className="text-[9px] text-emerald-400">
-                                                                    {metric.rttEwmaMs}ms
+                                                                    {metric.ewmaRttMs ?? metric.rttEwmaMs}ms
+                                                                </span>
+                                                            )}
+                                                            {metric?.score != null && (
+                                                                <span className="text-[9px] text-text-muted">
+                                                                    (score {metric.score})
                                                                 </span>
                                                             )}
                                                         </button>
