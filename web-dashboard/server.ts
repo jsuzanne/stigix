@@ -19021,7 +19021,13 @@ app.post('/api/registry/join-with-token', async (req: any, res: any) => {
                 }
             }
 
-            // 5. Force Spoke WebSocket to reconnect immediately
+            // 5. If this node was previously acting as a Leader, demote to Spoke/Standalone before reconnecting
+            if (registryManager.isLeader()) {
+                saveSystemSettings({ registry_mode: 'standalone' });
+                await registryManager.reinitialize();
+            }
+
+            // 6. Force Spoke WebSocket to reconnect immediately
             fleetTunnelManager.reconnectSpoke();
 
             log('REGISTRY', `🎉 Successfully enrolled into Stigix cluster Leader: ${winningEndpoint} (${effectiveSite})`);

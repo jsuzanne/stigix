@@ -88,8 +88,8 @@ export function NodeRoleModal({
     })();
 
     // Decode preview endpoints from STX- token
-    const tokenPreview = (() => {
-        const trimmed = joinTokenInput.trim();
+    const decodeStxPreview = (raw: string) => {
+        const trimmed = raw.trim();
         if (!trimmed.startsWith('STX-')) return null;
         try {
             const parts = trimmed.slice(4).split('.');
@@ -104,10 +104,13 @@ export function NodeRoleModal({
             }
         } catch { }
         return null;
-    })();
+    };
 
-    const handleJoinWithToken = async () => {
-        const trimmed = joinTokenInput.trim();
+    const tokenPreview = decodeStxPreview(joinTokenInput);
+    const manualTokenPreview = decodeStxPreview(manualLeaderUrl);
+
+    const handleJoinWithToken = async (overrideToken?: string) => {
+        const trimmed = (overrideToken ?? joinTokenInput).trim();
         if (!trimmed) return;
         setIsJoining(true);
         setError(null);
@@ -122,6 +125,8 @@ export function NodeRoleModal({
             if (res.ok && (data.success || data.status === 'ok')) {
                 setSuccessMsg(`Enrolled successfully to ${data.leader_url || 'Cluster Leader'}! WebSocket tunnel established.`);
                 setJoinTokenInput('');
+                setManualLeaderUrl('');
+                setShowManualUrl(false);
                 await refreshEffectiveStatus();
                 setTimeout(() => {
                     onClose();
@@ -139,6 +144,10 @@ export function NodeRoleModal({
     const handleSaveManualLeader = async (overrideUrl?: string, addOnly = false) => {
         const trimmed = (overrideUrl ?? manualLeaderUrl).trim();
         if (!trimmed) return;
+        if (trimmed.startsWith('STX-')) {
+            await handleJoinWithToken(trimmed);
+            return;
+        }
         setIsJoining(true);
         setError(null);
         setSuccessMsg(null);
@@ -192,6 +201,9 @@ export function NodeRoleModal({
         setError(null);
         setSuccessMsg(null);
         try {
+            if (isEnrolledPeer) {
+                await doFetch('/api/registry/unenroll', { method: 'POST', headers: authHeaders }).catch(() => {});
+            }
             const res = await doFetch('/api/config/system-settings', {
                 method: 'POST',
                 headers: authHeaders,
@@ -379,7 +391,7 @@ export function NodeRoleModal({
                                     )}
 
                                     <button
-                                        onClick={handleJoinWithToken}
+                                        onClick={() => handleJoinWithToken()}
                                         disabled={isJoining || !joinTokenInput.trim().startsWith('STX-')}
                                         className="w-full py-2 px-4 rounded-lg bg-blue-600 hover:bg-blue-500 disabled:opacity-40 disabled:cursor-not-allowed text-white text-xs font-bold transition-all shadow-sm flex items-center justify-center gap-2"
                                     >
@@ -548,11 +560,11 @@ export function NodeRoleModal({
                                     </div>
                                 </div>
 
-                                {/* In-place manual URL editor for Enrolled Peer (supports single or multiple URLs) */}
+                                {/* In-place manual URL / new STX- token editor for Enrolled Peer */}
                                 {showManualUrl && (
                                     <div className="p-3 rounded-lg bg-blue-500/5 border border-blue-500/30 space-y-2">
                                         <label className="text-[10px] font-bold text-blue-400 uppercase tracking-wider block">
-                                            Switch Active URL or Add Multiple Candidate Endpoints (comma-separated)
+                                            Switch / Add Leader URLs (comma-separated) OR Paste a New Leader Magic Join Token (STX-...)
                                         </label>
                                         <div className="flex flex-col sm:flex-row gap-2">
                                             <input
@@ -560,7 +572,7 @@ export function NodeRoleModal({
                                                 value={manualLeaderUrl}
                                                 onChange={(e) => setManualLeaderUrl(e.target.value)}
                                                 onKeyDown={(e) => e.key === 'Enter' && handleSaveManualLeader(undefined, false)}
-                                                placeholder="e.g. http://192.168.122.51:8080, https://sdwandc1.carenaje.fr"
+                                                placeholder="http://192.168.122.51:8080, https://... OR STX-eyJhbG..."
                                                 className="flex-1 px-3 py-1.5 text-xs font-mono bg-card border border-border rounded-lg text-text focus:outline-none focus:border-blue-500 placeholder:text-text-muted/40"
                                             />
                                             <div className="flex gap-1.5 shrink-0">
@@ -569,30 +581,54 @@ export function NodeRoleModal({
                                                     onClick={() => handleSaveManualLeader(undefined, false)}
                                                     disabled={isJoining || !manualLeaderUrl.trim()}
                                                     className="px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 disabled:opacity-40 text-white text-xs font-bold transition-all flex items-center gap-1"
-                                                    title="Make the first URL active immediately and keep all URLs in the candidate list"
+                                                    title={manualTokenPreview ? "Enroll directly into the new Leader using this Magic Join Token" : "Make the first URL active immediately and keep all URLs in the candidate list"}
                                                 >
-                                                    {isJoining ? <RefreshCw size={12} className="animate-spin" /> : <Check size={12} />}
-                                                    Switch Now
+                                                    {isJoining ? <RefreshCw size={12} className="animate-spin" /> : manualTokenPreview ? <Sparkles size={12} /> : <Check size={12} />}
+                                                    {manualTokenPreview ? 'Join New Leader' : 'Switch Now'}
                                                 </button>
-                                                <button
-                                                    type="button"
-                                                    onClick={() => handleSaveManualLeader(undefined, true)}
-                                                    disabled={isJoining || !manualLeaderUrl.trim()}
-                                                    className="px-2.5 py-1.5 rounded-lg bg-card hover:bg-card-hover border border-blue-500/40 text-blue-400 disabled:opacity-40 text-xs font-bold transition-all flex items-center gap-1"
-                                                    title="Add URL(s) to the backup candidate pool without disconnecting the current active tunnel"
-                                                >
-                                                    <Plus size={12} />
-                                                    Add Backup
-                                                </button>
+                                                {!manualTokenPreview && (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => handleSaveManualLeader(undefined, true)}
+                                                        disabled={isJoining || !manualLeaderUrl.trim()}
+                                                        className="px-2.5 py-1.5 rounded-lg bg-card hover:bg-card-hover border border-blue-500/40 text-blue-400 disabled:opacity-40 text-xs font-bold transition-all flex items-center gap-1"
+                                                        title="Add URL(s) to the backup candidate pool without disconnecting the current active tunnel"
+                                                    >
+                                                        <Plus size={12} />
+                                                        Add Backup
+                                                    </button>
+                                                )}
                                             </div>
                                         </div>
+                                        {manualTokenPreview && (
+                                            <div className="p-2.5 rounded-lg bg-card-secondary border border-blue-500/30 text-[11px] font-mono text-text-secondary space-y-1">
+                                                <div className="text-[10px] font-bold text-blue-400 uppercase tracking-wider">✨ New Leader Magic Join Token Detected</div>
+                                                {manualTokenPreview.siteHint && (
+                                                    <div>Site Hint: <span className="text-blue-400 font-bold">{manualTokenPreview.siteHint}</span></div>
+                                                )}
+                                                {manualTokenPreview.endpoints.length > 0 && (
+                                                    <div>Target Leader: <span className="text-emerald-400 font-bold">{manualTokenPreview.endpoints.join(', ')}</span></div>
+                                                )}
+                                                {manualTokenPreview.relayUrl && (
+                                                    <div>Cloudflare Relay: <span className="text-amber-400 font-bold">{manualTokenPreview.relayUrl}</span></div>
+                                                )}
+                                            </div>
+                                        )}
                                         <p className="text-[10px] text-text-muted">
-                                            Tip: Enter one or several URLs separated by commas. Use <strong>Switch Now</strong> to reconnect immediately, or <strong>+ Add Backup</strong> to register secondary failover URLs without interrupting the current tunnel.
+                                            Tip: Enter URLs separated by commas to update endpoints for the current Leader, or paste a <strong>STX-...</strong> Magic Join token from a new Leader (e.g. Hetzner) to migrate this peer in 1 click without disconnecting first.
                                         </p>
                                     </div>
                                 )}
 
-                                <div className="pt-2 flex justify-end">
+                                <div className="pt-2 flex flex-wrap items-center justify-between gap-2">
+                                    <button
+                                        onClick={handlePromoteToLeader}
+                                        disabled={isSwitching}
+                                        className="px-3.5 py-2 rounded-lg bg-purple-500/10 hover:bg-purple-500/20 text-purple-400 border border-purple-500/30 text-xs font-bold transition-all flex items-center gap-1.5"
+                                    >
+                                        {isSwitching ? <RefreshCw size={13} className="animate-spin" /> : <Globe size={13} />}
+                                        Promote to Leader
+                                    </button>
                                     <button
                                         onClick={handleUnenroll}
                                         disabled={isSwitching}
@@ -630,6 +666,48 @@ export function NodeRoleModal({
                                         <Sparkles size={14} />
                                         + Add Node (Magic Join)
                                     </button>
+                                )}
+                            </div>
+
+                            {/* Direct 1-click migration from Leader to Spoke of another Leader */}
+                            <div className="p-4 rounded-xl border border-blue-500/30 bg-blue-500/5 space-y-2.5">
+                                <div className="flex items-center justify-between">
+                                    <span className="text-xs font-black text-text-primary uppercase tracking-wider flex items-center gap-1.5">
+                                        <ArrowRight size={14} className="text-blue-400" />
+                                        Migrate this Leader to Become a Spoke Peer
+                                    </span>
+                                </div>
+                                <p className="text-xs text-text-muted">
+                                    Paste a Magic Join token (<strong>STX-...</strong>) from your new Leader (e.g. Hetzner) to demote this node and enroll it as a Spoke in 1 click:
+                                </p>
+                                <div className="flex flex-col sm:flex-row gap-2">
+                                    <input
+                                        type="text"
+                                        value={joinTokenInput}
+                                        onChange={(e) => setJoinTokenInput(e.target.value)}
+                                        onKeyDown={(e) => e.key === 'Enter' && joinTokenInput.trim().startsWith('STX-') && handleJoinWithToken()}
+                                        placeholder="STX-eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+                                        className="flex-1 px-3 py-1.5 text-xs font-mono bg-card border border-border rounded-lg text-text focus:outline-none focus:border-blue-500 placeholder:text-text-muted/40"
+                                    />
+                                    <button
+                                        type="button"
+                                        onClick={() => handleJoinWithToken()}
+                                        disabled={isJoining || !joinTokenInput.trim().startsWith('STX-')}
+                                        className="px-3.5 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 disabled:opacity-40 text-white text-xs font-bold transition-all flex items-center gap-1.5 shrink-0"
+                                    >
+                                        {isJoining ? <RefreshCw size={12} className="animate-spin" /> : <Sparkles size={12} />}
+                                        Demote & Join Leader
+                                    </button>
+                                </div>
+                                {tokenPreview && (
+                                    <div className="p-2.5 rounded-lg bg-card-secondary border border-border/60 text-[11px] font-mono text-text-secondary space-y-1">
+                                        {tokenPreview.endpoints.length > 0 && (
+                                            <div>Target Leader: <span className="text-emerald-400 font-bold">{tokenPreview.endpoints.join(', ')}</span></div>
+                                        )}
+                                        {tokenPreview.relayUrl && (
+                                            <div>Cloudflare Relay: <span className="text-amber-400 font-bold">{tokenPreview.relayUrl}</span></div>
+                                        )}
+                                    </div>
                                 )}
                             </div>
 
