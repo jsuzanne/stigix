@@ -8,7 +8,7 @@ set -e
 INSTALL_MODE="both"
 DRY_RUN=false
 CONTROLLER_URL=""
-REPO_URL="https://raw.githubusercontent.com/jsuzanne/stigix/v2"
+REPO_URL="https://raw.githubusercontent.com/jsuzanne/stigix/v3"
 COMPOSE_URL="$REPO_URL/docker-compose.yml"
 
 show_help() {
@@ -19,6 +19,7 @@ show_help() {
     echo "  --mode <target|source|both>  Set the deployment mode (Default: both)"
     echo "  --controller, --controller-ip <URL|IP> Join a remote Stigix leader as a peer (direct mode)"
     echo "  --token, -t <STX-token>      Enroll into a cluster using single-use Magic Join Token"
+    echo "  --tag, --version <TAG>       Docker image tag (Default: stable, or value of \$TAG)"
     echo "  --ip, -i <IP>                Explicitly select IP to advertise to Leader (bypasses prompt)"
     echo "  --site, -s <Name>            Override site name for this node"
     echo "  --dry-run, -d                Download files and show what would happen without starting Docker"
@@ -132,6 +133,7 @@ dump_process_on_port() {
 JOIN_TOKEN=""
 SITE_NAME_OVERRIDE=""
 ADVERTISED_IP_OVERRIDE=""
+IMAGE_TAG="${TAG:-}"
 
 while [[ "$#" -gt 0 ]]; do
     case $1 in
@@ -141,6 +143,8 @@ while [[ "$#" -gt 0 ]]; do
         --controller=*|--controller-ip=*) CONTROLLER_URL="${1#*=}"; shift ;;
         --token|-t) JOIN_TOKEN="$2"; shift 2 ;;
         --token=*) JOIN_TOKEN="${1#*=}"; shift ;;
+        --tag|--version) IMAGE_TAG="$2"; shift 2 ;;
+        --tag=*|--version=*) IMAGE_TAG="${1#*=}"; shift ;;
         --site|--site-name|--site_name|-s) SITE_NAME_OVERRIDE="$2"; shift 2 ;;
         --site=*|--site-name=*|--site_name=*) SITE_NAME_OVERRIDE="${1#*=}"; shift ;;
         --ip|-i) ADVERTISED_IP_OVERRIDE="$2"; shift 2 ;;
@@ -562,7 +566,12 @@ echo "PORT=$PORT" >> .env
 echo "BETA=false" >> .env
 echo "" >> .env
 echo "# --- Docker Image Tag (Uncomment to lock version/tag) ---" >> .env
-echo "# TAG=stable" >> .env
+if [ -n "$IMAGE_TAG" ]; then
+    echo "TAG=$IMAGE_TAG" >> .env
+    echo "📌 Docker image tag pinned to: $IMAGE_TAG"
+else
+    echo "# TAG=stable" >> .env
+fi
 
 # Base UI/Traffic Gen Config
 if [ "$INSTALL_MODE" == "both" ] || [ "$INSTALL_MODE" == "source" ]; then

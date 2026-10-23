@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.0.94] - 2026-10-23
+
+### Added
+- **Tag Selection Option in `install.sh` (`install.sh`)**:
+  - Added `--tag, --version <TAG>` CLI parameter (and support for `$TAG` env var) to `install.sh`. When provided, the installer automatically pins and uncomments `TAG=<tag>` in `.env` (defaulting to `# TAG=stable` if omitted).
+  - Aligned `REPO_URL` in `install.sh` to branch `v3` instead of the legacy `v2`.
+
+### Changed
+- **Ultra-Fast AMD64 Tag Builds & Decoupled Multi-Arch Stable Promotion (`.github/workflows/build-stigix-allinone.yml`)**:
+  - Optimized release tag builds (`v3.0.xx`) to target `linux/amd64` only, slashing workflow execution time from **~22 minutes down to ~3 minutes** by skipping slow QEMU ARM64 emulation during development cycles.
+  - Multi-architecture builds (`linux/amd64,linux/arm64`) are now reserved for the explicit **`Promote Stigix to Stable`** workflow dispatch and direct pushes to `main`.
+
 ## [3.0.93] - 2026-10-23
 
 ### Fixed
