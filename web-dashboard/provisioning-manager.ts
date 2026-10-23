@@ -1015,6 +1015,7 @@ export class ProvisioningManager {
                 if (this.certificateManager) {
                     this.certificateManager.init();
                 }
+                mergedPayload = normalizedGlobal;
             } else if (type === 'pcap-profiles') {
                 if (process.env.ENABLE_PCAP_REPLAY !== 'true') {
                     log('PROVISIONING', `⚠️ Ignored 'pcap-profiles' bundle on peer: ENABLE_PCAP_REPLAY is disabled in .env`);

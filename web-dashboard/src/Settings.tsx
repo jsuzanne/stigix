@@ -1900,6 +1900,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
             iotConfig?: boolean;
             customTcpApps?: boolean;
             cloudConfig?: boolean;
+            caCertificates?: boolean;
         };
     } | null>(null);
     const [publishingType, setPublishingType] = useState<string | null>(null);
@@ -6584,6 +6585,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                                         { key: 'voice-config', label: 'Voice Settings', icon: PhoneCall, color: 'indigo', actionLabel: 'Publish Voice', pending: provisioningData?.pending?.voiceConfig },
                                         { key: 'iot-config', label: 'IoT Simulation', icon: Radio, color: 'amber', actionLabel: 'Publish IoT', pending: provisioningData?.pending?.iotConfig },
                                         { key: 'custom-tcp-apps', label: 'Custom TCP Apps', icon: Server, color: 'teal', actionLabel: 'Publish TCP Apps', pending: provisioningData?.pending?.customTcpApps },
+                                        { key: 'ca-certificates', label: 'Enterprise CA Certificates', icon: ShieldCheck, color: 'emerald', actionLabel: 'Publish CA Certs', pending: provisioningData?.pending?.caCertificates },
                                         { key: 'cloud-config', label: 'Cloud Probes Credentials', icon: Globe, color: 'sky', actionLabel: 'Publish Cloud', pending: provisioningData?.pending?.cloudConfig },
                                     ].map(b => {
                                         const Icon = b.icon;

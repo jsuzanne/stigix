@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.0.96] - 2026-10-23
+
+### Fixed
+- **Real-Time Fleet Provisioning Push for Enterprise CA Certificates (`web-dashboard/server.ts`, `web-dashboard/provisioning-manager.ts`, `web-dashboard/src/Settings.tsx`)**:
+  - Integrated `ca-certificates` into the Fleet Reverse Tunnel real-time push mechanism (`fleetTunnelManager.broadcastProvisioningUpdate('ca-certificates')`), ensuring CA certificates fetched from Prisma Access, uploaded, or deleted on the Leader are immediately pushed over WebSocket to all connected Spokes.
+  - Added `ca-certificates` to valid provisioning types in `POST /api/provisioning/publish/:type`, `POST /api/provisioning/publish`, and pending detection in `GET /api/provisioning/pending`.
+  - Fixed payload assembly for CA certificate bundles to include full PEM certificate data (`bundle_pem`), ensuring spokes persist valid certificates to disk.
+  - Handled `ca-certificates` global bundle payload normalization in `provisioning-manager.ts` (`applyGlobalBundle`).
+  - Added Enterprise CA Certificates status card, publish action, and pending badges to the Mesh Provisioning section in the Settings UI (`Settings.tsx`).
+
 ## [3.0.95] - 2026-10-23
 
 ### Changed

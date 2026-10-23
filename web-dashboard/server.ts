@@ -11064,15 +11064,18 @@ app.post('/api/security/certificates/fetch-prisma', authenticateToken, async (re
 
         const result = await certificateManager.fetchFromPrisma(creds);
 
-        // If on Leader, automatically update Mesh Provisioning bundle for peers
-        const mode = process.env.STIGIX_REGISTRY_MODE_CURRENT || process.env.STIGIX_REGISTRY_MODE || 'standalone';
-        if (result.success && mode === 'leader') {
+        // If on Leader, automatically update Mesh Provisioning bundle for peers and broadcast over Fleet Tunnel
+        const isLeader = typeof registryManager?.isLeader === 'function'
+            ? registryManager.isLeader()
+            : (process.env.STIGIX_REGISTRY_MODE_CURRENT === 'leader' || process.env.STIGIX_REGISTRY_MODE === 'leader');
+        if (result.success && isLeader) {
             const certStatus = certificateManager.getStatus();
             const bundlePem = certificateManager.getBundlePem();
             provisioningManager.publishBundle('ca-certificates', {
                 ...certStatus,
                 bundle_pem: bundlePem
             });
+            fleetTunnelManager.broadcastProvisioningUpdate('ca-certificates');
         }
 
         res.json(result);
@@ -11091,15 +11094,18 @@ app.post('/api/security/certificates/upload', authenticateToken, (req, res) => {
 
         const result = certificateManager.importManualPem(pem, name);
 
-        // If on Leader, update Mesh Provisioning bundle
-        const mode = process.env.STIGIX_REGISTRY_MODE_CURRENT || process.env.STIGIX_REGISTRY_MODE || 'standalone';
-        if (result.success && mode === 'leader') {
+        // If on Leader, update Mesh Provisioning bundle and broadcast over Fleet Tunnel
+        const isLeader = typeof registryManager?.isLeader === 'function'
+            ? registryManager.isLeader()
+            : (process.env.STIGIX_REGISTRY_MODE_CURRENT === 'leader' || process.env.STIGIX_REGISTRY_MODE === 'leader');
+        if (result.success && isLeader) {
             const certStatus = certificateManager.getStatus();
             const bundlePem = certificateManager.getBundlePem();
             provisioningManager.publishBundle('ca-certificates', {
                 ...certStatus,
                 bundle_pem: bundlePem
             });
+            fleetTunnelManager.broadcastProvisioningUpdate('ca-certificates');
         }
 
         res.json(result);
@@ -11114,15 +11120,18 @@ app.delete('/api/security/certificates', authenticateToken, (req, res) => {
         const { id } = req.query;
         const result = certificateManager.deleteCertificate(id as string);
 
-        // If on Leader, update Mesh Provisioning bundle
-        const mode = process.env.STIGIX_REGISTRY_MODE_CURRENT || process.env.STIGIX_REGISTRY_MODE || 'standalone';
-        if (mode === 'leader') {
+        // If on Leader, update Mesh Provisioning bundle and broadcast over Fleet Tunnel
+        const isLeader = typeof registryManager?.isLeader === 'function'
+            ? registryManager.isLeader()
+            : (process.env.STIGIX_REGISTRY_MODE_CURRENT === 'leader' || process.env.STIGIX_REGISTRY_MODE === 'leader');
+        if (isLeader) {
             const certStatus = certificateManager.getStatus();
             const bundlePem = certificateManager.getBundlePem();
             provisioningManager.publishBundle('ca-certificates', {
                 ...certStatus,
                 bundle_pem: bundlePem
             });
+            fleetTunnelManager.broadcastProvisioningUpdate('ca-certificates');
         }
 
         res.json(result);
@@ -18356,6 +18365,12 @@ app.get('/api/provisioning/config', authenticateToken, (_req, res) => {
     const customTcpPending = provisioningManager.hasUnpublishedChanges('custom-tcp-apps', readJson(path.join(APP_CONFIG.configDir, 'custom-tcp-applications.json')));
     const cloudPending = provisioningManager.hasUnpublishedChanges('cloud-config', readJson(CLOUD_CONFIG_FILE));
     const pcapPending = isPcapEnabled ? provisioningManager.hasUnpublishedChanges('pcap-profiles', buildPcapProfilesPayload(false)) : false;
+    const certStatus = certificateManager.getStatus();
+    const certBundlePem = certificateManager.getBundlePem();
+    const caCertPending = provisioningManager.hasUnpublishedChanges('ca-certificates', {
+        ...certStatus,
+        bundle_pem: certBundlePem
+    });
 
     const isLeader = typeof registryManager?.isLeader === 'function' 
         ? registryManager.isLeader() 
@@ -18375,7 +18390,8 @@ app.get('/api/provisioning/config', authenticateToken, (_req, res) => {
             iotConfig: iotPending,
             customTcpApps: customTcpPending,
             cloudConfig: cloudPending,
-            pcapProfiles: pcapPending
+            pcapProfiles: pcapPending,
+            caCertificates: caCertPending
         }
     });
 });
@@ -18526,7 +18542,7 @@ app.post('/api/provisioning/publish/:type', authenticateToken, (req, res) => {
     const validTypes: GlobalBundleType[] = [
         'applications', 'connectivity-probes', 'convergence-sla',
         'prisma-sase', 'security-config', 'voice-config', 'iot-config',
-        'custom-tcp-apps', 'cloud-config',
+        'custom-tcp-apps', 'cloud-config', 'ca-certificates',
         ...(isPcapEnabled ? ['pcap-profiles' as GlobalBundleType] : [])
     ];
     if (!validTypes.includes(type)) {
@@ -18546,6 +18562,13 @@ app.post('/api/provisioning/publish/:type', authenticateToken, (req, res) => {
         payload = buildConnectivityProbesPayload();
     } else if (type === 'pcap-profiles') {
         payload = buildPcapProfilesPayload();
+    } else if (type === 'ca-certificates') {
+        const certStatus = certificateManager.getStatus();
+        const bundlePem = certificateManager.getBundlePem();
+        payload = {
+            ...certStatus,
+            bundle_pem: bundlePem
+        };
     } else {
         const file = provisioningManager.getActiveConfigFile(type);
         if (fs.existsSync(file)) {
@@ -18575,7 +18598,7 @@ app.post('/api/provisioning/publish', authenticateToken, (req, res) => {
     const validTypes: GlobalBundleType[] = [
         'applications', 'connectivity-probes', 'convergence-sla',
         'prisma-sase', 'security-config', 'voice-config', 'iot-config',
-        'custom-tcp-apps', 'cloud-config',
+        'custom-tcp-apps', 'cloud-config', 'ca-certificates',
         ...(isPcapEnabled ? ['pcap-profiles' as GlobalBundleType] : [])
     ];
 
@@ -18591,6 +18614,13 @@ app.post('/api/provisioning/publish', authenticateToken, (req, res) => {
                 payload = buildConnectivityProbesPayload();
             } else if (t === 'pcap-profiles') {
                 payload = buildPcapProfilesPayload();
+            } else if (t === 'ca-certificates') {
+                const certStatus = certificateManager.getStatus();
+                const bundlePem = certificateManager.getBundlePem();
+                payload = {
+                    ...certStatus,
+                    bundle_pem: bundlePem
+                };
             } else {
                 const file = provisioningManager.getActiveConfigFile(t);
                 if (fs.existsSync(file)) {
@@ -18618,6 +18648,13 @@ app.post('/api/provisioning/publish', authenticateToken, (req, res) => {
         payload = buildConnectivityProbesPayload();
     } else if (type === 'pcap-profiles') {
         payload = buildPcapProfilesPayload();
+    } else if (type === 'ca-certificates') {
+        const certStatus = certificateManager.getStatus();
+        const bundlePem = certificateManager.getBundlePem();
+        payload = {
+            ...certStatus,
+            bundle_pem: bundlePem
+        };
     } else {
         const file = provisioningManager.getActiveConfigFile(type as GlobalBundleType);
         if (fs.existsSync(file)) {
