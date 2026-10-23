@@ -2037,15 +2037,19 @@ export class FleetTunnelManager {
                                 revision: bundle.revision,
                                 checksum: bundle.checksum,
                                 status: 'error',
-                                error: 'pull_timeout',
+                                error: 'pull_unavailable',
                                 appliedAt: new Date().toISOString()
                             });
-                            log('PROVISIONING', `⚠️ [TUNNEL SYNC] Bundle '${bundle.type}' (rev ${bundle.revision}) pull timed out after ${pullTimeoutMs/1000}s, skipped safely (tunnel remains healthy)`, 'warn');
+                            log('PROVISIONING', `⚠️ [TUNNEL SYNC] Bundle '${bundle.type}' (rev ${bundle.revision}) unavailable or timed out after ${pullTimeoutMs/1000}s, skipped safely (tunnel remains healthy)`, 'warn');
                         }
                     } catch (pullErr: any) {
                         log('PROVISIONING', `⚠️ [TUNNEL SYNC] Error pulling bundle '${bundle.type}': ${pullErr.message} (tunnel remains healthy)`, 'warn');
                     }
                 }
+            }
+
+            if (appliedCount > 0) {
+                this.pushLocalTelemetryToSocket(socket);
             }
 
             return { success: true, count: appliedCount };

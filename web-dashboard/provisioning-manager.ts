@@ -352,8 +352,74 @@ export class ProvisioningManager {
         let stateChanged = false;
 
         const manifestByType = new Map<string, ProvisioningManifestBundle>();
+        const validBundles: ProvisioningManifestBundle[] = [];
+
         for (const b of manifest.bundles) {
             if (b && b.type) {
+                const typeDir = path.join(this.globalDir, b.type);
+                const revFile = path.join(typeDir, `rev-${b.revision}.json`);
+
+                // Self-heal if the manifest references a revision file that is missing on disk
+                if (!fs.existsSync(revFile)) {
+                    let healedPayload: any = null;
+                    try {
+                        // 1. Try reconstructing from the Leader's active config file on disk
+                        if (b.type !== 'pcap-profiles') {
+                            const activeFile = this.getActiveConfigFile(b.type);
+                            if (fs.existsSync(activeFile)) {
+                                const parsed = JSON.parse(fs.readFileSync(activeFile, 'utf8'));
+                                if (b.type === 'applications' && parsed && Array.isArray(parsed.applications)) {
+                                    healedPayload = this.normalizeItemsWithIds(b.type, parsed.applications);
+                                } else if (Array.isArray(parsed)) {
+                                    healedPayload = this.normalizeItemsWithIds(b.type, parsed);
+                                } else if (parsed && typeof parsed === 'object') {
+                                    healedPayload = parsed;
+                                }
+                            }
+                        }
+                        // 2. Fallback: check if an older rev-*.json exists in typeDir
+                        if (healedPayload === null && fs.existsSync(typeDir)) {
+                            const revFiles = fs.readdirSync(typeDir)
+                                .filter(f => f.startsWith('rev-') && f.endsWith('.json'))
+                                .sort((x, y) => {
+                                    const numX = parseInt(x.replace('rev-', '').replace('.json', ''), 10) || 0;
+                                    const numY = parseInt(y.replace('rev-', '').replace('.json', ''), 10) || 0;
+                                    return numY - numX;
+                                });
+                            if (revFiles.length > 0) {
+                                healedPayload = JSON.parse(fs.readFileSync(path.join(typeDir, revFiles[0]), 'utf8'));
+                            }
+                        }
+
+                        if (healedPayload !== null) {
+                            fs.mkdirSync(typeDir, { recursive: true });
+                            fs.writeFileSync(revFile, JSON.stringify(healedPayload, null, 2), 'utf8');
+                            const newChecksum = this.computeChecksum(healedPayload);
+                            let count = Array.isArray(healedPayload) ? healedPayload.length : 1;
+                            if (b.type === 'custom-tcp-apps') {
+                                count = healedPayload?.applications ? healedPayload.applications.length : (Array.isArray(healedPayload) ? healedPayload.length : 1);
+                            } else if (b.type === 'pcap-profiles') {
+                                count = healedPayload?.profiles ? healedPayload.profiles.length : 0;
+                            }
+                            if (b.checksum !== newChecksum || b.count !== count) {
+                                b.checksum = newChecksum;
+                                b.count = count;
+                                b.updatedAt = new Date().toISOString();
+                                manifestChanged = true;
+                            }
+                            log('PROVISIONING', `Self-healed missing Leader bundle file ${b.type}/rev-${b.revision}.json (${count} items)`);
+                        } else {
+                            // Neither active file nor cached revision exists — prune phantom bundle from manifest
+                            log('PROVISIONING', `Pruning phantom bundle ${b.type} (rev ${b.revision}) from Leader manifest (no payload on disk)`, 'warn');
+                            manifestChanged = true;
+                            continue;
+                        }
+                    } catch (e: any) {
+                        log('PROVISIONING', `Failed to self-heal bundle ${b.type} rev ${b.revision}: ${e.message}`, 'warn');
+                    }
+                }
+
+                validBundles.push(b);
                 manifestByType.set(b.type, b);
                 const applied = state.appliedRevisions?.[b.type];
                 if (!applied || applied.revision !== b.revision || applied.checksum !== b.checksum || applied.status !== 'applied') {
@@ -367,6 +433,7 @@ export class ProvisioningManager {
                 }
             }
         }
+        manifest.bundles = validBundles;
 
         for (const [bType, applied] of Object.entries(state.appliedRevisions || {})) {
             if (!applied || applied.status !== 'applied' || !applied.revision) continue;

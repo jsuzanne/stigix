@@ -702,6 +702,17 @@ export class TargetsManager {
                         xfr: existing.ports?.xfr ?? t.ports.xfr,
                     };
                 }
+                // Check whether existing entry was already an authoritative live registry target BEFORE merging t.meta
+                const existingName = (existing.name || '').trim();
+                const newName = (t.name || '').trim();
+                const isExistingIpName = !existingName || /^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(existingName);
+                const isNewFriendlyName = Boolean(newName && !/^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(newName));
+                const isLiveAuthoritativeRegistry = Boolean(t.meta?.registry && !t.meta?.leader_provided);
+                const wasExistingLiveRegistry = Boolean(
+                    !isExistingIpName &&
+                    (existing.meta?.self || (existing.meta?.registry && !existing.meta?.leader_provided && existing.source === 'synthesized'))
+                );
+
                 // Retain source metadata (e.g., if any source says it's from the registry, it stays auto)
                 if (t.meta) {
                     existing.meta = {
@@ -722,14 +733,7 @@ export class TargetsManager {
                 
                 // Prefer authoritative live registry names (selfTarget / peerTargets) over stale auto-learned or IP names,
                 // and never let a secondary leader_provided shared target overwrite a live registry peer name.
-                const existingName = (existing.name || '').trim();
-                const newName = (t.name || '').trim();
-                const isExistingIpName = !existingName || /^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(existingName);
-                const isNewFriendlyName = newName && !/^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(newName);
-                const isLiveAuthoritativeRegistry = Boolean(t.meta?.registry && !t.meta?.leader_provided);
-                const isExistingLiveRegistry = Boolean(existing.meta?.self || (existing.meta?.registry && !existing.meta?.leader_provided && existing.source === 'synthesized'));
-
-                if (!isExistingLiveRegistry) {
+                if (!wasExistingLiveRegistry) {
                     if (isLiveAuthoritativeRegistry && (existing.source === 'synthesized' || isAutoLearned(existing) || isExistingIpName)) {
                         if (t.name) existing.name = t.name;
                     } else if ((t.meta?.registry || isNewFriendlyName) && (existing.source === 'synthesized' || isExistingIpName)) {

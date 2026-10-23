@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.0.90] - 2026-10-23
+
+### Fixed
+- **Synthesized Target Name Resolution Regression (`web-dashboard/targets-manager.ts`, `web-dashboard/src/Failover.tsx`)**:
+  - Fixed a deduplication ordering bug in `TargetsManager.getMergedTargets()` where merging `t.meta` before evaluating `isExistingLiveRegistry` caused synthesized targets from `voice-config.json`, `convergence-config.json`, or `xfr-config.json` (which only store raw IP addresses as names) to be misclassified as authoritative live registry entries when merged with `synRegistry`, preventing their raw IP names (`192.168.203.100`, `192.168.207.10`) from being replaced by their friendly registry site names (`DC1-Ubuntu`, `BR1-Ubuntu`) across Bandwidth, Failover, VoIP, and Custom Apps.
+  - Enhanced `Failover.tsx` target merging so any local convergence endpoint with a raw IP label is automatically enriched with its friendly site name from `/api/targets`.
+- **Leader Provisioning Phantom Bundle Self-Healing & Immediate Sync Convergence (`web-dashboard/provisioning-manager.ts`, `web-dashboard/local-registry-server.ts`, `web-dashboard/fleet-tunnel.ts`)**:
+  - Added automatic self-healing in `ProvisioningManager.ensureLeaderManifestSynced()` when `manifest.json` references a `rev-N.json` bundle file that is missing on disk on the Leader (such as `custom-tcp-apps` rev 4 after a node role transition), reconstructing `rev-N.json` and its SHA-256 checksum from the Leader's active configuration file (or pruning empty phantom entries) so peers no longer hit `404 bundle_not_found` or stay stuck in `• Behind (1)`.
+  - Updated `FleetTunnelManager.syncProvisioningOverTunnel()` to immediately push updated peer telemetry to the Leader after applying bundles so Mesh Overview converges to `• Synced` without delay.
+
 ## [3.0.89] - 2026-10-23
 
 ### Changed

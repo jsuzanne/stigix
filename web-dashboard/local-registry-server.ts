@@ -311,7 +311,7 @@ export class LocalRegistryServer {
             if (!provisioningManager) {
                 return res.status(503).json({ error: 'provisioning_unavailable' });
             }
-            return res.json(provisioningManager.getManifest());
+            return res.json(provisioningManager.ensureLeaderManifestSynced());
         });
 
         // GET /provisioning/bundles/:type/:revision
@@ -324,6 +324,7 @@ export class LocalRegistryServer {
             if (isNaN(revision)) {
                 return res.status(400).json({ error: 'invalid_revision' });
             }
+            provisioningManager.ensureLeaderManifestSynced();
             const bundle = provisioningManager.getPublishedBundle(type, revision);
             if (!bundle) {
                 return res.status(404).json({ error: 'bundle_not_found' });

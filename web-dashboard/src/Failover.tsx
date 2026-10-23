@@ -28,9 +28,10 @@ export default function Failover(props: FailoverProps) {
     const [showAllTargetsDuringTest, setShowAllTargetsDuringTest] = useState(false);
 
     const allTargets = useMemo(() => {
-        const combined = [...endpoints];
+        const combined = endpoints.map(e => ({ ...e }));
         convergenceTargets.forEach(ct => {
-            if (!combined.some(e => e.target === ct.host)) {
+            const existing = combined.find(e => e.target === ct.host);
+            if (!existing) {
                 combined.push({
                     id: ct.id,
                     label: ct.name,
@@ -38,6 +39,12 @@ export default function Failover(props: FailoverProps) {
                     port: ct.port || 6200,
                     isRegistry: true
                 });
+            } else {
+                const currentLabel = (existing.label || '').trim();
+                const isRawIp = !currentLabel || currentLabel === existing.target || /^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(currentLabel);
+                if (isRawIp && ct.name && !/^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(ct.name.trim())) {
+                    existing.label = ct.name;
+                }
             }
         });
         return combined;
