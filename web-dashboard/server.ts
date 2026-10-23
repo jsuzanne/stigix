@@ -41,7 +41,7 @@ import { createAiCopilotRouter } from './ai-copilot/api-routes.js';
 import { Server } from 'socket.io';
 import multer from 'multer';
 import { FleetTunnelManager } from './fleet-tunnel.js';
-import { MagicJoinManager } from './magic-join-manager.js';
+import { MagicJoinManager, resolveOrGenerateJwtSecret, extractRequestIngress } from './magic-join-manager.js';
 import { CertificateManager } from './certificate-manager.js';
 import { RemoteNetworksManager } from './remote-networks-manager.js';
 import { SnapshotManager, StigixSnapshot } from './snapshot-manager.js';
@@ -2329,7 +2329,7 @@ iotManager.on('daemon:error', (info) => {
 
 const PORT = parseInt(process.env.PORT || '8080'); // Unified to 8080
 
-let SECRET_KEY = process.env.JWT_SECRET || 'super-secret-key-change-this';
+let SECRET_KEY = resolveOrGenerateJwtSecret(APP_CONFIG.configDir);
 const USERS_FILE = path.join(APP_CONFIG.configDir, 'users.json');
 const DEBUG_API = process.env.DEBUG_API === 'true';
 
@@ -16972,12 +16972,12 @@ app.get('/api/fleet/join-token', authenticateToken, async (req: any, res: any) =
         const ttlSeconds = parseInt(req.query.ttl_seconds as string) || 3600;
         const siteHint = req.query.site_name as string || undefined;
         const maxUses = parseInt(req.query.max_uses as string) || 1;
-        const requestHost = req.headers['host'];
+        const { host: requestHost, proto: requestProto } = extractRequestIngress(req.headers);
         const localIp = registryManager.getCurrentIp();
         const rawEndpoints = req.query.endpoints as string || undefined;
         const selectedEndpoints = rawEndpoints ? rawEndpoints.split(',').map((s: string) => s.trim()).filter(Boolean) : undefined;
 
-        const allDetected = magicJoinManager.detectLeaderEndpoints(requestHost, localIp);
+        const allDetected = magicJoinManager.detectLeaderEndpoints(requestHost, localIp, requestProto);
         const activeRelayUrl = (
             getSystemSettings().registry_url ||
             process.env.STIGIX_REGISTRY_URL ||
@@ -16995,6 +16995,7 @@ app.get('/api/fleet/join-token', authenticateToken, async (req: any, res: any) =
             siteHint,
             maxUses,
             requestHost,
+            requestProto,
             localIp,
             endpoints: selectedEndpoints,
             relayUrl: activeRelayUrl || undefined
@@ -18596,7 +18597,10 @@ app.get('/api/registry/status', authenticateToken, (req, res) => {
         local_registry_active: mode === 'leader',
         local_instances: mode === 'leader' ? localRegistryServer.getInstances() : registryManager.getPeers(),
         tunnel_active: fleetTunnelManager.hasActiveLeaderTunnel(),
-        leader_tunnel_info: fleetTunnelManager.getActiveLeaderInfo()
+        leader_tunnel_info: fleetTunnelManager.getActiveLeaderInfo(),
+        active_leader_endpoint: fleetTunnelManager.getSpokeCurrentLeaderUrl(),
+        candidate_endpoints: registryManager.getControllerEndpoints(),
+        candidate_endpoint_metrics: fleetTunnelManager.getCandidateEndpointMetrics()
     };
 
     res.json(status);
@@ -18612,7 +18616,10 @@ app.get('/api/mesh/status', authenticateToken, (req, res) => {
         local_registry_active: mode === 'leader',
         local_instances: mode === 'leader' ? localRegistryServer.getInstances() : registryManager.getPeers(),
         tunnel_active: fleetTunnelManager.hasActiveLeaderTunnel(),
-        leader_tunnel_info: fleetTunnelManager.getActiveLeaderInfo()
+        leader_tunnel_info: fleetTunnelManager.getActiveLeaderInfo(),
+        active_leader_endpoint: fleetTunnelManager.getSpokeCurrentLeaderUrl(),
+        candidate_endpoints: registryManager.getControllerEndpoints(),
+        candidate_endpoint_metrics: fleetTunnelManager.getCandidateEndpointMetrics()
     });
 });
 
@@ -18671,11 +18678,11 @@ function normalizeControllerUrl(input: string): string {
     try {
         const u = new URL(url);
         
-        // 2. Add Default Port if missing (and not already specified)
-        // We check the host part to see if it contains a colon
+        // 2. Add Default Port 8080 only for plain HTTP when no port is specified.
+        // HTTPS URLs (Cloudflare Tunnel / Reverse Proxy) keep implicit port 443.
         const hostPart = url.split('://')[1] || '';
         const portPart = hostPart.split('/')[0] || '';
-        if (!portPart.includes(':') && u.port === '') {
+        if (u.protocol === 'http:' && !portPart.includes(':') && u.port === '') {
             u.port = '8080';
         }
 
@@ -19060,11 +19067,71 @@ app.post('/api/registry/unenroll', authenticateToken, async (req: any, res: any)
 
 app.post('/api/registry/static-leader', authenticateToken, async (req, res) => {
     let { url } = req.body;
-    if (url) url = normalizeControllerUrl(url);
+    const normalizedRegistryUrl = url ? normalizeControllerUrl(url) : null;
     
     try {
-        await registryManager.saveStaticLeader(url || null);
-        res.json({ status: 'ok', message: url ? 'Static leader saved' : 'Static leader removed', normalizedUrl: url });
+        await registryManager.saveStaticLeader(normalizedRegistryUrl);
+
+        let cleanOrigin: string | null = null;
+        if (normalizedRegistryUrl) {
+            try {
+                const parsed = new URL(normalizedRegistryUrl);
+                cleanOrigin = `${parsed.protocol}//${parsed.host}`;
+            } catch {
+                cleanOrigin = normalizedRegistryUrl.replace(/\/api\/registry\/?$/, '').replace(/\/$/, '');
+            }
+        }
+
+        // If this node is enrolled in a cluster (or switching endpoints), update enrollment & tunnel candidates in-place
+        const existingEnrollment = registryManager.getClusterEnrollment();
+        if (cleanOrigin) {
+            const existingCandidates = registryManager.getControllerEndpoints() || [];
+            const updatedCandidates = [
+                cleanOrigin,
+                ...existingCandidates.filter((ep: string) => ep.replace(/\/$/, '') !== cleanOrigin)
+            ];
+            registryManager.saveControllerEndpoints(updatedCandidates);
+
+            if (existingEnrollment?.enrolled) {
+                registryManager.saveClusterEnrollment({
+                    ...existingEnrollment,
+                    leaderUrl: cleanOrigin,
+                    candidateEndpoints: updatedCandidates
+                });
+            }
+
+            // Persist STIGIX_LEADER_URL to .env if present
+            const envCandidates = [
+                path.join(APP_CONFIG.configDir, '.env'),
+                path.join(process.cwd(), 'config', '.env'),
+                path.join(process.cwd(), '.env'),
+                '/app/config/.env'
+            ];
+            for (const ep of envCandidates) {
+                try {
+                    if (fs.existsSync(ep)) {
+                        let envContent = fs.readFileSync(ep, 'utf8');
+                        if (/^STIGIX_LEADER_URL=/m.test(envContent)) {
+                            envContent = envContent.replace(/^STIGIX_LEADER_URL=.*/m, `STIGIX_LEADER_URL=${cleanOrigin}`);
+                        } else {
+                            envContent += `\nSTIGIX_LEADER_URL=${cleanOrigin}\n`;
+                        }
+                        fs.writeFileSync(ep, envContent, 'utf8');
+                        break;
+                    }
+                } catch {}
+            }
+
+            // Immediately steer the Spoke WebSocket tunnel to the preferred endpoint
+            fleetTunnelManager.preferCandidateLeaderUrl(cleanOrigin);
+        }
+
+        res.json({
+            status: 'ok',
+            message: normalizedRegistryUrl ? `Leader endpoint updated to ${cleanOrigin || normalizedRegistryUrl}` : 'Static leader removed',
+            normalizedUrl: normalizedRegistryUrl,
+            leaderOrigin: cleanOrigin
+        });
     } catch (e) {
         log('SYSTEM', `Failed to save static leader: ${e}`, 'error');
         res.status(500).json({ status: 'error', error: String(e) });

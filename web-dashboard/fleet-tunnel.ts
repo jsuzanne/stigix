@@ -50,6 +50,18 @@ export interface ForwardResponsePayload {
     isBase64?: boolean;
 }
 
+export interface CandidateEndpointHealth {
+    url: string;
+    ewmaRttMs?: number;
+    lastRttMs?: number;
+    flapEvents: number[];
+    consecutiveErrors: number;
+    totalDisconnects: number;
+    lastConnectedAt?: number;
+    lastDisconnectedAt?: number;
+    lastErrorAt?: number;
+}
+
 /**
  * FleetTunnelManager — WebSocket Reverse Tunnels & Outbound Reverse Dialing (M5 & M6)
  *
@@ -123,12 +135,14 @@ export class FleetTunnelManager {
 
     // Spoke state when dialed by a Leader (M6) or connected via M5
     private activeLeaderTunnelSocket: Socket | ClientSocket | null = null;
-    private activeLeaderInfo: { instanceId?: string; siteName?: string; ip?: string; direction?: string } | null = null;
+    private activeLeaderInfo: { instanceId?: string; siteName?: string; ip?: string; direction?: string; rttMs?: number; endpointUrl?: string; healthScore?: number } | null = null;
 
-    // Multi-IP candidate pool and failover tracking for Spoke outbound tunnel
+    // Multi-IP candidate pool, passive WebSocket SLA health scoring, and failover tracking for Spoke outbound tunnel
     private candidateLeaderUrls: string[] = [];
     private currentCandidateIndex: number = 0;
     private consecutiveConnectErrors: number = 0;
+    private endpointHealth: Map<string, CandidateEndpointHealth> = new Map();
+    private static readonly FLAP_WINDOW_MS = 15 * 60 * 1000; // 15-minute decay window for flap penalties
 
     // Leader state: outbound dialed client sockets to Cloud/Manual peers (M6)
     private outboundDialedSockets: Map<string, ClientSocket> = new Map();
@@ -233,11 +247,114 @@ export class FleetTunnelManager {
         this.candidateLeaderUrls = Array.from(new Set(cleaned));
         this.currentCandidateIndex = 0;
         this.consecutiveConnectErrors = 0;
+        for (const ep of this.candidateLeaderUrls) {
+            this.getOrCreateEndpointHealth(ep);
+        }
         log('TUNNEL', `Registered ${this.candidateLeaderUrls.length} candidate Leader endpoints: ${this.candidateLeaderUrls.join(', ')}`);
     }
 
     public getCandidateLeaderUrls(): string[] {
         return [...this.candidateLeaderUrls];
+    }
+
+    public getSpokeCurrentLeaderUrl(): string | null {
+        return this.spokeCurrentLeaderUrl;
+    }
+
+    public preferCandidateLeaderUrl(url: string): void {
+        const cleanUrl = url.trim().replace(/\/api\/registry\/?$/, '').replace(/\/$/, '');
+        if (!cleanUrl) return;
+        const filtered = this.candidateLeaderUrls.filter(ep => ep.replace(/\/$/, '') !== cleanUrl);
+        this.candidateLeaderUrls = [cleanUrl, ...filtered];
+        this.currentCandidateIndex = 0;
+        this.consecutiveConnectErrors = 0;
+        const health = this.getOrCreateEndpointHealth(cleanUrl);
+        health.consecutiveErrors = 0;
+        health.flapEvents = [];
+        log('TUNNEL', `🎯 Preferred Leader endpoint switched to ${cleanUrl} (total candidates: ${this.candidateLeaderUrls.length})`);
+        this.reconnectSpoke();
+    }
+
+    private getOrCreateEndpointHealth(url: string): CandidateEndpointHealth {
+        const cleanUrl = url.trim().replace(/\/$/, '');
+        let health = this.endpointHealth.get(cleanUrl);
+        if (!health) {
+            health = {
+                url: cleanUrl,
+                flapEvents: [],
+                consecutiveErrors: 0,
+                totalDisconnects: 0
+            };
+            this.endpointHealth.set(cleanUrl, health);
+        }
+        return health;
+    }
+
+    public computeEndpointScore(url: string): number {
+        const health = this.getOrCreateEndpointHealth(url);
+        const now = Date.now();
+
+        // 1. Prune expired flap events (> 15 minutes old)
+        health.flapEvents = health.flapEvents.filter(ts => now - ts < FleetTunnelManager.FLAP_WINDOW_MS);
+
+        // 2. Passive WebSocket RTT Penalty (0 extra traffic)
+        let rttPenalty = 0;
+        if (typeof health.ewmaRttMs === 'number') {
+            if (health.ewmaRttMs <= 15) {
+                rttPenalty = 0;
+            } else if (health.ewmaRttMs <= 50) {
+                rttPenalty = Math.round((health.ewmaRttMs - 15) * 0.3);
+            } else {
+                rttPenalty = Math.min(40, 10 + Math.round((health.ewmaRttMs - 50) * 0.25));
+            }
+        }
+
+        // 3. Flap / Disconnect Penalty with linear time decay over 15 minutes
+        let flapPenalty = 0;
+        for (const ts of health.flapEvents) {
+            const ageMs = Math.max(0, now - ts);
+            const decayFactor = Math.max(0, 1 - ageMs / FleetTunnelManager.FLAP_WINDOW_MS);
+            flapPenalty += 18 * decayFactor;
+        }
+        flapPenalty = Math.min(60, Math.round(flapPenalty));
+
+        // 4. Consecutive Handshake Failure Penalty
+        const errorPenalty = Math.min(80, health.consecutiveErrors * 25);
+
+        return Math.max(0, Math.min(100, Math.round(100 - rttPenalty - flapPenalty - errorPenalty)));
+    }
+
+    public getCandidateEndpointMetrics(): Array<CandidateEndpointHealth & { score: number; active: boolean }> {
+        const urls = this.candidateLeaderUrls.length > 0
+            ? this.candidateLeaderUrls
+            : (this.spokeCurrentLeaderUrl ? [this.spokeCurrentLeaderUrl] : []);
+        return urls.map(url => {
+            const h = this.getOrCreateEndpointHealth(url);
+            return {
+                ...h,
+                score: this.computeEndpointScore(url),
+                active: this.spokeCurrentLeaderUrl === url && !!(this.spokeClientSocket && this.spokeClientSocket.connected)
+            };
+        });
+    }
+
+    private selectBestCandidateIndex(excludeUrl?: string): number {
+        if (this.candidateLeaderUrls.length <= 1) return 0;
+        let bestIdx = (this.currentCandidateIndex + 1) % this.candidateLeaderUrls.length;
+        let bestScore = -1;
+
+        for (let i = 0; i < this.candidateLeaderUrls.length; i++) {
+            const candidate = this.candidateLeaderUrls[i];
+            if (excludeUrl && candidate === excludeUrl && this.candidateLeaderUrls.length > 1) {
+                continue;
+            }
+            const score = this.computeEndpointScore(candidate);
+            if (score > bestScore) {
+                bestScore = score;
+                bestIdx = i;
+            }
+        }
+        return bestIdx;
     }
 
     public reconnectSpoke(): void {
@@ -720,7 +837,7 @@ export class FleetTunnelManager {
             for (const [instanceId, entry] of this.activeTunnels.entries()) {
                 if (entry.socket && (entry.socket as any).connected) {
                     const pingStart = Date.now();
-                    entry.socket.emit('tunnel:rtt_ping', { pingTime: pingStart }, (ackData?: { pongTime: number }) => {
+                    entry.socket.emit('tunnel:rtt_ping', { pingTime: pingStart, lastRttMs: entry.info.rttMs }, (ackData?: { pongTime: number }) => {
                         const rtt = Math.max(1, Date.now() - pingStart);
                         entry.info.rttMs = rtt;
                         entry.info.lastPong = Date.now();
@@ -835,34 +952,39 @@ export class FleetTunnelManager {
             try {
                 const u = new URL(targetUrl);
                 targetHost = u.hostname;
-                targetPort = u.port ? parseInt(u.port) : 8080;
+                targetPort = u.port ? parseInt(u.port) : (u.protocol === 'https:' ? 443 : 8080);
+                targetUrl = u.origin;
             } catch {
                 targetHost = null;
             }
         } else {
+            let parsedOrigin: string | null = null;
             if (status.leader_info?.ip && status.leader_info.ip !== '127.0.0.1') {
                 targetHost = status.leader_info.ip;
             } else if (status.static_leader_url) {
                 try {
                     const u = new URL(status.static_leader_url);
                     targetHost = u.hostname;
-                    targetPort = u.port ? parseInt(u.port) : 8080;
+                    targetPort = u.port ? parseInt(u.port) : (u.protocol === 'https:' ? 443 : 8080);
+                    parsedOrigin = u.origin;
                 } catch {}
             } else if (process.env.STIGIX_CONTROLLER_URL) {
                 try {
                     const u = new URL(process.env.STIGIX_CONTROLLER_URL.startsWith('http') ? process.env.STIGIX_CONTROLLER_URL : `http://${process.env.STIGIX_CONTROLLER_URL}`);
                     targetHost = u.hostname;
-                    targetPort = u.port ? parseInt(u.port) : 8080;
+                    targetPort = u.port ? parseInt(u.port) : (u.protocol === 'https:' ? 443 : 8080);
+                    parsedOrigin = u.origin;
                 } catch {}
             } else if (process.env.STIGIX_LEADER_URL) {
                 try {
                     const u = new URL(process.env.STIGIX_LEADER_URL.startsWith('http') ? process.env.STIGIX_LEADER_URL : `http://${process.env.STIGIX_LEADER_URL}`);
                     targetHost = u.hostname;
-                    targetPort = u.port ? parseInt(u.port) : 8080;
+                    targetPort = u.port ? parseInt(u.port) : (u.protocol === 'https:' ? 443 : 8080);
+                    parsedOrigin = u.origin;
                 } catch {}
             }
             if (targetHost) {
-                targetUrl = `http://${targetHost}:${targetPort}`;
+                targetUrl = parsedOrigin || `http://${targetHost}:${targetPort}`;
             }
         }
 
@@ -913,12 +1035,25 @@ export class FleetTunnelManager {
 
         socket.on('connect', () => {
             this.consecutiveConnectErrors = 0;
+            const epHealth = this.getOrCreateEndpointHealth(targetUrl);
+            epHealth.consecutiveErrors = 0;
+            epHealth.lastConnectedAt = Date.now();
+            const currentScore = this.computeEndpointScore(targetUrl);
+
             const candidateInfo = this.candidateLeaderUrls.length > 1
-                ? ` [Candidate ${this.currentCandidateIndex + 1}/${this.candidateLeaderUrls.length}]`
+                ? ` [Candidate ${this.currentCandidateIndex + 1}/${this.candidateLeaderUrls.length} • Score ${currentScore}/100]`
                 : '';
             log('TUNNEL', `⚡ Outbound reverse tunnel ESTABLISHED to Leader (${host}:${port})${candidateInfo}`);
             this.activeLeaderTunnelSocket = socket;
-            this.activeLeaderInfo = { instanceId: 'Leader', siteName: host, ip: host, direction: 'outbound_spoke' };
+            this.activeLeaderInfo = {
+                instanceId: 'Leader',
+                siteName: host,
+                ip: host,
+                direction: 'outbound_spoke',
+                endpointUrl: targetUrl,
+                rttMs: epHealth.ewmaRttMs,
+                healthScore: currentScore
+            };
 
             // Update static leader so local node preserves the verified reachable endpoint
             try {
@@ -931,8 +1066,20 @@ export class FleetTunnelManager {
                 if (socket.connected) this.pushLocalTelemetryToSocket(socket);
             }, 15000);
 
-            // Spoke responds to Leader RTT Heartbeats
+            // Spoke responds to Leader RTT Heartbeats and passively updates local WebSocket RTT & SLA score
+            socket.off('tunnel:rtt_ping');
             socket.on('tunnel:rtt_ping', (data: any, ack?: (res: any) => void) => {
+                if (typeof data?.lastRttMs === 'number' && data.lastRttMs >= 0) {
+                    const h = this.getOrCreateEndpointHealth(targetUrl);
+                    h.lastRttMs = data.lastRttMs;
+                    h.ewmaRttMs = typeof h.ewmaRttMs === 'number'
+                        ? Math.round(h.ewmaRttMs * 0.7 + data.lastRttMs * 0.3)
+                        : data.lastRttMs;
+                    if (this.activeLeaderInfo) {
+                        this.activeLeaderInfo.rttMs = h.ewmaRttMs;
+                        this.activeLeaderInfo.healthScore = this.computeEndpointScore(targetUrl);
+                    }
+                }
                 if (typeof ack === 'function') {
                     ack({ pongTime: Date.now() });
                 } else {
@@ -941,6 +1088,7 @@ export class FleetTunnelManager {
             });
 
             // Spoke listens for custom apps mesh updates from Leader
+            socket.off('custom_app:mesh_update');
             socket.on('custom_app:mesh_update', (mesh: any[]) => {
                 this.cachedCustomAppMesh = Array.isArray(mesh) ? mesh : [];
                 if (this.tcpAppManager) {
@@ -958,6 +1106,7 @@ export class FleetTunnelManager {
             });
 
             // Spoke listens for cluster peer mesh updates from Leader
+            socket.off('fleet:peer_mesh');
             socket.on('fleet:peer_mesh', (instances: any[]) => {
                 if (Array.isArray(instances)) {
                     this.registryManager.updatePeersFromLeader(instances);
@@ -975,6 +1124,7 @@ export class FleetTunnelManager {
             }
 
             // Spoke listens for config updates and triggers initial sync
+            socket.off('peer:bundle_updated');
             socket.on('peer:bundle_updated', (type?: string) => {
                 this.syncProvisioningOverTunnel(socket, type);
             });
@@ -983,14 +1133,17 @@ export class FleetTunnelManager {
 
         socket.on('connect_error', (err: any) => {
             this.consecutiveConnectErrors++;
+            const epHealth = this.getOrCreateEndpointHealth(targetUrl);
+            epHealth.consecutiveErrors++;
+            epHealth.lastErrorAt = Date.now();
             log('TUNNEL', `Outbound reverse tunnel connection failed (${host}:${port}) [attempt ${this.consecutiveConnectErrors}]: ${err.message}`, 'warn');
 
-            // Trigger failover if multiple candidate endpoints exist and current endpoint failed 3 times
+            // Trigger smart score-based failover if multiple candidate endpoints exist and current endpoint failed 3 times
             if (this.candidateLeaderUrls.length > 1 && this.consecutiveConnectErrors >= 3) {
-                const oldIndex = this.currentCandidateIndex;
-                this.currentCandidateIndex = (this.currentCandidateIndex + 1) % this.candidateLeaderUrls.length;
+                this.currentCandidateIndex = this.selectBestCandidateIndex(targetUrl);
                 const nextUrl = this.candidateLeaderUrls[this.currentCandidateIndex];
-                log('TUNNEL', `🔄 Multi-IP Failover: Leader ${targetUrl} unreachable after ${this.consecutiveConnectErrors} attempts. Switching to candidate ${this.currentCandidateIndex + 1}/${this.candidateLeaderUrls.length}: ${nextUrl}`);
+                const nextScore = this.computeEndpointScore(nextUrl);
+                log('TUNNEL', `🔄 Smart Multi-Endpoint Failover: Leader ${targetUrl} unreachable after ${this.consecutiveConnectErrors} attempts. Switching to best candidate ${this.currentCandidateIndex + 1}/${this.candidateLeaderUrls.length}: ${nextUrl} (Score ${nextScore}/100)`);
                 this.consecutiveConnectErrors = 0;
                 try {
                     socket.disconnect();
@@ -1010,6 +1163,36 @@ export class FleetTunnelManager {
             if (this.spokeTelemetryInterval) {
                 clearInterval(this.spokeTelemetryInterval);
                 this.spokeTelemetryInterval = null;
+            }
+
+            // Record unexpected WebSocket disconnect (flap) and evaluate hysteresis-guarded failover
+            if (reason !== 'io client disconnect') {
+                const epHealth = this.getOrCreateEndpointHealth(targetUrl);
+                const now = Date.now();
+                epHealth.totalDisconnects++;
+                epHealth.lastDisconnectedAt = now;
+                epHealth.flapEvents.push(now);
+                epHealth.flapEvents = epHealth.flapEvents.filter(ts => now - ts < FleetTunnelManager.FLAP_WINDOW_MS);
+
+                if (this.candidateLeaderUrls.length > 1 && epHealth.flapEvents.length >= 3) {
+                    const currentScore = this.computeEndpointScore(targetUrl);
+                    const altIndex = this.selectBestCandidateIndex(targetUrl);
+                    const altUrl = this.candidateLeaderUrls[altIndex];
+                    const altScore = this.computeEndpointScore(altUrl);
+
+                    // Hysteresis threshold: only switch on flap if alternative score is >= 20 points better
+                    if (altUrl !== targetUrl && altScore >= currentScore + 20) {
+                        log('TUNNEL', `🔄 WebSocket Flap Protection: ${targetUrl} flapped ${epHealth.flapEvents.length} times (Score ${currentScore}/100). Steering to healthier endpoint ${altUrl} (Score ${altScore}/100)`);
+                        this.currentCandidateIndex = altIndex;
+                        this.consecutiveConnectErrors = 0;
+                        try {
+                            socket.disconnect();
+                        } catch {}
+                        this.spokeClientSocket = null;
+                        this.spokeCurrentLeaderUrl = null;
+                        setTimeout(() => this.syncSpokeOutboundTunnel(), 1000);
+                    }
+                }
             }
         });
 

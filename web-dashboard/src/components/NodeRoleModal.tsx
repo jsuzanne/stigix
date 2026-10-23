@@ -91,8 +91,8 @@ export function NodeRoleModal({
         }
     };
 
-    const handleSaveManualLeader = async () => {
-        const trimmed = manualLeaderUrl.trim();
+    const handleSaveManualLeader = async (overrideUrl?: string) => {
+        const trimmed = (overrideUrl ?? manualLeaderUrl).trim();
         if (!trimmed) return;
         setIsJoining(true);
         setError(null);
@@ -104,12 +104,10 @@ export function NodeRoleModal({
                 body: JSON.stringify({ url: trimmed })
             });
             if (res.ok) {
-                setSuccessMsg(`Static Leader configured (${trimmed})!`);
+                setSuccessMsg(`Leader endpoint updated to ${trimmed}! Reconnecting WebSocket...`);
                 setManualLeaderUrl('');
+                setShowManualUrl(false);
                 await onRefreshStatus();
-                setTimeout(() => {
-                    onClose();
-                }, 1400);
             } else {
                 const d = await res.json().catch(() => ({}));
                 setError(d.message || d.error || 'Failed to configure static Leader URL');
@@ -348,7 +346,7 @@ export function NodeRoleModal({
                                                     className="flex-1 px-3 py-1.5 text-xs font-mono bg-card border border-border rounded-lg text-text focus:outline-none focus:border-blue-500 placeholder:text-text-muted/40"
                                                 />
                                                 <button
-                                                    onClick={handleSaveManualLeader}
+                                                    onClick={() => handleSaveManualLeader()}
                                                     disabled={isJoining || !manualLeaderUrl.trim()}
                                                     className="px-3.5 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 disabled:opacity-40 text-white text-xs font-bold transition-all"
                                                 >
@@ -389,19 +387,114 @@ export function NodeRoleModal({
                     {isEnrolledPeer && (
                         <div className="space-y-4">
                             <div className="p-4 rounded-xl border border-border bg-card-secondary/40 space-y-3">
-                                <div className="text-xs font-bold text-text-secondary uppercase tracking-wider">
-                                    Enrolled Cluster Information
+                                <div className="flex items-center justify-between">
+                                    <div className="text-xs font-bold text-text-secondary uppercase tracking-wider">
+                                        Enrolled Cluster Information
+                                    </div>
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            const currentUrl = registryStatus?.active_leader_endpoint || registryStatus?.enrolled_leader_url || registryStatus?.static_leader_url || '';
+                                            setManualLeaderUrl(currentUrl.replace(/\/api\/registry\/?$/, ''));
+                                            setShowManualUrl(!showManualUrl);
+                                        }}
+                                        className="text-[11px] font-bold text-blue-400 hover:text-blue-300 transition-colors flex items-center gap-1"
+                                    >
+                                        <span>{showManualUrl ? '▾ Cancel Endpoint Edit' : '✎ Change / Switch Leader URL'}</span>
+                                    </button>
                                 </div>
                                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs font-mono">
                                     <div className="p-2.5 rounded-lg bg-card border border-border/60">
-                                        <span className="text-[10px] text-text-muted block font-sans uppercase">Controller URL</span>
-                                        <span className="text-text-primary font-bold">{registryStatus?.enrolled_leader_url || registryStatus?.static_leader_url || '—'}</span>
+                                        <span className="text-[10px] text-text-muted block font-sans uppercase">Active Controller URL</span>
+                                        <span className="text-text-primary font-bold break-all">
+                                            {registryStatus?.active_leader_endpoint || registryStatus?.enrolled_leader_url || registryStatus?.static_leader_url || '—'}
+                                        </span>
                                     </div>
                                     <div className="p-2.5 rounded-lg bg-card border border-border/60">
                                         <span className="text-[10px] text-text-muted block font-sans uppercase">Token Prefix</span>
                                         <span className="text-text-primary">{registryStatus?.enrolled_token_prefix || 'Active Session'}</span>
                                     </div>
                                 </div>
+
+                                {/* Candidate Endpoints & Smart Failover Metrics */}
+                                {Array.isArray(registryStatus?.candidate_endpoints) && registryStatus.candidate_endpoints.length > 0 && (
+                                    <div className="p-3 rounded-lg bg-card border border-border/60 space-y-2">
+                                        <div className="flex items-center justify-between">
+                                            <span className="text-[10px] font-bold text-text-muted uppercase tracking-wider">
+                                                Known Leader Endpoints (Click to switch immediately)
+                                            </span>
+                                            <span className="text-[10px] text-emerald-400 font-mono">
+                                                Smart Failover Active
+                                            </span>
+                                        </div>
+                                        <div className="flex flex-wrap gap-1.5">
+                                            {registryStatus.candidate_endpoints.map((ep: string) => {
+                                                const activeEp = (registryStatus?.active_leader_endpoint || registryStatus?.enrolled_leader_url || '').replace(/\/$/, '');
+                                                const cleanEp = ep.replace(/\/$/, '');
+                                                const isActive = activeEp === cleanEp;
+                                                const metric = Array.isArray(registryStatus?.candidate_endpoint_metrics)
+                                                    ? registryStatus.candidate_endpoint_metrics.find((m: any) => m.url?.replace(/\/$/, '') === cleanEp)
+                                                    : null;
+                                                return (
+                                                    <button
+                                                        key={cleanEp}
+                                                        type="button"
+                                                        disabled={isJoining}
+                                                        onClick={() => handleSaveManualLeader(cleanEp)}
+                                                        className={twMerge(
+                                                            "px-2.5 py-1 rounded-lg border text-[11px] font-mono flex items-center gap-1.5 transition-all",
+                                                            isActive
+                                                                ? "bg-blue-500/15 border-blue-500/50 text-blue-400 font-bold"
+                                                                : "bg-card-secondary/50 border-border hover:border-blue-500/40 text-text-secondary"
+                                                        )}
+                                                        title={isActive ? "Currently active Leader endpoint" : "Click to switch WebSocket connection to this endpoint"}
+                                                    >
+                                                        <span className={twMerge("w-1.5 h-1.5 rounded-full", isActive ? "bg-emerald-400" : "bg-text-muted/50")} />
+                                                        <span>{cleanEp}</span>
+                                                        {metric?.rttEwmaMs != null && (
+                                                            <span className="text-[9px] px-1 rounded bg-emerald-500/15 text-emerald-300">
+                                                                {metric.rttEwmaMs}ms
+                                                            </span>
+                                                        )}
+                                                        {metric?.score != null && (
+                                                            <span className="text-[9px] text-text-muted">
+                                                                (score {metric.score})
+                                                            </span>
+                                                        )}
+                                                    </button>
+                                                );
+                                            })}
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* In-place manual URL editor for Enrolled Peer */}
+                                {showManualUrl && (
+                                    <div className="p-3 rounded-lg bg-blue-500/5 border border-blue-500/30 space-y-2">
+                                        <label className="text-[10px] font-bold text-blue-400 uppercase tracking-wider block">
+                                            Override / Switch Leader Controller URL (keeps current cluster enrollment)
+                                        </label>
+                                        <div className="flex gap-2">
+                                            <input
+                                                type="text"
+                                                value={manualLeaderUrl}
+                                                onChange={(e) => setManualLeaderUrl(e.target.value)}
+                                                onKeyDown={(e) => e.key === 'Enter' && handleSaveManualLeader()}
+                                                placeholder="e.g. http://192.168.1.50:8080 or https://leader.domain.com"
+                                                className="flex-1 px-3 py-1.5 text-xs font-mono bg-card border border-border rounded-lg text-text focus:outline-none focus:border-blue-500 placeholder:text-text-muted/40"
+                                            />
+                                            <button
+                                                type="button"
+                                                onClick={() => handleSaveManualLeader()}
+                                                disabled={isJoining || !manualLeaderUrl.trim()}
+                                                className="px-3.5 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 disabled:opacity-40 text-white text-xs font-bold transition-all flex items-center gap-1.5"
+                                            >
+                                                {isJoining ? <RefreshCw size={12} className="animate-spin" /> : <Check size={12} />}
+                                                Apply & Reconnect
+                                            </button>
+                                        </div>
+                                    </div>
+                                )}
 
                                 <div className="pt-2 flex justify-end">
                                     <button

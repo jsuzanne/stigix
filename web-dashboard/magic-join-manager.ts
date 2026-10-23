@@ -8,6 +8,88 @@ export function deriveFleetTunnelKey(secretKey: string): string {
     return crypto.createHmac('sha256', secretKey).update('stigix-fleet-tunnel-key-v1').digest('hex');
 }
 
+const INSECURE_DEFAULT_SECRETS = new Set([
+    '',
+    'super-secret-key-change-this',
+    'stigix-secret-key-12345',
+    'change-me',
+    'changeme',
+    'default'
+]);
+
+/**
+ * Resolves a persistent cryptographic JWT secret.
+ * If JWT_SECRET is not set or equals a known insecure placeholder, loads or generates
+ * `/app/config/jwt-secret.key` (0600 permissions) and synchronizes `process.env.JWT_SECRET`.
+ */
+export function resolveOrGenerateJwtSecret(configDir = '/app/config'): string {
+    const envSecret = (process.env.JWT_SECRET || '').trim();
+    if (envSecret.length >= 16 && !INSECURE_DEFAULT_SECRETS.has(envSecret.toLowerCase())) {
+        return envSecret;
+    }
+
+    const secretFile = path.join(configDir, 'jwt-secret.key');
+    try {
+        if (fs.existsSync(secretFile)) {
+            const existing = fs.readFileSync(secretFile, 'utf8').trim();
+            if (existing.length >= 32 && !INSECURE_DEFAULT_SECRETS.has(existing.toLowerCase())) {
+                process.env.JWT_SECRET = existing;
+                return existing;
+            }
+        }
+        if (!fs.existsSync(configDir)) {
+            fs.mkdirSync(configDir, { recursive: true });
+        }
+        const generatedKey = crypto.randomBytes(32).toString('hex');
+        fs.writeFileSync(secretFile, generatedKey, { encoding: 'utf8', mode: 0o600 });
+        process.env.JWT_SECRET = generatedKey;
+        console.log(`[SECURITY] Auto-generated persistent 256-bit JWT secret in ${secretFile}`);
+        return generatedKey;
+    } catch (e) {
+        const ephemeralKey = crypto.randomBytes(32).toString('hex');
+        process.env.JWT_SECRET = ephemeralKey;
+        console.warn('[SECURITY] Could not persist jwt-secret.key to disk; using generated in-memory 256-bit secret.');
+        return ephemeralKey;
+    }
+}
+
+/**
+ * Extracts effective external Host and Protocol from HTTP headers,
+ * supporting Cloudflare Tunnel (`cf-visitor`), Nginx, Traefik, Caddy, and standard reverse proxies (`x-forwarded-proto`, `x-forwarded-host`).
+ */
+export function extractRequestIngress(headers?: Record<string, any>): { host?: string; proto?: 'http' | 'https' } {
+    if (!headers) return {};
+
+    const rawForwardedHost = headers['x-forwarded-host'];
+    const rawHost = headers['host'];
+    const hostHeader = (Array.isArray(rawForwardedHost) ? rawForwardedHost[0] : rawForwardedHost)
+        || (Array.isArray(rawHost) ? rawHost[0] : rawHost);
+    const host = typeof hostHeader === 'string' ? hostHeader.split(',')[0].trim() : undefined;
+
+    let proto: 'http' | 'https' | undefined;
+    const xfp = headers['x-forwarded-proto'];
+    const xfpStr = Array.isArray(xfp) ? xfp[0] : xfp;
+    if (typeof xfpStr === 'string') {
+        const firstProto = xfpStr.split(',')[0].trim().toLowerCase();
+        if (firstProto === 'https' || firstProto === 'http') {
+            proto = firstProto;
+        }
+    }
+
+    if (!proto && headers['cf-visitor']) {
+        const cfv = Array.isArray(headers['cf-visitor']) ? headers['cf-visitor'][0] : headers['cf-visitor'];
+        if (typeof cfv === 'string' && cfv.toLowerCase().includes('"https"')) {
+            proto = 'https';
+        }
+    }
+
+    if (!proto && headers['x-forwarded-ssl'] === 'on') {
+        proto = 'https';
+    }
+
+    return { host, proto };
+}
+
 export function resolveClusterRealmHash(configDir = '/app/config'): string {
     if (process.env.STIGIX_CLUSTER_REALM && /^[a-f0-9]{64}$/i.test(process.env.STIGIX_CLUSTER_REALM.trim())) {
         return process.env.STIGIX_CLUSTER_REALM.trim().toLowerCase();
@@ -72,10 +154,10 @@ export class MagicJoinManager {
     private secretKey: string;
     private configDir: string;
 
-    constructor(configDir = '/app/config', secretKey = process.env.JWT_SECRET || 'stigix-secret-key-12345') {
+    constructor(configDir = '/app/config', secretKey?: string) {
         this.configDir = configDir;
         this.tokensFile = path.join(configDir, 'magic-join-tokens.json');
-        this.secretKey = secretKey;
+        this.secretKey = secretKey || resolveOrGenerateJwtSecret(configDir);
         this.loadTokens();
     }
 
@@ -110,7 +192,7 @@ export class MagicJoinManager {
         return resolveClusterRealmHash(this.configDir);
     }
 
-    public detectLeaderEndpoints(requestHost?: string, localIp?: string): string[] {
+    public detectLeaderEndpoints(requestHost?: string, localIp?: string, requestProto?: 'http' | 'https'): string[] {
         const endpoints = new Set<string>();
 
         // 1. Explicit Public URL
@@ -123,11 +205,16 @@ export class MagicJoinManager {
             }
         }
 
-        // 2. Request Host Header from Browser/Client
+        // 2. Request Host Header from Browser/Client (supports HTTPS Reverse Proxy / Cloudflare Tunnel)
         if (requestHost && !requestHost.includes('127.0.0.1') && !requestHost.includes('localhost')) {
-            const proto = requestHost.includes(':443') ? 'https' : 'http';
-            const hostWithPort = requestHost.includes(':') ? requestHost : `${requestHost}:8080`;
-            endpoints.add(`${proto}://${hostWithPort}`);
+            const isHttps = requestProto === 'https' || requestHost.endsWith(':443');
+            if (isHttps) {
+                const cleanHost = requestHost.replace(/:443$/, '');
+                endpoints.add(`https://${cleanHost}`);
+            } else {
+                const hostWithPort = requestHost.includes(':') ? requestHost : `${requestHost}:8080`;
+                endpoints.add(`http://${hostWithPort}`);
+            }
         }
 
         // 3. Local Private IP detected
@@ -157,6 +244,7 @@ export class MagicJoinManager {
         maxUses?: number;
         tags?: Record<string, string>;
         requestHost?: string;
+        requestProto?: 'http' | 'https';
         localIp?: string;
         endpoints?: string[];
         relayUrl?: string;
@@ -168,7 +256,7 @@ export class MagicJoinManager {
 
         const finalEndpoints = (options.endpoints && options.endpoints.length > 0)
             ? options.endpoints
-            : this.detectLeaderEndpoints(options.requestHost, options.localIp);
+            : this.detectLeaderEndpoints(options.requestHost, options.localIp, options.requestProto);
 
         const payload: JoinTokenPayload = {
             v: 1,

@@ -9,6 +9,8 @@ Ce document rassemble l'analyse détaillée, les propositions techniques et les 
 2. [Sujet 2 — Digital Experience Score : Analyse de l'anomalie du Score 50 en cas de Panne & Refonte](#sujet-2--digital-experience-score--analyse-de-lanomalie-du-score-50-en-cas-de-panne--refonte)
 3. [Sujet 3 — Débat : Auto-Push automatique vs Bouton « Publish » manuel pour les Probes](#sujet-3--débat--auto-push-automatique-vs-bouton--publish--manuel-pour-les-probes)
 4. [Sujet 4 — PRD WebSocket Control Plane : Fiabilité, RTT & ACKs](#sujet-4--prd-websocket-control-plane--fiabilité-rtt--acks)
+5. [Sujet 5 — Multi-Endpoint Smart Steering & Dynamic SLA Path Selection (SD-WAN Scoring)](#sujet-5--multi-endpoint-smart-steering--dynamic-sla-path-selection-sd-wan-scoring)
+6. [Sujet 6 — Universal Reverse-Proxy Auto-Detection & Zero-Config Secrets](#sujet-6--universal-reverse-proxy-auto-detection--zero-config-secrets)
 
 ---
 
@@ -153,3 +155,58 @@ Dans la table Fleet, nous remplacerons la colonne générique par une vue décou
 4. **Sprint 4 (Control Plane WebSocket) :**
    * Implémentation du protocole d'ACKs et de la mesure RTT dans [`fleet-tunnel.ts`](file:///Users/jsuzanne/Github/stigix/web-dashboard/fleet-tunnel.ts).
    * Intégration des badges RTT et Sync Status dans [`Fleet.tsx`](file:///Users/jsuzanne/Github/stigix/web-dashboard/src/Fleet.tsx).
+5. **Sprint 5 (Zero-Touch Ingress & Auto-Secrets) :**
+   * Support universel `X-Forwarded-Proto: https` pour éliminer le port parasite `:8080` lors de l'onboarding via Cloudflare Tunnel / Nginx / Traefik.
+   * Génération automatique et persistance sur disque de `/app/config/jwt-secret.key` (0600) pour sécuriser immédiatement les déploiements Docker "zero-config".
+6. **Sprint 6 (SD-WAN Dynamic Link Scoring) :**
+   * Link Health Score engine pour Spoke `candidateLeaderUrls` avec malus RTT, malus de flapping et bascule automatique / failback intelligent.
+
+---
+
+## Sujet 5 — Multi-Endpoint Smart Steering & Dynamic SLA Path Selection (SD-WAN Scoring)
+
+### Context & Goal
+Currently, when a spoke node joins a cluster, it records all candidate Leader endpoints (`candidateLeaderUrls`: e.g. Management LAN IP, Inband IP, and Cloudflare Public Tunnel URL).
+Today, failover is a simple round-robin triggered only after 3 hard connection timeouts.
+
+The goal is to implement **Dynamic Link Health & SLA-Based Path Selection**:
+Instead of waiting for an outage, the Spoke monitors path quality and automatically prioritizes the best link (e.g. LAN 1-2 ms preferred over Internet 35 ms), with penalties applied for flapping and high latency.
+
+### Scoring Formula
+Each candidate endpoint $i$ receives a dynamic score computed continuously:
+
+$$\text{HealthScore}_i = 100 - \text{Penalty}_{\text{RTT}} - \text{Penalty}_{\text{Flap}} - \text{Penalty}_{\text{Errors}}$$
+
+* **RTT Penalty :**
+  * $0 \text{ ms} \le \text{RTT} \le 10 \text{ ms}$ (Local LAN / Dedicated Mgmt) $\rightarrow$ Penalty: $0$
+  * $10 \text{ ms} < \text{RTT} \le 50 \text{ ms}$ (Cloudflare Tunnel / Fiber WAN) $\rightarrow$ Penalty: $15$
+  * $\text{RTT} > 50 \text{ ms}$ (Degraded / 4G / High Latency) $\rightarrow$ Penalty: $\min(50, \frac{\text{RTT} - 50}{2})$
+* **Flap & Reconnection Penalty :**
+  * $+20$ penalty points per disconnect event occurring within a sliding 10-minute window.
+  * Decay: Penalties decay linearly over 15 minutes once the link stabilizes to prevent rapid oscillation (hysteresis).
+* **Connection Error Penalty :**
+  * $+30$ penalty points per consecutive TCP/TLS connection handshake failure.
+
+### Failover & Failback Mechanics
+1. **Parallel Pre-flight Probing :** On spoke startup, issue fast asynchronous health probes (timeout 800ms) to all candidate endpoints to immediately select the lowest-latency healthy endpoint.
+2. **Hysteresis Threshold :** Do not switch active links unless an alternative candidate is at least **25% better** for at least 30 continuous seconds. This eliminates route flapping.
+3. **Seamless In-flight Handoff :** The spoke maintains its cryptographic `node_token` identity, allowing instant tunnel re-establishment on the secondary link without Leader-side state disruption.
+
+---
+
+## Sujet 6 — Universal Reverse-Proxy Auto-Detection & Zero-Config Secrets
+
+### 1. Reverse-Proxy & Ingress Protocol Auto-Detection
+* **Problem :** When Leader is exposed via Cloudflare Tunnel, Nginx, or Caddy, the reverse proxy connects locally over HTTP on port 8080 while the external client connects via HTTPS on port 443. The current endpoint detector appends `:8080`, producing invalid peer onboarding URLs (`http://leader.stigix.io:8080`).
+* **Solution :**
+  * Inspect `X-Forwarded-Proto`, `CF-Visitor`, and `X-Forwarded-Host` headers in [`magic-join-manager.ts`](file:///Users/jsuzanne/Github/stigix/web-dashboard/magic-join-manager.ts) and [`server.ts`](file:///Users/jsuzanne/Github/stigix/web-dashboard/server.ts).
+  * If `x-forwarded-proto === 'https'`, omit `:8080` and format the detected endpoint as `https://${host}`.
+
+### 2. Zero-Config Persistent Secret (`jwt-secret.key`)
+* **Problem :** If Stigix is deployed via bare `docker run` or `docker compose up` without running `install.sh`, `process.env.JWT_SECRET` defaults to an insecure hardcoded fallback string.
+* **Solution :**
+  * If `JWT_SECRET` is unset or matches the default placeholder:
+    1. Check if `/app/config/jwt-secret.key` exists.
+    2. If present, load it.
+    3. If absent, generate a cryptographically secure 256-bit random key (`crypto.randomBytes(32).toString('hex')`) and persist it to `/app/config/jwt-secret.key` with `0600` permissions.
+  * Eliminates insecure defaults while ensuring session persistence across container restarts.

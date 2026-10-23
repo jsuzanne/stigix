@@ -489,6 +489,9 @@ export function MagicJoinModal({ isOpen, onClose, token }: MagicJoinModalProps) 
                                                     );
                                                 })}
                                             </div>
+                                            <p className="text-[10px] text-text-muted/80 leading-relaxed pt-1">
+                                                💡 <strong>Keep all reachable interfaces selected</strong> to enable automatic multi-path failover and passive WebSocket RTT scoring. Only deselect an IP if you are certain no peer can ever route to it.
+                                            </p>
                                         </div>
                                     </div>
                                 </div>

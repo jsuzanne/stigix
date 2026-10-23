@@ -1716,7 +1716,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
             const url = new URL(val);
             const hostPart = val.split('://')[1] || '';
             const portPart = hostPart.split('/')[0] || '';
-            if (!portPart.includes(':') && url.port === '') url.port = '8080';
+            if (url.protocol === 'http:' && !portPart.includes(':') && url.port === '') url.port = '8080';
             if (url.pathname === '/' || url.pathname === '') url.pathname = '/api/registry';
             else if (!url.pathname.includes('/api/registry')) {
                 url.pathname = url.pathname.replace(/\/$/, '') + '/api/registry';
@@ -6866,32 +6866,87 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                         <div className="space-y-6">
                             {/* Connection status card */}
                             {(isPeerConnected || isEnrolledPeer) && (
-                                <div className="p-4 bg-blue-500/5 border border-blue-500/15 rounded-xl flex items-center justify-between gap-4">
-                                    <div className="flex items-center gap-3">
-                                        <div className="relative">
-                                            <Server size={28} className="text-blue-400" />
-                                            <div className={cn(
-                                                "absolute -top-1 -right-1 w-3 h-3 rounded-full border-2 border-card shadow",
-                                                isPeerConnected ? "bg-green-500" : "bg-amber-500"
-                                            )} />
+                                <div className="p-4 bg-blue-500/5 border border-blue-500/15 rounded-xl space-y-3">
+                                    <div className="flex items-center justify-between gap-4">
+                                        <div className="flex items-center gap-3">
+                                            <div className="relative">
+                                                <Server size={28} className="text-blue-400" />
+                                                <div className={cn(
+                                                    "absolute -top-1 -right-1 w-3 h-3 rounded-full border-2 border-card shadow",
+                                                    isPeerConnected ? "bg-green-500" : "bg-amber-500"
+                                                )} />
+                                            </div>
+                                            <div>
+                                                <p className="text-[10px] font-black text-text-muted uppercase tracking-widest">Active Leader Controller</p>
+                                                <p className="text-sm font-black text-text-primary">{registryStatus?.leader_info?.id || registryStatus?.leader_tunnel_info?.siteName || 'Cluster Leader'}</p>
+                                                <p className="text-[10px] font-mono text-blue-400">
+                                                    {registryStatus?.active_leader_endpoint || registryStatus?.enrolled_leader_url || registryStatus?.static_leader_url || registryStatus?.leader_info?.ip || registryStatus?.registry_url || 'Managed via Leader'}
+                                                </p>
+                                            </div>
                                         </div>
-                                        <div>
-                                            <p className="text-[10px] font-black text-text-muted uppercase tracking-widest">Active Leader Controller</p>
-                                            <p className="text-sm font-black text-text-primary">{registryStatus?.leader_info?.id || registryStatus?.leader_tunnel_info?.siteName || 'Cluster Leader'}</p>
-                                            <p className="text-[10px] font-mono text-blue-400">
-                                                {registryStatus?.enrolled_leader_url || registryStatus?.static_leader_url || registryStatus?.leader_info?.ip || registryStatus?.registry_url || 'Managed via Leader'}
-                                            </p>
+                                        <div className="flex items-center gap-2">
+                                            {onOpenNodeRoleModal && !isRemoteView && (
+                                                <button
+                                                    type="button"
+                                                    onClick={onOpenNodeRoleModal}
+                                                    className="px-2.5 py-1 rounded-lg text-[10px] font-bold bg-card hover:bg-card-hover text-blue-400 border border-blue-500/30 transition-all"
+                                                    title="Edit or switch Leader Controller URL without unenrolling"
+                                                >
+                                                    ✎ Switch Endpoint
+                                                </button>
+                                            )}
+                                            <span className={cn(
+                                                "text-[9px] font-black uppercase flex items-center gap-1.5 px-2.5 py-1 rounded-full border",
+                                                isPeerConnected
+                                                    ? "text-green-500 bg-green-500/10 border-green-500/20"
+                                                    : "text-amber-500 bg-amber-500/10 border-amber-500/20"
+                                            )}>
+                                                <div className={cn("w-1.5 h-1.5 rounded-full animate-pulse", isPeerConnected ? "bg-green-500" : "bg-amber-500")} />
+                                                {isPeerConnected ? 'Connected' : 'Enrolled'}
+                                            </span>
                                         </div>
                                     </div>
-                                    <span className={cn(
-                                        "text-[9px] font-black uppercase flex items-center gap-1.5 px-2.5 py-1 rounded-full border",
-                                        isPeerConnected
-                                            ? "text-green-500 bg-green-500/10 border-green-500/20"
-                                            : "text-amber-500 bg-amber-500/10 border-amber-500/20"
-                                    )}>
-                                        <div className={cn("w-1.5 h-1.5 rounded-full animate-pulse", isPeerConnected ? "bg-green-500" : "bg-amber-500")} />
-                                        {isPeerConnected ? 'Connected' : 'Enrolled'}
-                                    </span>
+
+                                    {Array.isArray(registryStatus?.candidate_endpoints) && registryStatus.candidate_endpoints.length > 1 && (
+                                        <div className="pt-2 border-t border-blue-500/15 flex items-center justify-between gap-2 flex-wrap">
+                                            <span className="text-[10px] font-bold text-text-muted uppercase tracking-wider">
+                                                Candidate Endpoints (Smart Failover):
+                                            </span>
+                                            <div className="flex flex-wrap gap-1.5">
+                                                {registryStatus.candidate_endpoints.map((ep: string) => {
+                                                    const cleanEp = ep.replace(/\/$/, '');
+                                                    const activeEp = (registryStatus?.active_leader_endpoint || registryStatus?.enrolled_leader_url || '').replace(/\/$/, '');
+                                                    const isActive = cleanEp === activeEp;
+                                                    const metric = Array.isArray(registryStatus?.candidate_endpoint_metrics)
+                                                        ? registryStatus.candidate_endpoint_metrics.find((m: any) => m.url?.replace(/\/$/, '') === cleanEp)
+                                                        : null;
+                                                    return (
+                                                        <button
+                                                            key={cleanEp}
+                                                            type="button"
+                                                            onClick={() => handleSaveStaticLeader(cleanEp)}
+                                                            disabled={saving}
+                                                            className={cn(
+                                                                "px-2 py-0.5 rounded-md border text-[10px] font-mono flex items-center gap-1.5 transition-all",
+                                                                isActive
+                                                                    ? "bg-blue-500/15 border-blue-500/40 text-blue-400 font-bold"
+                                                                    : "bg-card border-border/70 hover:border-blue-500/40 text-text-secondary"
+                                                            )}
+                                                            title={isActive ? "Active WebSocket endpoint" : "Click to switch WebSocket connection to this endpoint"}
+                                                        >
+                                                            <span className={cn("w-1.5 h-1.5 rounded-full", isActive ? "bg-emerald-400" : "bg-text-muted/40")} />
+                                                            <span>{cleanEp}</span>
+                                                            {metric?.rttEwmaMs != null && (
+                                                                <span className="text-[9px] text-emerald-400">
+                                                                    {metric.rttEwmaMs}ms
+                                                                </span>
+                                                            )}
+                                                        </button>
+                                                    );
+                                                })}
+                                            </div>
+                                        </div>
+                                    )}
                                 </div>
                             )}
 
