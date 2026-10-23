@@ -6511,7 +6511,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                                     Reconnecting
                                 </span>
                             )}
-                            {onOpenNodeRoleModal && !isRemoteView && (
+                            {onOpenNodeRoleModal && (
                                 <button
                                     onClick={onOpenNodeRoleModal}
                                     className="px-3.5 py-2 rounded-xl text-[10px] font-black uppercase tracking-wider bg-card hover:bg-card-hover text-text-primary border border-border shadow-sm transition-all flex items-center gap-1.5"
@@ -6885,7 +6885,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                                             </div>
                                         </div>
                                         <div className="flex items-center gap-2">
-                                            {onOpenNodeRoleModal && !isRemoteView && (
+                                            {onOpenNodeRoleModal && (
                                                 <button
                                                     type="button"
                                                     onClick={onOpenNodeRoleModal}

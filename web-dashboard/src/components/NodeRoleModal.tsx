@@ -5,6 +5,7 @@ import {
     Radio, Shield, Terminal, Zap, CheckCircle2, Plus
 } from 'lucide-react';
 import { twMerge } from 'tailwind-merge';
+import { usePeerContext } from '../PeerContext';
 
 interface NodeRoleModalProps {
     isOpen: boolean;
@@ -23,6 +24,11 @@ export function NodeRoleModal({
     onRefreshStatus,
     onOpenMagicJoin 
 }: NodeRoleModalProps) {
+    const { gFetch, activePeerId, activePeer } = usePeerContext();
+    const isRemote = Boolean(activePeerId);
+    const doFetch = gFetch || fetch;
+
+    const [remoteRegistryStatus, setRemoteRegistryStatus] = useState<any>(null);
     const [joinTokenInput, setJoinTokenInput] = useState('');
     const [showManualUrl, setShowManualUrl] = useState(false);
     const [manualLeaderUrl, setManualLeaderUrl] = useState('');
@@ -31,38 +37,55 @@ export function NodeRoleModal({
     const [error, setError] = useState<string | null>(null);
     const [successMsg, setSuccessMsg] = useState<string | null>(null);
 
+    const authHeaders = {
+        'Authorization': `Bearer ${token || localStorage.getItem('token') || ''}`,
+        'Content-Type': 'application/json'
+    };
+
+    const refreshEffectiveStatus = async () => {
+        if (isRemote) {
+            try {
+                const res = await doFetch('/api/registry/status', { headers: authHeaders });
+                if (res.ok) {
+                    const data = await res.json();
+                    setRemoteRegistryStatus(data);
+                }
+            } catch {}
+        }
+        await onRefreshStatus();
+    };
+
     useEffect(() => {
         if (isOpen) {
-            onRefreshStatus();
+            setError(null);
+            setSuccessMsg(null);
+            refreshEffectiveStatus();
         }
-    }, [isOpen]);
+    }, [isOpen, activePeerId]);
 
     if (!isOpen) return null;
 
-    const isLeader = registryStatus?.mode === 'leader' || registryStatus?.current_mode === 'leader';
-    const isEnrolledPeer = !isLeader && Boolean(registryStatus?.is_cluster_enrolled || registryStatus?.static_leader_url);
+    const effectiveStatus = isRemote ? (remoteRegistryStatus || {}) : registryStatus;
+
+    const isLeader = effectiveStatus?.mode === 'leader' || effectiveStatus?.current_mode === 'leader';
+    const isEnrolledPeer = !isLeader && Boolean(effectiveStatus?.is_cluster_enrolled || effectiveStatus?.static_leader_url);
     const isStandalone = !isLeader && !isEnrolledPeer;
 
     const activeControllerOrigin = (
-        registryStatus?.active_leader_endpoint ||
-        registryStatus?.enrolled_leader_url ||
-        registryStatus?.static_leader_url ||
+        effectiveStatus?.active_leader_endpoint ||
+        effectiveStatus?.enrolled_leader_url ||
+        effectiveStatus?.static_leader_url ||
         ''
     ).replace(/\/api\/registry\/?$/, '').replace(/\/$/, '');
 
     const candidateEndpointsList: string[] = (() => {
-        const list = Array.isArray(registryStatus?.candidate_endpoints) ? registryStatus.candidate_endpoints : [];
+        const list = Array.isArray(effectiveStatus?.candidate_endpoints) ? effectiveStatus.candidate_endpoints : [];
         const cleaned = list.map((ep: string) => ep.replace(/\/api\/registry\/?$/, '').replace(/\/$/, '')).filter(Boolean);
         if (activeControllerOrigin && !cleaned.includes(activeControllerOrigin)) {
             return [activeControllerOrigin, ...cleaned];
         }
         return Array.from(new Set(cleaned));
     })();
-
-    const authHeaders = {
-        'Authorization': `Bearer ${token || localStorage.getItem('token') || ''}`,
-        'Content-Type': 'application/json'
-    };
 
     // Decode preview endpoints from STX- token
     const tokenPreview = (() => {
@@ -90,7 +113,7 @@ export function NodeRoleModal({
         setError(null);
         setSuccessMsg(null);
         try {
-            const res = await fetch('/api/registry/join-with-token', {
+            const res = await doFetch('/api/registry/join-with-token', {
                 method: 'POST',
                 headers: authHeaders,
                 body: JSON.stringify({ token: trimmed, force: true })
@@ -99,7 +122,7 @@ export function NodeRoleModal({
             if (res.ok && (data.success || data.status === 'ok')) {
                 setSuccessMsg(`Enrolled successfully to ${data.leader_url || 'Cluster Leader'}! WebSocket tunnel established.`);
                 setJoinTokenInput('');
-                await onRefreshStatus();
+                await refreshEffectiveStatus();
                 setTimeout(() => {
                     onClose();
                 }, 1600);
@@ -120,7 +143,7 @@ export function NodeRoleModal({
         setError(null);
         setSuccessMsg(null);
         try {
-            const res = await fetch('/api/registry/static-leader', {
+            const res = await doFetch('/api/registry/static-leader', {
                 method: 'POST',
                 headers: authHeaders,
                 body: JSON.stringify({ url: trimmed, addOnly })
@@ -130,7 +153,7 @@ export function NodeRoleModal({
                 setSuccessMsg(d.message || (addOnly ? `Added backup Leader endpoint(s): ${trimmed}` : `Leader endpoint updated to ${trimmed}! Reconnecting WebSocket...`));
                 setManualLeaderUrl('');
                 if (!addOnly) setShowManualUrl(false);
-                await onRefreshStatus();
+                await refreshEffectiveStatus();
             } else {
                 setError(d.message || d.error || 'Failed to configure static Leader URL');
             }
@@ -147,14 +170,14 @@ export function NodeRoleModal({
         setError(null);
         setSuccessMsg(null);
         try {
-            const res = await fetch('/api/registry/static-leader', {
+            const res = await doFetch('/api/registry/static-leader', {
                 method: 'POST',
                 headers: authHeaders,
                 body: JSON.stringify({ removeUrl: epToRemove })
             });
             if (res.ok) {
                 setSuccessMsg(`Removed candidate endpoint ${epToRemove}`);
-                await onRefreshStatus();
+                await refreshEffectiveStatus();
             }
         } catch (err: any) {
             setError(err.message || String(err));
@@ -169,14 +192,14 @@ export function NodeRoleModal({
         setError(null);
         setSuccessMsg(null);
         try {
-            const res = await fetch('/api/config/system-settings', {
+            const res = await doFetch('/api/config/system-settings', {
                 method: 'POST',
                 headers: authHeaders,
                 body: JSON.stringify({ registry_mode: 'leader' })
             });
             if (res.ok) {
                 setSuccessMsg("Node promoted to Cluster Leader!");
-                await onRefreshStatus();
+                await refreshEffectiveStatus();
                 setTimeout(() => {
                     onClose();
                 }, 1400);
@@ -197,13 +220,13 @@ export function NodeRoleModal({
         setError(null);
         setSuccessMsg(null);
         try {
-            const res = await fetch('/api/registry/unenroll', {
+            const res = await doFetch('/api/registry/unenroll', {
                 method: 'POST',
                 headers: authHeaders
             });
             if (res.ok) {
                 setSuccessMsg("Node disconnected and reverted to Standalone mode.");
-                await onRefreshStatus();
+                await refreshEffectiveStatus();
                 setTimeout(() => {
                     onClose();
                 }, 1400);
@@ -224,15 +247,15 @@ export function NodeRoleModal({
         setError(null);
         setSuccessMsg(null);
         try {
-            const res = await fetch('/api/config/system-settings', {
+            const res = await doFetch('/api/config/system-settings', {
                 method: 'POST',
                 headers: authHeaders,
                 body: JSON.stringify({ registry_mode: 'standalone' })
             });
             if (res.ok) {
-                await fetch('/api/registry/unenroll', { method: 'POST', headers: authHeaders }).catch(() => {});
+                await doFetch('/api/registry/unenroll', { method: 'POST', headers: authHeaders }).catch(() => {});
                 setSuccessMsg("Leader demoted to Standalone mode.");
-                await onRefreshStatus();
+                await refreshEffectiveStatus();
                 setTimeout(() => {
                     onClose();
                 }, 1400);
@@ -258,8 +281,8 @@ export function NodeRoleModal({
                             <Radio size={18} />
                         </div>
                         <div>
-                            <h3 className="text-sm font-black text-text-primary uppercase tracking-wider flex items-center gap-2">
-                                Stigix Node Mode
+                            <h3 className="text-sm font-black text-text-primary uppercase tracking-wider flex items-center gap-2 flex-wrap">
+                                {isRemote ? `Remote Node Mode (${activePeer?.site || activePeer?.instance_id || activePeerId})` : 'Stigix Node Mode'}
                                 <span className={twMerge(
                                     "px-2 py-0.5 rounded text-[10px] font-mono font-bold tracking-tight",
                                     isLeader ? "bg-purple-500/15 text-purple-400 border border-purple-500/30" :
@@ -270,7 +293,9 @@ export function NodeRoleModal({
                                 </span>
                             </h3>
                             <p className="text-xs text-text-muted mt-0.5">
-                                Select how this Stigix node participates in your SD-WAN mesh
+                                {isRemote
+                                    ? `Managing remote peer ${activePeer?.site || activePeer?.instance_id || ''} via reverse tunnel`
+                                    : 'Select how this Stigix node participates in your SD-WAN mesh'}
                             </p>
                         </div>
                     </div>
@@ -457,7 +482,7 @@ export function NodeRoleModal({
                                     </div>
                                     <div className="p-2.5 rounded-lg bg-card border border-border/60">
                                         <span className="text-[10px] text-text-muted block font-sans uppercase">Token Prefix</span>
-                                        <span className="text-text-primary">{registryStatus?.enrolled_token_prefix || 'Active Session'}</span>
+                                        <span className="text-text-primary">{effectiveStatus?.enrolled_token_prefix || 'Active Session'}</span>
                                     </div>
                                 </div>
 
@@ -474,8 +499,8 @@ export function NodeRoleModal({
                                     <div className="flex flex-wrap gap-1.5 min-h-[28px]">
                                         {candidateEndpointsList.map((cleanEp: string) => {
                                             const isActive = activeControllerOrigin === cleanEp;
-                                            const metric = Array.isArray(registryStatus?.candidate_endpoint_metrics)
-                                                ? registryStatus.candidate_endpoint_metrics.find((m: any) => m.url?.replace(/\/$/, '') === cleanEp)
+                                            const metric = Array.isArray(effectiveStatus?.candidate_endpoint_metrics)
+                                                ? effectiveStatus.candidate_endpoint_metrics.find((m: any) => m.url?.replace(/\/$/, '') === cleanEp)
                                                 : null;
                                             const scoreVal = metric?.score ?? 100;
                                             return (

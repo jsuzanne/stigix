@@ -139,14 +139,14 @@ export const HomeOverview: React.FC<HomeOverviewProps> = ({
     const voiceJitter = voiceSub.avg_jitter_ms ? `${voiceSub.avg_jitter_ms}ms RTT` : '<10ms RTT';
 
     const cleanLeaderIp = (() => {
-        if (registryStatus?.mode === 'leader' || mesh.mode === 'leader') {
+        if ((!isRemote && registryStatus?.mode === 'leader') || mesh.mode === 'leader') {
             const selfIp = registryStatus?.detected_ip || localIp || (mesh.leader_ip && mesh.leader_ip !== 'Local Leader' ? mesh.leader_ip : null);
             if (selfIp) {
                 return String(selfIp).includes('(Self)') ? String(selfIp) : `${selfIp} (Self)`;
             }
             return 'Local Leader';
         }
-        const raw = mesh.leader_ip || registryStatus?.leader_info?.ip || registryStatus?.static_leader_url || (mesh.status === 'connected' ? (leaderSite || 'Connected') : '—');
+        const raw = mesh.leader_ip || (!isRemote ? (registryStatus?.leader_info?.ip || registryStatus?.static_leader_url) : null) || (mesh.status === 'connected' ? (leaderSite || 'Connected') : '—');
         if (typeof raw === 'string' && (raw.startsWith('http://') || raw.startsWith('https://'))) {
             try {
                 const parsed = new URL(raw);
@@ -302,16 +302,16 @@ export const HomeOverview: React.FC<HomeOverviewProps> = ({
                                 <button
                                     type="button"
                                     onClick={() => {
-                                        if (!isRemote && onOpenNodeRoleModal) {
+                                        if (onOpenNodeRoleModal) {
                                             onOpenNodeRoleModal();
                                         }
                                     }}
-                                    title={isRemote ? "Viewing Remote Node" : "Click to manage Node Mode (Standalone / Peer / Leader)"}
+                                    title={isRemote ? "Click to manage Remote Node Mode & Leader Endpoints" : "Click to manage Node Mode (Standalone / Peer / Leader)"}
                                     className={cn(
                                         "px-4 py-2 rounded-2xl border shadow-sm flex items-center gap-3 backdrop-blur-md transition-all text-left",
-                                        !isRemote && onOpenNodeRoleModal && "cursor-pointer hover:scale-[1.02] active:scale-[0.99]",
+                                        onOpenNodeRoleModal && "cursor-pointer hover:scale-[1.02] active:scale-[0.99]",
                                         isRemote
-                                            ? "bg-amber-500/10 border-amber-500/30 text-amber-600 dark:text-amber-400"
+                                            ? "bg-amber-500/10 border-amber-500/30 hover:border-amber-500/60 text-amber-600 dark:text-amber-400"
                                             : isLeaderMode
                                                 ? "bg-purple-500/10 border-purple-500/30 hover:border-purple-500/60 text-purple-600 dark:text-purple-400"
                                                 : isPeerConnectedMode
