@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.0.89] - 2026-10-23
+
+### Changed
+- **Zero-Scroll 13.3" Mesh Overview Table & Hover Tunnel Popover (`web-dashboard/src/Fleet.tsx`)**:
+  - Streamlined the Mesh Overview table from 10 columns to 9 compact columns (`px-3.5 py-2.5`) to fit 13.3-inch screens without horizontal scrolling:
+    - Integrated the Online/Offline indicator dot onto the site avatar badge and removed the standalone `Status` column.
+    - Removed inline capability dots under the site name (`Site / Node` now shows `IP [Copy] · v3.0.89`).
+    - Consolidated `Mesh Link` onto a single compact line (`↘️ INBOUND WS · 79ms · 🕒 26m · ↻ 2`) with a rich mouse-over popover displaying `SRC: <ip>:<port> ➔ DST: <host>:<port>`, session uptime, and reconnect count.
+    - Removed the duplicate RTT badge and second line from `Last Seen` (exact timestamp available on hover) and removed the duplicate `Copy IP` button from `Actions`.
+- **Collapsible Accordion Layout in Peer Detail Modal (`web-dashboard/src/Fleet.tsx`)**:
+  - Replaced the verbose `Network & Management Addresses` section and 2-line tip with compact inline `IP` and `UI` pills in the modal header.
+  - Kept the 4-column telemetry KPI strip (`Global Exp.`, `Traffic`, `Voice MOS`, `Node Uptime`) visible at the top and converted `Mesh Tunnel Control Plane`, `Connectivity Probes`, `Configuration Provisioning`, and `Enabled Capabilities` into collapsible accordion cards with live summary badges in their headers.
+
 ## [3.0.88] - 2026-10-23
 
 ### Added
