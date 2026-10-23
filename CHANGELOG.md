@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.0.93] - 2026-10-23
+
+### Fixed
+- **Cross-Platform Interface & Default Route Pre-Initialization Hardening (`web-dashboard/server.ts`, `web-dashboard/registry-manager.ts`)**:
+  - Eliminated the cold-boot initialization ordering race condition in `server.ts` where `new RegistryManager` was instantiated before `interfaces.txt` could be written by `initializeDefaultConfigs()`.
+  - Added synchronous pre-initialization of `interfaces.txt` before `RegistryManager` instantiation, ensuring `RegistryManager.detectPrivateIp()` immediately reads the persisted or detected default route interface on the very first tick.
+  - Added full cross-platform default route IP and interface detection across Linux, Windows, and macOS:
+    - **Windows**: Added `route print 0.0.0.0` parsing in both `server.ts` and `RegistryManager.detectPrivateIp()` to extract the active interface and its default gateway IP without executing Unix-only commands; added `vethernet` filtering to avoid Hyper-V/WSL internal adapters.
+    - **Linux**: Fast non-blocking `/proc/net/route` parsing with fallback to `ip route show default`.
+    - **macOS**: `route get default` parsing with fallback to physical `en*` interface enumeration.
+  - Consolidated `getInterface()` in `server.ts` into a single, cached, top-level definition to avoid redundant routing table evaluations.
+
 ## [3.0.92] - 2026-10-23
 
 ### Fixed

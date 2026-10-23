@@ -342,7 +342,9 @@ export class RegistryManager {
 
         // 3. Fast non-blocking Linux /proc/net/route lookup (Default gateway = Destination 00000000)
         const isMac = process.platform === 'darwin';
-        if (!isMac && fs.existsSync('/proc/net/route')) {
+        const isWin = process.platform === 'win32';
+
+        if (!isMac && !isWin && fs.existsSync('/proc/net/route')) {
             try {
                 const routeContent = fs.readFileSync('/proc/net/route', 'utf8');
                 const lines = routeContent.split('\n').slice(1);
@@ -365,30 +367,50 @@ export class RegistryManager {
             }
         }
 
-        // 4. Prefer default route via ip route / route get
-        try {
-            const cmd = isMac
-                ? "route get default | grep interface | awk '{print $2}'"
-                : "ip route | grep '^default' | awk '{print $5}' | head -n 1";
-            const output = execSync(cmd, { encoding: 'utf8', timeout: 2000 }).trim();
-            if (output && nets[output]) {
-                const ipv4 = nets[output]!.find(ni => ni.family === 'IPv4' && !ni.internal);
-                if (ipv4) {
-                    log('REGISTRY', `Selected default gateway IP via routing command (${output}): ${ipv4.address}`);
-                    return ipv4.address;
+        // 4. Windows route print 0.0.0.0
+        if (isWin) {
+            try {
+                const routeOutput = execSync('route print 0.0.0.0', { encoding: 'utf8', timeout: 2500 });
+                for (const line of routeOutput.split('\n')) {
+                    const cols = line.trim().split(/\s+/);
+                    if (cols.length >= 4 && cols[0] === '0.0.0.0' && cols[1] === '0.0.0.0' && cols[2] !== 'On-link') {
+                        const ifaceIp = cols[3];
+                        if (ifaceIp && /^(\d{1,3}\.){3}\d{1,3}$/.test(ifaceIp)) {
+                            log('REGISTRY', `Selected default gateway IP from Windows route print: ${ifaceIp}`);
+                            return ifaceIp;
+                        }
+                    }
                 }
-            }
-        } catch (e) {}
+            } catch (e) {}
+        }
 
-        // 5. Heuristic fallback
-        const blacklist = ['docker', 'virbr', 'veth', 'br-', 'lo'];
+        // 5. Prefer default route via ip route (Linux) or route get (macOS)
+        if (!isWin) {
+            try {
+                const cmd = isMac
+                    ? "route get default | grep interface | awk '{print $2}'"
+                    : "ip route | grep '^default' | awk '{print $5}' | head -n 1";
+                const output = execSync(cmd, { encoding: 'utf8', timeout: 2000 }).trim();
+                if (output && nets[output]) {
+                    const ipv4 = nets[output]!.find(ni => ni.family === 'IPv4' && !ni.internal);
+                    if (ipv4) {
+                        log('REGISTRY', `Selected default gateway IP via routing command (${output}): ${ipv4.address}`);
+                        return ipv4.address;
+                    }
+                }
+            } catch (e) {}
+        }
+
+        // 6. Heuristic fallback
+        const blacklist = ['docker', 'virbr', 'veth', 'br-', 'lo', 'vethernet'];
 
         // Collect all possible IPs
         const candidates: string[] = [];
 
         for (const name of Object.keys(nets)) {
             // Skip blacklisted interfaces
-            if (blacklist.some(b => name.startsWith(b))) continue;
+            const lower = name.toLowerCase();
+            if (blacklist.some(b => lower.startsWith(b))) continue;
 
             for (const netInfo of nets[name]!) {
                 // Skip internally and non-IPv4

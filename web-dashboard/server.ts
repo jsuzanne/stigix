@@ -103,6 +103,8 @@ const PYTHON_PATH = getPythonPath();
 log('SYSTEM', `Python Path: ${PYTHON_PATH}`);
 
 const isMac = os.platform() === 'darwin';
+const isWin = os.platform() === 'win32';
+const isLinux = os.platform() === 'linux';
 const getTimeoutCmd = (seconds: number) => isMac ? "" : `timeout ${seconds} `;
 
 // Configuration Paths - Environment aware
@@ -233,6 +235,151 @@ function deriveCloudTargetBaseUrl(): string | undefined {
     }
 
     return baseUrl;
+}
+
+let _cachedInterfaceName: string | null = null;
+let _cachedInterfaceTs = 0;
+
+const getInterface = (): string => {
+    const now = Date.now();
+    if (_cachedInterfaceName && (now - _cachedInterfaceTs) < 15000) {
+        return _cachedInterfaceName;
+    }
+
+    const interfacesFile = path.join(APP_CONFIG.configDir, 'interfaces.txt');
+
+    // 1. Primary Source: interfaces.txt
+    if (fs.existsSync(interfacesFile)) {
+        try {
+            const content = fs.readFileSync(interfacesFile, 'utf8');
+            const cleanLines = content.split('\n')
+                .map(line => line.trim())
+                .filter(line => line && !line.startsWith('#'));
+
+            if (cleanLines.length > 0) {
+                if (DEBUG) log('SYSTEM', `Using interface: ${cleanLines[0]} (Source: interfaces.txt)`, 'debug');
+                _cachedInterfaceName = cleanLines[0];
+                _cachedInterfaceTs = now;
+                return cleanLines[0];
+            }
+        } catch (e) {
+            log('SYSTEM', `Failed to read interfaces.txt: ${e}`, 'warn');
+        }
+    }
+
+    // 2. Fast non-blocking Linux /proc/net/route lookup (Default gateway = Destination 00000000)
+    if (isLinux && fs.existsSync('/proc/net/route')) {
+        try {
+            const routeContent = fs.readFileSync('/proc/net/route', 'utf8');
+            const lines = routeContent.split('\n').slice(1);
+            for (const line of lines) {
+                const cols = line.trim().split(/\s+/);
+                if (cols.length >= 2 && cols[1] === '00000000' && cols[0]) {
+                    _cachedInterfaceName = cols[0];
+                    _cachedInterfaceTs = now;
+                    return cols[0];
+                }
+            }
+        } catch {}
+    }
+
+    // 3. Windows route print 0.0.0.0
+    if (isWin) {
+        try {
+            const routeOutput = execSync('route print 0.0.0.0', { encoding: 'utf8', timeout: 2500 });
+            let defaultIp = '';
+            for (const line of routeOutput.split('\n')) {
+                const cols = line.trim().split(/\s+/);
+                if (cols.length >= 4 && cols[0] === '0.0.0.0' && cols[1] === '0.0.0.0' && cols[2] !== 'On-link') {
+                    defaultIp = cols[3];
+                    break;
+                }
+            }
+            if (defaultIp) {
+                const nets = os.networkInterfaces();
+                for (const [ifName, addrs] of Object.entries(nets)) {
+                    if (addrs?.some(a => a.address === defaultIp)) {
+                        _cachedInterfaceName = ifName;
+                        _cachedInterfaceTs = now;
+                        return ifName;
+                    }
+                }
+            }
+        } catch {}
+    }
+
+    // 4. Auto-detect fallback (Host Mode) - Prefer ip route on Linux or route get on macOS
+    if (!isWin) {
+        try {
+            const cmd = isMac 
+                ? "route get default | grep interface | awk '{print $2}'"
+                : "ip route | grep '^default' | awk '{print $5}' | head -n 1";
+            const output = execSync(cmd, {
+                encoding: 'utf8',
+                timeout: 2000
+            }).trim();
+            if (output) {
+                if (DEBUG) log('SYSTEM', `Auto-detected interface: ${output} (Source: ${isMac ? 'route get' : 'ip route'})`, 'debug');
+                _cachedInterfaceName = output;
+                _cachedInterfaceTs = now;
+                return output;
+            }
+        } catch (e) {
+            // Silently fail to next step
+        }
+    }
+
+    // 5. Last Resort Fallback - os.networkInterfaces()
+    try {
+        const nets = os.networkInterfaces();
+        const candidates: string[] = [];
+        for (const name of Object.keys(nets)) {
+            // Exclude loopback and common virtual/bridge interfaces if possible
+            if (!name.startsWith('lo') &&
+                !name.startsWith('docker') &&
+                !name.startsWith('br-') &&
+                !name.startsWith('veth') &&
+                !name.startsWith('vnet') &&
+                !name.startsWith('virbr') &&
+                !name.startsWith('tailscale')) {
+                candidates.push(name);
+            }
+        }
+
+        // Priority: en* (physical), ens* (physical), eth* (common), Ethernet / Wi-Fi on Windows
+        const best = candidates.find(c => c.startsWith('en')) ||
+            candidates.find(c => c.startsWith('eth')) ||
+            candidates.find(c => /^(Ethernet|Wi-Fi)/i.test(c)) ||
+            candidates[0];
+
+        if (best) {
+            if (DEBUG) log('SYSTEM', `Auto-detected interface: ${best} (Source: os.networkInterfaces fallback)`, 'debug');
+            _cachedInterfaceName = best;
+            _cachedInterfaceTs = now;
+            return best;
+        }
+    } catch (e) { }
+
+    // 6. Absolute Fallback
+    log('SYSTEM', 'No interface detected. Defaulting to eth0', 'warn');
+    _cachedInterfaceName = 'eth0';
+    _cachedInterfaceTs = now;
+    return 'eth0';
+};
+
+// Ensure interfaces.txt exists before RegistryManager inspects it
+const preInitInterfacesFile = path.join(APP_CONFIG.configDir, 'interfaces.txt');
+if (!fs.existsSync(preInitInterfacesFile)) {
+    try {
+        const defaultIface = getInterface();
+        if (defaultIface) {
+            fs.mkdirSync(APP_CONFIG.configDir, { recursive: true });
+            fs.writeFileSync(preInitInterfacesFile, defaultIface + '\n', 'utf8');
+            log('INIT', `Pre-initialized interfaces.txt with detected primary interface: ${defaultIface}`);
+        }
+    } catch (e) {
+        log('INIT', `Failed to pre-initialize interfaces.txt: ${e}`, 'warn');
+    }
 }
 
 const cloudTargetBaseUrl = deriveCloudTargetBaseUrl();
@@ -1376,107 +1523,7 @@ try {
     console.error('[MAINTENANCE-BOOT] Failed to check persistent upgrade status:', e.message);
 }
 
-let _cachedInterfaceName: string | null = null;
-let _cachedInterfaceTs = 0;
 
-const getInterface = (): string => {
-    const now = Date.now();
-    if (_cachedInterfaceName && (now - _cachedInterfaceTs) < 15000) {
-        return _cachedInterfaceName;
-    }
-
-    const interfacesFile = path.join(APP_CONFIG.configDir, 'interfaces.txt');
-
-    // 1. Primary Source: interfaces.txt
-    if (fs.existsSync(interfacesFile)) {
-        try {
-            const content = fs.readFileSync(interfacesFile, 'utf8');
-            const cleanLines = content.split('\n')
-                .map(line => line.trim())
-                .filter(line => line && !line.startsWith('#'));
-
-            if (cleanLines.length > 0) {
-                if (DEBUG) log('SYSTEM', `Using interface: ${cleanLines[0]} (Source: interfaces.txt)`, 'debug');
-                _cachedInterfaceName = cleanLines[0];
-                _cachedInterfaceTs = now;
-                return cleanLines[0];
-            }
-        } catch (e) {
-            log('SYSTEM', `Failed to read interfaces.txt: ${e}`, 'warn');
-        }
-    }
-
-    // 2. Fast non-blocking Linux /proc/net/route lookup (Default gateway = Destination 00000000)
-    if (!isMac && fs.existsSync('/proc/net/route')) {
-        try {
-            const routeContent = fs.readFileSync('/proc/net/route', 'utf8');
-            const lines = routeContent.split('\n').slice(1);
-            for (const line of lines) {
-                const cols = line.trim().split(/\s+/);
-                if (cols.length >= 2 && cols[1] === '00000000' && cols[0]) {
-                    _cachedInterfaceName = cols[0];
-                    _cachedInterfaceTs = now;
-                    return cols[0];
-                }
-            }
-        } catch {}
-    }
-
-    // 3. Auto-detect fallback (Host Mode) - Prefer ip route
-    try {
-        const cmd = isMac 
-            ? "route get default | grep interface | awk '{print $2}'"
-            : "ip route | grep '^default' | awk '{print $5}' | head -n 1";
-        const output = execSync(cmd, {
-            encoding: 'utf8',
-            timeout: 2000
-        }).trim();
-        if (output) {
-            if (DEBUG) log('SYSTEM', `Auto-detected interface: ${output} (Source: ${isMac ? 'route get' : 'ip route'})`, 'debug');
-            _cachedInterfaceName = output;
-            _cachedInterfaceTs = now;
-            return output;
-        }
-    } catch (e) {
-        // Silently fail to next step
-    }
-
-    // 4. Last Resort Fallback - os.networkInterfaces()
-    try {
-        const nets = os.networkInterfaces();
-        const candidates: string[] = [];
-        for (const name of Object.keys(nets)) {
-            // Exclude loopback and common virtual/bridge interfaces if possible
-            if (!name.startsWith('lo') &&
-                !name.startsWith('docker') &&
-                !name.startsWith('br-') &&
-                !name.startsWith('veth') &&
-                !name.startsWith('vnet') &&
-                !name.startsWith('virbr') &&
-                !name.startsWith('tailscale')) {
-                candidates.push(name);
-            }
-        }
-
-        // Priority: en* (physical), ens* (physical), eth* (common)
-        const best = candidates.find(c => c.startsWith('en')) ||
-            candidates.find(c => c.startsWith('eth')) ||
-            candidates[0];
-
-        if (best) {
-            if (DEBUG) log('SYSTEM', `Auto-detected interface: ${best} (Source: os.networkInterfaces fallback)`, 'debug');
-            _cachedInterfaceName = best;
-            _cachedInterfaceTs = now;
-            return best;
-        }
-    } catch (e) { }
-
-    // 5. Absolute Fallback
-    log('SYSTEM', 'No interface detected. Defaulting to eth0', 'warn');
-    _cachedInterfaceName = 'eth0';
-    _cachedInterfaceTs = now;
-    return 'eth0';
-};
 
 /**
  * Resolves the primary traffic generator egress interface, IPv4 address, and binding flags.
