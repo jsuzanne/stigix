@@ -16270,7 +16270,7 @@ app.get('/api/fleet/matrix', authenticateToken, async (req, res) => {
             // Fallback leader discovery from known peers or targets
             if (!leaderHost) {
                 const knownPeers = typeof registryManager?.getPeers === 'function' ? registryManager.getPeers() : [];
-                const leaderPeer = knownPeers.find((p: any) => p.is_leader || p.role === 'leader' || (p.instance_id && p.instance_id.toLowerCase().includes('dc1')));
+                const leaderPeer = knownPeers.find((p: any) => p.is_leader || p.role === 'leader');
                 if (leaderPeer && leaderPeer.ip_private) {
                     leaderHost = leaderPeer.ip_private;
                 }
@@ -18665,6 +18665,9 @@ app.post('/api/registry/site-name', authenticateToken, async (req, res) => {
     try {
         await registryManager.setSiteName(siteName.trim());
         await tcpAppManager.updateSiteName(siteName.trim());
+        if (typeof fleetTunnelManager?.notifySiteNameChanged === 'function') {
+            fleetTunnelManager.notifySiteNameChanged();
+        }
         log('SYSTEM', `Site name changed to "${siteName.trim()}" via UI`);
         res.json({ success: true, siteName: siteName.trim() });
     } catch (e: any) {

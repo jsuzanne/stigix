@@ -122,7 +122,8 @@ type UnderlayResolution = {
     scope?: 'wan' | 'lan';
     prismaWan: {
         elementId: string; elementName?: string; siteId?: string; siteName?: string;
-        interfaceId?: string; interfaceName?: string; ipCidr?: string | null;
+        interfaceId?: string; interfaceName?: string; portName?: string | null;
+        adminUp?: boolean; linkUp?: boolean; ipCidr?: string | null;
         ip?: string | null; network?: string | null; linkType?: string | null; ipType?: string | null;
     };
     vyos?: {
@@ -523,8 +524,7 @@ const SiteNode = ({ data }: any) => {
     const isStigixLeader = Boolean(
         siteStigixNode && (
             siteStigixNode.is_leader ||
-            siteStigixNode.role === 'LEADER' ||
-            (siteStigixNode.id && siteStigixNode.id.toLowerCase().includes('dc1') && !siteStigixNode.id.toLowerCase().includes('dc2'))
+            siteStigixNode.role === 'LEADER'
         )
     );
 
@@ -8252,14 +8252,44 @@ function TopologyContent({ token, theme }: TopologyProps) {
                                         </span>
                                     </div>
                                     <div className="text-[11px] font-mono space-y-1.5 pt-1">
+                                        {/* Row 1: Circuit ⟷ Description */}
                                         <div className="flex justify-between items-center gap-2">
-                                            <span className="text-text-muted whitespace-nowrap">{isLanScope ? 'ION Port:' : 'Circuit:'}</span>
-                                            <strong className="text-text-primary truncate">{underlayDrawerResolution.prismaWan.interfaceName}</strong>
+                                            <span className="text-text-muted whitespace-nowrap">{isLanScope ? 'Label:' : 'Circuit:'}</span>
+                                            <strong className="text-text-primary truncate">{underlayDrawerResolution.prismaWan.interfaceName || '—'}</strong>
                                         </div>
+                                        {/* Row 2: Port + Status ⟷ Port + Status */}
                                         <div className="flex justify-between items-center gap-2">
-                                            <span className="text-text-muted whitespace-nowrap">Type:</span>
+                                            <span className="text-text-muted whitespace-nowrap">Port:</span>
+                                            <span className="flex items-center gap-1.5 whitespace-nowrap">
+                                                <strong className="text-text-primary">
+                                                    {underlayDrawerResolution.prismaWan.portName
+                                                        ? (/^\d+$/.test(String(underlayDrawerResolution.prismaWan.portName))
+                                                            ? `port ${underlayDrawerResolution.prismaWan.portName}`
+                                                            : underlayDrawerResolution.prismaWan.portName)
+                                                        : '—'}
+                                                </strong>
+                                                {underlayDrawerResolution.prismaWan.portName && (
+                                                    <>
+                                                        <span className="text-text-muted/50">·</span>
+                                                        {(underlayDrawerResolution.prismaWan.adminUp === false || underlayDrawerResolution.prismaWan.linkUp === false) ? (
+                                                            <span className="text-rose-500 font-bold inline-flex items-center gap-1 text-[10px]">
+                                                                <span className="w-1.5 h-1.5 rounded-full bg-rose-500 shadow-[0_0_6px_rgba(244,63,94,0.6)]" /> DOWN
+                                                            </span>
+                                                        ) : (
+                                                            <span className="text-emerald-600 dark:text-emerald-400 font-bold inline-flex items-center gap-1 text-[10px]">
+                                                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shadow-[0_0_6px_rgba(16,185,129,0.6)]" /> UP
+                                                            </span>
+                                                        )}
+                                                    </>
+                                                )}
+                                            </span>
+                                        </div>
+                                        {/* Row 3: WAN Label (ISP) ⟷ Role */}
+                                        <div className="flex justify-between items-center gap-2">
+                                            <span className="text-text-muted whitespace-nowrap">{isLanScope ? 'Scope:' : 'WAN Label:'}</span>
                                             <strong className="text-blue-600 dark:text-blue-400 uppercase whitespace-nowrap">{underlayDrawerResolution.prismaWan.linkType || (isLanScope ? 'LAN' : 'WAN')}</strong>
                                         </div>
+                                        {/* Row 4: ION IP (with CIDR mask) ⟷ Gateway IP */}
                                         <div className="flex justify-between items-center gap-2">
                                             <span className="text-text-muted whitespace-nowrap">ION IP:</span>
                                             <strong className="text-emerald-600 dark:text-emerald-400 whitespace-nowrap">{underlayDrawerResolution.prismaWan.ipCidr || underlayDrawerResolution.prismaWan.ip || '—'}</strong>
@@ -8279,6 +8309,14 @@ function TopologyContent({ token, theme }: TopologyProps) {
                                     </span>
                                 </div>
                                 <div className="text-[11px] font-mono space-y-1.5 pt-1">
+                                    {/* Row 1: Description (matches Circuit on the left) */}
+                                    <div className="flex justify-between items-center gap-2">
+                                        <span className="text-text-muted whitespace-nowrap">Description:</span>
+                                        <strong className="text-text-primary truncate" title={underlayDrawerResolution.vyos?.description || ''}>
+                                            {underlayDrawerResolution.vyos?.description || '—'}
+                                        </strong>
+                                    </div>
+                                    {/* Row 2: Port + Status */}
                                     <div className="flex justify-between items-center gap-2">
                                         <span className="text-text-muted whitespace-nowrap">Port:</span>
                                         <span className="flex items-center gap-1.5 whitespace-nowrap">
@@ -8299,13 +8337,21 @@ function TopologyContent({ token, theme }: TopologyProps) {
                                             )}
                                         </span>
                                     </div>
+                                    {/* Row 3: Role (matches WAN Label on the left) */}
                                     <div className="flex justify-between items-center gap-2">
-                                        <span className="text-text-muted whitespace-nowrap">{isLanScope ? 'VyOS IP:' : 'Next-Hop:'}</span>
-                                        <strong className="text-emerald-600 dark:text-emerald-400 whitespace-nowrap">{underlayDrawerResolution.vyos?.ip || underlayDrawerResolution.vyos?.ipCidr || '—'}</strong>
+                                        <span className="text-text-muted whitespace-nowrap">Role:</span>
+                                        <strong className="text-amber-600 dark:text-amber-400 uppercase whitespace-nowrap">
+                                            {isIonConnectedPort ? (isLanScope ? 'LAN Gateway' : 'WAN Gateway') : 'Router Port'}
+                                        </strong>
                                     </div>
+                                    {/* Row 4: Gateway IP (matches ION IP on the left; CIDR is implicit via ION IP when connected) */}
                                     <div className="flex justify-between items-center gap-2">
-                                        <span className="text-text-muted whitespace-nowrap">Subnet:</span>
-                                        <strong className="text-amber-600 dark:text-amber-300 whitespace-nowrap">{underlayDrawerResolution.matchedNetwork || underlayDrawerResolution.vyos?.network || '—'}</strong>
+                                        <span className="text-text-muted whitespace-nowrap">{isIonConnectedPort ? 'Gateway IP:' : 'VyOS IP:'}</span>
+                                        <strong className="text-emerald-600 dark:text-emerald-400 whitespace-nowrap">
+                                            {isIonConnectedPort
+                                                ? (underlayDrawerResolution.vyos?.ip || underlayDrawerResolution.vyos?.ipCidr || '—')
+                                                : (underlayDrawerResolution.vyos?.ipCidr || underlayDrawerResolution.vyos?.ip || '—')}
+                                        </strong>
                                     </div>
                                 </div>
                             </div>

@@ -1866,9 +1866,11 @@ def build_full_topology(sdk: API, sites_data: dict, debug: bool = False, debug_t
                 wan_admin_up = True
                 wan_link_up = True
                 wan_cfg_type = 'unknown'
+                wan_port_name = None
                 for intf in interfaces:
                     swi_ids = intf.get('site_wan_interface_ids') or []
                     if wan_if_id in swi_ids:
+                        wan_port_name = intf.get('name')
                         wan_admin_up = intf.get('admin_up', True)
                         op_status = op_ip_map.get((el_id, intf.get('name'))) or op_ip_map.get((el_id, intf.get('id')), {})
                         if isinstance(op_status, dict):
@@ -2103,6 +2105,7 @@ def build_full_topology(sdk: API, sites_data: dict, debug: bool = False, debug_t
                 wan_interface_details.append({
                     'wan_if_id': wan_if_id,
                     'name': wan_name,
+                    'port_name': wan_port_name,
                     'circuit_label': circuit_label,
                     'wan_network': wan_net_id_to_name.get(wan_if.get('network_id'), 'Unknown'),
                     'ip': wan_ip,

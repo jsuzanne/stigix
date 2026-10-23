@@ -1344,7 +1344,6 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
         if (inst.is_leader || inst.meta?.is_leader || inst.role === 'leader' || inst.type === 'leader') return true;
         if (registryStatus?.instance_id && inst.instance_id.toLowerCase() === registryStatus.instance_id.toLowerCase()) return true;
         if (registryStatus?.detected_ip && inst.ip_private && inst.ip_private === registryStatus.detected_ip) return true;
-        if (registryStatus?.mode === 'leader' && inst.instance_id.toLowerCase().includes('dc1') && !inst.instance_id.toLowerCase().includes('dc2')) return true;
         return false;
     }, [registryStatus]);
 
@@ -7511,6 +7510,12 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                         )}
                         {targets.map(t => {
                             const isSelf = !!(registryStatus?.detected_ip && t.host.toLowerCase().trim() === registryStatus.detected_ip.toLowerCase().trim());
+                            const isLeaderTarget = Boolean(
+                                t.meta?.is_leader ||
+                                (isSelf && registryStatus?.mode === 'leader') ||
+                                (registryStatus?.leader_info?.ip && t.host.toLowerCase().trim() === registryStatus.leader_info.ip.toLowerCase().trim()) ||
+                                (registryStatus?.leader_info?.site && t.name.toLowerCase().trim() === registryStatus.leader_info.site.toLowerCase().trim())
+                            );
                             return (
                             <div
                                 key={t.id}
@@ -7539,6 +7544,15 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                                                 <div className="w-1.5 h-1.5 rounded-full bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.7)] shrink-0" title="Unreachable" />
                                             )}
                                             <span className="text-xs font-black text-text-primary tracking-tight">{t.name}</span>
+
+                                            {isLeaderTarget && (
+                                                <span
+                                                    className="px-1.5 py-0.5 rounded text-[8px] font-black uppercase tracking-widest bg-indigo-500/15 text-indigo-400 border border-indigo-500/30 flex items-center gap-1 shadow-sm"
+                                                    title="Cluster Target Controller (Leader)"
+                                                >
+                                                    <Shield size={8} className="text-indigo-400" /> Leader
+                                                </span>
+                                            )}
 
                                             {/* ── Single Unified Origin Badge ── */}
                                             {isSelf ? (

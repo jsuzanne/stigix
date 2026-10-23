@@ -109,13 +109,13 @@ export class LocalRegistryServer {
         const targetPocId = instance.poc_id || pocId || 'local-leader';
         const key = instance.instance_id;
 
-        // Check if an existing entry matches by ID or IP
+        // Check if an existing entry matches by ID or IP (always purge old keys if the peer/leader renamed its site)
         let matchedKey = key;
-        if (!this.instances.has(key) && instance.ip_private) {
+        if (instance.ip_private) {
             for (const [k, v] of this.instances.entries()) {
-                if (v.ip_private === instance.ip_private) {
+                if (v.ip_private === instance.ip_private && k !== key) {
                     matchedKey = k;
-                    break;
+                    this.instances.delete(k);
                 }
             }
         }
@@ -250,6 +250,12 @@ export class LocalRegistryServer {
             const instance: RegistryInstance = {
                 ...prev,
                 ...payload,
+                type: prev?.type === 'leader' ? 'leader' : payload.type,
+                meta: {
+                    ...prev?.meta,
+                    ...payload.meta,
+                    ...(prev?.meta?.is_leader ? { is_leader: true } : {})
+                },
                 last_seen: new Date().toISOString()
             };
             if (payload.summary?.provisioning_status) {
@@ -369,8 +375,21 @@ export class LocalRegistryServer {
         let onlineCount = 0;
         let offlineCount = 0;
 
+        const leaderManifest = this.provisioningManager ? this.provisioningManager.ensureLeaderManifestSynced() : null;
         const leaderState = this.provisioningManager ? this.provisioningManager.getState() : null;
-        const leaderRevisions = leaderState?.appliedRevisions || {};
+        const leaderRevisions: Record<string, any> = { ...(leaderState?.appliedRevisions || {}) };
+        if (Array.isArray(leaderManifest?.bundles)) {
+            for (const b of leaderManifest.bundles) {
+                if (b && b.type) {
+                    leaderRevisions[b.type] = {
+                        revision: b.revision,
+                        checksum: b.checksum,
+                        updatedAt: b.updatedAt,
+                        status: 'applied'
+                    };
+                }
+            }
+        }
         const leaderBundleKeys = Object.keys(leaderRevisions);
 
         const enrichedInstances = instances.map(inst => {
@@ -403,11 +422,15 @@ export class LocalRegistryServer {
             } else if (leaderBundleKeys.length > 0) {
                 let allSynced = true;
                 for (const bKey of leaderBundleKeys) {
+                    if (bKey === 'pcap-profiles' && peerProv?.pcap_replay_enabled === false) {
+                        continue;
+                    }
                     const lRevObj = leaderRevisions[bKey];
                     const lRev = typeof lRevObj === 'object' ? lRevObj.revision : lRevObj;
                     const pRevObj = peerRevisions[bKey];
                     const pRev = typeof pRevObj === 'object' ? pRevObj.revision : pRevObj;
-                    if (lRev && (!pRev || pRev < lRev)) {
+                    const pFailed = typeof pRevObj === 'object' && pRevObj?.status === 'failed';
+                    if (lRev && (!pRev || pRev !== lRev || pFailed)) {
                         allSynced = false;
                         behindCount++;
                     }

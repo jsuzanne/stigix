@@ -502,6 +502,7 @@ export class TargetsManager {
             source: 'synthesized' as const, // Use synthesized to make it read-only in UI
             meta: {
                 registry: true,
+                is_leader: Boolean(p.type === 'leader' || (p as any).is_leader || p.meta?.is_leader),
                 location: p.location,
                 ip_public: p.ip_public,
                 last_seen: p.last_seen,
@@ -514,6 +515,7 @@ export class TargetsManager {
         const ownSiteName = this.registryManager.getSiteName();
         const status = typeof this.registryManager.getStatus === 'function' ? this.registryManager.getStatus() : null;
         const ownIp = status?.detected_ip;
+        const isSelfLeader = typeof this.registryManager.isLeader === 'function' ? Boolean(this.registryManager.isLeader()) : false;
 
         const ownCaps = typeof this.registryManager.getNodeCapabilities === 'function' 
             ? this.registryManager.getNodeCapabilities() 
@@ -539,6 +541,7 @@ export class TargetsManager {
                 meta: {
                     registry: true,
                     self: true,
+                    is_leader: isSelfLeader,
                     last_seen: new Date().toISOString(),
                     version: status?.version || status?.meta?.version,
                     build: status?.build || status?.meta?.build
@@ -550,7 +553,19 @@ export class TargetsManager {
         const sharedTargetsList = typeof this.registryManager.getSharedTargets === 'function' 
             ? this.registryManager.getSharedTargets() : [];
 
-        const sharedTgtDefs: TargetDefinition[] = sharedTargetsList.map((t: any) => {
+        // Filter out targets that are already live registry instances (reg-*) or ephemeral magic-join entries,
+        // since live cluster peers and the Leader are authoritatively provided by peerTargets and selfTarget above.
+        const filteredSharedList = sharedTargetsList.filter((t: any) => {
+            if (!t || !t.host) return false;
+            const tid = String(t.id || '');
+            if (tid.startsWith('reg-')) return false;
+            if (t.meta?.magic_join || (Array.isArray(t.tags) && (t.tags.includes('magic-join') || t.tags.includes('cloudflare-rendezvous')))) {
+                return false;
+            }
+            return true;
+        });
+
+        const sharedTgtDefs: TargetDefinition[] = filteredSharedList.map((t: any) => {
             const meta = { ...(t.meta || {}), registry: true, leader_provided: true };
             delete meta.self; // Strip self flag so remote peers don't mark leader as local node
             const rawHttp = t.ports?.http;
@@ -588,12 +603,67 @@ export class TargetsManager {
      * but capabilities are OR-merged so no capability is lost.
      */
     getMergedTargets(): TargetDefinition[] {
-        const managed = this.loadTargets();
+        const rawManaged = this.loadTargets();
         const synVoice = this.synthesizeFromVoiceConfig();
         const synSecurity = this.synthesizeFromSecurityConfig();
         const synConv = this.synthesizeFromConvergenceEndpoints();
         const synXfr = this.synthesizeFromXfrEnv();
         const synRegistry = this.synthesizeFromRegistry();
+
+        const isAutoLearned = (t: TargetDefinition): boolean => Boolean(
+            t.meta?.registry ||
+            t.meta?.magic_join ||
+            t.meta?.leader_provided ||
+            (Array.isArray((t as any).tags) && ((t as any).tags.includes('magic-join') || (t as any).tags.includes('cloudflare-rendezvous'))) ||
+            (typeof (t as any).comments === 'string' && (t as any).comments.startsWith('Auto-enrolled via Cloudflare Rendezvous'))
+        );
+
+        const isNodeLeader = typeof this.registryManager?.isLeader === 'function' ? Boolean(this.registryManager.isLeader()) : false;
+        const activeRegistryHosts = new Set(synRegistry.map(r => r.host.toLowerCase().trim()));
+        const nowMs = Date.now();
+        const STALE_AUTO_TARGET_MS = 24 * 60 * 60 * 1000; // 24 hours
+
+        let prunedFromDisk = false;
+        const diskRetained: TargetDefinition[] = [];
+        const managed: TargetDefinition[] = [];
+
+        for (const t of rawManaged) {
+            if (isAutoLearned(t)) {
+                const hostKey = (t.host || '').toLowerCase().trim();
+                const isLiveInRegistry = activeRegistryHosts.has(hostKey);
+                const lastSeenStr = t.meta?.last_seen || t.updated_at || t.created_at;
+                const lastSeenMs = lastSeenStr ? new Date(lastSeenStr).getTime() : 0;
+                const isExpired = !lastSeenMs || (nowMs - lastSeenMs > STALE_AUTO_TARGET_MS);
+
+                if (!isNodeLeader) {
+                    // On a Spoke / former Leader (e.g. DC1 after Leader migration), auto-learned Rendezvous entries in targets.json
+                    // are stale relics from when this node was Leader; live peers come from synRegistry.
+                    prunedFromDisk = true;
+                    continue;
+                }
+
+                if (!isLiveInRegistry && isExpired && !(t as any).dial_outbound) {
+                    prunedFromDisk = true;
+                    continue;
+                }
+
+                diskRetained.push(t);
+                // Only surface auto-learned targets in the merged view if they are currently active in the registry or explicitly outbound-dialed
+                if (isLiveInRegistry || (t as any).dial_outbound) {
+                    managed.push(t);
+                }
+            } else {
+                diskRetained.push(t);
+                managed.push(t);
+            }
+        }
+
+        if (prunedFromDisk) {
+            try {
+                this.saveTargets(diskRetained);
+                log('TARGETS', `Cleaned up ${rawManaged.length - diskRetained.length} stale auto-learned target(s) from targets.json`);
+            } catch {}
+        }
 
         // Ordered from highest to lowest priority
         const allSources = [...managed, ...synVoice, ...synSecurity, ...synConv, ...synXfr, ...synRegistry];
@@ -639,6 +709,7 @@ export class TargetsManager {
                         ...t.meta,
                         registry: existing.meta?.registry || t.meta.registry,
                         leader_provided: existing.meta?.leader_provided || t.meta.leader_provided,
+                        is_leader: Boolean(existing.meta?.is_leader || t.meta.is_leader),
                         last_seen: t.meta?.last_seen || existing.meta?.last_seen,
                     };
                 }
@@ -649,13 +720,21 @@ export class TargetsManager {
                     existing.created_at = t.created_at;
                 }
                 
-                // Prefer authoritative registry names or friendly site names over raw IP address names
+                // Prefer authoritative live registry names (selfTarget / peerTargets) over stale auto-learned or IP names,
+                // and never let a secondary leader_provided shared target overwrite a live registry peer name.
                 const existingName = (existing.name || '').trim();
                 const newName = (t.name || '').trim();
                 const isExistingIpName = !existingName || /^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(existingName);
                 const isNewFriendlyName = newName && !/^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(newName);
-                if ((t.meta?.registry || isNewFriendlyName) && (existing.source === 'synthesized' || isExistingIpName)) {
-                    if (t.name) existing.name = t.name;
+                const isLiveAuthoritativeRegistry = Boolean(t.meta?.registry && !t.meta?.leader_provided);
+                const isExistingLiveRegistry = Boolean(existing.meta?.self || (existing.meta?.registry && !existing.meta?.leader_provided && existing.source === 'synthesized'));
+
+                if (!isExistingLiveRegistry) {
+                    if (isLiveAuthoritativeRegistry && (existing.source === 'synthesized' || isAutoLearned(existing) || isExistingIpName)) {
+                        if (t.name) existing.name = t.name;
+                    } else if ((t.meta?.registry || isNewFriendlyName) && (existing.source === 'synthesized' || isExistingIpName)) {
+                        if (t.name) existing.name = t.name;
+                    }
                 }
             }
         }

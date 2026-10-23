@@ -33,6 +33,9 @@ export type PrismaWanEndpoint = {
     siteName?: string;
     interfaceId?: string;
     interfaceName?: string;
+    portName?: string | null;
+    adminUp?: boolean;
+    linkUp?: boolean;
     ipCidr?: string | null;
     ip?: string | null;
     network?: string | null;
@@ -258,6 +261,9 @@ export class UnderlayTopologyManager {
             siteName: wan.site_name || wan.siteName,
             interfaceId: wan.wan_if_id || wan.interfaceId,
             interfaceName: wan.name || wan.interfaceName,
+            portName: wan.port_name || wan.portName || null,
+            adminUp: wan.admin_up !== false,
+            linkUp: wan.link_up !== false,
             ipCidr: wan.wan_ip_cidr || null,
             ip: wan.wan_ip_only || null,
             network: wan.wan_network_cidr || null,
@@ -391,6 +397,9 @@ export class UnderlayTopologyManager {
                             site_name: site.site_name,
                             wan_if_id: lan.interface_name ? `lan:${lan.interface_name}` : undefined,
                             name: lan.interface_label || (lan.interface_name ? `Port ${lan.interface_name} (LAN)` : 'LAN'),
+                            port_name: lan.interface_name || null,
+                            admin_up: lan.admin_up !== false,
+                            link_up: lan.link_up !== false,
                             wan_ip_cidr: cleanIp ? `${cleanIp}/${prefix}` : null,
                             wan_ip_only: cleanIp,
                             wan_network_cidr: lan.network || (cleanIp ? `${cleanIp.replace(/\.\d+$/, '.0')}/${prefix}` : null),

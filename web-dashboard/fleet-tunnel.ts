@@ -732,6 +732,9 @@ export class FleetTunnelManager {
             socket.on('peer:telemetry', (peerTelemetry: any) => {
                 if (this.localRegistryServer && peerTelemetry && peerTelemetry.instance_id) {
                     const isNewOrChanged = this.localRegistryServer.upsertInstance(peerTelemetry);
+                    if (peerTelemetry.ip_private && this.targetsManager && typeof this.targetsManager.updateHostName === 'function') {
+                        this.targetsManager.updateHostName(peerTelemetry.ip_private, peerTelemetry.meta?.site || peerTelemetry.instance_id);
+                    }
                     if (isNewOrChanged) {
                         this.broadcastPeerMesh();
                     }
@@ -807,6 +810,17 @@ export class FleetTunnelManager {
         for (const [, entry] of this.activeTunnels.entries()) {
             if (entry.socket && (entry.socket as any).connected) {
                 entry.socket.emit('fleet:peer_mesh', instances);
+            }
+        }
+    }
+
+    public notifySiteNameChanged(): void {
+        if (this.registryManager.isLeader()) {
+            this.broadcastPeerMesh();
+        } else {
+            const socket = this.activeLeaderTunnelSocket || this.spokeClientSocket;
+            if (socket && (socket as any).connected) {
+                this.pushLocalTelemetryToSocket(socket);
             }
         }
     }
@@ -1440,7 +1454,7 @@ export class FleetTunnelManager {
                             ? Array.from(new Set([...existingTags, 'cloud']))
                             : existingTags;
                         const needsTagUpgrade = isPublicPeer && (!existingTags.includes('cloud') || !existing.dial_outbound);
-                        if (existing.host !== host || existing.ports?.dashboard !== port || (existing.ports?.http && existing.ports.http === 8080) || !existing.enabled || !existing.meta?.registry || needsTagUpgrade) {
+                        if (existing.name !== targetSiteName || existing.host !== host || existing.ports?.dashboard !== port || (existing.ports?.http && existing.ports.http === 8080) || !existing.enabled || !existing.meta?.registry || needsTagUpgrade) {
                             const effectiveHttp = (existing.ports?.http && existing.ports.http !== 8080 && existing.ports.http !== 80) ? existing.ports.http : 8082;
                             this.targetsManager.updateTarget(existing.id, { 
                                 ...existing, 
@@ -1543,6 +1557,9 @@ export class FleetTunnelManager {
         socket.on('peer:telemetry', (remoteStatus: any) => {
             if (this.localRegistryServer && remoteStatus && remoteStatus.instance_id) {
                 const isNewOrChanged = this.localRegistryServer.upsertInstance(remoteStatus);
+                if (remoteStatus.ip_private && this.targetsManager && typeof this.targetsManager.updateHostName === 'function') {
+                    this.targetsManager.updateHostName(remoteStatus.ip_private, remoteStatus.meta?.site || remoteStatus.instance_id);
+                }
                 const entry = this.activeTunnels.get(targetId);
                 if (entry) {
                     entry.info.instanceId = remoteStatus.instance_id;
@@ -1836,13 +1853,14 @@ export class FleetTunnelManager {
     private registerLeaderHandlers(socket: Socket | ClientSocket): void {
         socket.on('provisioning:get_manifest', (ack?: (m: any) => void) => {
             if (typeof ack === 'function') {
-                ack(this.provisioningManager?.getManifest() || null);
+                ack(this.provisioningManager?.ensureLeaderManifestSynced() || null);
             }
         });
 
         socket.on('provisioning:pull_bundle', (type: string, ack?: (payload: any) => void) => {
             if (typeof ack === 'function') {
                 if (this.provisioningManager) {
+                    this.provisioningManager.ensureLeaderManifestSynced();
                     const bundle = this.provisioningManager.getPublishedBundle(type as GlobalBundleType);
                     ack(bundle);
                 } else {
@@ -1974,9 +1992,21 @@ export class FleetTunnelManager {
 
             for (const bundle of manifest.bundles) {
                 if (specificType && bundle.type !== specificType) continue;
-                if (bundle.type === 'pcap-profiles' && process.env.ENABLE_PCAP_REPLAY !== 'true') continue;
                 const currentApplied = localState.appliedRevisions?.[bundle.type];
-                const needsSync = !currentApplied || currentApplied.revision < bundle.revision || currentApplied.checksum !== bundle.checksum || currentApplied.status !== 'applied';
+                if (bundle.type === 'pcap-profiles' && process.env.ENABLE_PCAP_REPLAY !== 'true') {
+                    if (!currentApplied || currentApplied.revision !== bundle.revision || currentApplied.checksum !== bundle.checksum || currentApplied.status !== 'applied') {
+                        if (!localState.appliedRevisions) localState.appliedRevisions = {};
+                        localState.appliedRevisions[bundle.type] = {
+                            revision: bundle.revision,
+                            checksum: bundle.checksum,
+                            appliedAt: new Date().toISOString(),
+                            status: 'applied'
+                        };
+                        this.provisioningManager.saveState(localState);
+                    }
+                    continue;
+                }
+                const needsSync = !currentApplied || currentApplied.revision !== bundle.revision || currentApplied.checksum !== bundle.checksum || currentApplied.status !== 'applied';
 
                 if (needsSync) {
                     log('PROVISIONING', `⚡ [TUNNEL SYNC] Pulling bundle '${bundle.type}' (rev ${bundle.revision}) from Leader...`);

@@ -811,15 +811,15 @@ export default function Fleet({ token, onNavigate: _onNavigate }: FleetProps) {
                                             </td>
 
                                             {/* Config Sync Status */}
-                                            <td className="px-6 py-3">
+                                            <td className="px-6 py-3 whitespace-nowrap">
                                                 {peer.config_sync_status === 'synced' ? (
-                                                    <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-bold font-mono bg-emerald-500/10 text-emerald-400 border border-emerald-500/20" title="All global config bundles match Leader">
-                                                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                                                    <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-bold font-mono whitespace-nowrap bg-emerald-500/10 text-emerald-400 border border-emerald-500/20" title="All global config bundles match Leader">
+                                                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0" />
                                                         Synced
                                                     </span>
                                                 ) : peer.config_sync_status === 'behind' ? (
-                                                    <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-bold font-mono bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20" title={`${peer.behind_bundles_count || 1} bundle(s) behind Leader`}>
-                                                        <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
+                                                    <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-bold font-mono whitespace-nowrap bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20" title={`${peer.behind_bundles_count || 1} bundle(s) behind Leader`}>
+                                                        <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse shrink-0" />
                                                         Behind ({peer.behind_bundles_count || '!'})
                                                     </span>
                                                 ) : (

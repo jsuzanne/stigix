@@ -231,6 +231,28 @@ export class RegistryManager {
         fs.writeFileSync(siteNameFile, JSON.stringify({ siteName: trimmed, updatedAt: new Date().toISOString() }));
         log('REGISTRY', `Site name updated to: "${trimmed}"`);
 
+        // 3b. Also persist STIGIX_SITE_NAME to .env if present so future container restarts or env readers stay in sync
+        const envCandidates = [
+            path.join(this.configDir, '.env'),
+            path.join(process.cwd(), 'config', '.env'),
+            path.join(process.cwd(), '.env'),
+            '/app/config/.env'
+        ];
+        for (const ep of envCandidates) {
+            try {
+                if (fs.existsSync(ep)) {
+                    let envContent = fs.readFileSync(ep, 'utf8');
+                    if (/^STIGIX_SITE_NAME=/m.test(envContent)) {
+                        envContent = envContent.replace(/^STIGIX_SITE_NAME=.*/m, `STIGIX_SITE_NAME=${trimmed}`);
+                    } else {
+                        envContent += `\nSTIGIX_SITE_NAME=${trimmed}\n`;
+                    }
+                    fs.writeFileSync(ep, envContent, 'utf8');
+                    break;
+                }
+            } catch {}
+        }
+
         // 4. Update any managed target matching our IP with the new site name
         if (this.targetsManager && typeof this.targetsManager.updateHostName === 'function' && this.currentIp) {
             this.targetsManager.updateHostName(this.currentIp, trimmed);
@@ -660,6 +682,10 @@ export class RegistryManager {
             }
         }
 
+        const activeSiteName = this.getSiteName();
+        (config as any).siteName = activeSiteName;
+        (config as any).instanceId = activeSiteName;
+
         if (this.localRegistryServer && (mode === 'leader' || this.isLeader())) {
             let version = 'v2';
             try {
@@ -670,13 +696,13 @@ export class RegistryManager {
 
             const selfInstance: RegistryInstance = {
                 poc_id: config.pocId || 'local-leader',
-                instance_id: config.instanceId,
+                instance_id: activeSiteName,
                 type: 'leader',
                 ip_private: this.currentIp,
                 capabilities,
                 summary,
                 meta: {
-                    site: this.getSiteName(),
+                    site: activeSiteName,
                     region: config.region,
                     vendor: 'stigix',
                     version,
@@ -745,6 +771,16 @@ export class RegistryManager {
             // Merge newly discovered instances and update their lastSeen timestamp
             for (const inst of instances) {
                 if (!inst || !inst.instance_id) continue;
+                if (inst.ip_private) {
+                    for (const [existingId, existingEntry] of this.peerCache.entries()) {
+                        if (existingEntry.instance?.ip_private === inst.ip_private && existingId !== inst.instance_id) {
+                            this.peerCache.delete(existingId);
+                        }
+                    }
+                    if (this.targetsManager && typeof this.targetsManager.updateHostName === 'function') {
+                        this.targetsManager.updateHostName(inst.ip_private, inst.meta?.site || inst.instance_id);
+                    }
+                }
                 this.peerCache.set(inst.instance_id, {
                     instance: inst,
                     lastSeen: now
@@ -816,6 +852,16 @@ export class RegistryManager {
 
         for (const inst of instances) {
             if (!inst || !inst.instance_id) continue;
+            if (inst.ip_private) {
+                for (const [existingId, existingEntry] of this.peerCache.entries()) {
+                    if (existingEntry.instance?.ip_private === inst.ip_private && existingId !== inst.instance_id) {
+                        this.peerCache.delete(existingId);
+                    }
+                }
+                if (this.targetsManager && typeof this.targetsManager.updateHostName === 'function') {
+                    this.targetsManager.updateHostName(inst.ip_private, inst.meta?.site || inst.instance_id);
+                }
+            }
             this.peerCache.set(inst.instance_id, {
                 instance: inst,
                 lastSeen: now
@@ -940,6 +986,7 @@ export class RegistryManager {
         this.sharedTargetsCache = [];
         // Recreate client from fresh process.env (already updated by savePrismaConfig)
         this.client = StigixRegistryClient.fromEnv((usage) => this.handleUsage(usage));
+        this.loadSiteName();
         this.currentIp = this.detectPrivateIp(this.configDir);
         this.loadStaticLeader();
         await this.start();

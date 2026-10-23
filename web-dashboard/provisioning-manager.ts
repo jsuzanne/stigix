@@ -275,12 +275,41 @@ export class ProvisioningManager {
     // ─── State Management ────────────────────────────────────────────────────────
 
     public getState(): PeerProvisioningState {
+        let state: PeerProvisioningState = { enabled: true, appliedRevisions: {}, orphans: {} };
         try {
             if (fs.existsSync(this.stateFile)) {
-                return JSON.parse(fs.readFileSync(this.stateFile, 'utf8'));
+                state = JSON.parse(fs.readFileSync(this.stateFile, 'utf8'));
             }
         } catch {}
-        return { enabled: true, appliedRevisions: {}, orphans: {} };
+        if (!state.appliedRevisions) state.appliedRevisions = {};
+        if (!state.orphans) state.orphans = {};
+
+        // Backfill missing appliedRevisions from local manifest.json (e.g. when a former Leader had published bundles only in manifest.json)
+        try {
+            if (fs.existsSync(this.manifestFile)) {
+                const manifest: ProvisioningManifest = JSON.parse(fs.readFileSync(this.manifestFile, 'utf8'));
+                let backfilled = false;
+                if (Array.isArray(manifest?.bundles)) {
+                    for (const b of manifest.bundles) {
+                        if (b && b.type && !state.appliedRevisions[b.type]) {
+                            state.appliedRevisions[b.type] = {
+                                revision: b.revision,
+                                checksum: b.checksum,
+                                appliedAt: b.updatedAt || new Date().toISOString(),
+                                status: 'applied'
+                            };
+                            backfilled = true;
+                        }
+                    }
+                }
+                if (backfilled) {
+                    this.saveState(state);
+                }
+            }
+        } catch {}
+
+        (state as any).pcap_replay_enabled = process.env.ENABLE_PCAP_REPLAY === 'true';
+        return state;
     }
 
     public saveState(state: PeerProvisioningState): void {
@@ -310,6 +339,73 @@ export class ProvisioningManager {
         return { schemaVersion: 1, updatedAt: new Date().toISOString(), bundles: [] };
     }
 
+    /**
+     * Ensures that when a node is operating as Leader (including after being promoted from a Spoke),
+     * its manifest.json and state.appliedRevisions are mutually consistent:
+     * 1. Any bundle already in manifest.json updates state.appliedRevisions so the Leader's own state matches what it serves.
+     * 2. Any bundle in state.appliedRevisions (with a cached rev-N.json on disk) that is missing from manifest.json is seeded into manifest.json.
+     */
+    public ensureLeaderManifestSynced(): ProvisioningManifest {
+        const manifest = this.getManifest();
+        const state = this.getState();
+        let manifestChanged = false;
+        let stateChanged = false;
+
+        const manifestByType = new Map<string, ProvisioningManifestBundle>();
+        for (const b of manifest.bundles) {
+            if (b && b.type) {
+                manifestByType.set(b.type, b);
+                const applied = state.appliedRevisions?.[b.type];
+                if (!applied || applied.revision !== b.revision || applied.checksum !== b.checksum || applied.status !== 'applied') {
+                    state.appliedRevisions[b.type] = {
+                        revision: b.revision,
+                        checksum: b.checksum,
+                        appliedAt: b.updatedAt || new Date().toISOString(),
+                        status: 'applied'
+                    };
+                    stateChanged = true;
+                }
+            }
+        }
+
+        for (const [bType, applied] of Object.entries(state.appliedRevisions || {})) {
+            if (!applied || applied.status !== 'applied' || !applied.revision) continue;
+            if (!manifestByType.has(bType)) {
+                const revFile = path.join(this.globalDir, bType, `rev-${applied.revision}.json`);
+                if (fs.existsSync(revFile)) {
+                    try {
+                        const payload = JSON.parse(fs.readFileSync(revFile, 'utf8'));
+                        let count = Array.isArray(payload) ? payload.length : 1;
+                        if (bType === 'custom-tcp-apps') {
+                            count = payload?.applications ? payload.applications.length : (Array.isArray(payload) ? payload.length : 1);
+                        } else if (bType === 'pcap-profiles') {
+                            count = payload?.profiles ? payload.profiles.length : 0;
+                        }
+                        const entry: ProvisioningManifestBundle = {
+                            type: bType as GlobalBundleType,
+                            revision: applied.revision,
+                            checksum: applied.checksum || this.computeChecksum(payload),
+                            updatedAt: applied.appliedAt || new Date().toISOString(),
+                            count
+                        };
+                        manifest.bundles.push(entry);
+                        manifestByType.set(bType, entry);
+                        manifestChanged = true;
+                    } catch {}
+                }
+            }
+        }
+
+        if (manifestChanged) {
+            manifest.updatedAt = new Date().toISOString();
+            this.saveManifest(manifest);
+        }
+        if (stateChanged) {
+            this.saveState(state);
+        }
+        return manifest;
+    }
+
     private saveManifest(manifest: ProvisioningManifest): void {
         fs.writeFileSync(this.manifestFile, JSON.stringify(manifest, null, 2), 'utf8');
     }
@@ -319,8 +415,10 @@ export class ProvisioningManager {
         const normalized = isArrayType ? this.normalizeItemsWithIds(type, rawItems) : rawItems;
         const checksum = this.computeChecksum(normalized);
         const manifest = this.getManifest();
+        const state = this.getState();
         const existingBundle = manifest.bundles.find(b => b.type === type);
-        const nextRev = (existingBundle ? existingBundle.revision : 0) + 1;
+        const existingAppliedRev = state.appliedRevisions?.[type]?.revision || 0;
+        const nextRev = Math.max(existingBundle ? existingBundle.revision : 0, existingAppliedRev) + 1;
 
         // Write immutable revision bundle
         const typeDir = path.join(this.globalDir, type);
@@ -375,8 +473,14 @@ export class ProvisioningManager {
         manifest.updatedAt = now;
         this.saveManifest(manifest);
 
-        // Save history entry on Leader
-        const state = this.getState();
+        // Save history entry and appliedRevisions on Leader
+        if (!state.appliedRevisions) state.appliedRevisions = {};
+        state.appliedRevisions[type] = {
+            revision: nextRev,
+            checksum,
+            appliedAt: now,
+            status: 'applied'
+        };
         if (!state.history) state.history = [];
         state.history.unshift({
             id: `${type}-rev-${nextRev}-${Date.now()}`,
@@ -397,23 +501,30 @@ export class ProvisioningManager {
 
     public getPublishedBundle(type: GlobalBundleType, revision?: number): any | null {
         try {
-            const state = this.getState();
-            const revToLoad = revision || state.appliedRevisions[type]?.revision;
-            
-            if (revToLoad) {
-                const revFile = path.join(this.globalDir, type, `rev-${revToLoad}.json`);
+            if (revision) {
+                const revFile = path.join(this.globalDir, type, `rev-${revision}.json`);
                 if (fs.existsSync(revFile)) {
                     return JSON.parse(fs.readFileSync(revFile, 'utf8'));
                 }
             }
 
-            // Fallback: check manifest (Leader mode)
+            // Check manifest first (authoritative when acting as Leader)
             const manifest = this.getManifest();
             const b = manifest.bundles.find(x => x.type === type);
             if (b) {
                 const manifestRevFile = path.join(this.globalDir, type, `rev-${b.revision}.json`);
                 if (fs.existsSync(manifestRevFile)) {
                     return JSON.parse(fs.readFileSync(manifestRevFile, 'utf8'));
+                }
+            }
+
+            // Fallback: check state.appliedRevisions (Peer mode)
+            const state = this.getState();
+            const revToLoad = state.appliedRevisions[type]?.revision;
+            if (revToLoad) {
+                const revFile = path.join(this.globalDir, type, `rev-${revToLoad}.json`);
+                if (fs.existsSync(revFile)) {
+                    return JSON.parse(fs.readFileSync(revFile, 'utf8'));
                 }
             }
         } catch (e: any) {

@@ -5,6 +5,36 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.0.88] - 2026-10-23
+
+### Added
+- **Topology `WAN LINK DETAILS` Symmetrical 4-Row Layout & Prisma ION Port Extraction (`engines/getflow.py`, `Scripts/getflow.py`, `web-dashboard/underlay-topology-manager.ts`, `web-dashboard/src/Topology.tsx`)**:
+  - Extracted the physical/virtual Prisma ION interface name (`port_name`, e.g., `port 3`) in `getflow.py` (`wan_interface_details`) and surfaced `portName`, `adminUp`, and `linkUp` on `PrismaWanEndpoint`.
+  - Aligned the `Prisma ION` and `VyOS Router` cards in `WAN LINK DETAILS` onto 4 symmetrical face-to-face rows:
+    1. `Circuit` (`BR1-INET`) ⟷ `Description` (VyOS interface description)
+    2. `Port` (`port 3 · • UP`) ⟷ `Port` (`eth3 · • UP`)
+    3. `WAN Label` (`OBS`, ISP WAN label) ⟷ `Role` (`WAN Gateway` / `LAN Gateway`)
+    4. `ION IP` (`192.168.227.1/24` with CIDR prefix) ⟷ `Gateway IP` (`192.168.227.254`, removing redundant `Subnet` row).
+- **`LEADER` Badge in `DISCOVERED & STATIC TARGETS` (`web-dashboard/targets-manager.ts`, `web-dashboard/local-registry-server.ts`, `web-dashboard/src/Settings.tsx`)**:
+  - Preserved `type: 'leader'` and `meta.is_leader: true` on the Leader's self-registration entry in `local-registry-server.ts`, propagated `meta.is_leader` into synthesized targets, and rendered an amber `LEADER` badge (`<Shield /> Leader`) next to the cluster Leader in `Settings > Targets`.
+
+### Fixed
+- **Target Name Propagation (`Hetznerv2` / `HetznerCloud` ➔ `stigixcloud`) & Stale Learned Target Cleanup (`web-dashboard/local-registry-server.ts`, `web-dashboard/registry-manager.ts`, `web-dashboard/fleet-tunnel.ts`, `web-dashboard/targets-manager.ts`, `web-dashboard/server.ts`)**:
+  - Fixed `synthesizeFromRegistry()` in `targets-manager.ts` so `sharedTgtDefs` (periodic `/api/registry/targets` cache) no longer overwrites live `peerTargets` names when both share the same IP, and automatically pruned stale auto-learned Rendezvous (`magic_join`) entries from `/app/config/targets.json` when a node is no longer Leader (e.g., `DC1`).
+  - Updated `local-registry-server.ts` (`upsertInstance`), `registry-manager.ts` (`setSiteName`, `performHeartbeat`, `performDiscovery`, `updatePeersFromLeader`), and `fleet-tunnel.ts` (`notifySiteNameChanged`, `peer:telemetry`) to immediately evict renamed instances sharing the same `ip_private`, persist `STIGIX_SITE_NAME` to `.env`, and synchronize `targetsManager` host names across the fleet.
+- **Config Sync Convergence After Spoke-to-Leader Promotion & Non-Wrapping Status Badges (`web-dashboard/provisioning-manager.ts`, `web-dashboard/fleet-tunnel.ts`, `web-dashboard/local-registry-server.ts`, `web-dashboard/src/Fleet.tsx`)**:
+  - Added `ensureLeaderManifestSynced()` in `provisioning-manager.ts` to automatically seed missing bundle entries in `manifest.json` from `applied.json` when a former Spoke is promoted to Leader, and ensured `getPublishedBundle()` bumps revisions above any inherited `appliedRevisions`.
+  - Ignored `pcap-profiles` in Config Sync drift calculations when `ENABLE_PCAP_REPLAY` is disabled on a peer, and added `whitespace-nowrap shrink-0` to the `Synced` / `Behind (x)` badges in `Fleet.tsx`.
+- **Include Former Leader (`DC1`) in Fleet Nodes Maintenance (`web-dashboard/src/Settings.tsx`, `web-dashboard/src/Topology.tsx`, `web-dashboard/server.ts`)**:
+  - Removed legacy hardcoded `includes('dc1')` exclusions so `DC1` appears in `Fleet Nodes Maintenance` and peer selectors like any other peer.
+
+## [3.0.87] - 2026-10-23
+
+### Fixed
+- **Optional Target Name in Magic Join & Cloudflare Ingress Preservation (`web-dashboard/src/components/MagicJoinModal.tsx`, `web-dashboard/magic-join-manager.ts`, `web-dashboard/server.ts`, `web-dashboard/fleet-tunnel.ts`)**:
+  - Removed the mandatory target name prompt when generating multi-use Magic Join tokens so each enrolling peer registers with its own local `STIGIX_SITE_NAME`.
+  - Fixed Cloudflare `https://` endpoint selection and WebSocket tunnel handshakes when enrolling with a domain-only ingress URL.
+
 ## [3.0.86] - 2026-10-23
 
 ### Added
