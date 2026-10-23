@@ -50,6 +50,7 @@ export function MagicJoinModal({ isOpen, onClose, token }: MagicJoinModalProps) 
     const [activeTab, setActiveTab] = useState<'generate' | 'tokens'>('generate');
     const [siteName, setSiteName] = useState('');
     const [ttlSeconds, setTtlSeconds] = useState<number>(3600);
+    const [maxUses, setMaxUses] = useState<number>(10);
     const [joinData, setJoinData] = useState<JoinTokenResponse | null>(null);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -70,12 +71,13 @@ export function MagicJoinModal({ isOpen, onClose, token }: MagicJoinModalProps) 
         return t ? { Authorization: `Bearer ${t}` } : {};
     }, [token]);
 
-    const generateToken = useCallback(async (customEndpoints?: string[]) => {
+    const generateToken = useCallback(async (customEndpoints?: string[], overrideMaxUses?: number, overrideTtl?: number) => {
         try {
             setLoading(true);
             setError(null);
             const params = new URLSearchParams();
-            params.set('ttl_seconds', ttlSeconds.toString());
+            params.set('ttl_seconds', (overrideTtl ?? ttlSeconds).toString());
+            params.set('max_uses', (overrideMaxUses ?? maxUses).toString());
             if (siteName.trim()) params.set('site_name', siteName.trim());
 
             const epsToUse = customEndpoints || selectedEndpoints;
@@ -105,7 +107,7 @@ export function MagicJoinModal({ isOpen, onClose, token }: MagicJoinModalProps) 
         } finally {
             setLoading(false);
         }
-    }, [authHeaders, ttlSeconds, siteName, selectedEndpoints]);
+    }, [authHeaders, ttlSeconds, maxUses, siteName, selectedEndpoints]);
 
     const toggleEndpoint = (ep: string) => {
         let updated: string[];
@@ -277,14 +279,14 @@ export function MagicJoinModal({ isOpen, onClose, token }: MagicJoinModalProps) 
                     {activeTab === 'generate' ? (
                         <>
                             {/* Optional Node Customization */}
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                                 <div>
                                     <label className="block text-xs font-bold text-text-secondary mb-1">
                                         Site Name / Hint (Optional)
                                     </label>
                                     <input
                                         type="text"
-                                        placeholder="e.g. Paris-Branch, Hetzner-VM"
+                                        placeholder="e.g. Paris-Branch"
                                         value={siteName}
                                         onChange={(e) => setSiteName(e.target.value)}
                                         autoComplete="off"
@@ -298,15 +300,40 @@ export function MagicJoinModal({ isOpen, onClose, token }: MagicJoinModalProps) 
                                 </div>
                                 <div>
                                     <label className="block text-xs font-bold text-text-secondary mb-1">
+                                        Max Uses (Fleet Size)
+                                    </label>
+                                    <StigixSelect
+                                        value={String(maxUses)}
+                                        onChange={(val) => {
+                                            const next = Number(val);
+                                            setMaxUses(next);
+                                            generateToken(undefined, next, undefined);
+                                        }}
+                                        size="sm"
+                                        accent="blue"
+                                        options={[
+                                            { value: '1', label: '1 Node (Single-Use)', badge: '1x' },
+                                            { value: '10', label: '10 Nodes (Multi-Use)', badge: '10x' },
+                                            { value: '50', label: '50 Nodes (Full Fleet)', badge: '50x' },
+                                            { value: '999', label: 'Unlimited (Within TTL)', badge: '∞' },
+                                        ]}
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-xs font-bold text-text-secondary mb-1">
                                         Token Validity (TTL)
                                     </label>
                                     <StigixSelect
                                         value={String(ttlSeconds)}
-                                        onChange={(val) => setTtlSeconds(Number(val))}
+                                        onChange={(val) => {
+                                            const next = Number(val);
+                                            setTtlSeconds(next);
+                                            generateToken(undefined, undefined, next);
+                                        }}
                                         size="sm"
                                         accent="blue"
                                         options={[
-                                            { value: '1800', label: '30 Minutes (Recommended)', badge: '30m' },
+                                            { value: '1800', label: '30 Minutes', badge: '30m' },
                                             { value: '3600', label: '1 Hour', badge: '1h' },
                                             { value: '21600', label: '6 Hours', badge: '6h' },
                                             { value: '86400', label: '24 Hours', badge: '24h' },
@@ -441,10 +468,14 @@ export function MagicJoinModal({ isOpen, onClose, token }: MagicJoinModalProps) 
                                         <div className="flex items-center justify-between text-[11px] text-text-muted">
                                             <span className="flex items-center gap-1.5 font-bold text-text-secondary">
                                                 <ShieldCheck size={13} className="text-emerald-400" />
-                                                Single-Use Security:
+                                                {(joinData.max_uses || maxUses) > 1 ? 'Multi-Node Token Security:' : 'Single-Use Security:'}
                                             </span>
                                             <span className="font-mono text-emerald-400 bg-emerald-500/10 px-1.5 py-0.5 rounded border border-emerald-500/20">
-                                                Burn-on-Redeem (1 use max)
+                                                {(joinData.max_uses || maxUses) >= 999
+                                                    ? 'Multi-Use (Unlimited within TTL)'
+                                                    : (joinData.max_uses || maxUses) > 1
+                                                    ? `Multi-Use (${joinData.max_uses || maxUses} nodes max)`
+                                                    : 'Burn-on-Redeem (1 use max)'}
                                             </span>
                                         </div>
 

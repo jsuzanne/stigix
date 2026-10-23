@@ -520,7 +520,8 @@ export default function Fleet({ token, onNavigate: _onNavigate }: FleetProps) {
                             ) : (
                                 filteredInstances.map(peer => {
                                     const siteName = peer.meta?.site || peer.instance_id;
-                                    const isLeader = peer.is_leader || peer.type === 'leader' || peer.instance_id.toLowerCase().includes('leader');
+                                    const isLeader = Boolean(peer.is_leader);
+                                    const isRemoteLeader = !isLeader && (Boolean((peer as any).is_remote_leader) || peer.type === 'leader');
                                     const version = peer.meta?.version || '—';
 
                                     const { rel, timeStr } = formatLastSeen(peer.last_seen_seconds_ago, peer.last_seen);
@@ -544,9 +545,11 @@ export default function Fleet({ token, onNavigate: _onNavigate }: FleetProps) {
                                                     <div className={`w-8 h-8 rounded-lg border flex items-center justify-center font-bold text-xs transition-all shrink-0 ${
                                                         isLeader 
                                                             ? 'bg-purple-500/10 border-purple-500/30 text-purple-400' 
+                                                            : isRemoteLeader
+                                                            ? 'bg-amber-500/10 border-amber-500/30 text-amber-400'
                                                             : 'bg-card-secondary/80 border-border text-text-secondary group-hover:border-blue-500/40 group-hover:text-blue-400'
                                                     }`}>
-                                                        {isLeader ? '👑' : siteName.slice(0, 3).toUpperCase()}
+                                                        {isLeader || isRemoteLeader ? '👑' : siteName.slice(0, 3).toUpperCase()}
                                                     </div>
                                                     <div className="min-w-0">
                                                         <div className="font-bold text-text flex items-center gap-2">
@@ -554,6 +557,11 @@ export default function Fleet({ token, onNavigate: _onNavigate }: FleetProps) {
                                                             {isLeader && (
                                                                 <span className="px-1.5 py-0.2 rounded text-[9px] font-black uppercase tracking-wider bg-purple-500/10 text-purple-400 border border-purple-500/20 whitespace-nowrap">
                                                                     Leader (This Node)
+                                                                </span>
+                                                            )}
+                                                            {isRemoteLeader && (
+                                                                <span className="px-1.5 py-0.2 rounded text-[9px] font-black uppercase tracking-wider bg-amber-500/10 text-amber-400 border border-amber-500/25 whitespace-nowrap" title="This remote peer is currently configured as a Cluster Leader">
+                                                                    Remote Leader
                                                                 </span>
                                                             )}
                                                         </div>

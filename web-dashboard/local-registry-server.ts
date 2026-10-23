@@ -374,9 +374,10 @@ export class LocalRegistryServer {
         const leaderBundleKeys = Object.keys(leaderRevisions);
 
         const enrichedInstances = instances.map(inst => {
-            const isLeader = (localLeaderId && inst.instance_id === localLeaderId)
-                || inst.type === 'leader'
-                || (inst.instance_id && inst.instance_id.toLowerCase().includes('leader'));
+            const isLeader = localLeaderId
+                ? inst.instance_id === localLeaderId
+                : (inst.type === 'leader' || Boolean(inst.instance_id && inst.instance_id.toLowerCase().includes('leader')));
+            const isRemoteLeader = !isLeader && inst.type === 'leader';
             
             const lastSeenMs = inst.last_seen ? new Date(inst.last_seen).getTime() : 0;
             const diffSeconds = lastSeenMs > 0 ? Math.max(0, Math.round((now - lastSeenMs) / 1000)) : 999999;
@@ -426,6 +427,7 @@ export class LocalRegistryServer {
                 tunnel_source_port: (inst as any).tunnel_source_port ?? inst.meta?.tunnel_source_port,
                 tunnel_dest_port: (inst as any).tunnel_dest_port ?? inst.meta?.tunnel_dest_port,
                 is_leader: isLeader,
+                is_remote_leader: isRemoteLeader,
                 status,
                 is_stale: isStale,
                 last_seen_seconds_ago: isLeader ? 0 : diffSeconds,

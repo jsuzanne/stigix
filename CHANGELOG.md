@@ -5,6 +5,27 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.0.86] - 2026-10-23
+
+### Added
+- **Multi-Use Magic Join Tokens (`web-dashboard/src/components/MagicJoinModal.tsx`)**:
+  - Added a **Max Uses (Fleet Size)** selector (`1 Node (Single-Use)`, `10 Nodes (Multi-Use)`, `50 Nodes (Full Fleet)`, `Unlimited (Within TTL)`) defaulting to `10 Nodes` so administrators can onboard or migrate an entire fleet with a single `STX-...` token without regenerating between nodes.
+- **Local vs. Remote Leader Distinction in Mesh Overview (`web-dashboard/local-registry-server.ts`, `web-dashboard/src/Fleet.tsx`)**:
+  - Fixed `getFleetOverview()` so `is_leader` (`Leader (This Node)` / `👑 Local Leader`) is strictly assigned to the local node hosting the registry (`inst.instance_id === localLeaderId`).
+  - Added `is_remote_leader` (`Remote Leader` badge) for peer nodes that are also configured as Leaders during a cluster migration, allowing them to display their real transport link and age out normally.
+
+## [3.0.85] - 2026-10-23
+
+### Added
+- **1-Click Cluster Leader Migration (`web-dashboard/src/components/NodeRoleModal.tsx`, `web-dashboard/server.ts`)**:
+  - Enrolled Peers and existing Leaders can paste a `STX-...` Magic Join token from a new Leader directly into `NodeRoleModal` to migrate in 1 click without manually disconnecting first.
+
+## [3.0.84] - 2026-10-23
+
+### Changed
+- **Compact `WAN LINK DETAILS` Modal & Remote Peer Role Management (`web-dashboard/src/Topology.tsx`, `web-dashboard/src/components/NodeRoleModal.tsx`)**:
+  - Streamlined the `Prisma ION` and `VyOS Router` cards in `WAN LINK DETAILS` onto 3 symmetrical single-line rows and enabled `NodeRoleModal` in Remote Peer View.
+
 ## [3.0.83] - 2026-10-23
 
 ### Fixed
