@@ -800,6 +800,7 @@ function saveIconCache(entry: IconCacheEntry) {
 interface XfrTestParams {
     host: string;
     port: number;
+    target_name?: string;
     protocol: 'tcp' | 'udp' | 'quic';
     duration_sec: number;
     bitrate: string;
@@ -3226,6 +3227,7 @@ app.post('/api/tests/xfr', authenticateToken, (req, res) => {
         mode,
         host: target.host,
         port: target.port,
+        target_name: target.target_name || target.label || target.name,
         psk,
         dscp,
         congestion,
@@ -3246,24 +3248,45 @@ app.post('/api/tests/xfr', authenticateToken, (req, res) => {
 });
 
 app.get('/api/tests/xfr', authenticateToken, (req, res) => {
-    const jobs = xfrManager.getAllJobs().map(j => ({
-        id: j.id,
-        sequence_id: j.sequence_id,
-        status: j.status,
-        started_at: j.started_at,
-        finished_at: j.finished_at,
-        params: j.params,
-        summary: j.summary,
-        error: j.error
-    }));
+    const knownTargets = targetsManager ? targetsManager.getMergedTargets() : [];
+    const jobs = xfrManager.getAllJobs().map(j => {
+        let targetName = j.params?.target_name;
+        if (!targetName || /^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(targetName)) {
+            const match = knownTargets.find(t => t.host === j.params?.host);
+            if (match && match.name && !/^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(match.name)) {
+                targetName = match.name;
+            }
+        }
+        return {
+            id: j.id,
+            sequence_id: j.sequence_id,
+            status: j.status,
+            started_at: j.started_at,
+            finished_at: j.finished_at,
+            params: {
+                ...j.params,
+                target_name: targetName
+            },
+            summary: j.summary,
+            error: j.error
+        };
+    });
     res.json(jobs);
 });
 
 app.get('/api/tests/xfr/:id', authenticateToken, (req, res) => {
-
     const job = xfrManager.getJob(req.params.id);
     if (!job) {
         return res.status(404).json({ error: 'Job not found' });
+    }
+
+    const knownTargets = targetsManager ? targetsManager.getMergedTargets() : [];
+    let targetName = job.params?.target_name;
+    if (!targetName || /^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(targetName)) {
+        const match = knownTargets.find(t => t.host === job.params?.host);
+        if (match && match.name && !/^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(match.name)) {
+            targetName = match.name;
+        }
     }
 
     res.json({
@@ -3272,7 +3295,10 @@ app.get('/api/tests/xfr/:id', authenticateToken, (req, res) => {
         status: job.status,
         started_at: job.started_at,
         finished_at: job.finished_at,
-        params: job.params,
+        params: {
+            ...job.params,
+            target_name: targetName
+        },
         summary: job.summary,
         intervals: job.intervals,
         error: job.error

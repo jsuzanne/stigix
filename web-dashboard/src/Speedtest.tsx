@@ -6,7 +6,7 @@ import {
     Shield, Cpu, ChevronRight, ChevronLeft, BarChart3, Info, CheckCircle2, XCircle,
     Search, Filter, Download, Trash2, ChevronDown, ChevronUp, Share2,
     ShieldAlert, ExternalLink, ArrowUpRight, ShieldOff, Copy, RefreshCw,
-    History as HistoryIcon, X, Layers
+    History as HistoryIcon, X, Layers, Calendar
 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import { clsx, type ClassValue } from 'clsx';
@@ -117,6 +117,46 @@ export default function Speedtest({ token }: Props) {
 
     const [quickTargets, setQuickTargets] = useState<{ label: string, host: string }[]>([]);
     const [sharedTargets, setSharedTargets] = useState<any[]>([]);
+    const [allKnownTargets, setAllKnownTargets] = useState<any[]>([]);
+    const [selectedTargetLabel, setSelectedTargetLabel] = useState<string>('');
+
+    const getTargetDisplayName = (host?: string, port?: number, fallbackTargetName?: string): { name: string; isFriendly: boolean } => {
+        if (fallbackTargetName && !/^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(fallbackTargetName.trim())) {
+            return { name: fallbackTargetName.trim(), isFriendly: true };
+        }
+        if (!host) return { name: 'Unknown Target', isFriendly: false };
+        const qt = quickTargets.find(q => q.host === host);
+        if (qt && qt.label && !/^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(qt.label.trim())) {
+            return { name: qt.label.trim(), isFriendly: true };
+        }
+        const st = allKnownTargets.find(t => t.host === host);
+        if (st && st.name && !/^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(st.name.trim())) {
+            return { name: st.name.trim(), isFriendly: true };
+        }
+        const sh = sharedTargets.find(t => t.host === host);
+        if (sh && sh.name && !/^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(sh.name.trim())) {
+            return { name: sh.name.trim(), isFriendly: true };
+        }
+        return { name: port ? `${host}:${port}` : host, isFriendly: false };
+    };
+
+    const formatDateDisplay = (dateStr: string | null) => {
+        if (!dateStr) return 'N/A';
+        try {
+            const d = new Date(dateStr);
+            if (isNaN(d.getTime())) return dateStr;
+            const pad = (n: number) => n.toString().padStart(2, '0');
+            const day = pad(d.getDate());
+            const month = pad(d.getMonth() + 1);
+            const year = d.getFullYear();
+            const hours = pad(d.getHours());
+            const mins = pad(d.getMinutes());
+            const secs = pad(d.getSeconds());
+            return `${day}/${month}/${year} ${hours}:${mins}:${secs}`;
+        } catch {
+            return dateStr;
+        }
+    };
 
     const [targetReachability, setTargetReachability] = useState<Record<string, boolean | 'loading'>>({});
 
@@ -188,7 +228,9 @@ export default function Speedtest({ token }: Props) {
             const res = await gFetch('/api/targets', { headers: authHeaders });
             if (res.ok) {
                 const data = await res.json();
-                setSharedTargets((Array.isArray(data) ? data : []).filter((t: any) => t.enabled && t.capabilities?.xfr));
+                const list = Array.isArray(data) ? data : [];
+                setAllKnownTargets(list);
+                setSharedTargets(list.filter((t: any) => t.enabled && t.capabilities?.xfr));
             }
         } catch (e) { }
     };
@@ -281,10 +323,10 @@ export default function Speedtest({ token }: Props) {
 
         const body = mode === 'default' ? {
             mode: 'default',
-            target: { host: h, port: p }
+            target: { host: h, port: p, label: selectedTargetLabel || getTargetDisplayName(h).name }
         } : {
             mode: 'custom',
-            target: { host: h, port: p, psk },
+            target: { host: h, port: p, psk, label: selectedTargetLabel || getTargetDisplayName(h).name },
             protocol,
             direction,
             duration_sec: duration,
@@ -390,11 +432,16 @@ export default function Speedtest({ token }: Props) {
         } catch { }
     };
 
-    const filteredHistory = history.filter(j =>
-        j.sequence_id?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        j.params?.host?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        j.status?.toLowerCase().includes(searchQuery.toLowerCase())
-    );
+    const filteredHistory = history.filter(j => {
+        const q = searchQuery.toLowerCase();
+        const targetName = getTargetDisplayName(j.params?.host, j.params?.port, j.params?.target_name).name;
+        return (
+            j.sequence_id?.toLowerCase().includes(q) ||
+            j.params?.host?.toLowerCase().includes(q) ||
+            targetName.toLowerCase().includes(q) ||
+            j.status?.toLowerCase().includes(q)
+        );
+    });
 
     const isRunning = activeJob?.status === 'running' || activeJob?.status === 'queued';
 
@@ -501,7 +548,7 @@ export default function Speedtest({ token }: Props) {
                                                     return (
                                                         <div
                                                             key={t.key}
-                                                            onClick={() => { setTargetHost(t.host); setTargetPort(t.port); }}
+                                                            onClick={() => { setTargetHost(t.host); setTargetPort(t.port); setSelectedTargetLabel(t.label); }}
                                                             className={cn(
                                                                 "bg-card border px-2.5 py-2 rounded-xl group cursor-pointer transition-all flex flex-col justify-between gap-0.5 shadow-sm hover:shadow-md",
                                                                 isSelected
@@ -538,6 +585,7 @@ export default function Speedtest({ token }: Props) {
                                                                         e.stopPropagation();
                                                                         setTargetHost(t.host);
                                                                         setTargetPort(t.port);
+                                                                        setSelectedTargetLabel(t.label);
                                                                         runTest(t.host, t.port);
                                                                     }}
                                                                     className={cn(
@@ -571,7 +619,7 @@ export default function Speedtest({ token }: Props) {
                                             <input
                                                 type="text"
                                                 value={targetHost}
-                                                onChange={e => setTargetHost(e.target.value)}
+                                                onChange={e => { setTargetHost(e.target.value); setSelectedTargetLabel(''); }}
                                                 placeholder="e.g. 1.2.3.4"
                                                 className="w-full bg-card-secondary border border-border rounded-xl pl-8 pr-3 py-2 text-xs focus:border-blue-500 outline-none transition-all font-mono"
                                             />
@@ -815,9 +863,9 @@ export default function Speedtest({ token }: Props) {
                                     {isRunning 
                                         ? (activeJob?.sequence_id 
                                             ? `Analyzing sequence #${activeJob.sequence_id}` 
-                                            : `Live Stream • Target: ${activeJob?.params?.target_name || activeJob?.params?.target_ip || 'Active Link'}`)
+                                            : `Live Stream • Target: ${getTargetDisplayName(activeJob?.params?.host, activeJob?.params?.port, activeJob?.params?.target_name).name}`)
                                         : (activeJob?.summary 
-                                            ? `Summary for ${activeJob.sequence_id || activeJob?.params?.target_name || activeJob?.params?.target_ip || 'Last Run'}${activeJob?.params?.host ? ` • ${activeJob.params.host}:${activeJob.params.port}` : ''}` 
+                                            ? `Summary for ${activeJob.sequence_id || 'Last Run'} • Target: ${getTargetDisplayName(activeJob?.params?.host, activeJob?.params?.port, activeJob?.params?.target_name).name}${activeJob?.params?.host ? ` (${activeJob.params.host}:${activeJob.params.port})` : ''}` 
                                             : 'Select target and launch test')}
                                 </p>
                             </div>
@@ -1080,21 +1128,69 @@ export default function Speedtest({ token }: Props) {
                                                     onClick={() => viewJobDetails(job)}
                                                     className="group hover:bg-card-secondary/50 transition-all cursor-pointer"
                                                 >
-                                                    <td className="px-4 py-4">
-                                                        <div className="text-xs font-black text-text-primary">{job.sequence_id}</div>
-                                                        <div className="text-[9px] text-text-muted font-bold opacity-60">
-                                                            {job.started_at ? new Date(job.started_at).toLocaleString() : 'N/A'}
+                                                    <td className="px-4 py-3.5">
+                                                        <div className="flex items-center gap-2">
+                                                            <span className="bg-blue-600/10 text-blue-500 dark:text-blue-400 text-[10px] px-1.5 py-0.5 rounded font-bold border border-blue-500/20 font-mono tracking-wider">
+                                                                {job.sequence_id}
+                                                            </span>
+                                                        </div>
+                                                        <div className="text-[10px] text-text-muted font-mono flex items-center gap-1 mt-1 opacity-75">
+                                                            <Calendar size={10} className="text-blue-400 shrink-0" />
+                                                            <span>{formatDateDisplay(job.started_at)}</span>
                                                         </div>
                                                     </td>
-                                                    <td className="px-4 py-4">
-                                                        <div className="text-xs font-black text-text-primary">{job.params.host}:{job.params.port}</div>
-                                                        <div className="text-[9px] text-text-muted font-bold opacity-60">
-                                                            {job.params.protocol.toUpperCase()} • {job.params.direction.replace(/-/g, ' ')}
-                                                            {job.params.bitrate && ` • ${job.params.bitrate}`}
-                                                            {job.params.duration_sec && ` • ${job.params.duration_sec}s`}
-                                                            {job.params.parallel_streams && ` • ${job.params.parallel_streams} stream${job.params.parallel_streams > 1 ? 's' : ''}`}
-                                                            {job.params.cport && ` • Port ${job.params.cport}`}
-                                                        </div>
+                                                    <td className="px-4 py-3.5">
+                                                        {(() => {
+                                                            const resolved = getTargetDisplayName(job.params?.host, job.params?.port, job.params?.target_name);
+                                                            return (
+                                                                <div>
+                                                                    <div className="flex items-center gap-1.5">
+                                                                        <Target size={13} className="text-blue-500 shrink-0" />
+                                                                        <span className="text-xs font-black text-text-primary tracking-tight">
+                                                                            {resolved.name}
+                                                                        </span>
+                                                                        {resolved.isFriendly && (
+                                                                            <span className="text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.2 rounded bg-blue-500/10 text-blue-400 border border-blue-500/20">
+                                                                                Target
+                                                                            </span>
+                                                                        )}
+                                                                    </div>
+                                                                    <div className="text-[10px] text-text-muted font-mono flex items-center gap-1.5 flex-wrap mt-0.5">
+                                                                        <span className="font-bold text-text-secondary">{job.params.host}:{job.params.port}</span>
+                                                                        <span className="opacity-40">•</span>
+                                                                        <span className="font-bold uppercase text-[9px] px-1 py-0.2 rounded bg-card border border-border text-text-secondary">
+                                                                            {job.params.protocol.toUpperCase()}
+                                                                        </span>
+                                                                        <span className="opacity-40">•</span>
+                                                                        <span>{job.params.direction.replace(/-/g, ' ')}</span>
+                                                                        {job.params.bitrate && (
+                                                                            <>
+                                                                                <span className="opacity-40">•</span>
+                                                                                <span>{job.params.bitrate}</span>
+                                                                            </>
+                                                                        )}
+                                                                        {job.params.duration_sec && (
+                                                                            <>
+                                                                                <span className="opacity-40">•</span>
+                                                                                <span>{job.params.duration_sec}s</span>
+                                                                            </>
+                                                                        )}
+                                                                        {job.params.parallel_streams && (
+                                                                            <>
+                                                                                <span className="opacity-40">•</span>
+                                                                                <span>{job.params.parallel_streams} stream{job.params.parallel_streams > 1 ? 's' : ''}</span>
+                                                                            </>
+                                                                        )}
+                                                                        {job.params.cport && (
+                                                                            <>
+                                                                                <span className="opacity-40">•</span>
+                                                                                <span>Port {job.params.cport}</span>
+                                                                            </>
+                                                                        )}
+                                                                    </div>
+                                                                </div>
+                                                            );
+                                                        })()}
                                                     </td>
                                                     <td className="px-4 py-4 text-center">
                                                         <span className={cn(
@@ -1183,15 +1279,29 @@ export default function Speedtest({ token }: Props) {
                                     </div>
                                     <div>
                                         <h3 className="text-sm font-black text-text-primary tracking-tight">Test Details</h3>
-                                        <div className="flex items-center gap-2 mt-0.5">
-                                            <span className="text-[10px] font-black text-blue-400 bg-blue-500/10 px-2 py-0.5 rounded border border-blue-500/20">{selectedJob.sequence_id}</span>
-                                            {selectedJob.params?.host && (
-                                                <span className="text-[10px] font-bold text-text-secondary bg-card px-2 py-0.5 rounded border border-border font-mono">
-                                                    {selectedJob.params.host}:{selectedJob.params.port}
-                                                </span>
-                                            )}
-                                            <span className="text-[10px] text-text-muted opacity-60 font-mono">
-                                                {selectedJob.started_at ? new Date(selectedJob.started_at).toLocaleString() : 'N/A'}
+                                        <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                                            <span className="text-[10px] font-black text-blue-400 bg-blue-500/10 px-2 py-0.5 rounded border border-blue-500/20 font-mono">{selectedJob.sequence_id}</span>
+                                            {(() => {
+                                                const resolved = getTargetDisplayName(selectedJob.params?.host, selectedJob.params?.port, selectedJob.params?.target_name);
+                                                return (
+                                                    <>
+                                                        {resolved.isFriendly && (
+                                                            <span className="text-[10px] font-black text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20 flex items-center gap-1">
+                                                                <Target size={11} className="text-emerald-400" />
+                                                                {resolved.name}
+                                                            </span>
+                                                        )}
+                                                        {selectedJob.params?.host && (
+                                                            <span className="text-[10px] font-bold text-text-secondary bg-card px-2 py-0.5 rounded border border-border font-mono">
+                                                                {selectedJob.params.host}:{selectedJob.params.port}
+                                                            </span>
+                                                        )}
+                                                    </>
+                                                );
+                                            })()}
+                                            <span className="text-[10px] text-text-muted opacity-70 font-mono flex items-center gap-1">
+                                                <Calendar size={10} className="text-blue-400 shrink-0" />
+                                                <span>{formatDateDisplay(selectedJob.started_at)}</span>
                                             </span>
                                         </div>
                                     </div>

@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.0.91] - 2026-10-23
+
+### Added
+- **Convergence-Style Target & IP Presentation in Bandwidth Test History (`web-dashboard/src/Speedtest.tsx`, `web-dashboard/server.ts`)**:
+  - Aligned the destination display in `Bandwidth Test History` with the Convergence test history layout:
+    - Top line: Prominently displays the resolved friendly target site name (e.g. `StigixCloud`, `DC1-Ubuntu`, `BR1-Ubuntu`) with a target icon and a `Target` badge.
+    - Bottom line: Neatly groups the destination IP and port (`142.132.193.157:9000`) alongside the test technical parameters (`TCP • client to server • 200M • 10s • 4 streams • Port 30026`).
+  - Added automatic backend target enrichment in `server.ts` (`/api/tests/xfr` and `/api/tests/xfr/:id`) using `TargetsManager.getMergedTargets()`, ensuring all past historical jobs dynamically display their friendly site name even if they were recorded before the site was named.
+  - Enhanced search filtering so typing a target name (e.g. `DC1`, `StigixCloud`) in the history search bar instantly filters tests.
+  - Upgraded the `Sequence Id` column to a blue mono badge with a calendar date icon, and enriched the Results Detail Modal header with the friendly target badge and IP.
+
 ## [3.0.90] - 2026-10-23
 
 ### Fixed
