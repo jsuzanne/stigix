@@ -16221,7 +16221,12 @@ app.get('/api/fleet/overview', authenticateToken, (req, res) => {
                     tunnel_reconnect_count: matchedTunnel.reconnectCount ?? 0,
                     tunnel_last_disconnected_at: matchedTunnel.lastDisconnectedAt,
                     tunnel_last_disconnect_reason: matchedTunnel.lastDisconnectReason,
-                    rtt_ms: matchedTunnel.rttMs ?? inst.rtt_ms
+                    tunnel_path_profile: matchedTunnel.pathProfile || inst.tunnel_path_profile,
+                    rtt_ms: matchedTunnel.rttMs ?? inst.rtt_ms,
+                    ewma_rtt_ms: matchedTunnel.ewmaRttMs ?? inst.ewma_rtt_ms,
+                    jitter_ms: matchedTunnel.jitterMs ?? inst.jitter_ms,
+                    min_rtt_ms: matchedTunnel.minRttMs ?? inst.min_rtt_ms,
+                    max_rtt_ms: matchedTunnel.maxRttMs ?? inst.max_rtt_ms
                 };
             }
             return inst;

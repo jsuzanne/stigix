@@ -32,11 +32,16 @@ interface PeerInstance {
     tunnel_reconnect_count?: number;
     tunnel_last_disconnected_at?: number;
     tunnel_last_disconnect_reason?: string;
+    tunnel_path_profile?: 'lan' | 'wan' | 'cloud_relay';
     status: 'online' | 'offline';
     is_stale: boolean;
     last_seen_seconds_ago: number;
     last_seen?: string;
     rtt_ms?: number;
+    ewma_rtt_ms?: number;
+    jitter_ms?: number;
+    min_rtt_ms?: number;
+    max_rtt_ms?: number;
     last_pong?: string;
     config_sync_status?: 'synced' | 'behind' | 'na';
     behind_bundles_count?: number;
@@ -184,6 +189,58 @@ function formatTunnelUptime(seconds?: number) {
     return formatUptime(seconds);
 }
 
+function evaluateTunnelPathAndRtt(peer: PeerInstance) {
+    const lastRtt = peer.rtt_ms ?? peer.meta?.rtt_ms;
+    const ewmaRtt = peer.ewma_rtt_ms ?? peer.meta?.ewma_rtt_ms;
+    const minRtt = peer.min_rtt_ms ?? peer.meta?.min_rtt_ms;
+    const maxRtt = peer.max_rtt_ms ?? peer.meta?.max_rtt_ms;
+    const jitter = peer.jitter_ms ?? peer.meta?.jitter_ms;
+    const displayRtt = ewmaRtt ?? lastRtt;
+
+    let pathProfile: 'lan' | 'wan' | 'cloud_relay' =
+        (peer.tunnel_path_profile as any) ||
+        (peer.meta?.tunnel_path_profile as any) ||
+        (peer.tunnel_dest_port === 443 ? 'cloud_relay' : 'lan');
+
+    if (pathProfile === 'lan' && (minRtt ?? displayRtt ?? 0) > 25) {
+        pathProfile = 'wan';
+    }
+
+    const pathLabel = pathProfile === 'cloud_relay' ? 'CLOUD RELAY' : pathProfile === 'wan' ? 'WAN' : 'LAN';
+
+    // Self-calibrating SLA thresholds combining Path Profile + learned physical propagation floor (minRtt)
+    const baseGreen = pathProfile === 'cloud_relay' ? 185 : pathProfile === 'wan' ? 110 : 35;
+    const optimalCeiling = Math.max(baseGreen, minRtt ? Math.min(220, Math.round(minRtt * 1.45 + 25)) : 0);
+    const elevatedCeiling = Math.max(optimalCeiling + 80, Math.round((minRtt || optimalCeiling) * 2.2 + 60));
+
+    let rttColor = 'text-emerald-400';
+    let rttBadgeClass = 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20';
+    if (displayRtt !== undefined && displayRtt !== null) {
+        if (displayRtt > elevatedCeiling) {
+            rttColor = 'text-rose-400';
+            rttBadgeClass = 'text-rose-400 bg-rose-500/10 border-rose-500/20';
+        } else if (displayRtt > optimalCeiling) {
+            rttColor = 'text-amber-400';
+            rttBadgeClass = 'text-amber-400 bg-amber-500/10 border-amber-500/20';
+        }
+    }
+
+    return {
+        pathProfile,
+        pathLabel,
+        displayRtt,
+        lastRtt,
+        ewmaRtt,
+        minRtt,
+        maxRtt,
+        jitter,
+        optimalCeiling,
+        elevatedCeiling,
+        rttColor,
+        rttBadgeClass
+    };
+}
+
 function formatLastSeen(secondsAgo: number, lastSeenIso?: string) {
     let timeStr = '';
     if (lastSeenIso) {
@@ -298,7 +355,12 @@ export default function Fleet({ token, onNavigate: _onNavigate }: FleetProps) {
                         tunnel_reconnect_count: matchedTunnel?.reconnectCount ?? inst.tunnel_reconnect_count ?? 0,
                         tunnel_last_disconnected_at: matchedTunnel?.lastDisconnectedAt ?? inst.tunnel_last_disconnected_at,
                         tunnel_last_disconnect_reason: matchedTunnel?.lastDisconnectReason ?? inst.tunnel_last_disconnect_reason,
-                        rtt_ms: matchedTunnel?.rttMs ?? inst.rtt_ms
+                        tunnel_path_profile: matchedTunnel?.pathProfile ?? inst.tunnel_path_profile,
+                        rtt_ms: matchedTunnel?.rttMs ?? inst.rtt_ms,
+                        ewma_rtt_ms: matchedTunnel?.ewmaRttMs ?? inst.ewma_rtt_ms,
+                        jitter_ms: matchedTunnel?.jitterMs ?? inst.jitter_ms,
+                        min_rtt_ms: matchedTunnel?.minRttMs ?? inst.min_rtt_ms,
+                        max_rtt_ms: matchedTunnel?.maxRttMs ?? inst.max_rtt_ms
                     };
                 });
             }
@@ -551,10 +613,15 @@ export default function Fleet({ token, onNavigate: _onNavigate }: FleetProps) {
                                     const dstEndpoint = isOutbound
                                         ? `${peer.tunnel_dest_ip || peer.ip_private}${peer.tunnel_dest_port ? `:${peer.tunnel_dest_port}` : ''}`
                                         : `${peer.tunnel_dest_ip || 'Leader'}${peer.tunnel_dest_port ? `:${peer.tunnel_dest_port}` : ''}`;
-                                    const rtt = peer.rtt_ms ?? peer.meta?.rtt_ms;
-                                    const rttColor = rtt !== undefined && rtt !== null
-                                        ? rtt < 50 ? 'text-emerald-400' : rtt < 150 ? 'text-amber-400' : 'text-rose-400'
-                                        : 'text-emerald-400';
+                                    const {
+                                        pathLabel,
+                                        displayRtt: rtt,
+                                        lastRtt,
+                                        minRtt,
+                                        maxRtt,
+                                        jitter,
+                                        rttColor
+                                    } = evaluateTunnelPathAndRtt(peer);
 
                                     return (
                                         <tr 
@@ -666,10 +733,11 @@ export default function Fleet({ token, onNavigate: _onNavigate }: FleetProps) {
                                                                 </span>
                                                             )}
 
-                                                            {/* Rich Mouse-Over Tooltip Card showing SRC ➔ DST */}
+                                                            {/* Rich Mouse-Over Tooltip Card showing SRC ➔ DST + Adaptive Path KPIs */}
                                                             <div className="pointer-events-none invisible opacity-0 group-hover/mesh:visible group-hover/mesh:opacity-100 transition-all duration-150 absolute left-0 bottom-full mb-2 z-50 bg-neutral-950/95 text-white border border-neutral-700 rounded-xl px-3 py-2 shadow-2xl text-[11px] font-mono whitespace-nowrap">
-                                                                <div className="text-[9px] uppercase tracking-wider text-neutral-400 font-sans font-bold mb-1">
-                                                                    {isOutbound ? 'Outbound WebSocket (Leader ➔ Peer)' : 'Inbound WebSocket (Peer ➔ Leader)'}
+                                                                <div className="flex items-center justify-between gap-3 text-[9px] uppercase tracking-wider text-neutral-400 font-sans font-bold mb-1">
+                                                                    <span>{isOutbound ? 'Outbound WebSocket (Leader ➔ Peer)' : 'Inbound WebSocket (Peer ➔ Leader)'}</span>
+                                                                    <span className="px-1.5 py-0.5 rounded bg-neutral-800 text-neutral-200 border border-neutral-700">{pathLabel}</span>
                                                                 </div>
                                                                 <div className="flex items-center gap-1.5">
                                                                     <span className="text-neutral-400 text-[10px]">SRC:</span>
@@ -683,7 +751,13 @@ export default function Fleet({ token, onNavigate: _onNavigate }: FleetProps) {
                                                                         <span>Uptime: <b>{formatTunnelUptime(peer.tunnel_uptime_seconds)}</b></span>
                                                                     )}
                                                                     {rtt !== undefined && (
-                                                                        <span>RTT: <b>{rtt}ms</b></span>
+                                                                        <span>Avg RTT: <b className={rttColor}>{rtt}ms</b>{lastRtt !== undefined && lastRtt !== rtt ? ` (last ${lastRtt}ms)` : ''}</span>
+                                                                    )}
+                                                                    {jitter !== undefined && (
+                                                                        <span>Jitter: <b>±{jitter}ms</b></span>
+                                                                    )}
+                                                                    {minRtt !== undefined && maxRtt !== undefined && (
+                                                                        <span>Min/Max: <b>{minRtt}/{maxRtt}ms</b></span>
                                                                     )}
                                                                     {(peer.tunnel_reconnect_count ?? 0) > 0 && (
                                                                         <span className="text-amber-400">Reconnects: <b>{peer.tunnel_reconnect_count}</b></span>
@@ -901,6 +975,18 @@ export default function Fleet({ token, onNavigate: _onNavigate }: FleetProps) {
                     ? `${selectedPeer.tunnel_dest_ip || selectedPeer.ip_private}${selectedPeer.tunnel_dest_port ? `:${selectedPeer.tunnel_dest_port}` : ''}`
                     : `${selectedPeer.tunnel_dest_ip || 'Leader'}${selectedPeer.tunnel_dest_port ? `:${selectedPeer.tunnel_dest_port}` : ''}`;
 
+                const {
+                    pathLabel: modalPathLabel,
+                    displayRtt: modalDisplayRtt,
+                    lastRtt: modalLastRtt,
+                    minRtt: modalMinRtt,
+                    maxRtt: modalMaxRtt,
+                    jitter: modalJitter,
+                    optimalCeiling: modalOptimalCeiling,
+                    rttColor: modalRttColor,
+                    rttBadgeClass: modalRttBadgeClass
+                } = evaluateTunnelPathAndRtt(selectedPeer);
+
                 const directMgmtUrl = selectedPeer.meta?.management_url
                     || (selectedPeer.meta?.management_ip ? `http://${selectedPeer.meta.management_ip}:8080` : `http://${selectedPeer.ip_private}:8080`);
 
@@ -1041,6 +1127,9 @@ export default function Fleet({ token, onNavigate: _onNavigate }: FleetProps) {
                                             </span>
                                         </div>
                                         <div className="flex items-center gap-1.5 flex-wrap justify-end">
+                                            <span className="px-2 py-0.5 rounded text-[10px] font-black uppercase bg-card-secondary text-text-secondary border border-border/80">
+                                                {modalPathLabel}
+                                            </span>
                                             {isOutbound ? (
                                                 <span className="px-2 py-0.5 rounded text-[10px] font-black uppercase bg-cyan-500/15 text-cyan-400 border border-cyan-500/30">
                                                     ↗️ OUTBOUND WS
@@ -1050,9 +1139,12 @@ export default function Fleet({ token, onNavigate: _onNavigate }: FleetProps) {
                                                     ↘️ INBOUND WS
                                                 </span>
                                             )}
-                                            {selectedPeer.rtt_ms !== undefined && (
-                                                <span className="text-[11px] font-mono font-bold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">
-                                                    {selectedPeer.rtt_ms} ms
+                                            {modalDisplayRtt !== undefined && (
+                                                <span
+                                                    className={`text-[11px] font-mono font-bold px-2 py-0.5 rounded border ${modalRttBadgeClass}`}
+                                                    title={`Smoothed EWMA RTT: ${modalDisplayRtt}ms${modalLastRtt !== undefined ? ` | Last Sample: ${modalLastRtt}ms` : ''} | Auto-Calibrated Target: ≤${modalOptimalCeiling}ms`}
+                                                >
+                                                    {modalDisplayRtt} ms
                                                 </span>
                                             )}
                                             {selectedPeer.tunnel_uptime_seconds !== undefined && (
@@ -1080,6 +1172,39 @@ export default function Fleet({ token, onNavigate: _onNavigate }: FleetProps) {
                                                 <div className="text-xs font-bold text-text mt-0.5 truncate">{dstEndpoint}</div>
                                             </div>
                                             <div className="bg-card-secondary/70 p-2.5 rounded-lg border border-border/50 flex items-center justify-between">
+                                                <div className="min-w-0">
+                                                    <div className="text-[10px] uppercase font-sans font-bold text-text-muted">
+                                                        Control Plane RTT ({modalPathLabel})
+                                                    </div>
+                                                    <div className={`text-xs font-bold mt-0.5 ${modalRttColor}`}>
+                                                        {modalDisplayRtt !== undefined ? `${modalDisplayRtt} ms avg` : '—'}
+                                                        {modalLastRtt !== undefined && modalLastRtt !== modalDisplayRtt && (
+                                                            <span className="text-[10px] font-normal text-text-muted ml-1.5">
+                                                                (last: {modalLastRtt} ms)
+                                                            </span>
+                                                        )}
+                                                        <span className="text-[10px] font-normal text-text-muted ml-1.5">
+                                                            · SLA ≤{modalOptimalCeiling}ms
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                                <Gauge size={14} className="text-text-muted opacity-60 shrink-0" />
+                                            </div>
+                                            <div className="bg-card-secondary/70 p-2.5 rounded-lg border border-border/50 flex items-center justify-between">
+                                                <div className="min-w-0">
+                                                    <div className="text-[10px] uppercase font-sans font-bold text-text-muted">WS Jitter & Floor/Peak</div>
+                                                    <div className="text-xs font-bold text-cyan-400 mt-0.5 truncate">
+                                                        {modalJitter !== undefined ? `±${modalJitter} ms jitter` : '—'}
+                                                        {(modalMinRtt !== undefined || modalMaxRtt !== undefined) && (
+                                                            <span className="text-[10px] font-normal text-text-muted ml-1.5">
+                                                                (min {modalMinRtt ?? '—'} / max {modalMaxRtt ?? '—'} ms)
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                                <Zap size={14} className="text-text-muted opacity-60 shrink-0" />
+                                            </div>
+                                            <div className="bg-card-secondary/70 p-2.5 rounded-lg border border-border/50 flex items-center justify-between">
                                                 <div>
                                                     <div className="text-[10px] uppercase font-sans font-bold text-text-muted">WS Session Uptime</div>
                                                     <div className="text-xs font-bold text-emerald-400 mt-0.5">
@@ -1099,17 +1224,18 @@ export default function Fleet({ token, onNavigate: _onNavigate }: FleetProps) {
                                                     {(selectedPeer.tunnel_reconnect_count ?? 0) === 0 ? (
                                                         <div className="text-xs font-bold text-emerald-400 mt-0.5">0 reconnects (Stable)</div>
                                                     ) : (
-                                                        <div className="text-xs font-bold text-amber-400 mt-0.5 truncate">
+                                                        <div className="text-xs font-bold text-amber-400 mt-0.5 truncate" title={selectedPeer.tunnel_last_disconnect_reason ? `Last disconnect reason: ${selectedPeer.tunnel_last_disconnect_reason}` : undefined}>
                                                             ↻ {selectedPeer.tunnel_reconnect_count} reconnect{selectedPeer.tunnel_reconnect_count === 1 ? '' : 's'}
                                                             {selectedPeer.tunnel_last_disconnected_at && (
                                                                 <span className="text-[10px] font-normal text-text-muted ml-1">
-                                                                    (last: {new Date(selectedPeer.tunnel_last_disconnected_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })})
+                                                                    ({new Date(selectedPeer.tunnel_last_disconnected_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                                                                    {selectedPeer.tunnel_last_disconnect_reason ? ` · ${selectedPeer.tunnel_last_disconnect_reason}` : ''})
                                                                 </span>
                                                             )}
                                                         </div>
                                                     )}
                                                 </div>
-                                                <RefreshCw size={13} className="text-text-muted opacity-60" />
+                                                <RefreshCw size={13} className="text-text-muted opacity-60 shrink-0" />
                                             </div>
                                         </div>
                                     )}

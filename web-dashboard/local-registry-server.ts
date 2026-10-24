@@ -162,7 +162,12 @@ export class LocalRegistryServer {
         sourceIp?: string,
         destIp?: string,
         sourcePort?: number,
-        destPort?: number
+        destPort?: number,
+        ewmaRttMs?: number,
+        jitterMs?: number,
+        minRttMs?: number,
+        maxRttMs?: number,
+        pathProfile?: string
     ): void {
         let inst = this.instances.get(instanceId);
         if (!inst) {
@@ -176,6 +181,11 @@ export class LocalRegistryServer {
         if (inst) {
             (inst as any).rtt_ms = rttMs;
             (inst as any).last_pong = new Date(lastPong).toISOString();
+            if (ewmaRttMs !== undefined) (inst as any).ewma_rtt_ms = ewmaRttMs;
+            if (jitterMs !== undefined) (inst as any).jitter_ms = jitterMs;
+            if (minRttMs !== undefined) (inst as any).min_rtt_ms = minRttMs;
+            if (maxRttMs !== undefined) (inst as any).max_rtt_ms = maxRttMs;
+            if (pathProfile) (inst as any).tunnel_path_profile = pathProfile;
             if (direction) {
                 (inst as any).tunnel_direction = direction;
             }
@@ -194,6 +204,11 @@ export class LocalRegistryServer {
             if (!inst.meta) inst.meta = {};
             inst.meta.rtt_ms = rttMs;
             inst.meta.last_pong = (inst as any).last_pong;
+            if (ewmaRttMs !== undefined) inst.meta.ewma_rtt_ms = ewmaRttMs;
+            if (jitterMs !== undefined) inst.meta.jitter_ms = jitterMs;
+            if (minRttMs !== undefined) inst.meta.min_rtt_ms = minRttMs;
+            if (maxRttMs !== undefined) inst.meta.max_rtt_ms = maxRttMs;
+            if (pathProfile) inst.meta.tunnel_path_profile = pathProfile;
             if (direction) inst.meta.tunnel_direction = direction;
             if (sourceIp) inst.meta.tunnel_source_ip = sourceIp;
             if (destIp) inst.meta.tunnel_dest_ip = destIp;

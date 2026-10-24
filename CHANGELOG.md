@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.0.97] - 2026-10-24
+
+### Added
+- **Adaptive WebSocket Control Plane KPIs & Path Auto-Calibration (`web-dashboard/fleet-tunnel.ts`, `web-dashboard/local-registry-server.ts`, `web-dashboard/server.ts`, `web-dashboard/src/Fleet.tsx`)**:
+  - Added per-peer overlay path auto-classification (`lan`, `wan`, `cloud_relay`) with automatic promotion from `lan` to `wan` when RFC1918 private IPs traverse an SD-WAN/IPsec overlay (`minRttMs > 25ms`).
+  - Added smoothed EWMA RTT (`ewma_rtt_ms`) with single-sample TCP Head-of-Line (HoL) spike dampening, RFC 3550 smoothed jitter (`jitter_ms`), and session floor/peak latency (`min_rtt_ms` / `max_rtt_ms`).
+  - Added an immediate initial RTT probe `500ms` after WebSocket handshake so tunnel latency KPIs populate immediately without waiting for the 15s heartbeat cycle.
+  - Updated the `Fleet` table, hover tooltip, and `Mesh Tunnel Control Plane` drawer with self-calibrating SLA latency thresholds (`evaluateTunnelPathAndRtt`), path profile badges (`LAN` / `WAN` / `CLOUD RELAY`), jitter, min/max RTT, and last disconnect reason display.
+
 ## [3.0.96] - 2026-10-23
 
 ### Fixed

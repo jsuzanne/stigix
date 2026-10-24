@@ -12,6 +12,8 @@ import type { LocalRegistryServer } from './local-registry-server.js';
 import type { TargetsManager } from './targets-manager.js';
 import type { ProvisioningManager, GlobalBundleType } from './provisioning-manager.js';
 
+export type TunnelPathProfile = 'lan' | 'wan' | 'cloud_relay';
+
 export interface TunnelPeerInfo {
     instanceId: string;
     siteName: string;
@@ -23,6 +25,11 @@ export interface TunnelPeerInfo {
     lastDisconnectReason?: string;
     lastPing: number;
     rttMs?: number;
+    ewmaRttMs?: number;
+    jitterMs?: number;
+    minRttMs?: number;
+    maxRttMs?: number;
+    pathProfile?: TunnelPathProfile;
     lastPong?: number;
     syncStatus?: 'synced' | 'syncing' | 'error' | 'pending';
     activeRevision?: number;
@@ -125,6 +132,95 @@ export class FleetTunnelManager {
         };
         for (const k of keys) {
             this.peerTunnelStats.set(k, updated);
+        }
+    }
+
+    private static isRfc1918OrLoopback(ip?: string): boolean {
+        if (!ip) return true;
+        const clean = ip.trim().replace(/^::ffff:/, '').toLowerCase();
+        if (clean === '127.0.0.1' || clean === '::1' || clean === 'localhost' || clean === '0.0.0.0') return true;
+        const parts = clean.split('.').map(Number);
+        if (parts.length !== 4 || parts.some(p => isNaN(p) || p < 0 || p > 255)) return false;
+        if (parts[0] === 10 || parts[0] === 127) return true;
+        if (parts[0] === 192 && parts[1] === 168) return true;
+        if (parts[0] === 172 && parts[1] >= 16 && parts[1] <= 31) return true;
+        return false;
+    }
+
+    private detectPathProfile(opts: {
+        isCloudflareOrHttpsProxy?: boolean;
+        remoteIp?: string;
+        clientIp?: string;
+        forwardedIp?: string;
+        destPort?: number;
+    }): TunnelPathProfile {
+        if (opts.isCloudflareOrHttpsProxy || opts.destPort === 443) {
+            return 'cloud_relay';
+        }
+        if (opts.forwardedIp && !FleetTunnelManager.isRfc1918OrLoopback(opts.forwardedIp)) {
+            return 'wan';
+        }
+        if (opts.remoteIp && !FleetTunnelManager.isRfc1918OrLoopback(opts.remoteIp)) {
+            return 'wan';
+        }
+        if (opts.clientIp && !FleetTunnelManager.isRfc1918OrLoopback(opts.clientIp)) {
+            return 'wan';
+        }
+        return 'lan';
+    }
+
+    private recordRttSample(
+        instanceId: string,
+        entry: { socket: Socket | ClientSocket; info: TunnelPeerInfo },
+        rawRttMs: number
+    ): void {
+        const rtt = Math.max(1, Math.round(rawRttMs));
+        const prevRtt = entry.info.rttMs;
+        const prevEwma = entry.info.ewmaRttMs;
+        const prevJitter = entry.info.jitterMs ?? 0;
+
+        entry.info.rttMs = rtt;
+        entry.info.lastPong = Date.now();
+        entry.info.minRttMs = entry.info.minRttMs === undefined ? rtt : Math.min(entry.info.minRttMs, rtt);
+        entry.info.maxRttMs = entry.info.maxRttMs === undefined ? rtt : Math.max(entry.info.maxRttMs, rtt);
+
+        if (prevEwma === undefined) {
+            entry.info.ewmaRttMs = rtt;
+            entry.info.jitterMs = 0;
+        } else {
+            // Dampen single-sample TCP Head-of-Line (HoL) blocking spikes (> 3x baseline and > +150ms)
+            const isHoLSpike = rtt > prevEwma * 3 && (rtt - prevEwma) > 150;
+            const alpha = isHoLSpike ? 0.08 : 0.25;
+            entry.info.ewmaRttMs = Math.max(1, Math.round(prevEwma * (1 - alpha) + rtt * alpha));
+
+            const delta = Math.abs(rtt - (prevRtt ?? prevEwma));
+            // Cap single-sample HoL spike contribution to jitter so jitter reflects steady-state variance
+            const cappedDelta = isHoLSpike ? Math.min(delta, Math.max(50, prevEwma)) : delta;
+            entry.info.jitterMs = Math.round(prevJitter + (cappedDelta - prevJitter) * 0.25);
+        }
+
+        // Auto-promote 'lan' to 'wan' if physical propagation floor (minRttMs) exceeds 25ms
+        // (e.g. RFC1918 private IPs routed over an SD-WAN / IPsec / SASE overlay across distant sites)
+        if (entry.info.pathProfile === 'lan' && entry.info.minRttMs !== undefined && entry.info.minRttMs > 25) {
+            entry.info.pathProfile = 'wan';
+        }
+
+        if (this.localRegistryServer) {
+            this.localRegistryServer.updatePeerTunnelMetrics(
+                instanceId,
+                rtt,
+                entry.info.lastPong,
+                entry.info.direction,
+                entry.info.sourceIp,
+                entry.info.destIp,
+                entry.info.sourcePort,
+                entry.info.destPort,
+                entry.info.ewmaRttMs,
+                entry.info.jitterMs,
+                entry.info.minRttMs,
+                entry.info.maxRttMs,
+                entry.info.pathProfile
+            );
         }
     }
 
@@ -557,6 +653,14 @@ export class FleetTunnelManager {
                 ? 443
                 : ((socket.request?.socket as any)?.localPort || (socket.conn as any)?.localPort || this.port);
 
+            const pathProfile = this.detectPathProfile({
+                isCloudflareOrHttpsProxy,
+                remoteIp: realInboundSourceIp,
+                clientIp,
+                forwardedIp,
+                destPort
+            });
+
             const info: TunnelPeerInfo = {
                 instanceId,
                 siteName,
@@ -569,7 +673,8 @@ export class FleetTunnelManager {
                 destIp,
                 socketRemoteIp: socketRemoteIp || clientIp,
                 sourcePort,
-                destPort
+                destPort,
+                pathProfile
             };
 
             // Inbound Preemption: If Leader had an active or pending outbound dial (M6) to this Spoke,
@@ -614,9 +719,25 @@ export class FleetTunnelManager {
                     info.sourceIp,
                     info.destIp,
                     info.sourcePort,
-                    info.destPort
+                    info.destPort,
+                    undefined,
+                    undefined,
+                    undefined,
+                    undefined,
+                    info.pathProfile
                 );
             }
+
+            // Trigger an immediate initial RTT probe 500ms after handshake so baseline KPIs populate without waiting 15s
+            setTimeout(() => {
+                const entry = this.activeTunnels.get(instanceId);
+                if (entry && entry.socket === socket && socket.connected) {
+                    const pingStart = Date.now();
+                    socket.emit('tunnel:rtt_ping', { pingTime: pingStart, lastRttMs: entry.info.rttMs }, () => {
+                        this.recordRttSample(instanceId, entry, Date.now() - pingStart);
+                    });
+                }
+            }, 500);
 
             log('TUNNEL', `⚡ Reverse tunnel connected: ${siteName} (${instanceId}) [${clientIp}] via WebSocket (${info.direction}) [${sourceIp} ➔ ${destIp}]`);
 
@@ -707,12 +828,7 @@ export class FleetTunnelManager {
             socket.on('tunnel:rtt_pong', (data: { pingTime: number }) => {
                 const entry = this.activeTunnels.get(instanceId);
                 if (entry && data?.pingTime) {
-                    const rtt = Math.max(1, Date.now() - data.pingTime);
-                    entry.info.rttMs = rtt;
-                    entry.info.lastPong = Date.now();
-                    if (this.localRegistryServer) {
-                        this.localRegistryServer.updatePeerTunnelMetrics(instanceId, rtt, Date.now(), entry.info.direction);
-                    }
+                    this.recordRttSample(instanceId, entry, Date.now() - data.pingTime);
                 }
             });
 
@@ -862,13 +978,8 @@ export class FleetTunnelManager {
             for (const [instanceId, entry] of this.activeTunnels.entries()) {
                 if (entry.socket && (entry.socket as any).connected) {
                     const pingStart = Date.now();
-                    entry.socket.emit('tunnel:rtt_ping', { pingTime: pingStart, lastRttMs: entry.info.rttMs }, (ackData?: { pongTime: number }) => {
-                        const rtt = Math.max(1, Date.now() - pingStart);
-                        entry.info.rttMs = rtt;
-                        entry.info.lastPong = Date.now();
-                        if (this.localRegistryServer) {
-                            this.localRegistryServer.updatePeerTunnelMetrics(instanceId, rtt, Date.now(), entry.info.direction);
-                        }
+                    entry.socket.emit('tunnel:rtt_ping', { pingTime: pingStart, lastRttMs: entry.info.rttMs }, () => {
+                        this.recordRttSample(instanceId, entry, Date.now() - pingStart);
                     });
                 }
             }
@@ -1500,6 +1611,12 @@ export class FleetTunnelManager {
             this.registerLeaderHandlers(socket);
 
             const leaderSrcIp = this.registryManager?.getCurrentIp?.() || this.registryManager?.getStatus?.()?.detected_ip || '127.0.0.1';
+            const pathProfile = this.detectPathProfile({
+                isCloudflareOrHttpsProxy: port === 443,
+                remoteIp: host,
+                clientIp: host,
+                destPort: port
+            });
             const info: TunnelPeerInfo = {
                 instanceId: targetId,
                 siteName: targetSiteName,
@@ -1510,7 +1627,8 @@ export class FleetTunnelManager {
                 direction: 'outbound_dial',
                 sourceIp: leaderSrcIp,
                 destIp: host,
-                destPort: port
+                destPort: port,
+                pathProfile
             };
 
             this.activeTunnels.set(targetId, { socket, info });
@@ -1526,9 +1644,24 @@ export class FleetTunnelManager {
                     info.sourceIp,
                     info.destIp,
                     undefined,
-                    info.destPort
+                    info.destPort,
+                    undefined,
+                    undefined,
+                    undefined,
+                    undefined,
+                    info.pathProfile
                 );
             }
+
+            setTimeout(() => {
+                const entry = this.activeTunnels.get(info.instanceId) || this.activeTunnels.get(targetId);
+                if (entry && entry.socket === socket && socket.connected) {
+                    const pingStart = Date.now();
+                    socket.emit('tunnel:rtt_ping', { pingTime: pingStart, lastRttMs: entry.info.rttMs }, () => {
+                        this.recordRttSample(info.instanceId, entry, Date.now() - pingStart);
+                    });
+                }
+            }, 500);
 
             // Push cluster peer mesh to dialed peer
             const instances = this.localRegistryServer?.getInstances() || [];
