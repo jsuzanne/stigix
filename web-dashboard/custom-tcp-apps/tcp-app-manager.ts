@@ -46,25 +46,35 @@ export class TcpAppManager extends EventEmitter {
 
     public async init(defaultSiteName?: string, autoRestart: boolean = true): Promise<void> {
         if (this.isInitialized) return;
+        this.isInitialized = true;
 
         const config = await this.configStore.load(defaultSiteName);
 
         for (const app of config.applications) {
-            this.registerAppInstance(app, config.instance);
+            const existing = this.appInstances.get(app.id);
+            if (existing) {
+                existing.config = app;
+                existing.serverRuntime.updateConfig(app);
+                existing.clientRuntime.updateConfig(app);
+            } else {
+                this.registerAppInstance(app, config.instance);
+            }
         }
 
         // Handle auto-start on initialization if autoRestart is enabled
         if (autoRestart) {
             for (const app of config.applications) {
                 if (app.enabled !== false) {
-                    // Start listener if startListener is true (default true)
-                    if (app.startup?.startListener !== false) {
+                    const ctx = this.appInstances.get(app.id);
+                    const isListening = ctx?.serverRuntime?.isListening() || ctx?.metrics?.listenerState === 'listening';
+                    // Start listener if startListener is true (default true) and not already listening
+                    if (app.startup?.startListener !== false && !isListening) {
                         this.startListener(app.id, false).catch(err => {
                             console.error(`[CUSTOM_TCP_MGR] Failed to autostart listener for "${app.name}":`, err.message);
                         });
                     }
-                    // Resume client workload if startClientWorkload was active
-                    if (app.startup?.startClientWorkload === true) {
+                    // Resume client workload if startClientWorkload was active and not already running
+                    if (app.startup?.startClientWorkload === true && !ctx?.metrics?.clientWorkloadRunning) {
                         this.startClient(app.id, undefined, false).catch(err => {
                             console.error(`[CUSTOM_TCP_MGR] Failed to autostart client for "${app.name}":`, err.message);
                         });
@@ -72,8 +82,6 @@ export class TcpAppManager extends EventEmitter {
                 }
             }
         }
-
-        this.isInitialized = true;
     }
 
     public getConfigStore(): CustomTcpConfigStore {
@@ -616,6 +624,7 @@ export class TcpAppManager extends EventEmitter {
     }
 
     public async hotReload(newApps?: CustomTcpApplicationConfig[], newMulticastApps?: any[]): Promise<void> {
+        this.isInitialized = true;
         const file = await this.configStore.load();
         let needsSave = false;
         if (newApps && Array.isArray(newApps)) {
@@ -648,7 +657,7 @@ export class TcpAppManager extends EventEmitter {
             if (ctx) {
                 const prevPort = ctx.config.listener?.port;
                 const newPort = app.listener?.port;
-                const wasListening = ctx.metrics.listenerState === 'listening';
+                const wasListening = ctx.serverRuntime.isListening() || ctx.metrics.listenerState === 'listening';
                 const wasClientRunning = ctx.metrics.clientWorkloadRunning;
 
                 if (prevPort !== newPort) {
@@ -788,6 +797,12 @@ export class TcpAppManager extends EventEmitter {
     }
 
     private registerAppInstance(app: CustomTcpApplicationConfig, identity: any): void {
+        const existing = this.appInstances.get(app.id);
+        if (existing) {
+            try { existing.serverRuntime.stop().catch(() => {}); } catch {}
+            try { existing.clientRuntime.stop().catch(() => {}); } catch {}
+        }
+
         const metrics = new AppMetricsTracker(app.id, app.name, app.listener.port);
         const serverRuntime = new TcpServerRuntime(app, identity, metrics);
         const clientRuntime = new TcpClientRuntime(app, identity, metrics);

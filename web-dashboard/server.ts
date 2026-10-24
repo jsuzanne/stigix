@@ -20222,17 +20222,18 @@ httpServer.listen(PORT, '0.0.0.0', async () => {
     // Voice auto-restart is handled inside voice_orchestrator.py
     // (it reads system-settings.json and skips the forced enabled=false if auto_restart_voice=true)
 
-    // Start Registry Service only after server is listening
-    registryManager.start().catch(e => log('REGISTRY', `Failed to start: ${e.message}`, 'error'));
-
-    // Initialize Custom TCP Applications Manager
+    // Initialize Custom TCP Applications Manager before starting Registry Service
+    // to prevent startup race conditions with incoming provisioning bundles
     const autoRestartCustomTcp = sysSettings.auto_restart_custom_tcp !== false;
     const initialSiteName = registryManager.getSiteName();
     tcpAppManager.init(initialSiteName, autoRestartCustomTcp).then(() => {
         syncAllLocalCustomAppServers();
         // Periodic resync of local custom app listeners every 30s
         setInterval(syncAllLocalCustomAppServers, 30000);
-    }).catch(e => log('CUSTOM_TCP', `Failed to initialize Custom TCP Manager: ${e.message}`, 'error'));
+    }).catch(e => log('CUSTOM_TCP', `Failed to initialize Custom TCP Manager: ${e.message}`, 'error')).finally(() => {
+        // Start Registry Service once initial custom TCP listeners are bound
+        registryManager.start().catch(e => log('REGISTRY', `Failed to start: ${e.message}`, 'error'));
+    });
 
     // Delayed Prisma SD-WAN auto-discovery sync
     setTimeout(async () => {

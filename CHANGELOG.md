@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.0.98] - 2026-10-24
+
+### Fixed
+- **Startup Race Condition & Port Conflict Resolution for Custom TCP Applications (`web-dashboard/custom-tcp-apps/tcp-app-manager.ts`, `web-dashboard/server.ts`)**:
+  - Fixed a race condition where tunnel synchronization (`hotReload`) triggered before `tcpAppManager.init()` had completed, causing duplicate `TcpServerRuntime` instances to be registered while leaving orphaned listening sockets bound to ports (8083, 8085, 8096, etc.), leading to false `Port occupied on the host` errors on restart.
+  - Added an early `isInitialized = true` assignment in both `init()` and `hotReload()` to prevent overlapping instantiation cycles.
+  - In `init()`, existing application runtimes are now preserved and updated via `updateConfig(app)` instead of clobbering with new unstarted instances.
+  - Added listener status pre-checks in `autoRestart` so `startListener()` is skipped if the app's TCP socket is already bound.
+  - Added safe cleanup of previous `serverRuntime` and `clientRuntime` before re-registering an application in `registerAppInstance()`.
+  - Sequenced `tcpAppManager.init()` before `registryManager.start()` in `server.ts` to ensure local sockets are bound before fleet tunnel connections and inbound provisioning bundles can race.
+
 ## [3.0.97] - 2026-10-24
 
 ### Added
