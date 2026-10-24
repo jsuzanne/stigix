@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.0.99] - 2026-10-24
+
+### Fixed
+- **Custom TCP Zero-Touch Client Auto-Start & Manual Override Propagation (`web-dashboard/provisioning-manager.ts`, `web-dashboard/custom-tcp-apps/tcp-app-manager.ts`)**:
+  - Fixed a bug in `provisioning-manager.ts` where global application bundles synced from the Leader discarded `gApp.startup` by prioritizing stale local configurations (`localApp.startup || gApp.startup`), preventing `startClientWorkload: true` (Auto-Start Traffic) from propagating to peer nodes across the mesh.
+  - Implemented authoritative synchronization for `startup.startClientWorkload` and `startup.startListener` in `mergedApps` while respecting explicit local operator overrides (`manualOverride.clientStopped` and `manualOverride.listenerStopped`).
+  - Added immediate client autostart invocation in `saveApplication` (`tcp-app-manager.ts`) when saving an application locally with `startClientWorkload: true` and active peers.
+  - Tracked and persisted `manualOverride.clientStopped` when an operator explicitly clicks "Stop Client", preventing background global bundle syncs from restarting the client workload against the operator's intention until "Start Client" is clicked.
+
 ## [3.0.98] - 2026-10-24
 
 ### Fixed

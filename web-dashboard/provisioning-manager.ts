@@ -977,10 +977,27 @@ export class ProvisioningManager {
                             ? [...gApp.peers]
                             : (localApp.peers ? [...localApp.peers] : []);
 
+                        const isClientManuallyStopped = localApp.manualOverride?.clientStopped === true;
+                        const isListenerManuallyStopped = localApp.manualOverride?.listenerStopped === true;
+
+                        const effectiveStartup = {
+                            startListener: isListenerManuallyStopped
+                                ? false
+                                : (gApp.startup?.startListener !== undefined
+                                    ? gApp.startup.startListener
+                                    : (localApp.startup?.startListener ?? true)),
+                            startClientWorkload: isClientManuallyStopped
+                                ? false
+                                : (gApp.startup?.startClientWorkload !== undefined
+                                    ? gApp.startup.startClientWorkload
+                                    : (localApp.startup?.startClientWorkload ?? false))
+                        };
+
                         mergedApps.push({
                             ...gApp,
                             enabled: localApp.enabled !== undefined ? localApp.enabled : gApp.enabled,
-                            startup: localApp.startup || gApp.startup,
+                            startup: effectiveStartup,
+                            manualOverride: localApp.manualOverride,
                             peers: effectivePeers
                         });
                     } else {

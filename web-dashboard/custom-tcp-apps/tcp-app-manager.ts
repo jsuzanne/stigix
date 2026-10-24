@@ -155,10 +155,22 @@ export class TcpAppManager extends EventEmitter {
                 ctx.serverRuntime.updateConfig(app);
                 ctx.clientRuntime.updateConfig(app);
             }
+
+            // Auto-start client workload if enabled on save and client is not running
+            if (app.enabled && app.startup?.startClientWorkload === true && !ctx.metrics.clientWorkloadRunning && (app.peers || []).length > 0) {
+                this.startClient(app.id, undefined, false).catch(err => {
+                    console.error(`[CUSTOM_TCP_MGR] Failed to auto-start client for "${app.name}" on save:`, err.message);
+                });
+            }
         } else {
             this.registerAppInstance(app, file.instance);
-            if (app.enabled && app.startup?.startListener !== false) {
-                await this.startListener(app.id, false).catch(() => {});
+            if (app.enabled) {
+                if (app.startup?.startListener !== false) {
+                    await this.startListener(app.id, false).catch(() => {});
+                }
+                if (app.startup?.startClientWorkload === true && (app.peers || []).length > 0) {
+                    await this.startClient(app.id, undefined, false).catch(() => {});
+                }
             }
         }
 
@@ -452,6 +464,9 @@ export class TcpAppManager extends EventEmitter {
                 startListener: ctx.config.startup?.startListener ?? true,
                 startClientWorkload: true
             };
+            if (ctx.config.manualOverride) {
+                ctx.config.manualOverride.clientStopped = false;
+            }
             await this.persistAppStartupState(ctx.config.id);
         }
 
@@ -505,6 +520,10 @@ export class TcpAppManager extends EventEmitter {
                 startListener: ctx.config.startup?.startListener ?? true,
                 startClientWorkload: false
             };
+            ctx.config.manualOverride = {
+                ...ctx.config.manualOverride,
+                clientStopped: true
+            };
             await this.persistAppStartupState(ctx.config.id);
         }
 
@@ -522,6 +541,7 @@ export class TcpAppManager extends EventEmitter {
                     startListener: ctx.config.startup?.startListener ?? true,
                     startClientWorkload: ctx.config.startup?.startClientWorkload ?? false
                 };
+                app.manualOverride = ctx.config.manualOverride;
                 await this.configStore.save(file);
             }
         } catch (e: any) {
