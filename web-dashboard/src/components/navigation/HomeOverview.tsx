@@ -63,7 +63,8 @@ export const HomeOverview: React.FC<HomeOverviewProps> = ({
     updateAvailable,
     onNavigate,
     onOpenNodeRoleModal,
-    onOpenSearch
+    onOpenSearch,
+    onOpenDiagnostics
 }) => {
     const { peers, activePeerId, activePeer, gFetch } = usePeerContext();
     const isRemote = Boolean(activePeerId);
@@ -363,6 +364,18 @@ export const HomeOverview: React.FC<HomeOverviewProps> = ({
                                 <Search size={15} />
                                 <span className="hidden sm:inline">Search</span>
                                 <kbd className="px-1.5 py-0.5 text-[10px] font-mono bg-slate-100 dark:bg-[#0f172a] rounded border border-slate-300 dark:border-slate-700 text-slate-500 dark:text-slate-400">⌘K</kbd>
+                            </button>
+                        )}
+
+                        {onOpenDiagnostics && (
+                            <button
+                                type="button"
+                                onClick={onOpenDiagnostics}
+                                title="Open Stigix 360° System Health Matrix & Diagnostics"
+                                className="px-3.5 py-2.5 rounded-2xl bg-white dark:bg-[#161f36] border border-slate-200 dark:border-[#1e293b] text-slate-600 dark:text-text-muted hover:text-emerald-600 dark:hover:text-emerald-400 hover:border-emerald-400 dark:hover:border-emerald-500/40 transition-all shadow-sm cursor-pointer flex items-center gap-2 text-xs font-bold"
+                            >
+                                <Activity size={15} className="text-emerald-500 dark:text-emerald-400" />
+                                <span className="hidden sm:inline">Diagnostics</span>
                             </button>
                         )}
 

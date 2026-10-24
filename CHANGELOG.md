@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.1.1] - 2026-10-24
+
+### Improved
+- **Quiet-Healthy Topbar & Dedicated Diagnostics Action (`web-dashboard/src/components/health/SystemHealthBadge.tsx`, `web-dashboard/src/components/navigation/HomeOverview.tsx`)**:
+  - Implemented an **"Alert-Only" (Quiet-Healthy)** UX pattern for the topbar health indicator: the prominent green `100% HEALTH` badge is now hidden when overall system health is nominal (score ≥ 95% and status healthy), eliminating visual redundancy with the Home overview matrix and reclaiming ~130px in the top header.
+  - The badge dynamically reveals itself with animated pulse and ping indicators only when an actual incident or degradation occurs (`WARNING` in amber or `CRITICAL` in rose), immediately alerting operators from any tab.
+  - Added a dedicated "Diagnostics" button to the Home page header banner next to Search and Refresh, providing direct on-demand access to the full 360° System Health Matrix modal.
+
 ## [3.1.0] - 2026-10-24
 
 ### Changed
