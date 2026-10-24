@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.0.100] - 2026-10-24
+
+### Improved
+- **Fleet WebSocket Disconnect Reason Visibility (`web-dashboard/src/Fleet.tsx`)**:
+  - Enhanced the "Session Stability" card in the Fleet node drawer to display the complete disconnect reason (e.g. `transport close`, `ping timeout`) without CSS text truncation (`truncate`).
+  - Rendered disconnect details into a structured view with timestamp and a dedicated, selectable monospace badge (`Reason: <reason>`).
+  - Added the exact disconnect reason to the table hover tooltip on the Fleet reconnects count badge.
+
 ## [3.0.99] - 2026-10-24
 
 ### Fixed

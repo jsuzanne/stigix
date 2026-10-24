@@ -760,7 +760,12 @@ export default function Fleet({ token, onNavigate: _onNavigate }: FleetProps) {
                                                                         <span>Min/Max: <b>{minRtt}/{maxRtt}ms</b></span>
                                                                     )}
                                                                     {(peer.tunnel_reconnect_count ?? 0) > 0 && (
-                                                                        <span className="text-amber-400">Reconnects: <b>{peer.tunnel_reconnect_count}</b></span>
+                                                                        <span className="text-amber-400">
+                                                                            Reconnects: <b>{peer.tunnel_reconnect_count}</b>
+                                                                            {peer.tunnel_last_disconnect_reason && (
+                                                                                <span className="text-text-muted font-normal"> ({peer.tunnel_last_disconnect_reason})</span>
+                                                                            )}
+                                                                        </span>
                                                                     )}
                                                                 </div>
                                                             </div>
@@ -1218,24 +1223,34 @@ export default function Fleet({ token, onNavigate: _onNavigate }: FleetProps) {
                                                 </div>
                                                 <Clock size={14} className="text-text-muted opacity-60" />
                                             </div>
-                                            <div className="bg-card-secondary/70 p-2.5 rounded-lg border border-border/50 flex items-center justify-between">
-                                                <div className="min-w-0">
+                                            <div className="bg-card-secondary/70 p-2.5 rounded-lg border border-border/50 flex items-start justify-between">
+                                                <div className="min-w-0 flex-1">
                                                     <div className="text-[10px] uppercase font-sans font-bold text-text-muted">Session Stability</div>
                                                     {(selectedPeer.tunnel_reconnect_count ?? 0) === 0 ? (
                                                         <div className="text-xs font-bold text-emerald-400 mt-0.5">0 reconnects (Stable)</div>
                                                     ) : (
-                                                        <div className="text-xs font-bold text-amber-400 mt-0.5 truncate" title={selectedPeer.tunnel_last_disconnect_reason ? `Last disconnect reason: ${selectedPeer.tunnel_last_disconnect_reason}` : undefined}>
-                                                            ↻ {selectedPeer.tunnel_reconnect_count} reconnect{selectedPeer.tunnel_reconnect_count === 1 ? '' : 's'}
-                                                            {selectedPeer.tunnel_last_disconnected_at && (
-                                                                <span className="text-[10px] font-normal text-text-muted ml-1">
-                                                                    ({new Date(selectedPeer.tunnel_last_disconnected_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
-                                                                    {selectedPeer.tunnel_last_disconnect_reason ? ` · ${selectedPeer.tunnel_last_disconnect_reason}` : ''})
-                                                                </span>
+                                                        <div className="mt-0.5 space-y-1">
+                                                            <div className="text-xs font-bold text-amber-400 flex items-center gap-1.5 flex-wrap">
+                                                                <span>↻ {selectedPeer.tunnel_reconnect_count} reconnect{selectedPeer.tunnel_reconnect_count === 1 ? '' : 's'}</span>
+                                                                {selectedPeer.tunnel_last_disconnected_at && (
+                                                                    <span className="text-[10px] font-mono font-normal text-text-muted">
+                                                                        ({new Date(selectedPeer.tunnel_last_disconnected_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })})
+                                                                    </span>
+                                                                )}
+                                                            </div>
+                                                            {selectedPeer.tunnel_last_disconnect_reason && (
+                                                                <div
+                                                                    className="text-[10px] font-mono text-text-secondary bg-card/70 px-2 py-0.5 rounded border border-border/40 select-all inline-block"
+                                                                    title="Underlying WebSocket disconnect reason"
+                                                                >
+                                                                    <span className="text-text-muted uppercase text-[9px] tracking-wider font-sans font-bold mr-1">Reason:</span>
+                                                                    <span className="text-amber-300 font-semibold">{selectedPeer.tunnel_last_disconnect_reason}</span>
+                                                                </div>
                                                             )}
                                                         </div>
                                                     )}
                                                 </div>
-                                                <RefreshCw size={13} className="text-text-muted opacity-60 shrink-0" />
+                                                <RefreshCw size={13} className="text-text-muted opacity-60 shrink-0 mt-0.5 ml-2" />
                                             </div>
                                         </div>
                                     )}
