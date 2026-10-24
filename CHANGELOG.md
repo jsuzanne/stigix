@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.1.0] - 2026-10-24
+
+### Changed
+- **Stigix v3.1.0 Minor Milestone Release (`VERSION`, `web-dashboard/VERSION`, `engines/VERSION`, `web-dashboard/package.json`, `README.md`)**:
+  - Consolidated the `3.0.x` evolution series (`3.0.0` through `3.0.100`) into the **`3.1.0`** minor release milestone.
+  - Highlights of the `3.1.0` milestone include:
+    - **Adaptive Mesh WebSocket Control Plane**: Auto-calibrated SLA thresholds across LAN, SD-WAN/IPsec overlays, WAN, and Cloud Relay (Cloudflare Tunnel), with smoothed EWMA RTT, Head-of-Line (HoL) spike dampening, RFC 3550 jitter, floor/peak RTT tracking, and full disconnect diagnostics.
+    - **Zero-Touch Custom TCP Applications**: Authoritative fleet-wide client/server workload synchronization with local operator override preservation and race-free socket initialization.
+    - **Real-Time Fleet Provisioning Push**: Instant WebSocket broadcast for Enterprise CA Certificates, Custom Applications, and global bundles across all connected Spokes.
+    - **Hardened Fleet Security & Fast CI Pipeline**: Scoped node tokens, high-entropy cluster realm protection, and 3-minute AMD64 release tag builds decoupled from multi-arch stable promotion.
+
 ## [3.0.100] - 2026-10-24
 
 ### Improved
