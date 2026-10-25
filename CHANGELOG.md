@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.1.24] - 2026-10-25
+
+### Improved
+- **DEM Dashboard Polish Pack (`web-dashboard/src/ConnectivityPerformance.tsx`)**:
+  - **Time-Bucketed `EndpointTypeGraph` Sparklines & Fixed `[0, 100]` Y-Axis**: Replaced raw last-50 alternating probe samples in `Performance Trends by Type` with time-bucketed averaging across probes of the same category (`HTTP/HTTPS`, `PING`, `DNS`, `UDP`, `STIGIX CLOUD`) and anchored the Y-axis to `[0, 100]`, eliminating artificial `100 -> 0 -> 100 -> 0` sawtooth oscillations when a category contains both UP and DOWN endpoints.
+  - **`GlobalScoreTrendChart` Axis Fix & Dynamic Health Color Alignment**: Fixed left Y-axis tick clipping (`width={28}`, `margin.left=0`), synchronized the trend curve/gradient color with the `GlobalExperienceGauge` health severity (`emerald` $\ge 80$, `cyan` $\ge 65$, `amber` $\ge 50$, `red` $< 50$), suppressed redundant `Min`/`Max` reference lines when the score is flat, and colored the `Min` reference line by its actual severity.
+  - **Compact Scrollable `Unstable & Down Probes` Column**: Capped the right-hand `Unstable & Down Probes` list height (`max-h-[215px]`) with compact cards so 5+ down endpoints scroll cleanly without stretching the top analytics row.
+  - **Interactive Type Trend Cards & `TCP` Counter Badge**: Made all 5 `EndpointTypeGraph` cards clickable to toggle `Probes Catalog` filtering (`HTTP/HTTPS`, `PING`, `DNS`, `UDP`, `CLOUD`), and added a clickable `+N TCP probes` badge in the section header so total configured probe counts are 100% accounted for.
+
 ## [3.1.23] - 2026-10-25
 
 ### Fixed

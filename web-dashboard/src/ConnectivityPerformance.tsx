@@ -167,7 +167,21 @@ interface ConnectivityPerformanceProps {
 }
 
 // Component for individual endpoint type graph
-function EndpointTypeGraph({ type, results, color, count }: { type: string; results: any[]; color: string; count?: number }) {
+function EndpointTypeGraph({
+    type,
+    results,
+    color,
+    count,
+    isActive = false,
+    onClick
+}: {
+    type: string;
+    results: any[];
+    color: string;
+    count?: number;
+    isActive?: boolean;
+    onClick?: () => void;
+}) {
     const successResults = results.filter(r => r.score > 0);
     const avgScore = results.length > 0
         ? Math.round(results.reduce((sum, r) => sum + r.score, 0) / results.length)
@@ -179,22 +193,69 @@ function EndpointTypeGraph({ type, results, color, count }: { type: string; resu
         ? Math.round((successResults.length / results.length) * 100)
         : 0;
 
-    // Prepare chart data (last 50 points, newest first)
-    const chartData = results
-        .slice(0, 50)
-        .reverse()
-        .map(r => ({
-            time: new Date(r.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-            score: r.score,
-            latency: Math.round(r.metrics.total_ms)
-        }));
+    // Aggregate probe samples into time buckets so mixed UP/DOWN probes don't create artificial sawtooth oscillations
+    const chartData = React.useMemo(() => {
+        if (!results.length) return [];
+        const sorted = [...results].sort((a, b) => a.timestamp - b.timestamp);
+        const minTs = sorted[0].timestamp;
+        const maxTs = sorted[sorted.length - 1].timestamp;
+        const spanMs = Math.max(0, maxTs - minTs);
+        // Use ~12-15 buckets across the available window (minimum 60s bucket so a full probe sweep averages together)
+        const bucketMs = spanMs > 0 ? Math.max(60 * 1000, Math.floor(spanMs / 14)) : 60 * 1000;
+
+        const buckets = new Map<number, { scores: number[]; latencies: number[] }>();
+        for (const r of sorted) {
+            const b = Math.floor(r.timestamp / bucketMs) * bucketMs;
+            let entry = buckets.get(b);
+            if (!entry) {
+                entry = { scores: [], latencies: [] };
+                buckets.set(b, entry);
+            }
+            entry.scores.push(r.score);
+            if (r.score > 0 && r.metrics?.total_ms !== undefined) {
+                entry.latencies.push(r.metrics.total_ms);
+            }
+        }
+
+        const points = Array.from(buckets.entries())
+            .sort(([a], [b]) => a - b)
+            .slice(-24)
+            .map(([ts, { scores, latencies }]) => ({
+                time: new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                score: Math.round(scores.reduce((s, v) => s + v, 0) / scores.length),
+                latency: latencies.length > 0 ? Math.round(latencies.reduce((s, v) => s + v, 0) / latencies.length) : 0
+            }));
+
+        // If all samples fell into a single bucket, duplicate the point so AreaChart renders a flat line
+        if (points.length === 1) {
+            return [points[0], { ...points[0], time: 'Now' }];
+        }
+        return points;
+    }, [results]);
 
     return (
-        <div className="bg-card border border-border p-3 rounded-xl shadow-sm flex flex-col h-full">
+        <div
+            onClick={onClick}
+            role={onClick ? "button" : undefined}
+            tabIndex={onClick ? 0 : undefined}
+            title={onClick ? `Click to filter catalog by ${type}` : undefined}
+            className={twMerge(
+                "bg-card border p-3 rounded-xl shadow-sm flex flex-col h-full transition-all",
+                onClick && "cursor-pointer hover:border-blue-500/40 hover:shadow-md",
+                isActive
+                    ? "border-blue-500 ring-1 ring-blue-500/40 bg-blue-500/[0.04]"
+                    : "border-border"
+            )}
+        >
             <div className="flex items-center justify-between text-text-muted text-[10px] font-bold mb-2 uppercase tracking-wider">
-                <span className="truncate" title={type}>{type}</span>
+                <span className={twMerge("truncate", isActive && "text-blue-400 font-black")} title={type}>{type}</span>
                 {typeof count === 'number' && (
-                    <span className="px-1.5 py-0.5 rounded bg-card-secondary text-text-secondary font-mono text-[9px] border border-border">
+                    <span className={twMerge(
+                        "px-1.5 py-0.5 rounded font-mono text-[9px] border",
+                        isActive
+                            ? "bg-blue-500/15 text-blue-400 border-blue-500/30"
+                            : "bg-card-secondary text-text-secondary border-border"
+                    )}>
                         {count} {count === 1 ? 'probe' : 'probes'}
                     </span>
                 )}
@@ -204,10 +265,10 @@ function EndpointTypeGraph({ type, results, color, count }: { type: string; resu
                 <div className="text-xs text-text-muted italic h-[68px] flex items-center">No data available</div>
             ) : (
                 <>
-                    <div className="flex flex-wrap items-center gap-x-2 gap-y-1 mb-2 text-[10px] font-bold leading-none">
+                    <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 mb-2 text-[10px] font-bold leading-none">
                         <div className="flex items-center gap-1">
                             <span className="text-text-muted">Scr:</span>
-                            <span className={twMerge("font-black", avgScore >= 80 ? "text-green-600 dark:text-green-400" : avgScore >= 50 ? "text-orange-500" : "text-red-500")}>
+                            <span className={twMerge("font-black", avgScore >= 80 ? "text-emerald-400" : avgScore >= 50 ? "text-amber-400" : "text-red-400")}>
                                 {avgScore}
                             </span>
                         </div>
@@ -217,34 +278,36 @@ function EndpointTypeGraph({ type, results, color, count }: { type: string; resu
                         </div>
                         <div className="flex items-center gap-1">
                             <span className="text-text-muted">Suc:</span>
-                            <span className={twMerge("font-black", successRate >= 95 ? "text-green-600 dark:text-green-400" : successRate >= 80 ? "text-orange-500" : "text-red-500")}>
+                            <span className={twMerge("font-black", successRate >= 95 ? "text-emerald-400" : successRate >= 80 ? "text-amber-400" : "text-red-400")}>
                                 {successRate}%
                             </span>
                         </div>
                     </div>
                     <div className="h-[50px] w-full mt-auto">
                         <ResponsiveContainer width="100%" height="100%">
-                            <AreaChart data={chartData}>
+                            <AreaChart data={chartData} margin={{ top: 2, right: 2, bottom: 2, left: 2 }}>
                                 <defs>
                                     <linearGradient id={`color${type.replace(/[^a-zA-Z]/g, '')}`} x1="0" y1="0" x2="0" y2="1">
-                                        <stop offset="5%" stopColor={color} stopOpacity={0.3} />
+                                        <stop offset="5%" stopColor={color} stopOpacity={0.35} />
                                         <stop offset="95%" stopColor={color} stopOpacity={0} />
                                     </linearGradient>
                                 </defs>
+                                <YAxis domain={[0, 100]} hide />
                                 <Area
                                     type="monotone"
                                     dataKey="score"
                                     stroke={color}
+                                    strokeWidth={1.75}
                                     fillOpacity={1}
                                     fill={`url(#color${type.replace(/[^a-zA-Z]/g, '')})`}
                                     isAnimationActive={false}
                                 />
                                 <ReTooltip
-                                    contentStyle={{ backgroundColor: 'var(--card)', border: '1px solid var(--border)', borderRadius: '12px', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }}
-                                    itemStyle={{ color: 'var(--text-primary)', fontSize: '11px' }}
-                                    labelStyle={{ color: 'var(--text-muted)', fontSize: '10px', fontWeight: 'bold', marginBottom: '4px' }}
+                                    contentStyle={{ backgroundColor: 'var(--card)', border: '1px solid var(--border)', borderRadius: '10px', padding: '6px 10px', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.2)' }}
+                                    itemStyle={{ color: 'var(--text-primary)', fontSize: '11px', fontWeight: 'bold' }}
+                                    labelStyle={{ color: 'var(--text-muted)', fontSize: '10px', fontWeight: 'bold', marginBottom: '2px' }}
                                     formatter={(value: any, name: string) => {
-                                        if (name === 'score') return [value, 'Score'];
+                                        if (name === 'score') return [`${value}/100`, 'Avg Score'];
                                         return [value, name];
                                     }}
                                 />
@@ -259,7 +322,7 @@ function EndpointTypeGraph({ type, results, color, count }: { type: string; resu
 
 
 // Buckets all probe results into time windows and computes the avg global score per bucket
-function GlobalScoreTrendChart({ results, timeRange }: { results: any[]; timeRange: string }) {
+function GlobalScoreTrendChart({ results, timeRange, currentScore }: { results: any[]; timeRange: string; currentScore?: number }) {
     const chartData = React.useMemo(() => {
         if (!results.length) return [];
         const bucketMs =
@@ -286,78 +349,103 @@ function GlobalScoreTrendChart({ results, timeRange }: { results: any[]; timeRan
             }));
     }, [results, timeRange]);
 
-    const { minScore, maxScore } = React.useMemo(() => {
-        if (!chartData.length) return { minScore: null, maxScore: null };
+    const { minScore, maxScore, latestScore } = React.useMemo(() => {
+        if (!chartData.length) return { minScore: null, maxScore: null, latestScore: 0 };
         const scores = chartData.map(d => d.score);
         return {
             minScore: Math.min(...scores),
-            maxScore: Math.max(...scores)
+            maxScore: Math.max(...scores),
+            latestScore: scores[scores.length - 1]
         };
     }, [chartData]);
 
+    const effectiveScore = typeof currentScore === 'number' && currentScore > 0 ? currentScore : latestScore;
+    const trendColor =
+        effectiveScore >= 80 ? '#10b981' : // emerald-500 (Optimal)
+        effectiveScore >= 65 ? '#06b6d4' : // cyan-500 (Good)
+        effectiveScore >= 50 ? '#f59e0b' : // amber-500 (Degraded)
+                               '#ef4444';  // red-500 (Critical)
+
+    const minColor =
+        (minScore ?? 100) >= 80 ? '#10b981' :
+        (minScore ?? 100) >= 50 ? '#f59e0b' :
+                                  '#f43f5e';
+
     if (!chartData.length) return (
-        <div className="h-full min-h-[170px] flex-1 flex items-center justify-center text-text-muted text-xs italic opacity-60">No data for this period</div>
+        <div className="h-full min-h-[165px] flex-1 flex items-center justify-center text-text-muted text-xs italic opacity-60">No data for this period</div>
     );
     return (
-        <div className="h-full w-full min-h-[170px] flex-1">
+        <div className="h-full w-full min-h-[165px] flex-1">
             <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={chartData} margin={{ top: 12, right: 12, bottom: 0, left: -24 }}>
+                <AreaChart data={chartData} margin={{ top: 10, right: 14, bottom: 0, left: 0 }}>
                     <defs>
                         <linearGradient id="globalScoreGrad" x1="0" y1="0" x2="0" y2="1">
-                            <stop offset="0%" stopColor="#6366f1" stopOpacity={0.45} />
-                            <stop offset="60%" stopColor="#6366f1" stopOpacity={0.12} />
-                            <stop offset="100%" stopColor="#6366f1" stopOpacity={0.0} />
+                            <stop offset="0%" stopColor={trendColor} stopOpacity={0.32} />
+                            <stop offset="65%" stopColor={trendColor} stopOpacity={0.08} />
+                            <stop offset="100%" stopColor={trendColor} stopOpacity={0.0} />
                         </linearGradient>
                     </defs>
                     <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" opacity={0.3} vertical={false} />
                     <XAxis dataKey="time" stroke="var(--text-muted)" fontSize={9} tickLine={false} axisLine={false} />
-                    <YAxis domain={[0, 100]} ticks={[0, 25, 50, 75, 100]} stroke="var(--text-muted)" fontSize={9} tickLine={false} axisLine={false} width={30} />
+                    <YAxis domain={[0, 100]} ticks={[0, 25, 50, 75, 100]} stroke="var(--text-muted)" fontSize={9} tickLine={false} axisLine={false} width={28} />
                     <ReTooltip
-                        contentStyle={{ backgroundColor: 'var(--card)', border: '1px solid var(--border)', borderRadius: '12px', boxShadow: '0 10px 25px -5px rgb(0 0 0 / 0.15)' }}
-                        itemStyle={{ color: 'var(--text-primary)', fontSize: '11px', fontWeight: 'bold' }}
+                        contentStyle={{ backgroundColor: 'var(--card)', border: '1px solid var(--border)', borderRadius: '12px', boxShadow: '0 10px 25px -5px rgb(0 0 0 / 0.2)' }}
+                        itemStyle={{ color: trendColor, fontSize: '11px', fontWeight: 'bold' }}
                         labelStyle={{ color: 'var(--text-muted)', fontSize: '10px', fontWeight: 'bold', marginBottom: '4px' }}
                         formatter={(value: any, name: string) => name === 'score' ? [`${value}/100`, 'Avg Score'] : [value, 'Samples']}
                     />
                     
                     {/* Visual Threshold Regions */}
-                    <ReferenceArea y1={0} y2={50} fill="#ef4444" fillOpacity={0.03} />
-                    <ReferenceArea y1={50} y2={80} fill="#f97316" fillOpacity={0.02} />
+                    <ReferenceArea y1={0} y2={50} fill="#ef4444" fillOpacity={0.025} />
+                    <ReferenceArea y1={50} y2={80} fill="#f97316" fillOpacity={0.015} />
                     
                     {/* Warning & Critical Threshold Lines */}
-                    <ReferenceLine y={80} stroke="#f97316" strokeDasharray="4 4" strokeOpacity={0.3} label={{ value: 'Warning (80)', position: 'insideBottomRight', fill: 'var(--text-muted)', fontSize: 7, opacity: 0.6 }} />
-                    <ReferenceLine y={50} stroke="#ef4444" strokeDasharray="4 4" strokeOpacity={0.3} label={{ value: 'Critical (50)', position: 'insideBottomRight', fill: 'var(--text-muted)', fontSize: 7, opacity: 0.6 }} />
+                    <ReferenceLine
+                        y={80}
+                        stroke="#f59e0b"
+                        strokeDasharray="4 4"
+                        strokeOpacity={0.35}
+                        label={{ value: 'Optimal (80)', position: 'insideBottomRight', fill: '#f59e0b', fontSize: 8, opacity: 0.7 }}
+                    />
+                    <ReferenceLine
+                        y={50}
+                        stroke="#ef4444"
+                        strokeDasharray="4 4"
+                        strokeOpacity={0.35}
+                        label={{ value: 'Critical (50)', position: 'insideBottomRight', fill: '#ef4444', fontSize: 8, opacity: 0.7 }}
+                    />
 
-                    {/* Min/Max value indicators of the current period */}
-                    {minScore !== null && minScore < 100 && (
+                    {/* Min/Max value indicators only when there is actual variation */}
+                    {minScore !== null && maxScore !== null && minScore !== maxScore && (
                         <ReferenceLine 
                             y={minScore} 
-                            stroke="#f43f5e" 
+                            stroke={minColor} 
                             strokeDasharray="2 2" 
-                            strokeOpacity={0.8}
-                            strokeWidth={1.5}
-                            label={{ value: `Min: ${minScore}%`, position: 'insideBottomLeft', fill: '#f43f5e', fontSize: 8, fontWeight: 'bold' }} 
+                            strokeOpacity={0.75}
+                            strokeWidth={1.25}
+                            label={{ value: `Min: ${minScore}`, position: 'insideBottomLeft', fill: minColor, fontSize: 8, fontWeight: 'bold' }} 
                         />
                     )}
-                    {maxScore !== null && maxScore > 0 && minScore !== maxScore && (
+                    {minScore !== null && maxScore !== null && minScore !== maxScore && (
                         <ReferenceLine 
                             y={maxScore} 
                             stroke="#10b981" 
                             strokeDasharray="2 2" 
-                            strokeOpacity={0.8}
-                            strokeWidth={1.5}
-                            label={{ value: `Max: ${maxScore}%`, position: 'insideTopLeft', fill: '#10b981', fontSize: 8, fontWeight: 'bold' }} 
+                            strokeOpacity={0.75}
+                            strokeWidth={1.25}
+                            label={{ value: `Max: ${maxScore}`, position: 'insideTopLeft', fill: '#10b981', fontSize: 8, fontWeight: 'bold' }} 
                         />
                     )}
 
                     <Area 
                         type="monotone" 
                         dataKey="score" 
-                        stroke="#818cf8" 
+                        stroke={trendColor} 
                         strokeWidth={2.5} 
                         fillOpacity={1} 
                         fill="url(#globalScoreGrad)" 
-                        dot={{ r: 3.5, stroke: '#818cf8', strokeWidth: 1.5, fill: 'var(--card)' }} 
-                        activeDot={{ r: 6, fill: '#6366f1', stroke: '#fff', strokeWidth: 2 }}
+                        dot={{ r: 3, stroke: trendColor, strokeWidth: 1.5, fill: 'var(--card)' }} 
+                        activeDot={{ r: 5.5, fill: trendColor, stroke: '#fff', strokeWidth: 2 }}
                         isAnimationActive={false}
                     />
                 </AreaChart>
@@ -949,6 +1037,8 @@ export default function ConnectivityPerformance({ token, uiConfig, onManage, isL
             if (e.source !== 'auto-mesh' && !(e.name && (e.name.startsWith('[Stigix]') || e.name.startsWith('[AutoMesh]')))) return false;
         } else if (filterType === 'CLOUD') {
             if (e.type !== 'CLOUD' && e.type !== 'STIGIX CLOUD') return false;
+        } else if (filterType === 'HTTP/HTTPS') {
+            if (e.type !== 'HTTP' && e.type !== 'HTTPS') return false;
         } else if (filterType !== 'ALL' && e.type !== filterType) {
             return false;
         }
@@ -1297,7 +1387,7 @@ export default function ConnectivityPerformance({ token, uiConfig, onManage, isL
                             {loadingStats && !stats ? (
                                 <div className="flex-1 flex items-center justify-center"><div className="w-full h-full bg-card-secondary animate-pulse rounded-xl" /></div>
                             ) : (
-                                <GlobalScoreTrendChart results={results} timeRange={timeRange} />
+                                <GlobalScoreTrendChart results={results} timeRange={timeRange} currentScore={stats?.globalHealth} />
                             )}
                         </div>
                     </div>
@@ -1314,7 +1404,7 @@ export default function ConnectivityPerformance({ token, uiConfig, onManage, isL
                                 </span>
                             )}
                         </div>
-                        <div className="p-3 space-y-2 overflow-y-auto flex-1 max-h-[250px] xl:max-h-none bg-card-secondary/5 scrollbar-thin">
+                        <div className="p-2.5 space-y-1.5 overflow-y-auto flex-1 max-h-[215px] bg-card-secondary/5 scrollbar-thin">
                             {loadingStats && !stats ? (
                                 <>
                                     <div className="h-10 bg-card-secondary animate-pulse rounded-lg border border-border" />
@@ -1348,7 +1438,7 @@ export default function ConnectivityPerformance({ token, uiConfig, onManage, isL
                                                 }
                                             }}
                                             className={cn(
-                                                "p-2.5 rounded-xl border transition-all cursor-pointer group flex flex-col gap-1.5 shadow-sm",
+                                                "p-2 rounded-xl border transition-all cursor-pointer group flex flex-col gap-1 shadow-sm",
                                                 isOffline 
                                                     ? "bg-card-secondary border-red-500/30 hover:border-red-500/50 hover:bg-red-500/8" 
                                                     : "bg-card-secondary border-amber-500/25 hover:border-amber-500/45 hover:bg-amber-500/8"
@@ -1399,13 +1489,41 @@ export default function ConnectivityPerformance({ token, uiConfig, onManage, isL
 
                 {/* 3. Performance Trends by Endpoint Type */}
                 <div className="xl:col-span-4 bg-card-secondary/30 border border-border p-5 rounded-2xl shadow-sm">
-                    <div className="text-text-muted text-xs font-bold tracking-wider flex items-center justify-between mb-4">
+                    <div className="text-text-muted text-xs font-bold tracking-wider flex items-center justify-between mb-4 flex-wrap gap-2">
                         <div className="flex items-center gap-2">
-                            <BarChart3 size={16} /> Performance Trends by Type
+                            <BarChart3 size={16} />
+                            <span>Performance Trends by Type</span>
+                            <span className="text-[10px] font-normal text-text-muted/70 hidden sm:inline">
+                                — Click a card to filter catalog
+                            </span>
                         </div>
-                        <span className="px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-400 border border-blue-500/20 font-mono text-[10px]">
-                            {allCatalogProbes.length} configured probes
-                        </span>
+                        <div className="flex items-center gap-2">
+                            {(() => {
+                                const tcpCount = allCatalogProbes.filter(e => e.type === 'TCP').length;
+                                if (tcpCount === 0) return null;
+                                const isTcpActive = filterType === 'TCP';
+                                return (
+                                    <button
+                                        onClick={() => {
+                                            setViewMode('catalog');
+                                            setFilterType(prev => prev === 'TCP' ? 'ALL' : 'TCP');
+                                        }}
+                                        className={cn(
+                                            "px-2 py-0.5 rounded-full font-mono text-[10px] border transition-all cursor-pointer",
+                                            isTcpActive
+                                                ? "bg-blue-600 text-white border-blue-500 shadow-sm"
+                                                : "bg-card-secondary text-text-muted hover:text-text-primary border-border"
+                                        )}
+                                        title="Click to filter TCP probes in catalog"
+                                    >
+                                        +{tcpCount} TCP {tcpCount === 1 ? 'probe' : 'probes'}
+                                    </button>
+                                );
+                            })()}
+                            <span className="px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-400 border border-blue-500/20 font-mono text-[10px]">
+                                {allCatalogProbes.length} configured probes
+                            </span>
+                        </div>
                     </div>
                     <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
                         <EndpointTypeGraph
@@ -1413,30 +1531,55 @@ export default function ConnectivityPerformance({ token, uiConfig, onManage, isL
                             results={httpResults}
                             color="#3b82f6"
                             count={allCatalogProbes.filter(e => e.type === 'HTTP' || e.type === 'HTTPS').length}
+                            isActive={filterType === 'HTTP/HTTPS' || filterType === 'HTTP' || filterType === 'HTTPS'}
+                            onClick={() => {
+                                setViewMode('catalog');
+                                setFilterType(prev => (prev === 'HTTP/HTTPS' || prev === 'HTTP' || prev === 'HTTPS') ? 'ALL' : 'HTTP/HTTPS');
+                            }}
                         />
                         <EndpointTypeGraph
                             type="PING"
                             results={pingResults}
                             color="#22c55e"
                             count={allCatalogProbes.filter(e => e.type === 'PING').length}
+                            isActive={filterType === 'PING'}
+                            onClick={() => {
+                                setViewMode('catalog');
+                                setFilterType(prev => prev === 'PING' ? 'ALL' : 'PING');
+                            }}
                         />
                         <EndpointTypeGraph
                             type="DNS"
                             results={dnsResults}
                             color="#a855f7"
                             count={allCatalogProbes.filter(e => e.type === 'DNS').length}
+                            isActive={filterType === 'DNS'}
+                            onClick={() => {
+                                setViewMode('catalog');
+                                setFilterType(prev => prev === 'DNS' ? 'ALL' : 'DNS');
+                            }}
                         />
                         <EndpointTypeGraph
                             type="UDP"
                             results={udpResults}
                             color="#f97316"
                             count={allCatalogProbes.filter(e => e.type === 'UDP').length}
+                            isActive={filterType === 'UDP'}
+                            onClick={() => {
+                                setViewMode('catalog');
+                                setFilterType(prev => prev === 'UDP' ? 'ALL' : 'UDP');
+                            }}
                         />
                         <EndpointTypeGraph
                             type="STIGIX CLOUD"
                             results={cloudResults}
                             color="#6366f1"
                             count={allCatalogProbes.filter(e => e.type === 'CLOUD' || e.type === 'STIGIX CLOUD').length}
+                            isActive={filterType === 'CLOUD'}
+                            onClick={() => {
+                                setViewMode('catalog');
+                                setFilterType(prev => prev === 'CLOUD' ? 'ALL' : 'CLOUD');
+                            }}
                         />
                     </div>
                 </div>
@@ -1541,19 +1684,20 @@ export default function ConnectivityPerformance({ token, uiConfig, onManage, isL
                                         : (t === 'STIGIX' || t === 'AUTOMESH')
                                             ? allCatalogProbes.filter(e => e.source === 'auto-mesh' || (e.name && (e.name.startsWith('[Stigix]') || e.name.startsWith('[AutoMesh]')))).length
                                             : allCatalogProbes.filter(e => e.type === t).length;
+                            const isSelected = filterType === t || (filterType === 'HTTP/HTTPS' && (t === 'HTTP' || t === 'HTTPS'));
                             return (
                                 <button
                                     key={t}
                                     onClick={() => setFilterType(t)}
                                     className={cn(
                                         "px-3 py-1 rounded-md text-[11px] font-bold transition-all uppercase tracking-tighter flex items-center gap-1.5",
-                                        filterType === t ? "bg-blue-600 text-white shadow-lg shadow-blue-500/20" : "text-text-muted hover:text-text-primary"
+                                        isSelected ? "bg-blue-600 text-white shadow-lg shadow-blue-500/20" : "text-text-muted hover:text-text-primary"
                                     )}
                                 >
                                     <span>{t === 'CLOUD' ? 'STIGIX CLOUD' : t}</span>
                                     <span className={cn(
                                         "px-1.5 py-0.2 rounded-full font-mono text-[9.5px]",
-                                        filterType === t ? "bg-white/20 text-white" : "bg-card-secondary/80 text-text-muted"
+                                        isSelected ? "bg-white/20 text-white" : "bg-card-secondary/80 text-text-muted"
                                     )}>
                                         {count}
                                     </span>
