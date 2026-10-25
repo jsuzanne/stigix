@@ -6009,6 +6009,26 @@ function getMatrixThresholds(): MatrixThresholds {
     return DEFAULT_MATRIX_THRESHOLDS;
 }
 
+const isPrivateRfc1918Ip = (ip?: string): boolean => {
+    if (!ip) return false;
+    const clean = ip.trim().replace(/^https?:\/\//, '').split(':')[0].split('/')[0];
+    return (
+        clean.startsWith('10.') ||
+        clean.startsWith('192.168.') ||
+        /^172\.(1[6-9]|2[0-9]|3[0-1])\./.test(clean) ||
+        clean === '127.0.0.1' ||
+        clean === 'localhost'
+    );
+};
+
+const isCloudSite = (name: string, ip?: string, siteType?: string): boolean => {
+    if (siteType === 'CLOUD') return true;
+    const n = (name || '').toLowerCase();
+    if (n.includes('cloud') || n.includes('azure') || n.includes('aws') || n.includes('gcp')) return true;
+    if (ip && !isPrivateRfc1918Ip(ip)) return true;
+    return false;
+};
+
 const isHubSite = (name: string, siteType?: string): boolean => {
     if (siteType === 'HUB') return true;
     const n = (name || '').toLowerCase();
@@ -6032,6 +6052,7 @@ const getAutoMeshProbes = (): any[] => {
             : (typeof registryManager?.getPeers === 'function' ? registryManager.getPeers() : []);
 
         const isLocalHub = isHubSite(localName);
+        const isLocalCloudOffNet = !isPrivateRfc1918Ip(localIp);
         const probes: any[] = [];
 
         for (const peer of rawPeers) {
@@ -6039,6 +6060,11 @@ const getAutoMeshProbes = (): any[] => {
             const peerName = (peer.meta?.site || peer.instance_id || 'PEER').trim();
             const peerIp = (peer.ip_private || '').trim();
             if (!peerIp || peerIp === '127.0.0.1' || peerIp === localIp) continue;
+
+            // Public Cloud Anchor cannot initiate ICMP to private RFC1918 LAN/WAN addresses over the Internet
+            if (isLocalCloudOffNet && isPrivateRfc1918Ip(peerIp)) {
+                continue;
+            }
 
             const isPeerHub = isHubSite(peerName, peer.site_type);
 
@@ -16616,7 +16642,7 @@ app.get('/api/fleet/matrix', authenticateToken, async (req, res) => {
                 id: localId,
                 name: localName,
                 ip: localIp,
-                site_type: isHubSite(localName) ? 'HUB' : 'BRANCH',
+                site_type: isCloudSite(localName, localIp) ? 'CLOUD' : isHubSite(localName) ? 'HUB' : 'BRANCH',
                 is_local: true,
                 is_leader: isLeader,
                 last_seen: new Date().toISOString()
@@ -16631,7 +16657,7 @@ app.get('/api/fleet/matrix', authenticateToken, async (req, res) => {
                     id: peer.instance_id,
                     name: peerName,
                     ip: peer.ip_private,
-                    site_type: isHubSite(peerName, peer.site_type) ? 'HUB' : 'BRANCH',
+                    site_type: isCloudSite(peerName, peer.ip_private, peer.site_type) ? 'CLOUD' : isHubSite(peerName, peer.site_type) ? 'HUB' : 'BRANCH',
                     is_local: false,
                     is_leader: Boolean(peer.is_leader || peer.meta?.is_leader),
                     last_seen: peer.last_seen
@@ -16639,12 +16665,16 @@ app.get('/api/fleet/matrix', authenticateToken, async (req, res) => {
             }
         }
 
-        // Sort nodes: HUBs first (DC1, DC2...), then Branches (BR1, BR2, BR5, BR8...), using natural alphanumeric ordering
+        // Sort nodes: HUBs first (DC1, DC2...), then Branches (BR1, BR2, BR5, BR8...), then CLOUD anchors
         nodes.sort((a, b) => {
-            const isHubA = a.site_type === 'HUB' || isHubSite(a.name, a.site_type);
-            const isHubB = b.site_type === 'HUB' || isHubSite(b.name, b.site_type);
-            if (isHubA && !isHubB) return -1;
-            if (!isHubA && isHubB) return 1;
+            const rank = (n: { name: string; site_type: string; ip: string }) => {
+                if (n.site_type === 'CLOUD' || isCloudSite(n.name, n.ip, n.site_type)) return 2;
+                if (n.site_type === 'HUB' || isHubSite(n.name, n.site_type)) return 0;
+                return 1;
+            };
+            const rA = rank(a);
+            const rB = rank(b);
+            if (rA !== rB) return rA - rB;
             return a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' });
         });
 
@@ -16877,10 +16907,41 @@ app.get('/api/fleet/matrix', authenticateToken, async (req, res) => {
                 let statusStr: 'OPTIMAL' | 'DEGRADED' | 'CRITICAL' | 'PARTIAL' | 'POLICY_EXCLUDED' | 'UNKNOWN' = 'UNKNOWN';
                 let reason = '';
 
+                const isSourceCloudOffNet = source.site_type === 'CLOUD' || !isPrivateIp(source.ip);
+                const isTargetCloudOffNet = target.site_type === 'CLOUD' || !isPrivateIp(target.ip);
+
                 if (isSpokeToSpoke) {
                     statusStr = 'POLICY_EXCLUDED';
                     reason = `Hub & Spoke Policy: Direct Spoke-to-Spoke path (${source.name} ⇄ ${target.name}) is bypassed. Egress routes through Hub.`;
                     policyExcluded++;
+                } else if (isSourceCloudOffNet && !isTargetCloudOffNet && (!fwdData.has_data || !fwdData.reachable)) {
+                    statusStr = 'POLICY_EXCLUDED';
+                    reason = `NAT / RFC1918 Policy: Public Cloud Anchor (${source.name}) cannot initiate inbound ICMP to private RFC1918 site (${target.name} ${target.ip}).`;
+                    policyExcluded++;
+                } else if (!isSourceCloudOffNet && isTargetCloudOffNet && (!revData.has_data || !revData.reachable)) {
+                    // On-Net RFC1918 site -> Public Cloud Anchor: return ICMP to RFC1918 is NAT-blocked by design; evaluate egress SLA
+                    if (fwdData.has_data && fwdData.reachable) {
+                        if (fwdData.loss_pct >= thresholds.loss_critical_pct || fwdData.latency_ms >= thresholds.latency_critical_ms) {
+                            statusStr = 'CRITICAL';
+                            reason = `Cloud Egress SLA Breach (${fwdData.latency_ms}ms)`;
+                            fullOutage++;
+                        } else if (fwdData.latency_ms >= thresholds.latency_warning_ms || fwdData.loss_pct >= thresholds.loss_warning_pct || fwdData.jitter_ms >= thresholds.jitter_warning_ms) {
+                            statusStr = 'DEGRADED';
+                            reason = `Elevated Cloud Egress Latency (${fwdData.latency_ms}ms)`;
+                            asymmetricDegraded++;
+                        } else {
+                            statusStr = 'OPTIMAL';
+                            reason = `Cloud Egress SLA Compliant (${fwdData.latency_ms}ms • Return RFC1918 NAT Bypassed)`;
+                            healthyBidirectional++;
+                        }
+                    } else if (fwdData.has_data && !fwdData.reachable) {
+                        statusStr = 'CRITICAL';
+                        reason = `Cloud Anchor Unreachable (${source.name} ➔ ${target.name} DOWN)`;
+                        unidirectionalDown++;
+                    } else {
+                        statusStr = 'UNKNOWN';
+                        reason = 'No active egress probe to Cloud Anchor';
+                    }
                 } else if (fwdData.has_data && revData.has_data) {
                     latencyDelta = Math.round(Math.abs(fwdData.latency_ms - revData.latency_ms) * 100) / 100;
                     lossDelta = Math.round(Math.abs(fwdData.loss_pct - revData.loss_pct) * 100) / 100;

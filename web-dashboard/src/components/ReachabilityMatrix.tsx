@@ -109,6 +109,25 @@ const formatNum = (val: number | undefined | null, decimals = 2): string => {
     return rounded.toLocaleString(undefined, { maximumFractionDigits: decimals });
 };
 
+const isPrivateRfc1918Ip = (ip?: string): boolean => {
+    if (!ip) return false;
+    const clean = ip.trim();
+    if (clean.startsWith('10.') || clean.startsWith('192.168.') || clean.startsWith('127.')) return true;
+    if (clean.startsWith('172.')) {
+        const second = parseInt(clean.split('.')[1] || '0', 10);
+        if (second >= 16 && second <= 31) return true;
+    }
+    return false;
+};
+
+const isCloudAnchorNode = (node: { name?: string; ip?: string; site_type?: string }): boolean => {
+    if (node.site_type === 'CLOUD') return true;
+    const lower = (node.name || '').toLowerCase();
+    if (lower.includes('cloud') || lower.includes('anchor') || lower.includes('saas')) return true;
+    if (node.ip && !isPrivateRfc1918Ip(node.ip)) return true;
+    return false;
+};
+
 export function ReachabilityMatrix({ token }: { token?: string }) {
     const { gFetch, activePeer } = usePeerContext();
     const [data, setData] = useState<MatrixData | null>(null);
@@ -119,6 +138,9 @@ export function ReachabilityMatrix({ token }: { token?: string }) {
     const [statusFilter, setStatusFilter] = useState<'ALL' | 'OPTIMAL' | 'DEGRADED' | 'CRITICAL' | 'PARTIAL' | 'POLICY_EXCLUDED'>('ALL');
     const [latencyThreshold, setLatencyThreshold] = useState<number>(0);
     const [switchingTopology, setSwitchingTopology] = useState(false);
+    const [showCloudNodes, setShowCloudNodes] = useState<boolean>(true);
+    const [hoveredCell, setHoveredCell] = useState<{ sourceId: string; targetId: string } | null>(null);
+    const [focusedNodeId, setFocusedNodeId] = useState<string | null>(null);
     
     // Flow Path Trace State (getflow.py / Prisma SD-WAN)
     const [tracingFlow, setTracingFlow] = useState(false);
@@ -328,54 +350,215 @@ export function ReachabilityMatrix({ token }: { token?: string }) {
         return () => clearInterval(interval);
     }, [fetchMatrix]);
 
-    const nodes = React.useMemo(() => {
+    const allNormalizedNodes = React.useMemo(() => {
         const raw = data?.nodes || [];
-        return [...raw].sort((a, b) => {
-            const isHubA = a.site_type === 'HUB' || a.name.toLowerCase().includes('dc') || a.name.toLowerCase().includes('hub');
-            const isHubB = b.site_type === 'HUB' || b.name.toLowerCase().includes('dc') || b.name.toLowerCase().includes('hub');
-            if (isHubA && !isHubB) return -1;
-            if (!isHubA && isHubB) return 1;
+        return raw.map(n => ({
+            ...n,
+            site_type: isCloudAnchorNode(n) ? ('CLOUD' as const) : n.site_type
+        })).sort((a, b) => {
+            const rank = (n: MatrixNode) => {
+                if (n.site_type === 'CLOUD') return 2;
+                if (n.site_type === 'HUB' || n.name.toLowerCase().includes('dc') || n.name.toLowerCase().includes('hub')) return 0;
+                return 1;
+            };
+            const rA = rank(a);
+            const rB = rank(b);
+            if (rA !== rB) return rA - rB;
             return a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' });
         });
     }, [data?.nodes]);
 
-    const matrix = data?.matrix || [];
-    const summary = data?.summary || {
-        total_pairs: 0,
-        healthy_bidirectional: 0,
-        asymmetric_degraded: 0,
-        unidirectional_down: 0,
-        full_outage: 0,
-        partial_telemetry: 0
-    };
+    const cloudNodeIds = React.useMemo(() => {
+        return new Set(allNormalizedNodes.filter(n => n.site_type === 'CLOUD').map(n => n.id));
+    }, [allNormalizedNodes]);
 
-    const fabricHealth: FabricHealth = data?.fabric_health || {
-        score: summary.fabric_score ?? (summary.healthy_bidirectional > 0 ? 100 : 0),
-        status: (summary.fabric_score ?? 100) >= 95 ? 'OPTIMAL' : (summary.fabric_score ?? 100) >= 80 ? 'DEGRADED' : 'CRITICAL',
-        label: (summary.fabric_score ?? 100) >= 95 ? 'Symmetric SLA Compliant' : (summary.fabric_score ?? 100) >= 80 ? 'Asymmetry / SLA Warning' : 'Critical Outage',
-        on_net_pairs: summary.healthy_bidirectional + summary.asymmetric_degraded,
-        optimal_pairs: summary.healthy_bidirectional,
-        degraded_pairs: summary.asymmetric_degraded,
-        down_pairs: summary.unidirectional_down + summary.full_outage
-    };
+    const nodes = React.useMemo(() => {
+        if (showCloudNodes) return allNormalizedNodes;
+        return allNormalizedNodes.filter(n => n.site_type !== 'CLOUD');
+    }, [allNormalizedNodes, showCloudNodes]);
+
+    const normalizedMatrix = React.useMemo(() => {
+        const rawMatrix = data?.matrix || [];
+        return rawMatrix.map(pair => {
+            const srcIsCloud = cloudNodeIds.has(pair.source_id);
+            const dstIsCloud = cloudNodeIds.has(pair.target_id);
+            if (!srcIsCloud && !dstIsCloud) return pair;
+
+            // Normalize Cloud -> On-Net RFC1918 pairs so NAT/RFC1918 doesn't trigger false-positive red alerts
+            if (srcIsCloud && !dstIsCloud && !pair.forward.reachable) {
+                return {
+                    ...pair,
+                    is_on_net: false,
+                    asymmetry: {
+                        ...pair.asymmetry,
+                        is_asymmetric: false,
+                        status: 'POLICY_EXCLUDED' as const,
+                        reason: 'Off-Net Cloud Anchor (Public IP) cannot initiate direct ICMP probes to private RFC1918 SD-WAN branch/DC addresses (NAT / Firewall by design).'
+                    }
+                };
+            }
+
+            // Normalize On-Net -> Cloud Anchor pairs: evaluate Egress (Fwd) SLA without penalizing blocked Reverse (Cloud -> RFC1918)
+            if (!srcIsCloud && dstIsCloud) {
+                const fwd = pair.forward;
+                if (!fwd.has_data) {
+                    return {
+                        ...pair,
+                        is_on_net: false,
+                        asymmetry: {
+                            ...pair.asymmetry,
+                            is_asymmetric: false,
+                            status: 'UNKNOWN' as const,
+                            reason: 'No egress probe configured toward this Cloud Anchor.'
+                        }
+                    };
+                }
+                if (!fwd.reachable) {
+                    return {
+                        ...pair,
+                        is_on_net: false,
+                        asymmetry: {
+                            ...pair.asymmetry,
+                            is_asymmetric: true,
+                            status: 'CRITICAL' as const,
+                            reason: `Cloud Egress DOWN: ${pair.source_name} cannot reach ${pair.target_name} (${pair.target_ip || 'Public Anchor'}).`
+                        }
+                    };
+                }
+                const isCritSla = fwd.latency_ms >= thresholds.latency_critical_ms || fwd.loss_pct >= thresholds.loss_critical_pct || fwd.jitter_ms >= thresholds.jitter_critical_ms;
+                const isWarnSla = fwd.latency_ms >= thresholds.latency_warning_ms || fwd.loss_pct >= thresholds.loss_warning_pct || fwd.jitter_ms >= thresholds.jitter_warning_ms;
+                return {
+                    ...pair,
+                    is_on_net: false,
+                    asymmetry: {
+                        ...pair.asymmetry,
+                        is_asymmetric: false,
+                        status: (isCritSla ? 'CRITICAL' : isWarnSla ? 'DEGRADED' : 'OPTIMAL') as MatrixPair['asymmetry']['status'],
+                        reason: isCritSla
+                            ? `Cloud Egress SLA Breach (${formatNum(fwd.latency_ms)}ms, loss ${formatNum(fwd.loss_pct)}%).`
+                            : isWarnSla
+                                ? `Cloud Egress elevated latency/jitter (${formatNum(fwd.latency_ms)}ms).`
+                                : `Healthy Cloud Egress (${formatNum(fwd.latency_ms)}ms). Return probe from public Cloud IP to RFC1918 is NAT-excluded by design.`
+                    }
+                };
+            }
+
+            return pair;
+        });
+    }, [data?.matrix, cloudNodeIds, thresholds]);
+
+    const visibleNodeIds = React.useMemo(() => new Set(nodes.map(n => n.id)), [nodes]);
+
+    const matrix = React.useMemo(() => {
+        return normalizedMatrix.filter(p => visibleNodeIds.has(p.source_id) && visibleNodeIds.has(p.target_id));
+    }, [normalizedMatrix, visibleNodeIds]);
+
+    const summary = React.useMemo(() => {
+        let healthy = 0;
+        let degraded = 0;
+        let critDown = 0;
+        let partial = 0;
+        let policy = 0;
+        for (const p of matrix) {
+            const st = p.asymmetry.status;
+            if (st === 'OPTIMAL') healthy++;
+            else if (st === 'DEGRADED') degraded++;
+            else if (st === 'CRITICAL') critDown++;
+            else if (st === 'PARTIAL') partial++;
+            else if (st === 'POLICY_EXCLUDED') policy++;
+        }
+        return {
+            total_pairs: matrix.length,
+            healthy_bidirectional: healthy,
+            asymmetric_degraded: degraded,
+            unidirectional_down: critDown,
+            full_outage: 0,
+            partial_telemetry: partial,
+            policy_excluded: policy
+        };
+    }, [matrix]);
+
+    const fabricHealth: FabricHealth = React.useMemo(() => {
+        // Fabric Score is strictly computed on On-Net SD-WAN Fabric paths (plus any active Cloud Egress paths in scope)
+        const evaluatedPairs = matrix.filter(p =>
+            p.asymmetry.status !== 'POLICY_EXCLUDED' &&
+            p.asymmetry.status !== 'UNKNOWN' &&
+            p.asymmetry.status !== 'PARTIAL'
+        );
+        const total = evaluatedPairs.length;
+        const opt = evaluatedPairs.filter(p => p.asymmetry.status === 'OPTIMAL').length;
+        const deg = evaluatedPairs.filter(p => p.asymmetry.status === 'DEGRADED').length;
+        const crit = evaluatedPairs.filter(p => p.asymmetry.status === 'CRITICAL').length;
+        const score = total > 0 ? Math.round(((opt * 1.0 + deg * 0.5) / total) * 1000) / 10 : 100;
+        return {
+            score,
+            status: score >= 95 ? 'OPTIMAL' : score >= 80 ? 'DEGRADED' : 'CRITICAL',
+            label: score >= 95 ? 'Symmetric SLA Compliant' : score >= 80 ? 'Asymmetry / SLA Warning' : 'Critical Outage',
+            on_net_pairs: total,
+            optimal_pairs: opt,
+            degraded_pairs: deg,
+            down_pairs: crit
+        };
+    }, [matrix]);
 
     const getPair = (sourceId: string, targetId: string): MatrixPair | undefined => {
         return matrix.find(m => m.source_id === sourceId && m.target_id === targetId);
+    };
+
+    const getDirectionHealth = (dir: MatrixPair['forward']) => {
+        if (!dir.has_data) return 'NONE';
+        if (!dir.reachable) return 'CRITICAL';
+        if (dir.latency_ms >= thresholds.latency_critical_ms || dir.loss_pct >= thresholds.loss_critical_pct || dir.jitter_ms >= thresholds.jitter_critical_ms) {
+            return 'CRITICAL';
+        }
+        if (dir.latency_ms >= thresholds.latency_warning_ms || dir.loss_pct >= thresholds.loss_warning_pct || dir.jitter_ms >= thresholds.jitter_warning_ms) {
+            return 'DEGRADED';
+        }
+        return 'OPTIMAL';
+    };
+
+    const getDirectionColorClass = (dir: MatrixPair['forward']) => {
+        const h = getDirectionHealth(dir);
+        if (h === 'OPTIMAL') return 'font-black text-emerald-800 dark:text-emerald-300';
+        if (h === 'DEGRADED') return 'font-black text-amber-800 dark:text-amber-300';
+        if (h === 'CRITICAL') return 'font-black text-red-600 dark:text-red-400';
+        return 'text-slate-400 dark:text-text-muted text-[10px] font-medium';
+    };
+
+    const getNodeSelfSummary = (nodeId: string) => {
+        const outbound = matrix.filter(m => m.source_id === nodeId && m.asymmetry.status !== 'POLICY_EXCLUDED' && m.forward.has_data);
+        if (outbound.length === 0) return null;
+        const reachable = outbound.filter(m => m.forward.reachable);
+        const avgLatency = reachable.length > 0
+            ? reachable.reduce((acc, m) => acc + m.forward.latency_ms, 0) / reachable.length
+            : 0;
+        const healthyCount = outbound.filter(m => m.asymmetry.status === 'OPTIMAL').length;
+        return {
+            total: outbound.length,
+            reachableCount: reachable.length,
+            healthyCount,
+            avgLatency
+        };
     };
 
     return (
         <div className="space-y-6">
             {/* Top Summary & Control Bar */}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-3.5">
-                {/* 1. Stigix Fabric Score (Featured KPI Card) */}
-                <div className={twMerge(
-                    "p-3.5 rounded-xl backdrop-blur-sm shadow-sm flex items-center gap-3 border transition-all",
-                    fabricHealth.score >= 95
-                        ? "bg-emerald-500/[0.08] border-emerald-500/30 text-emerald-400"
-                        : fabricHealth.score >= 80
-                            ? "bg-amber-500/[0.08] border-amber-500/30 text-amber-400"
-                            : "bg-rose-500/[0.08] border-rose-500/30 text-rose-400"
-                )}>
+                {/* 1. Stigix Fabric Score (Featured KPI Card - Click to Reset Filter) */}
+                <div
+                    onClick={() => setStatusFilter('ALL')}
+                    className={twMerge(
+                        "p-3.5 rounded-xl backdrop-blur-sm shadow-sm flex items-center gap-3 border transition-all cursor-pointer select-none",
+                        fabricHealth.score >= 95
+                            ? "bg-emerald-500/[0.08] border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/[0.14]"
+                            : fabricHealth.score >= 80
+                                ? "bg-amber-500/[0.08] border-amber-500/30 text-amber-400 hover:bg-amber-500/[0.14]"
+                                : "bg-rose-500/[0.08] border-rose-500/30 text-rose-400 hover:bg-rose-500/[0.14]",
+                        statusFilter === 'ALL' && "ring-1 ring-blue-500/50"
+                    )}
+                    title="Click to show all paths"
+                >
                     <div className={twMerge(
                         "p-2.5 rounded-lg border",
                         fabricHealth.score >= 95
@@ -402,14 +585,21 @@ export function ReachabilityMatrix({ token }: { token?: string }) {
                                 {fabricHealth.score >= 95 ? 'Optimal' : fabricHealth.score >= 80 ? 'Degraded' : 'Critical'}
                             </span>
                         </div>
-                        <div className="text-[10px] font-bold text-text-muted uppercase tracking-wider truncate" title={`${fabricHealth.on_net_pairs} On-Net Inter-Node Paths (${fabricHealth.optimal_pairs} optimal, ${fabricHealth.degraded_pairs} degraded)`}>
+                        <div className="text-[10px] font-bold text-text-muted uppercase tracking-wider truncate" title={`${fabricHealth.on_net_pairs} Active Monitored Paths (${fabricHealth.optimal_pairs} optimal, ${fabricHealth.degraded_pairs} degraded, ${fabricHealth.down_pairs} critical)`}>
                             Fabric Score ({fabricHealth.on_net_pairs})
                         </div>
                     </div>
                 </div>
 
                 {/* 2. Symmetric & Healthy */}
-                <div className="bg-card-secondary/60 border border-border p-3.5 rounded-xl backdrop-blur-sm shadow-sm flex items-center gap-3">
+                <div
+                    onClick={() => setStatusFilter(statusFilter === 'OPTIMAL' ? 'ALL' : 'OPTIMAL')}
+                    className={twMerge(
+                        "bg-card-secondary/60 hover:bg-emerald-500/[0.06] border p-3.5 rounded-xl backdrop-blur-sm shadow-sm flex items-center gap-3 cursor-pointer transition-all select-none",
+                        statusFilter === 'OPTIMAL' ? "border-emerald-500 ring-1 ring-emerald-500/40 bg-emerald-500/[0.08]" : "border-border"
+                    )}
+                    title="Click to filter SLA OK paths"
+                >
                     <div className="p-2.5 rounded-lg bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
                         <CheckCircle2 size={18} />
                     </div>
@@ -418,13 +608,20 @@ export function ReachabilityMatrix({ token }: { token?: string }) {
                             {summary.healthy_bidirectional}
                         </div>
                         <div className="text-[10px] font-bold text-text-muted uppercase tracking-wider">
-                            Symmetric & Healthy
+                            SLA Compliant
                         </div>
                     </div>
                 </div>
 
                 {/* 3. Asymmetric / Degraded */}
-                <div className="bg-card-secondary/60 border border-border p-3.5 rounded-xl backdrop-blur-sm shadow-sm flex items-center gap-3">
+                <div
+                    onClick={() => setStatusFilter(statusFilter === 'DEGRADED' ? 'ALL' : 'DEGRADED')}
+                    className={twMerge(
+                        "bg-card-secondary/60 hover:bg-amber-500/[0.06] border p-3.5 rounded-xl backdrop-blur-sm shadow-sm flex items-center gap-3 cursor-pointer transition-all select-none",
+                        statusFilter === 'DEGRADED' ? "border-amber-500 ring-1 ring-amber-500/40 bg-amber-500/[0.08]" : "border-border"
+                    )}
+                    title="Click to filter Asymmetric / Degraded paths"
+                >
                     <div className="p-2.5 rounded-lg bg-amber-500/10 text-amber-400 border border-amber-500/20">
                         <AlertTriangle size={18} />
                     </div>
@@ -439,7 +636,14 @@ export function ReachabilityMatrix({ token }: { token?: string }) {
                 </div>
 
                 {/* 4. Critical / Blocked */}
-                <div className="bg-card-secondary/60 border border-border p-3.5 rounded-xl backdrop-blur-sm shadow-sm flex items-center gap-3">
+                <div
+                    onClick={() => setStatusFilter(statusFilter === 'CRITICAL' ? 'ALL' : 'CRITICAL')}
+                    className={twMerge(
+                        "bg-card-secondary/60 hover:bg-red-500/[0.06] border p-3.5 rounded-xl backdrop-blur-sm shadow-sm flex items-center gap-3 cursor-pointer transition-all select-none",
+                        statusFilter === 'CRITICAL' ? "border-red-500 ring-1 ring-red-500/40 bg-red-500/[0.08]" : "border-border"
+                    )}
+                    title="Click to filter Critical / Outage paths"
+                >
                     <div className="p-2.5 rounded-lg bg-red-500/10 text-red-400 border border-red-500/20">
                         <ArrowRightLeft size={18} />
                     </div>
@@ -448,22 +652,36 @@ export function ReachabilityMatrix({ token }: { token?: string }) {
                             {summary.unidirectional_down + (summary.full_outage || 0)}
                         </div>
                         <div className="text-[10px] font-bold text-text-muted uppercase tracking-wider">
-                            Critical / Blocked
+                            Critical / SLA Breach
                         </div>
                     </div>
                 </div>
 
                 {/* 5. Active Fleet Nodes */}
-                <div className="bg-card-secondary/60 border border-border p-3.5 rounded-xl backdrop-blur-sm shadow-sm flex items-center gap-3">
+                <div
+                    onClick={() => setFocusedNodeId(null)}
+                    className={twMerge(
+                        "bg-card-secondary/60 border border-border p-3.5 rounded-xl backdrop-blur-sm shadow-sm flex items-center gap-3 transition-all",
+                        focusedNodeId && "cursor-pointer border-blue-500/50 bg-blue-500/[0.06]"
+                    )}
+                    title={focusedNodeId ? "Click to clear node focus" : "Active nodes in current view"}
+                >
                     <div className="p-2.5 rounded-lg bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">
                         <Layers size={18} />
                     </div>
                     <div>
-                        <div className="text-xl font-black font-mono text-text-primary">
-                            {nodes.length}
+                        <div className="flex items-baseline gap-1.5">
+                            <span className="text-xl font-black font-mono text-text-primary">
+                                {nodes.length}
+                            </span>
+                            {cloudNodeIds.size > 0 && (
+                                <span className="text-[9px] font-mono font-bold text-sky-400">
+                                    {showCloudNodes ? `(${nodes.length - cloudNodeIds.size} SD-WAN + ${cloudNodeIds.size} Cloud)` : '(On-Net Only)'}
+                                </span>
+                            )}
                         </div>
                         <div className="text-[10px] font-bold text-text-muted uppercase tracking-wider">
-                            Active Fleet Nodes
+                            {focusedNodeId ? `Focused: ${nodes.find(n => n.id === focusedNodeId)?.name || 'Node'}` : 'Active Fleet Nodes'}
                         </div>
                     </div>
                 </div>
@@ -537,6 +755,39 @@ export function ReachabilityMatrix({ token }: { token?: string }) {
                             ⚙️ Manual
                         </button>
                     </div>
+
+                    {/* Cloud / On-Net Scope Toggle (shown when Cloud anchors exist) */}
+                    {cloudNodeIds.size > 0 && (
+                        <div className="flex items-center bg-card-secondary border border-border/80 rounded-lg p-0.5 shadow-inner">
+                            <span className="text-[10px] font-black uppercase text-text-muted px-2 select-none">Scope:</span>
+                            <button
+                                type="button"
+                                onClick={() => setShowCloudNodes(false)}
+                                className={twMerge(
+                                    "px-2.5 py-1 rounded-md text-[11px] font-bold transition-all flex items-center gap-1",
+                                    !showCloudNodes
+                                        ? "bg-indigo-600 text-white shadow-sm font-black"
+                                        : "text-text-muted hover:text-text-primary hover:bg-white/5"
+                                )}
+                                title="Show strictly private RFC1918 SD-WAN Fabric nodes (DCs & Branches)"
+                            >
+                                🏢 On-Net ({allNormalizedNodes.length - cloudNodeIds.size}×{allNormalizedNodes.length - cloudNodeIds.size})
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setShowCloudNodes(true)}
+                                className={twMerge(
+                                    "px-2.5 py-1 rounded-md text-[11px] font-bold transition-all flex items-center gap-1",
+                                    showCloudNodes
+                                        ? "bg-sky-600 text-white shadow-sm font-black"
+                                        : "text-text-muted hover:text-text-primary hover:bg-white/5"
+                                )}
+                                title="Include Off-Net Public Cloud Anchors (StigixCloud egress reachability)"
+                            >
+                                ☁️ + Cloud ({allNormalizedNodes.length}×{allNormalizedNodes.length})
+                            </button>
+                        </div>
+                    )}
 
                     <div className="h-4 w-[1px] bg-border/80 hidden sm:block"></div>
 
@@ -614,7 +865,7 @@ export function ReachabilityMatrix({ token }: { token?: string }) {
                                 )}
                             >
                                 <span className="w-2 h-2 rounded-full bg-purple-500"></span>
-                                H&S Policy ({summary.policy_excluded})
+                                Policy / NAT ({summary.policy_excluded})
                             </button>
                         )}
                     </div>
@@ -668,7 +919,7 @@ export function ReachabilityMatrix({ token }: { token?: string }) {
 
             {/* Matrix Heatmap Table */}
             <div className="bg-card-secondary/50 border border-border rounded-xl shadow-md overflow-hidden">
-                <div className="p-4 border-b border-border bg-card-secondary/80 flex items-center justify-between">
+                <div className="p-4 border-b border-border bg-card-secondary/80 flex items-center justify-between flex-wrap gap-2">
                     <div>
                         <h3 className="text-sm font-bold text-text-primary flex items-center gap-2 flex-wrap">
                             <Grid size={16} className="text-blue-500" />
@@ -684,9 +935,19 @@ export function ReachabilityMatrix({ token }: { token?: string }) {
                                 <ShieldCheck size={12} />
                                 <span>Fabric Score: {formatNum(fabricHealth.score, 1)}%</span>
                             </span>
+                            {focusedNodeId && (
+                                <button
+                                    type="button"
+                                    onClick={() => setFocusedNodeId(null)}
+                                    className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-500/15 text-blue-400 border border-blue-500/30 hover:bg-blue-500/25 transition-colors flex items-center gap-1"
+                                >
+                                    <span>🎯 Focus: {nodes.find(n => n.id === focusedNodeId)?.name}</span>
+                                    <XCircle size={11} />
+                                </button>
+                            )}
                         </h3>
                         <p className="text-xs text-text-muted mt-0.5">
-                            Cross-correlating forward egress SLA (A → B) with return ingress telemetry (B → A) across Stigix nodes and SD-WAN gateway paths.
+                            Cross-correlating forward egress SLA (A → B) with return ingress telemetry (B → A). Hover any cell to highlight its symmetric mirror path (B → A); click a site header to focus its paths.
                         </p>
                     </div>
                     {error && nodes.length > 0 ? (
@@ -714,187 +975,316 @@ export function ReachabilityMatrix({ token }: { token?: string }) {
                         No active Stigix nodes or probes discovered yet.
                     </div>
                 ) : (
-                    <div className="overflow-x-auto">
+                    <div className="overflow-x-auto" onMouseLeave={() => setHoveredCell(null)}>
                         <table className="w-full text-left border-collapse min-w-[640px]">
                             <thead>
                                 <tr className="border-b border-border bg-card-secondary/40 text-[11px] font-bold text-text-muted uppercase tracking-wider">
                                     <th className="p-3 w-44 border-r border-border bg-card-secondary/95 sticky left-0 z-10">
                                         Source (From) \ Target (To)
                                     </th>
-                                    {nodes.map(node => (
-                                        <th key={node.id} className="p-3 text-center border-r border-border/50 min-w-[145px]">
-                                            <div className="flex flex-col items-center">
-                                                <div className="flex items-center gap-1">
-                                                    <span className="text-text-primary font-mono font-bold">{node.name}</span>
-                                                    <span className={twMerge(
-                                                        "text-[9px] px-1 py-0.2 rounded font-bold uppercase",
-                                                        node.site_type === 'HUB'
-                                                            ? "bg-amber-500/15 text-amber-800 dark:text-amber-300 border border-amber-500/30"
-                                                            : "bg-blue-500/15 text-blue-700 dark:text-blue-300 border border-blue-500/30"
-                                                    )}>
-                                                        {node.site_type}
-                                                    </span>
+                                    {nodes.map(node => {
+                                        const isColHovered = hoveredCell?.targetId === node.id || hoveredCell?.sourceId === node.id;
+                                        const isNodeFocused = focusedNodeId === node.id;
+                                        return (
+                                            <th
+                                                key={node.id}
+                                                onClick={() => setFocusedNodeId(focusedNodeId === node.id ? null : node.id)}
+                                                className={twMerge(
+                                                    "p-3 text-center border-r border-border/50 min-w-[148px] cursor-pointer transition-colors select-none",
+                                                    isNodeFocused
+                                                        ? "bg-blue-500/15 dark:bg-blue-500/20"
+                                                        : isColHovered
+                                                            ? "bg-blue-500/[0.06] dark:bg-white/[0.04]"
+                                                            : "hover:bg-black/[0.02] dark:hover:bg-white/[0.02]"
+                                                )}
+                                                title={`Click to focus all paths for ${node.name}`}
+                                            >
+                                                <div className="flex flex-col items-center">
+                                                    <div className="flex items-center gap-1">
+                                                        <span className="text-text-primary font-mono font-bold">{node.name}</span>
+                                                        <span className={twMerge(
+                                                            "text-[9px] px-1 py-0.2 rounded font-bold uppercase",
+                                                            node.site_type === 'HUB'
+                                                                ? "bg-amber-500/15 text-amber-800 dark:text-amber-300 border border-amber-500/30"
+                                                                : node.site_type === 'CLOUD'
+                                                                    ? "bg-sky-500/15 text-sky-700 dark:text-sky-300 border border-sky-500/30"
+                                                                    : "bg-blue-500/15 text-blue-700 dark:text-blue-300 border border-blue-500/30"
+                                                        )}>
+                                                            {node.site_type}
+                                                        </span>
+                                                    </div>
+                                                    <span className="text-[9.5px] text-text-muted font-normal font-mono">Host: {node.ip}</span>
                                                 </div>
-                                                <span className="text-[9.5px] text-text-muted font-normal font-mono">Host: {node.ip}</span>
-                                            </div>
-                                        </th>
-                                    ))}
+                                            </th>
+                                        );
+                                    })}
                                 </tr>
                             </thead>
                             <tbody>
-                                {nodes.map(sourceNode => (
-                                    <tr key={sourceNode.id} className="border-b border-border/50 hover:bg-black/[0.02] dark:hover:bg-white/[0.02] transition-colors">
-                                        <td className="p-3 font-bold text-xs text-text-primary border-r border-border bg-card-secondary/95 sticky left-0 z-10">
-                                            <div className="flex items-center justify-between">
-                                                <div>
-                                                    <div className="flex items-center gap-1.5 font-mono">
-                                                        <span>{sourceNode.name}</span>
-                                                        <span className={twMerge(
-                                                            "text-[9px] px-1 py-0.2 rounded font-bold uppercase",
-                                                            sourceNode.site_type === 'HUB'
-                                                                ? "bg-amber-500/15 text-amber-800 dark:text-amber-300 border border-amber-500/30"
-                                                                : "bg-blue-500/15 text-blue-700 dark:text-blue-300 border border-blue-500/30"
-                                                        )}>
-                                                            {sourceNode.site_type}
-                                                        </span>
-                                                    </div>
-                                                    <div className="text-[9.5px] text-text-muted font-normal font-mono">Host: {sourceNode.ip}</div>
-                                                </div>
-                                                {sourceNode.is_local && (
-                                                    <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-blue-500/15 text-blue-700 dark:text-blue-400 border border-blue-500/30 ml-2">
-                                                        YOU
-                                                    </span>
+                                {nodes.map(sourceNode => {
+                                    const isRowHovered = hoveredCell?.sourceId === sourceNode.id || hoveredCell?.targetId === sourceNode.id;
+                                    const isRowFocused = focusedNodeId === sourceNode.id;
+                                    return (
+                                        <tr key={sourceNode.id} className="border-b border-border/50 transition-colors">
+                                            <td
+                                                onClick={() => setFocusedNodeId(focusedNodeId === sourceNode.id ? null : sourceNode.id)}
+                                                className={twMerge(
+                                                    "p-3 font-bold text-xs text-text-primary border-r border-border sticky left-0 z-10 cursor-pointer transition-colors select-none",
+                                                    isRowFocused
+                                                        ? "bg-blue-950/90 border-l-2 border-l-blue-400"
+                                                        : isRowHovered
+                                                            ? "bg-slate-100 dark:bg-slate-800/95"
+                                                            : "bg-card-secondary/95 hover:bg-card-secondary"
                                                 )}
-                                            </div>
-                                        </td>
-                                        {nodes.map(targetNode => {
-                                            if (sourceNode.id === targetNode.id) {
-                                                return (
-                                                    <td key={targetNode.id} className="p-3 text-center border-r border-border/40 bg-slate-50/70 dark:bg-slate-900/40 text-slate-400 dark:text-slate-600 font-mono text-xs select-none">
-                                                        —
-                                                    </td>
-                                                );
-                                            }
-
-                                            const pair = getPair(sourceNode.id, targetNode.id);
-                                            if (!pair) {
-                                                return (
-                                                    <td key={targetNode.id} className="p-3 text-center border-r border-border/40 bg-slate-50/40 dark:bg-black/10 text-slate-400 dark:text-text-muted/40 font-mono text-[11px]">
-                                                        No Probe
-                                                    </td>
-                                                );
-                                            }
-
-                                            const { forward, reverse, asymmetry } = pair;
-                                            const isPolicyExcluded = asymmetry.status === 'POLICY_EXCLUDED';
-                                            const isOpt = asymmetry.status === 'OPTIMAL';
-                                            const isDeg = asymmetry.status === 'DEGRADED';
-                                            const isCrit = asymmetry.status === 'CRITICAL';
-                                            const isPartial = asymmetry.status === 'PARTIAL';
-                                            const isUnknown = asymmetry.status === 'UNKNOWN' || (!forward.has_data && !reverse.has_data);
-
-                                            const maxLatency = Math.max(
-                                                forward.has_data && forward.reachable ? forward.latency_ms : 0,
-                                                reverse.has_data && reverse.reachable ? reverse.latency_ms : 0
-                                            );
-
-                                            // Filtering logic
-                                            const matchesStatus = statusFilter === 'ALL' || asymmetry.status === statusFilter;
-                                            const matchesLatency = latencyThreshold === 0 || maxLatency >= latencyThreshold;
-                                            const isFaded = !matchesStatus || !matchesLatency;
-
-                                            const cellBg = isPolicyExcluded
-                                                ? "bg-slate-50 hover:bg-slate-100/90 border-slate-200 text-slate-700 dark:bg-slate-900/30 dark:hover:bg-slate-800/40 dark:border-slate-700/30 dark:text-slate-400"
-                                                : isOpt 
-                                                ? "bg-emerald-50/90 hover:bg-emerald-100/80 border-emerald-300 text-emerald-950 dark:bg-emerald-950/20 dark:hover:bg-emerald-900/35 dark:border-emerald-500/30 dark:text-emerald-300"
-                                                : isDeg 
-                                                ? "bg-amber-50/90 hover:bg-amber-100/80 border-amber-300 text-amber-950 dark:bg-amber-950/25 dark:hover:bg-amber-900/40 dark:border-amber-500/35 dark:text-amber-300"
-                                                : isCrit
-                                                ? "bg-red-50/90 hover:bg-red-100/80 border-red-300 text-red-950 dark:bg-red-950/30 dark:hover:bg-red-900/45 dark:border-red-500/40 dark:text-red-300"
-                                                : isPartial
-                                                ? "bg-sky-50/90 hover:bg-sky-100/80 border-sky-300 text-sky-950 dark:bg-sky-950/20 dark:hover:bg-sky-900/35 dark:border-sky-500/30 dark:text-sky-200"
-                                                : "bg-white hover:bg-slate-50 border-border/60 text-slate-600 dark:bg-card-secondary/20 dark:hover:bg-card-secondary/40 dark:border-border/40 dark:text-text-muted";
-
-                                            return (
-                                                <td
-                                                    key={targetNode.id}
-                                                    onClick={() => setSelectedPair(pair)}
-                                                    className={twMerge(
-                                                        "p-2.5 text-center border-r border-border/50 cursor-pointer transition-all border",
-                                                        cellBg,
-                                                        isFaded && "opacity-15 grayscale hover:opacity-100 hover:grayscale-0"
-                                                    )}
-                                                >
-                                                    <div className="flex flex-col gap-1">
-                                                        {isPolicyExcluded ? (
-                                                            <div className="py-1">
-                                                                <div className="text-[10.5px] font-mono text-slate-700 dark:text-slate-400 flex items-center justify-center gap-1 font-bold">
-                                                                    <span>🏛️ Hub & Spoke</span>
-                                                                </div>
-                                                                <div className="mt-0.5 px-1.5 py-0.5 rounded text-[8.5px] font-black bg-purple-100 text-purple-900 border border-purple-300 dark:bg-purple-500/15 dark:text-purple-300 dark:border-purple-500/20 truncate">
-                                                                    Bypassed
-                                                                </div>
-                                                            </div>
-                                                        ) : (
-                                                            <>
-                                                                {/* Forward */}
-                                                                <div className="flex items-center justify-between text-[11px] font-mono px-1">
-                                                                    <span className="flex items-center gap-0.5 text-slate-600 dark:text-text-muted text-[10px] font-semibold">
-                                                                        <ArrowUpRight size={11} className="text-blue-700 dark:text-blue-400" /> Fwd:
-                                                                    </span>
-                                                                    <span className={forward.has_data ? (forward.reachable ? (isOpt ? "font-black text-emerald-900 dark:text-emerald-300" : isDeg ? "font-black text-amber-900 dark:text-amber-300" : isPartial ? "font-black text-sky-900 dark:text-sky-300" : "font-black text-red-600 dark:text-red-400") : "font-black text-red-600 dark:text-red-400") : "text-slate-400 dark:text-text-muted text-[10px] font-medium"}>
-                                                                        {forward.has_data ? (forward.reachable ? `${formatNum(forward.latency_ms)}ms` : 'DOWN') : 'No Probe'}
-                                                                    </span>
-                                                                </div>
-
-                                                                {/* Reverse */}
-                                                                <div className="flex items-center justify-between text-[11px] font-mono px-1">
-                                                                    <span className="flex items-center gap-0.5 text-slate-600 dark:text-text-muted text-[10px] font-semibold">
-                                                                        <ArrowDownLeft size={11} className="text-purple-700 dark:text-purple-400" /> Rev:
-                                                                    </span>
-                                                                    <span className={reverse.has_data ? (reverse.reachable ? (isOpt ? "font-black text-emerald-900 dark:text-emerald-300" : isDeg ? "font-black text-amber-900 dark:text-amber-300" : isPartial ? "font-black text-sky-900 dark:text-sky-300" : "font-black text-red-600 dark:text-red-400") : "font-black text-red-600 dark:text-red-400") : "text-slate-400 dark:text-text-muted text-[10px] font-medium"}>
-                                                                        {reverse.has_data ? (reverse.reachable ? `${formatNum(reverse.latency_ms)}ms` : 'DOWN') : 'No Probe'}
-                                                                    </span>
-                                                                </div>
-
-                                                                {/* Status / Delta Badge */}
-                                                                {isOpt && (
-                                                                    <div className="mt-0.5 px-1.5 py-0.5 rounded text-[9.5px] font-black bg-emerald-100 text-emerald-900 border border-emerald-300 dark:bg-emerald-500/15 dark:text-emerald-300 dark:border-emerald-500/25 truncate">
-                                                                        SLA OK
-                                                                    </div>
-                                                                )}
-                                                                {isDeg && (
-                                                                    <div className="mt-0.5 px-1.5 py-0.5 rounded text-[9.5px] font-black bg-amber-100 text-amber-950 border border-amber-300 dark:bg-amber-500/15 dark:text-amber-300 dark:border-amber-500/30 truncate">
-                                                                        {asymmetry.latency_delta_ms > 0 ? `Δ ${formatNum(asymmetry.latency_delta_ms)}ms` : 'Degraded'}
-                                                                    </div>
-                                                                )}
-                                                                {isCrit && (
-                                                                    <div className="mt-0.5 px-1.5 py-0.5 rounded text-[9.5px] font-black bg-red-100 text-red-900 border border-red-300 dark:bg-red-500/15 dark:text-red-300 dark:border-red-500/30 truncate">
-                                                                        {(!forward.reachable && !reverse.reachable)
-                                                                            ? 'Unreachable'
-                                                                            : (!forward.reachable || !reverse.reachable)
-                                                                                ? (forward.reachable ? 'Return Blocked' : 'Fwd Blocked')
-                                                                                : 'SLA Breach'}
-                                                                    </div>
-                                                                )}
-                                                                {isPartial && (
-                                                                    <div className="mt-0.5 px-1.5 py-0.5 rounded text-[9.5px] font-black bg-sky-100 text-sky-900 border border-sky-300 dark:bg-sky-500/15 dark:text-sky-300 dark:border-sky-500/25 truncate">
-                                                                        {forward.has_data ? 'Egress Only' : 'Ingress Only'}
-                                                                    </div>
-                                                                )}
-                                                                {isUnknown && (
-                                                                    <div className="mt-0.5 px-1.5 py-0.5 rounded text-[9px] font-bold bg-slate-100 text-slate-600 border border-slate-200 dark:bg-card-secondary dark:text-text-muted dark:border-border/40 truncate">
-                                                                        No Probe
-                                                                    </div>
-                                                                )}
-                                                            </>
-                                                        )}
+                                                title={`Click to focus all paths for ${sourceNode.name}`}
+                                            >
+                                                <div className="flex items-center justify-between">
+                                                    <div>
+                                                        <div className="flex items-center gap-1.5 font-mono">
+                                                            <span>{sourceNode.name}</span>
+                                                            <span className={twMerge(
+                                                                "text-[9px] px-1 py-0.2 rounded font-bold uppercase",
+                                                                sourceNode.site_type === 'HUB'
+                                                                    ? "bg-amber-500/15 text-amber-800 dark:text-amber-300 border border-amber-500/30"
+                                                                    : sourceNode.site_type === 'CLOUD'
+                                                                        ? "bg-sky-500/15 text-sky-700 dark:text-sky-300 border border-sky-500/30"
+                                                                        : "bg-blue-500/15 text-blue-700 dark:text-blue-300 border border-blue-500/30"
+                                                            )}>
+                                                                {sourceNode.site_type}
+                                                            </span>
+                                                        </div>
+                                                        <div className="text-[9.5px] text-text-muted font-normal font-mono">Host: {sourceNode.ip}</div>
                                                     </div>
-                                                </td>
-                                            );
-                                        })}
-                                    </tr>
-                                ))}
+                                                    {sourceNode.is_local && (
+                                                        <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-blue-500/15 text-blue-700 dark:text-blue-400 border border-blue-500/30 ml-2">
+                                                            YOU
+                                                        </span>
+                                                    )}
+                                                </div>
+                                            </td>
+                                            {nodes.map(targetNode => {
+                                                if (sourceNode.id === targetNode.id) {
+                                                    const selfStats = getNodeSelfSummary(sourceNode.id);
+                                                    const isSelfFocused = focusedNodeId === sourceNode.id;
+                                                    return (
+                                                        <td
+                                                            key={targetNode.id}
+                                                            onClick={() => setFocusedNodeId(isSelfFocused ? null : sourceNode.id)}
+                                                            className={twMerge(
+                                                                "p-2.5 text-center border-r border-border/40 font-mono text-xs select-none cursor-pointer transition-all",
+                                                                isSelfFocused
+                                                                    ? "bg-blue-500/15 dark:bg-blue-950/50 ring-1 ring-inset ring-blue-400/60"
+                                                                    : "bg-slate-100/80 dark:bg-slate-900/60 hover:bg-slate-200/70 dark:hover:bg-slate-800/60"
+                                                            )}
+                                                            title={`Local Loopback / Site Summary for ${sourceNode.name} — Click to focus site`}
+                                                        >
+                                                            {selfStats ? (
+                                                                <div className="flex flex-col items-center justify-center gap-0.5 py-1">
+                                                                    <span className="text-[9px] uppercase tracking-wider font-extrabold text-text-muted">
+                                                                        {sourceNode.site_type === 'CLOUD' ? '☁️ Cloud Anchor' : '⚡ Site Egress'}
+                                                                    </span>
+                                                                    <span className="text-[11px] font-black text-text-primary">
+                                                                        {selfStats.reachableCount > 0 ? `${formatNum(selfStats.avgLatency, 0)}ms avg` : 'Offline'}
+                                                                    </span>
+                                                                    <span className={twMerge(
+                                                                        "text-[9px] px-1.5 py-0.2 rounded font-bold border",
+                                                                        selfStats.healthyCount === selfStats.total
+                                                                            ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/30"
+                                                                            : selfStats.reachableCount > 0
+                                                                                ? "bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-500/30"
+                                                                                : "bg-red-500/15 text-red-700 dark:text-red-300 border-red-500/30"
+                                                                    )}>
+                                                                        {selfStats.healthyCount}/{selfStats.total} SLA OK
+                                                                    </span>
+                                                                </div>
+                                                            ) : (
+                                                                <div className="flex flex-col items-center justify-center py-2 text-slate-400 dark:text-slate-500">
+                                                                    <span className="text-[10px] font-bold">{sourceNode.site_type === 'CLOUD' ? '☁️ Public Anchor' : '— Self —'}</span>
+                                                                    <span className="text-[9px] text-text-muted">Passive Target</span>
+                                                                </div>
+                                                            )}
+                                                        </td>
+                                                    );
+                                                }
+
+                                                const pair = getPair(sourceNode.id, targetNode.id);
+                                                if (!pair) {
+                                                    return (
+                                                        <td key={targetNode.id} className="p-3 text-center border-r border-border/40 bg-slate-50/40 dark:bg-black/10 text-slate-400 dark:text-text-muted/40 font-mono text-[11px]">
+                                                            No Probe
+                                                        </td>
+                                                    );
+                                                }
+
+                                                const { forward, reverse, asymmetry } = pair;
+                                                const isPolicyExcluded = asymmetry.status === 'POLICY_EXCLUDED';
+                                                const isOpt = asymmetry.status === 'OPTIMAL';
+                                                const isDeg = asymmetry.status === 'DEGRADED';
+                                                const isCrit = asymmetry.status === 'CRITICAL';
+                                                const isPartial = asymmetry.status === 'PARTIAL';
+                                                const isUnknown = asymmetry.status === 'UNKNOWN' || (!forward.has_data && !reverse.has_data);
+
+                                                const srcIsCloud = sourceNode.site_type === 'CLOUD';
+                                                const dstIsCloud = targetNode.site_type === 'CLOUD';
+                                                const isCloudNatReturn = !srcIsCloud && dstIsCloud && !reverse.reachable;
+                                                const isCloudNatForward = srcIsCloud && !dstIsCloud && isPolicyExcluded;
+
+                                                const maxLatency = Math.max(
+                                                    forward.has_data && forward.reachable ? forward.latency_ms : 0,
+                                                    reverse.has_data && reverse.reachable ? reverse.latency_ms : 0
+                                                );
+
+                                                // Filtering + Node Focus logic
+                                                const matchesStatus = statusFilter === 'ALL' || asymmetry.status === statusFilter;
+                                                const matchesLatency = latencyThreshold === 0 || maxLatency >= latencyThreshold;
+                                                const matchesFocus = !focusedNodeId || sourceNode.id === focusedNodeId || targetNode.id === focusedNodeId;
+                                                const isFaded = !matchesStatus || !matchesLatency || !matchesFocus;
+
+                                                // Symmetric Mirror Highlighting: when hovering (A, B), highlight (B, A)
+                                                const isDirectHover = hoveredCell?.sourceId === sourceNode.id && hoveredCell?.targetId === targetNode.id;
+                                                const isMirrorCell = hoveredCell?.sourceId === targetNode.id && hoveredCell?.targetId === sourceNode.id;
+
+                                                const cellBg = isPolicyExcluded
+                                                    ? "bg-slate-50 hover:bg-slate-100/90 border-slate-200 text-slate-700 dark:bg-slate-900/30 dark:hover:bg-slate-800/40 dark:border-slate-700/30 dark:text-slate-400"
+                                                    : isOpt 
+                                                    ? "bg-emerald-50/90 hover:bg-emerald-100/80 border-emerald-300 text-emerald-950 dark:bg-emerald-950/20 dark:hover:bg-emerald-900/35 dark:border-emerald-500/30 dark:text-emerald-300"
+                                                    : isDeg 
+                                                    ? "bg-amber-50/90 hover:bg-amber-100/80 border-amber-300 text-amber-950 dark:bg-amber-950/25 dark:hover:bg-amber-900/40 dark:border-amber-500/35 dark:text-amber-300"
+                                                    : isCrit
+                                                    ? "bg-red-50/90 hover:bg-red-100/80 border-red-300 text-red-950 dark:bg-red-950/30 dark:hover:bg-red-900/45 dark:border-red-500/40 dark:text-red-300"
+                                                    : isPartial
+                                                    ? "bg-sky-50/90 hover:bg-sky-100/80 border-sky-300 text-sky-950 dark:bg-sky-950/20 dark:hover:bg-sky-900/35 dark:border-sky-500/30 dark:text-sky-200"
+                                                    : "bg-white hover:bg-slate-50 border-border/60 text-slate-600 dark:bg-card-secondary/20 dark:hover:bg-card-secondary/40 dark:border-border/40 dark:text-text-muted";
+
+                                                // Proportional bar calculation when both directions are reachable
+                                                const bothUp = forward.has_data && forward.reachable && reverse.has_data && reverse.reachable;
+                                                const totalRtt = bothUp ? Math.max(1, forward.latency_ms + reverse.latency_ms) : 0;
+                                                const fwdSharePct = bothUp ? Math.min(88, Math.max(12, Math.round((forward.latency_ms / totalRtt) * 100))) : 50;
+
+                                                return (
+                                                    <td
+                                                        key={targetNode.id}
+                                                        onClick={() => setSelectedPair(pair)}
+                                                        onMouseEnter={() => setHoveredCell({ sourceId: sourceNode.id, targetId: targetNode.id })}
+                                                        className={twMerge(
+                                                            "p-2.5 text-center border-r border-border/50 cursor-pointer transition-all border relative",
+                                                            cellBg,
+                                                            isDirectHover && "ring-2 ring-inset ring-blue-400 z-10 shadow-md",
+                                                            isMirrorCell && "ring-2 ring-inset ring-cyan-400/90 z-10 shadow-md bg-cyan-500/[0.08]",
+                                                            isFaded && "opacity-15 grayscale hover:opacity-100 hover:grayscale-0"
+                                                        )}
+                                                    >
+                                                        {isMirrorCell && (
+                                                            <span className="absolute -top-2 right-1.5 px-1 py-0.2 rounded bg-cyan-500 text-slate-950 font-mono font-black text-[8px] uppercase tracking-wider shadow-sm z-20">
+                                                                ⇄ Mirror
+                                                            </span>
+                                                        )}
+                                                        <div className="flex flex-col gap-1">
+                                                            {isPolicyExcluded ? (
+                                                                <div className="py-1">
+                                                                    <div className="text-[10.5px] font-mono text-slate-700 dark:text-slate-400 flex items-center justify-center gap-1 font-bold">
+                                                                        <span>{isCloudNatForward ? '☁️ RFC1918 NAT' : '🏛️ Hub & Spoke'}</span>
+                                                                    </div>
+                                                                    <div className={twMerge(
+                                                                        "mt-0.5 px-1.5 py-0.5 rounded text-[8.5px] font-black border truncate",
+                                                                        isCloudNatForward
+                                                                            ? "bg-slate-200/80 text-slate-700 border-slate-300 dark:bg-slate-800/80 dark:text-slate-300 dark:border-slate-600/40"
+                                                                            : "bg-purple-100 text-purple-900 border-purple-300 dark:bg-purple-500/15 dark:text-purple-300 dark:border-purple-500/20"
+                                                                    )}>
+                                                                        {isCloudNatForward ? 'Off-Net Bypass' : 'Bypassed'}
+                                                                    </div>
+                                                                </div>
+                                                            ) : (
+                                                                <>
+                                                                    {/* Forward (colored independently by its own SLA state) */}
+                                                                    <div className="flex items-center justify-between text-[11px] font-mono px-1">
+                                                                        <span className="flex items-center gap-0.5 text-slate-600 dark:text-text-muted text-[10px] font-semibold">
+                                                                            <ArrowUpRight size={11} className="text-blue-700 dark:text-blue-400" /> Fwd:
+                                                                        </span>
+                                                                        <span className={getDirectionColorClass(forward)}>
+                                                                            {forward.has_data ? (forward.reachable ? `${formatNum(forward.latency_ms)}ms` : 'DOWN') : 'No Probe'}
+                                                                        </span>
+                                                                    </div>
+
+                                                                    {/* Reverse (colored independently by its own SLA state, or NAT badge for Cloud targets) */}
+                                                                    <div className="flex items-center justify-between text-[11px] font-mono px-1">
+                                                                        <span className="flex items-center gap-0.5 text-slate-600 dark:text-text-muted text-[10px] font-semibold">
+                                                                            <ArrowDownLeft size={11} className="text-purple-700 dark:text-purple-400" /> Rev:
+                                                                        </span>
+                                                                        {isCloudNatReturn ? (
+                                                                            <span className="text-[9.5px] font-mono font-bold text-sky-600 dark:text-sky-400/80" title="Public Cloud Anchor cannot ping private RFC1918 branch IP back (NAT by design)">
+                                                                                NAT (Off-Net)
+                                                                            </span>
+                                                                        ) : (
+                                                                            <span className={getDirectionColorClass(reverse)}>
+                                                                                {reverse.has_data ? (reverse.reachable ? `${formatNum(reverse.latency_ms)}ms` : 'DOWN') : 'No Probe'}
+                                                                            </span>
+                                                                        )}
+                                                                    </div>
+
+                                                                    {/* Visual Proportional Asymmetry Micro-Bar (Fwd vs Rev share) */}
+                                                                    {bothUp && (
+                                                                        <div className="w-full h-1 rounded-full bg-black/20 dark:bg-white/10 overflow-hidden flex my-0.5" title={`Forward ${formatNum(forward.latency_ms)}ms (${fwdSharePct}%) vs Return ${formatNum(reverse.latency_ms)}ms (${100 - fwdSharePct}%)`}>
+                                                                            <div
+                                                                                style={{ width: `${fwdSharePct}%` }}
+                                                                                className={twMerge(
+                                                                                    "h-full transition-all",
+                                                                                    getDirectionHealth(forward) === 'CRITICAL' ? "bg-red-500" : getDirectionHealth(forward) === 'DEGRADED' ? "bg-amber-400" : "bg-blue-500"
+                                                                                )}
+                                                                            />
+                                                                            <div
+                                                                                style={{ width: `${100 - fwdSharePct}%` }}
+                                                                                className={twMerge(
+                                                                                    "h-full transition-all",
+                                                                                    getDirectionHealth(reverse) === 'CRITICAL' ? "bg-red-500" : getDirectionHealth(reverse) === 'DEGRADED' ? "bg-amber-400" : "bg-purple-500"
+                                                                                )}
+                                                                            />
+                                                                        </div>
+                                                                    )}
+
+                                                                    {/* Status / Delta Badge */}
+                                                                    {isOpt && (
+                                                                        <div className="mt-0.5 px-1.5 py-0.5 rounded text-[9.5px] font-black bg-emerald-100 text-emerald-900 border border-emerald-300 dark:bg-emerald-500/15 dark:text-emerald-300 dark:border-emerald-500/25 truncate">
+                                                                            {isCloudNatReturn ? '☁️ Egress OK' : 'SLA OK'}
+                                                                        </div>
+                                                                    )}
+                                                                    {isDeg && (
+                                                                        <div className="mt-0.5 px-1.5 py-0.5 rounded text-[9.5px] font-black bg-amber-100 text-amber-950 border border-amber-300 dark:bg-amber-500/15 dark:text-amber-300 dark:border-amber-500/30 truncate">
+                                                                            {asymmetry.latency_delta_ms > 0 && !isCloudNatReturn ? `Δ ${formatNum(asymmetry.latency_delta_ms)}ms` : 'Degraded'}
+                                                                        </div>
+                                                                    )}
+                                                                    {isCrit && (
+                                                                        <div className="mt-0.5 px-1.5 py-0.5 rounded text-[9.5px] font-black bg-red-100 text-red-900 border border-red-300 dark:bg-red-500/15 dark:text-red-300 dark:border-red-500/30 truncate">
+                                                                            {isCloudNatReturn && !forward.reachable
+                                                                                ? 'Egress DOWN'
+                                                                                : (!forward.reachable && !reverse.reachable)
+                                                                                    ? 'Unreachable'
+                                                                                    : (!forward.reachable || !reverse.reachable)
+                                                                                        ? (forward.reachable ? 'Return Blocked' : 'Fwd Blocked')
+                                                                                        : asymmetry.latency_delta_ms >= thresholds.asymmetry_warning_delta_ms
+                                                                                            ? `SLA • Δ ${formatNum(asymmetry.latency_delta_ms)}ms`
+                                                                                            : 'SLA Breach'}
+                                                                        </div>
+                                                                    )}
+                                                                    {isPartial && (
+                                                                        <div className="mt-0.5 px-1.5 py-0.5 rounded text-[9.5px] font-black bg-sky-100 text-sky-900 border border-sky-300 dark:bg-sky-500/15 dark:text-sky-300 dark:border-sky-500/25 truncate">
+                                                                            {forward.has_data ? 'Egress Only' : 'Ingress Only'}
+                                                                        </div>
+                                                                    )}
+                                                                    {isUnknown && (
+                                                                        <div className="mt-0.5 px-1.5 py-0.5 rounded text-[9px] font-bold bg-slate-100 text-slate-600 border border-slate-200 dark:bg-card-secondary dark:text-text-muted dark:border-border/40 truncate">
+                                                                            No Probe
+                                                                        </div>
+                                                                    )}
+                                                                </>
+                                                            )}
+                                                        </div>
+                                                    </td>
+                                                );
+                                            })}
+                                        </tr>
+                                    );
+                                })}
                             </tbody>
                         </table>
                     </div>
@@ -912,12 +1302,84 @@ export function ReachabilityMatrix({ token }: { token?: string }) {
                                     {selectedPair.source_name} ⇄ {selectedPair.target_name}
                                 </h3>
                             </div>
-                            <button
-                                onClick={() => setSelectedPair(null)}
-                                className="text-text-muted hover:text-text-primary p-1 rounded-lg hover:bg-card-secondary transition-colors"
-                            >
-                                <XCircle size={20} />
-                            </button>
+                            <div className="flex items-center gap-2">
+                                {(() => {
+                                    const mirror = getPair(selectedPair.target_id, selectedPair.source_id);
+                                    if (!mirror) return null;
+                                    return (
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                setSelectedPair(mirror);
+                                                setFlowTraceData(null);
+                                                setFlowTraceError(null);
+                                            }}
+                                            className="px-2.5 py-1 rounded-lg text-[11px] font-mono font-bold bg-card-secondary hover:bg-blue-500/15 text-text-secondary hover:text-blue-400 border border-border transition-colors flex items-center gap-1"
+                                            title="Flip perspective to inspect the reverse pair cell (Target → Source)"
+                                        >
+                                            <ArrowRightLeft size={12} />
+                                            <span>Flip to {selectedPair.target_name} → {selectedPair.source_name}</span>
+                                        </button>
+                                    );
+                                })()}
+                                <button
+                                    onClick={() => setSelectedPair(null)}
+                                    className="text-text-muted hover:text-text-primary p-1 rounded-lg hover:bg-card-secondary transition-colors"
+                                >
+                                    <XCircle size={20} />
+                                </button>
+                            </div>
+                        </div>
+
+                        {/* Visual Bidirectional Path Diagram */}
+                        <div className="bg-card-secondary/50 border border-border rounded-xl p-4 flex items-center justify-between gap-3">
+                            {/* Source Node Box */}
+                            <div className="px-3.5 py-2.5 rounded-xl bg-card border border-blue-500/30 text-center min-w-[130px] shadow-sm">
+                                <div className="text-xs font-black font-mono text-text-primary truncate">{selectedPair.source_name}</div>
+                                <div className="text-[10px] font-mono text-text-muted mt-0.5">{selectedPair.forward.source_ip || selectedPair.source_ip || 'Source'}</div>
+                            </div>
+
+                            {/* Dual Directional Arrows + Central Asymmetry Pill */}
+                            <div className="flex-1 flex flex-col items-center gap-1.5 px-2">
+                                <div className="w-full flex items-center justify-between text-[11px] font-mono px-2">
+                                    <span className="text-blue-400 font-bold flex items-center gap-1">
+                                        <ArrowUpRight size={12} /> Fwd Egress
+                                    </span>
+                                    <span className={getDirectionColorClass(selectedPair.forward)}>
+                                        {selectedPair.forward.has_data
+                                            ? (selectedPair.forward.reachable ? `${formatNum(selectedPair.forward.latency_ms)} ms (loss ${formatNum(selectedPair.forward.loss_pct)}%)` : 'DOWN (100% loss)')
+                                            : 'No Probe'}
+                                    </span>
+                                </div>
+                                <div className="w-full h-1.5 rounded-full bg-border overflow-hidden flex items-center relative">
+                                    <div className={twMerge(
+                                        "h-full w-1/2",
+                                        getDirectionHealth(selectedPair.forward) === 'CRITICAL' ? "bg-red-500" : getDirectionHealth(selectedPair.forward) === 'DEGRADED' ? "bg-amber-400" : "bg-emerald-500"
+                                    )} />
+                                    <div className={twMerge(
+                                        "h-full w-1/2",
+                                        getDirectionHealth(selectedPair.reverse) === 'CRITICAL' ? "bg-red-500" : getDirectionHealth(selectedPair.reverse) === 'DEGRADED' ? "bg-amber-400" : "bg-purple-500"
+                                    )} />
+                                </div>
+                                <div className="w-full flex items-center justify-between text-[11px] font-mono px-2">
+                                    <span className="text-purple-400 font-bold flex items-center gap-1">
+                                        <ArrowDownLeft size={12} /> Rev Ingress
+                                    </span>
+                                    <span className={getDirectionColorClass(selectedPair.reverse)}>
+                                        {cloudNodeIds.has(selectedPair.target_id) && !selectedPair.reverse.reachable
+                                            ? 'NAT / RFC1918 Excluded'
+                                            : selectedPair.reverse.has_data
+                                                ? (selectedPair.reverse.reachable ? `${formatNum(selectedPair.reverse.latency_ms)} ms (loss ${formatNum(selectedPair.reverse.loss_pct)}%)` : 'DOWN (100% loss)')
+                                                : 'No Probe'}
+                                    </span>
+                                </div>
+                            </div>
+
+                            {/* Target Node Box */}
+                            <div className="px-3.5 py-2.5 rounded-xl bg-card border border-purple-500/30 text-center min-w-[130px] shadow-sm">
+                                <div className="text-xs font-black font-mono text-text-primary truncate">{selectedPair.target_name}</div>
+                                <div className="text-[10px] font-mono text-text-muted mt-0.5">{selectedPair.forward.target_ip || selectedPair.target_ip || 'Target'}</div>
+                            </div>
                         </div>
 
                         {/* Asymmetry Summary Banner */}
@@ -937,11 +1399,11 @@ export function ReachabilityMatrix({ token }: { token?: string }) {
                             <div>
                                 <div className="text-xs font-black uppercase tracking-wider">
                                     Path Status: {selectedPair.asymmetry.status === 'POLICY_EXCLUDED'
-                                        ? 'HUB & SPOKE POLICY (BYPASS)'
+                                        ? 'POLICY / NAT BYPASS'
                                         : selectedPair.asymmetry.status === 'PARTIAL'
                                             ? 'EGRESS ONLY (ONE-WAY TELEMETRY)'
                                             : selectedPair.asymmetry.status === 'OPTIMAL'
-                                                ? 'SLA OK (SYMMETRIC OPTIMAL)'
+                                                ? 'SLA OK (COMPLIANT)'
                                                 : selectedPair.asymmetry.status === 'CRITICAL' && (!selectedPair.forward.reachable && !selectedPair.reverse.reachable)
                                                     ? 'UNREACHABLE (OUTAGE)'
                                                     : selectedPair.asymmetry.status}

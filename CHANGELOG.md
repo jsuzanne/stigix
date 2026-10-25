@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.1.25] - 2026-10-25
+
+### Improved
+- **SD-WAN Bidirectional Reachability Matrix 2.0 — NOC Edition (`web-dashboard/server.ts`, `web-dashboard/src/components/ReachabilityMatrix.tsx`)**:
+  - **Off-Net Cloud Anchor & RFC1918 NAT Intelligence (`StigixCloud`)**: Classified public IP nodes (`142.132.193.157`, `StigixCloud`) as `CLOUD` anchors instead of `HUB`s, prevented public Cloud nodes from generating futile auto-mesh ICMP probes toward private RFC1918 (`192.168.x.x`) peers, classified `Cloud -> On-Net (RFC1918)` cells as `POLICY_EXCLUDED` (`RFC1918 NAT / Off-Net Bypass`), and evaluated `On-Net -> Cloud` cells on their Egress (`Fwd`) SLA (`☁️ Egress OK` when reachable, `Egress DOWN` only when `Fwd` is genuinely unreachable such as `BR5 -> StigixCloud`), eliminating 12 false-positive `Return Blocked` / `Fwd Blocked` red alerts.
+  - **On-Net (`6x6`) vs `+ Cloud` (`7x7`) Scope Toggle**: Added a 1-click `Scope` switcher (`🏢 On-Net` vs `☁️ + Cloud`) in the filter bar so operators can inspect either the pure private SD-WAN Fabric or include public Cloud egress anchors.
+  - **Independent Per-Direction SLA Coloring & Proportional Asymmetry Micro-Bar**: Colored `Fwd` and `Rev` latencies independently according to each direction's own SLA health (`emerald` / `amber` / `red`) so asymmetric cells (e.g. `Fwd: 150ms` in red vs `Rev: 2ms` in emerald) immediately pinpoint which direction is degraded, added a 2-segment proportional RTT bar inside each cell, and displayed `SLA • Δ Xms` when an SLA breach is accompanied by high asymmetry.
+  - **Symmetric Mirror Highlighting (`⇄ Mirror`), Interactive Diagonal & Node Focus**: Hovering any cell `(A, B)` highlights row `A`, column `B`, and outlines the symmetric mirror cell `(B, A)` across the diagonal with a cyan `⇄ Mirror` badge; diagonal `(Node, Node)` cells now summarize each site's average outbound latency and `SLA OK` peer ratio; clicking any site header, diagonal cell, or top KPI card focuses/filters the grid.
+  - **Visual Bidirectional Path Diagram & Perspective Flip in Modal**: Added a visual `Source ⇄ Target` flow diagram and a 1-click `Flip to Target -> Source` button inside the pair inspection modal.
+
 ## [3.1.24] - 2026-10-25
 
 ### Improved
