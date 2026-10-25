@@ -175,12 +175,16 @@ export function PeerContextProvider({ token, isLeader, children, onActivePeerCha
         } catch {}
     }, [token, isLeader]);
 
-    // Auto-refresh peer list every 30 s when Leader
+    // Auto-refresh peer list every 30 s when Leader, and immediately on tab wake-up
     useEffect(() => {
-        if (!isLeader) return;
         refreshPeers();
-        const interval = setInterval(refreshPeers, 30_000);
-        return () => clearInterval(interval);
+        const interval = isLeader ? setInterval(refreshPeers, 30_000) : null;
+        const onWakeup = () => refreshPeers();
+        window.addEventListener('stigix:wakeup', onWakeup);
+        return () => {
+            if (interval) clearInterval(interval);
+            window.removeEventListener('stigix:wakeup', onWakeup);
+        };
     }, [isLeader, refreshPeers]);
 
     // Reset to local context when Leader status changes

@@ -32,7 +32,7 @@ import { HomeOverview } from './components/navigation/HomeOverview';
 import { Activity, Server, AlertCircle, LayoutDashboard, Settings, LogOut, Key, UserPlus, BarChart3, Wifi, Shield, ChevronDown, ChevronUp, Clock, CheckCircle, XCircle, Play, Pause, Phone, Gauge, Network, Plus, Zap, Monitor, Cpu, Sun, Moon, Globe, Terminal, Sliders, Layers, Code, Bot, Sparkles, Binary, Radio } from 'lucide-react';
 import { clsx } from 'clsx';
 import { twMerge } from 'tailwind-merge';
-import { Toaster } from 'react-hot-toast';
+import toast, { Toaster } from 'react-hot-toast';
 
 /**
  * PeerStatusSync — lives INSIDE PeerContextProvider so it can call usePeerContext().
@@ -123,7 +123,12 @@ function PeerStatusSync({
 
     pollNetwork();
     const interval = setInterval(pollNetwork, 30_000);
-    return () => clearInterval(interval);
+    const onWakeup = () => pollNetwork();
+    window.addEventListener('stigix:wakeup', onWakeup);
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('stigix:wakeup', onWakeup);
+    };
   }, [token, activePeerId]);
 
   // ── Fast loop: live-status (voice/conv) + traffic/status ──────────────────
@@ -151,7 +156,12 @@ function PeerStatusSync({
     poll();
     const ms = (view === 'failover' || view === 'convergence') ? 500 : 3000;
     const interval = setInterval(poll, ms);
-    return () => clearInterval(interval);
+    const onWakeup = () => poll();
+    window.addEventListener('stigix:wakeup', onWakeup);
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('stigix:wakeup', onWakeup);
+    };
   }, [token, activePeerId, view]);
 
   // ── Slow loop: dashboard-data for stats + status & health matrix (10s) ───────
@@ -178,7 +188,12 @@ function PeerStatusSync({
 
     pollDash();
     const interval = setInterval(pollDash, 5_000);
-    return () => clearInterval(interval);
+    const onWakeup = () => pollDash();
+    window.addEventListener('stigix:wakeup', onWakeup);
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('stigix:wakeup', onWakeup);
+    };
   }, [token, activePeerId]);
 
   // ── History loop: traffic history for Traffic Volume chart (60s) ───────────
@@ -929,11 +944,39 @@ export default function App() {
     }
   }
 
+  const initialVersionRef = useRef<string | null>(null);
+  const isReloadingRef = useRef<boolean>(false);
+  const lastHiddenAtRef = useRef<number | null>(null);
+  const lastWakeupAtRef = useRef<number>(Date.now());
+  const lastHeartbeatAtRef = useRef<number>(Date.now());
+  const runningTestRef = useRef<boolean>(false);
+  runningTestRef.current = Boolean(runningSpeedtest || runningIperf);
+
   const fetchVersion = async () => {
     try {
-      const res = await fetch('/api/version');
+      const res = await fetch('/api/version', { cache: 'no-store' });
+      const contentType = res.headers.get('content-type') || '';
+      if (contentType.includes('text/html') && !isReloadingRef.current) {
+        // Upstream reverse proxy (e.g., Cloudflare Access) returned an HTML login page
+        isReloadingRef.current = true;
+        window.location.reload();
+        return;
+      }
+      if (!res.ok) return;
       const data = await res.json();
-      if (data.version) setVersion(data.version);
+      if (data.version) {
+        setVersion(data.version);
+        if (!initialVersionRef.current) {
+          initialVersionRef.current = data.version;
+        } else if (initialVersionRef.current !== data.version && !isReloadingRef.current) {
+          // Container was upgraded while tab remained open — reload cleanly unless a test is running
+          if (!runningTestRef.current) {
+            isReloadingRef.current = true;
+            toast.loading(`Stigix updated to v${data.version} — reloading...`, { id: 'stigix-version-reload' });
+            setTimeout(() => window.location.reload(), 900);
+          }
+        }
+      }
     } catch (e) {
       console.error("Failed to fetch version");
     }
@@ -1108,6 +1151,52 @@ export default function App() {
 
 
 
+  // Global Fetch Auth & Cloudflare Access Session Guard
+  useEffect(() => {
+    if (!token) return;
+    const origFetch = window.fetch.bind(window);
+
+    window.fetch = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.href : (input as Request).url;
+      const res = await origFetch(input, init);
+
+      if (url.startsWith('/api/') && !url.startsWith('/api/auth/login')) {
+        const contentType = (res.headers.get('content-type') || '').toLowerCase();
+
+        // 1. Upstream IdP / Cloudflare Access redirect or HTML login page on a JSON API endpoint
+        if (
+          (res.redirected && res.url && !res.url.startsWith(window.location.origin)) ||
+          (res.ok && contentType.includes('text/html') && (
+            url.startsWith('/api/admin/system/dashboard-data') ||
+            url.startsWith('/api/system/health-matrix') ||
+            url.startsWith('/api/registry/status') ||
+            url.startsWith('/api/version')
+          ))
+        ) {
+          if (!isReloadingRef.current) {
+            isReloadingRef.current = true;
+            window.location.reload();
+          }
+          return res;
+        }
+
+        // 2. Local Stigix JWT expired/invalid (authenticateToken sends 401 or text/plain 403)
+        // Exclude /api/gateway/ so a remote peer auth failure does not log out the Leader session
+        if (!url.startsWith('/api/gateway/')) {
+          if (res.status === 401 || (res.status === 403 && !contentType.includes('application/json'))) {
+            logout();
+          }
+        }
+      }
+
+      return res;
+    };
+
+    return () => {
+      window.fetch = origFetch;
+    };
+  }, [token]);
+
   // One-time initialization on login — does NOT re-run on tab changes
   useEffect(() => {
     if (!token) return;
@@ -1126,8 +1215,63 @@ export default function App() {
     fetchCopilotConfig();
     fetchRegistryLeaderStatus();
 
-    // Core 3s polling — always on, not restarted on tab changes
+    const triggerTabWakeup = (reason: string) => {
+      const now = Date.now();
+      if (now - lastWakeupAtRef.current < 5000) return; // 5s debounce
+      lastWakeupAtRef.current = now;
+
+      fetchVersion();
+      fetchDashboardData();
+      fetchHealthMatrix();
+      fetchRegistryLeaderStatus();
+      fetchTrafficStatus();
+      fetchHistory(true);
+      fetchFeatures();
+      fetchConfigUi();
+      fetchAppConfig();
+      fetchSiteInfo();
+      fetchPublicIp();
+      fetchGatewayIp();
+      window.dispatchEvent(new CustomEvent('stigix:wakeup', { detail: { reason, timestamp: now } }));
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') {
+        lastHiddenAtRef.current = Date.now();
+      } else if (document.visibilityState === 'visible') {
+        const hiddenDuration = lastHiddenAtRef.current ? (Date.now() - lastHiddenAtRef.current) : 0;
+        // Resync immediately if tab was hidden for > 15s or if last sync was > 30s ago
+        if (hiddenDuration > 15000 || (Date.now() - lastHeartbeatAtRef.current > 30000)) {
+          triggerTabWakeup('visibilitychange');
+        }
+      }
+    };
+
+    const handleWindowFocus = () => {
+      if (Date.now() - lastWakeupAtRef.current > 30000) {
+        triggerTabWakeup('focus');
+      }
+    };
+
+    const handleOnline = () => {
+      triggerTabWakeup('online');
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('focus', handleWindowFocus);
+    window.addEventListener('online', handleOnline);
+
+    // Core 3s polling — always on, plus sleep/freeze time-jump detection
+    lastHeartbeatAtRef.current = Date.now();
     const interval = setInterval(() => {
+      const now = Date.now();
+      const elapsed = now - lastHeartbeatAtRef.current;
+      lastHeartbeatAtRef.current = now;
+      if (elapsed > 20000) {
+        // Browser throttled background tab or machine woke from sleep
+        triggerTabWakeup('sleep-resume');
+        return;
+      }
       fetchDashboardData();
       fetchTrafficStatus();
     }, 3000);
@@ -1138,9 +1282,10 @@ export default function App() {
       fetchRegistryLeaderStatus();
     }, 5000);
 
-    // History refresh every 60s silently (no spinner, no chart flash)
+    // History & container version drift check every 60s silently
     const historyInterval = setInterval(() => {
       fetchHistory(true);
+      fetchVersion();
     }, 60000);
 
     const connectivityInterval = setInterval(() => {
@@ -1156,6 +1301,9 @@ export default function App() {
     }, 3600000);
 
     return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('focus', handleWindowFocus);
+      window.removeEventListener('online', handleOnline);
       clearInterval(interval);
       clearInterval(healthInterval);
       clearInterval(historyInterval);

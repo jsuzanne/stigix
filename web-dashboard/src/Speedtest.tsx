@@ -108,6 +108,7 @@ export default function Speedtest({ token }: Props) {
     const [cport, setCport] = useState<number>(30000);
     const sseRef = useRef<EventSource | null>(null);
     const hasAutoLoadedRef = useRef(false);
+    const lastAutoJobIdRef = useRef<string | null>(null);
 
     const formatIntervalsForChart = (intervals?: XfrInterval[]) =>
         (intervals || []).map((item, idx) => ({ ...item, time: idx + 1 }));
@@ -198,18 +199,36 @@ export default function Speedtest({ token }: Props) {
 
         checkReachability();
         const interval = setInterval(checkReachability, 60000);
-        return () => clearInterval(interval);
+        const onWakeup = () => checkReachability();
+        window.addEventListener('stigix:wakeup', onWakeup);
+        return () => {
+            clearInterval(interval);
+            window.removeEventListener('stigix:wakeup', onWakeup);
+        };
     }, [quickTargets, sharedTargets, token]);
 
     useEffect(() => {
         hasAutoLoadedRef.current = false;
+        lastAutoJobIdRef.current = null;
         fetchHistory();
         fetchFeatures();
         fetchSharedTargets();
         const interval = setInterval(fetchHistory, 5000);
+        const targetsInterval = setInterval(() => {
+            fetchFeatures();
+            fetchSharedTargets();
+        }, 60000);
+        const onWakeup = () => {
+            fetchHistory();
+            fetchFeatures();
+            fetchSharedTargets();
+        };
+        window.addEventListener('stigix:wakeup', onWakeup);
         return () => {
             if (sseRef.current) sseRef.current.close();
             clearInterval(interval);
+            clearInterval(targetsInterval);
+            window.removeEventListener('stigix:wakeup', onWakeup);
         };
     }, [activePeerId]);
 
@@ -244,15 +263,17 @@ export default function Speedtest({ token }: Props) {
                 if (data.length > 0) {
                     const match = data[0].sequence_id.match(/\d+/);
                     if (match) setCport(30000 + parseInt(match[0], 10) + 1);
-                    if (!hasAutoLoadedRef.current) {
+                    const latest = data[0];
+                    const latestKey = latest.id || latest.sequence_id;
+                    if (!hasAutoLoadedRef.current || (lastAutoJobIdRef.current !== latestKey && !sseRef.current)) {
                         hasAutoLoadedRef.current = true;
-                        const latest = data[0];
+                        lastAutoJobIdRef.current = latestKey;
                         try {
-                            const detailRes = await gFetch(`/api/tests/xfr/${encodeURIComponent(latest.id || latest.sequence_id)}`, { headers: authHeaders });
+                            const detailRes = await gFetch(`/api/tests/xfr/${encodeURIComponent(latestKey)}`, { headers: authHeaders });
                             if (detailRes.ok) {
                                 const fullJob = await detailRes.json();
-                                setActiveJob(prev => prev ?? { ...latest, ...fullJob });
-                                setChartData(prev => prev.length > 0 ? prev : formatIntervalsForChart(fullJob.intervals));
+                                setActiveJob({ ...latest, ...fullJob });
+                                setChartData(formatIntervalsForChart(fullJob.intervals));
                             }
                         } catch { }
                     }

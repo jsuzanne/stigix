@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.1.2] - 2026-10-25
+
+### Added
+- **Idle Tab Wake-Up Resynchronization, Session Guard & Container Version Drift Auto-Reload (`web-dashboard/src/App.tsx`, `web-dashboard/src/PeerContext.tsx`, `web-dashboard/src/Speedtest.tsx`)**:
+  - **Global Fetch Session & Auth Guard**: Added a global `window.fetch` wrapper that intercepts local `/api/*` responses to detect expired 24h Stigix JWT tokens (`401` or `text/plain` `403` from `authenticateToken`) across all views and Remote Peer contexts, returning cleanly to the Login screen instead of leaving stale UI state. Also detects upstream IdP / Cloudflare Access HTML login responses or redirects on core JSON endpoints and triggers an automatic page reload.
+  - **Container Version Drift Detection**: Polls `/api/version` (`no-store`) every 60s and on tab wake-up, automatically reloading the browser tab (when no active test is running) if the underlying Stigix container was upgraded while the tab was open.
+  - **Tab Wake-Up & Sleep Recovery (`stigix:wakeup`)**: Added `visibilitychange`, `focus`, `online`, and a 3s heartbeat time-jump detector (`elapsed > 20s` after laptop sleep or browser tab throttling) with a 5s debounce to immediately resynchronize dashboard state, peer lists, target reachability, and latest Speedtest history.
+
 ## [3.1.1] - 2026-10-24
 
 ### Improved
