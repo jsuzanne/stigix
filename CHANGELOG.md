@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.1.22] - 2026-10-25
+
+### Improved
+- **Speedtest Full-Width History Layout, Collapsible Advanced Options & Table Polish (`web-dashboard/src/Speedtest.tsx`)**:
+  - **2-Column Aligned Top Row & Full-Width History Table**: Aligned the left `Bandwidth Test` configuration card and right `Live Performance` panel to equal height (`items-stretch` with dynamic `flex-1 min-h-[256px]` chart container), and moved the `Bandwidth Test History` card below to span 100% full width across the page, eliminating wasted space under the left sidebar.
+  - **Collapsible Advanced Options Drawer in Custom Mode**: Grouped `DSCP / TOS`, `Src Flow Port`, `Congestion`, and `PSK` under a compact `Advanced Options` toggle (with active badges when custom values are configured) to keep `Custom` mode vertically compact.
+  - **Removed Redundant UI Clutter & Single-Line Timestamps**: Removed the `Testing Note` info card under the configuration panel, removed the duplicate `ExternalLink` action button from History rows (since clicking any row opens `Test Details`), and enforced single-line formatting (`whitespace-nowrap`) for date and time stamps in the `Sequence Id` column.
+
 ## [3.1.21] - 2026-10-25
 
 ### Added

@@ -189,6 +189,7 @@ export default function Speedtest({ token }: Props) {
     const [dscp, setDscp] = useState('');
     const [congestion, setCongestion] = useState('cubic');
     const [cport, setCport] = useState<number>(30000);
+    const [showAdvancedParams, setShowAdvancedParams] = useState(false);
 
     // Use-Case Presets & Trend Evolution States
     const [presets, setPresets] = useState<XfrPreset[]>(FALLBACK_BUILTIN_PRESETS);
@@ -687,11 +688,11 @@ export default function Speedtest({ token }: Props) {
 
     return (
         <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
-            <div className="flex flex-col md:flex-row gap-6">
+            <div className="flex flex-col md:flex-row gap-6 items-stretch">
                 {/* Configuration Side */}
                 {isConfigExpanded ? (
-                    <div className="w-full md:w-96 space-y-4 shrink-0 animate-in slide-in-from-left-4 fade-in duration-300">
-                        <div className="bg-card border border-border rounded-2xl p-5 shadow-sm overflow-hidden relative">
+                    <div className="w-full md:w-96 flex flex-col shrink-0 animate-in slide-in-from-left-4 fade-in duration-300">
+                        <div className="bg-card border border-border rounded-2xl p-5 shadow-sm overflow-hidden relative flex-1 flex flex-col">
                             <div className="absolute top-0 right-0 p-4 opacity-5 pointer-events-none">
                                 <Gauge size={110} />
                             </div>
@@ -731,7 +732,7 @@ export default function Speedtest({ token }: Props) {
                                 </button>
                             </div>
 
-                            <div className="space-y-3.5">
+                            <div className="space-y-3.5 flex-1 flex flex-col">
                                 {/* Unified Stigix Targets Selector (shared between Default & Custom) */}
                                 {(() => {
                                     const allTargets = [
@@ -1115,72 +1116,110 @@ export default function Speedtest({ token }: Props) {
                                             </div>
                                         </div>
 
-                                        {/* Row 4: DSCP + Client Port */}
-                                        <div className="grid grid-cols-2 gap-2.5">
-                                            <div>
-                                                <label className="text-[10px] font-black text-text-muted tracking-widest mb-1 block uppercase">DSCP / TOS</label>
-                                                <input
-                                                    type="text"
-                                                    list="dscp-options"
-                                                    value={dscp}
-                                                    onChange={e => setDscp(e.target.value)}
-                                                    placeholder="Default (0)"
-                                                    className={`w-full bg-card-secondary border rounded-xl px-3 py-2 text-xs font-mono outline-none transition-colors ${dscp && !isValidDscp(dscp) ? 'border-red-500/50 focus:border-red-500' : 'border-border focus:border-blue-500'}`}
-                                                />
-                                                <datalist id="dscp-options">
-                                                    <option value="EF" />
-                                                    <option value="AF11" />
-                                                    <option value="AF21" />
-                                                    <option value="CS1" />
-                                                    <option value="CS6" />
-                                                    <option value="46" />
-                                                </datalist>
-                                                {dscp && !isValidDscp(dscp) && (
-                                                    <span className="text-[9px] text-red-500 font-bold block mt-0.5">Invalid DSCP</span>
-                                                )}
-                                            </div>
-                                            <div>
-                                                <label className="text-[10px] font-black text-text-muted tracking-widest mb-1 block uppercase">Src Flow Port</label>
-                                                <input
-                                                    type="number"
-                                                    value={cport}
-                                                    onChange={e => setCport(parseInt(e.target.value))}
-                                                    className="w-full bg-card-secondary border border-border rounded-xl px-3 py-2 text-xs font-mono outline-none focus:border-blue-500"
-                                                />
-                                            </div>
-                                        </div>
+                                        {/* Collapsible Advanced Options (DSCP, Src Port, Congestion, PSK) */}
+                                        <div className="pt-1">
+                                            <button
+                                                type="button"
+                                                onClick={() => setShowAdvancedParams(!showAdvancedParams)}
+                                                className="w-full px-3 py-1.5 rounded-xl bg-card-secondary/50 hover:bg-card-secondary border border-border/60 flex items-center justify-between gap-2 text-[10px] font-black uppercase tracking-wider text-text-muted hover:text-text-primary transition-colors cursor-pointer"
+                                            >
+                                                <div className="flex items-center gap-1.5 flex-wrap">
+                                                    <span>Advanced Options</span>
+                                                    {dscp && (
+                                                        <span className="px-1.5 py-0.2 rounded bg-blue-500/10 text-blue-400 border border-blue-500/20 font-mono text-[8px]">
+                                                            DSCP {dscp}
+                                                        </span>
+                                                    )}
+                                                    {cport !== 30000 && (
+                                                        <span className="px-1.5 py-0.2 rounded bg-blue-500/10 text-blue-400 border border-blue-500/20 font-mono text-[8px]">
+                                                            Port {cport}
+                                                        </span>
+                                                    )}
+                                                    {protocol === 'tcp' && congestion !== 'cubic' && (
+                                                        <span className="px-1.5 py-0.2 rounded bg-blue-500/10 text-blue-400 border border-blue-500/20 font-mono text-[8px]">
+                                                            {congestion.toUpperCase()}
+                                                        </span>
+                                                    )}
+                                                    {psk && (
+                                                        <span className="px-1.5 py-0.2 rounded bg-amber-500/10 text-amber-400 border border-amber-500/20 font-mono text-[8px]">
+                                                            PSK
+                                                        </span>
+                                                    )}
+                                                </div>
+                                                {showAdvancedParams ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
+                                            </button>
 
-                                        {/* Row 5: Congestion + PSK */}
-                                        <div className="grid grid-cols-2 gap-2.5">
-                                            <div>
-                                                <label className="text-[10px] font-black text-text-muted tracking-widest mb-1 block uppercase">Congestion</label>
-                                                {protocol === 'tcp' ? (
-                                                    <StigixSelect
-                                                        value={congestion}
-                                                        onChange={val => setCongestion(val)}
-                                                        accent="blue"
-                                                        triggerClassName="bg-card-secondary rounded-xl px-3 py-2 text-xs"
-                                                        options={[
-                                                            { value: 'cubic', label: 'Cubic (Default)' },
-                                                            { value: 'reno', label: 'Reno' },
-                                                        ]}
-                                                    />
-                                                ) : (
-                                                    <div className="w-full bg-card-secondary/50 border border-border/50 rounded-xl px-3 py-2 text-xs font-mono text-text-muted">
-                                                        N/A ({protocol.toUpperCase()})
+                                            {showAdvancedParams && (
+                                                <div className="mt-2.5 space-y-2.5 animate-in fade-in duration-150">
+                                                    {/* Row 4: DSCP + Client Port */}
+                                                    <div className="grid grid-cols-2 gap-2.5">
+                                                        <div>
+                                                            <label className="text-[10px] font-black text-text-muted tracking-widest mb-1 block uppercase">DSCP / TOS</label>
+                                                            <input
+                                                                type="text"
+                                                                list="dscp-options"
+                                                                value={dscp}
+                                                                onChange={e => setDscp(e.target.value)}
+                                                                placeholder="Default (0)"
+                                                                className={`w-full bg-card-secondary border rounded-xl px-3 py-2 text-xs font-mono outline-none transition-colors ${dscp && !isValidDscp(dscp) ? 'border-red-500/50 focus:border-red-500' : 'border-border focus:border-blue-500'}`}
+                                                            />
+                                                            <datalist id="dscp-options">
+                                                                <option value="EF" />
+                                                                <option value="AF11" />
+                                                                <option value="AF21" />
+                                                                <option value="CS1" />
+                                                                <option value="CS6" />
+                                                                <option value="46" />
+                                                            </datalist>
+                                                            {dscp && !isValidDscp(dscp) && (
+                                                                <span className="text-[9px] text-red-500 font-bold block mt-0.5">Invalid DSCP</span>
+                                                            )}
+                                                        </div>
+                                                        <div>
+                                                            <label className="text-[10px] font-black text-text-muted tracking-widest mb-1 block uppercase">Src Flow Port</label>
+                                                            <input
+                                                                type="number"
+                                                                value={cport}
+                                                                onChange={e => setCport(parseInt(e.target.value))}
+                                                                className="w-full bg-card-secondary border border-border rounded-xl px-3 py-2 text-xs font-mono outline-none focus:border-blue-500"
+                                                            />
+                                                        </div>
                                                     </div>
-                                                )}
-                                            </div>
-                                            <div>
-                                                <label className="text-[10px] font-black text-text-muted tracking-widest mb-1 block uppercase">PSK (Optional)</label>
-                                                <input
-                                                    type="password"
-                                                    value={psk}
-                                                    onChange={e => setPsk(e.target.value)}
-                                                    placeholder="••••••"
-                                                    className="w-full bg-card-secondary border border-border rounded-xl px-3 py-2 text-xs outline-none focus:border-blue-500"
-                                                />
-                                            </div>
+
+                                                    {/* Row 5: Congestion + PSK */}
+                                                    <div className="grid grid-cols-2 gap-2.5">
+                                                        <div>
+                                                            <label className="text-[10px] font-black text-text-muted tracking-widest mb-1 block uppercase">Congestion</label>
+                                                            {protocol === 'tcp' ? (
+                                                                <StigixSelect
+                                                                    value={congestion}
+                                                                    onChange={val => setCongestion(val)}
+                                                                    accent="blue"
+                                                                    triggerClassName="bg-card-secondary rounded-xl px-3 py-2 text-xs"
+                                                                    options={[
+                                                                        { value: 'cubic', label: 'Cubic (Default)' },
+                                                                        { value: 'reno', label: 'Reno' },
+                                                                    ]}
+                                                                />
+                                                            ) : (
+                                                                <div className="w-full bg-card-secondary/50 border border-border/50 rounded-xl px-3 py-2 text-xs font-mono text-text-muted">
+                                                                    N/A ({protocol.toUpperCase()})
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                        <div>
+                                                            <label className="text-[10px] font-black text-text-muted tracking-widest mb-1 block uppercase">PSK (Optional)</label>
+                                                            <input
+                                                                type="password"
+                                                                value={psk}
+                                                                onChange={e => setPsk(e.target.value)}
+                                                                placeholder="••••••"
+                                                                className="w-full bg-card-secondary border border-border rounded-xl px-3 py-2 text-xs outline-none focus:border-blue-500"
+                                                            />
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            )}
                                         </div>
                                     </div>
                                 )}
@@ -1189,7 +1228,7 @@ export default function Speedtest({ token }: Props) {
                                     onClick={() => runTest()}
                                     disabled={isRunning || !targetHost || !isValidIpOrFqdn(targetHost) || !isValidDscp(dscp)}
                                     className={cn(
-                                        "w-full py-3 rounded-xl font-black tracking-widest text-xs flex items-center justify-center gap-2 transition-all shadow-xl",
+                                        "w-full py-3 mt-auto rounded-xl font-black tracking-widest text-xs flex items-center justify-center gap-2 transition-all shadow-xl",
                                         isRunning || !targetHost || !isValidDscp(dscp) ? "bg-card-secondary text-text-muted cursor-not-allowed" :
                                             !isValidIpOrFqdn(targetHost) ? "bg-red-500/10 text-red-500 border border-red-500/20 cursor-not-allowed" :
                                                 "bg-gradient-to-r from-blue-600 to-blue-500 text-white hover:opacity-90 active:scale-[0.98]"
@@ -1219,17 +1258,6 @@ export default function Speedtest({ token }: Props) {
                                 </button>
                             </div>
                         </div>
-
-                        {/* Info Card */}
-                        <div className="p-3.5 bg-blue-600/5 border border-blue-500/10 rounded-2xl flex gap-3">
-                            <Info className="text-blue-500 shrink-0 mt-0.5" size={16} />
-                            <div>
-                                <h4 className="text-[10px] font-black text-blue-500 tracking-widest mb-0.5 uppercase">Testing Note</h4>
-                                <p className="text-[10px] text-text-muted leading-relaxed font-bold opacity-60">
-                                    Sends traffic to validate path throughput and latency. Ensure target is a Stigix peer or runs <a href="https://github.com/lance0/xfr" target="_blank" rel="noreferrer" className="text-blue-400 hover:underline">xfr</a> server.
-                                </p>
-                            </div>
-                        </div>
                     </div>
                 ) : (
                     <div className="hidden md:flex w-16 shrink-0 flex-col gap-4 animate-in slide-in-from-left-4 fade-in duration-300">
@@ -1245,9 +1273,9 @@ export default function Speedtest({ token }: Props) {
                 )}
 
                 {/* Main Results & Chart */}
-                <div className="flex-1 space-y-6">
+                <div className="flex-1 flex flex-col min-w-0">
                     {/* Live Results Panel */}
-                    <div className="bg-card border border-border rounded-2xl p-6 shadow-xl relative overflow-hidden">
+                    <div className="bg-card border border-border rounded-2xl p-6 shadow-xl relative overflow-hidden flex-1 flex flex-col justify-between">
                         <div className="absolute top-0 right-0 p-4 opacity-5 pointer-events-none rotate-12">
                             <Zap size={200} className="text-blue-500" />
                         </div>
@@ -1364,7 +1392,7 @@ export default function Speedtest({ token }: Props) {
                         </div>
 
                         {/* Chart Area */}
-                        <div className="h-64 mt-4 relative z-10">
+                        <div className="flex-1 min-h-[256px] mt-4 relative z-10">
                             <ResponsiveContainer width="100%" height="100%">
                                 <ComposedChart data={chartData}>
                                     <defs>
@@ -1467,9 +1495,11 @@ export default function Speedtest({ token }: Props) {
                             </ResponsiveContainer>
                         </div>
                     </div>
+                </div>
+            </div>
 
-                    {/* History Table Widget */}
-                    <div className="bg-card border border-border rounded-2xl overflow-hidden shadow-sm">
+            {/* History Table Widget (Full Width) */}
+            <div className="bg-card border border-border rounded-2xl overflow-hidden shadow-sm">
                         <div className="px-6 py-4 flex items-center justify-between bg-card-secondary transition-colors border-b border-border">
                             <div className="flex items-center gap-3">
                                 <div className="p-2 bg-blue-500/10 rounded-lg text-blue-500 border border-blue-500/20">
@@ -1859,7 +1889,7 @@ export default function Speedtest({ token }: Props) {
                                                                 {job.sequence_id}
                                                             </span>
                                                         </div>
-                                                        <div className="text-[10px] text-text-muted font-mono flex items-center gap-1 mt-1 opacity-75">
+                                                        <div className="text-[10px] text-text-muted font-mono flex items-center gap-1 mt-1 opacity-75 whitespace-nowrap">
                                                             <Calendar size={10} className="text-blue-400 shrink-0" />
                                                             <span>{formatDateDisplay(job.started_at)}</span>
                                                         </div>
@@ -1961,7 +1991,7 @@ export default function Speedtest({ token }: Props) {
                                                         )}
                                                     </td>
                                                     <td className="px-4 py-4 text-right">
-                                                        <div className="flex items-center justify-end gap-1.5">
+                                                        <div className="flex items-center justify-end">
                                                             <button
                                                                 onClick={(e) => {
                                                                     e.stopPropagation();
@@ -1972,9 +2002,6 @@ export default function Speedtest({ token }: Props) {
                                                             >
                                                                 <Trash2 size={14} />
                                                             </button>
-                                                            <div className="p-2 border border-border/50 bg-card-secondary rounded-lg text-blue-500/50 group-hover:text-blue-500 group-hover:border-blue-500/30 group-hover:bg-blue-500/5 transition-all inline-flex">
-                                                                <ExternalLink size={14} className="group-hover:scale-110 transition-transform" />
-                                                            </div>
                                                         </div>
                                                     </td>
                                                 </tr>
@@ -1992,8 +2019,6 @@ export default function Speedtest({ token }: Props) {
                                 </div>
                             </div>
                         )}
-                    </div>
-                </div>
             </div>
 
             {/* Results Detail Modal */}
