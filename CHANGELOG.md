@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.1.21] - 2026-10-25
+
+### Added
+- **Speedtest Use-Case Presets, Fleet Synchronization & Baseline Trend Evolution (`web-dashboard/src/Speedtest.tsx`, `web-dashboard/server.ts`, `web-dashboard/provisioning-manager.ts`, `web-dashboard/src/Settings.tsx`)**:
+  - **Built-in & Custom Use-Case Presets**: Added 5 built-in application & WAN benchmark reference profiles in Custom mode (`WAN Max Capacity`, `Transactional / ERP`, `Voice / Video (EF)`, `Cloud Backup / Bulk`, `Modern Web / QUIC`) plus inline creation, update, reset-to-baseline, and deletion of custom operator presets (`config/xfr-presets.json` via `GET/POST/DELETE /api/xfr/presets`).
+  - **Leader-to-Fleet Global Provisioning (`xfr-presets`)**: Integrated custom Speedtest presets into the Mesh Global Provisioning engine (`provisioning-manager.ts` and `Settings.tsx`), automatically propagating saved or updated custom presets from the Leader to all connected Spokes with revision tracking and diff auditing.
+  - **Preset Tagging & Baseline Trend Evolution**: Persisted `preset_id` and `preset_name` on every Speedtest job record (`xfr_jobs.jsonl`), displaying preset badges across the Live Performance banner, Bandwidth Test History table, and Test Details modal. Added a **Preset Filter Pill Bar**, target filter, and interactive **Preset Evolution & Baseline Comparison** chart (`Baseline Avg`, `Peak Run`, `Avg RTT/Jitter`, and `Latest vs Avg` delta %) to track preset performance over time.
+
 ## [3.1.2] - 2026-10-25
 
 ### Added

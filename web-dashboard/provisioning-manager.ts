@@ -14,7 +14,8 @@ export type GlobalBundleType =
     | 'custom-tcp-apps'
     | 'cloud-config'
     | 'ca-certificates'
-    | 'pcap-profiles';
+    | 'pcap-profiles'
+    | 'xfr-presets';
 
 export interface ProvisioningManifestBundle {
     type: GlobalBundleType;
@@ -400,6 +401,8 @@ export class ProvisioningManager {
                                 count = healedPayload?.applications ? healedPayload.applications.length : (Array.isArray(healedPayload) ? healedPayload.length : 1);
                             } else if (b.type === 'pcap-profiles') {
                                 count = healedPayload?.profiles ? healedPayload.profiles.length : 0;
+                            } else if (b.type === 'xfr-presets') {
+                                count = healedPayload?.presets ? healedPayload.presets.length : 0;
                             }
                             if (b.checksum !== newChecksum || b.count !== count) {
                                 b.checksum = newChecksum;
@@ -447,6 +450,8 @@ export class ProvisioningManager {
                             count = payload?.applications ? payload.applications.length : (Array.isArray(payload) ? payload.length : 1);
                         } else if (bType === 'pcap-profiles') {
                             count = payload?.profiles ? payload.profiles.length : 0;
+                        } else if (bType === 'xfr-presets') {
+                            count = payload?.presets ? payload.presets.length : 0;
                         }
                         const entry: ProvisioningManifestBundle = {
                             type: bType as GlobalBundleType,
@@ -522,6 +527,8 @@ export class ProvisioningManager {
             count = normalized?.applications ? normalized.applications.length : (Array.isArray(normalized) ? normalized.length : 1);
         } else if (type === 'pcap-profiles') {
             count = normalized?.profiles ? normalized.profiles.length : 0;
+        } else if (type === 'xfr-presets') {
+            count = normalized?.presets ? normalized.presets.length : 0;
         }
         const bundleEntry: ProvisioningManifestBundle = {
             type,
@@ -635,6 +642,8 @@ export class ProvisioningManager {
                 return path.join(this.configDir, 'certs', 'certs-metadata.json');
             case 'pcap-profiles':
                 return path.join(this.configDir, 'pcap-profiles.json');
+            case 'xfr-presets':
+                return path.join(this.configDir, 'xfr-presets.json');
             default:
                 return path.join(this.configDir, `${type}-config.json`);
         }
@@ -855,6 +864,30 @@ export class ProvisioningManager {
                     if (!newMap.has(name)) {
                         removed++;
                         diff.push({ id: name, name, action: 'removed' });
+                    }
+                }
+                return { diff, summary: { added, removed, modified } };
+            } else if (type === 'xfr-presets') {
+                const oldPresets: any[] = cleanOld?.presets || [];
+                const newPresets: any[] = cleanNew?.presets || [];
+                const oldMap = new Map<string, any>(oldPresets.map((p: any) => [p.id, p]));
+                const newMap = new Map<string, any>(newPresets.map((p: any) => [p.id, p]));
+                let added = 0, removed = 0, modified = 0;
+
+                for (const [id, newP] of newMap.entries()) {
+                    const oldP = oldMap.get(id);
+                    if (!oldP) {
+                        added++;
+                        diff.push({ id, name: newP.name || id, action: 'added', details: `${(newP.protocol || 'tcp').toUpperCase()} • ${newP.bitrate || '200M'} • ${newP.direction || 'tx'}` });
+                    } else if (JSON.stringify(oldP) !== JSON.stringify(newP)) {
+                        modified++;
+                        diff.push({ id, name: newP.name || id, action: 'modified', details: `${(newP.protocol || 'tcp').toUpperCase()} • ${newP.bitrate || '200M'} • ${newP.direction || 'tx'}` });
+                    }
+                }
+                for (const [id, oldP] of oldMap.entries()) {
+                    if (!newMap.has(id)) {
+                        removed++;
+                        diff.push({ id, name: oldP.name || id, action: 'removed' });
                     }
                 }
                 return { diff, summary: { added, removed, modified } };

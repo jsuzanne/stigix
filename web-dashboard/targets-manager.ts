@@ -287,8 +287,10 @@ export class TargetsManager {
 
         for (const t of targets) {
             if (t.host.toLowerCase().trim() === h) {
-                t.name = newName;
-                updated = true;
+                if (t.name !== newName) {
+                    t.name = newName;
+                    updated = true;
+                }
             }
         }
 

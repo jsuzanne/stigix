@@ -1901,6 +1901,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
             customTcpApps?: boolean;
             cloudConfig?: boolean;
             caCertificates?: boolean;
+            xfrPresets?: boolean;
         };
     } | null>(null);
     const [publishingType, setPublishingType] = useState<string | null>(null);
@@ -1927,7 +1928,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
             const bundleTypes = [
                 'applications', 'connectivity-probes', 'convergence-sla',
                 'prisma-sase', 'security-config', 'voice-config', 'iot-config',
-                'custom-tcp-apps', 'cloud-config'
+                'custom-tcp-apps', 'cloud-config', 'xfr-presets'
             ];
 
             const updatedToasted: { [k: string]: number } = { ...lastToastedRevs.current };
@@ -1945,6 +1946,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                             : bType === 'voice-config' ? 'Voice Settings'
                             : bType === 'custom-tcp-apps' ? 'Custom TCP Apps'
                             : bType === 'cloud-config' ? 'Cloud Probes Credentials'
+                            : bType === 'xfr-presets' ? 'Speedtest Presets'
                             : 'IoT Simulation';
 
                         const summaryText = latestHist?.summary
@@ -6585,6 +6587,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                                         { key: 'voice-config', label: 'Voice Settings', icon: PhoneCall, color: 'indigo', actionLabel: 'Publish Voice', pending: provisioningData?.pending?.voiceConfig },
                                         { key: 'iot-config', label: 'IoT Simulation', icon: Radio, color: 'amber', actionLabel: 'Publish IoT', pending: provisioningData?.pending?.iotConfig },
                                         { key: 'custom-tcp-apps', label: 'Custom TCP Apps', icon: Server, color: 'teal', actionLabel: 'Publish TCP Apps', pending: provisioningData?.pending?.customTcpApps },
+                                        { key: 'xfr-presets', label: 'Speedtest Presets', icon: Gauge, color: 'blue', actionLabel: 'Publish Presets', pending: provisioningData?.pending?.xfrPresets },
                                         { key: 'ca-certificates', label: 'Enterprise CA Certificates', icon: ShieldCheck, color: 'emerald', actionLabel: 'Publish CA Certs', pending: provisioningData?.pending?.caCertificates },
                                         { key: 'cloud-config', label: 'Cloud Probes Credentials', icon: Globe, color: 'sky', actionLabel: 'Publish Cloud', pending: provisioningData?.pending?.cloudConfig },
                                     ].map(b => {
@@ -6685,6 +6688,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                                                                         'voice-config': { label: 'Voice', cls: 'bg-indigo-500/10 text-indigo-400 border-indigo-500/20' },
                                                                         'iot-config': { label: 'IoT', cls: 'bg-amber-500/10 text-amber-400 border-amber-500/20' },
                                                                         'custom-tcp-apps': { label: 'TCP Apps', cls: 'bg-teal-500/10 text-teal-400 border-teal-500/20' },
+                                                                        'xfr-presets': { label: 'Speedtest Presets', cls: 'bg-blue-500/10 text-blue-400 border-blue-500/20' },
                                                                         'cloud-config': { label: 'Cloud', cls: 'bg-sky-500/10 text-sky-400 border-sky-500/20' },
                                                                     };
                                                                     const tag = tagMap[entry.type] || { label: entry.type, cls: 'bg-gray-500/10 text-gray-400 border-gray-500/20' };
@@ -7010,6 +7014,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                                                 { key: 'voice-config', label: 'Voice Sync', icon: PhoneCall, color: 'indigo' },
                                                 { key: 'iot-config', label: 'IoT Sync', icon: Radio, color: 'amber' },
                                                 { key: 'custom-tcp-apps', label: 'TCP Apps Sync', icon: Server, color: 'teal' },
+                                                { key: 'xfr-presets', label: 'Speedtest Presets Sync', icon: Gauge, color: 'blue' },
                                                 { key: 'pcap-profiles', label: 'PCAP Replay Sync', icon: FileCode, color: 'purple' },
                                                 { key: 'cloud-config', label: 'Cloud Probes Sync', icon: Globe, color: 'sky' },
                                             ].map(b => {
@@ -7077,7 +7082,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                                                                 <div className="flex items-center justify-between border-b border-border/30 pb-2">
                                                                     <div className="flex items-center gap-2">
                                                                         <span className="px-2 py-0.5 rounded text-[8px] font-black uppercase tracking-widest bg-blue-500/10 text-blue-400 border border-blue-500/20">
-                                                                            {entry.type === 'applications' ? 'Apps' : entry.type === 'connectivity-probes' ? 'Probes' : entry.type === 'convergence-sla' ? 'SLA' : entry.type === 'prisma-sase' ? 'Prisma SASE' : entry.type === 'security-config' ? 'Security' : entry.type === 'voice-config' ? 'Voice' : entry.type === 'custom-tcp-apps' ? 'TCP Apps' : entry.type === 'cloud-config' ? 'Cloud' : 'IoT'} rev {entry.revision}
+                                                                            {entry.type === 'applications' ? 'Apps' : entry.type === 'connectivity-probes' ? 'Probes' : entry.type === 'convergence-sla' ? 'SLA' : entry.type === 'prisma-sase' ? 'Prisma SASE' : entry.type === 'security-config' ? 'Security' : entry.type === 'voice-config' ? 'Voice' : entry.type === 'custom-tcp-apps' ? 'TCP Apps' : entry.type === 'xfr-presets' ? 'Speedtest Presets' : entry.type === 'cloud-config' ? 'Cloud' : 'IoT'} rev {entry.revision}
                                                                         </span>
                                                                         <span className="text-[9px] font-mono text-text-muted opacity-70">
                                                                             {new Date(entry.timestamp).toLocaleTimeString()} • {new Date(entry.timestamp).toLocaleDateString()}

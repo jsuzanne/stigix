@@ -6,7 +6,7 @@ import {
     Shield, Cpu, ChevronRight, ChevronLeft, BarChart3, Info, CheckCircle2, XCircle,
     Search, Filter, Download, Trash2, ChevronDown, ChevronUp, Share2,
     ShieldAlert, ExternalLink, ArrowUpRight, ShieldOff, Copy, RefreshCw,
-    History as HistoryIcon, X, Layers, Calendar
+    History as HistoryIcon, X, Layers, Calendar, Bookmark, Plus, TrendingUp, RotateCcw
 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import { clsx, type ClassValue } from 'clsx';
@@ -67,6 +67,89 @@ interface XfrJob {
     error: string | null;
 }
 
+interface XfrPreset {
+    id: string;
+    name: string;
+    description: string;
+    builtin?: boolean;
+    protocol: 'tcp' | 'udp' | 'quic';
+    direction: 'client-to-server' | 'server-to-client' | 'bidirectional';
+    bitrate: string;
+    duration_sec: number;
+    parallel_streams: number;
+    dscp: string;
+    congestion: string;
+    updatedAt?: string;
+}
+
+const FALLBACK_BUILTIN_PRESETS: XfrPreset[] = [
+    {
+        id: 'wan-max-capacity',
+        name: 'WAN Max Capacity',
+        description: 'Link saturation & asymmetric capacity validation',
+        builtin: true,
+        protocol: 'tcp',
+        direction: 'bidirectional',
+        bitrate: '500M',
+        duration_sec: 10,
+        parallel_streams: 8,
+        dscp: '',
+        congestion: 'cubic'
+    },
+    {
+        id: 'transactional-erp',
+        name: 'Transactional / ERP',
+        description: 'Low-latency interactive SQL/SAP burst profile',
+        builtin: true,
+        protocol: 'tcp',
+        direction: 'bidirectional',
+        bitrate: '50M',
+        duration_sec: 10,
+        parallel_streams: 2,
+        dscp: 'AF21',
+        congestion: 'cubic'
+    },
+    {
+        id: 'voice-video-ef',
+        name: 'Voice / Video (EF)',
+        description: 'Real-time priority queue & jitter/loss stress',
+        builtin: true,
+        protocol: 'udp',
+        direction: 'bidirectional',
+        bitrate: '20M',
+        duration_sec: 10,
+        parallel_streams: 4,
+        dscp: 'EF',
+        congestion: 'cubic'
+    },
+    {
+        id: 'cloud-backup-bulk',
+        name: 'Cloud Backup (AF11)',
+        description: 'Sustained bulk replication & QoS shaping check',
+        builtin: true,
+        protocol: 'tcp',
+        direction: 'client-to-server',
+        bitrate: '300M',
+        duration_sec: 15,
+        parallel_streams: 4,
+        dscp: 'AF11',
+        congestion: 'cubic'
+    },
+    {
+        id: 'modern-web-quic',
+        name: 'Modern Web (QUIC)',
+        description: 'Encrypted UDP/HTTP3 multiplexed stream test',
+        builtin: true,
+        protocol: 'quic',
+        direction: 'server-to-client',
+        bitrate: '100M',
+        duration_sec: 10,
+        parallel_streams: 4,
+        dscp: 'AF41',
+        congestion: 'cubic'
+    }
+];
+
 // Helper to format congestion window (normalizes legacy 1448x-scaled records > 64MB)
 const formatCwnd = (raw: number | undefined): { val: string; unit: string } => {
     if (!raw || raw <= 0) return { val: '0', unit: 'KB' };
@@ -106,6 +189,19 @@ export default function Speedtest({ token }: Props) {
     const [dscp, setDscp] = useState('');
     const [congestion, setCongestion] = useState('cubic');
     const [cport, setCport] = useState<number>(30000);
+
+    // Use-Case Presets & Trend Evolution States
+    const [presets, setPresets] = useState<XfrPreset[]>(FALLBACK_BUILTIN_PRESETS);
+    const [selectedPresetId, setSelectedPresetId] = useState<string>('');
+    const [showSavePresetForm, setShowSavePresetForm] = useState(false);
+    const [newPresetName, setNewPresetName] = useState('');
+    const [newPresetDesc, setNewPresetDesc] = useState('');
+    const [savingPreset, setSavingPreset] = useState(false);
+
+    const [selectedHistoryPreset, setSelectedHistoryPreset] = useState<string>('all');
+    const [selectedHistoryTarget, setSelectedHistoryTarget] = useState<string>('all');
+    const [showTrendPanel, setShowTrendPanel] = useState(false);
+
     const sseRef = useRef<EventSource | null>(null);
     const hasAutoLoadedRef = useRef(false);
     const lastAutoJobIdRef = useRef<string | null>(null);
@@ -213,15 +309,18 @@ export default function Speedtest({ token }: Props) {
         fetchHistory();
         fetchFeatures();
         fetchSharedTargets();
+        fetchPresets();
         const interval = setInterval(fetchHistory, 5000);
         const targetsInterval = setInterval(() => {
             fetchFeatures();
             fetchSharedTargets();
+            fetchPresets();
         }, 60000);
         const onWakeup = () => {
             fetchHistory();
             fetchFeatures();
             fetchSharedTargets();
+            fetchPresets();
         };
         window.addEventListener('stigix:wakeup', onWakeup);
         return () => {
@@ -252,6 +351,108 @@ export default function Speedtest({ token }: Props) {
                 setSharedTargets(list.filter((t: any) => t.enabled && t.capabilities?.xfr));
             }
         } catch (e) { }
+    };
+
+    const fetchPresets = async () => {
+        try {
+            const res = await gFetch('/api/xfr/presets', { headers: authHeaders });
+            if (res.ok) {
+                const data = await res.json();
+                if (Array.isArray(data.presets) && data.presets.length > 0) {
+                    setPresets(data.presets);
+                }
+            }
+        } catch (e) { }
+    };
+
+    const activePresetObj = presets.find(p => p.id === selectedPresetId) || null;
+    const isPresetModified = Boolean(
+        activePresetObj && (
+            protocol !== activePresetObj.protocol ||
+            direction !== activePresetObj.direction ||
+            bitrate.trim().toUpperCase() !== activePresetObj.bitrate.trim().toUpperCase() ||
+            duration !== activePresetObj.duration_sec ||
+            streams !== activePresetObj.parallel_streams ||
+            (dscp || '').trim().toUpperCase() !== (activePresetObj.dscp || '').trim().toUpperCase() ||
+            (protocol === 'tcp' && (congestion || 'cubic') !== (activePresetObj.congestion || 'cubic'))
+        )
+    );
+
+    const applyPreset = (preset: XfrPreset) => {
+        setSelectedPresetId(preset.id);
+        setProtocol(preset.protocol);
+        setDirection(preset.direction);
+        setBitrate(preset.bitrate);
+        setDuration(preset.duration_sec);
+        setStreams(preset.parallel_streams);
+        setDscp(preset.dscp || '');
+        setCongestion(preset.congestion || 'cubic');
+        setShowSavePresetForm(false);
+    };
+
+    const handleSavePreset = async (updateExistingId?: string) => {
+        const targetPreset = updateExistingId ? presets.find(p => p.id === updateExistingId) : null;
+        const nameToSave = targetPreset ? targetPreset.name : newPresetName.trim();
+        const descToSave = targetPreset ? targetPreset.description : newPresetDesc.trim();
+        if (!nameToSave) {
+            toast.error('Preset name is required');
+            return;
+        }
+        setSavingPreset(true);
+        try {
+            const res = await gFetch('/api/xfr/presets', {
+                method: 'POST',
+                headers: authHeaders,
+                body: JSON.stringify({
+                    id: updateExistingId,
+                    name: nameToSave,
+                    description: descToSave,
+                    protocol,
+                    direction,
+                    bitrate,
+                    duration_sec: duration,
+                    parallel_streams: streams,
+                    dscp,
+                    congestion
+                })
+            });
+            const data = await res.json();
+            if (!res.ok) {
+                toast.error(data.error || 'Failed to save preset');
+                return;
+            }
+            if (Array.isArray(data.presets)) setPresets(data.presets);
+            if (data.preset?.id) setSelectedPresetId(data.preset.id);
+            setShowSavePresetForm(false);
+            setNewPresetName('');
+            setNewPresetDesc('');
+            toast.success(updateExistingId ? `Updated preset "${nameToSave}"` : `Saved preset "${nameToSave}"`);
+        } catch (e: any) {
+            toast.error(e.message || 'Error saving preset');
+        } finally {
+            setSavingPreset(false);
+        }
+    };
+
+    const handleDeletePreset = async (preset: XfrPreset) => {
+        if (preset.builtin) return;
+        if (!confirm(`Delete custom preset "${preset.name}"?`)) return;
+        try {
+            const res = await gFetch(`/api/xfr/presets/${encodeURIComponent(preset.id)}`, {
+                method: 'DELETE',
+                headers: authHeaders
+            });
+            const data = await res.json();
+            if (res.ok) {
+                if (Array.isArray(data.presets)) setPresets(data.presets);
+                if (selectedPresetId === preset.id) setSelectedPresetId('');
+                toast.success(`Deleted preset "${preset.name}"`);
+            } else {
+                toast.error(data.error || 'Failed to delete preset');
+            }
+        } catch (e: any) {
+            toast.error(e.message || 'Error deleting preset');
+        }
     };
 
     const fetchHistory = async () => {
@@ -355,7 +556,9 @@ export default function Speedtest({ token }: Props) {
             parallel_streams: streams,
             dscp,
             congestion,
-            cport
+            cport,
+            preset_id: activePresetObj ? (isPresetModified ? `${activePresetObj.id}:modified` : activePresetObj.id) : undefined,
+            preset_name: activePresetObj ? (isPresetModified ? `${activePresetObj.name} (Modified)` : activePresetObj.name) : undefined
         };
 
         try {
@@ -454,12 +657,28 @@ export default function Speedtest({ token }: Props) {
     };
 
     const filteredHistory = history.filter(j => {
+        if (selectedHistoryPreset !== 'all') {
+            if (selectedHistoryPreset === '__default__') {
+                if (j.params?.mode !== 'default' && j.params?.preset_id) return false;
+            } else {
+                const jobPresetId = j.params?.preset_id || '';
+                const jobPresetName = j.params?.preset_name || '';
+                if (jobPresetId !== selectedHistoryPreset && jobPresetName !== selectedHistoryPreset && jobPresetId.replace(/:modified$/, '') !== selectedHistoryPreset) {
+                    return false;
+                }
+            }
+        }
+        if (selectedHistoryTarget !== 'all' && j.params?.host !== selectedHistoryTarget) {
+            return false;
+        }
         const q = searchQuery.toLowerCase();
+        if (!q) return true;
         const targetName = getTargetDisplayName(j.params?.host, j.params?.port, j.params?.target_name).name;
         return (
             j.sequence_id?.toLowerCase().includes(q) ||
             j.params?.host?.toLowerCase().includes(q) ||
             targetName.toLowerCase().includes(q) ||
+            j.params?.preset_name?.toLowerCase().includes(q) ||
             j.status?.toLowerCase().includes(q)
         );
     });
@@ -665,6 +884,164 @@ export default function Speedtest({ token }: Props) {
                                     </div>
                                 ) : (
                                     <div className="space-y-3 animate-in fade-in duration-200">
+                                        {/* Use-Case Presets Selector */}
+                                        <div className="pt-2.5 border-t border-border/60">
+                                            <div className="flex items-center justify-between mb-2">
+                                                <label className="text-[10px] font-black text-text-muted tracking-widest flex items-center gap-1.5 uppercase">
+                                                    <Bookmark size={12} className="text-violet-500" />
+                                                    Use-Case Presets
+                                                </label>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                        setShowSavePresetForm(!showSavePresetForm);
+                                                        if (!showSavePresetForm && activePresetObj && !activePresetObj.builtin) {
+                                                            setNewPresetName(activePresetObj.name);
+                                                            setNewPresetDesc(activePresetObj.description || '');
+                                                        }
+                                                    }}
+                                                    className="flex items-center gap-1 px-2 py-0.5 rounded-lg text-[9px] font-black uppercase tracking-wider bg-violet-500/10 text-violet-500 hover:bg-violet-500/20 border border-violet-500/20 transition-colors cursor-pointer"
+                                                >
+                                                    <Plus size={10} />
+                                                    {showSavePresetForm ? 'Cancel' : 'Save Preset'}
+                                                </button>
+                                            </div>
+
+                                            <div className="grid grid-cols-2 gap-1.5 max-h-[156px] overflow-y-auto pr-1">
+                                                {presets.map((p) => {
+                                                    const isSelected = selectedPresetId === p.id;
+                                                    const isCustom = !p.builtin;
+                                                    return (
+                                                        <div
+                                                            key={p.id}
+                                                            onClick={() => applyPreset(p)}
+                                                            title={p.description}
+                                                            className={cn(
+                                                                "bg-card border px-2.5 py-1.5 rounded-xl group cursor-pointer transition-all flex flex-col justify-between gap-0.5 shadow-sm hover:shadow-md relative",
+                                                                isSelected
+                                                                    ? isCustom
+                                                                        ? "border-violet-500 bg-violet-600/5 shadow-violet-500/10"
+                                                                        : "border-blue-500 bg-blue-600/5 shadow-blue-500/10"
+                                                                    : "border-border hover:border-border/80"
+                                                            )}
+                                                        >
+                                                            <div className="flex items-center justify-between gap-1 min-w-0">
+                                                                <span className={cn(
+                                                                    "text-[10px] font-black tracking-tight truncate",
+                                                                    isSelected ? (isCustom ? "text-violet-500" : "text-blue-500") : "text-text-primary"
+                                                                )}>
+                                                                    {p.name}
+                                                                </span>
+                                                                <div className="flex items-center gap-1 shrink-0">
+                                                                    {isCustom && (
+                                                                        <span className="text-[8px] font-black uppercase px-1 py-0.2 rounded bg-violet-500/10 text-violet-400 border border-violet-500/20">
+                                                                            Fleet
+                                                                        </span>
+                                                                    )}
+                                                                    {isCustom && (
+                                                                        <button
+                                                                            type="button"
+                                                                            onClick={(e) => {
+                                                                                e.stopPropagation();
+                                                                                handleDeletePreset(p);
+                                                                            }}
+                                                                            title="Delete custom preset"
+                                                                            className="opacity-0 group-hover:opacity-100 p-0.5 rounded hover:bg-red-500/10 text-text-muted hover:text-red-400 transition-all"
+                                                                        >
+                                                                            <Trash2 size={10} />
+                                                                        </button>
+                                                                    )}
+                                                                </div>
+                                                            </div>
+                                                            <div className="text-[8px] font-mono text-text-muted truncate">
+                                                                {p.protocol.toUpperCase()} • {p.bitrate === '0' ? 'Max' : p.bitrate} • {p.parallel_streams}x • {p.duration_sec}s{p.dscp ? ` • ${p.dscp}` : ''}
+                                                            </div>
+                                                        </div>
+                                                    );
+                                                })}
+                                            </div>
+
+                                            {/* Active preset description & modified indicator */}
+                                            {activePresetObj && (
+                                                <div className="mt-1.5 px-2.5 py-1.5 rounded-lg bg-card-secondary/60 border border-border/50 flex items-center justify-between gap-2">
+                                                    <p className="text-[9px] text-text-muted leading-tight truncate flex-1" title={activePresetObj.description}>
+                                                        <span className="font-black text-text-secondary">{activePresetObj.name}:</span> {activePresetObj.description}
+                                                    </p>
+                                                    {isPresetModified && (
+                                                        <div className="flex items-center gap-1 shrink-0">
+                                                            <span className="text-[8px] font-black uppercase px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-400 border border-amber-500/20">
+                                                                Modified
+                                                            </span>
+                                                            {!activePresetObj.builtin && (
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => handleSavePreset(activePresetObj.id)}
+                                                                    disabled={savingPreset}
+                                                                    title="Update this custom preset with modified parameters"
+                                                                    className="px-1.5 py-0.5 rounded text-[8px] font-black uppercase bg-violet-600 text-white hover:bg-violet-500 transition-colors"
+                                                                >
+                                                                    Update
+                                                                </button>
+                                                            )}
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => applyPreset(activePresetObj)}
+                                                                title="Reset parameters to preset baseline"
+                                                                className="p-1 rounded bg-card hover:bg-card-secondary border border-border text-text-muted hover:text-text-primary transition-colors"
+                                                            >
+                                                                <RotateCcw size={9} />
+                                                            </button>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            )}
+
+                                            {/* Save / Update Custom Preset Inline Drawer */}
+                                            {showSavePresetForm && (
+                                                <div className="mt-2 p-2.5 rounded-xl bg-violet-500/5 border border-violet-500/20 space-y-2 animate-in fade-in duration-150">
+                                                    <div className="flex items-center justify-between">
+                                                        <span className="text-[9px] font-black uppercase tracking-wider text-violet-400">
+                                                            Save Current Profile as Fleet Preset
+                                                        </span>
+                                                        <span className="text-[8px] font-mono text-text-muted">
+                                                            {protocol.toUpperCase()} • {bitrate} • {streams}x • {duration}s
+                                                        </span>
+                                                    </div>
+                                                    <input
+                                                        type="text"
+                                                        value={newPresetName}
+                                                        onChange={e => setNewPresetName(e.target.value)}
+                                                        placeholder="Preset Name (e.g. Branch VoIP SLA)"
+                                                        className="w-full bg-card border border-border rounded-lg px-2.5 py-1.5 text-xs outline-none focus:border-violet-500"
+                                                    />
+                                                    <input
+                                                        type="text"
+                                                        value={newPresetDesc}
+                                                        onChange={e => setNewPresetDesc(e.target.value)}
+                                                        placeholder="Short description / objective (optional)"
+                                                        className="w-full bg-card border border-border rounded-lg px-2.5 py-1.5 text-[11px] outline-none focus:border-violet-500"
+                                                    />
+                                                    <div className="flex justify-end gap-1.5">
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => setShowSavePresetForm(false)}
+                                                            className="px-2.5 py-1 rounded-lg text-[9px] font-bold text-text-muted hover:text-text-primary border border-border bg-card"
+                                                        >
+                                                            Cancel
+                                                        </button>
+                                                        <button
+                                                            type="button"
+                                                            disabled={savingPreset || !newPresetName.trim()}
+                                                            onClick={() => handleSavePreset()}
+                                                            className="px-3 py-1 rounded-lg text-[9px] font-black uppercase tracking-wider bg-violet-600 hover:bg-violet-500 text-white disabled:opacity-50 transition-all"
+                                                        >
+                                                            {savingPreset ? 'Saving...' : 'Save & Sync Fleet'}
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            )}
+                                        </div>
+
                                         {/* Row 2: Protocol + Direction */}
                                         <div className="grid grid-cols-2 gap-2.5">
                                             <div>
@@ -877,9 +1254,17 @@ export default function Speedtest({ token }: Props) {
 
                         <div className="flex items-center justify-between mb-8 relative z-10">
                             <div>
-                                <h2 className="text-2xl font-black text-text-primary tracking-tight">
-                                    {isRunning ? 'Live Performance' : (activeJob?.summary ? 'Test Completed' : 'Session Ready')}
-                                </h2>
+                                <div className="flex items-center gap-2.5 flex-wrap">
+                                    <h2 className="text-2xl font-black text-text-primary tracking-tight">
+                                        {isRunning ? 'Live Performance' : (activeJob?.summary ? 'Test Completed' : 'Session Ready')}
+                                    </h2>
+                                    {activeJob?.params?.preset_name && (
+                                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[10px] font-black uppercase tracking-wider bg-violet-500/10 text-violet-400 border border-violet-500/20">
+                                            <Bookmark size={11} className="text-violet-400" />
+                                            {activeJob.params.preset_name}
+                                        </span>
+                                    )}
+                                </div>
                                 <p className="text-[10px] font-black text-text-muted tracking-[0.2em] opacity-60">
                                     {isRunning 
                                         ? (activeJob?.sequence_id 
@@ -1119,12 +1504,331 @@ export default function Speedtest({ token }: Props) {
                         </div>
 
                         {isHistoryExpanded && (
-                            <div className="p-6 space-y-6">
+                            <div className="p-6 space-y-5">
+                                {/* Preset Filter Pill Bar & Target Evolution Selector */}
+                                {(() => {
+                                    // Discover unique presets used in history + configured presets
+                                    const presetOptionsMap = new Map<string, string>();
+                                    presets.forEach(p => presetOptionsMap.set(p.id, p.name));
+                                    history.forEach(j => {
+                                        if (j.params?.preset_id && j.params?.preset_name) {
+                                            const baseId = j.params.preset_id.replace(/:modified$/, '');
+                                            if (!presetOptionsMap.has(baseId)) {
+                                                presetOptionsMap.set(baseId, j.params.preset_name.replace(/\s*\(Modified\)$/i, ''));
+                                            }
+                                        }
+                                    });
+                                    const uniqueTargetsMap = new Map<string, string>();
+                                    history.forEach(j => {
+                                        if (j.params?.host) {
+                                            const name = getTargetDisplayName(j.params.host, j.params.port, j.params.target_name).name;
+                                            uniqueTargetsMap.set(j.params.host, name);
+                                        }
+                                    });
+
+                                    // Compute chronological runs for trend chart when a preset (or target) is filtered
+                                    const completedRuns = [...filteredHistory]
+                                        .filter(j => j.status === 'completed' && j.summary)
+                                        .reverse();
+
+                                    const trendData = completedRuns.map((j, idx) => {
+                                        const isRx = j.params?.direction === 'server-to-client';
+                                        const mbps = Math.round(isRx ? (j.summary?.received_mbps || j.summary?.sent_mbps || 0) : (j.summary?.sent_mbps || j.summary?.received_mbps || 0));
+                                        const rtt = Number((j.params?.protocol === 'udp' ? (j.summary?.jitter_ms_avg ?? 0) : (j.summary?.rtt_ms_avg ?? 0)).toFixed(1));
+                                        const lossOrRxmt = j.params?.protocol === 'udp'
+                                            ? Number((j.summary?.loss_percent ?? 0).toFixed(2))
+                                            : (j.summary?.retransmits ?? 0);
+                                        const targetLabel = getTargetDisplayName(j.params?.host, j.params?.port, j.params?.target_name).name;
+                                        return {
+                                            idx: idx + 1,
+                                            seq: j.sequence_id,
+                                            date: formatDateDisplay(j.started_at),
+                                            mbps,
+                                            rtt,
+                                            lossOrRxmt,
+                                            protocol: j.params?.protocol || 'tcp',
+                                            target: targetLabel,
+                                            preset: j.params?.preset_name || (j.params?.mode === 'default' ? 'Default' : 'Custom'),
+                                            job: j
+                                        };
+                                    });
+
+                                    const avgMbps = trendData.length > 0
+                                        ? Math.round(trendData.reduce((acc, d) => acc + d.mbps, 0) / trendData.length)
+                                        : 0;
+                                    const peakMbps = trendData.length > 0
+                                        ? Math.max(...trendData.map(d => d.mbps))
+                                        : 0;
+                                    const latestMbps = trendData.length > 0 ? trendData[trendData.length - 1].mbps : 0;
+                                    const deltaPercent = trendData.length >= 2 && avgMbps > 0
+                                        ? Math.round(((latestMbps - avgMbps) / avgMbps) * 100)
+                                        : null;
+                                    const avgRtt = trendData.length > 0
+                                        ? (trendData.reduce((acc, d) => acc + d.rtt, 0) / trendData.length).toFixed(1)
+                                        : '0.0';
+
+                                    return (
+                                        <div className="space-y-4">
+                                            <div className="flex flex-wrap items-center justify-between gap-2">
+                                                <div className="flex items-center gap-1.5 flex-wrap">
+                                                    <span className="text-[9px] font-black uppercase tracking-widest text-text-muted mr-1 flex items-center gap-1">
+                                                        <Bookmark size={11} className="text-violet-500" />
+                                                        Preset:
+                                                    </span>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setSelectedHistoryPreset('all')}
+                                                        className={cn(
+                                                            "px-2.5 py-1 rounded-lg text-[10px] font-black transition-all border cursor-pointer",
+                                                            selectedHistoryPreset === 'all'
+                                                                ? "bg-blue-600 text-white border-blue-500 shadow-sm"
+                                                                : "bg-card-secondary text-text-muted hover:text-text-primary border-border"
+                                                        )}
+                                                    >
+                                                        All Runs ({history.length})
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setSelectedHistoryPreset('__default__')}
+                                                        className={cn(
+                                                            "px-2.5 py-1 rounded-lg text-[10px] font-bold transition-all border cursor-pointer",
+                                                            selectedHistoryPreset === '__default__'
+                                                                ? "bg-blue-600 text-white border-blue-500 shadow-sm"
+                                                                : "bg-card-secondary text-text-muted hover:text-text-primary border-border"
+                                                        )}
+                                                    >
+                                                        Quick Default
+                                                    </button>
+                                                    {Array.from(presetOptionsMap.entries()).map(([id, name]) => {
+                                                        const count = history.filter(j => {
+                                                            const pid = (j.params?.preset_id || '').replace(/:modified$/, '');
+                                                            return pid === id || j.params?.preset_name === name;
+                                                        }).length;
+                                                        if (count === 0 && !presets.some(p => p.id === id)) return null;
+                                                        return (
+                                                            <button
+                                                                key={id}
+                                                                type="button"
+                                                                onClick={() => {
+                                                                    setSelectedHistoryPreset(id);
+                                                                    setShowTrendPanel(true);
+                                                                }}
+                                                                className={cn(
+                                                                    "px-2.5 py-1 rounded-lg text-[10px] font-bold transition-all border flex items-center gap-1.5 cursor-pointer",
+                                                                    selectedHistoryPreset === id
+                                                                        ? "bg-violet-600 text-white border-violet-500 shadow-sm"
+                                                                        : "bg-card-secondary text-text-muted hover:text-text-primary border-border"
+                                                                )}
+                                                            >
+                                                                <span>{name}</span>
+                                                                {count > 0 && (
+                                                                    <span className={cn(
+                                                                        "text-[8px] font-mono px-1 rounded",
+                                                                        selectedHistoryPreset === id ? "bg-white/20 text-white" : "bg-card text-text-muted"
+                                                                    )}>
+                                                                        {count}
+                                                                    </span>
+                                                                )}
+                                                            </button>
+                                                        );
+                                                    })}
+                                                </div>
+
+                                                <div className="flex items-center gap-2">
+                                                    {uniqueTargetsMap.size > 1 && (
+                                                        <select
+                                                            value={selectedHistoryTarget}
+                                                            onChange={e => setSelectedHistoryTarget(e.target.value)}
+                                                            className="bg-card-secondary border border-border rounded-lg px-2.5 py-1 text-[10px] font-bold text-text-primary outline-none focus:border-blue-500"
+                                                        >
+                                                            <option value="all">All Targets ({uniqueTargetsMap.size})</option>
+                                                            {Array.from(uniqueTargetsMap.entries()).map(([host, label]) => (
+                                                                <option key={host} value={host}>{label} ({host})</option>
+                                                            ))}
+                                                        </select>
+                                                    )}
+                                                    {trendData.length >= 2 && (
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => setShowTrendPanel(!showTrendPanel)}
+                                                            className={cn(
+                                                                "flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider border transition-all cursor-pointer",
+                                                                showTrendPanel
+                                                                    ? "bg-violet-500/15 text-violet-400 border-violet-500/30"
+                                                                    : "bg-card-secondary text-text-muted hover:text-text-primary border-border"
+                                                            )}
+                                                        >
+                                                            <TrendingUp size={12} />
+                                                            Baseline Trend
+                                                        </button>
+                                                    )}
+                                                </div>
+                                            </div>
+
+                                            {/* Preset Baseline Evolution / Trend Chart Panel */}
+                                            {(selectedHistoryPreset !== 'all' || showTrendPanel) && trendData.length >= 2 && (
+                                                <div className="bg-card-secondary/40 border border-violet-500/20 rounded-2xl p-4 space-y-3 animate-in fade-in duration-200">
+                                                    <div className="flex flex-wrap items-center justify-between gap-2">
+                                                        <div className="flex items-center gap-2">
+                                                            <div className="p-1.5 rounded-lg bg-violet-500/10 text-violet-400 border border-violet-500/20">
+                                                                <TrendingUp size={14} />
+                                                            </div>
+                                                            <div>
+                                                                <h4 className="text-xs font-black text-text-primary tracking-tight flex items-center gap-2">
+                                                                    <span>Preset Evolution &amp; Baseline Comparison</span>
+                                                                    <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-violet-500/10 text-violet-400 border border-violet-500/20">
+                                                                        {trendData.length} runs
+                                                                    </span>
+                                                                </h4>
+                                                                <p className="text-[9px] text-text-muted font-bold opacity-70">
+                                                                    Historical throughput &amp; latency stability across runs (click any point to inspect)
+                                                                </p>
+                                                            </div>
+                                                        </div>
+
+                                                        {/* Baseline KPI Pills */}
+                                                        <div className="flex items-center gap-3 flex-wrap">
+                                                            <div className="px-3 py-1.5 rounded-xl bg-card border border-border flex flex-col">
+                                                                <span className="text-[8px] font-black uppercase tracking-wider text-text-muted">Baseline Avg</span>
+                                                                <span className="text-xs font-black text-blue-400">{avgMbps} Mbps</span>
+                                                            </div>
+                                                            <div className="px-3 py-1.5 rounded-xl bg-card border border-border flex flex-col">
+                                                                <span className="text-[8px] font-black uppercase tracking-wider text-text-muted">Peak Run</span>
+                                                                <span className="text-xs font-black text-emerald-400">{peakMbps} Mbps</span>
+                                                            </div>
+                                                            <div className="px-3 py-1.5 rounded-xl bg-card border border-border flex flex-col">
+                                                                <span className="text-[8px] font-black uppercase tracking-wider text-text-muted">Avg RTT/Jitter</span>
+                                                                <span className="text-xs font-black text-cyan-400">{avgRtt} ms</span>
+                                                            </div>
+                                                            {deltaPercent !== null && (
+                                                                <div className="px-3 py-1.5 rounded-xl bg-card border border-border flex flex-col">
+                                                                    <span className="text-[8px] font-black uppercase tracking-wider text-text-muted">Latest vs Avg</span>
+                                                                    <span className={cn(
+                                                                        "text-xs font-black",
+                                                                        deltaPercent >= 0 ? "text-emerald-400" : deltaPercent <= -15 ? "text-red-400" : "text-amber-400"
+                                                                    )}>
+                                                                        {deltaPercent >= 0 ? `+${deltaPercent}%` : `${deltaPercent}%`}
+                                                                    </span>
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    </div>
+
+                                                    <div className="h-44 w-full">
+                                                        <ResponsiveContainer width="100%" height="100%">
+                                                            <ComposedChart data={trendData}>
+                                                                <defs>
+                                                                    <linearGradient id="colorPresetTrend" x1="0" y1="0" x2="0" y2="1">
+                                                                        <stop offset="0%" stopColor="#8b5cf6" stopOpacity={0.35} />
+                                                                        <stop offset="100%" stopColor="#8b5cf6" stopOpacity={0.0} />
+                                                                    </linearGradient>
+                                                                </defs>
+                                                                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="rgba(128,128,128,0.12)" />
+                                                                <XAxis
+                                                                    dataKey="seq"
+                                                                    axisLine={false}
+                                                                    tickLine={false}
+                                                                    fontSize={9}
+                                                                    tick={{ fill: 'currentColor' }}
+                                                                    className="text-text-muted opacity-60 font-mono"
+                                                                />
+                                                                <YAxis
+                                                                    yAxisId="left"
+                                                                    axisLine={false}
+                                                                    tickLine={false}
+                                                                    fontSize={9}
+                                                                    tick={{ fill: 'currentColor' }}
+                                                                    className="text-text-muted opacity-60"
+                                                                    tickFormatter={(v) => `${v}M`}
+                                                                    width={42}
+                                                                />
+                                                                <YAxis
+                                                                    yAxisId="right"
+                                                                    orientation="right"
+                                                                    axisLine={false}
+                                                                    tickLine={false}
+                                                                    fontSize={9}
+                                                                    tick={{ fill: 'currentColor' }}
+                                                                    className="text-text-muted opacity-60"
+                                                                    tickFormatter={(v) => `${v}ms`}
+                                                                    width={42}
+                                                                />
+                                                                <Tooltip
+                                                                    content={({ active, payload }) => {
+                                                                        if (active && payload && payload.length) {
+                                                                            const d = payload[0].payload;
+                                                                            return (
+                                                                                <div className="bg-card border border-border p-2.5 rounded-xl shadow-xl text-[10px] space-y-1">
+                                                                                    <div className="flex items-center justify-between gap-4 border-b border-border/60 pb-1">
+                                                                                        <span className="font-mono font-black text-violet-400">{d.seq}</span>
+                                                                                        <span className="text-text-muted font-mono">{d.date}</span>
+                                                                                    </div>
+                                                                                    <div className="flex items-center justify-between gap-4">
+                                                                                        <span className="text-text-muted font-bold">Target:</span>
+                                                                                        <span className="font-black text-text-primary">{d.target}</span>
+                                                                                    </div>
+                                                                                    <div className="flex items-center justify-between gap-4">
+                                                                                        <span className="text-text-muted font-bold">Preset:</span>
+                                                                                        <span className="font-bold text-violet-400">{d.preset}</span>
+                                                                                    </div>
+                                                                                    <div className="flex items-center justify-between gap-4">
+                                                                                        <span className="text-blue-400 font-bold">Throughput:</span>
+                                                                                        <span className="font-black text-text-primary">{d.mbps} Mbps</span>
+                                                                                    </div>
+                                                                                    <div className="flex items-center justify-between gap-4">
+                                                                                        <span className="text-cyan-400 font-bold">{d.protocol === 'udp' ? 'Jitter:' : 'RTT:'}</span>
+                                                                                        <span className="font-black text-text-primary">{d.rtt} ms</span>
+                                                                                    </div>
+                                                                                </div>
+                                                                            );
+                                                                        }
+                                                                        return null;
+                                                                    }}
+                                                                />
+                                                                <Area
+                                                                    yAxisId="left"
+                                                                    type="monotone"
+                                                                    dataKey="mbps"
+                                                                    name="Throughput (Mbps)"
+                                                                    stroke="#8b5cf6"
+                                                                    strokeWidth={2.5}
+                                                                    fillOpacity={1}
+                                                                    fill="url(#colorPresetTrend)"
+                                                                    dot={{ r: 3.5, fill: '#8b5cf6', strokeWidth: 1.5, stroke: '#fff' }}
+                                                                    activeDot={{
+                                                                        r: 5,
+                                                                        fill: '#8b5cf6',
+                                                                        stroke: '#fff',
+                                                                        strokeWidth: 2,
+                                                                        onClick: (_: any, payload: any) => {
+                                                                            if (payload?.payload?.job) viewJobDetails(payload.payload.job);
+                                                                        }
+                                                                    }}
+                                                                />
+                                                                <Line
+                                                                    yAxisId="right"
+                                                                    type="monotone"
+                                                                    dataKey="rtt"
+                                                                    name="RTT / Jitter (ms)"
+                                                                    stroke="#06b6d4"
+                                                                    strokeWidth={2}
+                                                                    strokeDasharray="3 3"
+                                                                    dot={{ r: 2.5, fill: '#06b6d4' }}
+                                                                />
+                                                            </ComposedChart>
+                                                        </ResponsiveContainer>
+                                                    </div>
+                                                </div>
+                                            )}
+                                        </div>
+                                    );
+                                })()}
+
                                 <div className="relative group">
                                     <Search size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-text-muted group-focus-within:text-blue-500 transition-colors" />
                                     <input
                                         type="text"
-                                        placeholder="Filter results by Job ID, Target Host, or Status..."
+                                        placeholder="Filter results by Job ID, Target Host, Preset, or Status..."
                                         value={searchQuery}
                                         onChange={(e) => setSearchQuery(e.target.value)}
                                         className="w-full pl-12 pr-4 py-3 bg-card-secondary border border-border text-text-primary rounded-xl text-xs font-bold outline-none focus:ring-1 focus:ring-blue-500 shadow-inner transition-all tracking-widest placeholder:opacity-50"
@@ -1165,7 +1869,7 @@ export default function Speedtest({ token }: Props) {
                                                             const resolved = getTargetDisplayName(job.params?.host, job.params?.port, job.params?.target_name);
                                                             return (
                                                                 <div>
-                                                                    <div className="flex items-center gap-1.5">
+                                                                    <div className="flex items-center gap-1.5 flex-wrap">
                                                                         <Target size={13} className="text-blue-500 shrink-0" />
                                                                         <span className="text-xs font-black text-text-primary tracking-tight">
                                                                             {resolved.name}
@@ -1173,6 +1877,12 @@ export default function Speedtest({ token }: Props) {
                                                                         {resolved.isFriendly && (
                                                                             <span className="text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.2 rounded bg-blue-500/10 text-blue-400 border border-blue-500/20">
                                                                                 Target
+                                                                            </span>
+                                                                        )}
+                                                                        {job.params?.preset_name && (
+                                                                            <span className="inline-flex items-center gap-1 text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.2 rounded bg-violet-500/10 text-violet-400 border border-violet-500/20">
+                                                                                <Bookmark size={9} className="text-violet-400" />
+                                                                                {job.params.preset_name}
                                                                             </span>
                                                                         )}
                                                                     </div>
@@ -1315,6 +2025,12 @@ export default function Speedtest({ token }: Props) {
                                                         {selectedJob.params?.host && (
                                                             <span className="text-[10px] font-bold text-text-secondary bg-card px-2 py-0.5 rounded border border-border font-mono">
                                                                 {selectedJob.params.host}:{selectedJob.params.port}
+                                                            </span>
+                                                        )}
+                                                        {selectedJob.params?.preset_name && (
+                                                            <span className="text-[10px] font-black text-violet-400 bg-violet-500/10 px-2 py-0.5 rounded border border-violet-500/20 flex items-center gap-1">
+                                                                <Bookmark size={11} className="text-violet-400" />
+                                                                {selectedJob.params.preset_name}
                                                             </span>
                                                         )}
                                                     </>

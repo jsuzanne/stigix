@@ -958,6 +958,8 @@ interface XfrTestParams {
     dscp?: string;
     congestion?: string;
     cport?: number;
+    preset_id?: string;
+    preset_name?: string;
 }
 
 interface XfrTestResultSummary {
@@ -3253,7 +3255,7 @@ app.get('/api/features', (req, res) => {
 
 app.post('/api/tests/xfr', authenticateToken, (req, res) => {
     log('API', `[XFR] Incoming POST request: ${JSON.stringify(req.body)}`);
-    const { mode, target, protocol, direction, duration_sec, bitrate, parallel_streams, psk, dscp, congestion, cport } = req.body;
+    const { mode, target, protocol, direction, duration_sec, bitrate, parallel_streams, psk, dscp, congestion, cport, preset_id, preset_name } = req.body;
 
     if (!mode || !target || !target.host || !target.port) {
         return res.status(400).json({ error: 'mode and target (host/port) are required' });
@@ -3280,6 +3282,8 @@ app.post('/api/tests/xfr', authenticateToken, (req, res) => {
         dscp,
         congestion,
         cport,
+        preset_id: mode === 'custom' && preset_id ? String(preset_id) : undefined,
+        preset_name: mode === 'custom' && preset_name ? String(preset_name) : undefined,
         protocol: protocol || (mode === 'default' ? 'tcp' : undefined),
         direction: direction || (mode === 'default' ? 'client-to-server' : undefined),
         duration_sec: duration_sec || (mode === 'default' ? 10 : undefined),
@@ -3400,6 +3404,202 @@ app.get('/api/tests/xfr/:id/stream', authenticateToken, (req, res) => {
     req.on('close', () => {
         xfrManager.removeListener(job.id, listener);
     });
+});
+
+// --- XFR Speedtest Use-Case Presets (Built-in + Fleet-Synced Custom Presets) ---
+const XFR_PRESETS_FILE = path.join(APP_CONFIG.configDir, 'xfr-presets.json');
+
+interface XfrPresetItem {
+    id: string;
+    name: string;
+    description: string;
+    builtin?: boolean;
+    protocol: 'tcp' | 'udp' | 'quic';
+    direction: 'client-to-server' | 'server-to-client' | 'bidirectional';
+    bitrate: string;
+    duration_sec: number;
+    parallel_streams: number;
+    dscp: string;
+    congestion: string;
+    updatedAt?: string;
+}
+
+const BUILTIN_XFR_PRESETS: XfrPresetItem[] = [
+    {
+        id: 'wan-max-capacity',
+        name: 'WAN Max Capacity',
+        description: 'Link saturation & asymmetric capacity validation',
+        builtin: true,
+        protocol: 'tcp',
+        direction: 'bidirectional',
+        bitrate: '500M',
+        duration_sec: 10,
+        parallel_streams: 8,
+        dscp: '',
+        congestion: 'cubic'
+    },
+    {
+        id: 'transactional-erp',
+        name: 'Transactional / ERP',
+        description: 'Low-latency interactive SQL/SAP burst profile',
+        builtin: true,
+        protocol: 'tcp',
+        direction: 'bidirectional',
+        bitrate: '50M',
+        duration_sec: 10,
+        parallel_streams: 2,
+        dscp: 'AF21',
+        congestion: 'cubic'
+    },
+    {
+        id: 'voice-video-ef',
+        name: 'Voice / Video (EF)',
+        description: 'Real-time priority queue & jitter/loss stress',
+        builtin: true,
+        protocol: 'udp',
+        direction: 'bidirectional',
+        bitrate: '20M',
+        duration_sec: 10,
+        parallel_streams: 4,
+        dscp: 'EF',
+        congestion: 'cubic'
+    },
+    {
+        id: 'cloud-backup-bulk',
+        name: 'Cloud Backup (AF11)',
+        description: 'Sustained bulk replication & QoS shaping check',
+        builtin: true,
+        protocol: 'tcp',
+        direction: 'client-to-server',
+        bitrate: '300M',
+        duration_sec: 15,
+        parallel_streams: 4,
+        dscp: 'AF11',
+        congestion: 'cubic'
+    },
+    {
+        id: 'modern-web-quic',
+        name: 'Modern Web (QUIC)',
+        description: 'Encrypted UDP/HTTP3 multiplexed stream test',
+        builtin: true,
+        protocol: 'quic',
+        direction: 'server-to-client',
+        bitrate: '100M',
+        duration_sec: 10,
+        parallel_streams: 4,
+        dscp: 'AF41',
+        congestion: 'cubic'
+    }
+];
+
+const getCustomXfrPresets = (): XfrPresetItem[] => {
+    try {
+        if (fs.existsSync(XFR_PRESETS_FILE)) {
+            const parsed = JSON.parse(fs.readFileSync(XFR_PRESETS_FILE, 'utf8'));
+            if (Array.isArray(parsed?.presets)) return parsed.presets;
+            if (Array.isArray(parsed)) return parsed;
+        }
+    } catch (e: any) {
+        log('XFR', `Failed to read xfr-presets.json: ${e.message}`, 'warn');
+    }
+    return [];
+};
+
+const saveCustomXfrPresets = (presets: XfrPresetItem[]) => {
+    const payload = {
+        version: 1,
+        updatedAt: new Date().toISOString(),
+        presets
+    };
+    fs.writeFileSync(XFR_PRESETS_FILE, JSON.stringify(payload, null, 2), 'utf8');
+};
+
+app.get('/api/xfr/presets', authenticateToken, (_req, res) => {
+    const custom = getCustomXfrPresets();
+    res.json({
+        builtins: BUILTIN_XFR_PRESETS,
+        custom,
+        presets: [...BUILTIN_XFR_PRESETS, ...custom]
+    });
+});
+
+app.post('/api/xfr/presets', authenticateToken, (req, res) => {
+    try {
+        const { id, name, description, protocol, direction, bitrate, duration_sec, parallel_streams, dscp, congestion } = req.body || {};
+        const cleanName = String(name || '').trim();
+        if (!cleanName) {
+            return res.status(400).json({ error: 'Preset name is required' });
+        }
+        const proto = ['tcp', 'udp', 'quic'].includes(protocol) ? protocol : 'tcp';
+        const dir = ['client-to-server', 'server-to-client', 'bidirectional'].includes(direction) ? direction : 'client-to-server';
+        const dur = Math.min(3600, Math.max(10, parseInt(String(duration_sec), 10) || 10));
+        const streams = Math.min(64, Math.max(1, parseInt(String(parallel_streams), 10) || 4));
+        const br = String(bitrate || '200M').trim() || '200M';
+
+        const slugId = id && !BUILTIN_XFR_PRESETS.some(b => b.id === id)
+            ? String(id).trim()
+            : `custom-${cleanName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || Date.now()}`;
+
+        if (BUILTIN_XFR_PRESETS.some(b => b.id === slugId)) {
+            return res.status(400).json({ error: 'Cannot overwrite a built-in reference preset' });
+        }
+
+        const custom = getCustomXfrPresets();
+        const presetObj: XfrPresetItem = {
+            id: slugId,
+            name: cleanName,
+            description: String(description || `${proto.toUpperCase()} • ${dir.replace(/-/g, ' ')} • ${br}`).trim(),
+            builtin: false,
+            protocol: proto,
+            direction: dir,
+            bitrate: br,
+            duration_sec: dur,
+            parallel_streams: streams,
+            dscp: String(dscp || '').trim(),
+            congestion: String(congestion || 'cubic').trim(),
+            updatedAt: new Date().toISOString()
+        };
+
+        const idx = custom.findIndex(p => p.id === slugId);
+        if (idx >= 0) {
+            custom[idx] = presetObj;
+        } else {
+            custom.push(presetObj);
+        }
+
+        saveCustomXfrPresets(custom);
+        triggerAutoSyncFleetBundle('xfr-presets', 1000);
+
+        res.json({
+            success: true,
+            preset: presetObj,
+            presets: [...BUILTIN_XFR_PRESETS, ...custom]
+        });
+    } catch (e: any) {
+        res.status(500).json({ error: e.message || 'Failed to save preset' });
+    }
+});
+
+app.delete('/api/xfr/presets/:id', authenticateToken, (req, res) => {
+    try {
+        const presetId = req.params.id;
+        if (BUILTIN_XFR_PRESETS.some(b => b.id === presetId)) {
+            return res.status(400).json({ error: 'Built-in presets cannot be deleted' });
+        }
+        const custom = getCustomXfrPresets();
+        const next = custom.filter(p => p.id !== presetId);
+        if (next.length === custom.length) {
+            return res.status(404).json({ error: 'Preset not found' });
+        }
+        saveCustomXfrPresets(next);
+        triggerAutoSyncFleetBundle('xfr-presets', 1000);
+        res.json({
+            success: true,
+            presets: [...BUILTIN_XFR_PRESETS, ...next]
+        });
+    } catch (e: any) {
+        res.status(500).json({ error: e.message || 'Failed to delete preset' });
+    }
 });
 
 // API: Get UI Configuration (Public endpoint for baseline interval)
@@ -18233,6 +18433,9 @@ provisioningManager.onBundleApplied((type, payload) => {
         if (process.env.ENABLE_PCAP_REPLAY !== 'true') return;
         const count = payload?.profiles?.length || 0;
         log('PROVISIONING', `⚡ Synchronized ${count} PCAP Replay profile(s) on peer.`);
+    } else if (type === 'xfr-presets') {
+        const count = payload?.presets?.length || 0;
+        log('PROVISIONING', `⚡ Synchronized ${count} custom Speedtest XFR preset(s) on peer.`);
     } else if (type === 'security-config') {
         log('PROVISIONING', `⚡ Hot-reloading Security configuration and schedulers on peer...`);
         startSchedulers();
@@ -18370,6 +18573,7 @@ app.get('/api/provisioning/config', authenticateToken, (_req, res) => {
     const customTcpPending = provisioningManager.hasUnpublishedChanges('custom-tcp-apps', readJson(path.join(APP_CONFIG.configDir, 'custom-tcp-applications.json')));
     const cloudPending = provisioningManager.hasUnpublishedChanges('cloud-config', readJson(CLOUD_CONFIG_FILE));
     const pcapPending = isPcapEnabled ? provisioningManager.hasUnpublishedChanges('pcap-profiles', buildPcapProfilesPayload(false)) : false;
+    const xfrPresetsPending = provisioningManager.hasUnpublishedChanges('xfr-presets', readJson(XFR_PRESETS_FILE, { presets: [] }));
     const certStatus = certificateManager.getStatus();
     const certBundlePem = certificateManager.getBundlePem();
     const caCertPending = provisioningManager.hasUnpublishedChanges('ca-certificates', {
@@ -18396,7 +18600,8 @@ app.get('/api/provisioning/config', authenticateToken, (_req, res) => {
             customTcpApps: customTcpPending,
             cloudConfig: cloudPending,
             pcapProfiles: pcapPending,
-            caCertificates: caCertPending
+            caCertificates: caCertPending,
+            xfrPresets: xfrPresetsPending
         }
     });
 });
@@ -18547,7 +18752,7 @@ app.post('/api/provisioning/publish/:type', authenticateToken, (req, res) => {
     const validTypes: GlobalBundleType[] = [
         'applications', 'connectivity-probes', 'convergence-sla',
         'prisma-sase', 'security-config', 'voice-config', 'iot-config',
-        'custom-tcp-apps', 'cloud-config', 'ca-certificates',
+        'custom-tcp-apps', 'cloud-config', 'ca-certificates', 'xfr-presets',
         ...(isPcapEnabled ? ['pcap-profiles' as GlobalBundleType] : [])
     ];
     if (!validTypes.includes(type)) {
@@ -18603,7 +18808,7 @@ app.post('/api/provisioning/publish', authenticateToken, (req, res) => {
     const validTypes: GlobalBundleType[] = [
         'applications', 'connectivity-probes', 'convergence-sla',
         'prisma-sase', 'security-config', 'voice-config', 'iot-config',
-        'custom-tcp-apps', 'cloud-config', 'ca-certificates',
+        'custom-tcp-apps', 'cloud-config', 'ca-certificates', 'xfr-presets',
         ...(isPcapEnabled ? ['pcap-profiles' as GlobalBundleType] : [])
     ];
 
