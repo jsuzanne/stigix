@@ -1453,8 +1453,8 @@ export default function Speedtest({ token }: Props) {
                                                         ))}
                                                         {activeJob?.params.protocol === 'tcp' && payload[0].payload.cwnd !== undefined && (
                                                             <div className="flex items-center justify-between gap-6 mt-2 pt-2 border-t border-border/50">
-                                                                <span className="font-bold text-[#8b5cf6]">TCP Window</span>
-                                                                <span className="font-black text-text-primary">{formatCwnd(payload[0].payload.cwnd).val} {formatCwnd(payload[0].payload.cwnd).unit}</span>
+                                                                <span className="font-bold text-indigo-400">TCP Window</span>
+                                                                <span className="font-black text-indigo-400">{formatCwnd(payload[0].payload.cwnd).val} {formatCwnd(payload[0].payload.cwnd).unit}</span>
                                                             </div>
                                                         )}
                                                     </div>
@@ -1488,9 +1488,9 @@ export default function Speedtest({ token }: Props) {
                                         activeDot={{ r: 5, fill: '#3b82f6', stroke: '#fff', strokeWidth: 2 }}
                                     />
                                     {activeJob?.params.protocol === 'tcp' && (
-                                        <Line yAxisId="right" type="monotone" dataKey="rtt_ms" name="RTT" stroke="#8b5cf6" strokeWidth={2} dot={false} strokeDasharray="3 3" />
+                                        <Line yAxisId="right" type="monotone" dataKey="rtt_ms" name="RTT" stroke="#06b6d4" strokeWidth={2} dot={false} strokeDasharray="3 3" />
                                     )}
-                                    <Bar yAxisId="right" dataKey={activeJob?.params.protocol === 'udp' ? 'lost' : 'retransmits'} name={activeJob?.params.protocol === 'udp' ? 'Packets Lost' : 'Retransmits'} fill="#f97316" radius={[4, 4, 0, 0]} maxBarSize={16} />
+                                    <Bar yAxisId="right" dataKey={activeJob?.params.protocol === 'udp' ? 'lost' : 'retransmits'} name={activeJob?.params.protocol === 'udp' ? 'Packets Lost' : 'Retransmits'} fill="#f59e0b" radius={[4, 4, 0, 0]} maxBarSize={16} />
                                 </ComposedChart>
                             </ResponsiveContainer>
                         </div>
@@ -1704,10 +1704,20 @@ export default function Speedtest({ token }: Props) {
                                                                 <TrendingUp size={14} />
                                                             </div>
                                                             <div>
-                                                                <h4 className="text-xs font-black text-text-primary tracking-tight flex items-center gap-2">
+                                                                <h4 className="text-xs font-black text-text-primary tracking-tight flex items-center gap-2 flex-wrap">
                                                                     <span>Preset Evolution &amp; Baseline Comparison</span>
                                                                     <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-violet-500/10 text-violet-400 border border-violet-500/20">
                                                                         {trendData.length} runs
+                                                                    </span>
+                                                                    <span className="inline-flex items-center gap-3 ml-1 text-[9px] font-bold">
+                                                                        <span className="inline-flex items-center gap-1 text-violet-400">
+                                                                            <span className="w-2 h-2 rounded-full bg-violet-500 inline-block"></span>
+                                                                            Throughput (Mbps)
+                                                                        </span>
+                                                                        <span className="inline-flex items-center gap-1 text-cyan-400">
+                                                                            <span className="w-3 border-t-2 border-dashed border-cyan-400 inline-block"></span>
+                                                                            RTT / Jitter (ms)
+                                                                        </span>
                                                                     </span>
                                                                 </h4>
                                                                 <p className="text-[9px] text-text-muted font-bold opacity-70">
@@ -1720,7 +1730,7 @@ export default function Speedtest({ token }: Props) {
                                                         <div className="flex items-center gap-3 flex-wrap">
                                                             <div className="px-3 py-1.5 rounded-xl bg-card border border-border flex flex-col">
                                                                 <span className="text-[8px] font-black uppercase tracking-wider text-text-muted">Baseline Avg</span>
-                                                                <span className="text-xs font-black text-blue-400">{avgMbps} Mbps</span>
+                                                                <span className="text-xs font-black text-violet-400">{avgMbps} Mbps</span>
                                                             </div>
                                                             <div className="px-3 py-1.5 rounded-xl bg-card border border-border flex flex-col">
                                                                 <span className="text-[8px] font-black uppercase tracking-wider text-text-muted">Peak Run</span>
@@ -1767,8 +1777,7 @@ export default function Speedtest({ token }: Props) {
                                                                     axisLine={false}
                                                                     tickLine={false}
                                                                     fontSize={9}
-                                                                    tick={{ fill: 'currentColor' }}
-                                                                    className="text-text-muted opacity-60"
+                                                                    tick={{ fill: '#a78bfa' }}
                                                                     tickFormatter={(v) => `${v}M`}
                                                                     width={42}
                                                                 />
@@ -1778,8 +1787,7 @@ export default function Speedtest({ token }: Props) {
                                                                     axisLine={false}
                                                                     tickLine={false}
                                                                     fontSize={9}
-                                                                    tick={{ fill: 'currentColor' }}
-                                                                    className="text-text-muted opacity-60"
+                                                                    tick={{ fill: '#22d3ee' }}
                                                                     tickFormatter={(v) => `${v}ms`}
                                                                     width={42}
                                                                 />
@@ -1790,7 +1798,7 @@ export default function Speedtest({ token }: Props) {
                                                                             return (
                                                                                 <div className="bg-card border border-border p-2.5 rounded-xl shadow-xl text-[10px] space-y-1">
                                                                                     <div className="flex items-center justify-between gap-4 border-b border-border/60 pb-1">
-                                                                                        <span className="font-mono font-black text-violet-400">{d.seq}</span>
+                                                                                        <span className="font-mono font-black text-text-primary">{d.seq}</span>
                                                                                         <span className="text-text-muted font-mono">{d.date}</span>
                                                                                     </div>
                                                                                     <div className="flex items-center justify-between gap-4">
@@ -1799,15 +1807,21 @@ export default function Speedtest({ token }: Props) {
                                                                                     </div>
                                                                                     <div className="flex items-center justify-between gap-4">
                                                                                         <span className="text-text-muted font-bold">Preset:</span>
-                                                                                        <span className="font-bold text-violet-400">{d.preset}</span>
+                                                                                        <span className="font-bold text-text-secondary">{d.preset}</span>
                                                                                     </div>
                                                                                     <div className="flex items-center justify-between gap-4">
-                                                                                        <span className="text-blue-400 font-bold">Throughput:</span>
-                                                                                        <span className="font-black text-text-primary">{d.mbps} Mbps</span>
+                                                                                        <span className="text-violet-400 font-bold flex items-center gap-1.5">
+                                                                                            <span className="w-2 h-2 rounded-full bg-violet-500 inline-block"></span>
+                                                                                            Throughput:
+                                                                                        </span>
+                                                                                        <span className="font-black text-violet-400">{d.mbps} Mbps</span>
                                                                                     </div>
                                                                                     <div className="flex items-center justify-between gap-4">
-                                                                                        <span className="text-cyan-400 font-bold">{d.protocol === 'udp' ? 'Jitter:' : 'RTT:'}</span>
-                                                                                        <span className="font-black text-text-primary">{d.rtt} ms</span>
+                                                                                        <span className="text-cyan-400 font-bold flex items-center gap-1.5">
+                                                                                            <span className="w-2 h-2 rounded-full bg-cyan-400 inline-block"></span>
+                                                                                            {d.protocol === 'udp' ? 'Jitter:' : 'RTT:'}
+                                                                                        </span>
+                                                                                        <span className="font-black text-cyan-400">{d.rtt} ms</span>
                                                                                     </div>
                                                                                 </div>
                                                                             );
@@ -2095,13 +2109,13 @@ export default function Speedtest({ token }: Props) {
                                                 </span>
                                                 <div className="flex items-center gap-3 text-[10px] font-bold">
                                                     {(isUploadModal || isBidirModal) && (
-                                                        <span className="flex items-center gap-1 text-blue-400">
-                                                            <span className="w-2 h-2 rounded-full bg-blue-500 inline-block" /> Sent (Mbps)
+                                                        <span className="flex items-center gap-1 text-emerald-400">
+                                                            <span className="w-2 h-2 rounded-full bg-emerald-500 inline-block" /> Sent (Mbps)
                                                         </span>
                                                     )}
                                                     {(isDownloadModal || isBidirModal) && (
-                                                        <span className="flex items-center gap-1 text-emerald-400">
-                                                            <span className="w-2 h-2 rounded-full bg-emerald-500 inline-block" /> Received (Mbps)
+                                                        <span className="flex items-center gap-1 text-blue-400">
+                                                            <span className="w-2 h-2 rounded-full bg-blue-500 inline-block" /> Received (Mbps)
                                                         </span>
                                                     )}
                                                     {!isUdpModal && (
@@ -2119,12 +2133,12 @@ export default function Speedtest({ token }: Props) {
                                                     <ComposedChart data={modalChartData}>
                                                         <defs>
                                                             <linearGradient id="colorSentModal" x1="0" y1="0" x2="0" y2="1">
-                                                                <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.35} />
-                                                                <stop offset="95%" stopColor="#3b82f6" stopOpacity={0} />
-                                                            </linearGradient>
-                                                            <linearGradient id="colorReceivedModal" x1="0" y1="0" x2="0" y2="1">
                                                                 <stop offset="5%" stopColor="#10b981" stopOpacity={0.35} />
                                                                 <stop offset="95%" stopColor="#10b981" stopOpacity={0} />
+                                                            </linearGradient>
+                                                            <linearGradient id="colorReceivedModal" x1="0" y1="0" x2="0" y2="1">
+                                                                <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.35} />
+                                                                <stop offset="95%" stopColor="#3b82f6" stopOpacity={0} />
                                                             </linearGradient>
                                                         </defs>
                                                         <CartesianGrid strokeDasharray="3 3" stroke="currentColor" className="text-border" vertical={false} />
@@ -2168,14 +2182,14 @@ export default function Speedtest({ token }: Props) {
                                                                             <div className="space-y-1 pt-0.5">
                                                                                 {(isUploadModal || isBidirModal) && data.sent_mbps !== undefined && (
                                                                                     <div className="flex items-center justify-between gap-4">
-                                                                                        <span className="text-[10px] font-bold text-blue-400">Sent:</span>
-                                                                                        <span className="text-xs font-black text-white">{Math.round(data.sent_mbps)} Mbps</span>
+                                                                                        <span className="text-[10px] font-bold text-emerald-400">Sent:</span>
+                                                                                        <span className="text-xs font-black text-emerald-400">{Math.round(data.sent_mbps)} Mbps</span>
                                                                                     </div>
                                                                                 )}
                                                                                 {(isDownloadModal || isBidirModal) && data.received_mbps !== undefined && (
                                                                                     <div className="flex items-center justify-between gap-4">
-                                                                                        <span className="text-[10px] font-bold text-emerald-400">Received:</span>
-                                                                                        <span className="text-xs font-black text-white">{Math.round(data.received_mbps)} Mbps</span>
+                                                                                        <span className="text-[10px] font-bold text-blue-400">Received:</span>
+                                                                                        <span className="text-xs font-black text-blue-400">{Math.round(data.received_mbps)} Mbps</span>
                                                                                     </div>
                                                                                 )}
                                                                                 {!isUdpModal && data.rtt_ms !== undefined && (
@@ -2192,8 +2206,8 @@ export default function Speedtest({ token }: Props) {
                                                                                 )}
                                                                                 {!isUdpModal && data.cwnd !== undefined && (
                                                                                     <div className="flex items-center justify-between gap-4 border-t border-white/5 pt-1 mt-1">
-                                                                                        <span className="text-[10px] font-bold text-slate-400">TCP Window:</span>
-                                                                                        <span className="text-[10px] font-mono text-slate-300">{formatCwnd(data.cwnd).val} {formatCwnd(data.cwnd).unit}</span>
+                                                                                        <span className="text-[10px] font-bold text-indigo-400">TCP Window:</span>
+                                                                                        <span className="text-[10px] font-mono text-indigo-300">{formatCwnd(data.cwnd).val} {formatCwnd(data.cwnd).unit}</span>
                                                                                     </div>
                                                                                 )}
                                                                                 {isUdpModal && data.lost_percent !== undefined && (
@@ -2214,7 +2228,7 @@ export default function Speedtest({ token }: Props) {
                                                                 yAxisId="left"
                                                                 type="monotone"
                                                                 dataKey="sent_mbps"
-                                                                stroke="#3b82f6"
+                                                                stroke="#10b981"
                                                                 strokeWidth={2.5}
                                                                 fillOpacity={1}
                                                                 fill="url(#colorSentModal)"
@@ -2226,7 +2240,7 @@ export default function Speedtest({ token }: Props) {
                                                                 yAxisId="left"
                                                                 type="monotone"
                                                                 dataKey="received_mbps"
-                                                                stroke="#10b981"
+                                                                stroke="#3b82f6"
                                                                 strokeWidth={2.5}
                                                                 fillOpacity={1}
                                                                 fill="url(#colorReceivedModal)"

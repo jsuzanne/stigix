@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.1.23] - 2026-10-25
+
+### Fixed
+- **Speedtest Chart, Tooltip, Axis & KPI Color Unification (`web-dashboard/src/Speedtest.tsx`)**:
+  - **Preset Evolution & Baseline Comparison**: Added an inline legend (`Throughput (Mbps)` in violet, `RTT / Jitter (ms)` in cyan), colored left and right Y-axis ticks to match their respective curves, updated the `Baseline Avg` KPI pill to violet (`text-violet-400`), and aligned the hover tooltip so `Throughput` uses a violet indicator dot and text (`text-violet-400`) while `RTT / Jitter` uses cyan (`text-cyan-400`).
+  - **Live Performance Chart**: Changed the `RTT` dashed curve from violet (`#8b5cf6`) to cyan (`#06b6d4`) so it matches the `Latency (RTT)` KPI card, History table, Preset Evolution chart, and Test Details modal, and styled `TCP Window` in indigo (`text-indigo-400`).
+  - **Test Details Modal**: Harmonized `Sent (Mbps)` to emerald (`#10b981`) and `Received (Mbps)` to blue (`#3b82f6`) across the legend, area fills, and tooltip so they match the main `Live Performance` chart.
+
 ## [3.1.22] - 2026-10-25
 
 ### Improved
