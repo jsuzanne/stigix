@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.1.26] - 2026-10-25
+
+### Improved
+- **Failover Lab UX & Telemetry Polish (`web-dashboard/src/Failover.tsx`, `web-dashboard/targets-manager.ts`)**:
+  - **Automatic Self-Target Filtering**: Preserved `meta.self` when merging targets in `getMergedTargets()` and automatically filtered out the local/active node (`reg-self-*`, `detected_ip`, `activePeer`) from Failover Lab targets to prevent accidental loopback tests.
+  - **Contextual Single `Play` / `Stop` Target Action**: Replaced dual side-by-side `Play` + `Stop` buttons on every target card with a single contextual action button (`▶` Play when idle $\rightarrow$ `■` red Stop when a test is running on that target).
+  - **Compact Live Directional Drops (`↑tx ↓rx`)**: Added a compact inline `(↑tx ↓rx)` directional breakdown next to `Drops` in the Live Test header whenever drops occur and server echo telemetry (`server_received`) is available.
+  - **SLA-Aware `MAX BLACKOUT` Coloring & Threshold Fix**: Fixed millisecond vs second threshold comparison on the live `MAX BLACKOUT` KPI and applied dynamic SLA coloring (`emerald` at `0ms` / `< good`, `amber` `< degraded`, `orange` `< critical`, `red` $\ge$ `critical`) across both the Live Test panel and `TEST HISTORY` table.
+  - **Full-Color `TEST HISTORY`, Inline `Egress Path` & Quick Verdict Filters**: Removed `opacity-50 grayscale` dimming on `TEST HISTORY` during active tests, surfaced `egress_path` / `path_evolution` badges directly inside each history row, and added 1-click verdict filter pills (`All`, `Good / Perfect`, `Outages`).
+- **Dedicated `Reachability Matrix` Navigation Item (`web-dashboard/src/config/navigationConfig.ts`, `web-dashboard/src/App.tsx`, `web-dashboard/src/ConnectivityPerformance.tsx`, `web-dashboard/src/components/navigation/KeyboardShortcutsModal.tsx`)**:
+  - Promoted `Reachability Matrix` to a first-class entry under the `Validate` navigation rail (with `G then M` keyboard shortcut) while keeping the `Probes Catalog` / `Reachability Matrix` cross-switcher inside DEM (`ConnectivityPerformance`).
+
 ## [3.1.25] - 2026-10-25
 
 ### Improved

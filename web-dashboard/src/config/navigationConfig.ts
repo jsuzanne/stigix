@@ -7,6 +7,7 @@ import {
     GitCompare,
     GitFork,
     Globe,
+    Grid,
     Home,
     Layers,
     LineChart,
@@ -140,6 +141,14 @@ export const STIGIX_NAVIGATION_DOMAINS: NavDomainConfig[] = [
                 route: '#/validate/dem',
                 description: 'Synthetic path probes, SLAs and user digital experience monitoring',
                 keywords: ['dem', 'sla', 'latency', 'jitter', 'loss', 'probes', 'synthetic', 'digital experience', 'score', 'apdex']
+            },
+            {
+                id: 'reachability_matrix',
+                label: 'Reachability Matrix',
+                icon: Grid,
+                route: '#/validate/matrix',
+                description: 'Bidirectional N×N SD-WAN mesh SLA, path asymmetry & Cloud anchor telemetry',
+                keywords: ['matrix', 'reachability', 'mesh', 'asymmetry', 'bidirectional', 'sla', 'rtt', 'fabric', 'sd-wan', 'noc']
             },
             {
                 id: 'speedtest',

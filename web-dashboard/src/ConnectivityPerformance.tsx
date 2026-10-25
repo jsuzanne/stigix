@@ -164,6 +164,8 @@ interface ConnectivityPerformanceProps {
     uiConfig?: { maxCaptures: number };
     onManage?: () => void;
     isLeader?: boolean;
+    initialViewMode?: 'catalog' | 'matrix';
+    onSwitchViewMode?: (mode: 'catalog' | 'matrix') => void;
 }
 
 // Component for individual endpoint type graph
@@ -501,7 +503,7 @@ function ProbeScoreChart({ results, range, probeType, data: externalData, syncId
     );
 }
 
-export default function ConnectivityPerformance({ token, uiConfig, onManage, isLeader: propIsLeader }: ConnectivityPerformanceProps) {
+export default function ConnectivityPerformance({ token, uiConfig, onManage, isLeader: propIsLeader, initialViewMode = 'catalog', onSwitchViewMode }: ConnectivityPerformanceProps) {
     const maxCaptures = uiConfig?.maxCaptures || 10;
     const [results, setResults] = useState<any[]>([]);
     const [stats, setStats] = useState<any>(null);
@@ -523,7 +525,16 @@ export default function ConnectivityPerformance({ token, uiConfig, onManage, isL
     const [isDeletingProbe, setIsDeletingProbe] = useState(false);
     const [isLeader, setIsLeader] = useState<boolean>(propIsLeader ?? false);
     const [tracerouteTarget, setTracerouteTarget] = useState<string | null>(null);
-    const [viewMode, setViewMode] = useState<'catalog' | 'matrix'>('catalog');
+    const [viewMode, setViewMode] = useState<'catalog' | 'matrix'>(initialViewMode);
+
+    useEffect(() => {
+        setViewMode(initialViewMode);
+    }, [initialViewMode]);
+
+    const switchViewMode = (mode: 'catalog' | 'matrix') => {
+        setViewMode(mode);
+        onSwitchViewMode?.(mode);
+    };
     const [inspectedCapture, setInspectedCapture] = useState<any>(null);
     const [isProbeEngineEnabled, setIsProbeEngineEnabled] = useState<boolean>(true);
     const [isTogglingEngine, setIsTogglingEngine] = useState<boolean>(false);
@@ -1292,14 +1303,14 @@ export default function ConnectivityPerformance({ token, uiConfig, onManage, isL
     const isPausedWithNoData = !isProbeEngineEnabled && results.length === 0;
     const shouldShowTelemetryCharts = !isPausedWithNoData || showPausedTelemetry;
 
-    if ((loading || loadingStats) && !stats && allCatalogProbes.length === 0) {
+    if (viewMode === 'catalog' && (loading || loadingStats) && !stats && allCatalogProbes.length === 0) {
         return <DEMSkeleton />;
     }
 
     return (
         <div className="space-y-5 animate-in fade-in duration-500">
             {/* Compact Standby Banner when local engine is suspended */}
-            {!isProbeEngineEnabled && (
+            {viewMode === 'catalog' && !isProbeEngineEnabled && (
                 <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 px-4 py-3 bg-amber-500/10 border border-amber-500/25 rounded-2xl text-xs shadow-sm animate-in fade-in">
                     <div className="flex items-center gap-2.5 text-amber-200 flex-wrap">
                         <span className="px-2 py-0.5 rounded-md bg-amber-500/20 border border-amber-500/30 text-amber-300 font-mono text-[10px] font-black uppercase tracking-wider flex items-center gap-1.5">
@@ -1332,8 +1343,8 @@ export default function ConnectivityPerformance({ token, uiConfig, onManage, isL
                 </div>
             )}
 
-            {/* Header Analytics (Auto-collapsed when paused with no local data) */}
-            {shouldShowTelemetryCharts && (
+            {/* Header Analytics (Only in DEM Catalog mode; auto-collapsed when paused with no local data) */}
+            {viewMode === 'catalog' && shouldShowTelemetryCharts && (
             <div className="flex flex-col gap-4">
                 
                 {/* 1. Combined Top Panel (Score, Trend, Flaky) */}
@@ -1590,29 +1601,34 @@ export default function ConnectivityPerformance({ token, uiConfig, onManage, isL
             <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 bg-card-secondary/30 p-2.5 rounded-xl border border-border mb-2">
                 <div className="flex items-center gap-2">
                     <button
-                        onClick={() => setViewMode('catalog')}
+                        onClick={() => switchViewMode('catalog')}
                         className={cn(
-                            "px-4 py-2 rounded-lg text-xs font-bold transition-all flex items-center gap-2",
+                            "px-4 py-2 rounded-lg text-xs font-bold transition-all flex items-center gap-2 cursor-pointer",
                             viewMode === 'catalog'
                                 ? "bg-blue-600 text-white shadow-md shadow-blue-500/20"
                                 : "text-text-muted hover:text-text-primary hover:bg-card-secondary"
                         )}
                     >
-                        <Activity size={15} /> Probes Catalog ({allCatalogProbes.length})
+                        <Activity size={15} /> Synthetic Probes Catalog ({allCatalogProbes.length})
                     </button>
                     <button
-                        onClick={() => setViewMode('matrix')}
+                        onClick={() => switchViewMode('matrix')}
                         className={cn(
-                            "px-4 py-2 rounded-lg text-xs font-bold transition-all flex items-center gap-2",
+                            "px-4 py-2 rounded-lg text-xs font-bold transition-all flex items-center gap-2 cursor-pointer",
                             viewMode === 'matrix'
                                 ? "bg-blue-600 text-white shadow-md shadow-blue-500/20"
                                 : "text-text-muted hover:text-text-primary hover:bg-card-secondary"
                         )}
                     >
-                        <Grid size={15} className="text-blue-500 dark:text-blue-400" />
-                        <span>Full-Mesh Reachability Matrix</span>
-                        <span className="text-[9px] font-black uppercase px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-800 dark:text-amber-300 border border-amber-500/30 tracking-wider">
-                            BETA
+                        <Grid size={15} className={viewMode === 'matrix' ? "text-white" : "text-blue-500 dark:text-blue-400"} />
+                        <span>SD-WAN Reachability Matrix</span>
+                        <span className={cn(
+                            "text-[9px] font-black uppercase px-1.5 py-0.5 rounded border tracking-wider font-mono",
+                            viewMode === 'matrix'
+                                ? "bg-white/20 text-white border-white/30"
+                                : "bg-blue-500/15 text-blue-600 dark:text-blue-300 border-blue-500/30"
+                        )}>
+                            N×N MESH
                         </span>
                     </button>
                 </div>

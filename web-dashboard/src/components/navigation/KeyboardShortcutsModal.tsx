@@ -20,7 +20,8 @@ import {
     Settings,
     Bot,
     Search,
-    CornerDownLeft
+    CornerDownLeft,
+    Grid
 } from 'lucide-react';
 import { cn } from '../../lib/utils';
 
@@ -78,6 +79,13 @@ export const KeyboardShortcutsModal: React.FC<KeyboardShortcutsModalProps> = ({
             description: 'Synthetic path probes & SLA user experience',
             icon: LineChart,
             viewId: 'performance'
+        },
+        {
+            keys: ['G', 'M'],
+            label: 'Reachability Matrix',
+            description: 'Full-mesh N×N inter-site RTT, packet loss & path asymmetry',
+            icon: Grid,
+            viewId: 'reachability_matrix'
         },
         {
             keys: ['G', 'B'],

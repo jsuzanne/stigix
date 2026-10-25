@@ -264,7 +264,7 @@ interface SiteInfo {
 export default function App() {
   const [token, setToken] = useState<string | null>(localStorage.getItem('token'));
   const [username, setUsername] = useState<string | null>(localStorage.getItem('username'));
-  const [view, setView] = useState<'dashboard' | 'settings' | 'statistics' | 'security' | 'voice' | 'performance' | 'failover' | 'srt' | 'iot' | 'vyos' | 'speedtest' | 'topology' | 'convergence' | 'events' | 'custom_apps' | 'multicast' | 'pcap_replay' | 'packet_capture' | 'api_studio' | 'copilot' | 'fleet' | 'home' | 'snapshots'>(
+  const [view, setView] = useState<'dashboard' | 'settings' | 'statistics' | 'security' | 'voice' | 'performance' | 'reachability_matrix' | 'failover' | 'srt' | 'iot' | 'vyos' | 'speedtest' | 'topology' | 'convergence' | 'events' | 'custom_apps' | 'multicast' | 'pcap_replay' | 'packet_capture' | 'api_studio' | 'copilot' | 'fleet' | 'home' | 'snapshots'>(
     () => {
       const saved = localStorage.getItem('activeView');
       if (saved && saved !== 'settings') {
@@ -438,6 +438,7 @@ export default function App() {
         if (key === 'h') targetView = 'home';
         else if (key === 't') targetView = 'topology';
         else if (key === 'd') targetView = 'performance';
+        else if (key === 'm') targetView = 'reachability_matrix';
         else if (key === 'b') targetView = features.xfr_enabled ? 'speedtest' : null;
         else if (key === 's') targetView = 'security';
         else if (key === 'v') targetView = 'vyos';
@@ -2097,11 +2098,23 @@ export default function App() {
       </div>
 
       {/* Other views — conditionally mounted */}
-      {view === 'performance' && (
-        <ConnectivityPerformance token={token!} uiConfig={uiConfig} isLeader={isLeader} onManage={() => {
-          setInitialSettingsTab('probes');
-          setView('settings');
-        }} />
+      {(view === 'performance' || view === 'reachability_matrix') && (
+        <ConnectivityPerformance
+          token={token!}
+          uiConfig={uiConfig}
+          isLeader={isLeader}
+          initialViewMode={view === 'reachability_matrix' ? 'matrix' : 'catalog'}
+          onSwitchViewMode={(mode) => {
+            const nextView = mode === 'matrix' ? 'reachability_matrix' : 'performance';
+            if (view !== nextView) {
+              handleNavigate(nextView);
+            }
+          }}
+          onManage={() => {
+            setInitialSettingsTab('probes');
+            setView('settings');
+          }}
+        />
       )}
       {view === 'topology' && <Topology token={token!} theme={theme} />}
       {view === 'security' && <Security token={token!} onGoToCloudSettings={() => {
@@ -2248,6 +2261,8 @@ export default function App() {
             <span><strong className="text-white font-mono">T</strong>opology</span>
             <span className="text-slate-600">•</span>
             <span><strong className="text-white font-mono">D</strong>EM</span>
+            <span className="text-slate-600">•</span>
+            <span><strong className="text-white font-mono">M</strong>atrix</span>
             <span className="text-slate-600">•</span>
             <span><strong className="text-white font-mono">B</strong>andwidth</span>
             <span className="text-slate-600">•</span>

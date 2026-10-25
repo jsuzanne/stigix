@@ -764,6 +764,7 @@ export class TargetsManager {
                     existing.meta = {
                         ...(existing.meta || {}),
                         ...t.meta,
+                        self: Boolean(existing.meta?.self || t.meta.self),
                         registry: existing.meta?.registry || t.meta.registry,
                         leader_provided: existing.meta?.leader_provided || t.meta.leader_provided,
                         is_leader: Boolean(existing.meta?.is_leader || t.meta.is_leader),

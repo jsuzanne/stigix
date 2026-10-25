@@ -19,17 +19,47 @@ export default function Failover(props: FailoverProps) {
     const [showAddModal, setShowAddModal] = useState(false);
     const [newTarget, setNewTarget] = useState({ label: '', target: '', port: 6200 });
     const [convergenceTargets, setConvergenceTargets] = useState<any[]>([]);
+    const [selfIdentity, setSelfIdentity] = useState<{ ips: string[]; names: string[] }>({ ips: [], names: [] });
     const [reachability, setReachability] = useState<Record<string, boolean | 'loading'>>({});
     const [searchQuery, setSearchQuery] = useState('');
     const [historySearch, setHistorySearch] = useState('');
+    const [historyVerdictFilter, setHistoryVerdictFilter] = useState<'all' | 'healthy' | 'issues'>('all');
     const [nowTs, setNowTs] = useState(Date.now());
     const [exportingPocId, setExportingPocId] = useState<string | null>(null);
     const [copiedPocId, setCopiedPocId] = useState<string | null>(null);
     const [showAllTargetsDuringTest, setShowAllTargetsDuringTest] = useState(false);
 
+    const { gFetch, activePeerId, activePeer, peers } = usePeerContext();
+    const peerCacheKey = activePeerId || 'local';
+    const authHeaders = () => ({ 'Authorization': `Bearer ${token}` });
+
     const allTargets = useMemo(() => {
-        const combined = endpoints.map(e => ({ ...e }));
+        const localPeer = activePeer || peers.find(p => p.is_leader) || null;
+        const selfIpSet = new Set<string>(['127.0.0.1', 'localhost']);
+        const selfNameSet = new Set<string>();
+
+        selfIdentity.ips.forEach(ip => { if (ip) selfIpSet.add(ip.trim().toLowerCase()); });
+        selfIdentity.names.forEach(n => { if (n) selfNameSet.add(n.trim().toLowerCase()); });
+        if (localPeer?.ip_private) selfIpSet.add(localPeer.ip_private.trim().toLowerCase());
+        if (localPeer?.instance_id) selfNameSet.add(localPeer.instance_id.trim().toLowerCase());
+        if (localPeer?.site) selfNameSet.add(localPeer.site.trim().toLowerCase());
+
+        const isSelfTarget = (host?: string, label?: string, id?: string, metaSelf?: boolean) => {
+            if (metaSelf) return true;
+            if (id && String(id).startsWith('reg-self-')) return true;
+            const h = (host || '').trim().toLowerCase();
+            const l = (label || '').trim().toLowerCase();
+            if (h && selfIpSet.has(h)) return true;
+            if (l && selfNameSet.has(l)) return true;
+            return false;
+        };
+
+        const combined = endpoints
+            .filter(e => !isSelfTarget(e.target, e.label, e.id, e.meta?.self))
+            .map(e => ({ ...e }));
+
         convergenceTargets.forEach(ct => {
+            if (isSelfTarget(ct.host, ct.name, ct.id, ct.meta?.self)) return;
             const existing = combined.find(e => e.target === ct.host);
             if (!existing) {
                 combined.push({
@@ -48,7 +78,7 @@ export default function Failover(props: FailoverProps) {
             }
         });
         return combined;
-    }, [endpoints, convergenceTargets]);
+    }, [endpoints, convergenceTargets, selfIdentity, activePeer, peers]);
 
     const [rate, setRate] = useState(50);
     const [selectedEndpoints, setSelectedEndpoints] = useState<string[]>([]);
@@ -85,10 +115,6 @@ export default function Failover(props: FailoverProps) {
         const intv = setInterval(() => setNowTs(Date.now()), 1000);
         return () => clearInterval(intv);
     }, []);
-
-    const { gFetch, activePeerId } = usePeerContext();
-    const peerCacheKey = activePeerId || 'local';
-    const authHeaders = () => ({ 'Authorization': `Bearer ${token}` });
 
     const fetchEndpoints = async () => {
         try {
@@ -298,11 +324,29 @@ export default function Failover(props: FailoverProps) {
         };
         fetchThresholds();
 
-        // Fetch shared targets with convergence capability
-        gFetch('/api/targets', { headers: authHeaders() })
-            .then(r => r.json())
-            .then(data => {
-                const filtered = (Array.isArray(data) ? data : []).filter((t: any) => t.enabled && t.capabilities?.convergence);
+        // Fetch shared targets with convergence capability + local identity to hide self-target
+        Promise.all([
+            gFetch('/api/targets', { headers: authHeaders() }).then(r => r.json()).catch(() => []),
+            gFetch('/api/registry/status', { headers: authHeaders() }).then(r => r.json()).catch(() => null)
+        ])
+            .then(([data, regStatus]) => {
+                const rawList = Array.isArray(data) ? data : [];
+                const ips: string[] = [];
+                const names: string[] = [];
+                rawList.forEach((t: any) => {
+                    if (t?.meta?.self || String(t?.id || '').startsWith('reg-self-')) {
+                        if (t.host) ips.push(String(t.host));
+                        if (t.name) names.push(String(t.name));
+                    }
+                });
+                if (regStatus && typeof regStatus === 'object') {
+                    if (regStatus.detected_ip) ips.push(String(regStatus.detected_ip));
+                    if (regStatus.site_name) names.push(String(regStatus.site_name));
+                    if (regStatus.instance_id) names.push(String(regStatus.instance_id));
+                }
+                setSelfIdentity({ ips, names });
+
+                const filtered = rawList.filter((t: any) => t.enabled && t.capabilities?.convergence && !t.meta?.self && !String(t.id || '').startsWith('reg-self-'));
                 setConvergenceTargets(prev => {
                     if (JSON.stringify(prev) === JSON.stringify(filtered)) return prev;
                     return filtered;
@@ -635,11 +679,34 @@ export default function Failover(props: FailoverProps) {
         }
     };
 
+    const isHistoryItemHealthy = (t: any) => {
+        if (!t) return true;
+        const isZeroLossComplete = (Number(t.sent) > 0) && (Number(t.received) >= Number(t.sent)) && ((Number(t.tx_loss_pct) || 0) === 0) && ((Number(t.rx_loss_pct) || 0) === 0);
+        const effectiveBlackoutMs = isZeroLossComplete ? 0 : (Number(t.max_blackout_ms) || 0);
+        const g = thresholds?.good || 1000;
+        return effectiveBlackoutMs < g;
+    };
+
+    const historyFilterCounts = React.useMemo(() => {
+        if (!Array.isArray(history)) return { all: 0, healthy: 0, issues: 0 };
+        let healthy = 0;
+        let issues = 0;
+        history.forEach(t => {
+            if (isHistoryItemHealthy(t)) healthy++;
+            else issues++;
+        });
+        return { all: history.length, healthy, issues };
+    }, [history, thresholds]);
+
     const filteredHistory = React.useMemo(() => {
         if (!Array.isArray(history)) return [];
-        if (!historySearch || !historySearch.trim()) return history;
+        const byVerdict = historyVerdictFilter === 'all'
+            ? history
+            : history.filter(t => historyVerdictFilter === 'healthy' ? isHistoryItemHealthy(t) : !isHistoryItemHealthy(t));
+
+        if (!historySearch || !historySearch.trim()) return byVerdict;
         const q = historySearch.toLowerCase().trim();
-        return history.filter(t => {
+        return byVerdict.filter(t => {
             try {
                 if (!t) return false;
                 const convId = String(t.test_id || t.testId || '');
@@ -664,7 +731,7 @@ export default function Failover(props: FailoverProps) {
                 return false;
             }
         });
-    }, [history, historySearch, thresholds]);
+    }, [history, historySearch, historyVerdictFilter, thresholds]);
 
     const sortedHistory = React.useMemo(() => {
         if (!sortConfig) return filteredHistory;
@@ -1012,33 +1079,24 @@ export default function Failover(props: FailoverProps) {
                                                 const activeTestForTarget = activeTests.find(t => t.target === e.target && String(t.port || 6100) === String(e.port || 6100));
                                                 const isTesting = !!activeTestForTarget;
 
-                                                return (
-                                                    <>
-                                                        <button
-                                                            onClick={(e_play) => { e_play.stopPropagation(); startTest([e.id]); }}
-                                                            disabled={isStarting || isTesting}
-                                                            className={`ml-2 p-1.5 rounded-md transition-colors border shadow-sm ${
-                                                                isTesting 
-                                                                    ? 'bg-card-secondary text-text-muted border-transparent opacity-50 cursor-not-allowed' 
-                                                                    : 'bg-blue-500/10 text-blue-500 hover:bg-blue-600 hover:text-white border-blue-500/20 hover:border-blue-600 disabled:opacity-50 disabled:cursor-not-allowed'
-                                                            }`}
-                                                            title={isTesting ? "Test already running" : "Launch Failover Test"}
-                                                        >
-                                                            <Play size={10} fill="currentColor" />
-                                                        </button>
-                                                        <button
-                                                            onClick={(e_stop_test) => { e_stop_test.stopPropagation(); stopTest(activeTestForTarget?.testId); }}
-                                                            disabled={!isTesting}
-                                                            className={`p-1.5 rounded-md transition-all border shadow-sm ${
-                                                                isTesting
-                                                                    ? 'bg-red-500 text-white hover:bg-red-600 border-red-500 shadow-red-500/40 cursor-pointer scale-110'
-                                                                    : 'bg-card-secondary text-text-muted border-transparent opacity-30 cursor-not-allowed'
-                                                            }`}
-                                                            title={isTesting ? "Stop this test" : "No active test to stop"}
-                                                        >
-                                                            <Square size={10} fill="currentColor" />
-                                                        </button>
-                                                    </>
+                                                return isTesting ? (
+                                                    <button
+                                                        onClick={(e_stop_test) => { e_stop_test.stopPropagation(); stopTest(activeTestForTarget?.testId); }}
+                                                        disabled={isStopping}
+                                                        className="ml-1 p-1.5 rounded-md transition-all border shadow-sm bg-red-500 text-white hover:bg-red-600 border-red-500 shadow-red-500/40 cursor-pointer scale-105 disabled:opacity-50"
+                                                        title="Stop this test"
+                                                    >
+                                                        <Square size={10} fill="currentColor" />
+                                                    </button>
+                                                ) : (
+                                                    <button
+                                                        onClick={(e_play) => { e_play.stopPropagation(); startTest([e.id]); }}
+                                                        disabled={isStarting}
+                                                        className="ml-1 p-1.5 rounded-md transition-colors border shadow-sm bg-blue-500/10 text-blue-500 hover:bg-blue-600 hover:text-white border-blue-500/20 hover:border-blue-600 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                                                        title="Launch Failover Test"
+                                                    >
+                                                        <Play size={10} fill="currentColor" />
+                                                    </button>
                                                 );
                                             })()}
                                         </div>
@@ -1097,21 +1155,35 @@ export default function Failover(props: FailoverProps) {
                             {/* KPI 2: Max Blackout */}
                             <div className="flex-1 md:w-full flex flex-col items-center justify-center md:py-3">
                                 <div className="text-[9px] font-bold text-text-muted uppercase tracking-wider whitespace-nowrap mb-1">Max Blackout</div>
-                                <div className="text-xl md:text-2xl leading-tight font-black text-orange-500 font-mono tracking-tighter">
-                                    {formatMs(test.max_blackout_ms || 0)}
-                                </div>
                                 {(() => {
-                                    const maxSec = (test.max_blackout_ms || 0) / 1000;
-                                    const label = maxSec === 0 ? 'Zero Drop' : maxSec < thresholds.good ? 'SLA Good' : maxSec < thresholds.degraded ? 'Degraded' : 'Critical';
-                                    const badgeCls = maxSec === 0 || maxSec < thresholds.good
-                                        ? 'text-text-muted bg-card-secondary border-border'
-                                        : maxSec < thresholds.degraded
+                                    const maxMs = Number(test.max_blackout_ms) || 0;
+                                    const g = thresholds?.good || 1000;
+                                    const d = thresholds?.degraded || 5000;
+                                    const c = thresholds?.critical || 10000;
+                                    const valColor = maxMs === 0 || maxMs < g
+                                        ? 'text-emerald-400'
+                                        : maxMs < d
+                                        ? 'text-amber-400'
+                                        : maxMs < c
+                                        ? 'text-orange-500'
+                                        : 'text-red-500';
+                                    const label = maxMs === 0 ? 'Zero Drop' : maxMs < g ? 'SLA Good' : maxMs < d ? 'Degraded' : maxMs < c ? 'Bad' : 'Critical';
+                                    const badgeCls = maxMs === 0 || maxMs < g
+                                        ? 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20'
+                                        : maxMs < d
                                         ? 'text-amber-400 bg-amber-500/10 border-amber-500/30'
+                                        : maxMs < c
+                                        ? 'text-orange-400 bg-orange-500/10 border-orange-500/30'
                                         : 'text-red-400 bg-red-500/10 border-red-500/30';
                                     return (
-                                        <span className={`mt-1 text-[8px] font-mono font-bold uppercase px-1.5 py-0.5 rounded border ${badgeCls}`}>
-                                            {label}
-                                        </span>
+                                        <>
+                                            <div className={`text-xl md:text-2xl leading-tight font-black font-mono tracking-tighter ${valColor}`}>
+                                                {formatMs(maxMs)}
+                                            </div>
+                                            <span className={`mt-1 text-[8px] font-mono font-bold uppercase px-1.5 py-0.5 rounded border ${badgeCls}`}>
+                                                {label}
+                                            </span>
+                                        </>
                                     );
                                 })()}
                             </div>
@@ -1202,9 +1274,22 @@ export default function Failover(props: FailoverProps) {
                                                 <div className="w-px h-5 bg-border/70" />
                                                 <div className="flex flex-col items-end">
                                                     <span className="text-[8px] font-bold text-text-muted uppercase tracking-wider">Drops</span>
-                                                    <span className={`text-xs font-bold font-mono leading-tight ${dropsCount > 0 ? 'text-red-400' : 'text-text-muted'}`}>
-                                                        {dropsCount}
-                                                    </span>
+                                                    <div className="flex items-baseline gap-1">
+                                                        <span className={`text-xs font-bold font-mono leading-tight ${dropsCount > 0 ? 'text-red-400' : 'text-text-muted'}`}>
+                                                            {dropsCount}
+                                                        </span>
+                                                        {dropsCount > 0 && Number(test.server_received) > 0 && (() => {
+                                                            const srvRcvd = Number(test.server_received) || 0;
+                                                            const txLost = typeof test.tx_lost_packets === 'number' ? test.tx_lost_packets : Math.max(0, (test.sent || 0) - srvRcvd);
+                                                            const rxLost = typeof test.rx_lost_packets === 'number' ? test.rx_lost_packets : Math.max(0, srvRcvd - (test.received || 0));
+                                                            if (txLost === 0 && rxLost === 0) return null;
+                                                            return (
+                                                                <span className="text-[9px] font-mono font-bold text-text-muted leading-none" title={`Uplink drops: ${txLost} • Downlink drops: ${rxLost}`}>
+                                                                    (<span className={txLost > 0 ? 'text-red-400' : ''}>↑{txLost}</span> <span className={rxLost > 0 ? 'text-blue-400' : ''}>↓{rxLost}</span>)
+                                                                </span>
+                                                            );
+                                                        })()}
+                                                    </div>
                                                 </div>
                                             </div>
 
@@ -1665,7 +1750,7 @@ export default function Failover(props: FailoverProps) {
     </div>
 
             {/* Historical View — Full Width */}
-            <div className={`w-full bg-card border border-border rounded-2xl overflow-hidden shadow-sm ${activeTests.length > 0 ? 'opacity-50 grayscale transition-all' : ''}`}>
+            <div className="w-full bg-card border border-border rounded-2xl overflow-hidden shadow-sm">
                 <div className="p-4 border-b border-border bg-card-secondary/50 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
                     <div className="flex items-center gap-2.5 flex-wrap">
                         <h3 className="text-sm font-bold text-text-secondary uppercase tracking-widest flex items-center gap-2">
@@ -1673,7 +1758,7 @@ export default function Failover(props: FailoverProps) {
                         </h3>
                         {history.length > 0 && (
                             <span className="text-[10px] font-bold text-text-muted bg-card px-2 py-0.5 rounded border border-border uppercase tracking-wider">
-                                {historySearch.trim() ? `${sortedHistory.length} / ${history.length}` : history.length} Tests
+                                {(historySearch.trim() || historyVerdictFilter !== 'all') ? `${sortedHistory.length} / ${history.length}` : history.length} Tests
                             </span>
                         )}
                         <span
@@ -1682,6 +1767,33 @@ export default function Failover(props: FailoverProps) {
                         >
                             Last {thresholds.retentionDays}d
                         </span>
+
+                        {history.length > 0 && (
+                            <div className="inline-flex items-center bg-card border border-border rounded-lg p-0.5 gap-0.5">
+                                {([
+                                    { id: 'all', label: 'All', count: historyFilterCounts.all, activeCls: 'bg-blue-600 text-white shadow-sm' },
+                                    { id: 'healthy', label: 'Good / Perfect', count: historyFilterCounts.healthy, activeCls: 'bg-emerald-600 text-white shadow-sm' },
+                                    { id: 'issues', label: 'Outages', count: historyFilterCounts.issues, activeCls: 'bg-amber-600 text-white shadow-sm' }
+                                ] as const).map(f => {
+                                    const active = historyVerdictFilter === f.id;
+                                    return (
+                                        <button
+                                            key={f.id}
+                                            type="button"
+                                            onClick={() => setHistoryVerdictFilter(f.id)}
+                                            className={`px-2 py-0.5 rounded-md text-[9px] font-bold uppercase tracking-wider transition-all cursor-pointer flex items-center gap-1 ${
+                                                active ? f.activeCls : 'text-text-muted hover:text-text-primary hover:bg-card-secondary/60'
+                                            }`}
+                                        >
+                                            <span>{f.label}</span>
+                                            <span className={`font-mono text-[8px] px-1 rounded ${active ? 'bg-black/20 text-white' : 'bg-card-secondary text-text-muted'}`}>
+                                                {f.count}
+                                            </span>
+                                        </button>
+                                    );
+                                })}
+                            </div>
+                        )}
 
                         {/* Hover Info Popover for Thresholds */}
                         <div className="relative group/thresh inline-block">
@@ -1794,12 +1906,14 @@ export default function Failover(props: FailoverProps) {
                                 ) : sortedHistory.length === 0 ? (
                                     <tr>
                                         <td colSpan={5} className="px-6 py-8 text-center text-text-muted">
-                                            {historySearch ? (
+                                            {historySearch || historyVerdictFilter !== 'all' ? (
                                                 <div className="flex flex-col items-center gap-2">
                                                     <Search size={20} className="text-text-muted/40" />
-                                                    <p className="text-xs">No recorded tests matching <span className="text-text-secondary font-bold font-mono">"{historySearch}"</span></p>
+                                                    <p className="text-xs">
+                                                        No recorded tests matching {historySearch ? <span className="text-text-secondary font-bold font-mono">"{historySearch}"</span> : 'selected verdict filter'}
+                                                    </p>
                                                     <button
-                                                        onClick={() => setHistorySearch('')}
+                                                        onClick={() => { setHistorySearch(''); setHistoryVerdictFilter('all'); }}
                                                         className="text-[10px] text-blue-400 hover:underline font-bold cursor-pointer"
                                                     >
                                                         Clear filter
@@ -1856,6 +1970,26 @@ export default function Failover(props: FailoverProps) {
                                                             <span className="text-text-secondary">Source Port: {test.source_port || getSourcePort(test.test_id)}</span>
                                                             <span className="text-border">|</span>
                                                             <span>{test.rate_pps || test.rate || '--'} pps</span>
+                                                            {(test.path_evolution || test.egress_path) && (() => {
+                                                                const rawPath = String(test.path_evolution || test.egress_path);
+                                                                const hasShift = rawPath.includes('➔') || rawPath.includes('->') || (Array.isArray(test.path_history) && test.path_history.length > 1);
+                                                                return (
+                                                                    <>
+                                                                        <span className="text-border">|</span>
+                                                                        <span
+                                                                            className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded border text-[9px] font-bold ${
+                                                                                hasShift
+                                                                                    ? 'bg-amber-500/10 text-amber-400 border-amber-500/25'
+                                                                                    : 'bg-cyan-500/10 text-cyan-400 border-cyan-500/20'
+                                                                            }`}
+                                                                            title={`SD-WAN Egress Path: ${rawPath}`}
+                                                                        >
+                                                                            <ArrowRightLeft size={9} />
+                                                                            <span className="truncate max-w-[260px]">{rawPath}</span>
+                                                                        </span>
+                                                                    </>
+                                                                );
+                                                            })()}
                                                         </div>
                                                     </td>
                                                     <td className="px-6 py-4 text-center">
@@ -1881,7 +2015,7 @@ export default function Failover(props: FailoverProps) {
                                                     </td>
                                                     <td className="px-6 py-4 text-center">
                                                         <div className="flex flex-col">
-                                                            <span className={`font-mono text-sm font-bold ${effectiveBlackoutMs > 0 ? 'text-orange-500' : 'text-text-muted'}`}>
+                                                            <span className={`font-mono text-sm font-bold ${effectiveBlackoutMs === 0 ? 'text-emerald-400' : verdict.color}`}>
                                                                 {formatMs(effectiveBlackoutMs)}
                                                             </span>
                                                             <span className="text-[9px] font-bold text-text-muted uppercase">
