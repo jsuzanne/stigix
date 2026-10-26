@@ -14834,23 +14834,37 @@ async function detectLocalDockerChannel(): Promise<{ channel: string; fullImage:
 
     // Dynamically respect user channel: stable vs latest vs v3 vs v2 vs custom
     let channel = 'stable';
-    if (rawTag === 'stable') {
+    if (rawTag === 'stable' || envTag === 'stable') {
         channel = 'stable';
-    } else if (rawTag === 'latest') {
+    } else if (rawTag === 'latest' || envTag === 'latest') {
         channel = 'latest';
-    } else if (rawTag === 'v3') {
+    } else if (rawTag === 'v3' || envTag === 'v3' || /^v?3\.\d+\.\d+/.test(rawTag)) {
         channel = 'v3';
-    } else if (rawTag === 'v2') {
+    } else if (rawTag === 'v2' || envTag === 'v2' || /^v?2\.\d+\.\d+/.test(rawTag)) {
         channel = 'v2';
     } else if (rawTag.includes('.dev') || rawTag.startsWith('sha-')) {
         channel = rawTag.includes('v3') ? 'v3' : 'v2';
     } else if (rawTag) {
         channel = rawTag;
     } else {
-        channel = currentVer.includes('v3') ? 'v3' : (currentVer.includes('dev') ? 'v2' : 'stable');
+        channel = (currentVer.includes('v3') || currentVer.startsWith('3.')) ? 'v3' : (currentVer.includes('dev') ? 'v2' : 'stable');
     }
 
     return { channel, fullImage: `jsuzanne/stigix:${channel}`, createdDate };
+}
+
+function compareSemverVersions(a: string, b: string): number {
+    const clean = (v: string) => v.replace(/^v/i, '').split('-')[0].split('.').map(n => parseInt(n, 10) || 0);
+    const pa = clean(a);
+    const pb = clean(b);
+    const len = Math.max(pa.length, pb.length, 3);
+    for (let i = 0; i < len; i++) {
+        const na = pa[i] || 0;
+        const nb = pb[i] || 0;
+        if (na > nb) return 1;
+        if (na < nb) return -1;
+    }
+    return 0;
 }
 
 // In-memory cache for maintenance version check to avoid blocking UI loads on slow Docker Hub / GitHub API calls
@@ -14884,6 +14898,8 @@ app.get('/api/admin/maintenance/version', authenticateToken, async (req, res) =>
 
         let latestVersion = channel;
         let updateAvailable = false;
+        let sameTagNewerBuild = false;
+        let channelDigest: string | null = null;
         const dockerReady = fs.existsSync('/var/run/docker.sock');
         let remoteBuildDate: string | null = null;
 
@@ -14895,14 +14911,18 @@ app.get('/api/admin/maintenance/version', authenticateToken, async (req, res) =>
             const { stdout: hubOut } = await execPromise(`curl -sL --connect-timeout 2 --max-time 3 "${dockerHubUrl}"`);
             const hubData = JSON.parse(hubOut);
 
-            if (hubData && hubData.last_updated) {
-                remoteBuildDate = hubData.last_updated;
-                if (createdDate) {
-                    const localCreatedTime = new Date(createdDate).getTime();
-                    const hubUpdatedTime = new Date(remoteBuildDate).getTime();
-                    // If Docker Hub image with the SAME TAG is newer than local container creation by > 60s
-                    if (hubUpdatedTime > (localCreatedTime + 60000)) {
-                        updateAvailable = true;
+            if (hubData) {
+                channelDigest = hubData.digest || (Array.isArray(hubData.images) && hubData.images[0]?.digest) || null;
+                if (hubData.last_updated) {
+                    remoteBuildDate = hubData.last_updated;
+                    if (createdDate) {
+                        const localCreatedTime = new Date(createdDate).getTime();
+                        const hubUpdatedTime = new Date(remoteBuildDate).getTime();
+                        // If Docker Hub image with the SAME TAG is newer than local container creation by > 60s
+                        if (hubUpdatedTime > (localCreatedTime + 60000)) {
+                            sameTagNewerBuild = true;
+                            updateAvailable = true;
+                        }
                     }
                 }
             }
@@ -14913,20 +14933,44 @@ app.get('/api/admin/maintenance/version', authenticateToken, async (req, res) =>
         // 2. Channel-specific version tag resolution
         if (channel === 'v3' || channel.startsWith('v3')) {
             try {
-                const tagsListUrl = 'https://hub.docker.com/v2/repositories/jsuzanne/stigix/tags/?page_size=10&page=1';
+                const tagsListUrl = 'https://hub.docker.com/v2/repositories/jsuzanne/stigix/tags/?page_size=25&page=1';
                 const { stdout: listOut } = await execPromise(`curl -sL --connect-timeout 2 --max-time 3 "${tagsListUrl}"`);
                 const listData = JSON.parse(listOut);
-                const latestDevItem = listData?.results?.find((r: any) =>
-                    r.name && r.name.startsWith('v3.') && r.name.includes('.dev')
-                );
-                if (latestDevItem) {
-                    latestVersion = latestDevItem.name;
-                    if (currentVersion !== latestDevItem.name) {
+                const results: any[] = Array.isArray(listData?.results) ? listData.results : [];
+                const v3SemverRegex = /^v?3\.\d+\.\d+(?:[-.][\w.]+)?$/;
+
+                // Priority 1: Find the exact semantic version tag (e.g. 3.1.30 / v3.1.30) matching the :v3 image digest
+                let matchedTag = channelDigest
+                    ? results.find((r: any) =>
+                          r?.name &&
+                          v3SemverRegex.test(r.name) &&
+                          (r.digest === channelDigest ||
+                           (Array.isArray(r.images) && r.images.some((img: any) => img?.digest === channelDigest)))
+                      )
+                    : undefined;
+
+                // Priority 2: Fallback to the most recently updated 3.x.y / v3.x.y tag on Docker Hub
+                if (!matchedTag) {
+                    matchedTag = results.find((r: any) => r?.name && v3SemverRegex.test(r.name));
+                }
+
+                if (matchedTag && matchedTag.name) {
+                    const resolvedVer = matchedTag.name.replace(/^v/i, '');
+                    latestVersion = resolvedVer;
+                    const cmp = compareSemverVersions(resolvedVer, currentVersion);
+                    if (cmp > 0) {
                         updateAvailable = true;
+                    } else if (cmp === 0) {
+                        // Same semantic version: only flag updateAvailable if :v3 was rebuilt after local container creation (hotfix)
+                        updateAvailable = sameTagNewerBuild;
+                    } else {
+                        // Local version is ahead of Docker Hub (e.g. CI still building)
+                        latestVersion = currentVersion;
+                        updateAvailable = false;
                     }
                 }
             } catch (e: any) {
-                console.warn('[MAINTENANCE] Failed to resolve latest v3 dev build from Docker Hub:', e.message);
+                console.warn('[MAINTENANCE] Failed to resolve latest v3 build from Docker Hub:', e.message);
             }
         } else if (channel === 'v2') {
             try {
@@ -15404,11 +15448,11 @@ if [ "${pullImage}" != "${channelImage}" ]; then
     docker tag "${pullImage}" "${channelImage}" >> "$LOG_FILE" 2>&1 || true
 fi
 
-# Step 1: Recreate Stigix Container
+# Step 1: Recreate Stigix Container (preserve channel tag so node stays subscribed to its release channel)
 if [ -n "${hostComposeFile}" ] && [ -f "${hostComposeFile}" ]; then
-    echo "[$(date -u)] [UPDATER] Executing Docker Compose up with TAG=${targetVersion}..." >> "$LOG_FILE"
-    (TAG="${targetVersion}" docker compose -f "${hostComposeFile}" up -d --force-recreate 2>&1 || \
-     TAG="${targetVersion}" docker-compose -f "${hostComposeFile}" up -d --force-recreate 2>&1) | while IFS= read -r line; do
+    echo "[$(date -u)] [UPDATER] Executing Docker Compose up with TAG=${channel} (version ${targetVersion})..." >> "$LOG_FILE"
+    (TAG="${channel}" docker compose -f "${hostComposeFile}" up -d --force-recreate 2>&1 || \
+     TAG="${channel}" docker-compose -f "${hostComposeFile}" up -d --force-recreate 2>&1) | while IFS= read -r line; do
         echo "[$(date -u)] [COMPOSE] $line" >> "$LOG_FILE"
     done
 else

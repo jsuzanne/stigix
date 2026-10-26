@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.1.31] - 2026-10-26
+
+### Improved
+- **Maintenance Semantic Version Resolution on `v3` Channel (`web-dashboard/server.ts`)**:
+  - Updated `GET /api/admin/maintenance/version` to resolve the exact semantic build version (e.g. `3.1.31`) for nodes on the `v3` channel by matching the Docker Hub `:v3` image SHA256 digest against versioned Docker Hub tags (`3.x.y` / `v3.x.y`).
+  - **Settings -> Maintenance & Updates** now displays the real version number (`3.1.31`) instead of `"v3"` in **Latest v3 Build**, on the **Update To 3.1.31** button, and in the **Fleet Nodes Maintenance** table while preserving the `TAG=v3` rolling channel subscription during container recreation.
+
 ## [3.1.30] - 2026-10-26
 
 ### Security
