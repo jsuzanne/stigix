@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.1.30] - 2026-10-26
+
+### Security
+- **Magic Join & Fleet Tunnel Control-Plane Hardening (`web-dashboard/magic-join-manager.ts`, `web-dashboard/fleet-tunnel.ts`, `web-dashboard/server.ts`)**:
+  - **Scoped Node Credentials Only**: Removed legacy `jwt_secret` exposure from `POST /api/fleet/join-redeem` responses so enrolling nodes receive only their scoped `STX-NODE` credential (`node_token`).
+  - **Fail-Closed Inventory & Constant-Time HMAC**: Hardened `MagicJoinManager.verifyToken()` with `crypto.timingSafeEqual` signature verification, fail-closed rejection (`ERR_JOIN_NOT_FOUND`) when a token `jti` is missing from the Leader inventory, bounded `ttlSeconds`/`maxUses`, and `0600` file permissions on `magic-join-tokens.json`.
+  - **Immediate Active Tunnel Revocation**: Revoking a Magic Join token via `DELETE /api/fleet/join-tokens/:jti` now immediately disconnects any active WebSocket reverse tunnels (`disconnectPeersByTokenJti`) in addition to blocking future reconnections.
+  - **TOFU Peer Identity Anti-Spoofing**: Added handshake validation preventing a peer holding a scoped token for Site A from claiming the `instanceId` or `siteName` of an already-active peer on Site B holding a different token `jti`, while preserving `install.sh` and UI site renaming compatibility.
+
 ## [3.1.29] - 2026-10-26
 
 ### Security
