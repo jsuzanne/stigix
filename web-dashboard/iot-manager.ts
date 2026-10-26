@@ -77,8 +77,8 @@ export class IoTManager extends EventEmitter {
     // ── Global bad behavior state ─────────────────────────────────────────────
     // Tracks the last setBadBehavior() call so we can re-apply it after a daemon restart.
     private badBehaviorEnabled: boolean = true; // mirrors --enable-bad-behavior CLI flag
-    private engineRuntime: 'legacy' | 'go' = 'legacy';
-    private goBinaryPath: string | null = null;
+    private engineRuntime: 'legacy' | 'go' = (process.env.ENABLE_GO_ENGINE !== 'false' && process.env.ENABLE_GO_ENGINE !== '0' && fs.existsSync('/usr/local/bin/stigix-go')) ? 'go' : 'legacy';
+    private goBinaryPath: string | null = fs.existsSync('/usr/local/bin/stigix-go') ? '/usr/local/bin/stigix-go' : null;
 
     constructor(networkInterface: string = 'eth0', configDir?: string) {
         super();

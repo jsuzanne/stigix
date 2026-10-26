@@ -15625,7 +15625,9 @@ app.post('/api/admin/maintenance/restart', authenticateToken, async (req, res) =
             let cmd = '';
 
             if (type === 'restart') {
-                cmd = 'supervisorctl restart all';
+                const engineProgs = isGoEngineEnabled() ? 'stigix-go' : 'traffic-gen voice-gen voice-echo';
+                const mcpProg = getSystemSettings().mcp_server_enabled ? ' mcp-server' : '';
+                cmd = `supervisorctl restart ${engineProgs} xfr-target${mcpProg} web-ui`;
             } else if (type === 'redeploy' && hostDir) {
                 const { channel } = await detectLocalDockerChannel();
                 const runImage = `jsuzanne/stigix:${channel}`;

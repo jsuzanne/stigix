@@ -5855,49 +5855,21 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                             </div>
 
                             <div className="p-6 space-y-6">
-                                {/* Mandatory Feature Flag Banner when ENABLE_GO_ENGINE is not enabled */}
+                                {/* Banner shown only if ENABLE_GO_ENGINE=false was explicitly set in .env */}
                                 {!engineRuntimeInfo?.feature_flag_enabled && (
                                     <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3.5 flex items-start gap-3">
                                         <AlertTriangle size={18} className="text-amber-400 shrink-0 mt-0.5" />
                                         <div className="text-xs text-text-secondary leading-relaxed">
-                                            <span className="font-black text-amber-400 uppercase tracking-wider mr-1.5">Mandatory Feature Flag Required:</span>
-                                            The native Go Engine (<code className="px-1.5 py-0.5 bg-card rounded font-mono text-[11px] text-amber-300">stigix-go</code>) is locked by default. Add{' '}
-                                            <code className="px-1.5 py-0.5 bg-card rounded font-mono text-[11px] text-cyan-300">ENABLE_GO_ENGINE=true</code> to your <code className="px-1.5 py-0.5 bg-card rounded font-mono text-[11px]">.env</code> file and restart the container to unlock live engine hot-switching.
+                                            <span className="font-black text-amber-400 uppercase tracking-wider mr-1.5">Go Engine Disabled via Environment:</span>
+                                            The native Go Engine (<code className="px-1.5 py-0.5 bg-card rounded font-mono text-[11px] text-amber-300">stigix-go</code>) is currently disabled because{' '}
+                                            <code className="px-1.5 py-0.5 bg-card rounded font-mono text-[11px] text-amber-300">ENABLE_GO_ENGINE=false</code> is set in your <code className="px-1.5 py-0.5 bg-card rounded font-mono text-[11px]">.env</code> file. Remove it or set <code className="px-1.5 py-0.5 bg-card rounded font-mono text-[11px] text-cyan-300">ENABLE_GO_ENGINE=true</code> and restart the container to restore the default Go Engine.
                                         </div>
                                     </div>
                                 )}
 
-                                {/* Engine Selector Cards */}
+                                {/* Engine Selector Cards (Go Default first, Legacy Fallback second) */}
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                    {/* Legacy Python + Bash Card */}
-                                    <button
-                                        onClick={() => engineRuntimeInfo?.active_runtime !== 'legacy' && handleSwitchEngineRuntime('legacy')}
-                                        disabled={switchingEngineRuntime || engineRuntimeInfo?.active_runtime === 'legacy'}
-                                        className={cn(
-                                            "text-left p-5 rounded-2xl border transition-all relative overflow-hidden",
-                                            engineRuntimeInfo?.active_runtime !== 'go'
-                                                ? "bg-amber-500/10 border-amber-500/40 shadow-sm"
-                                                : "bg-card hover:bg-card-secondary/70 border-border cursor-pointer"
-                                        )}
-                                    >
-                                        <div className="flex items-center justify-between mb-2">
-                                            <span className="text-xs font-black uppercase tracking-wider text-text-primary flex items-center gap-2">
-                                                <span>🐍</span> Legacy Engine (Python + Bash)
-                                            </span>
-                                            {engineRuntimeInfo?.active_runtime !== 'go' ? (
-                                                <span className="px-2 py-0.5 rounded-md text-[9px] font-black uppercase bg-amber-500 text-black">Active</span>
-                                            ) : (
-                                                <span className="px-2.5 py-1 rounded-lg text-[9px] font-black uppercase bg-card-secondary border border-border text-text-secondary">
-                                                    {switchingEngineRuntime ? 'Switching...' : 'Switch to Legacy →'}
-                                                </span>
-                                            )}
-                                        </div>
-                                        <p className="text-[11px] text-text-secondary leading-relaxed">
-                                            Runs <code className="font-mono text-[10px]">traffic-generator.sh</code> (curl + jq subshells), <code className="font-mono text-[10px]">voice_orchestrator.py</code>, <code className="font-mono text-[10px]">rtp.py</code>, <code className="font-mono text-[10px]">echo_server.py</code>, <code className="font-mono text-[10px]">http_server.py</code>, <code className="font-mono text-[10px]">iot_emulator.py</code> (Scapy), and <code className="font-mono text-[10px]">convergence_orchestrator.py</code> as separate OS processes.
-                                        </p>
-                                    </button>
-
-                                    {/* Go Native Engine Card */}
+                                    {/* Go Native Engine Card (Default) */}
                                     <button
                                         onClick={() => engineRuntimeInfo?.feature_flag_enabled && engineRuntimeInfo?.active_runtime !== 'go' && handleSwitchEngineRuntime('go')}
                                         disabled={switchingEngineRuntime || !engineRuntimeInfo?.feature_flag_enabled || !engineRuntimeInfo?.go_binary_available || engineRuntimeInfo?.active_runtime === 'go'}
@@ -5913,11 +5885,14 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                                         <div className="flex items-center justify-between mb-2">
                                             <span className="text-xs font-black uppercase tracking-wider text-text-primary flex items-center gap-2">
                                                 <span>⚡</span> Go Native Engine (stigix-go)
+                                                <span className="px-1.5 py-0.5 rounded text-[8px] font-black uppercase tracking-wider bg-cyan-500/15 text-cyan-400 border border-cyan-500/30">
+                                                    Default
+                                                </span>
                                             </span>
                                             {engineRuntimeInfo?.active_runtime === 'go' ? (
                                                 <span className="px-2 py-0.5 rounded-md text-[9px] font-black uppercase bg-cyan-400 text-black">Active</span>
                                             ) : !engineRuntimeInfo?.feature_flag_enabled ? (
-                                                <span className="px-2 py-0.5 rounded-md text-[9px] font-black uppercase bg-border text-text-muted">Locked (ENABLE_GO_ENGINE=false)</span>
+                                                <span className="px-2 py-0.5 rounded-md text-[9px] font-black uppercase bg-border text-text-muted">Disabled (ENABLE_GO_ENGINE=false)</span>
                                             ) : !engineRuntimeInfo?.go_binary_available ? (
                                                 <span className="px-2 py-0.5 rounded-md text-[9px] font-black uppercase bg-red-500/20 text-red-400">Binary Not Built</span>
                                             ) : (
@@ -5928,6 +5903,37 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                                         </div>
                                         <p className="text-[11px] text-text-secondary leading-relaxed">
                                             Unifies HTTP/S Traffic (<code className="font-mono text-[10px]">httptrace</code>), Voice RTP, UDP Echo, Target HTTP, Convergence, and L2 IoT Emulation (<code className="font-mono text-[10px]">AF_PACKET</code> DHCP/ARP/LLDP/PAN Security) into a static Go binary using lightweight goroutines (~2 KB/worker).
+                                        </p>
+                                    </button>
+
+                                    {/* Legacy Python + Bash Card (Fallback) */}
+                                    <button
+                                        onClick={() => engineRuntimeInfo?.active_runtime !== 'legacy' && handleSwitchEngineRuntime('legacy')}
+                                        disabled={switchingEngineRuntime || engineRuntimeInfo?.active_runtime === 'legacy'}
+                                        className={cn(
+                                            "text-left p-5 rounded-2xl border transition-all relative overflow-hidden",
+                                            engineRuntimeInfo?.active_runtime !== 'go'
+                                                ? "bg-amber-500/10 border-amber-500/40 shadow-sm"
+                                                : "bg-card hover:bg-card-secondary/70 border-border cursor-pointer"
+                                        )}
+                                    >
+                                        <div className="flex items-center justify-between mb-2">
+                                            <span className="text-xs font-black uppercase tracking-wider text-text-primary flex items-center gap-2">
+                                                <span>🐍</span> Legacy Engine (Python + Bash)
+                                                <span className="px-1.5 py-0.5 rounded text-[8px] font-black uppercase tracking-wider bg-amber-500/15 text-amber-400 border border-amber-500/30">
+                                                    Fallback
+                                                </span>
+                                            </span>
+                                            {engineRuntimeInfo?.active_runtime !== 'go' ? (
+                                                <span className="px-2 py-0.5 rounded-md text-[9px] font-black uppercase bg-amber-500 text-black">Active</span>
+                                            ) : (
+                                                <span className="px-2.5 py-1 rounded-lg text-[9px] font-black uppercase bg-card-secondary border border-border text-text-secondary">
+                                                    {switchingEngineRuntime ? 'Switching...' : 'Switch to Legacy →'}
+                                                </span>
+                                            )}
+                                        </div>
+                                        <p className="text-[11px] text-text-secondary leading-relaxed">
+                                            Runs <code className="font-mono text-[10px]">traffic-generator.sh</code> (curl + jq subshells), <code className="font-mono text-[10px]">voice_orchestrator.py</code>, <code className="font-mono text-[10px]">rtp.py</code>, <code className="font-mono text-[10px]">echo_server.py</code>, <code className="font-mono text-[10px]">http_server.py</code>, <code className="font-mono text-[10px]">iot_emulator.py</code> (Scapy), and <code className="font-mono text-[10px]">convergence_orchestrator.py</code> as separate OS processes.
                                         </p>
                                     </button>
                                 </div>

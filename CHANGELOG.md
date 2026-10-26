@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.1.27] - 2026-10-26
+
+### Changed
+- **Go Native Engine (`stigix-go`) Promoted to Default on All New Installs (`.env.example`, `install.sh`, `docker-compose*.yml`, `web-dashboard/server.ts`, `web-dashboard/iot-manager.ts`, `web-dashboard/src/Settings.tsx`)**:
+  - Enabled `ENABLE_GO_ENGINE=true` by default across `.env.example`, `install.sh`, `docker-compose.yml`, `docker-compose.bridge.yml`, `docker-compose-latest-beta.yml`, and `docker-compose-latest-beta.bridge.yml` while preserving 1-click live hot-switching to the Legacy Python+Bash engine (`Settings -> System -> Engine Runtime`).
+  - Updated `runRestart` in `web-dashboard/server.ts` so UI soft restarts only restart the active runtime (`stigix-go` vs `traffic-gen voice-gen voice-echo`) instead of `supervisorctl restart all`.
+  - Updated `IoTManager` initial default to `'go'` when `/usr/local/bin/stigix-go` is present, and updated the `Settings -> System` Engine Runtime cards to present **⚡ Go Native Engine (`stigix-go`)** as `Default` and **🐍 Legacy Engine (Python + Bash)** as `Fallback`.
+  - Updated `install.sh` default `REPO_URL` to `main` (`${STIGIX_BRANCH:-main}`) and synchronized `v3` into `main` for multi-arch (`AMD64` + `ARM64`) `:stable` / `:latest` releases.
+
 ## [3.1.26] - 2026-10-25
 
 ### Improved

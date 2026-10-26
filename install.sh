@@ -8,7 +8,7 @@ set -e
 INSTALL_MODE="both"
 DRY_RUN=false
 CONTROLLER_URL=""
-REPO_URL="https://raw.githubusercontent.com/jsuzanne/stigix/v3"
+REPO_URL="https://raw.githubusercontent.com/jsuzanne/stigix/${STIGIX_BRANCH:-main}"
 COMPOSE_URL="$REPO_URL/docker-compose.yml"
 
 show_help() {
@@ -574,6 +574,7 @@ else
 fi
 
 # Base UI/Traffic Gen Config
+echo "ENABLE_GO_ENGINE=true" >> .env
 if [ "$INSTALL_MODE" == "both" ] || [ "$INSTALL_MODE" == "source" ]; then
     echo "AUTO_START_TRAFFIC=true" >> .env
     echo "SLEEP_BETWEEN_REQUESTS=1" >> .env

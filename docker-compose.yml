@@ -81,7 +81,7 @@ services:
       - PCAP_MAX_UPLOAD_MB=${PCAP_MAX_UPLOAD_MB:-100}
       # --- ChangeGuard Snapshot & Delta Engine ---
       - ENABLE_CHANGE_SNAPSHOTS=${ENABLE_CHANGE_SNAPSHOTS:-false}
-      # --- Experimental Go Data-Plane Engine ---
+      # --- High-Performance Go Data-Plane Engine (Default) ---
       - ENABLE_GO_ENGINE=${ENABLE_GO_ENGINE:-true}
 
     healthcheck:
