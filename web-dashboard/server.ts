@@ -17409,7 +17409,12 @@ app.delete('/api/fleet/join-tokens/:jti', authenticateToken, (req: any, res: any
     if (!success) {
         return res.status(404).json({ error: 'token_not_found', message: 'Token not found or already deleted.' });
     }
-    res.json({ status: 'ok', message: 'Token successfully revoked.' });
+    const disconnectedPeers = fleetTunnelManager.disconnectPeersByTokenJti(req.params.jti);
+    res.json({
+        status: 'ok',
+        disconnected_peers: disconnectedPeers,
+        message: 'Token successfully revoked.'
+    });
 });
 
 /**
@@ -17488,7 +17493,6 @@ app.post('/api/fleet/join-redeem', async (req: any, res: any) => {
             node_token: redeemResult.node_token,
             realm: magicJoinManager.getRealmHash(),
             leader_ip: registryManager.getCurrentIp(),
-            jwt_secret: SECRET_KEY,
             message: 'Node successfully enrolled into Stigix cluster.'
         });
     } catch (err: any) {

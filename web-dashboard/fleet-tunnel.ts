@@ -506,6 +506,48 @@ export class FleetTunnelManager {
     }
 
     /**
+     * Immediately disconnects any active inbound or outbound tunnels associated with a revoked Magic Join token JTI.
+     */
+    public disconnectPeersByTokenJti(jti: string): number {
+        if (!jti) return 0;
+        let disconnected = 0;
+        const tokenEntry = this.magicJoinManager?.getTokenEntry(jti);
+        const redeemedCandidates = new Set<string>();
+        if (tokenEntry && Array.isArray(tokenEntry.redeemed_by)) {
+            for (const r of tokenEntry.redeemed_by) {
+                for (const val of [r.instance_id, r.site_name, r.public_ip, r.hostname]) {
+                    if (val) redeemedCandidates.add(String(val).trim().toLowerCase());
+                }
+            }
+        }
+
+        for (const [instanceId, entry] of Array.from(this.activeTunnels.entries())) {
+            const sockJti = (entry.socket as any)?.peerTokenJti;
+            const matchesJti = sockJti === jti;
+            const matchesRedeemed =
+                redeemedCandidates.has(instanceId.toLowerCase()) ||
+                (entry.info.siteName ? redeemedCandidates.has(entry.info.siteName.toLowerCase()) : false) ||
+                (entry.info.ip ? redeemedCandidates.has(entry.info.ip.toLowerCase()) : false);
+
+            if (matchesJti || matchesRedeemed) {
+                log('TUNNEL', `🚫 Disconnecting active tunnel for ${entry.info.siteName} (${instanceId}) — token ${jti} revoked`, 'warn');
+                try {
+                    entry.socket.disconnect(true);
+                } catch {}
+                this.activeTunnels.delete(instanceId);
+                if (entry.info.siteName) {
+                    this.siteToInstanceMap.delete(entry.info.siteName.toLowerCase());
+                }
+                if (entry.info.ip) {
+                    this.siteToInstanceMap.delete(entry.info.ip.toLowerCase());
+                }
+                disconnected++;
+            }
+        }
+        return disconnected;
+    }
+
+    /**
      * Setup Socket.IO namespace `/fleet-tunnel` on this node
      */
     private initServerNamespace(): void {
@@ -541,7 +583,33 @@ export class FleetTunnelManager {
                             return next(new Error('token_revoked'));
                         }
                         jwt.verify(token, candidateNode);
+
+                        // TOFU Peer Identity Anti-Spoofing:
+                        // Prevent a peer holding a valid token for Site A from claiming the instanceId or siteName
+                        // of an already-active peer on Site B that holds a different token JTI.
+                        const claimedId = typeof auth.instanceId === 'string' ? auth.instanceId.trim() : '';
+                        const claimedSite = typeof auth.siteName === 'string' ? auth.siteName.trim() : '';
+                        const existingBySiteId = claimedSite ? this.siteToInstanceMap.get(claimedSite.toLowerCase()) : undefined;
+                        const existingEntry = (claimedId && this.activeTunnels.get(claimedId)) ||
+                                              (existingBySiteId ? this.activeTunnels.get(existingBySiteId) : undefined);
+
+                        if (existingEntry && (existingEntry.socket as any)?.connected) {
+                            const existingJti = (existingEntry.socket as any)?.peerTokenJti;
+                            if (existingJti && decodedNode.jti && existingJti !== decodedNode.jti) {
+                                const tokenSub = String(decodedNode.sub || '').trim().toLowerCase();
+                                const tokenSite = String(decodedNode.site || '').trim().toLowerCase();
+                                const matchesSignedIdentity =
+                                    (claimedId && (tokenSub === claimedId.toLowerCase() || tokenSite === claimedId.toLowerCase())) ||
+                                    (claimedSite && (tokenSite === claimedSite.toLowerCase() || tokenSub === claimedSite.toLowerCase()));
+                                if (!matchesSignedIdentity) {
+                                    log('TUNNEL', `Rejecting tunnel spoofing attempt from ${socket.handshake.address}: token (${decodedNode.sub}/${decodedNode.site}) tried to claim active peer (${claimedSite || claimedId})`, 'warn');
+                                    return next(new Error('peer_identity_conflict'));
+                                }
+                            }
+                        }
+
                         (socket as any).peerNodeToken = candidateNode;
+                        (socket as any).peerTokenJti = decodedNode.jti;
                         return next();
                     }
                 } catch {}
@@ -551,6 +619,7 @@ export class FleetTunnelManager {
             try {
                 const decodedDirect: any = jwt.verify(token, fleetTunnelKey);
                 if (!this.magicJoinManager?.isTokenRevoked(decodedDirect?.jti)) {
+                    (socket as any).peerTokenJti = decodedDirect?.jti;
                     return next();
                 }
             } catch {}

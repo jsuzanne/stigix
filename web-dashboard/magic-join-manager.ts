@@ -182,7 +182,7 @@ export class MagicJoinManager {
                 fs.mkdirSync(this.configDir, { recursive: true });
             }
             const data = Array.from(this.tokens.values());
-            fs.writeFileSync(this.tokensFile, JSON.stringify(data, null, 2), 'utf8');
+            fs.writeFileSync(this.tokensFile, JSON.stringify(data, null, 2), { encoding: 'utf8', mode: 0o600 });
         } catch (e) {
             console.error('[MAGIC-JOIN] Error saving tokens to file:', e);
         }
@@ -249,7 +249,14 @@ export class MagicJoinManager {
         endpoints?: string[];
         relayUrl?: string;
     }): { token: string; entry: JoinTokenEntry; curlCommand: string } {
-        const ttl = options.ttlSeconds || 3600; // 1 hour default
+        const rawTtl = Number(options.ttlSeconds);
+        const ttl = Number.isFinite(rawTtl) && rawTtl > 0
+            ? Math.min(Math.max(Math.floor(rawTtl), 60), 30 * 86400)
+            : 3600; // 1 hour default, bounded [60s, 30d]
+        const rawMaxUses = Number(options.maxUses);
+        const maxUses = Number.isFinite(rawMaxUses) && rawMaxUses >= 1
+            ? Math.min(Math.floor(rawMaxUses), 1000)
+            : 1;
         const now = Date.now();
         const exp = Math.floor((now + ttl * 1000) / 1000);
         const jti = `stx_tok_${crypto.randomBytes(6).toString('hex')}`;
@@ -264,7 +271,7 @@ export class MagicJoinManager {
             endpoints: finalEndpoints,
             realm: this.getRealmHash(),
             exp,
-            max_uses: options.maxUses ?? 1,
+            max_uses: maxUses,
             site_hint: options.siteHint,
             tags: options.tags,
             relay_url: options.relayUrl || undefined
@@ -288,7 +295,7 @@ export class MagicJoinManager {
             created_at: new Date(now).toISOString(),
             expires_at: new Date(exp * 1000).toISOString(),
             uses_count: 0,
-            max_uses: options.maxUses ?? 1,
+            max_uses: maxUses,
             redeemed_by: []
         };
 
@@ -319,7 +326,9 @@ export class MagicJoinManager {
                 .update(`${headerB64}.${payloadB64}`)
                 .digest('base64url');
 
-            if (signatureB64 !== expectedSig) {
+            const sigBuf = Buffer.from(signatureB64, 'utf8');
+            const expBuf = Buffer.from(expectedSig, 'utf8');
+            if (sigBuf.length !== expBuf.length || !crypto.timingSafeEqual(sigBuf, expBuf)) {
                 return { valid: false, error: 'ERR_INVALID_SIGNATURE: Cryptographic verification failed' };
             }
 
@@ -331,13 +340,14 @@ export class MagicJoinManager {
             }
 
             const entry = this.tokens.get(payload.jti);
-            if (entry) {
-                if (entry.status === 'REVOKED') {
-                    return { valid: false, payload, entry, error: 'ERR_JOIN_REVOKED: Token was manually revoked by cluster administrator' };
-                }
-                if (entry.status === 'REDEEMED' || entry.uses_count >= entry.max_uses) {
-                    return { valid: false, payload, entry, error: 'ERR_JOIN_REDEEMED: Single-use token has already been redeemed' };
-                }
+            if (!entry) {
+                return { valid: false, payload, error: 'ERR_JOIN_NOT_FOUND: Token is unknown or was removed from Leader inventory' };
+            }
+            if (entry.status === 'REVOKED') {
+                return { valid: false, payload, entry, error: 'ERR_JOIN_REVOKED: Token was manually revoked by cluster administrator' };
+            }
+            if (entry.status === 'REDEEMED' || entry.uses_count >= entry.max_uses) {
+                return { valid: false, payload, entry, error: 'ERR_JOIN_REDEEMED: Single-use token has already been redeemed' };
             }
 
             return { valid: true, payload, entry };
@@ -429,6 +439,10 @@ export class MagicJoinManager {
             }
         }
         return null;
+    }
+
+    public getTokenEntry(jti: string): JoinTokenEntry | undefined {
+        return this.tokens.get(jti);
     }
 
     public revokeToken(jti: string): boolean {
