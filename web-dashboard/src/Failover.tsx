@@ -1952,8 +1952,31 @@ export default function Failover(props: FailoverProps) {
                                                             </span>
                                                             <span>{test.label || test.test_id?.split(' (')[0]}</span>
                                                             <ChevronRight size={14} className={`text-text-muted/50 transition-transform ${isExpanded ? 'rotate-90' : ''}`} />
+                                                            {(test.path_evolution || test.egress_path) && (() => {
+                                                                const rawPath = String(test.path_evolution || test.egress_path);
+                                                                const hops = Array.isArray(test.path_history) && test.path_history.length > 0
+                                                                    ? test.path_history.map((h: any) => String(h.path || h))
+                                                                    : rawPath.split(/\s*➔\s*/).filter(Boolean);
+                                                                const hasShift = hops.length > 1 || rawPath.includes('➔');
+                                                                const displayPath = hops.length > 2
+                                                                    ? `${hops[0]} ➔ … (${hops.length} paths) ➔ ${hops[hops.length - 1]}`
+                                                                    : rawPath;
+                                                                return (
+                                                                    <span
+                                                                        className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded border text-[9px] font-mono font-bold whitespace-nowrap ml-1 ${
+                                                                            hasShift
+                                                                                ? 'bg-amber-500/10 text-amber-400 border-amber-500/25'
+                                                                                : 'bg-cyan-500/10 text-cyan-400 border-cyan-500/20'
+                                                                        }`}
+                                                                        title={`SD-WAN Egress Path (${hops.length} hop${hops.length > 1 ? 's' : ''}): ${rawPath}`}
+                                                                    >
+                                                                        <ArrowRightLeft size={9} className="shrink-0" />
+                                                                        <span>{displayPath}</span>
+                                                                    </span>
+                                                                );
+                                                            })()}
                                                         </div>
-                                                        <div className="text-[10px] text-text-muted mt-1 font-mono flex items-center gap-1.5 flex-wrap">
+                                                        <div className="text-[10px] text-text-muted mt-1 font-mono flex items-center gap-1.5 whitespace-nowrap">
                                                             {dateInfo && (
                                                                 <>
                                                                     <span className="text-blue-400 font-bold bg-blue-500/10 px-1.5 py-0.5 rounded border border-blue-500/20 flex items-center gap-1" title={`Full date: ${dateInfo.fullStr}`}>
@@ -1970,32 +1993,6 @@ export default function Failover(props: FailoverProps) {
                                                             <span className="text-text-secondary">Source Port: {test.source_port || getSourcePort(test.test_id)}</span>
                                                             <span className="text-border">|</span>
                                                             <span>{test.rate_pps || test.rate || '--'} pps</span>
-                                                            {(test.path_evolution || test.egress_path) && (() => {
-                                                                const rawPath = String(test.path_evolution || test.egress_path);
-                                                                const hops = Array.isArray(test.path_history) && test.path_history.length > 0
-                                                                    ? test.path_history.map((h: any) => String(h.path || h))
-                                                                    : rawPath.split(/\s*➔\s*/).filter(Boolean);
-                                                                const hasShift = hops.length > 1 || rawPath.includes('➔');
-                                                                const displayPath = hops.length > 2
-                                                                    ? `${hops[0]} ➔ … (${hops.length} paths) ➔ ${hops[hops.length - 1]}`
-                                                                    : rawPath;
-                                                                return (
-                                                                    <>
-                                                                        <span className="text-border">|</span>
-                                                                        <span
-                                                                            className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded border text-[9px] font-bold whitespace-nowrap ${
-                                                                                hasShift
-                                                                                    ? 'bg-amber-500/10 text-amber-400 border-amber-500/25'
-                                                                                    : 'bg-cyan-500/10 text-cyan-400 border-cyan-500/20'
-                                                                            }`}
-                                                                            title={`SD-WAN Egress Path (${hops.length} hop${hops.length > 1 ? 's' : ''}): ${rawPath}`}
-                                                                        >
-                                                                            <ArrowRightLeft size={9} className="shrink-0" />
-                                                                            <span>{displayPath}</span>
-                                                                        </span>
-                                                                    </>
-                                                                );
-                                                            })()}
                                                         </div>
                                                     </td>
                                                     <td className="px-6 py-4 text-center">
@@ -2019,19 +2016,19 @@ export default function Failover(props: FailoverProps) {
                                                             </div>
                                                         </div>
                                                     </td>
-                                                    <td className="px-6 py-4 text-center">
+                                                    <td className="px-6 py-4 text-center whitespace-nowrap">
                                                         <div className="flex flex-col">
                                                             <span className={`font-mono text-sm font-bold ${effectiveBlackoutMs === 0 ? 'text-emerald-400' : verdict.color}`}>
                                                                 {formatMs(effectiveBlackoutMs)}
                                                             </span>
-                                                            <span className="text-[9px] font-bold text-text-muted uppercase">
+                                                            <span className="text-[9px] font-bold text-text-muted uppercase whitespace-nowrap">
                                                                 Max Blackout {test.duration_s ? `(${test.duration_s}s)` : ''}
                                                             </span>
                                                         </div>
                                                     </td>
-                                                    <td className="px-6 py-4 text-center">
+                                                    <td className="px-6 py-4 text-center whitespace-nowrap">
                                                         <div className="flex flex-col items-center">
-                                                            <div className="flex gap-2 text-[10px] font-mono font-bold tracking-tight mb-0.5 opacity-90">
+                                                            <div className="flex gap-2 text-[10px] font-mono font-bold tracking-tight mb-0.5 opacity-90 whitespace-nowrap">
                                                                 <span className={test.tx_loss_pct > 0 ? 'text-red-500' : 'text-text-muted/60'}>
                                                                     TX Loss: {test.tx_loss_pct ?? 0}% {test.tx_loss_ms > 0 && !test.sync_lost ? `(${test.tx_loss_ms} ms)` : ''}
                                                                 </span>

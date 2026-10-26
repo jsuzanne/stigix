@@ -1,5 +1,5 @@
 # Build Stage for Web Dashboard
-FROM node:20-slim AS builder
+FROM node:24-slim AS builder
 WORKDIR /app
 COPY web-dashboard/package*.json ./
 RUN npm ci
@@ -17,8 +17,8 @@ FROM python:3.12-slim
 
 WORKDIR /app
 
-# Install system dependencies
-RUN apt-get update && apt-get install -y --no-install-recommends \
+# Install system dependencies (and apply OS security upgrades such as libbrotli1)
+RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-recommends \
     curl \
     jq \
     iproute2 \
@@ -56,8 +56,8 @@ RUN set -x && \
     mkdir -p /usr/local/lib/docker/cli-plugins && \
     ln -s /usr/local/bin/docker-compose /usr/local/lib/docker/cli-plugins/docker-compose
 
-# Install Node.js 20
-RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - && \
+# Install Node.js 24 LTS (includes CVE-2026-111497 Brotli security patch)
+RUN curl -fsSL https://deb.nodesource.com/setup_24.x | bash - && \
     apt-get install -y nodejs && \
     rm -rf /var/lib/apt/lists/*
 

@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.1.29] - 2026-10-26
+
+### Security
+- **Node.js 24 LTS & Brotli `CVE-2026-111497` Security Upgrade (`stigix-all-in-one/Dockerfile`, `web-dashboard/Dockerfile`)**:
+  - Upgraded container build and runtime stages from EOL Node.js 20 (`node:20-slim` / `setup_20.x`) to active **Node.js 24 LTS** (`node:24-slim` / `setup_24.x`, `>= 24.22.1`) to remediate **CVE-2026-111497** (CVSS 4.0 **9.2 Critical** Out-of-Bounds Write in the bundled Google Brotli C decoder).
+  - Added `apt-get upgrade -y` during container image builds so Debian system libraries (including `libbrotli1`) receive the latest upstream security patches.
+
+### Improved
+- **Failover `TEST HISTORY` First-Line Path Alignment (`web-dashboard/src/Failover.tsx`)**:
+  - Moved the SD-WAN Egress Path / Multi-Path Summary badge onto the first line of each `TEST HISTORY` row right next to the target label (`[CONV-XXXX] Target › [⇄ Path]`) and enforced `whitespace-nowrap` across row metadata and `MAX BLACKOUT (Ns)` so multi-hop failover rows never wrap onto a 3rd line.
+
 ## [3.1.28] - 2026-10-26
 
 ### Improved
