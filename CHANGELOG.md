@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.1.28] - 2026-10-26
+
+### Improved
+- **Multi-Path Failover Sequence Display & Compact PoC Layout (`web-dashboard/src/Failover.tsx`)**:
+  - **Smart Summary Badge in `TEST HISTORY`**: Replaced arbitrary `260px` mid-path truncation on multi-hop failover paths (`path_history.length > 2`) with a single-line summary (`1st Path ➔ … (N paths) ➔ Final Active Path`) that preserves both the initial path and final active egress path without overflowing into adjacent columns or increasing row height (with full hop-by-hop sequence in the tooltip).
+  - **Horizontal Full-Width `Failover Path Sequence` Bar in Expanded PoC Analysis**: When a test captures multiple SD-WAN paths (`path_history.length > 1`), the 4 KPI cards (`Uplink Loss`, `Downlink Loss`, `Avg Latency`, `Jitter (ms)`) remain in a compact 4-column row (`sm:grid-cols-4`) while `Failover Path Sequence (N)` renders underneath as a slim full-width horizontal strip (`1 ... ➔ 2 ... ➔ 3 ... ➔ 4 ... ACTIVE`), eliminating vertical card stretching.
+
 ## [3.1.27] - 2026-10-26
 
 ### Changed

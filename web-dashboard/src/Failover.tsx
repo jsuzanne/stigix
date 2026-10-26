@@ -1972,20 +1972,26 @@ export default function Failover(props: FailoverProps) {
                                                             <span>{test.rate_pps || test.rate || '--'} pps</span>
                                                             {(test.path_evolution || test.egress_path) && (() => {
                                                                 const rawPath = String(test.path_evolution || test.egress_path);
-                                                                const hasShift = rawPath.includes('➔') || rawPath.includes('->') || (Array.isArray(test.path_history) && test.path_history.length > 1);
+                                                                const hops = Array.isArray(test.path_history) && test.path_history.length > 0
+                                                                    ? test.path_history.map((h: any) => String(h.path || h))
+                                                                    : rawPath.split(/\s*➔\s*/).filter(Boolean);
+                                                                const hasShift = hops.length > 1 || rawPath.includes('➔');
+                                                                const displayPath = hops.length > 2
+                                                                    ? `${hops[0]} ➔ … (${hops.length} paths) ➔ ${hops[hops.length - 1]}`
+                                                                    : rawPath;
                                                                 return (
                                                                     <>
                                                                         <span className="text-border">|</span>
                                                                         <span
-                                                                            className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded border text-[9px] font-bold ${
+                                                                            className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded border text-[9px] font-bold whitespace-nowrap ${
                                                                                 hasShift
                                                                                     ? 'bg-amber-500/10 text-amber-400 border-amber-500/25'
                                                                                     : 'bg-cyan-500/10 text-cyan-400 border-cyan-500/20'
                                                                             }`}
-                                                                            title={`SD-WAN Egress Path: ${rawPath}`}
+                                                                            title={`SD-WAN Egress Path (${hops.length} hop${hops.length > 1 ? 's' : ''}): ${rawPath}`}
                                                                         >
-                                                                            <ArrowRightLeft size={9} />
-                                                                            <span className="truncate max-w-[260px]">{rawPath}</span>
+                                                                            <ArrowRightLeft size={9} className="shrink-0" />
+                                                                            <span>{displayPath}</span>
                                                                         </span>
                                                                     </>
                                                                 );
@@ -2333,111 +2339,144 @@ export default function Failover(props: FailoverProps) {
                                                                         </div>
                                                                     </div>
 
-                                                                    {/* 5 Stat Cards + Dynamic SCM Countdown */}
-                                                                    <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 pt-1">
-                                                                        <div className="bg-card-secondary/70 p-2.5 rounded-xl border border-border">
-                                                                            <div className="text-[8px] text-text-muted font-bold uppercase">Uplink Loss</div>
-                                                                            <div className="text-xs font-mono font-bold text-red-500 mt-0.5">↑ {test.tx_loss_pct || 0}%</div>
-                                                                        </div>
-                                                                        <div className="bg-card-secondary/70 p-2.5 rounded-xl border border-border">
-                                                                            <div className="text-[8px] text-text-muted font-bold uppercase">Downlink Loss</div>
-                                                                            <div className="text-xs font-mono font-bold text-blue-500 mt-0.5">↓ {test.rx_loss_pct || 0}%</div>
-                                                                        </div>
-                                                                        <div className="bg-card-secondary/70 p-2.5 rounded-xl border border-border">
-                                                                            <div className="text-[8px] text-text-muted font-bold uppercase">Avg Latency</div>
-                                                                            <div className="text-xs font-mono font-bold text-text-secondary mt-0.5">{test.avg_rtt_ms || 0}ms</div>
-                                                                        </div>
-                                                                        <div className="bg-card-secondary/70 p-2.5 rounded-xl border border-border">
-                                                                            <div className="text-[8px] text-text-muted font-bold uppercase">Jitter (ms)</div>
-                                                                            <div className="text-xs font-mono font-bold text-text-secondary mt-0.5">{test.jitter_ms || 0}ms</div>
-                                                                        </div>
-                                                                        <div className="col-span-2 sm:col-span-1 bg-card-secondary/70 p-2.5 rounded-xl border border-border relative group/path">
-                                                                            <div className="text-[8px] text-text-muted font-bold uppercase flex items-center justify-between">
-                                                                                <div className="flex items-center gap-1">
-                                                                                    <ArrowRightLeft size={8} className="shrink-0 animate-pulse text-blue-400" />
-                                                                                    <span>{test.path_history && test.path_history.length > 1 ? 'Failover Path Sequence' : 'Egress Path'}</span>
-                                                                                </div>
-                                                                                <button
-                                                                                    data-no-export="true"
-                                                                                    onClick={(e) => {
-                                                                                        e.stopPropagation();
-                                                                                        handleRefreshHistoryPath(test);
-                                                                                    }}
-                                                                                    disabled={refreshingPathId === convId}
-                                                                                    className="p-1 hover:bg-blue-500/20 rounded text-text-muted hover:text-blue-400 transition-all cursor-pointer opacity-80 group-hover/path:opacity-100 disabled:opacity-50"
-                                                                                    title="Re-query Prisma SD-WAN Flow Browser to refresh and detect multi-path failovers for this test"
-                                                                                >
-                                                                                    <RotateCw
-                                                                                        size={10}
-                                                                                        className={refreshingPathId === convId ? 'animate-spin text-blue-400' : ''}
-                                                                                    />
-                                                                                </button>
-                                                                            </div>
-                                                                            {test.path_history && test.path_history.length > 1 ? (
-                                                                                <div className="flex items-center gap-1.5 flex-wrap mt-1 font-mono text-[10px]">
-                                                                                    {test.path_history.map((pItem: any, pIdx: number, pArr: any[]) => {
-                                                                                        const isCurrent = pIdx === pArr.length - 1;
-                                                                                        return (
-                                                                                            <React.Fragment key={pIdx}>
-                                                                                                <div
-                                                                                                    className={`flex items-center gap-1 px-1.5 py-0.5 rounded border transition-all ${
-                                                                                                        isCurrent
-                                                                                                            ? 'bg-blue-600/20 border-blue-500/50 text-blue-200 font-bold shadow-[0_0_10px_rgba(59,130,246,0.25)]'
-                                                                                                            : 'bg-card-secondary/80 border-border text-text-muted opacity-80'
-                                                                                                    }`}
-                                                                                                >
-                                                                                                    <span className={`text-[7px] font-mono px-1 py-0.2 rounded font-black tracking-tight ${
-                                                                                                        isCurrent ? 'bg-blue-500/30 text-blue-200' : 'bg-card border border-border text-text-muted'
-                                                                                                    }`}>
-                                                                                                        {pIdx + 1}
-                                                                                                    </span>
-                                                                                                    <span className={`font-bold tracking-tight ${isCurrent ? 'text-text-primary' : 'line-through text-text-muted'}`}>
-                                                                                                        {pItem.path}
-                                                                                                    </span>
-                                                                                                    {isCurrent && (
-                                                                                                        <span className="text-[6px] bg-blue-500 text-white font-black px-1 py-0.2 rounded uppercase tracking-wider ml-0.5">
-                                                                                                            ACTIVE
-                                                                                                        </span>
-                                                                                                    )}
+                                                                    {/* Stat Cards + Dynamic SCM Countdown / Multi-Path Horizontal Sequence */}
+                                                                    {(() => {
+                                                                        const hasMultiPath = Boolean(test.path_history && test.path_history.length > 1);
+                                                                        return (
+                                                                            <>
+                                                                                <div className={`grid grid-cols-2 ${hasMultiPath ? 'sm:grid-cols-4' : 'sm:grid-cols-5'} gap-3 pt-1`}>
+                                                                                    <div className="bg-card-secondary/70 p-2.5 rounded-xl border border-border">
+                                                                                        <div className="text-[8px] text-text-muted font-bold uppercase">Uplink Loss</div>
+                                                                                        <div className="text-xs font-mono font-bold text-red-500 mt-0.5">↑ {test.tx_loss_pct || 0}%</div>
+                                                                                    </div>
+                                                                                    <div className="bg-card-secondary/70 p-2.5 rounded-xl border border-border">
+                                                                                        <div className="text-[8px] text-text-muted font-bold uppercase">Downlink Loss</div>
+                                                                                        <div className="text-xs font-mono font-bold text-blue-500 mt-0.5">↓ {test.rx_loss_pct || 0}%</div>
+                                                                                    </div>
+                                                                                    <div className="bg-card-secondary/70 p-2.5 rounded-xl border border-border">
+                                                                                        <div className="text-[8px] text-text-muted font-bold uppercase">Avg Latency</div>
+                                                                                        <div className="text-xs font-mono font-bold text-text-secondary mt-0.5">{test.avg_rtt_ms || 0}ms</div>
+                                                                                    </div>
+                                                                                    <div className="bg-card-secondary/70 p-2.5 rounded-xl border border-border">
+                                                                                        <div className="text-[8px] text-text-muted font-bold uppercase">Jitter (ms)</div>
+                                                                                        <div className="text-xs font-mono font-bold text-text-secondary mt-0.5">{test.jitter_ms || 0}ms</div>
+                                                                                    </div>
+                                                                                    {!hasMultiPath && (
+                                                                                        <div className="col-span-2 sm:col-span-1 bg-card-secondary/70 p-2.5 rounded-xl border border-border relative group/path">
+                                                                                            <div className="text-[8px] text-text-muted font-bold uppercase flex items-center justify-between">
+                                                                                                <div className="flex items-center gap-1">
+                                                                                                    <ArrowRightLeft size={8} className="shrink-0 animate-pulse text-blue-400" />
+                                                                                                    <span>Egress Path</span>
                                                                                                 </div>
-                                                                                                {pIdx < pArr.length - 1 && (
-                                                                                                    <span className="text-orange-400 font-bold text-xs">➔</span>
-                                                                                                )}
-                                                                                            </React.Fragment>
-                                                                                        );
-                                                                                    })}
-                                                                                </div>
-                                                                            ) : (test.path_evolution || test.egress_path) ? (
-                                                                                <div className="text-xs font-mono font-bold text-blue-400 truncate flex items-center gap-1.5 mt-1" title={test.path_evolution || test.egress_path}>
-                                                                                    {(test.path_evolution || test.egress_path).split(/ → | -> /).map((node: string, idx: number, arr: string[]) => (
-                                                                                        <React.Fragment key={idx}>
-                                                                                            {node}
-                                                                                            {idx < arr.length - 1 && <span className="text-text-muted">⇢</span>}
-                                                                                        </React.Fragment>
-                                                                                    ))}
-                                                                                </div>
-                                                                            ) : (() => {
-                                                                                const ageSec = Math.max(0, Math.floor((nowTs - (test.timestamp || 0)) / 1000));
-                                                                                if (ageSec < 60) {
-                                                                                    return (
-                                                                                        <div className="text-[9px] text-blue-400 font-mono italic animate-pulse mt-1 flex items-center gap-1">
-                                                                                            <RotateCw size={9} className="animate-spin text-blue-400" />
-                                                                                            <span>SCM flow indexing ({60 - ageSec}s)</span>
+                                                                                                <button
+                                                                                                    data-no-export="true"
+                                                                                                    onClick={(e) => {
+                                                                                                        e.stopPropagation();
+                                                                                                        handleRefreshHistoryPath(test);
+                                                                                                    }}
+                                                                                                    disabled={refreshingPathId === convId}
+                                                                                                    className="p-1 hover:bg-blue-500/20 rounded text-text-muted hover:text-blue-400 transition-all cursor-pointer opacity-80 group-hover/path:opacity-100 disabled:opacity-50"
+                                                                                                    title="Re-query Prisma SD-WAN Flow Browser to refresh and detect multi-path failovers for this test"
+                                                                                                >
+                                                                                                    <RotateCw
+                                                                                                        size={10}
+                                                                                                        className={refreshingPathId === convId ? 'animate-spin text-blue-400' : ''}
+                                                                                                    />
+                                                                                                </button>
+                                                                                            </div>
+                                                                                            {(test.path_evolution || test.egress_path) ? (
+                                                                                                <div className="text-xs font-mono font-bold text-blue-400 truncate flex items-center gap-1.5 mt-1" title={test.path_evolution || test.egress_path}>
+                                                                                                    {(test.path_evolution || test.egress_path).split(/ → | -> /).map((node: string, idx: number, arr: string[]) => (
+                                                                                                        <React.Fragment key={idx}>
+                                                                                                            {node}
+                                                                                                            {idx < arr.length - 1 && <span className="text-text-muted">⇢</span>}
+                                                                                                        </React.Fragment>
+                                                                                                    ))}
+                                                                                                </div>
+                                                                                            ) : (() => {
+                                                                                                const ageSec = Math.max(0, Math.floor((nowTs - (test.timestamp || 0)) / 1000));
+                                                                                                if (ageSec < 60) {
+                                                                                                    return (
+                                                                                                        <div className="text-[9px] text-blue-400 font-mono italic animate-pulse mt-1 flex items-center gap-1">
+                                                                                                            <RotateCw size={9} className="animate-spin text-blue-400" />
+                                                                                                            <span>SCM flow indexing ({60 - ageSec}s)</span>
+                                                                                                        </div>
+                                                                                                    );
+                                                                                                } else if (ageSec < 180) {
+                                                                                                    return (
+                                                                                                        <div className="text-[9px] text-amber-400 font-mono italic mt-1 flex items-center gap-1">
+                                                                                                            <RotateCw size={9} className="animate-spin text-amber-400" />
+                                                                                                            <span>2nd SCM check ({180 - ageSec}s)</span>
+                                                                                                        </div>
+                                                                                                    );
+                                                                                                } else {
+                                                                                                    return <div className="text-xs text-text-muted mt-1">—</div>;
+                                                                                                }
+                                                                                            })()}
                                                                                         </div>
-                                                                                    );
-                                                                                } else if (ageSec < 180) {
-                                                                                    return (
-                                                                                        <div className="text-[9px] text-amber-400 font-mono italic mt-1 flex items-center gap-1">
-                                                                                            <RotateCw size={9} className="animate-spin text-amber-400" />
-                                                                                            <span>2nd SCM check ({180 - ageSec}s)</span>
+                                                                                    )}
+                                                                                </div>
+                                                                                {hasMultiPath && (
+                                                                                    <div className="bg-card-secondary/70 px-3 py-1.5 rounded-xl border border-border flex items-center justify-between gap-3 flex-wrap sm:flex-nowrap group/path">
+                                                                                        <div className="flex items-center gap-2.5 flex-wrap flex-1 min-w-0">
+                                                                                            <div className="text-[8px] text-text-muted font-bold uppercase flex items-center gap-1 shrink-0">
+                                                                                                <ArrowRightLeft size={9} className="shrink-0 animate-pulse text-blue-400" />
+                                                                                                <span>Failover Path Sequence ({test.path_history.length})</span>
+                                                                                            </div>
+                                                                                            <div className="flex items-center gap-1.5 flex-wrap font-mono text-[10px]">
+                                                                                                {test.path_history.map((pItem: any, pIdx: number, pArr: any[]) => {
+                                                                                                    const isCurrent = pIdx === pArr.length - 1;
+                                                                                                    return (
+                                                                                                        <React.Fragment key={pIdx}>
+                                                                                                            <div
+                                                                                                                className={`flex items-center gap-1 px-1.5 py-0.5 rounded border transition-all whitespace-nowrap ${
+                                                                                                                    isCurrent
+                                                                                                                        ? 'bg-blue-600/20 border-blue-500/50 text-blue-200 font-bold shadow-[0_0_10px_rgba(59,130,246,0.25)]'
+                                                                                                                        : 'bg-card-secondary/80 border-border text-text-muted opacity-80'
+                                                                                                                }`}
+                                                                                                            >
+                                                                                                                <span className={`text-[7px] font-mono px-1 py-0.2 rounded font-black tracking-tight ${
+                                                                                                                    isCurrent ? 'bg-blue-500/30 text-blue-200' : 'bg-card border border-border text-text-muted'
+                                                                                                                }`}>
+                                                                                                                    {pIdx + 1}
+                                                                                                                </span>
+                                                                                                                <span className={`font-bold tracking-tight ${isCurrent ? 'text-text-primary' : 'line-through text-text-muted'}`}>
+                                                                                                                    {pItem.path}
+                                                                                                                </span>
+                                                                                                                {isCurrent && (
+                                                                                                                    <span className="text-[6px] bg-blue-500 text-white font-black px-1 py-0.2 rounded uppercase tracking-wider ml-0.5">
+                                                                                                                        ACTIVE
+                                                                                                                    </span>
+                                                                                                                )}
+                                                                                                            </div>
+                                                                                                            {pIdx < pArr.length - 1 && (
+                                                                                                                <span className="text-orange-400 font-bold text-xs">➔</span>
+                                                                                                            )}
+                                                                                                        </React.Fragment>
+                                                                                                    );
+                                                                                                })}
+                                                                                            </div>
                                                                                         </div>
-                                                                                    );
-                                                                                } else {
-                                                                                    return <div className="text-xs text-text-muted mt-1">—</div>;
-                                                                                }
-                                                                            })()}
-                                                                        </div>
-                                                                    </div>
+                                                                                        <button
+                                                                                            data-no-export="true"
+                                                                                            onClick={(e) => {
+                                                                                                e.stopPropagation();
+                                                                                                handleRefreshHistoryPath(test);
+                                                                                            }}
+                                                                                            disabled={refreshingPathId === convId}
+                                                                                            className="p-1 hover:bg-blue-500/20 rounded text-text-muted hover:text-blue-400 transition-all cursor-pointer opacity-80 group-hover/path:opacity-100 disabled:opacity-50 shrink-0"
+                                                                                            title="Re-query Prisma SD-WAN Flow Browser to refresh and detect multi-path failovers for this test"
+                                                                                        >
+                                                                                            <RotateCw
+                                                                                                size={10}
+                                                                                                className={refreshingPathId === convId ? 'animate-spin text-blue-400' : ''}
+                                                                                            />
+                                                                                        </button>
+                                                                                    </div>
+                                                                                )}
+                                                                            </>
+                                                                        );
+                                                                    })()}
                                                                 </div>
                                                             );
                                                         })()}
