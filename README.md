@@ -1,9 +1,9 @@
-> **Last Updated:** 2026-10-25 | **Created:** 2026-01-25 (v1.0.0)
+> **Last Updated:** 2026-10-27 | **Created:** 2026-01-25 (v1.0.0)
 
 # 🕸️ Stigix — Advanced Networking & Security Simulation Environment
 
-[![Version](https://img.shields.io/badge/Version-3.1.26-blue.svg)](https://github.com/jsuzanne/stigix/releases)
-[![Last Updated](https://img.shields.io/badge/Updated-2026--10--25-brightgreen.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/Version-3.1.37-blue.svg)](https://github.com/jsuzanne/stigix/releases)
+[![Last Updated](https://img.shields.io/badge/Updated-2026--10--27-brightgreen.svg)](CHANGELOG.md)
 [![Docker Pulls](https://img.shields.io/docker/pulls/jlsuzanne/stigix)](https://hub.docker.com/r/jlsuzanne/stigix)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
@@ -95,15 +95,16 @@ This project is my way to turn all that lab and demo experience into an open-sou
 
 ### 4. 🎙️ Physical IoT (L2/L3) & Voice RTP Simulation
 
-- **IoT "Real-on-the-Wire" Simulation** 🔌 — Simulate physical IoT devices (Cameras, Sensors, Raspberry Pi, Medical/Industrial controllers) with Scapy-based DHCP and ARP for true Layer-2/3 network presence. Supports CSV import from **Palo Alto Device Security** and Vulnerability Reports. [Read more](docs/IOT_SIMULATION.md)
+- **IoT "Real-on-the-Wire" Simulation** 🔌 — Simulate physical IoT devices (Cameras, Sensors, Raspberry Pi, Medical/Industrial controllers) powered by the default **Go Native Engine (`stigix-go`)** or Python/Scapy fallback for true Layer-2/3 network presence (DHCP, ARP, L7 application flows, and CVE vulnerability personas). Includes a bundled **100-Device Palo Alto IoT & CVE Sample Dataset** with 1-click direct import and CSV import from **Palo Alto Device Security** and Vulnerability Reports. [Read more](docs/IOT_SIMULATION.md)
 - **IoT Security Attack Mode** ⚠️ — Trigger malicious behavior simulations from IoT profiles (DNS Flood, C2 Beacon, Port Scan, Data Exfiltration) to validate IoT Security detection rules.
-- **Voice VoIP Simulation (RTP)** 🎙️ — Scapy-based RTP packet generation for G.711 / G.729 voice calls. Measures live MOS score estimation, jitter, RTT latency, and per-target QoS breakdown for voice path validation. [Read more](docs/VOICE_SIMULATION.md)
-- **Custom TCP Inter-Site Applications** 🔄 — Stateful East-West workload simulation with dual host TCP listeners, outbound client workload generators, 8 server chaos modes (fixed delay, jitter, looping degradation, drop response, errors), 5 client workload modes, and rolling RTT percentiles ($p50/p95/\text{avg}$). [Read more](docs/CUSTOM_TCP_APPS.md)
+- **Voice VoIP Simulation (RTP)** 🎙️ — Native RTP packet generation for G.711 / G.729 voice calls. Measures live MOS score estimation, jitter, RTT latency, and per-target QoS breakdown for voice path validation. [Read more](docs/VOICE_SIMULATION.md)
+- **Custom TCP Inter-Site Applications** 🔄 — Stateful East-West workload simulation with dual host TCP listeners, outbound client workload generators, 1-click application duplication, 8 server chaos modes (fixed delay, jitter, looping degradation, drop response, errors), 5 client workload modes, and rolling RTT percentiles ($p50/p95/\text{avg}$). [Read more](docs/CUSTOM_TCP_APPS.md)
 
 ### 5. 🤖 AI-Native Orchestration (FastMCP) & Mesh Fleet
 
 - **Model Context Protocol (FastMCP) Server** 🤖 — Natural language network orchestration for Claude Desktop and AI agents. Execute tests, query topologies, inspect telemetry, and trigger chaos impairments in plain English. [Read more](docs/MCP_SERVER.md)
 - **Safe Propose & Confirm Execution** 🛡️ — Claude presents the resolved router, interface, and impairment parameters and requires explicit confirmation before executing destructive network actions.
+- **Magic Join Zero-Touch Peer Onboarding** ✨ — Enroll remote branch nodes in 1 click using cryptographically signed `STX-JOIN-v1` tokens (`curl ... | bash -s -- --join <token>` or `stigix-cli join <token>`), featuring automatic Linux interface discovery (`eth0 ★`, `tailscale0`), multi-endpoint fallback (`Primary Only`, `Primary + Default NIC`, `All`), and scoped `STX-NODE` credentials. [Read more](docs/GLOBAL_PROVISIONING_AND_PEER_ONBOARDING.md)
 - **Central Global Provisioning** 🌐 — Publish 10 core configuration bundles (`Applications`, `Probes`, `Convergence`, `Prisma SASE`, `CA Certificates`, `Security`, `Voice`, `IoT`, `Custom TCP`) centrally from the Leader to branch peers with pull-mode sync (`30s` cycle) and zero-touch hot reload. [Read more](docs/GLOBAL_PROVISIONING_AND_PEER_ONBOARDING.md)
 - **Fleet Remote View & WebSocket Reverse Gateway** ⚡ — Centralized observability and remote node management directly from the Leader. Transparently proxies API calls over multiplexed WebSocket reverse tunnels (`/fleet-tunnel`) traversing NAT, CGNAT, and firewalls with zero inbound ports required on spokes. [Read more](docs/REMOTE_VIEW_USER_GUIDE.md)
 - **Peer Autodiscovery** 📡 — Automatic peer-to-peer discovery using Cloudflare Workers with zero-touch multi-node setup. [Read more](docs/AUTODISCOVERY_GUIDE.md)
@@ -802,15 +803,11 @@ docker pull jsuzanne/stigix:stable
 
 ### Port 8080 already in use
 
-```yaml
-# Change port in docker-compose.yml
-ports:
-  - "8081:8080"
-```
+The installer automatically scans for a free listening port (`8080`, `8083`–`8090`, skipping internal engine ports `8081` and `8082`). To change the Web Dashboard port manually:
 
-Or:
 ```bash
-echo "WEB_UI_PORT=8081" > .env
+# Edit PORT in stigix/.env (use 8083-8090; 8081/8082 are reserved internally by stigix-go)
+sed -i.bak 's/^PORT=.*/PORT=8083/' .env && rm -f .env.bak
 docker compose up -d
 ```
 
