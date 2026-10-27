@@ -5077,7 +5077,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                                         <span>Ephemeral updater active. Container recreation in progress — the UI will automatically reconnect once healthy...</span>
                                     </div>
                                 )}
-                                <div className="bg-black/20 rounded-2xl border border-border p-4 h-64 overflow-y-auto font-mono text-[10px] leading-relaxed scrollbar-thin scrollbar-thumb-border">
+                                <div className="bg-background dark:bg-black/20 rounded-2xl border border-border p-4 h-64 overflow-y-auto font-mono text-[10px] text-text-secondary dark:text-text-muted leading-relaxed scrollbar-thin scrollbar-thumb-border shadow-inner">
                                     {upgradeStatus.logs.map((log, i) => (
                                         <div key={i} className="mb-1 opacity-80">{log}</div>
                                     ))}
@@ -9188,7 +9188,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                                              upgradeModal.phase === 'restarting' ? "Recreating Stigix Container..." :
                                              "Pulling Stigix Image..."}
                                         </h3>
-                                        <span className="px-2 py-0.5 rounded-full bg-blue-500/10 border border-blue-500/20 text-blue-400 font-mono text-[10px] font-bold">
+                                        <span className="px-2 py-0.5 rounded-full bg-blue-500/10 border border-blue-500/20 text-blue-600 dark:text-blue-400 font-mono text-[10px] font-bold">
                                             {upgradeModal.version || 'v2'}
                                         </span>
                                     </div>
@@ -9211,7 +9211,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                         </div>
 
                         {/* Progress Stepper */}
-                        <div className="px-6 py-4 border-b border-border/40 bg-black/10">
+                        <div className="px-6 py-4 border-b border-border/60 dark:border-border/40 bg-card-secondary/60 dark:bg-black/10">
                             <div className="grid grid-cols-4 gap-2 text-center">
                                 {[
                                     { label: '1. Pull Image', active: upgradeModal.phase === 'pulling', done: ['restarting', 'reconnecting', 'complete'].includes(upgradeModal.phase) },
@@ -9221,9 +9221,9 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                                 ].map((step, idx) => (
                                     <div key={idx} className={cn(
                                         "p-2 rounded-xl text-[10px] font-black uppercase tracking-wider border transition-all",
-                                        step.done ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-400" :
-                                        step.active ? "bg-blue-500/10 border-blue-500/40 text-blue-400 shadow-sm" :
-                                        "bg-card-secondary/20 border-border/40 text-text-muted/60"
+                                        step.done ? "bg-emerald-500/15 dark:bg-emerald-500/10 border-emerald-500/30 text-emerald-700 dark:text-emerald-400" :
+                                        step.active ? "bg-blue-500/15 dark:bg-blue-500/10 border-blue-500/40 text-blue-700 dark:text-blue-400 shadow-sm" :
+                                        "bg-card dark:bg-card-secondary/20 border-border/70 dark:border-border/40 text-text-muted dark:text-text-muted/60"
                                     )}>
                                         {step.label}
                                     </div>
@@ -9235,27 +9235,27 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                         <div className="p-6 space-y-4">
                             {upgradeModal.phase === 'complete' ? (
                                 <div className="p-6 bg-emerald-500/10 border border-emerald-500/30 rounded-2xl text-center space-y-3 animate-in zoom-in-95 duration-200">
-                                    <div className="inline-flex p-3 rounded-2xl bg-emerald-500/20 text-emerald-400 mb-1">
+                                    <div className="inline-flex p-3 rounded-2xl bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 mb-1">
                                         <CheckCircle2 size={32} />
                                     </div>
-                                    <h4 className="text-base font-black text-emerald-400 tracking-tight">
+                                    <h4 className="text-base font-black text-emerald-700 dark:text-emerald-400 tracking-tight">
                                         Stigix Updated to {upgradeModal.version || 'Latest'}!
                                     </h4>
                                     <p className="text-xs text-text-primary/90 font-medium max-w-md mx-auto">
                                         The application container was recreated and passed internal healthcheck. Dangling Docker images were pruned from the host.
                                     </p>
-                                    <div className="pt-2 flex items-center justify-center gap-2 text-xs font-mono text-emerald-300">
+                                    <div className="pt-2 flex items-center justify-center gap-2 text-xs font-mono text-emerald-700 dark:text-emerald-300">
                                         <RefreshCw size={14} className="animate-spin" />
-                                        <span>Reloading dashboard in <strong className="text-emerald-400 font-bold text-sm">{upgradeModal.countdown}</strong> second{upgradeModal.countdown !== 1 ? 's' : ''}...</span>
+                                        <span>Reloading dashboard in <strong className="text-emerald-700 dark:text-emerald-400 font-bold text-sm">{upgradeModal.countdown}</strong> second{upgradeModal.countdown !== 1 ? 's' : ''}...</span>
                                     </div>
                                 </div>
                             ) : upgradeModal.phase === 'failed' ? (
                                 <div className="p-4 bg-rose-500/10 border border-rose-500/30 rounded-2xl space-y-2">
-                                    <div className="flex items-center gap-2 text-rose-400 font-bold text-xs uppercase tracking-wider">
+                                    <div className="flex items-center gap-2 text-rose-600 dark:text-rose-400 font-bold text-xs uppercase tracking-wider">
                                         <AlertCircle size={16} />
                                         <span>Upgrade Halted</span>
                                     </div>
-                                    <p className="text-xs font-mono text-rose-300 leading-relaxed">
+                                    <p className="text-xs font-mono text-rose-700 dark:text-rose-300 leading-relaxed">
                                         {upgradeModal.error || 'Unknown error occurred'}
                                     </p>
                                     <p className="text-[11px] text-text-muted">
@@ -9270,7 +9270,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                                     <span>CONSOLE EVENT LOG</span>
                                     <span>{getSessionLogs(upgradeStatus?.logs).length} events</span>
                                 </div>
-                                <div className="bg-black/60 border border-border/60 rounded-2xl p-4 h-48 overflow-y-auto font-mono text-[10px] leading-relaxed text-text-muted scrollbar-thin scrollbar-thumb-border">
+                                <div className="bg-background dark:bg-black/60 border border-border dark:border-border/60 rounded-2xl p-4 h-48 overflow-y-auto font-mono text-[10px] leading-relaxed text-text-secondary dark:text-text-muted scrollbar-thin scrollbar-thumb-border shadow-inner">
                                     {getSessionLogs(upgradeStatus?.logs).length > 0 ? (
                                         getSessionLogs(upgradeStatus?.logs).map((log: string, idx: number) => (
                                             <div key={idx} className="mb-0.5 opacity-90 hover:opacity-100 transition-opacity">
@@ -9386,7 +9386,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                         </div>
 
                         {/* Progress Stepper */}
-                        <div className="px-6 py-4 border-b border-border/40 bg-black/10">
+                        <div className="px-6 py-4 border-b border-border/60 dark:border-border/40 bg-card-secondary/60 dark:bg-black/10">
                             <div className="grid grid-cols-4 gap-2 text-center">
                                 {[
                                     { label: '1. Remote Pull', active: remoteUpgradeModal.phase === 'pulling', done: ['restarting', 'reconnecting', 'complete'].includes(remoteUpgradeModal.phase) },
@@ -9396,9 +9396,9 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                                 ].map((step, idx) => (
                                     <div key={idx} className={cn(
                                         "p-2 rounded-xl text-[10px] font-black uppercase tracking-wider border transition-all",
-                                        step.done ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-400" :
-                                        step.active ? "bg-purple-500/10 border-purple-500/40 text-purple-400 shadow-sm" :
-                                        "bg-card-secondary/20 border-border/40 text-text-muted/60"
+                                        step.done ? "bg-emerald-500/15 dark:bg-emerald-500/10 border-emerald-500/30 text-emerald-700 dark:text-emerald-400" :
+                                        step.active ? "bg-purple-500/15 dark:bg-purple-500/10 border-purple-500/40 text-purple-700 dark:text-purple-400 shadow-sm" :
+                                        "bg-card dark:bg-card-secondary/20 border-border/70 dark:border-border/40 text-text-muted dark:text-text-muted/60"
                                     )}>
                                         {step.label}
                                     </div>
@@ -9410,10 +9410,10 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                         <div className="p-6 space-y-4">
                             {remoteUpgradeModal.phase === 'complete' ? (
                                 <div className="p-6 bg-emerald-500/10 border border-emerald-500/30 rounded-2xl text-center space-y-3 animate-in zoom-in-95 duration-200">
-                                    <div className="inline-flex p-3 rounded-2xl bg-emerald-500/20 text-emerald-400 mb-1">
+                                    <div className="inline-flex p-3 rounded-2xl bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 mb-1">
                                         <CheckCircle2 size={32} />
                                     </div>
-                                    <h4 className="text-base font-black text-emerald-400 tracking-tight">
+                                    <h4 className="text-base font-black text-emerald-700 dark:text-emerald-400 tracking-tight">
                                         {remoteUpgradeModal.peerName} Updated to {remoteUpgradeModal.version || 'Latest'}!
                                     </h4>
                                     <p className="text-xs text-text-primary/90 font-medium max-w-md mx-auto">
@@ -9422,11 +9422,11 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                                 </div>
                             ) : remoteUpgradeModal.phase === 'failed' ? (
                                 <div className="p-4 bg-rose-500/10 border border-rose-500/30 rounded-2xl space-y-2">
-                                    <div className="flex items-center gap-2 text-rose-400 font-bold text-xs uppercase tracking-wider">
+                                    <div className="flex items-center gap-2 text-rose-600 dark:text-rose-400 font-bold text-xs uppercase tracking-wider">
                                         <AlertCircle size={16} />
                                         <span>Remote Upgrade Error</span>
                                     </div>
-                                    <p className="text-xs font-mono text-rose-300 leading-relaxed">
+                                    <p className="text-xs font-mono text-rose-700 dark:text-rose-300 leading-relaxed">
                                         {remoteUpgradeModal.error || 'Unknown error on remote node'}
                                     </p>
                                 </div>
@@ -9438,7 +9438,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                                     <span>REMOTE NODE LOG STREAM</span>
                                     <span>{getSessionLogs(remoteUpgradeModal.logs, remoteUpgradeModal.version).length} events</span>
                                 </div>
-                                <div className="bg-black/60 border border-border/60 rounded-2xl p-4 h-48 overflow-y-auto font-mono text-[10px] leading-relaxed text-text-muted scrollbar-thin scrollbar-thumb-border">
+                                <div className="bg-background dark:bg-black/60 border border-border dark:border-border/60 rounded-2xl p-4 h-48 overflow-y-auto font-mono text-[10px] leading-relaxed text-text-secondary dark:text-text-muted scrollbar-thin scrollbar-thumb-border shadow-inner">
                                     {getSessionLogs(remoteUpgradeModal.logs, remoteUpgradeModal.version).length > 0 ? (
                                         getSessionLogs(remoteUpgradeModal.logs).map((log: string, idx: number) => (
                                             <div key={idx} className="mb-0.5 opacity-90 hover:opacity-100 transition-opacity">

@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.1.34] - 2026-10-27
+
+### Fixed
+- **Light Mode Contrast in Upgrade Progress Modals & Magic Join Modal (`web-dashboard/src/Settings.tsx`, `web-dashboard/src/components/MagicJoinModal.tsx`)**:
+  - Replaced hardcoded translucent black surfaces (`bg-black/60`, `bg-black/10`) in the Self-Upgrade and Remote Node Upgrade modals with theme-aware backgrounds (`bg-background dark:bg-black/60`, `bg-card-secondary/60 dark:bg-black/10`) and high-contrast text (`text-text-secondary`, `text-blue-700`, `text-emerald-700`) so the Console Event Log and progress stepper are crisp in Light Mode while remaining identical in Dark Mode.
+  - Fixed Light Mode badge contrast in **Magic Join** (`Primary`, `enp34s0 ★`, `virbr*` / `tailscale0` interface badges, `stigix-cli join <token>` inline code pill, `Expires` timer, and `Multi-Use` security badge) while preserving Dark Mode styling.
+
 ## [3.1.33] - 2026-10-27
 
 ### Improved
