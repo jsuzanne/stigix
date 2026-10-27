@@ -39,7 +39,7 @@
     "description": "Open-source SASE and SD-WAN validation platform for network engineers. Generates SaaS, Custom TCP, and Multicast (IGMPv3/PIM) traffic, replays stateful PCAPs, captures live packets, runs DEM probes, validates SASE security policies, measures failover convergence, automates VyOS routers, and orchestrates multi-node mesh labs.",
     "url": "https://stigix.io/",
     "downloadUrl": "https://github.com/jsuzanne/stigix",
-    "softwareVersion": "3.0.34",
+    "softwareVersion": "3.1.37",
     "license": "https://github.com/jsuzanne/stigix/blob/main/LICENSE",
     "author": {
       "@type": "Person",
@@ -117,7 +117,7 @@
         <span class="hero__badge-dot" aria-hidden="true"></span>
         Open-source · MIT · Multi-Node Mesh &amp; V3 Engine
       </div>
-      <span class="hero__version">current: jsuzanne/stigix:latest &nbsp;·&nbsp; <a href="https://github.com/jsuzanne/stigix/releases" target="_blank" rel="noopener noreferrer" style="color:var(--teal);text-decoration:none;">v3.0.34</a></span>
+      <span class="hero__version">current: jsuzanne/stigix:latest &nbsp;·&nbsp; <a href="https://github.com/jsuzanne/stigix/releases" target="_blank" rel="noopener noreferrer" style="color:var(--teal);text-decoration:none;">v3.1.37</a></span>
     </div>
 
     <h1 class="hero__headline">
@@ -368,10 +368,10 @@
     <div class="caps__row" role="row">
       <div class="caps__col" role="cell">
         <div class="caps__col-name">Voice (VoIP) &amp; IoT Simulation</div>
-        <div class="caps__col-category">rtp mos · layer-2/3 scapy</div>
+        <div class="caps__col-category">go native engine · rtp mos · layer-2/3</div>
       </div>
       <div class="caps__col" role="cell">
-        <div class="caps__col-desc">Forges real-time G.711/G.729 RTP voice streams across WAN peers with live MOS scoring, jitter, and DSCP verification. Simulates 100+ Layer-2/3 IoT devices on the wire via Scapy DHCP/ARP with Palo Alto IoT CSV import and active threat modes (port scan, DNS flood, C2 beacon).</div>
+        <div class="caps__col-desc">Forges real-time G.711/G.729 RTP voice streams across WAN peers with live MOS scoring, jitter, and DSCP verification. Simulates 100+ Layer-2/3 IoT devices on the wire via the Go Native Engine (or Scapy fallback) with a bundled 1-click 100-device Palo Alto IoT &amp; CVE sample dataset, CSV import, and active threat modes (port scan, DNS flood, C2 beacon).</div>
       </div>
       <div class="caps__col" role="cell">
         <div class="caps__col-tags">
@@ -1476,7 +1476,7 @@
 
       <a href="https://github.com/jsuzanne/stigix/blob/main/CHANGELOG.md" target="_blank" rel="noopener noreferrer" class="doc-link" id="docs-changelog-link">
         <span class="doc-link__ico">📋</span>
-        <div class="doc-link__text"><strong>Changelog</strong><span>Full v3.0.34 release history</span></div>
+        <div class="doc-link__text"><strong>Changelog</strong><span>Full v3.1.37 release history</span></div>
         <span class="doc-link__arr">→</span>
       </a>
 
@@ -1504,7 +1504,7 @@
       </ul>
     </div>
     <p class="footer__note" id="footer-last-updated" style="margin-top:12px;padding-top:12px;border-top:1px solid var(--stroke);font-family:var(--mono);font-size:0.72rem;color:var(--muted);">
-      Site last updated: <strong id="footer-date" style="color:var(--mid)">2026-10-17</strong> &nbsp;&middot;&nbsp; Covers release <a href="https://github.com/jsuzanne/stigix/releases" target="_blank" rel="noopener noreferrer" style="color:var(--teal);">v3.0.34</a> &nbsp;&middot;&nbsp; <a href="https://github.com/jsuzanne/stigix/blob/main/CHANGELOG.md" target="_blank" rel="noopener noreferrer" style="color:var(--teal);">View changelog &rarr;</a>
+      Site last updated: <strong id="footer-date" style="color:var(--mid)">2026-10-27</strong> &nbsp;&middot;&nbsp; Covers release <a href="https://github.com/jsuzanne/stigix/releases" target="_blank" rel="noopener noreferrer" style="color:var(--teal);">v3.1.37</a> &nbsp;&middot;&nbsp; <a href="https://github.com/jsuzanne/stigix/blob/main/CHANGELOG.md" target="_blank" rel="noopener noreferrer" style="color:var(--teal);">View changelog &rarr;</a>
     </p>
     <script>var d=new Date(document.lastModified);if(d.getFullYear()>2000){document.getElementById('footer-date').textContent=d.toISOString().slice(0,10);}</script>
     <p class="footer__note" id="footer-disclaimer">

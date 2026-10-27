@@ -937,9 +937,15 @@ XFR-0123 (UDP/QUIC) → source port 40123</pre>
 
 
         <div class="faq-item">
-          <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">What are the three import types and when should I use each?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
+          <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">What are the import types (including the 100-Device Sample Dataset) and when should I use each?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
           <div class="faq-item__body"><div class="faq-item__inner"><div class="faq-item__answer">
-            <p>The <strong>Import</strong> button in the IoT Simulation toolbar offers three different import paths, each suited to a different situation:</p>
+            <p>The <strong>Import</strong> button in the IoT Simulation toolbar offers a bundled sample dataset plus three file import paths, each suited to a different situation:</p>
+
+            <p><strong>&#10024; Sample Dataset (100 Devices)</strong> &mdash; Bundled Palo Alto IoT &amp; CVE vulnerability dataset ready to load offline.</p>
+            <ul>
+              <li><strong>Use when:</strong> setting up a fresh lab or demo in seconds without preparing external CSV/JSON files.</li>
+              <li>Offers two 1-click actions directly inside the Import menu: <strong>Import Directly</strong> (loads all 100 realistic IoT devices with CVE metadata, DHCP Option 55/60 fingerprints, and threat profiles immediately into Stigix) or <strong>Download</strong> (saves <code>iot-devices-sample.json</code> locally so you can inspect or customize it before importing).</li>
+            </ul>
 
             <p><strong>&#128274; Stigix JSON Config</strong> &mdash; Restores a full IoT simulation environment from a previously exported <code>.json</code> file.</p>
             <ul>
@@ -2629,7 +2635,7 @@ stigix-cli provision peers</pre>
       </ul>
     </div>
     <p class="footer__note" style="margin-top:12px;padding-top:12px;border-top:1px solid var(--stroke);font-family:var(--mono);font-size:0.72rem;color:var(--muted);">
-      Site last updated: <strong id="faq-footer-date" style="color:var(--mid)">2026-10-17</strong> &nbsp;&middot;&nbsp; Covers release <a href="https://github.com/jsuzanne/stigix/releases" target="_blank" rel="noopener noreferrer" style="color:var(--teal);">v3.0.34</a> &nbsp;&middot;&nbsp; <a href="https://github.com/jsuzanne/stigix/blob/main/CHANGELOG_V2.md" target="_blank" rel="noopener noreferrer" style="color:var(--teal);">View changelog &rarr;</a>
+      Site last updated: <strong id="faq-footer-date" style="color:var(--mid)">2026-10-27</strong> &nbsp;&middot;&nbsp; Covers release <a href="https://github.com/jsuzanne/stigix/releases" target="_blank" rel="noopener noreferrer" style="color:var(--teal);">v3.1.37</a> &nbsp;&middot;&nbsp; <a href="https://github.com/jsuzanne/stigix/blob/main/CHANGELOG.md" target="_blank" rel="noopener noreferrer" style="color:var(--teal);">View changelog &rarr;</a>
     </p>
     <script>var fd=new Date(document.lastModified);if(fd.getFullYear()>2000){document.getElementById('faq-footer-date').textContent=fd.toISOString().slice(0,10);}</script>
     <p class="footer__note" style="margin-top:8px;font-family:var(--mono);font-size:0.72rem;color:var(--muted);">
