@@ -38,10 +38,17 @@ find_free_port() {
     local port=$1
     local max_port=$2
     while [ "$port" -le "$max_port" ]; do
+        # Skip ports reserved internally inside the Stigix container:
+        # 8081 = stigix-go SRT Light Responder, 8082 = stigix-go EICAR HTTP Target
+        if [ "$port" -eq 8081 ] || [ "$port" -eq 8082 ]; then
+            port=$((port+1))
+            continue
+        fi
+
         local in_use=false
         
         if [ "$in_use" = false ] && command -v lsof &> /dev/null; then
-            if lsof -i :$port > /dev/null 2>&1; then
+            if lsof -nP -iTCP:$port -sTCP:LISTEN > /dev/null 2>&1; then
                 in_use=true
             fi
         fi
@@ -106,7 +113,10 @@ dump_process_on_port() {
         fi
     fi
     if command -v lsof &> /dev/null; then
-        local lsof_out=$(lsof -i :$port 2>/dev/null)
+        local lsof_out=$(lsof -nP -iTCP:$port -sTCP:LISTEN 2>/dev/null)
+        if [ -z "$lsof_out" ]; then
+            lsof_out=$(lsof -nP -i :$port 2>/dev/null)
+        fi
         if [ -n "$lsof_out" ]; then
             echo "$lsof_out" | sed 's/^/     /'
             return 0
@@ -766,7 +776,7 @@ if [ "$INSTALL_MODE" != "target" ]; then
     HTTP_OK=false
     MAX_ATTEMPTS=15
     for ((i=1; i<=MAX_ATTEMPTS; i++)); do
-        if curl -sfI "http://localhost:$PORT" > /dev/null 2>&1; then
+        if curl -sf "http://localhost:$PORT/api/health" > /dev/null 2>&1; then
             HTTP_OK=true
             print_progress_bar $MAX_ATTEMPTS $MAX_ATTEMPTS "Web Dashboard is fully responsive! "
             echo ""

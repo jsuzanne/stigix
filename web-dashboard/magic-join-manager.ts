@@ -232,6 +232,8 @@ export class MagicJoinManager {
             }
         }
 
+        const leaderPort = process.env.PORT || '8080';
+
         // 2. Request Host Header from Browser/Client (supports HTTPS Reverse Proxy / Cloudflare Tunnel)
         if (requestHost && !requestHost.includes('127.0.0.1') && !requestHost.includes('localhost')) {
             const isHttps = requestProto === 'https' || requestHost.endsWith(':443');
@@ -242,7 +244,7 @@ export class MagicJoinManager {
                 const cleanHost = requestHost.replace(/:443$/, '');
                 addEndpoint(`https://${cleanHost}`, matchedIface, metaMap.size === 0, isDef);
             } else {
-                const hostWithPort = requestHost.includes(':') ? requestHost : `${requestHost}:8080`;
+                const hostWithPort = requestHost.includes(':') ? requestHost : `${requestHost}:${leaderPort}`;
                 addEndpoint(`http://${hostWithPort}`, matchedIface, metaMap.size === 0, isDef);
             }
         }
@@ -250,12 +252,12 @@ export class MagicJoinManager {
         // 3. Local Private/Default Route IP detected
         if (localIp && localIp !== '127.0.0.1') {
             const matchedIface = ipToIface.get(localIp) || 'Default';
-            addEndpoint(`http://${localIp}:8080`, matchedIface, metaMap.size === 0, true);
+            addEndpoint(`http://${localIp}:${leaderPort}`, matchedIface, metaMap.size === 0, true);
         }
 
         // 4. All host IPv4 network interfaces
         for (const [ip, iface] of ipToIface.entries()) {
-            addEndpoint(`http://${ip}:8080`, iface, metaMap.size === 0, ip === localIp);
+            addEndpoint(`http://${ip}:${leaderPort}`, iface, metaMap.size === 0, ip === localIp);
         }
 
         return Array.from(metaMap.values());

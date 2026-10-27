@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.1.35] - 2026-10-27
+
+### Fixed
+- **Installer Port Detection & Internal Container Port Collision (`install.sh`, `web-dashboard/magic-join-manager.ts`)**:
+  - Updated `find_free_port()` and `dump_process_on_port()` in `install.sh` to filter `lsof` strictly by listening TCP sockets (`lsof -nP -iTCP:$port -sTCP:LISTEN`) so outbound `CLOSE_WAIT` / `ESTABLISHED` connections to remote port `8080` (e.g. OrbStack on macOS) no longer trigger false-positive "Port 8080 is in use" warnings.
+  - Excluded internal Stigix container ports `8081` (`stigix-go` SRT Light Responder) and `8082` (`stigix-go` EICAR HTTP Target) from Web Dashboard auto-port selection so `web-ui` never collides with `stigix-go` (`EADDRINUSE 0.0.0.0:8081`).
+  - Updated post-install readiness probe in `install.sh` to check `http://localhost:$PORT/api/health` instead of `/` so the SRT Light Responder on `8081` cannot mask a Web UI startup failure.
+  - Updated `detectLeaderEndpointsMeta()` in `magic-join-manager.ts` to use `process.env.PORT || '8080'` instead of hardcoded `:8080`.
+
 ## [3.1.34] - 2026-10-27
 
 ### Fixed
